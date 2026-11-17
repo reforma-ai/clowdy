@@ -29,7 +29,8 @@
 .page {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-md);
+    /* At least 24px between the blocks of a page. */
+    gap: var(--spacing-24);
     max-width: 40rem;
     /* The header's own 12px inset, so the title and the page start on one line. */
     padding: var(--spacing-xl) var(--spacing-lg);

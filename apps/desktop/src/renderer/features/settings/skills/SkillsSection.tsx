@@ -15,36 +15,41 @@ import { useSkills } from './useSkills';
 export function SkillsSection() {
     const project = useRootStore().selectedProject?.project;
 
-    return (
-        <>
-            <Text color="secondary">
-                A skill is a short playbook an agent reads when a job calls for it. Every enabled skill adds its name and description to the start of every run,
-                so a long list makes runs slower and dearer.
-            </Text>
-            {/* A new project starts from nothing: the key drops the old project's skills at once. */}
-            <SkillsBody key={ project?.id ?? 'none' } projectId={ project?.id } projectName={ project?.name } />
-        </>
-    );
+    // A new project starts from nothing: the key drops the old project's skills at once.
+    return <SkillsBody key={ project?.id ?? 'none' } projectId={ project?.id } projectName={ project?.name } />;
 }
+
+const INTRO = (
+    <Text color="secondary">
+        A skill is a short playbook an agent reads when a job calls for it. Every enabled skill adds its name and description to the start of every run,
+        so a long list makes runs slower and dearer.
+    </Text>
+);
 
 function SkillsBody({ projectId, projectName }: { projectId?: string; projectName?: string }) {
     const { state, pending, reload, toggle } = useSkills(projectId);
 
     if (state.status === 'loading') {
         return (
-            <Box direction="row" gap="md" align="center">
-                <Spinner size="sm" />
-                <Text color="secondary">Loading skills…</Text>
-            </Box>
+            <>
+                { INTRO }
+                <Box direction="row" gap="md" align="center">
+                    <Spinner size="sm" />
+                    <Text color="secondary">Loading skills…</Text>
+                </Box>
+            </>
         );
     }
 
     if (state.status === 'failed') {
         return (
-            <Box gap="md" align="start">
-                <Text color="danger">Skills could not be loaded. { state.message }</Text>
-                <Button variant="bordered" size="sm" onPress={ reload }>Try again</Button>
-            </Box>
+            <>
+                { INTRO }
+                <Box gap="md" align="start">
+                    <Text color="danger">Skills could not be loaded. { state.message }</Text>
+                    <Button variant="bordered" size="sm" onPress={ reload }>Try again</Button>
+                </Box>
+            </>
         );
     }
 
@@ -52,9 +57,12 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
 
     return (
         <>
-            <Text color="secondary" data-testid="skills-cost">
-                Enabled skills add about <Text bold>{ tokenLabel(tokens) }</Text> to every run.
-            </Text>
+            <div className={ styles.summary }>
+                { INTRO }
+                <Text color="secondary" data-testid="skills-cost">
+                    Enabled skills add about <Text bold>{ tokenLabel(tokens) }</Text> to every run.
+                </Text>
+            </div>
 
             { warnings.length > 0 && (
                 <Alert color="warning" role="status">

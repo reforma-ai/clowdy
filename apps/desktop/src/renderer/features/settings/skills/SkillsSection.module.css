@@ -1,3 +1,10 @@
+/* The intro and the cost line read as one block; the page puts 24px between its blocks. */
+.summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
 .group {
     display: flex;
     flex-direction: column;
