@@ -1,0 +1,13 @@
+{
+    "name": "@clowdy/system-skills",
+    "private": true,
+    "description": "Skills that ship with Clowdy and teach agents how to work in it. One Claude-format plugin directory that Claude and Codex both load.",
+    "version": "0.1.0",
+    "type": "module",
+    "scripts": {
+        "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
+        "lint": "eslint .",
+        "test": "bun scripts/validate.ts",
+        "typecheck": "tsc --noEmit"
+    }
+}

@@ -1,0 +1,9 @@
+{
+    "extends": "@clowdy/config-typescript/base.json",
+    "compilerOptions": {
+        "types": ["node", "bun"],
+        "lib": ["ES2023"]
+    },
+    "include": ["scripts"],
+    "exclude": ["node_modules"]
+}

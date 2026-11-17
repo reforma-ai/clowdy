@@ -22,7 +22,7 @@
 - Daemon tests run with `bun test` (they need Bun's runtime); everything else keeps Vitest.
 - Skills are first-class. System skills ship with the app and encode the delivery loop (research, grill, task-graph planning, parallel fan-out, serialized integration, merged-result verification), scaffolding from scratch, and the autopilot and semi-manual modes; project and user skills work alongside them. See `system-skills.md`.
 - Everything is files and SQLite. The app is fully desktop now and the daemon will later run on a remote machine, so all state lives in the daemon's data dir (SQLite plus plain files; documents are files in the repo) and nothing depends on a cloud service or on sharing a process with the UI.
-- Working copies are the orchestrator's decision, like a human developer's. By default every run of a chat works in the project's main checkout, and one orchestrator may start any number of sub-agents there ("one branch if it wants"). The daemon provides `worktree_create` / `worktree_remove` tools (tracked per project, with path, branch, owning run) and `run_spawn` takes an optional `cwd`; the agent decides when isolation is worth it (a big module, work that must not disturb what is running). A question-only chat touches no worktree. Merging is the agent's job with git, as in any session; there is no daemon merge queue in the MVP. The system skills teach when to isolate and how to partition files between parallel agents.
+- Git, branches and worktrees are the agent's internal business, exactly as in a normal Claude Code session. Clowdy is for people who manage work, not for programmers, so the daemon has no worktree tools, no merge queue, and no git concepts in the main UI. Agents get Bash (the engine's own), a small set of Clowdy tools, and skills that describe the flow; they decide per task whether to work in the project's main checkout, create a worktree with plain `git worktree`, branch, merge, or commit. A question-only chat touches no git at all. `run_spawn` takes an optional `cwd` so a sub-run can work where its parent decided.
 - One task, one chat: starting a task opens a new chat whose orchestrator is bound to it. A chat can create 0-N tasks and work on them, or just answer a question.
 - Fan-out has two forms and the orchestrator picks: engine-native sub-agents (cheap, in-process, hundreds possible; the adapter maps their events to child runs so the Agents tree shows them) and Clowdy-level runs through `run_spawn` (own process and session, can use another engine, bounded by the scheduler caps).
 
@@ -30,7 +30,7 @@
 
 ## Out of scope
 
-- A daemon-side merge queue or integration branch (agents merge themselves), Linear or any provider sync, webhooks, remote UI, cloud execution, auto-update, installers and signing, an engine connect/auth UI, BriefBack's exact method (semi-manual mode asks questions through a simple card protocol).
+- Daemon-side git machinery of any kind (worktree tools, merge queue, integration branch): agents use git themselves, Linear or any provider sync, webhooks, remote UI, cloud execution, auto-update, installers and signing, an engine connect/auth UI, BriefBack's exact method (semi-manual mode asks questions through a simple card protocol).
 
 ## Stage 1 — Contract
 
@@ -108,11 +108,11 @@
 
 **Depends on:** Stages 2 and 5.
 
-**This stage:** the scheduler (caps, queue, backoff on subscription limits), orchestrator tools (create/update tasks, spawn runs bound to tasks with an optional cwd, wait, cancel, worktree create/remove), mapping of engine-native sub-agent events to child runs, subtree cancellation, restart recovery, one chat per started task.
+**This stage:** the scheduler (caps, queue, backoff on subscription limits), orchestrator tools (create/update tasks, spawn runs bound to tasks with an optional cwd, wait, cancel, ask the user, report result), mapping of engine-native sub-agent events to child runs, subtree cancellation, restart recovery, one chat per started task.
 
 - [ ] Complete
 
-**Done when:** an orchestrator turns a request into tasks and runs several sub-agents in parallel in one checkout; it can create a worktree for a larger piece of work; a dependent task waits; a plain question starts no worktree.
+**Done when:** an orchestrator turns a request into tasks and runs several sub-agents in parallel in one checkout; it may use a worktree through plain git when it judges that worthwhile; a dependent task waits; a plain question touches no git.
 **Commits:** None yet.
 
 ## Stage 7 — Shell integration and dogfooding
