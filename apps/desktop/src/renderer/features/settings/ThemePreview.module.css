@@ -1,0 +1,103 @@
+/* A 72 x 48 drawing, so sizes here are plain pixels. */
+.preview {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background-color: var(--color-secondary-light);
+    overflow: hidden;
+}
+
+.project {
+    position: absolute;
+    top: 2px;
+    left: 3px;
+    width: 18px;
+    height: 4px;
+    border-radius: 2px;
+    background-color: var(--color-secondary-border);
+}
+
+.rail {
+    position: absolute;
+    top: 10px;
+    left: 3px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+
+    > i {
+        width: 6px;
+        height: 5px;
+        border-radius: 1.5px;
+        background-color: var(--color-secondary-border);
+    }
+
+    > i[data-active] {
+        background-color: var(--color-secondary-content);
+    }
+}
+
+.plate {
+    position: absolute;
+    top: 8px;
+    right: 0;
+    bottom: 0;
+    left: 12px;
+    display: flex;
+    border-top: 1px solid var(--color-surface-border);
+    border-left: 1px solid var(--color-surface-border);
+    border-top-left-radius: 4px;
+    background-color: var(--color-surface);
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 18px;
+    padding: 4px 3px;
+    border-right: 1px solid var(--color-surface-border);
+
+    > i {
+        height: 4px;
+        border-radius: 1.5px;
+        background-color: var(--color-secondary-light);
+    }
+
+    > i[data-active] {
+        background-color: var(--color-secondary-border);
+    }
+}
+
+.main {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px 5px 0;
+
+    > b {
+        width: 22px;
+        height: 3px;
+        border-radius: 1.5px;
+        background-color: var(--color-secondary-content);
+    }
+
+    > i {
+        height: 2px;
+        border-radius: 1px;
+        background-color: var(--color-secondary-border);
+    }
+
+    > i:nth-of-type(2) {
+        width: 70%;
+    }
+}
+
+.button {
+    width: 14px;
+    height: 5px;
+    margin-top: 3px;
+    border-radius: 2.5px;
+    background-color: var(--color-primary);
+}

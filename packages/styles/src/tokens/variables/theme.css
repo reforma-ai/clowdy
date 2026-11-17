@@ -1,4 +1,5 @@
-:root {
+:root,
+.light {
     --color-surface: var(--color-light);
     --color-surface-float: var(--color-white);
     --color-surface-border: var(--color-secondary-200);
