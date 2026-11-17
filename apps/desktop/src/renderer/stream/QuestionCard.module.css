@@ -1,0 +1,67 @@
+@reference '@clowdy/styles/rulesets';
+
+.card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-lg) var(--spacing-xl);
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+}
+
+.card[data-answered] {
+    gap: var(--spacing-md);
+    background-color: transparent;
+}
+
+.text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.answer {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    color: var(--color-success-text);
+}
+
+.options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.option {
+    align-items: flex-start;
+}
+
+.label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+}
+
+.labelLine {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.recommended {
+    @ruleset typography-text-xs;
+
+    padding: var(--spacing-2) var(--spacing-md);
+    border-radius: var(--radius-full);
+    background-color: var(--color-primary-muted-light);
+    color: var(--color-primary-text);
+    font-weight: 500;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+}

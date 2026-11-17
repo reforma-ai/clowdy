@@ -1,0 +1,17 @@
+.avatar {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-28);
+    height: var(--spacing-28);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-primary-muted-light);
+    color: var(--color-primary-text);
+}
+
+.avatar[data-size='md'] {
+    width: var(--spacing-36);
+    height: var(--spacing-36);
+}

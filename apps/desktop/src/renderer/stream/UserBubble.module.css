@@ -1,0 +1,27 @@
+@reference '@clowdy/styles/rulesets';
+
+.row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--spacing-xs);
+}
+
+.bubble {
+    @ruleset typography-text-md;
+
+    max-width: 80%;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-chat-message);
+    color: var(--color-chat-message-content);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.time {
+    @ruleset typography-text-xs;
+
+    color: var(--color-secondary-muted-text);
+}

@@ -1,0 +1,7 @@
+.note {
+    padding-left: calc(var(--spacing-28) + var(--spacing-lg));
+}
+
+.time {
+    margin-left: var(--spacing-xs);
+}

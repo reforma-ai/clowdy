@@ -1,0 +1,78 @@
+@reference '@clowdy/styles/rulesets';
+
+.panel {
+    display: flex;
+    flex: 0 0 25rem;
+    flex-direction: column;
+    width: 25rem;
+    min-height: 0;
+    border-left: 1px solid var(--color-surface-border);
+}
+
+.head {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-lg) var(--spacing-lg) 0 var(--spacing-xxl);
+}
+
+.key {
+    @ruleset typography-text-xs;
+
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    height: var(--spacing-20);
+    padding-inline: var(--spacing-md);
+    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-secondary-muted-light);
+    color: var(--color-secondary-muted-content);
+    font-weight: 500;
+}
+
+.body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-xxl);
+    min-height: 0;
+    padding: var(--spacing-lg) var(--spacing-xxl) var(--spacing-xxl);
+    overflow-y: auto;
+}
+
+.top {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.status {
+    width: auto;
+    align-self: flex-start;
+}
+
+.statusList {
+    min-width: 12rem;
+}
+
+.foot {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg) var(--spacing-xxl);
+    border-top: 1px solid var(--color-surface-border);
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.spacer {
+    flex: 1;
+}

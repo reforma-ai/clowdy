@@ -1,0 +1,19 @@
+@reference '@clowdy/styles/rulesets';
+
+.title {
+    --clowdy-textarea-line-height: var(--spacing-24);
+    --clowdy-textarea-padding-inline: var(--spacing-md);
+    --clowdy-textarea-padding-block: var(--spacing-xs);
+    --clowdy-textarea-border-hover: transparent;
+
+    margin-inline: calc(var(--spacing-md) * -1);
+    width: calc(100% + var(--spacing-md) * 2);
+}
+
+.titleText {
+    @ruleset typography-heading-3;
+
+    font-weight: 600;
+    line-height: var(--spacing-24);
+    overflow-wrap: anywhere;
+}

@@ -1,0 +1,82 @@
+@reference '@clowdy/styles/rulesets';
+
+.card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    min-width: 0;
+    padding: var(--spacing-lg);
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+    cursor: grab;
+    transition:
+        border-color 150ms ease-out,
+        opacity 150ms ease-out;
+}
+
+.card:hover {
+    border-color: var(--color-secondary-muted-border-hover);
+}
+
+.card[data-selected] {
+    border-color: var(--color-primary);
+}
+
+.card[data-dragging] {
+    opacity: 0.45;
+}
+
+.key {
+    @ruleset typography-text-xs;
+
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    color: var(--color-secondary-muted-text);
+    font-weight: 500;
+}
+
+/* The title is the card's button: its hit area covers the whole card, and the agent chips sit above it. */
+.title {
+    @ruleset typography-text-md;
+
+    display: -webkit-box;
+    overflow: hidden;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-text);
+    font-family: inherit;
+    font-weight: 500;
+    line-height: var(--spacing-18);
+    text-align: start;
+    overflow-wrap: anywhere;
+    cursor: inherit;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+}
+
+.title::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+}
+
+.title:focus-visible {
+    outline: none;
+}
+
+.card:has(.title:focus-visible) {
+    box-shadow: 0 0 0 var(--spacing-4) var(--color-primary-muted-border);
+}
+
+.agents {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+}

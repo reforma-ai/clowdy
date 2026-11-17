@@ -1,0 +1,289 @@
+import { isTerminalRunStatus } from '@clowdy/protocol';
+
+import type { Actor, Artifact, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId } from '@clowdy/protocol';
+import type { StatusTone } from '../../shared';
+
+/* ---------------------------------- Runs ---------------------------------- */
+
+/** A run that works on a task: `assigned` executes it, `verifies` checks it. A run that only created the task is not listed. */
+export interface TaskRun {
+    run: Run;
+    relation: 'assigned' | 'verifies';
+}
+
+const byCreatedAt = (a: TaskRun, b: TaskRun) => a.run.createdAt - b.run.createdAt || a.run.id.localeCompare(b.run.id);
+
+/** Every task's runs, oldest first. A run linked twice to one task (`assigned` and `verifies`) counts as assigned. */
+export function runsByTask(links: Iterable<RunTaskLink>, runs: ReadonlyMap<RunId, Run>): Map<TaskId, TaskRun[]> {
+    const byTask = new Map<TaskId, Map<RunId, TaskRun>>();
+
+    for (const { runId, taskId, relation } of links) {
+        const run = runs.get(runId);
+
+        if (!run || relation === 'created') continue;
+
+        const taskRuns = byTask.get(taskId) ?? new Map<RunId, TaskRun>();
+
+        if (taskRuns.get(runId)?.relation !== 'assigned') taskRuns.set(runId, { run, relation });
+
+        byTask.set(taskId, taskRuns);
+    }
+
+    return new Map([...byTask].map(([taskId, taskRuns]) => [taskId, [...taskRuns.values()].sort(byCreatedAt)]));
+}
+
+/** The runs executing the task right now: what a card shows and what blocks another start. */
+export function activeExecutors(taskRuns: readonly TaskRun[] = []): Run[] {
+    return taskRuns.filter(({ run, relation }) => relation === 'assigned' && !isTerminalRunStatus(run.status)).map(({ run }) => run);
+}
+
+/** Why "Start" is unavailable, or `null` when it is. The daemon allows one executing run per task. */
+export function startBlockedReason(taskRuns: readonly TaskRun[] = []): string | null {
+    const active = activeExecutors(taskRuns);
+
+    if (active.length === 0) return null;
+
+    return active.length === 1 ? `${ active[0].name } is already working on this task.` : `${ active.length } agents are already working on this task.`;
+}
+
+/* --------------------------------- Filters -------------------------------- */
+
+export interface TaskFilter {
+    query: string;
+    /** Empty means every status. */
+    statusIds: string[];
+    /** Empty means any agent; otherwise a task needs a run among these. */
+    runIds: RunId[];
+}
+
+export const NO_FILTER: TaskFilter = { query: '', statusIds: [], runIds: [] };
+
+/** How many of the popover's facets (status, agent) are narrowing the list. The search box is not one of them. */
+export function facetCount(filter: TaskFilter): number {
+    return Number(filter.statusIds.length > 0) + Number(filter.runIds.length > 0);
+}
+
+export function isFiltering(filter: TaskFilter): boolean {
+    return facetCount(filter) > 0 || filter.query.trim() !== '';
+}
+
+export function filterTasks(tasks: readonly Task[], filter: TaskFilter, runsOfTask: ReadonlyMap<TaskId, readonly TaskRun[]>): Task[] {
+    const query = filter.query.trim().toLowerCase();
+
+    return tasks.filter((task) => {
+        if (query && !`${ task.key } ${ task.title } ${ task.description }`.toLowerCase().includes(query)) return false;
+
+        if (filter.statusIds.length > 0 && !filter.statusIds.includes(task.statusId)) return false;
+
+        return filter.runIds.length === 0 || (runsOfTask.get(task.id) ?? []).some(({ run }) => filter.runIds.includes(run.id));
+    });
+}
+
+/** The runs a person may filter by: those linked to some task, the working ones first. */
+export function agentOptions(runsOfTask: ReadonlyMap<TaskId, readonly TaskRun[]>): Run[] {
+    const runs = new Map<RunId, Run>();
+
+    for (const taskRuns of runsOfTask.values()) for (const { run } of taskRuns) runs.set(run.id, run);
+
+    const rank = (run: Run) => (isTerminalRunStatus(run.status) ? 1 : 0);
+
+    return [...runs.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'en', { numeric: true }));
+}
+
+export function groupByStatus(tasks: readonly Task[]): Map<string, Task[]> {
+    const groups = new Map<string, Task[]>();
+
+    for (const task of tasks) groups.set(task.statusId, [...groups.get(task.statusId) ?? [], task]);
+
+    return groups;
+}
+
+/* ------------------------------- Dependencies ------------------------------ */
+
+/**
+ * The tasks `taskId` may still depend on: not itself, not one it already depends on, and none that would close a
+ * loop (a task that depends on it, directly or through others). Without `taskId` (a task not created yet) only
+ * `taken` is left out.
+ */
+export function dependencyCandidates(tasks: readonly Task[], { taskId, taken }: { taskId?: TaskId; taken: readonly TaskId[] }): Task[] {
+    const dependents = new Set<TaskId>(taskId ? [taskId] : []);
+    let grew = taskId !== undefined;
+
+    while (grew) {
+        grew = false;
+
+        for (const task of tasks) {
+            if (!dependents.has(task.id) && task.dependsOn.some(id => dependents.has(id))) {
+                dependents.add(task.id);
+                grew = true;
+            }
+        }
+    }
+
+    return tasks.filter(task => !dependents.has(task.id) && !taken.includes(task.id));
+}
+
+/* --------------------------------- Sources -------------------------------- */
+
+const PROVIDER_NAMES: Record<string, string> = { linear: 'Linear' };
+
+export function providerName(provider: string): string {
+    return PROVIDER_NAMES[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+/** Where the list comes from: `Internal`, `Internal + Linear` when some tasks are mirrored, `Linear` when all are. */
+export function tasksSource(tasks: readonly Pick<Task, 'external'>[]): string {
+    const providers = [...new Set(tasks.flatMap(task => (task.external ? [providerName(task.external.provider)] : [])))];
+
+    if (providers.length === 0) return 'Internal';
+
+    return (tasks.every(task => task.external) ? providers : ['Internal', ...providers]).join(' + ');
+}
+
+/** The task in its provider, for "Open in Linear". Only web addresses: a provider's link is data, not a command. */
+export function externalLink(external: TaskExternalRef | undefined): { label: string; url: string } | null {
+    if (!external?.url || !/^https?:\/\//i.test(external.url)) return null;
+
+    return { label: providerName(external.provider), url: external.url };
+}
+
+/* --------------------------------- Activity -------------------------------- */
+
+export interface Activity {
+    id: string;
+    at: number;
+    text: string;
+    /** More about the event: a run's report or error. */
+    detail?: string;
+    /** The run that did it, when a run did. */
+    run?: Run;
+}
+
+const FINISHED_TEXT: Record<string, string> = {
+    succeeded: 'finished',
+    failed: 'failed',
+    cancelled: 'was cancelled',
+    interrupted: 'was interrupted',
+};
+
+function createdText(actor: Actor, creator: Run | undefined): string {
+    switch (actor.kind) {
+        case 'user':
+            return 'You created the task';
+        case 'run':
+            return `${ creator?.name ?? 'An agent' } created the task`;
+        case 'provider':
+            return `Imported from ${ providerName(actor.provider) }`;
+    }
+}
+
+/** What happened to the task, newest first, derived from the task and the runs on it. */
+export function taskActivity(task: Task, taskRuns: readonly TaskRun[], runsById: ReadonlyMap<RunId, Run>, limit = 5): Activity[] {
+    const activity: Activity[] = [];
+    const creator = task.createdBy.kind === 'run' ? runsById.get(task.createdBy.runId) : undefined;
+
+    activity.push({ id: 'created', at: task.createdAt, text: createdText(task.createdBy, creator), run: creator });
+
+    if (task.updatedAt - task.createdAt > 1000) activity.push({ id: 'updated', at: task.updatedAt, text: 'Task updated' });
+
+    for (const { run, relation } of taskRuns) {
+        if (run.startedAt === undefined) {
+            activity.push({ id: `${ run.id }:queued`, at: run.createdAt, text: `${ run.name } is waiting to start`, run });
+        }
+        else {
+            activity.push({ id: `${ run.id }:started`, at: run.startedAt, text: `${ run.name } started ${ relation === 'assigned' ? 'working' : 'checking' }`, run });
+        }
+
+        if (run.finishedAt !== undefined && FINISHED_TEXT[run.status]) {
+            activity.push({ id: `${ run.id }:finished`, at: run.finishedAt, text: `${ run.name } ${ FINISHED_TEXT[run.status] }`, detail: run.error ?? run.result, run });
+        }
+    }
+
+    return activity.sort((a, b) => b.at - a.at).slice(0, limit);
+}
+
+const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+const calendar = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' });
+
+/** `just now`, `2 minutes ago`, `yesterday`, then the date once it is a week old. */
+export function formatAgo(at: number, now: number): string {
+    const minutes = Math.round((now - at) / 60_000);
+
+    if (minutes < 1) return 'just now';
+
+    if (minutes < 60) return relative.format(-minutes, 'minute');
+
+    const hours = Math.round(minutes / 60);
+
+    if (hours < 24) return relative.format(-hours, 'hour');
+
+    const days = Math.round(hours / 24);
+
+    return days < 7 ? relative.format(-days, 'day') : calendar.format(at);
+}
+
+/* --------------------------------- Results --------------------------------- */
+
+export interface ResultRow {
+    id: string;
+    kind: Artifact['kind'];
+    title: string;
+    /** Smaller text after the title: the change size, the commit. */
+    meta?: string;
+    /** A pill for rows that have a verdict. */
+    verdict?: { label: string; tone: StatusTone };
+    /** A document the row opens. */
+    docPath?: string;
+}
+
+const text = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined);
+const count = (value: unknown): number | undefined => (typeof value === 'number' ? value : undefined);
+
+function artifactRow(artifact: Artifact): ResultRow {
+    const { id, kind, title, ref } = artifact;
+    const row: ResultRow = { id, kind, title };
+
+    if (kind === 'diff') {
+        const added = count(ref.added);
+        const removed = count(ref.removed);
+
+        if (added !== undefined || removed !== undefined) row.meta = `+${ added ?? 0 } −${ removed ?? 0 }`;
+    }
+    else if (kind === 'commit') {
+        row.meta = text(ref.sha)?.slice(0, 7);
+    }
+    else if (kind === 'check') {
+        const exitCode = count(ref.exitCode);
+
+        row.verdict = exitCode === undefined ? { label: 'Waiting', tone: 'warning' } : exitCode === 0 ? { label: 'Passed', tone: 'success' } : { label: 'Failed', tone: 'danger' };
+    }
+    else if (kind === 'doc') {
+        row.docPath = text(ref.path);
+    }
+    else {
+        row.meta = text(ref.path);
+    }
+
+    return row;
+}
+
+/**
+ * The task's results, newest first. While an agent works and no check has reported, a "Checks" row says they
+ * are still to come.
+ */
+export function resultRows(artifacts: readonly Artifact[], { expectChecks }: { expectChecks: boolean }): ResultRow[] {
+    const rows = [...artifacts].sort((a, b) => b.createdAt - a.createdAt).map(artifactRow);
+
+    if (expectChecks && !artifacts.some(artifact => artifact.kind === 'check')) {
+        rows.push({ id: 'checks-waiting', kind: 'check', title: 'Checks', verdict: { label: 'Waiting', tone: 'warning' } });
+    }
+
+    return rows;
+}
+
+/** The id of the task a `task.create` answered with. The daemon answers `{ task }`, the fixture daemon the task itself. */
+export function createdTaskId(data: unknown): TaskId | undefined {
+    const task = data && typeof data === 'object' && 'task' in data ? data.task : data;
+
+    return task && typeof task === 'object' && 'id' in task && typeof task.id === 'string' ? task.id : undefined;
+}

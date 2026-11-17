@@ -1,0 +1,63 @@
+@reference '@clowdy/styles/rulesets';
+
+.body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-md);
+}
+
+.group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.heading {
+    @ruleset typography-text-xs;
+
+    color: var(--color-secondary-muted-text);
+    font-weight: 500;
+}
+
+.agents {
+    max-height: 12rem;
+    overflow-y: auto;
+}
+
+.option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    width: 100%;
+    min-width: 0;
+}
+
+.optionLabel {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.none {
+    @ruleset typography-text-sm;
+
+    color: var(--color-secondary-muted-text);
+}
+
+.count {
+    @ruleset typography-text-xs;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--spacing-16);
+    height: var(--spacing-16);
+    padding-inline: var(--spacing-xs);
+    border-radius: var(--radius-full);
+    background-color: var(--color-primary);
+    color: var(--color-primary-content);
+    font-weight: 500;
+}

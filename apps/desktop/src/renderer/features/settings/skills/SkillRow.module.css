@@ -1,0 +1,65 @@
+@reference '@clowdy/styles/rulesets';
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xl);
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.row + .row {
+    border-top: 1px solid var(--color-surface-border);
+}
+
+.body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    min-width: 0;
+    transition: opacity 150ms ease-out;
+}
+
+/* A skill that is off stays readable, so the person can see what they are turning back on. */
+.row[data-off] .body {
+    opacity: 0.55;
+}
+
+.titleLine {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.name {
+    min-width: 0;
+}
+
+.description {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.side {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--spacing-lg);
+}
+
+.cost {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.lock {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-32);
+    color: var(--color-secondary-muted-text);
+}

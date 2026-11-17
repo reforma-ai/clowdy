@@ -1,0 +1,9 @@
+.band {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-md);
+    height: var(--spacing-48);
+    padding-left: calc(var(--titlebar-inset) + var(--spacing-lg));
+    padding-right: calc(var(--titlebar-inset-end) + var(--spacing-lg));
+}

@@ -1,0 +1,41 @@
+.list {
+    flex: 1;
+    min-height: 0;
+    padding: 0 var(--spacing-xxl) var(--spacing-xxl);
+}
+
+.table {
+    /* Fixed columns, and a title that gets the rest: below this width the table scrolls instead of squeezing the title. */
+    min-width: 42rem;
+    table-layout: fixed;
+}
+
+.keyColumn {
+    width: 5rem;
+}
+
+.statusColumn {
+    width: 9.5rem;
+}
+
+.agentsColumn {
+    width: 13rem;
+}
+
+.key {
+    font-weight: 500;
+    color: var(--color-secondary-muted-text);
+}
+
+.title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--color-text);
+    font-weight: 500;
+}
+
+.agents {
+    display: flex;
+    gap: var(--spacing-xs);
+    overflow: hidden;
+}

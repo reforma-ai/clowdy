@@ -1,0 +1,125 @@
+@reference '@clowdy/styles/rulesets';
+
+.card {
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    min-width: 0;
+    overflow: hidden;
+}
+
+.head {
+    @ruleset typography-text-md;
+
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    width: 100%;
+    min-height: var(--spacing-32);
+    padding: var(--spacing-xs) var(--spacing-lg);
+    border: 0;
+    background-color: transparent;
+    color: var(--color-text);
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 150ms ease-out;
+}
+
+.head:hover {
+    background-color: var(--color-secondary-muted-light);
+}
+
+.icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+.verb {
+    flex-shrink: 0;
+}
+
+.chip {
+    @ruleset typography-text-code-sm;
+
+    min-width: 0;
+    padding: var(--spacing-2) var(--spacing-sm);
+    border-radius: calc(var(--radius-xs) * var(--squircle-radius-factor));
+    background-color: var(--color-secondary-muted-light);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.diff {
+    @ruleset typography-text-code-sm;
+
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: var(--spacing-sm);
+}
+
+.added {
+    color: var(--color-success-text);
+}
+
+.removed {
+    color: var(--color-danger-text);
+}
+
+.state {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-left: auto;
+}
+
+.done {
+    color: var(--color-success-text);
+}
+
+.failed {
+    color: var(--color-danger-text);
+}
+
+.chevron {
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+    transition: rotate 150ms ease-out;
+}
+
+.card[data-open] .chevron {
+    rotate: 180deg;
+}
+
+.body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
+    border-top: 1px solid var(--color-secondary-muted-border);
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.pre {
+    @ruleset typography-text-code-sm;
+
+    max-height: var(--spacing-256);
+    margin: 0;
+    padding: var(--spacing-md);
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    background-color: var(--color-secondary-muted-light);
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.pre[data-danger] {
+    color: var(--color-danger-text);
+}

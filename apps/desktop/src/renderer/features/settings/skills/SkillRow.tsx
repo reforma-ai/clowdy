@@ -1,0 +1,45 @@
+import { Switch } from '@clowdy/components/Switch';
+import { Badge } from '@clowdy/components/Tag';
+import { Text } from '@clowdy/components/Text';
+import { Lock } from '@clowdy/icons/12';
+
+import styles from './SkillRow.module.css';
+import { engineLabel, tokenLabel } from './skillView';
+
+import type { SkillEntry } from '@clowdy/protocol';
+
+const SOURCE_LABEL = { system: 'System', user: 'User', project: 'Project' } as const;
+
+export interface SkillRowProps {
+    skill: SkillEntry;
+    /** A switch is on its way to the daemon. */
+    isPending: boolean;
+    onToggle: (enabled: boolean) => void;
+}
+
+/** One skill: name and source, what it is for, where it lives, what it costs, and the switch (a lock for system skills). */
+export function SkillRow({ skill, isPending, onToggle }: SkillRowProps) {
+    const { name, source, description, enabled, path, tokens, engines } = skill;
+
+    return (
+        <li className={ styles.row } data-off={ !enabled || undefined }>
+            <div className={ styles.body }>
+                <div className={ styles.titleLine }>
+                    <Text bold truncate className={ styles.name }>{ name }</Text>
+                    <Badge size="xs" color={ source === 'system' ? 'primary' : 'secondary' } textValue={ SOURCE_LABEL[source] }>{ SOURCE_LABEL[source] }</Badge>
+                </div>
+                <Text variant="sm" color="secondary" className={ styles.description }>{ description }</Text>
+                <Text variant="xs" color="secondary" truncate title={ path }>
+                    { path ? `${ engineLabel(engines) } · ${ path }` : engineLabel(engines) }
+                </Text>
+            </div>
+
+            <div className={ styles.side }>
+                <Text variant="xs" color="secondary" className={ styles.cost } title="What this skill adds to every run while it is on">{ tokenLabel(tokens) }</Text>
+                { source === 'user'
+                    ? <Switch size="sm" isSelected={ enabled } isPending={ isPending } aria-label={ `Use ${ name }` } onChange={ onToggle } />
+                    : <span className={ styles.lock } role="img" aria-label="Always on" title="Always on"><Lock /></span> }
+            </div>
+        </li>
+    );
+}

@@ -19,7 +19,8 @@ const monorepoRoot = searchForWorkspaceRoot(desktopRoot);
 export default defineConfig({
     root: resolve(desktopRoot, 'src/renderer'),
     // The dependency cache lives beside the app, not under the renderer folder.
-    cacheDir: resolve(desktopRoot, 'node_modules/.vite'),
+    // `CLOWDY_VITE_CACHE_DIR` gives each of several concurrent dev servers its own.
+    cacheDir: process.env.CLOWDY_VITE_CACHE_DIR ?? resolve(desktopRoot, 'node_modules/.vite'),
     css: {
         // The root `postcss.config.mjs`: `@ruleset` expansion, nesting, declaration order.
         postcss: monorepoRoot,

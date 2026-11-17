@@ -1,12 +1,14 @@
-import { Text } from '@clowdy/components/Text';
+import { ToastRegion } from '@clowdy/components/Toast';
 
-import styles from './App.module.css';
+import { root } from './root';
+import { Shell } from './shell/Shell';
+import { RootStoreProvider } from './stores';
 
-/** The empty shell. The workspace (projects, chats, tasks, agents, documents) grows from here. */
 export function App() {
     return (
-        <main className={ styles.root }>
-            <Text variant="heading-2" color="secondary">Clowdy</Text>
-        </main>
+        <RootStoreProvider value={ root }>
+            <Shell />
+            <ToastRegion />
+        </RootStoreProvider>
     );
 }

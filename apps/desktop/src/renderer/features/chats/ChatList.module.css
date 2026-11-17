@@ -1,0 +1,22 @@
+/* 270px, as drawn in the wireframe. */
+.panel {
+    --panel-width: 16.875rem;
+}
+
+.create {
+    flex-shrink: 0;
+    padding: var(--spacing-md);
+}
+
+.title {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.end {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}

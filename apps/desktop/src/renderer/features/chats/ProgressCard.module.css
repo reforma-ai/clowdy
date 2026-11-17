@@ -1,0 +1,41 @@
+@reference '@clowdy/styles/rulesets';
+
+/* Sits under the orchestrator's message, in the text column. */
+.card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    margin-left: calc(var(--spacing-28) + var(--spacing-lg));
+    padding: var(--spacing-lg) var(--spacing-xl);
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+}
+
+.track {
+    height: var(--spacing-6);
+    border-radius: var(--radius-full);
+    background-color: var(--color-secondary-muted);
+    overflow: hidden;
+}
+
+.fill {
+    height: 100%;
+    border-radius: inherit;
+    background-color: var(--color-primary);
+    transition: width 300ms ease-out;
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fill {
+        transition: none;
+    }
+}

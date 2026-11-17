@@ -1,0 +1,47 @@
+@reference '@clowdy/styles/rulesets';
+
+.pill {
+    --clowdy-pill-bg: var(--color-secondary-muted-light);
+    --clowdy-pill-color: var(--color-secondary-muted-text);
+
+    @ruleset typography-text-xs;
+
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    flex-shrink: 0;
+    max-width: 100%;
+    height: var(--spacing-20);
+    padding-inline: var(--spacing-md);
+    border-radius: var(--radius-full);
+    background-color: var(--clowdy-pill-bg);
+    color: var(--clowdy-pill-color);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.pill[data-tone='accent'] {
+    --clowdy-pill-bg: var(--color-accent-muted-light);
+    --clowdy-pill-color: var(--color-accent-text);
+}
+
+.pill[data-tone='success'] {
+    --clowdy-pill-bg: var(--color-success-muted-light);
+    --clowdy-pill-color: var(--color-success-text);
+}
+
+.pill[data-tone='warning'] {
+    --clowdy-pill-bg: var(--color-warning-muted-light);
+    --clowdy-pill-color: var(--color-warning-text);
+}
+
+.pill[data-tone='danger'] {
+    --clowdy-pill-bg: var(--color-danger-muted-light);
+    --clowdy-pill-color: var(--color-danger-text);
+}
+
+.label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

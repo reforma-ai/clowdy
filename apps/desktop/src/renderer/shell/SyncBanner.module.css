@@ -1,0 +1,20 @@
+@reference '@clowdy/styles/rulesets';
+
+.banner {
+    @ruleset typography-text-sm;
+
+    position: fixed;
+    z-index: var(--z-popover);
+    bottom: var(--spacing-xl);
+    left: 50%;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-xl);
+    border: 1px solid var(--color-warning-muted-border);
+    border-radius: var(--radius-full);
+    background-color: var(--color-surface-float);
+    color: var(--color-text);
+    box-shadow: var(--shadow-md);
+    translate: -50% 0;
+}

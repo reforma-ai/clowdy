@@ -1,0 +1,23 @@
+.icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--clowdy-status-color, var(--color-secondary-muted-text));
+}
+
+.icon[data-tone='accent'] {
+    --clowdy-status-color: var(--color-accent-text);
+}
+
+.icon[data-tone='warning'] {
+    --clowdy-status-color: var(--color-warning-text);
+}
+
+.icon[data-tone='success'] {
+    --clowdy-status-color: var(--color-success-text);
+}
+
+.count {
+    flex-shrink: 0;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+}

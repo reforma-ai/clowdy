@@ -1,0 +1,155 @@
+@reference '@clowdy/styles/rulesets';
+
+/*
+ * Geometry of the connectors: a level is `--indent` wide, the chevron slot `--slot`, the dot 8px. The line of a
+ * level sits where the parent's dot is centered, so it drops from under the parent to the child's elbow.
+ */
+.row {
+    --indent: var(--spacing-24);
+    --slot: var(--spacing-16);
+    --pad-block: var(--spacing-6);
+    --dot-center: calc(var(--pad-block) + var(--spacing-10));
+    --line-x: calc(var(--slot) + var(--spacing-4));
+    --line-color: var(--color-secondary-muted-border);
+
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    scroll-margin-block: var(--spacing-md);
+    padding: var(--pad-block) var(--spacing-md) var(--pad-block) var(--spacing-md);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms ease-out;
+}
+
+.row:hover {
+    background-color: var(--color-secondary-muted-light);
+}
+
+.row[data-selected] {
+    background-color: var(--color-primary-muted-light);
+    box-shadow: inset 0 0 0 1px var(--color-primary-muted-border);
+}
+
+.row:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--color-primary-muted-border-hover);
+}
+
+/* One level of connector. It spans the row's full height, including its padding, so lines meet across rows. */
+.guide {
+    position: relative;
+    flex-shrink: 0;
+    align-self: stretch;
+    width: var(--indent);
+    margin-block: calc(var(--pad-block) * -1);
+}
+
+.guide[data-goes-on]::before,
+.guide[data-elbow]::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--line-x);
+    width: 1px;
+    background-color: var(--line-color);
+}
+
+/* The last child of a parent: the line stops at the elbow. */
+.guide[data-elbow]:not([data-goes-on])::before {
+    bottom: calc(100% - var(--dot-center));
+}
+
+.guide[data-elbow]::after {
+    content: '';
+    position: absolute;
+    top: var(--dot-center);
+    left: var(--line-x);
+    width: calc(var(--indent) - var(--line-x) + var(--slot) - var(--spacing-2));
+    height: 1px;
+    background-color: var(--line-color);
+}
+
+/* A parent shows its chevron in the slot, so the elbow stops short of it. */
+.guide[data-elbow][data-parent]::after {
+    width: calc(var(--indent) - var(--line-x) + var(--spacing-4));
+}
+
+.chevronSlot {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--slot);
+    height: var(--spacing-20);
+}
+
+.chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-16);
+    height: var(--spacing-16);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-secondary-muted-text);
+    cursor: pointer;
+}
+
+.chevron:hover {
+    background-color: var(--color-secondary-muted);
+    color: var(--color-text);
+}
+
+.dot {
+    margin-top: var(--spacing-6);
+    margin-right: var(--spacing-md);
+}
+
+.body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    min-width: 0;
+}
+
+.titleLine {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-height: var(--spacing-20);
+}
+
+.name {
+    min-width: 0;
+}
+
+.note {
+    @ruleset typography-text-xs;
+
+    display: block;
+    overflow: hidden;
+    color: var(--color-secondary-muted-text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.note[data-tone='warning'] {
+    color: var(--color-warning-text);
+}
+
+.note[data-tone='danger'] {
+    color: var(--color-danger-text);
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    margin-top: var(--spacing-xs);
+}

@@ -1,4 +1,11 @@
+@reference '@clowdy/styles/rulesets';
+
 /* App-level base styles for the desktop shell. */
+
+/* The chrome's body text is 13px (DESIGN.md, "The Density Rule"), not the package's 16px. */
+body {
+    @ruleset typography-text-md;
+}
 
 /*
  * The desktop app has no title bar. Its window controls sit over the page:

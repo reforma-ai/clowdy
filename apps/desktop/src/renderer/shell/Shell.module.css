@@ -1,0 +1,42 @@
+.shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    color: var(--color-text);
+}
+
+.body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+/* The content plate: paper over the window's translucent chrome. */
+.outlet {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    border-top: 1px solid var(--color-surface-border);
+    border-left: 1px solid var(--color-surface-border);
+    border-top-left-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface);
+    overflow: hidden;
+}
+
+/* Without the rail there is no edge for the plate to round off against. */
+.bare {
+    border: 0;
+    border-radius: 0;
+}
+
+.center {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+}

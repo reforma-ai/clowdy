@@ -1,0 +1,77 @@
+@reference '@clowdy/styles/rulesets';
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+    margin-inline: calc(var(--spacing-md) * -1);
+    padding: var(--spacing-xs) var(--spacing-xs) var(--spacing-xs) var(--spacing-md);
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+}
+
+.row:hover,
+.row:focus-within {
+    background-color: var(--color-secondary-muted-light);
+}
+
+/* The checkbox only shows whether the task is done: it is not a control. */
+.check {
+    pointer-events: none;
+}
+
+.open {
+    display: flex;
+    flex: 1;
+    align-items: baseline;
+    gap: var(--spacing-md);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+.open:focus-visible {
+    border-radius: var(--radius-xs);
+    outline: var(--spacing-2) solid var(--color-primary-muted-border);
+}
+
+.key {
+    @ruleset typography-text-xs;
+
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+    font-weight: 500;
+}
+
+.title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gone {
+    flex: 1;
+    color: var(--color-secondary-muted-text);
+}
+
+.remove {
+    opacity: 0;
+}
+
+.row:hover .remove,
+.row:focus-within .remove {
+    opacity: 1;
+}

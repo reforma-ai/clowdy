@@ -1,0 +1,46 @@
+@reference '@clowdy/styles/rulesets';
+
+.composer {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-chat-composer);
+    transition: border-color 150ms ease-out;
+}
+
+.composer:focus-within {
+    border-color: var(--color-primary-muted-border);
+}
+
+/* The text field is the box's own: no plate, centered on the 30px buttons when it holds one line. */
+.field {
+    --clowdy-textarea-min-height: var(--spacing-30);
+    --clowdy-textarea-padding-block: var(--spacing-6);
+    --clowdy-textarea-padding-inline: var(--spacing-xs);
+
+    flex: 1;
+    min-width: 0;
+}
+
+/* About six lines, then it scrolls. */
+.input {
+    max-height: calc(var(--clowdy-textarea-line-height) * 6 + var(--clowdy-textarea-padding-block) * 2);
+}
+
+.mode {
+    width: 9.5rem;
+    flex-shrink: 0;
+}
+
+/* The tooltip's hover target; the disabled control under it must not swallow the pointer. */
+.unavailable {
+    display: inline-flex;
+}
+
+.unavailable > * {
+    pointer-events: none;
+}
