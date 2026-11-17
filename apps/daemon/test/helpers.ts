@@ -67,6 +67,8 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
         maxRuns: 8,
         engineCaps: { claude: 6, codex: 4, fake: 1000 },
         maxProcesses: 24,
+        maxActiveChildren: 300,
+        maxChildren: 3000,
         timings: SHORT_TIMINGS,
         fakeSpeed: 0,
         ...overrides,

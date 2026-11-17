@@ -23,8 +23,6 @@ import type { RunService } from './service';
 
 /** Runs nested below a root, counting the root: an orchestrator starts executors and verifiers, and they start nothing. */
 export const MAX_DEPTH = 2;
-/** Runs one orchestrator may start with `run_spawn` in all, finished ones included; sub-agents inside its session do not count. */
-export const MAX_CHILDREN = 50;
 /** A run that fails this many times in a row on passing engine errors (overload, rate limit) is failed for good. */
 const MAX_TRANSIENT_FAILURES = 4;
 
@@ -92,7 +90,7 @@ export class RunDriver {
 
     /** Creates a run for an orchestrator's `run_spawn` and starts it once the surrounding transaction commits. A repeated key returns the first run. */
     spawn(input: SpawnInput): { run: Run; duplicate: boolean } {
-        const { store, runs } = this.deps;
+        const { store, runs, config } = this.deps;
 
         return store.tx(() => {
             const { parent, tasks } = input;
@@ -113,8 +111,13 @@ export class RunDriver {
                 throw conflict(`Runs nest ${ MAX_DEPTH } levels deep at most: ${ parent.name } is itself a child run and cannot start more`);
             }
 
-            if (countSpawnedChildren(store.db, parent.id) >= MAX_CHILDREN) {
-                throw conflict(`${ parent.name } already started ${ MAX_CHILDREN } runs, the most one orchestrator may start over the life of its chat (finished ones count too); continue the work in a new chat`);
+            // Sub-agents inside the orchestrator's own session count toward neither limit.
+            if (countActiveSpawnedChildren(store.db, parent.id) >= config.maxActiveChildren) {
+                throw conflict(`${ parent.name } has ${ config.maxActiveChildren } runs unfinished, the most it may have at once. End your turn so they can finish, then start the rest.`);
+            }
+
+            if (countSpawnedChildren(store.db, parent.id) >= config.maxChildren) {
+                throw conflict(`${ parent.name } already started ${ config.maxChildren } runs, the most one orchestrator may start over the life of its chat (finished ones count too); continue the work in a new chat`);
             }
 
             if (input.cwd !== undefined && !(isAbsolute(input.cwd) && statSync(input.cwd, { throwIfNoEntry: false })?.isDirectory())) {

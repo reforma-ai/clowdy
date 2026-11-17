@@ -4,7 +4,6 @@ import { join } from 'node:path';
 
 import { getProject } from '../src/db/projects';
 import { getTask } from '../src/db/tasks';
-import { MAX_CHILDREN } from '../src/runs/driver';
 import { toolsFor } from '../src/runs/tools';
 import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
 
@@ -275,7 +274,7 @@ describe('run_spawn', () => {
         expect(retry.runId).not.toBe(first.runId);
     });
 
-    test('runs nest two levels at most, and one orchestrator starts at most 50', async () => {
+    test('runs nest two levels at most', async () => {
         const { exec, orchestrator, task, h, entity } = await setup();
         const { runs, driver } = h.daemon.services;
         const a = await task('A');
@@ -284,17 +283,42 @@ describe('run_spawn', () => {
         // An executor has no run_spawn, and the driver refuses it even if asked directly.
         expect(() => driver.spawn({ parent: h.run(runId), tasks: [], prompt: 'x', role: 'executor', idempotencyKey: 'deep' })).toThrow(/nest 2 levels deep at most/);
         expect(runs.createRun({ project: entity, role: 'orchestrator', summary: 'x' }).parentRunId).toBeUndefined();
+    });
 
-        for (let index = 2; index <= MAX_CHILDREN; index++) {
+    test('an orchestrator may have a set number of runs unfinished at once, and finished ones free the room', async () => {
+        const { exec, orchestrator, task, h } = await setup(holding().script, { maxActiveChildren: 3 });
+        const started: string[] = [];
+
+        for (let index = 1; index <= 3; index++) {
             const created = await task(`T${ index }`);
 
-            await exec(orchestrator, 'run_spawn', { taskIds: [created.key], prompt: 'go', idempotencyKey: `k${ index }` });
+            started.push((await exec(orchestrator, 'run_spawn', { taskIds: [created.key], prompt: 'go', idempotencyKey: `k${ index }` })).runId);
         }
 
         const extra = await task('One too many');
 
-        await expect(exec(orchestrator, 'run_spawn', { taskIds: [extra.key], prompt: 'go', idempotencyKey: 'k51' })).rejects.toThrow(/already started 50 runs/);
-        expect(h.store.db.query('SELECT COUNT(*) AS n FROM runs WHERE parent_run_id = ?').get(orchestrator.id)).toEqual({ n: MAX_CHILDREN });
+        await expect(exec(orchestrator, 'run_spawn', { taskIds: [extra.key], prompt: 'go', idempotencyKey: 'k4' })).rejects.toThrow(/has 3 runs unfinished/);
+
+        await exec(orchestrator, 'run_cancel', { runId: started[0] });
+        await exec(orchestrator, 'run_spawn', { taskIds: [extra.key], prompt: 'go', idempotencyKey: 'k4' });
+
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM runs WHERE parent_run_id = ?').get(orchestrator.id)).toEqual({ n: 4 });
+    });
+
+    test('an orchestrator starts a set number of runs over the life of its chat, finished ones included', async () => {
+        const { exec, orchestrator, task, h } = await setup(holding().script, { maxChildren: 2 });
+
+        for (let index = 1; index <= 2; index++) {
+            const created = await task(`T${ index }`);
+            const { runId } = await exec(orchestrator, 'run_spawn', { taskIds: [created.key], prompt: 'go', idempotencyKey: `k${ index }` });
+
+            await exec(orchestrator, 'run_cancel', { runId });
+        }
+
+        const extra = await task('One too many');
+
+        await expect(exec(orchestrator, 'run_spawn', { taskIds: [extra.key], prompt: 'go', idempotencyKey: 'k3' })).rejects.toThrow(/already started 2 runs/);
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM runs WHERE parent_run_id = ?').get(orchestrator.id)).toEqual({ n: 2 });
     });
 
     test('a run on a task with unfinished dependencies waits, and starts by itself when the orchestrator sets the last one Done', async () => {

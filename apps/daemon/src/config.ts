@@ -17,6 +17,10 @@ export interface Config {
     engineCaps: Record<EngineId, number>;
     /** Hard cap of live engine processes: a guard against runaway sessions, far above the run caps. */
     maxProcesses: number;
+    /** Runs one orchestrator may have unfinished at once (queued, running, waiting or blocked). The run caps decide how many really run. */
+    maxActiveChildren: number;
+    /** Runs one orchestrator may start with `run_spawn` over the life of its chat, finished ones included: a guard against a spawn loop. */
+    maxChildren: number;
     timings: Timings;
     /** Multiplier of the fake engine's delays; 0 removes them (tests). */
     fakeSpeed: number;
@@ -94,6 +98,8 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
             fake: numberFrom(env, 'CLOWDY_MAX_RUNS_FAKE', 1000, isCap, 'a positive integer'),
         },
         maxProcesses: numberFrom(env, 'CLOWDY_MAX_PROCESSES', 24, isCap, 'a positive integer'),
+        maxActiveChildren: numberFrom(env, 'CLOWDY_MAX_ACTIVE_CHILDREN', 300, isCap, 'a positive integer'),
+        maxChildren: numberFrom(env, 'CLOWDY_MAX_CHILDREN', 3000, isCap, 'a positive integer'),
         // Each wake-up is a resumed orchestrator turn that costs quota, so children that finish within this window share one.
         timings: { ...DEFAULT_TIMINGS, wakeWindowMs: numberFrom(env, 'CLOWDY_WAKE_WINDOW_MS', DEFAULT_TIMINGS.wakeWindowMs, v => v >= 0, 'a number of milliseconds') },
         fakeSpeed: numberFrom(env, 'CLOWDY_FAKE_SPEED', 1, v => v >= 0, 'a number of at least 0'),
