@@ -1,7 +1,6 @@
 import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
 import { Panel, PanelContent, PanelHeader } from '@clowdy/components/Panel';
 import { Scrollable } from '@clowdy/components/Scrollable';
-import { Text } from '@clowdy/components/Text';
 import { Book, PaintBucket, Robot } from '@clowdy/icons/14';
 
 import { useRootStore, type SettingsPage } from '../../stores';
@@ -79,9 +78,7 @@ export function Screen() {
             </Panel>
 
             <section className={ styles.main } aria-label={ page.label }>
-                <header className={ styles.header }>
-                    <Text variant="heading-4">{ page.label }</Text>
-                </header>
+                <PanelHeader>{ page.label }</PanelHeader>
                 {/* The key restarts the scroll position when another page is chosen. */}
                 <Scrollable key={ page.id } className={ styles.scroll } contentClass={ styles.page }>
                     { page.render() }
