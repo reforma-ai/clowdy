@@ -1,0 +1,348 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    /* ============================================
+   ROOT — mirrors Textarea field chrome
+   ============================================ */
+
+    .field {
+        --clowdy-textarea-min-rows: 1;
+
+        --clowdy-textarea-radius: var(--radius-lg);
+        --clowdy-textarea-min-height: var(--spacing-36);
+        --clowdy-textarea-line-height: var(--leading-md);
+
+        --clowdy-textarea-padding-inline: var(--spacing-10);
+        --clowdy-textarea-padding-block: var(--spacing-6);
+
+        --clowdy-textarea-bg: var(--color-secondary);
+        --clowdy-textarea-border-width: 1px;
+        --clowdy-textarea-border: transparent;
+        --clowdy-textarea-border-hover: var(--color-secondary-muted-border);
+        --clowdy-textarea-border-focus: var(--color-primary);
+        --clowdy-textarea-color: var(--color-secondary-content);
+
+        position: relative;
+        display: inline-flex;
+        /* Match Textarea: center the editor when field min-height > content. */
+        align-items: center;
+        width: 100%;
+        min-height: var(--clowdy-textarea-min-height);
+        box-sizing: border-box;
+        cursor: text;
+        transition-property: background-color, border-color;
+        transition-duration: var(--transition-duration-fast);
+        transition-timing-function: var(--ease-in-out);
+        outline: none;
+        border-radius: calc(var(--clowdy-textarea-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background-color: var(--clowdy-textarea-bg);
+        border: var(--clowdy-textarea-border-width) solid var(--clowdy-textarea-border);
+        color: var(--clowdy-textarea-color);
+        font-family: 'Menlo', ui-monospace, monospace;
+        font-weight: 400;
+        /* Clip gutters / scroller to the field radius */
+        overflow: hidden;
+    }
+
+    /* ============================================
+   CODEMIRROR HOST
+   ============================================ */
+
+    .editor {
+        flex: 1;
+        min-width: 0;
+        width: 100%;
+        font: inherit;
+        color: inherit;
+        cursor: inherit;
+        border-radius: inherit;
+        corner-shape: inherit;
+    }
+
+    .editor :global(.cm-editor) {
+        background: transparent;
+        font: inherit;
+        color: inherit;
+        outline: none !important;
+        width: 100%;
+        border-radius: inherit;
+        corner-shape: inherit;
+    }
+
+    .editor :global(.cm-editor.cm-focused) {
+        outline: none !important;
+    }
+
+    .editor :global(.cm-scroller) {
+        font: inherit;
+        line-height: var(--clowdy-textarea-line-height, var(--leading-md));
+        overflow-x: auto !important;
+        /* Native bars hidden — ScrollChrome paints thumbs when scrolling is enabled. */
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+    .editor :global(.cm-scroller)::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Host for ScrollChrome around CM (external-element pattern). */
+    .scrollChrome {
+        flex: 1 1 auto;
+        align-self: stretch;
+        width: 100%;
+        min-width: 0;
+        min-height: 0;
+    }
+
+    .scrollChrome > .editor {
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: 0;
+    }
+
+    .editor :global(.cm-content) {
+        box-sizing: border-box;
+        /* Beat CM `.ͼN .cm-content { padding: 4px 0 }` — need our field padding (md = spacing-10). */
+        padding: var(--clowdy-textarea-padding-block) var(--clowdy-textarea-padding-inline) !important;
+        /* Override CM base `min-height: 100%` — that stretched content and pinned text to the top. */
+        min-height: calc(var(--clowdy-textarea-line-height, var(--leading-md)) * var(--clowdy-textarea-min-rows, 1) + var(--clowdy-textarea-padding-block) * 2);
+        caret-color: currentColor;
+        font: inherit;
+        color: inherit;
+        line-height: var(--clowdy-textarea-line-height, var(--leading-md));
+    }
+
+    .editor :global(.cm-line) {
+        /* Beat CM base `.ͼN .cm-line { padding: 0 2px 0 6px }` — that was adding ~6px on top of field padding. */
+        padding: 0 !important;
+    }
+
+    .editor :global(.cm-cursor),
+    .editor :global(.cm-dropCursor) {
+        border-left-color: currentColor;
+    }
+
+    .editor :global(.cm-selectionBackground),
+    .editor :global(.cm-content ::selection) {
+        background-color: color-mix(in srgb, var(--color-primary) 28%, transparent) !important;
+    }
+
+    .editor :global(.cm-activeLine),
+    .editor :global(.cm-activeLineGutter) {
+        background-color: transparent !important;
+    }
+
+    /* Beat CM `&light .cm-gutters` (#f5f5f5) — keep gutters on the field chrome. */
+    .editor :global(.cm-gutters) {
+        background-color: transparent !important;
+        border: none !important;
+        color: var(--color-secondary-muted-text);
+    }
+
+    .editor :global(.cm-gutter) {
+        background-color: transparent !important;
+    }
+
+    .editor :global(.cm-lineNumbers) {
+        font-size: var(--text-xs);
+        line-height: var(--clowdy-textarea-line-height, var(--leading-md));
+        color: var(--color-secondary-muted-text);
+    }
+
+    .editor :global(.cm-lineNumbers .cm-gutterElement) {
+        padding: 0 var(--spacing-6) 0 var(--spacing-8);
+        min-width: var(--spacing-24);
+        font-size: inherit;
+        line-height: inherit;
+        color: inherit;
+    }
+
+    .editor :global(.cm-placeholder) {
+        color: currentColor;
+        opacity: var(--opacity-placeholder);
+        font: inherit;
+    }
+
+    /* Auto-height: grow with content, no vertical scroll (until capped) */
+    .field[data-autoresize='true'] .editor :global(.cm-editor) {
+        height: auto !important;
+    }
+
+    .field[data-autoresize='true'] .editor :global(.cm-scroller) {
+        height: auto !important;
+        overflow-y: hidden !important;
+    }
+
+    /* Auto-height + maxHeight: scroller grows until the cap, then scrolls.
+       Cap on .cm-scroller (height:auto + max-height) — % of field alone won't work. */
+    .field[data-autoresize='true'][data-max-height] {
+        align-items: stretch;
+        max-height: var(--clowdy-code-textarea-max-height);
+    }
+
+    .field[data-autoresize='true'][data-max-height] .editor :global(.cm-scroller) {
+        max-height: var(--clowdy-code-textarea-max-height);
+        overflow-y: auto !important;
+    }
+
+    /* Fixed height: constrain the field; CM scroller owns overflow */
+    .field[data-autoresize='false'] {
+        align-items: stretch;
+        height: var(--clowdy-code-textarea-height);
+        max-height: var(--clowdy-code-textarea-max-height, var(--clowdy-code-textarea-height));
+    }
+
+    .field[data-autoresize='false'] .editor,
+    .field[data-autoresize='false'] .editor :global(.cm-editor) {
+        height: 100% !important;
+        max-height: 100%;
+        min-height: 0;
+    }
+
+    .field[data-autoresize='false'] .editor :global(.cm-scroller) {
+        height: 100% !important;
+        overflow-y: auto !important;
+    }
+
+    /* ============================================
+   SIZES
+   ============================================ */
+
+    .field[data-size='sm'] {
+        --clowdy-textarea-min-height: var(--spacing-30);
+        --clowdy-textarea-radius: var(--radius-md);
+        --clowdy-textarea-padding-inline: var(--spacing-8);
+        --clowdy-textarea-padding-block: var(--spacing-4);
+        --clowdy-textarea-line-height: var(--leading-md);
+
+        @ruleset typography-text-code-sm;
+    }
+
+    .field[data-size='md'] {
+        --clowdy-textarea-min-height: var(--spacing-36);
+        --clowdy-textarea-radius: var(--radius-lg);
+        --clowdy-textarea-padding-inline: var(--spacing-10);
+        --clowdy-textarea-padding-block: var(--spacing-6);
+        --clowdy-textarea-line-height: var(--leading-md);
+
+        font-size: var(--text-md);
+        line-height: var(--leading-md);
+    }
+
+    .field[data-size='lg'] {
+        --clowdy-textarea-min-height: var(--spacing-56);
+        --clowdy-textarea-radius: var(--radius-xl);
+        --clowdy-textarea-padding-inline: var(--spacing-16);
+        --clowdy-textarea-padding-block: var(--spacing-12);
+        --clowdy-textarea-line-height: var(--leading-xl);
+
+        font-size: var(--text-xl);
+        line-height: var(--leading-xl);
+    }
+
+    /* ============================================
+   VARIANTS
+   ============================================ */
+
+    .field[data-variant='filled'] {
+        --clowdy-textarea-bg: var(--color-secondary);
+        --clowdy-textarea-border: transparent;
+        --clowdy-textarea-color: var(--color-secondary-content);
+        --clowdy-textarea-border-hover: var(--color-secondary-muted-border);
+        --clowdy-textarea-border-focus: var(--color-primary);
+    }
+
+    .field[data-variant='bordered'] {
+        --clowdy-textarea-bg: transparent;
+        --clowdy-textarea-border: var(--color-secondary-border);
+        --clowdy-textarea-color: var(--color-secondary-content);
+        --clowdy-textarea-border-hover: var(--color-secondary-border-hover);
+        --clowdy-textarea-border-focus: var(--color-primary);
+    }
+
+    .field[data-variant='transparent'] {
+        --clowdy-textarea-bg: transparent;
+        --clowdy-textarea-border: transparent;
+        --clowdy-textarea-color: var(--color-text);
+        --clowdy-textarea-border-hover: var(--color-secondary-muted);
+        --clowdy-textarea-border-focus: var(--color-secondary-muted);
+    }
+
+    .field[data-variant='inline'] {
+        --clowdy-textarea-bg: transparent;
+        --clowdy-textarea-border: transparent;
+        --clowdy-textarea-color: var(--color-text);
+        --clowdy-textarea-border-hover: transparent;
+        --clowdy-textarea-border-focus: transparent;
+
+        --clowdy-textarea-min-height: 0;
+        --clowdy-textarea-padding-inline: 0;
+        --clowdy-textarea-padding-block: 0;
+    }
+
+    .field:hover:not(:focus-within):not([data-disabled]) {
+        border-color: var(--clowdy-textarea-border-hover);
+    }
+
+    .field:focus-within {
+        border-color: var(--clowdy-textarea-border-focus);
+    }
+
+    /* ============================================
+   STATES
+   ============================================ */
+
+    .field[data-disabled] {
+        pointer-events: none;
+        opacity: var(--opacity-disabled);
+        cursor: not-allowed;
+    }
+
+    .field[data-invalid] {
+        border-color: var(--color-danger-border);
+    }
+
+    .field[data-invalid]:hover:not(:focus-within):not([data-disabled]) {
+        border-color: var(--color-danger-border-hover);
+    }
+
+    .field[data-invalid]:focus-within {
+        border-color: var(--color-danger);
+    }
+
+    /* ============================================
+   END ACTION — flush control (mirrors Input data-input-affix="control")
+   ============================================ */
+
+    .endAction {
+        position: absolute;
+        top: var(--spacing-2);
+        inset-inline-end: var(--spacing-2);
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        line-height: 0;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--transition-duration-fast) var(--ease-in-out);
+    }
+
+    .field:hover > .endAction,
+    .field:focus-within > .endAction {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    @media (hover: none) {
+        .endAction {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    }
+
+    .field[data-end-action] .editor :global(.cm-content) {
+        padding-inline-end: calc(var(--spacing-2) + var(--spacing-24) + var(--spacing-4)) !important;
+    }
+}

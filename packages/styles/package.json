@@ -1,0 +1,25 @@
+{
+    "name": "@clowdy/styles",
+    "description": "Clowdy product CSS: design tokens, reset, and global styles.",
+    "type": "module",
+    "version": "0.0.0",
+    "private": true,
+    "files": [
+        "src"
+    ],
+    "sideEffects": [
+        "**/*.css"
+    ],
+    "exports": {
+        ".": "./src/index.css",
+        "./rulesets": "./src/tokens/rulesets.css",
+        "./tokens": "./src/tokens/index.css",
+        "./uno": "./uno.config.ts",
+        "./*": "./src/*.css"
+    },
+    "scripts": {
+        "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
+        "lint": "eslint src",
+        "typecheck": "tsc --noEmit"
+    }
+}

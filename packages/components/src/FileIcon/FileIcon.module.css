@@ -1,0 +1,7 @@
+@layer components {
+    .icon {
+        flex: none;
+        width: var(--spacing-16);
+        height: var(--spacing-16);
+    }
+}

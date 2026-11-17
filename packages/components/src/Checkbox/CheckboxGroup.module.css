@@ -1,0 +1,14 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .root {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-8);
+    }
+
+    .root[data-orientation='horizontal'] {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+}

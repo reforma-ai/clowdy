@@ -1,0 +1,30 @@
+{
+    "name": "@clowdy/lib",
+    "private": true,
+    "description": "Common helpers shared between Clowdy packages",
+    "type": "module",
+    "version": "0.0.0",
+    "main": "./src/index.ts",
+    "module": "./src/index.ts",
+    "types": "./src/index.ts",
+    "exports": {
+        ".": "./src/index.ts",
+        "./*": "./src/*.ts"
+    },
+    "scripts": {
+        "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
+        "lint": "eslint .",
+        "test": "vitest run",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@clowdy/constants": "workspace:*",
+        "clsx": "^2.1.1",
+        "lodash": "^4.17.21",
+        "mobx": "^7.0.3"
+    },
+    "peerDependencies": {
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8"
+    }
+}

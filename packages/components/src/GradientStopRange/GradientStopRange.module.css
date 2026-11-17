@@ -1,0 +1,143 @@
+@layer components {
+    .range {
+        --clowdy-gradient-stop-range-size: var(--spacing-16);
+        --clowdy-gradient-stop-range-thumb-size: var(--spacing-10);
+        --clowdy-gradient-stop-range-thumb-border: var(--spacing-2);
+        --clowdy-gradient-stop-range-track-radius: var(--radius-full);
+        --clowdy-gradient-stop-range-background: linear-gradient(to right, var(--color-secondary), var(--color-secondary));
+        --clowdy-gradient-stop-range-thumb-shadow: var(--color-secondary-muted-border);
+        --clowdy-gradient-stop-range-checker-size: var(--spacing-4);
+        --clowdy-gradient-stop-range-checker-bg: repeating-conic-gradient(var(--color-dark-a15) 0% 25%, transparent 0% 50%) 0 0 / var(--clowdy-gradient-stop-range-checker-size) var(--clowdy-gradient-stop-range-checker-size), var(--color-white);
+
+        position: relative;
+        width: 100%;
+        min-width: var(--spacing-56);
+        height: var(--clowdy-gradient-stop-range-size);
+        touch-action: none;
+    }
+
+    .range[data-disabled] {
+        pointer-events: none;
+        opacity: var(--opacity-disabled);
+    }
+
+    .range[data-readonly] .track,
+    .range[data-readonly] .thumb {
+        cursor: default;
+    }
+
+    .track {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        border-radius: var(--clowdy-gradient-stop-range-track-radius);
+        background: var(--clowdy-gradient-stop-range-background), var(--clowdy-gradient-stop-range-checker-bg);
+        cursor: default;
+        outline: none;
+    }
+
+    .track[data-addable] {
+        cursor: copy;
+    }
+
+    .range[data-dragging] .track,
+    .range[data-dragging] .thumb {
+        cursor: grabbing;
+    }
+
+    .range[data-dragging] .addMarker {
+        display: none;
+    }
+
+    .track:focus-visible {
+        box-shadow: 0 0 0 var(--spacing-2) var(--color-primary-muted-border);
+    }
+
+    .track::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        box-sizing: border-box;
+        border: var(--spacing-1) solid var(--color-secondary-muted-border);
+        border-radius: inherit;
+        pointer-events: none;
+    }
+
+    .thumb,
+    .addMarker {
+        position: absolute;
+        top: 50%;
+        left: var(--clowdy-gradient-stop-position);
+        width: var(--clowdy-gradient-stop-range-thumb-size);
+        height: var(--clowdy-gradient-stop-range-thumb-size);
+        box-sizing: border-box;
+        border-radius: var(--radius-full);
+        transform: translate(-50%, -50%);
+        z-index: 1;
+    }
+
+    .thumb {
+        position: absolute;
+        appearance: none;
+        margin: 0;
+        padding: 0;
+        border: var(--clowdy-gradient-stop-range-thumb-border) solid var(--color-white);
+        background: var(--clowdy-gradient-stop-color, transparent);
+        box-shadow: 0 0 0 var(--spacing-1) var(--clowdy-gradient-stop-range-thumb-shadow);
+        cursor: pointer;
+        outline: none;
+    }
+
+    .thumb:after {
+        content: '';
+        position: absolute;
+        width: var(--spacing-4);
+        height: var(--spacing-4);
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 var(--spacing-2) var(--spacing-1) var(--color-secondary-muted);
+        background: var(--color-white);
+        border-radius: var(--radius-full);
+
+        scale: 0;
+    }
+
+    .thumb[data-disabled] {
+        cursor: default;
+        opacity: var(--opacity-disabled);
+    }
+
+    .thumb[data-active] {
+        --clowdy-gradient-stop-range-thumb-size: var(--clowdy-gradient-stop-range-size);
+        --clowdy-gradient-stop-range-thumb-shadow: var(--color-primary);
+
+        z-index: 2;
+    }
+
+    .thumb[data-active]:after {
+        scale: 1;
+    }
+
+    .thumb[data-dragging] {
+        cursor: grabbing;
+    }
+
+    .thumb[data-focus-visible] {
+        box-shadow:
+            0 0 0 var(--spacing-1) var(--clowdy-gradient-stop-range-thumb-shadow),
+            0 0 0 var(--spacing-4) var(--color-primary-muted-border);
+    }
+
+    .addMarker {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--color-white);
+        border: var(--spacing-1) solid var(--color-secondary-border);
+        box-shadow: 0 0 0 var(--spacing-1) var(--clowdy-gradient-stop-range-thumb-shadow);
+        transform: translate(-50%, -50%) scale(0.5);
+        pointer-events: none;
+        z-index: 3;
+    }
+}

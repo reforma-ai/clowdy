@@ -1,0 +1,8 @@
+:root {
+    --shadow-xl: 0 var(--spacing-24) var(--spacing-48) 0 var(--color-black-a8);
+    --shadow-lg: 0 var(--spacing-12) var(--spacing-24) 0 var(--color-black-a5);
+    --shadow-md: 0 var(--spacing-6) var(--spacing-lg) 0 var(--color-black-a5);
+    --shadow-sm: 0 var(--spacing-2) var(--spacing-8) 0 var(--color-black-a5);
+    --shadow-xs: 0 var(--spacing-2) var(--spacing-4) 0 var(--color-black-a5);
+    --effect-ai: 0 0 var(--spacing-20) 0.0625rem var(--color-primary-a10);
+}

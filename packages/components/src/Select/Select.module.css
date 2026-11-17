@@ -1,0 +1,291 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .select {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-4);
+        width: 100%;
+    }
+
+    .label {
+        @ruleset typography-text-sm;
+        color: var(--color-text);
+    }
+
+    .trigger {
+        --clowdy-select-bg: var(--color-secondary);
+        --clowdy-select-border: transparent;
+        --clowdy-select-color: var(--color-secondary-content);
+        --clowdy-select-border-hover: var(--color-secondary-muted-border);
+        --clowdy-select-border-focus: var(--color-primary);
+        --clowdy-select-radius: var(--radius-lg);
+
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-6);
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        overflow: hidden;
+        cursor: pointer;
+        font: inherit;
+        text-align: left;
+        white-space: nowrap;
+        outline: none;
+
+        border: 1px solid var(--clowdy-select-border);
+        background-color: var(--clowdy-select-bg);
+        color: var(--clowdy-select-color);
+        border-radius: calc(var(--clowdy-select-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+
+        transition-property: background-color, border-color;
+        transition-duration: var(--transition-duration-fast);
+        transition-timing-function: var(--ease-in-out);
+    }
+
+    .trigger[data-hovered]:not([data-disabled]) {
+        border-color: var(--clowdy-select-border-hover);
+    }
+
+    .select[data-open] .trigger,
+    .trigger[aria-expanded='true'],
+    .trigger[data-focus-visible],
+    .trigger[data-active] {
+        border-color: var(--clowdy-select-border-focus);
+    }
+
+    .trigger[data-focus-visible] {
+        outline: var(--spacing-4) solid var(--color-primary-muted-border);
+        outline-offset: 0;
+    }
+
+    .value {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .value[data-placeholder] {
+        color: var(--color-secondary-muted-text);
+    }
+
+    .icon {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        color: currentColor;
+    }
+
+    .icon[data-color='primary'] {
+        color: var(--color-primary-text);
+    }
+
+    .chevron {
+        flex-shrink: 0;
+        opacity: var(--opacity-inactive);
+        transition: transform var(--transition-duration-fast) var(--ease-in-out);
+
+        /* FIX: check why the icon doesn't inherit currentColor without this property */
+        fill: currentColor;
+    }
+
+    .trigger[aria-expanded='true'] .chevron,
+    .trigger[data-pressed] .chevron {
+        transform: rotate(180deg);
+    }
+
+    /* ============================================
+   SIZE VARIANTS
+   ============================================ */
+
+    .trigger[data-size='xs'] {
+        --clowdy-select-radius: var(--radius-sm);
+        height: var(--spacing-24);
+        min-height: var(--spacing-24);
+        padding: var(--spacing-2) var(--spacing-8);
+
+        @ruleset typography-text-sm;
+    }
+
+    .trigger[data-size='sm'] {
+        --clowdy-select-radius: var(--radius-md);
+        height: var(--spacing-30);
+        min-height: var(--spacing-30);
+        padding: var(--spacing-4) var(--spacing-8);
+
+        @ruleset typography-text-sm;
+    }
+
+    .trigger[data-size='md'] {
+        --clowdy-select-radius: var(--radius-lg);
+        height: var(--spacing-36);
+        min-height: var(--spacing-36);
+        padding: var(--spacing-6) var(--spacing-10);
+
+        @ruleset typography-text-md;
+    }
+
+    .trigger[data-size='md'] .chevron {
+        width: var(--spacing-lg);
+        height: var(--spacing-lg);
+    }
+
+    .trigger[data-size='lg'] {
+        --clowdy-select-radius: var(--radius-xl);
+        height: var(--spacing-56);
+        min-height: var(--spacing-56);
+        padding: var(--spacing-12) var(--spacing-16);
+
+        @ruleset typography-text-lg;
+    }
+
+    .trigger[data-size='lg'] .chevron {
+        width: var(--spacing-xl);
+        height: var(--spacing-xl);
+    }
+
+    /* ============================================
+   STYLE VARIANTS
+   ============================================ */
+
+    .trigger[data-variant='filled'] {
+        --clowdy-select-bg: var(--color-secondary);
+        --clowdy-select-border: transparent;
+        --clowdy-select-color: var(--color-secondary-content);
+        --clowdy-select-border-hover: var(--color-secondary-muted-border);
+        --clowdy-select-border-focus: var(--color-primary);
+    }
+
+    .trigger[data-variant='bordered'] {
+        --clowdy-select-bg: transparent;
+        --clowdy-select-border: var(--color-secondary-border);
+        --clowdy-select-color: var(--color-secondary-content);
+        --clowdy-select-border-hover: var(--color-secondary-border-hover);
+        --clowdy-select-border-focus: var(--color-primary);
+    }
+
+    .trigger[data-variant='transparent'] {
+        --clowdy-select-bg: transparent;
+        --clowdy-select-border: transparent;
+        --clowdy-select-color: var(--color-text);
+        --clowdy-select-border-hover: var(--color-secondary-muted);
+        --clowdy-select-border-focus: var(--color-secondary-muted);
+    }
+
+    /* ============================================
+   COLOR VARIANTS
+   ============================================ */
+
+    .trigger[data-color='primary'] {
+        --clowdy-select-color: var(--color-primary-muted-content);
+        --clowdy-select-border-focus: var(--color-primary);
+    }
+
+    .trigger[data-color='primary'][data-variant='filled'] {
+        --clowdy-select-bg: var(--color-primary-muted-light);
+        --clowdy-select-border-hover: var(--color-primary-muted-border);
+    }
+
+    .trigger[data-color='primary'][data-variant='bordered'] {
+        --clowdy-select-border: var(--color-primary-muted-border);
+        --clowdy-select-border-hover: var(--color-primary-border);
+    }
+
+    .trigger[data-color='primary'][data-variant='transparent'] {
+        --clowdy-select-border-hover: var(--color-primary-muted);
+    }
+
+    /* ============================================
+   STATES
+   ============================================ */
+
+    .trigger[data-disabled] {
+        pointer-events: none;
+        opacity: var(--opacity-disabled);
+        cursor: not-allowed;
+    }
+
+    .trigger[data-invalid] {
+        --clowdy-select-border: var(--color-danger-border);
+        --clowdy-select-border-hover: var(--color-danger-border-hover);
+        --clowdy-select-border-focus: var(--color-danger);
+    }
+
+    /* ============================================
+   POPOVER & LISTBOX
+   ============================================ */
+
+    .popover {
+        min-width: var(--trigger-width);
+        max-height: 20rem;
+        overflow: auto;
+    }
+
+    /* Omnibox-style: cover the trigger; search field sits where the button was.
+ * Grow past the trigger by inset×2 so Popover spacing (xs / 4px) keeps content flush with the input. */
+    .popoverOverlay {
+        --select-overlay-inset: var(--spacing-xs);
+
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        max-height: 20rem;
+        width: calc(var(--trigger-width) + 2 * var(--select-overlay-inset));
+        min-width: calc(var(--trigger-width) + 2 * var(--select-overlay-inset));
+        max-width: none;
+    }
+
+    .popoverOverlay[data-placement='bottom'],
+    .popoverOverlay[data-placement^='bottom'] {
+        margin-top: 0;
+    }
+
+    /* Match Autocomplete search row to the Select trigger height. */
+    .select[data-size='xs'] .overlaySearch[data-size][data-variant],
+    .select[data-size='sm'] .overlaySearch[data-size][data-variant] {
+        --clowdy-input-height: var(--spacing-30);
+        --clowdy-input-padding-block: var(--spacing-10);
+        --clowdy-input-padding-inline: var(--spacing-md);
+    }
+
+    .select[data-size='md'] .overlaySearch[data-size][data-variant] {
+        --clowdy-input-height: var(--spacing-36);
+        --clowdy-input-padding-block: var(--spacing-12);
+        --clowdy-input-padding-inline: var(--spacing-md);
+    }
+
+    .select[data-size='lg'] .overlaySearch[data-size][data-variant] {
+        --clowdy-input-height: var(--spacing-56);
+        --clowdy-input-padding-block: var(--spacing-16);
+        --clowdy-input-padding-inline: var(--spacing-lg);
+    }
+
+    .listBox {
+        --clowdy-listbox-item-radius: var(--radius-sm) !important;
+
+        border: none;
+        padding: 0;
+        outline: none;
+    }
+
+    .virtualizedListBox {
+        position: relative;
+        display: block;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .empty {
+        @ruleset typography-text-sm;
+
+        padding: var(--spacing-md);
+        text-align: center;
+        color: var(--color-secondary-muted-text);
+    }
+}

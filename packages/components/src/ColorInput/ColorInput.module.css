@@ -1,0 +1,233 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .root {
+        --clowdy-color-input-height: var(--spacing-30);
+        --clowdy-color-input-radius: var(--radius-md);
+        --clowdy-color-input-padding-start: var(--spacing-4);
+        --clowdy-color-input-padding-end: var(--spacing-2);
+        --clowdy-color-input-gap: var(--spacing-6);
+        --clowdy-color-input-alpha-width: var(--spacing-48);
+        --clowdy-color-input-border-width: var(--spacing-1);
+        --clowdy-color-input-separator-width: var(--spacing-1);
+        --clowdy-color-input-bg: var(--color-secondary);
+        --clowdy-color-input-border: transparent;
+        --clowdy-color-input-border-hover: var(--color-secondary-muted-border);
+        --clowdy-color-input-border-focus: var(--color-primary);
+        --clowdy-color-input-color: var(--color-secondary-content);
+        --clowdy-color-input-min-width: var(--spacing-144);
+
+        display: inline-flex;
+        align-items: center;
+        width: 100%;
+        min-width: var(--clowdy-color-input-min-width);
+        /* Segment z-index stays inside so a focused border doesn't cover the corner token dot. */
+        isolation: isolate;
+        border-radius: calc(var(--clowdy-color-input-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        color: var(--clowdy-color-input-color);
+    }
+
+    .root[data-size='xs'] {
+        --clowdy-color-input-height: var(--spacing-24);
+        --clowdy-color-input-radius: var(--radius-sm);
+        --clowdy-color-input-alpha-width: var(--spacing-44);
+        --clowdy-color-input-min-width: var(--spacing-128);
+
+        @ruleset typography-text-sm;
+    }
+
+    .root[data-size='sm'] {
+        --clowdy-color-input-height: var(--spacing-30);
+        --clowdy-color-input-radius: var(--radius-md);
+        --clowdy-color-input-alpha-width: var(--spacing-48);
+        --clowdy-color-input-min-width: var(--spacing-144);
+
+        @ruleset typography-text-sm;
+    }
+
+    .root[data-size='md'] {
+        --clowdy-color-input-height: var(--spacing-36);
+        --clowdy-color-input-radius: var(--radius-lg);
+        --clowdy-color-input-padding-start: var(--spacing-6);
+        --clowdy-color-input-padding-end: var(--spacing-4);
+        --clowdy-color-input-alpha-width: var(--spacing-56);
+        --clowdy-color-input-min-width: var(--spacing-160);
+
+        @ruleset typography-text-md;
+    }
+
+    .root[data-size='lg'] {
+        --clowdy-color-input-height: var(--spacing-56);
+        --clowdy-color-input-radius: var(--radius-xl);
+        --clowdy-color-input-padding-start: var(--spacing-12);
+        --clowdy-color-input-padding-end: var(--spacing-8);
+        --clowdy-color-input-gap: var(--spacing-8);
+        --clowdy-color-input-alpha-width: calc(var(--spacing-56) + var(--spacing-16));
+        --clowdy-color-input-min-width: var(--spacing-224);
+
+        @ruleset typography-text-xl;
+    }
+
+    .root[data-variant='bordered'] {
+        --clowdy-color-input-bg: transparent;
+        --clowdy-color-input-border: var(--color-secondary-border);
+        --clowdy-color-input-border-hover: var(--color-secondary-border-hover);
+    }
+
+    .root[data-disabled] {
+        pointer-events: none;
+        opacity: var(--opacity-disabled);
+    }
+
+    .root[data-editor='channels'] {
+        --clowdy-color-input-min-width: var(--spacing-192);
+        --clowdy-control-group-input-gap-override: var(--clowdy-color-input-gap);
+        --clowdy-control-group-input-padding-inline-override: var(--clowdy-color-input-padding-start);
+
+        align-items: start;
+    }
+
+    .root[data-editor='raw'] {
+        --clowdy-color-input-min-width: var(--spacing-160);
+    }
+
+    .colorField,
+    .alphaField {
+        position: relative;
+        display: flex;
+        align-items: center;
+        min-height: var(--clowdy-color-input-height);
+        border: var(--clowdy-color-input-border-width) solid var(--clowdy-color-input-border);
+        background: var(--clowdy-color-input-bg);
+        transition-property: background-color, border-color;
+        transition-duration: var(--transition-duration-fast);
+        transition-timing-function: var(--ease-in-out);
+        z-index: 0;
+    }
+
+    .colorField {
+        flex: 1 1 auto;
+        gap: var(--clowdy-color-input-gap);
+        min-width: 0;
+        padding-inline: var(--clowdy-color-input-padding-start) var(--clowdy-color-input-padding-end);
+        border-top-left-radius: calc(var(--clowdy-color-input-radius) * var(--squircle-radius-factor));
+        border-bottom-left-radius: calc(var(--clowdy-color-input-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+    }
+
+    .colorField[data-single] {
+        border-top-right-radius: calc(var(--clowdy-color-input-radius) * var(--squircle-radius-factor));
+        border-bottom-right-radius: calc(var(--clowdy-color-input-radius) * var(--squircle-radius-factor));
+    }
+
+    .root:is([data-variant='bordered'], [data-disabled], [data-invalid], [data-active]) .colorField:not([data-single]) {
+        margin-right: calc((var(--clowdy-color-input-border-width) + var(--clowdy-color-input-separator-width)) * -1);
+    }
+
+    .alphaField {
+        flex: 0 0 var(--clowdy-color-input-alpha-width);
+        justify-content: center;
+        gap: var(--spacing-2);
+        width: var(--clowdy-color-input-alpha-width);
+        margin-left: var(--clowdy-color-input-separator-width);
+        padding-inline: var(--spacing-4);
+        border-top-right-radius: calc(var(--clowdy-color-input-radius) * var(--squircle-radius-factor));
+        border-bottom-right-radius: calc(var(--clowdy-color-input-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+    }
+
+    .colorField:hover,
+    .alphaField:hover {
+        border-color: var(--clowdy-color-input-border-hover);
+        z-index: 1;
+    }
+
+    .colorField:focus-within,
+    .alphaField:focus-within,
+    .root[data-active] .colorField,
+    .root[data-active] .alphaField {
+        border-color: var(--clowdy-color-input-border-focus);
+        z-index: 2;
+    }
+
+    .root[data-invalid] .colorField,
+    .root[data-invalid] .alphaField {
+        border-color: var(--color-danger-border);
+    }
+
+    .alphaInput {
+        appearance: none;
+        border: 0;
+        outline: none;
+        background: transparent;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        color: inherit;
+        font: inherit;
+    }
+
+    .hexInput {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .hexInput input {
+        text-transform: uppercase;
+    }
+
+    .hexInput input::placeholder {
+        text-transform: none;
+    }
+
+    .alphaInput,
+    .alphaInput input {
+        flex: 0 1 3ch;
+        width: 3ch;
+        text-align: center;
+    }
+
+    .alphaSuffix {
+        flex: 0 0 auto;
+        opacity: var(--opacity-placeholder);
+    }
+
+    .alphaScrubHandle {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: var(--spacing-8);
+        transform: translateX(calc(var(--spacing-2) * -1));
+        cursor: ew-resize;
+        z-index: 1;
+    }
+
+    .cssPreview,
+    .cssPreviewChecker,
+    .cssPreviewColor {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        corner-shape: inherit;
+        pointer-events: none;
+    }
+
+    .cssPreview {
+        overflow: hidden;
+    }
+
+    .cssPreviewChecker {
+        opacity: 0.1;
+        background:
+            repeating-conic-gradient(var(--color-dark) 0% 25%, transparent 0% 50%) 0 0 / var(--spacing-4) var(--spacing-4),
+            var(--color-white);
+        z-index: 0;
+    }
+
+    .cssPreviewColor {
+        background: var(--clowdy-color-input-preview, transparent);
+        z-index: 1;
+    }
+}

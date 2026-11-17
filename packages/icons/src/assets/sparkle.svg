@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="50" height="60" viewBox="0 0 50 60" fill="none">
+  <path opacity="0.9" d="M35 0C26 21 16.5079 24.1827 0 24C20.1109 30.8377 21.3112 41.8716 23 60C31.128 40 36 34.5 50 40C35.9446 29.1692 34 23 35 0Z" fill="url(#sparkle-paint)"/>
+  <defs>
+    <linearGradient id="sparkle-paint" x1="0" y1="30" x2="72.6856" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D97348"/>
+      <stop offset="1" stop-color="white" stop-opacity="0.5"/>
+    </linearGradient>
+  </defs>
+</svg>

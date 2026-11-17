@@ -1,0 +1,145 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    /* ============================================
+   ROOT
+   ============================================ */
+
+    .root {
+        --clowdy-radio-size: var(--spacing-20);
+
+        --clowdy-radio-bg: var(--color-secondary-muted-light);
+        --clowdy-radio-bg--hover: var(--color-secondary-muted-light);
+        --clowdy-radio-bg--selected: var(--color-primary);
+
+        --clowdy-radio-border-width: 1px;
+        --clowdy-radio-border: var(--color-secondary-muted-border);
+        --clowdy-radio-border--hover: var(--color-secondary-muted-border-hover);
+        --clowdy-radio-border--selected: var(--color-primary);
+
+        --clowdy-radio-dot-scale: 0.5;
+        --clowdy-radio-dot-scale--selected: 1;
+        --clowdy-radio-dot-color: var(--color-primary);
+        --clowdy-radio-dot-color--selected: var(--color-primary-content);
+
+        --clowdy-radio-gap: var(--spacing-8);
+
+        display: inline-flex;
+        align-items: center;
+        gap: var(--clowdy-radio-gap);
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+        outline: none;
+    }
+
+    .box {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: var(--clowdy-radio-size);
+        height: var(--clowdy-radio-size);
+        border: var(--clowdy-radio-border-width) solid var(--clowdy-radio-border);
+        border-radius: var(--radius-full);
+        background-color: var(--clowdy-radio-bg);
+        color: var(--clowdy-radio-dot-color);
+        transition-property: border-color, background-color;
+        transition-duration: var(--transition-duration-fast);
+        transition-timing-function: var(--ease-in-out);
+    }
+
+    .dot {
+        opacity: 0;
+        visibility: hidden;
+
+        width: var(--clowdy-radio-dot-size);
+        height: var(--clowdy-radio-dot-size);
+        border-radius: var(--radius-full);
+        background-color: currentColor;
+        scale: var(--clowdy-radio-dot-scale);
+        transition: scale var(--transition-duration) var(--ease-in-out);
+    }
+
+    .label {
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .root[data-hovered='true']:not([data-disabled='true']):not([data-readonly='true']):not([data-selected='true']) .box {
+        background-color: var(--clowdy-radio-bg--hover);
+        border-color: var(--clowdy-radio-border--hover);
+    }
+
+    .root[data-selected='true'] .box {
+        border-color: var(--clowdy-radio-border--selected);
+        background-color: var(--clowdy-radio-bg--selected);
+        color: var(--clowdy-radio-dot-color--selected);
+    }
+
+    .root[data-selected='true'] .dot {
+        opacity: 1;
+        visibility: visible;
+        scale: var(--clowdy-radio-dot-scale--selected);
+    }
+
+    .root:focus-visible .box {
+        outline: var(--spacing-4) solid var(--color-primary-muted-border);
+        outline-offset: 0;
+    }
+
+    .root[data-disabled='true'] {
+        pointer-events: none;
+        opacity: var(--opacity-disabled);
+        cursor: not-allowed;
+    }
+
+    .root[data-readonly='true'] {
+        cursor: default;
+    }
+
+    .root[data-readonly='true'] .box {
+        pointer-events: none;
+    }
+
+    .root[data-invalid='true'] .box {
+        border-color: var(--color-danger);
+    }
+
+    .root[data-invalid='true'][data-selected='true'] .box {
+        border-color: var(--color-danger);
+    }
+
+    .root[data-invalid='true'][data-selected='true'] .dot {
+        background-color: var(--color-danger);
+    }
+
+    /* ============================================
+   SIZES
+   ============================================ */
+
+    .root[data-size='sm'] {
+        --clowdy-radio-size: var(--spacing-16);
+        --clowdy-radio-dot-size: var(--spacing-4);
+        --clowdy-radio-gap: var(--spacing-6);
+
+        @ruleset typography-text-sm;
+    }
+
+    .root[data-size='md'] {
+        --clowdy-radio-size: var(--spacing-18);
+        --clowdy-radio-dot-size: var(--spacing-6);
+        --clowdy-radio-gap: var(--spacing-8);
+
+        @ruleset typography-text-md;
+    }
+
+    .root[data-size='lg'] {
+        --clowdy-radio-size: var(--spacing-20);
+        --clowdy-radio-dot-size: var(--spacing-8);
+        --clowdy-radio-gap: var(--spacing-8);
+
+        @ruleset typography-text-lg;
+    }
+}

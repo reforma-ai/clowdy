@@ -1,0 +1,105 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .popover {
+        @ruleset typography-text-sm;
+
+        --popover-origin: top center;
+        --popover-from: 0 calc(-1 * var(--spacing-sm));
+        --popover-ease: cubic-bezier(0.22, 1.2, 0.28, 1);
+        --popover-shadow: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-dark-a10);
+        --popover-shadow-enter: 0 var(--spacing-8) var(--spacing-16) 0 var(--color-dark-a5);
+
+        display: flex;
+        flex-flow: column;
+        border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background: var(--color-surface-float);
+        color: var(--color-text);
+        border: 1px solid var(--color-surface-border);
+        min-width: var(--spacing-192);
+        max-width: min(calc(100vw - var(--spacing-16)), 20rem);
+        box-shadow: var(--popover-shadow);
+        z-index: var(--z-popover) !important;
+        outline: none;
+        transform-origin: var(--trigger-anchor-point, var(--popover-origin));
+        translate: 0;
+        scale: 1;
+        opacity: 1;
+        transition:
+            opacity 0.28s var(--popover-ease),
+            translate 0.28s var(--popover-ease),
+            scale 0.28s var(--popover-ease),
+            box-shadow 0.28s var(--popover-ease);
+    }
+
+    :global(.dark) .popover {
+        --popover-shadow: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-black-a50);
+        --popover-shadow-enter: 0 var(--spacing-8) var(--spacing-16) 0 var(--color-black-a30);
+        border-color: color-mix(in srgb, var(--color-white) 12%, transparent);
+    }
+
+    .popover:focus-visible {
+        outline: none;
+    }
+
+    .popover[data-entering] {
+        opacity: 0.6;
+        translate: var(--popover-from);
+        scale: 0.97;
+        box-shadow: var(--popover-shadow-enter);
+    }
+
+    .popover[data-exiting] {
+        opacity: 0;
+        translate: var(--popover-from);
+        scale: 0.97;
+        box-shadow: var(--popover-shadow-enter);
+        transition-duration: 0.12s;
+        transition-timing-function: var(--ease);
+        pointer-events: none;
+    }
+
+    /* ============================================
+       PLACEMENT
+       ============================================ */
+    .popover[data-placement^='bottom'] {
+        --popover-origin: top center;
+        --popover-from: 0 calc(-1 * var(--spacing-sm));
+    }
+
+    .popover[data-placement^='top'] {
+        --popover-origin: bottom center;
+        --popover-from: 0 var(--spacing-sm);
+    }
+
+    .popover[data-placement^='left'],
+    .popover[data-placement^='start'] {
+        --popover-origin: center right;
+        --popover-from: var(--spacing-sm) 0;
+    }
+
+    .popover[data-placement^='right'],
+    .popover[data-placement^='end'] {
+        --popover-origin: center left;
+        --popover-from: calc(-1 * var(--spacing-sm)) 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .popover {
+            transition: opacity var(--transition-duration-fast) var(--ease);
+        }
+
+        .popover[data-entering],
+        .popover[data-exiting] {
+            translate: 0;
+            scale: 1;
+            box-shadow: var(--popover-shadow);
+        }
+    }
+
+    .popover .react-aria-OverlayArrow svg {
+        display: block;
+        fill: var(--color-surface-float);
+    }
+}

@@ -1,0 +1,169 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    /* Toast.module.css */
+
+    /* ============================================
+   REGION (container for toasts)
+   ============================================ */
+
+    .region {
+        position: fixed;
+        bottom: var(--spacing-12);
+        right: var(--spacing-12);
+        z-index: var(--z-toast);
+        display: flex;
+        flex-direction: column-reverse;
+        gap: var(--spacing-8);
+        outline: none;
+    }
+
+    .region[data-focus-visible] {
+        outline: var(--spacing-4) solid var(--color-primary-muted-border);
+        outline-offset: 0;
+    }
+
+    /* ============================================
+   TOAST BASE
+   ============================================ */
+
+    .toast {
+        position: relative;
+        width: 240px;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--spacing-lg);
+        /* Close is centered and out of flow. Same 6px inset as `right`, inside the border. */
+        min-height: calc(var(--spacing-30) + (var(--spacing-sm) * 2) + 2px);
+        border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        padding: var(--spacing-md);
+        /* Inverted against the page, same idea as the desktop-app offer. */
+        background: var(--color-contrast);
+        border: 1px solid color-mix(in srgb, var(--color-contrast-content) 16%, transparent);
+        color: var(--color-contrast-content);
+        outline: none;
+        forced-color-adjust: none;
+        animation: slide-in-from-right 400ms;
+        box-shadow:
+            var(--shadow-sm),
+            0 var(--spacing-8) var(--spacing-48) 0 var(--color-black-a10);
+    }
+
+    .toast[data-contrast='false'] {
+        background: var(--color-surface);
+        border-color: var(--color-surface-border);
+        color: var(--color-text);
+    }
+
+    .close[data-variant] {
+        --clowdy-button-color: var(--color-contrast-content);
+        --clowdy-button-color--hover: var(--color-contrast-content);
+        --clowdy-button-bg--hover: color-mix(in srgb, var(--color-contrast-content) 12%, transparent);
+    }
+
+    .toast[data-contrast='false'] .close[data-variant] {
+        --clowdy-button-color: var(--color-text);
+        --clowdy-button-color--hover: var(--color-text);
+        --clowdy-button-bg--hover: var(--color-secondary-muted-light);
+    }
+
+    .toast[data-contrast='false'] .action[data-color] {
+        --clowdy-button-bg: var(--color-primary);
+        --clowdy-button-color: var(--color-primary-content);
+        --clowdy-button-bg--hover: var(--color-primary-light);
+        --clowdy-button-color--hover: var(--color-primary-content);
+    }
+
+    .action[data-color] {
+        --clowdy-button-bg: var(--color-contrast-content);
+        --clowdy-button-color: var(--color-contrast);
+        --clowdy-button-bg--hover: color-mix(in srgb, var(--color-contrast-content) 88%, var(--color-contrast));
+        --clowdy-button-color--hover: var(--color-contrast);
+    }
+
+    .body {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        min-width: 0;
+        margin-block: auto;
+    }
+
+    .line {
+        flex-shrink: 0;
+        width: var(--spacing-xs);
+        align-self: stretch;
+        border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+    }
+
+    .toast[data-type='default'] .line {
+        display: none;
+    }
+
+    .toast[data-focus-visible] {
+        outline: var(--spacing-4) solid var(--color-primary-muted-border);
+        outline-offset: 0;
+    }
+
+    /* ============================================
+   CONTENT (our wrapper, no react-aria selectors)
+   ============================================ */
+
+    .content {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1 1 auto;
+        padding-right: calc(var(--spacing-30) + var(--spacing-sm));
+    }
+
+    .content > * {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        min-width: 0;
+    }
+
+    .close {
+        position: absolute;
+        top: 50%;
+        right: var(--spacing-sm);
+        z-index: 1;
+        transform: translateY(-50%);
+    }
+
+    .content [slot='title'] {
+        @ruleset typography-heading-5;
+    }
+
+    .content [slot='description'] {
+        @ruleset typography-text-md;
+    }
+
+    .content [slot='title'] + [slot='description'] {
+        opacity: 0.8;
+    }
+
+    /* ============================================
+   TYPE VARIANTS (line color only)
+   ============================================ */
+
+    .toast[data-type='info'] .line {
+        background: var(--color-primary);
+    }
+
+    .toast[data-type='warning'] .line {
+        background: var(--color-warning);
+    }
+
+    .toast[data-type='success'] .line {
+        background: var(--color-success);
+    }
+
+    .toast[data-type='error'] .line {
+        background: var(--color-danger);
+    }
+}

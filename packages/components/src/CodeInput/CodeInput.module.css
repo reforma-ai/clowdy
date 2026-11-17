@@ -1,0 +1,97 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .root {
+        position: relative;
+        display: grid;
+        grid-auto-columns: 1fr;
+        grid-auto-flow: column;
+        gap: var(--spacing-sm);
+        width: 100%;
+        cursor: text;
+    }
+
+    .box {
+        @ruleset typography-heading-3;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: var(--spacing-56);
+        border: 1px solid transparent;
+        border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background-color: var(--color-secondary);
+        color: var(--color-secondary-content);
+        font-variant-numeric: tabular-nums;
+        transition: border-color var(--transition-duration-fast) var(--ease-in-out);
+    }
+
+    .root[data-size='md'] .box {
+        @ruleset typography-text-md;
+
+        height: var(--spacing-36);
+    }
+
+    .root:hover:not(:focus-within):not([data-disabled]) .box {
+        border-color: var(--color-secondary-muted-border);
+    }
+
+    .box[data-active] {
+        border-color: var(--color-primary);
+    }
+
+    /* Where the next digit goes. */
+    .box[data-active]:not([data-filled])::after {
+        content: '';
+        width: 2px;
+        height: 1.2em;
+        background-color: currentcolor;
+        animation: code-input-caret 1s steps(1) infinite;
+    }
+
+    .root[data-invalid] .box {
+        border-color: var(--color-danger-border);
+    }
+
+    .root[data-invalid] .box[data-active] {
+        border-color: var(--color-danger);
+    }
+
+    .root[data-disabled] {
+        cursor: default;
+        opacity: var(--opacity-disabled);
+    }
+
+    /* The real field: covers the boxes, takes every key, paste and autofill, and draws nothing of its own. */
+    .input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        border: 0;
+        outline: none;
+        background: transparent;
+        color: transparent;
+        caret-color: transparent;
+        font-size: 16px; /* iOS zooms into a focused field below 16px */
+        cursor: inherit;
+
+        &::selection {
+            background: transparent;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .box[data-active]:not([data-filled])::after {
+            animation: none;
+        }
+    }
+}
+
+@keyframes code-input-caret {
+    50% {
+        opacity: 0;
+    }
+}

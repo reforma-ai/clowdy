@@ -1,0 +1,62 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .heading-1 {
+        @ruleset typography-heading-1;
+    }
+    .heading-2 {
+        @ruleset typography-heading-2;
+    }
+    .heading-3 {
+        @ruleset typography-heading-3;
+    }
+    .heading-4 {
+        @ruleset typography-heading-4;
+    }
+    .heading-5 {
+        @ruleset typography-heading-5;
+    }
+    .heading-6 {
+        @ruleset typography-heading-6;
+    }
+
+    .xl {
+        @ruleset typography-text-xl;
+    }
+    .lg {
+        @ruleset typography-text-lg;
+    }
+    .md {
+        @ruleset typography-text-md;
+    }
+    .sm {
+        @ruleset typography-text-sm;
+    }
+    .xs {
+        @ruleset typography-text-xs;
+    }
+
+    .label {
+        @ruleset typography-label-sm;
+    }
+    .code {
+        @ruleset typography-text-code-xs;
+    }
+
+    /* Inline link. Underline follows the text, then shifts to primary.
+       Element selector beats Button's `text-decoration: none`. */
+    a.inlineLink,
+    button.inlineLink,
+    :global([data-inline-links] a) {
+        text-decoration-line: underline;
+        text-decoration-color: currentColor;
+        text-underline-offset: 0.12em;
+        transition: text-decoration-color var(--transition-duration-fast) var(--ease);
+    }
+
+    a.inlineLink:is(:hover, :focus-visible, [data-hovered='true']),
+    button.inlineLink:is(:hover, :focus-visible, [data-hovered='true']),
+    :global([data-inline-links] a:is(:hover, :focus-visible)) {
+        text-decoration-color: var(--color-primary);
+    }
+}

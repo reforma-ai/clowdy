@@ -1,0 +1,19 @@
+@layer components {
+    .menu {
+        box-sizing: border-box;
+        min-width: 260px;
+        max-width: 360px;
+        padding: var(--spacing-4);
+        border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background: var(--color-surface-float);
+        color: var(--color-text);
+        border: 1px solid var(--color-surface-border);
+        box-shadow: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-dark-a10);
+    }
+
+    :global(.dark) .menu {
+        border-color: color-mix(in srgb, var(--color-white) 12%, transparent);
+        box-shadow: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-black-a50);
+    }
+}

@@ -1,0 +1,164 @@
+@import '@clowdy/styles/rulesets';
+
+@layer components {
+    .field {
+        display: grid;
+        width: 100%;
+        column-gap: var(--spacing-xs);
+        row-gap: var(--spacing-xs);
+        margin-bottom: 0;
+        transition: margin-bottom 0.15s ease;
+    }
+
+    .field[data-label-placement='start'] {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: 'label control';
+        align-items: center;
+    }
+
+    .field[data-label-placement='start'][data-has-description] {
+        grid-template-areas: 'copy control';
+    }
+
+    .field[data-has-error] {
+        margin-bottom: 14px;
+    }
+
+    .field[data-label-placement='top'] {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            'label'
+            'control';
+        align-items: stretch;
+    }
+
+    .field[data-label-placement='top'][data-has-description] {
+        grid-template-areas:
+            'copy'
+            'control';
+    }
+
+    .field[data-label-placement='top']:not([data-has-control]) {
+        grid-template-areas: 'label';
+    }
+
+    .field[data-label-placement='top'][data-has-description]:not([data-has-control]) {
+        grid-template-areas: 'copy';
+    }
+
+    .field[data-label-placement='bottom'] {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            'control'
+            'label'
+            'description';
+        align-items: stretch;
+    }
+
+    .field[data-label-placement='bottom']:not([data-has-control]) {
+        grid-template-areas:
+            'label'
+            'description';
+    }
+
+    .copy {
+        grid-area: copy;
+        display: flex;
+        flex-direction: column;
+        row-gap: inherit;
+        min-width: 0;
+    }
+
+    .field > [data-slot='label'] {
+        grid-area: label;
+        min-width: 0;
+    }
+
+    .field > [data-slot='description'] {
+        grid-area: description;
+        min-width: 0;
+    }
+
+    .control {
+        grid-area: control;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .controlBody {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+    }
+
+    .field[data-label-placement='start'] .control {
+        flex-shrink: 0;
+    }
+
+    .field[data-label-placement='start'] .controlBody {
+        justify-content: flex-end;
+    }
+
+    .field[data-size='xs'][data-label-placement='start'] .control {
+        width: 10rem;
+    }
+
+    .field[data-size='sm'][data-label-placement='start'] .control {
+        width: 12rem;
+    }
+
+    .field[data-size='md'][data-label-placement='start'] .control {
+        width: 15rem;
+    }
+
+    .field[data-size='lg'][data-label-placement='start'] .control {
+        width: 18rem;
+    }
+
+    .field:is([data-label-placement='top'], [data-label-placement='bottom']) .control {
+        width: 100%;
+    }
+
+    .field:is([data-label-placement='top'], [data-label-placement='bottom']) .controlBody {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .label {
+        display: flex;
+        min-width: 0;
+        cursor: default;
+        user-select: none;
+    }
+
+    .field[data-label-align='center'] .label {
+        justify-content: center;
+        text-align: center;
+    }
+
+    .field[data-label-align='end'] .label {
+        justify-content: flex-end;
+        text-align: end;
+    }
+
+    .description {
+        min-width: 0;
+    }
+
+    .error {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        margin-top: 4px;
+        min-width: 0;
+    }
+
+    .field[data-disabled] .label,
+    .field[data-disabled] .description {
+        opacity: var(--opacity-disabled);
+    }
+}

@@ -1,0 +1,12 @@
+/* Icon styles for Clowdy design system */
+
+@layer components {
+    /* Icon component default styles */
+    .clowdy-icon {
+        display: inline-block;
+        vertical-align: middle;
+        fill: currentColor;
+        max-width: unset;
+        flex-shrink: 0;
+    }
+}

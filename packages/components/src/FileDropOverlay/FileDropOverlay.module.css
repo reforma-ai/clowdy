@@ -1,0 +1,30 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: var(--text-md);
+        line-height: var(--leading-md);
+        font-weight: 400;
+        background-color: var(--color-chat-overlay);
+        backdrop-filter: blur(25px);
+        pointer-events: none;
+    }
+
+    .iconRing {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        width: 28px;
+        height: 28px;
+        border: 2px solid;
+        border-radius: 100%;
+    }
+}

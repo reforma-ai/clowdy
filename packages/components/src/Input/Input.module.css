@@ -1,0 +1,389 @@
+@reference '@clowdy/styles/rulesets';
+
+/* Input.module.css */
+
+@layer components {
+    /* ============================================
+   ROOT / DESIGN TOKENS
+   ============================================ */
+
+    .field {
+        /* Layout tokens */
+        --clowdy-input-gap: var(--spacing-sm);
+        --clowdy-input-height: var(--spacing-36);
+        --clowdy-input-radius: var(--radius-lg);
+        --clowdy-input-padding-inline: var(--spacing-10);
+        --clowdy-input-padding-block: var(--spacing-6);
+
+        /* Visual tokens */
+        --clowdy-input-bg: var(--color-secondary);
+        --clowdy-input-border-width: 1px;
+        --clowdy-input-border: transparent;
+        --clowdy-input-border-hover: var(--color-secondary-muted-border);
+        --clowdy-input-border-focus: var(--color-primary);
+        --clowdy-input-color: var(--color-secondary-content);
+
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: var(--clowdy-input-gap);
+        width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+
+        height: var(--clowdy-input-height);
+        min-width: var(--clowdy-input-height);
+        padding-inline: var(--clowdy-input-padding-inline);
+        border-radius: calc(var(--clowdy-input-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background-color: var(--clowdy-input-bg);
+        border: var(--clowdy-input-border-width) solid var(--clowdy-input-border);
+        color: var(--clowdy-input-color);
+
+        /* Cursor - important for UX */
+        cursor: text;
+
+        /* Transitions – border/background on wrapper so prefix/suffix stay inside */
+        transition-property: background-color, border-color;
+        transition-duration: var(--transition-duration-fast);
+        transition-timing-function: var(--ease-in-out);
+
+        /* Focus ring */
+        outline: none;
+    }
+
+    /* ============================================
+   SIZE VARIANTS
+   ============================================ */
+
+    .field[data-size='xs'] {
+        --clowdy-input-height: var(--spacing-24);
+        --clowdy-input-radius: var(--radius-sm);
+        --clowdy-input-padding-inline: var(--spacing-8);
+        --clowdy-input-padding-block: var(--spacing-4);
+
+        @ruleset typography-text-sm;
+    }
+
+    .field[data-size='sm'] {
+        --clowdy-input-height: var(--spacing-30);
+        --clowdy-input-radius: var(--radius-md);
+        --clowdy-input-padding-inline: var(--spacing-8);
+        --clowdy-input-padding-block: var(--spacing-4);
+
+        @ruleset typography-text-sm;
+    }
+
+    .field[data-size='md'] {
+        --clowdy-input-height: var(--spacing-36);
+        --clowdy-input-radius: var(--radius-lg);
+        --clowdy-input-padding-inline: var(--spacing-10);
+        --clowdy-input-padding-block: var(--spacing-6);
+
+        @ruleset typography-text-md;
+    }
+
+    .field[data-size='lg'] {
+        --clowdy-input-height: var(--spacing-56);
+        --clowdy-input-radius: var(--radius-xl);
+        --clowdy-input-padding-inline: var(--spacing-16);
+        --clowdy-input-padding-block: var(--spacing-12);
+
+        @ruleset typography-text-xl;
+    }
+
+    /* ============================================
+   STYLE VARIANTS: FILLED
+   ============================================ */
+
+    .field[data-variant='filled'] {
+        --clowdy-input-bg: var(--color-secondary);
+        --clowdy-input-border: transparent;
+        --clowdy-input-color: var(--color-secondary-content);
+        --clowdy-input-border-hover: var(--color-secondary-muted-border);
+        --clowdy-input-border-focus: var(--color-primary);
+    }
+
+    /* ============================================
+   STYLE VARIANTS: BORDERED
+   ============================================ */
+
+    .field[data-variant='bordered'] {
+        --clowdy-input-bg: transparent;
+        --clowdy-input-border: var(--color-secondary-border);
+        --clowdy-input-color: var(--color-secondary-content);
+        --clowdy-input-border-hover: var(--color-secondary-border-hover);
+        --clowdy-input-border-focus: var(--color-primary);
+    }
+
+    /* ============================================
+   STYLE VARIANTS: TRANSPARENT
+   ============================================ */
+
+    .field[data-variant='transparent'] {
+        --clowdy-input-bg: transparent;
+        --clowdy-input-border: transparent;
+        --clowdy-input-color: var(--color-text);
+        --clowdy-input-border-hover: var(--color-secondary-muted);
+        --clowdy-input-border-focus: var(--color-secondary-muted);
+    }
+
+    /* ============================================
+   STYLE VARIANTS: COLLAPSED
+   ============================================ */
+
+    .field[data-variant='inline'] {
+        --clowdy-input-bg: transparent;
+        --clowdy-input-color: var(--color-text);
+
+        /* No border at all, so the field takes exactly the space of the text it replaces. */
+        --clowdy-input-border-width: 0;
+        --clowdy-input-height: auto;
+        --clowdy-input-padding-inline: 0;
+        --clowdy-input-padding-block: 0;
+        --clowdy-input-radius: 0;
+
+        /* Match surrounding copy (e.g. list rows, table cells); overrides size preset typography on this wrapper. */
+        font: inherit;
+    }
+
+    .field:hover:not(:focus-within):not([data-active]):not([data-disabled]) {
+        border-color: var(--clowdy-input-border-hover);
+    }
+
+    .field:focus-within,
+    .field[data-active] {
+        border-color: var(--clowdy-input-border-focus);
+    }
+
+    /* ============================================
+   STATES
+   ============================================ */
+
+    .field[data-disabled] {
+        pointer-events: none;
+        opacity: var(--opacity-disabled);
+        cursor: not-allowed;
+    }
+
+    .field[data-pressable] {
+        cursor: pointer;
+    }
+
+    .field[data-invalid] {
+        border-color: var(--color-danger-border);
+    }
+
+    .field[data-invalid]:hover:not(:focus-within):not([data-active]):not([data-disabled]) {
+        border-color: var(--color-danger-border-hover);
+    }
+
+    .field[data-invalid]:focus-within {
+        border-color: var(--color-danger);
+    }
+
+    /* ============================================
+   INPUT ELEMENT
+   ============================================ */
+
+    .input {
+        /* Reset */
+        appearance: none;
+        border: none;
+        background: transparent;
+        margin: 0;
+        box-sizing: border-box;
+
+        flex: 1;
+        min-width: 0;
+        width: 100%;
+        align-self: stretch;
+        padding-block: var(--clowdy-input-padding-block);
+        padding-inline: 0;
+
+        /* Typography */
+        font: inherit;
+        color: inherit;
+
+        /* Cursor */
+        cursor: inherit;
+
+        /* Focus */
+        outline: none;
+    }
+
+    .field:not(:has([slot='prefix'])) .input {
+        margin-inline-start: calc(var(--clowdy-input-padding-inline) * -1);
+        padding-inline-start: var(--clowdy-input-padding-inline);
+    }
+
+    .field:not(:has([slot='suffix'])) .input {
+        margin-inline-end: calc(var(--clowdy-input-padding-inline) * -1);
+        padding-inline-end: var(--clowdy-input-padding-inline);
+    }
+
+    .field:has(.textSuffix) .input {
+        margin-inline-end: calc(var(--clowdy-input-gap) * -1);
+        padding-inline-end: var(--clowdy-input-gap);
+    }
+
+    .input::placeholder {
+        color: currentColor;
+        opacity: var(--opacity-placeholder);
+    }
+
+    .input[type='number'] {
+        -moz-appearance: textfield;
+
+        &::-webkit-inner-spin-button,
+        &::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+    }
+
+    /* Hug — `size`/`field-sizing` do not work on type=number; width tracks --clowdy-input-hug-ch. */
+    .field[data-hug] {
+        width: auto;
+        min-width: unset;
+        flex: none;
+        --clowdy-input-hug-ch: 1;
+    }
+
+    .field[data-hug] .input {
+        flex: none;
+        box-sizing: content-box;
+        width: calc(var(--clowdy-input-hug-ch) * 1ch);
+        min-width: 1ch;
+    }
+
+    .field[data-hug]:not(:has([slot='prefix'])) .input {
+        margin-inline-start: 0;
+        padding-inline-start: 0;
+    }
+
+    .field[data-hug]:not(:has([slot='suffix'])) .input {
+        margin-inline-end: 0;
+        padding-inline-end: 0;
+    }
+
+    .field[data-hug]:has(.textSuffix) .input {
+        margin-inline-end: 0;
+        padding-inline-end: 0;
+    }
+
+    .input[type='search'] {
+        &::-webkit-search-decoration,
+        &::-webkit-search-cancel-button,
+        &::-webkit-search-results-button,
+        &::-webkit-search-results-decoration {
+            -webkit-appearance: none;
+            appearance: none;
+        }
+    }
+
+    /* ============================================
+   PREFIX & SUFFIX
+   ============================================ */
+
+    .field [slot='prefix'],
+    .field [slot='suffix'] {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    /*
+     * Flush control affix — opt-in on the slotted child:
+     *   <Button slot="suffix" data-input-affix="control">Apply</Button>
+     * Insets the field edge and sizes the control to the inner track (like UnitInput chevron density).
+     */
+    .field:has([slot='suffix'][data-input-affix='control']) {
+        --clowdy-input-control-affix-inset: var(--spacing-2);
+        padding-inline-end: var(--clowdy-input-control-affix-inset);
+    }
+
+    .field:has([slot='prefix'][data-input-affix='control']) {
+        --clowdy-input-control-affix-inset: var(--spacing-2);
+        padding-inline-start: var(--clowdy-input-control-affix-inset);
+    }
+
+    /* 4px beside a control. A margin, not the field gap, so the text stays put when a clear button appears. */
+    .field [slot='suffix'][data-input-affix='control'] {
+        margin-inline-start: calc(var(--spacing-4) - var(--clowdy-input-gap));
+    }
+
+    .field [slot='prefix'][data-input-affix='control'] {
+        margin-inline-end: calc(var(--spacing-4) - var(--clowdy-input-gap));
+    }
+
+    /* Suffix controls side by side keep 2px apart, as row actions do (Layers). */
+    .field [slot='suffix'][data-input-affix='control'] + [slot='suffix'][data-input-affix='control'] {
+        margin-inline-start: calc(var(--spacing-2) - var(--clowdy-input-gap));
+    }
+
+    .field [data-input-affix='control'] {
+        height: calc(var(--clowdy-input-height) - var(--clowdy-input-control-affix-inset, var(--spacing-2)) * 2);
+        align-self: center;
+    }
+
+    .field [data-input-affix='control'][data-icon-only] {
+        --clowdy-input-icon-affix-size: calc(var(--clowdy-input-height) - var(--clowdy-input-control-affix-inset, var(--spacing-2)) * 2);
+
+        box-sizing: border-box;
+        width: var(--clowdy-input-icon-affix-size);
+        min-width: var(--clowdy-input-icon-affix-size);
+        max-width: var(--clowdy-input-icon-affix-size);
+        height: var(--clowdy-input-icon-affix-size);
+        padding: 0;
+        flex-shrink: 0;
+        border-radius: calc((var(--clowdy-input-radius) - var(--clowdy-input-control-affix-inset, var(--spacing-2))) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+    }
+
+    /* Opt-in: hide until field hover / focus (e.g. Open in code). */
+    .field [data-reveal-on-field-hover] {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--transition-duration-fast) var(--ease-in-out);
+    }
+
+    .field:hover [data-reveal-on-field-hover],
+    .field:focus-within [data-reveal-on-field-hover] {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    @media (hover: none) {
+        .field [data-reveal-on-field-hover] {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    }
+
+    .textPrefix,
+    .textSuffix {
+        opacity: var(--opacity-inactive);
+        pointer-events: none;
+        white-space: pre;
+    }
+
+    /* ============================================
+   SCRUB HANDLE (left-edge drag affordance)
+   ============================================ */
+    .scrubHandle {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: var(--clowdy-input-padding-inline);
+        transform: translateX(calc(var(--spacing-2) * -1));
+        cursor: ew-resize;
+        z-index: 1;
+    }
+
+    .field:has([slot='prefix']) .scrubHandle {
+        width: calc(var(--clowdy-input-padding-inline) + var(--clowdy-input-gap) + var(--clowdy-input-height));
+    }
+}

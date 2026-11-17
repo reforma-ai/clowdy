@@ -1,0 +1,33 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .root {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    /*
+     * Beat Input size/variant attribute selectors (same element: .field + .searchInput).
+     * Keep search typography stable when Autocomplete is mounted in a modal
+     * with larger inherited text.
+     */
+    .searchInput[data-size][data-variant] {
+        --clowdy-input-height: var(--spacing-30);
+        --clowdy-input-padding-block: var(--spacing-10);
+        --clowdy-input-padding-inline: var(--spacing-md);
+
+        @ruleset typography-text-sm;
+    }
+
+    .listBoxScroll > [role='listbox'] {
+        flex: 1 1 auto;
+        min-width: 0;
+        /* Native bar hidden — ScrollChromeBars paints the thumb. */
+        scrollbar-width: none;
+    }
+
+    .listBoxScroll > [role='listbox']::-webkit-scrollbar {
+        display: none;
+    }
+}

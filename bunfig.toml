@@ -1,0 +1,22 @@
+env = false
+
+[install]
+# Hoist transitive deps so workspace packages can resolve dependencies of their
+# deps when running from the package directory, and so paths into the root
+# node_modules hold. Isolated linker only symlinks in .bun, so Node never finds them.
+linker = "hoisted"
+registry = "https://registry.npmjs.org"
+# Supply-chain gate: never resolve a version published less than 3 days ago.
+# It only affects new resolution (`bun add`, `bun update`, unlocked ranges);
+# versions already in bun.lock are not re-checked, so `--frozen-lockfile`
+# installs in CI and Docker are unaffected.
+minimumReleaseAge = 259200
+# Bun matches exact names here; scope globs are not supported.
+minimumReleaseAgeExcludes = []
+
+[install.cache]
+# don't load from the global cache.
+# disable = true
+
+# always resolve the latest versions from the registry
+# disableManifest = true

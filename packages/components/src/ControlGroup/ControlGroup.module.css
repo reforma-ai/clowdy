@@ -1,0 +1,125 @@
+@layer components {
+    .group {
+        --clowdy-control-group-columns: repeat(auto-fit, minmax(0, 1fr));
+        --clowdy-control-group-radius: var(--radius-md);
+        --clowdy-control-group-gap: var(--spacing-1);
+        --clowdy-control-group-border-width: var(--spacing-1);
+        --clowdy-control-group-overlap: calc(var(--clowdy-control-group-gap) + var(--clowdy-control-group-border-width));
+        --clowdy-control-group-input-gap: var(--clowdy-control-group-input-gap-override, var(--spacing-xs));
+        --clowdy-control-group-input-min-width: 3ch;
+        --clowdy-control-group-input-padding-inline: var(--clowdy-control-group-input-padding-inline-override, var(--spacing-xs));
+        --clowdy-control-group-prefix-size: var(--spacing-22);
+        --clowdy-control-group-prefix-label-padding: calc(var(--clowdy-control-group-prefix-size) + var(--clowdy-control-group-input-gap));
+
+        display: grid;
+        grid-template-columns: var(--clowdy-control-group-columns);
+        gap: var(--clowdy-control-group-gap);
+        align-items: start;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .group[data-size='xs'] {
+        --clowdy-control-group-radius: var(--radius-sm);
+        --clowdy-control-group-prefix-size: var(--spacing-16);
+    }
+
+    .group[data-size='sm'] {
+        --clowdy-control-group-radius: var(--radius-md);
+        --clowdy-control-group-prefix-size: var(--spacing-22);
+    }
+
+    .group[data-size='md'] {
+        --clowdy-control-group-radius: var(--radius-lg);
+        --clowdy-control-group-prefix-size: var(--spacing-24);
+    }
+
+    .group[data-size='lg'] {
+        --clowdy-control-group-radius: var(--radius-xl);
+        --clowdy-control-group-prefix-size: var(--spacing-32);
+    }
+
+    .group > :not(template) {
+        --clowdy-control-group-start-radius: 0;
+        --clowdy-control-group-end-radius: 0;
+
+        position: relative;
+        z-index: 0;
+    }
+
+    /* React Aria Select injects template collection nodes inside groups. */
+    .group > :nth-child(1 of :not(template)) {
+        --clowdy-control-group-start-radius: var(--clowdy-control-group-radius);
+    }
+
+    .group > :nth-last-child(1 of :not(template)) {
+        --clowdy-control-group-end-radius: var(--clowdy-control-group-radius);
+    }
+
+    .field {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .select {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .control {
+        width: 100%;
+        min-width: 0;
+        border-radius: 0;
+        text-align: center;
+        z-index: 0;
+    }
+
+    .group .control {
+        --clowdy-input-gap: var(--clowdy-control-group-input-gap);
+    }
+
+    .group .control[data-size] {
+        --clowdy-input-padding-inline: var(--clowdy-control-group-input-padding-inline);
+
+        border-radius: 0;
+        border-start-start-radius: calc(var(--clowdy-control-group-start-radius) * var(--squircle-radius-factor));
+        border-end-start-radius: calc(var(--clowdy-control-group-start-radius) * var(--squircle-radius-factor));
+        border-start-end-radius: calc(var(--clowdy-control-group-end-radius) * var(--squircle-radius-factor));
+        border-end-end-radius: calc(var(--clowdy-control-group-end-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+    }
+
+    .group:is([data-variant='bordered'], [data-variant='transparent']) > :nth-child(n + 2 of :not(template)) {
+        width: calc(100% + var(--clowdy-control-group-overlap));
+        margin-inline-start: calc(var(--clowdy-control-group-overlap) * -1);
+    }
+
+    .group .control input {
+        min-width: var(--clowdy-control-group-input-min-width);
+        text-align: center;
+    }
+
+    .field[data-label-placement='bottom']:has(.control [slot='prefix']) > :last-child {
+        box-sizing: border-box;
+        padding-inline-start: var(--clowdy-control-group-prefix-label-padding);
+    }
+
+    .selectTrigger.control {
+        gap: var(--clowdy-control-group-input-gap);
+        padding-inline: var(--clowdy-control-group-input-padding-inline);
+    }
+
+    .control:hover,
+    .control:focus-within,
+    .control[data-active],
+    .control[data-invalid] {
+        z-index: 1;
+    }
+
+    .group > :not(template):has(.control:hover),
+    .group > :not(template):has(.control:focus-within),
+    .group > :not(template):has(.control[data-active]),
+    .group > :not(template):has(.control[data-invalid]) {
+        z-index: 1;
+    }
+}

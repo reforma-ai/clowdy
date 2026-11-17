@@ -1,0 +1,8 @@
+:root {
+    --squircle-value: 1.75;
+    --squircle-radius-factor: 1;
+
+    @supports (corner-shape: superellipse(1)) {
+        --squircle-radius-factor: 1.573;
+    }
+}

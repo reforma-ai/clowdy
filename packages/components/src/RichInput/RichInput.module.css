@@ -1,0 +1,104 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .root {
+        position: relative;
+        width: 100%;
+        min-width: 0;
+        color: var(--color-secondary-content);
+    }
+
+    .editor {
+        width: 100%;
+        min-width: 0;
+        flex: 1;
+        border: none;
+        box-shadow: none;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
+        color: inherit;
+        font: inherit;
+        line-height: inherit;
+    }
+
+    .editor :global(p) {
+        margin: 0;
+        font: inherit;
+        line-height: inherit;
+    }
+
+    .editor :global(code) {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9em;
+    }
+
+    .editor :global(.rich-input-mention) {
+        display: inline-flex;
+        vertical-align: middle;
+        margin-inline: var(--spacing-2);
+    }
+
+    .editor :global(.rich-input-mention [data-node-view-wrapper]) {
+        display: inline-flex;
+    }
+
+    /* Tighter padding so mention chips sit on the composer line. */
+    .editor :global(.rich-input-mention [data-chip]) {
+        padding-block: 0;
+        padding-inline: var(--spacing-4);
+    }
+
+    .root :global(.tiptap p.is-editor-empty:first-child::before),
+    .root :global(p.is-empty:first-child::before),
+    .editor:global(.is-editor-empty)::before,
+    .editor:global(.is-empty)::before {
+        color: var(--color-secondary-muted-text);
+        content: attr(data-placeholder);
+        float: left;
+        height: 0;
+        pointer-events: none;
+        font: inherit;
+        line-height: inherit;
+    }
+}
+
+/*
+ * Unlayered on purpose: packages/styles base `:focus-visible` is unlayered and
+ * would beat `@layer components` otherwise (orange focus ring on the editor).
+ */
+.editor:focus,
+.editor:focus-visible {
+    outline: none;
+    border: none;
+    box-shadow: none;
+}
+
+/* Unlayered: composer compact `overflow: hidden` clips outside markers otherwise. */
+.editor :global(ul),
+.editor :global(ol) {
+    margin: 0;
+    padding-inline-start: 1.25em;
+}
+
+.editor :global(ul) {
+    list-style-type: disc;
+}
+
+/* Own numbers: Safari's native outside marker sits further left and gets clipped. */
+.editor :global(ol) {
+    padding-inline-start: 1.5em;
+    list-style: none;
+}
+
+.editor :global(ol > li) {
+    position: relative;
+    counter-increment: rich-input-ol;
+}
+
+/* Number starts flush with the text above, in the list's padding. */
+.editor :global(ol > li)::before {
+    position: absolute;
+    inset-inline-start: -1.5em;
+    content: counter(rich-input-ol) '.';
+    font-variant-numeric: tabular-nums;
+}

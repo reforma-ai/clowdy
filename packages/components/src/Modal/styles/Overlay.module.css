@@ -1,0 +1,142 @@
+/**
+ * Overlay and modal default theme (CSS module)
+ */
+.overlay {
+    --modal-overlay-background: var(--color-modal-overlay);
+    --modal-background: var(--color-modal-background, var(--color-surface));
+    --modal-border: var(--color-modal-border, var(--color-secondary-muted-border));
+
+    --modal-text-color: var(--color-text);
+    --modal-box-shadow: var(--shadow-xl);
+    --modal-border-radius: var(--radius-xl);
+
+    --modal-title-height: var(--spacing-40);
+    --modal-content-gap: var(--spacing-12);
+
+    --modal-tab-gap: var(--spacing-xs);
+    --modal-tab-padding: var(--spacing-md);
+    --modal-tab-active-fade: 1;
+    --modal-tab-inactive-fade: 0.57;
+    --modal-tab-height: var(--spacing-36);
+    --modal-tab-background: var(--color-secondary-muted);
+    --modal-tab-radius: var(--radius-lg);
+    --modal-overlay-inset: var(--spacing-xxl);
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    pointer-events: none;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    outline: none;
+    z-index: var(--z-modal);
+    user-select: none;
+
+    font-size: var(--text-lg);
+    line-height: var(--leading-lg);
+    font-weight: 400;
+    font-style: normal;
+    letter-spacing: normal;
+    text-transform: none;
+    text-decoration: none;
+}
+
+:global(.dark) .overlay,
+.overlay:global(.dark-ui) {
+    --modal-tab-background: var(--color-black-a5);
+    --modal-border: color-mix(in srgb, var(--color-white) 12%, transparent);
+    --modal-box-shadow: 0 16px 40px var(--color-black-a50);
+}
+
+.overlay::before {
+    display: none;
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 0;
+}
+
+.overlay.on,
+.overlay.shadow {
+    pointer-events: all;
+}
+
+.overlay.on::before,
+.overlay.shadow::before {
+    display: block;
+    pointer-events: all;
+}
+
+.overlay.on.throughCursor,
+.overlay.shadow.throughCursor {
+    pointer-events: none;
+}
+
+.overlay.on.throughCursor::before,
+.overlay.shadow.throughCursor::before {
+    pointer-events: none;
+}
+
+.overlay.on > *,
+.overlay.shadow > * {
+    pointer-events: all;
+}
+
+.overlay.on [data-modal-overlay-backdrop],
+.overlay.shadow [data-modal-overlay-backdrop] {
+    pointer-events: none;
+}
+
+.overlay.shadow [data-modal-window] {
+    --modal-box-shadow: none;
+}
+
+.overlay.shadow::before {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--modal-overlay-background);
+}
+
+.overlay:global(.transparent) {
+    --modal-overlay-background: transparent;
+}
+
+.overlay:global(.shake) [data-modal-window] {
+    animation-name: f-shake-hard;
+    animation-duration: 1500ms;
+    animation-iteration-count: infinite;
+    animation-timing-function: var(--ease);
+    animation-delay: 0s;
+}
+
+.overlay.scrollableContent {
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-direction: column;
+    align-items: center;
+    justify-content: safe center;
+    padding: var(--modal-content-gap);
+}
+
+.overlay.scrollableContent [data-modal-window] {
+    position: relative;
+    height: auto;
+    max-height: none;
+    min-width: 0;
+    margin: 0;
+}
+
+.overlay.scrollableContent [data-modal-data] {
+    height: auto;
+    max-height: none;
+    min-width: 0;
+    width: 100%;
+}

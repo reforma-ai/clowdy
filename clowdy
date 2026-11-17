@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Clowdy CLI. See `./clowdy help`.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+command -v bun >/dev/null 2>&1 || { echo "Error: bun is not installed (https://bun.sh)." 1>&2; exit 1; }
+
+exec bun scripts/cli.ts "$@"

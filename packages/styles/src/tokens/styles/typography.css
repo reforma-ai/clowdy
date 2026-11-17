@@ -1,0 +1,233 @@
+@layer rulesets {
+    --typography-heading-1 {
+        font-family: 'Onest', sans-serif;
+        font-weight: 600;
+        font-size: var(--text-xxl);
+        line-height: var(--leading-xxl);
+        letter-spacing: 0;
+    }
+
+    --typography-heading-2 {
+        font-family: 'Onest', sans-serif;
+        font-weight: 600;
+        font-size: 1.5rem;
+        line-height: 1.75rem;
+        letter-spacing: 0;
+    }
+
+    --typography-heading-3 {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-xl);
+        line-height: var(--leading-xl);
+        letter-spacing: 0;
+    }
+
+    --typography-heading-4 {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-lg);
+        line-height: var(--leading-lg);
+        letter-spacing: 0;
+    }
+
+    --typography-heading-5 {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-md);
+        line-height: var(--leading-md);
+        letter-spacing: 0;
+    }
+
+    --typography-heading-6 {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-sm);
+        line-height: var(--leading-sm);
+        letter-spacing: 0;
+    }
+
+    --typography-text-xl {
+        font-family: 'Onest', sans-serif;
+        font-weight: 400;
+        font-size: var(--text-xl);
+        line-height: var(--leading-xl);
+        letter-spacing: 0;
+    }
+
+    --typography-text-lg {
+        font-family: 'Onest', sans-serif;
+        font-weight: 400;
+        font-size: var(--text-lg);
+        line-height: var(--leading-lg);
+        letter-spacing: 0;
+    }
+
+    --typography-text-md {
+        font-family: 'Onest', sans-serif;
+        font-weight: 400;
+        font-size: var(--text-md);
+        line-height: var(--leading-md);
+        letter-spacing: 0;
+    }
+
+    --typography-text-sm {
+        font-family: 'Onest', sans-serif;
+        font-weight: 400;
+        font-size: var(--text-sm);
+        line-height: var(--leading-sm);
+        letter-spacing: 0;
+    }
+
+    --typography-text-xs {
+        font-family: 'Onest', sans-serif;
+        font-weight: 400;
+        font-size: var(--text-xs);
+        line-height: var(--leading-xs);
+        letter-spacing: 0;
+    }
+
+    --typography-text-code-sm {
+        font-family: 'Menlo', monospace;
+        font-weight: 400;
+        font-size: var(--text-sm);
+        line-height: var(--leading-md);
+        letter-spacing: 0;
+    }
+
+    --typography-text-code-xs {
+        font-family: 'Menlo', monospace;
+        font-weight: 400;
+        font-size: var(--text-xs);
+        line-height: var(--leading-sm);
+        letter-spacing: 0;
+    }
+
+    --typography-button-lg {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-lg);
+        line-height: var(--leading-lg);
+        letter-spacing: 0;
+    }
+
+    --typography-button-md {
+        font-family: 'Onest', sans-serif;
+        font-weight: 400;
+        font-size: var(--text-md);
+        line-height: var(--leading-md);
+        letter-spacing: 0;
+    }
+
+    --typography-button-sm {
+        font-family: 'Onest', sans-serif;
+        font-weight: 400;
+        font-size: var(--text-sm);
+        line-height: var(--leading-sm);
+        letter-spacing: 0;
+    }
+
+    --typography-button-xs {
+        font-family: 'Onest', sans-serif;
+        font-weight: 400;
+        font-size: var(--text-sm);
+        line-height: var(--leading-sm);
+        letter-spacing: 0;
+    }
+
+    --typography-tab-tab-lg {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-lg);
+        line-height: var(--leading-lg);
+        letter-spacing: 0;
+    }
+
+    --typography-tab-tab-md {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-md);
+        line-height: var(--leading-md);
+        letter-spacing: 0;
+    }
+
+    --typography-tab-tab-sm {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-sm);
+        line-height: var(--leading-sm);
+        letter-spacing: 0;
+    }
+
+    --typography-tab-tab-xs {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-xs);
+        line-height: var(--leading-xs);
+        letter-spacing: 0;
+    }
+
+    --typography-badge-sm {
+        font-family: 'Onest', sans-serif;
+        font-weight: 400;
+        font-size: var(--text-sm);
+        line-height: var(--leading-sm);
+        letter-spacing: 0;
+    }
+
+    --typography-badge-sm-count {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-sm);
+        line-height: var(--leading-sm);
+        letter-spacing: 0;
+    }
+
+    --typography-badge-editor {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-xs);
+        line-height: var(--leading-xs);
+        letter-spacing: 0;
+    }
+
+    --typography-label-sm {
+        font-family: 'Onest', sans-serif;
+        font-weight: 400;
+        font-size: var(--text-sm);
+        line-height: var(--leading-sm);
+        letter-spacing: 0;
+    }
+
+    --typography-avatar-xxs {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-xxs);
+        line-height: var(--leading-xxs);
+        letter-spacing: 0;
+    }
+
+    --typography-avatar-sm {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-md);
+        line-height: var(--leading-md);
+        letter-spacing: 0;
+    }
+
+    --typography-avatar-md {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-lg);
+        line-height: var(--leading-lg);
+        letter-spacing: 0;
+    }
+
+    --typography-avatar-lg {
+        font-family: 'Onest', sans-serif;
+        font-weight: 500;
+        font-size: var(--text-xl);
+        line-height: var(--leading-xl);
+        letter-spacing: 0;
+    }
+}

@@ -1,0 +1,79 @@
+<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+<style>
+@keyframes progress-loader-a {
+  0% {
+    animation-timing-function: ease-in-out;
+    transform: translate(3.5px, 0.5px);
+  }
+  21.73% {
+    transform: translate(6.5px, 3.5px);
+  }
+  76.49% {
+    animation-timing-function: ease-in-out;
+    transform: translate(6.5px, 3.5px);
+  }
+  100% {
+    transform: translate(3.5px, 6.5px);
+  }
+}
+#progress-loader-a {
+  transform-origin: 0 0;
+  animation: progress-loader-a 1.2s linear infinite;
+}
+@keyframes progress-loader-b {
+  0% {
+    transform: translate(3.5px, 6.5px);
+  }
+  52.5% {
+    animation-timing-function: ease-in-out;
+    transform: translate(3.5px, 6.5px);
+  }
+  68.99% {
+    transform: translate(0.5px, 3.5px);
+  }
+  100% {
+    transform: translate(0.5px, 3.5px);
+  }
+}
+#progress-loader-b {
+  transform-origin: 0 0;
+  animation: progress-loader-b 1.2s linear infinite;
+}
+@keyframes progress-loader-c {
+  0% {
+    transform: translate(0.5px, 8.5px) rotate(-90deg);
+  }
+  25.74% {
+    animation-timing-function: ease-in-out;
+    transform: translate(0.5px, 8.5px) rotate(-90deg);
+  }
+  42.43% {
+    transform: translate(3.5px, 5.5px) rotate(-90deg);
+  }
+  100% {
+    transform: translate(3.5px, 5.5px) rotate(-90deg);
+  }
+}
+#progress-loader-c {
+  transform-origin: 0 0;
+  animation: progress-loader-c 1.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  #progress-loader-a,
+  #progress-loader-b,
+  #progress-loader-c {
+    animation: none;
+  }
+}
+</style>
+<g clip-path="url(#progress-loader-clip)">
+<path id="progress-loader-a" transform="translate(3.5 0.5)" d="M4.43432 1.93432L3.06569 0.565685C2.75327 0.253266 2.24673 0.253265 1.93432 0.565685L0.565685 1.93431C0.253266 2.24673 0.253265 2.75327 0.565685 3.06568L1.93431 4.43431C2.24673 4.74673 2.75327 4.74673 3.06568 4.43432L4.43431 3.06569C4.74673 2.75327 4.74673 2.24673 4.43432 1.93432Z" fill="currentColor"/>
+<path id="progress-loader-b" transform="translate(3.5 6.5)" d="M4.43432 1.93432L3.06569 0.565685C2.75327 0.253266 2.24673 0.253265 1.93432 0.565685L0.565685 1.93431C0.253266 2.24673 0.253265 2.75327 0.565685 3.06568L1.93431 4.43431C2.24673 4.74673 2.75327 4.74673 3.06568 4.43432L4.43431 3.06569C4.74673 2.75327 4.74673 2.24673 4.43432 1.93432Z" fill="currentColor"/>
+<path id="progress-loader-c" transform="translate(0.5 8.5) rotate(-90)" d="M4.43432 1.93432L3.06569 0.565685C2.75327 0.253266 2.24673 0.253265 1.93432 0.565685L0.565685 1.93431C0.253266 2.24673 0.253265 2.75327 0.565685 3.06568L1.93431 4.43431C2.24673 4.74673 2.75327 4.74673 3.06568 4.43432L4.43431 3.06569C4.74673 2.75327 4.74673 2.24673 4.43432 1.93432Z" fill="currentColor"/>
+</g>
+<defs>
+<clipPath id="progress-loader-clip">
+<rect width="12" height="12"/>
+</clipPath>
+</defs>
+</svg>

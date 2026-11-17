@@ -1,0 +1,16 @@
+{
+    "extends": "@clowdy/config-typescript/react-app.json",
+    "include": [
+        "src/**/*",
+        "vite.config.ts",
+        "electron-builder.ts",
+        "../../packages/config-typescript/types/*.d.ts"
+    ],
+    "exclude": ["node_modules", "dist", "app", "release"],
+    "compilerOptions": {
+        "jsx": "react-jsx",
+        "lib": ["ES2024", "DOM", "DOM.Iterable"],
+        "types": ["node", "vite/client"],
+        "target": "ES2022"
+    }
+}

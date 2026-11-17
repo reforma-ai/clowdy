@@ -1,0 +1,73 @@
+@reference '@clowdy/styles/rulesets';
+
+:global(.has-line-numbers) {
+    --line-numbers-padding-left: var(--codehighlighter-line-numbers-padding-left);
+    --line-numbers-padding-right: var(--codehighlighter-line-numbers-padding-right);
+}
+
+@layer components {
+    .root {
+        --codehighlighter-padding-block: var(--spacing-md);
+        --codehighlighter-padding-inline: var(--spacing-lg);
+        --codehighlighter-line-numbers-padding-left: var(--spacing-sm);
+        --codehighlighter-line-numbers-padding-right: var(--spacing-md);
+        background-color: var(--color-background);
+        color: var(--color-text);
+    }
+
+    /**
+     * Peek while code is collapsed (`aria-expanded='false'`).
+     * Line count from `--codehighlighter-collapse-preview-lines` (same as `collapseThresholdLines`).
+     */
+    .root[aria-expanded='false'] {
+        max-height: calc(var(--codehighlighter-collapse-preview-lines, 4) * 1lh + var(--spacing-xxs));
+    }
+
+    .code {
+        width: 100%;
+        min-width: min-content;
+        background-color: var(--color-background);
+        @ruleset typography-text-code-xs;
+    }
+
+    .code pre {
+        background-color: transparent !important;
+        color: inherit !important;
+    }
+
+    .code code {
+        display: grid;
+        padding-block: var(--codehighlighter-padding-block);
+    }
+
+    .code :global(.line) {
+        padding-inline: var(--codehighlighter-padding-inline);
+        width: 100%;
+        min-height: 1lh;
+    }
+
+    .code :global(.line.diff.add) {
+        background-color: var(--color-success-muted-light);
+    }
+
+    .code :global(.line.diff.remove) {
+        background-color: var(--color-danger-muted-light);
+    }
+
+    .code :global(.line.highlighted) {
+        background-color: var(--color-primary-muted-light);
+    }
+
+    /** Bottom overlay toggle for {@link ScrollExpandChevronButton}. */
+    .expandToggle {
+        position: absolute;
+        z-index: 1;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%) !important;
+
+        &[data-hovered='true'] {
+            opacity: 0.75;
+        }
+    }
+}

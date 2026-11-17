@@ -1,0 +1,41 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .labels {
+        position: relative;
+        display: inline-grid;
+        justify-items: center;
+        align-items: center;
+    }
+
+    .measure,
+    .idle {
+        grid-area: 1 / 1;
+    }
+
+    .measure {
+        visibility: hidden;
+    }
+
+    .idle,
+    .confirm {
+        transition: opacity var(--transition-duration-fast) var(--ease);
+    }
+
+    .confirm {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+    }
+
+    .labels[data-confirming] .idle {
+        opacity: 0;
+    }
+
+    .labels[data-confirming] .confirm {
+        opacity: 1;
+    }
+}

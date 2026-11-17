@@ -1,0 +1,9 @@
+@layer reset, rulesets, tokens, base, components, utilities;
+
+@import './tokens/index.css';
+
+@import './reset.css' layer(reset);
+@import './fonts.css' layer(base);
+@import './base.css' layer(base);
+@import './utilities.css' layer(utilities);
+@import './animations.css' layer(utilities);

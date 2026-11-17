@@ -1,0 +1,68 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .alert {
+        --clowdy-alert-bg: var(--color-secondary-muted-light);
+        --clowdy-alert-fg: var(--color-text);
+
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: var(--spacing-md);
+        width: 100%;
+        padding: var(--spacing-xl);
+        border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background-color: var(--clowdy-alert-bg);
+        color: var(--clowdy-alert-fg);
+        text-align: start;
+    }
+
+    .alert[data-color='primary'] {
+        --clowdy-alert-bg: var(--color-primary-muted-light);
+        --clowdy-alert-fg: var(--color-primary-text);
+    }
+
+    .alert[data-color='accent'] {
+        --clowdy-alert-bg: var(--color-accent-muted-light);
+        --clowdy-alert-fg: var(--color-accent-text);
+    }
+
+    .alert[data-color='success'] {
+        --clowdy-alert-bg: var(--color-success-muted-light);
+        --clowdy-alert-fg: var(--color-success-text);
+    }
+
+    .alert[data-color='warning'] {
+        --clowdy-alert-bg: var(--color-warning-muted-light);
+    }
+
+    .alert[data-color='danger'] {
+        --clowdy-alert-bg: var(--color-danger-muted-light);
+        --clowdy-alert-fg: var(--color-danger-text);
+    }
+
+    .icon {
+        display: inline-flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        color: currentColor;
+    }
+
+    .body {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        gap: var(--spacing-xs);
+        min-width: 0;
+    }
+
+    .description {
+        opacity: 0.8;
+    }
+
+    .action {
+        flex-shrink: 0;
+    }
+}

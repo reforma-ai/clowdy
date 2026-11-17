@@ -1,0 +1,54 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .trigger {
+        display: inline-block;
+    }
+
+    .content {
+        @ruleset typography-text-sm;
+
+        display: flex;
+        flex-flow: column;
+        border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background: var(--color-surface-float);
+        color: var(--color-text);
+        border: var(--spacing-1) solid var(--color-surface-border);
+        max-width: min(calc(100vw - var(--spacing-16)), 20rem);
+        overflow-wrap: anywhere;
+        box-shadow: var(--shadow-xl);
+        z-index: var(--z-popover) !important;
+        transform: translate3d(0, 0, 0);
+        outline: none;
+        transition:
+            transform var(--transition-duration-fast),
+            opacity var(--transition-duration-fast);
+    }
+
+    .content:focus-visible {
+        outline: none;
+    }
+
+    .content[data-entering],
+    .content[data-exiting] {
+        transform: var(--hover-card-origin);
+        opacity: 0;
+    }
+
+    .content[data-placement='top'] {
+        --hover-card-origin: translateY(var(--spacing-xs));
+    }
+
+    .content[data-placement='bottom'] {
+        --hover-card-origin: translateY(calc(-1 * var(--spacing-xs)));
+    }
+
+    .content[data-placement='right'] {
+        --hover-card-origin: translateX(calc(-1 * var(--spacing-xs)));
+    }
+
+    .content[data-placement='left'] {
+        --hover-card-origin: translateX(var(--spacing-xs));
+    }
+}

@@ -1,0 +1,68 @@
+:root {
+    --spacing-xxs: var(--spacing-2);
+    --spacing-xs: var(--spacing-4);
+    --spacing-sm: var(--spacing-6);
+    --spacing-md: var(--spacing-8);
+    --spacing-lg: var(--spacing-12);
+    --spacing-xl: var(--spacing-16);
+    --spacing-xxl: var(--spacing-20);
+    --spacing-2: 0.125rem;
+    --spacing-4: 0.25rem;
+    --spacing-6: 0.375rem;
+    --spacing-8: 0.5rem;
+    --spacing-10: 0.625rem;
+    --spacing-12: 0.75rem;
+    --spacing-14: 0.875rem;
+    --spacing-16: 1rem;
+    --spacing-18: 1.125rem;
+    --spacing-20: 1.25rem;
+    --spacing-22: 1.375rem;
+    --spacing-24: 1.5rem;
+    --spacing-26: 1.625rem;
+    --spacing-28: 1.75rem;
+    --spacing-30: 1.875rem;
+    --spacing-32: 2rem;
+    --spacing-36: 2.25rem;
+    --spacing-40: 2.5rem;
+    --spacing-44: 2.75rem;
+    --spacing-48: 3rem;
+    --spacing-56: 3.5rem;
+    --spacing-64: 4rem;
+    --spacing-80: 5rem;
+    --spacing-96: 6rem;
+    --spacing-112: 7rem;
+    --spacing-128: 8rem;
+    --spacing-144: 9rem;
+    --spacing-160: 10rem;
+    --spacing-192: 12rem;
+    --spacing-224: 14rem;
+    --spacing-256: 16rem;
+    --spacing-288: 18rem;
+
+    --radius-xs: var(--spacing-4);
+    --radius-sm: var(--spacing-6);
+    --radius-md: var(--spacing-8);
+    --radius-lg: var(--spacing-10);
+    --radius-xl: var(--spacing-12);
+    --radius-xxl: var(--spacing-24);
+    --radius-2xl: var(--spacing-40);
+    --radius-full: 624.9375rem;
+
+    --text-xxs: 0.5rem;
+    --text-xs: 0.6875rem;
+    --text-sm: 0.75rem;
+    --text-md: 0.8125rem;
+    --text-lg: 1rem;
+    --text-xl: 1.125rem;
+    --text-xxl: 2.25rem;
+
+    --leading-xxs: var(--spacing-10);
+    --leading-xs: var(--spacing-14);
+    --leading-sm: var(--spacing-16);
+    --leading-md: var(--spacing-18);
+    --leading-lg: var(--spacing-20);
+    --leading-xl: var(--spacing-24);
+    --leading-xxl: var(--spacing-40);
+
+    --squircle: 0.1094rem;
+}

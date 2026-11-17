@@ -1,0 +1,172 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .root {
+        --ms-size: var(--scrollbar-size);
+        --ms-gap: var(--spacing-xxs);
+
+        display: flex;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .root.scrollV {
+        flex-direction: row;
+    }
+
+    .root.scrollH {
+        flex-direction: column;
+    }
+
+    .root.scrollV > .container {
+        flex: 1;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: scroll;
+    }
+
+    .root.scrollH > .container {
+        flex: 1;
+        min-width: 0;
+        overflow-x: scroll;
+        overflow-y: hidden;
+    }
+
+    .root.scrollV.scrollH > .container {
+        overflow-x: scroll;
+        overflow-y: scroll;
+    }
+
+    /* Scrollable container */
+    .container {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+    .containerStickToBottom {
+        overflow-anchor: none;
+    }
+
+    .container::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Scrollable content */
+    .content {
+        min-height: 100%;
+    }
+
+    .scrollbar {
+        position: absolute;
+        border-radius: var(--radius-full);
+        opacity: 0;
+        transition: opacity 0.15s ease-out;
+        pointer-events: none;
+        z-index: calc(var(--z-raised) + 1);
+        /* Stays grabbable inside a window drag region of the desktop app. */
+        app-region: no-drag;
+    }
+
+    .scrollbarV,
+    .scrollbarH {
+        pointer-events: auto;
+    }
+
+    /* Direct child only — nested Scrollable has its own .root; descendant .scrollbar must not react to ancestor hover. */
+    .root.hover > .scrollbar,
+    .root.inDrag > .scrollbar,
+    .scrollbar:hover,
+    .scrollbar:active {
+        opacity: 1;
+    }
+
+    .scrollbarV {
+        top: var(--ms-gap);
+        right: var(--ms-gap);
+        bottom: var(--ms-gap);
+        width: var(--ms-size);
+    }
+
+    .scrollbarH {
+        left: var(--ms-gap);
+        right: var(--ms-gap);
+        bottom: var(--ms-gap);
+        height: var(--ms-size);
+    }
+
+    .root.scrollV.scrollH > .scrollbarH {
+        right: calc(var(--ms-gap) + var(--ms-size) + var(--ms-gap));
+    }
+
+    .scrollbarV::before,
+    .scrollbarH::before {
+        content: '';
+        position: absolute;
+        background: var(--scrollbar-thumb-bg);
+        border-radius: var(--radius-full);
+        pointer-events: none;
+        transition: background 0.15s ease-out;
+    }
+
+    .scrollbarV::before {
+        top: var(--ms-thumb-offset, 0);
+        left: 0;
+        right: 0;
+        height: var(--ms-thumb-length, 20%);
+        min-height: var(--spacing-8);
+    }
+
+    .scrollbarH::before {
+        left: var(--ms-thumb-offset, 0);
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: var(--ms-thumb-length, 20%);
+        min-width: var(--spacing-8);
+    }
+
+    .scrollbarV:hover::before,
+    .scrollbarH:hover::before {
+        background: var(--scrollbar-thumb-bg-hover);
+    }
+
+    /* Overflow: `data-scroll-show-*="true"` set in `draw()` — survives React `className` updates. */
+    .root:not([data-scroll-show-v='true']) > .scrollbarV {
+        visibility: hidden;
+        pointer-events: none;
+    }
+
+    .root:not([data-scroll-show-h='true']) > .scrollbarH {
+        visibility: hidden;
+        pointer-events: none;
+    }
+
+    /* Vertical scroll edge fade — only when root has .edgeFade (see `edgeFade` prop) */
+    .edgeFade {
+        --scrollbar-fade: 20px;
+    }
+
+    /* Mid-scroll — fade top and bottom */
+    .edgeFade[data-scroll-v-start='false'][data-scroll-v-end='false'] > .container {
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0, black var(--scrollbar-fade), black calc(100% - var(--scrollbar-fade)), transparent 100%);
+        mask-image: linear-gradient(to bottom, transparent 0, black var(--scrollbar-fade), black calc(100% - var(--scrollbar-fade)), transparent 100%);
+    }
+
+    /* At top — fade bottom only */
+    .edgeFade[data-scroll-v-start='true'][data-scroll-v-end='false'] > .container {
+        -webkit-mask-image: linear-gradient(to bottom, black 0, black calc(100% - var(--scrollbar-fade)), transparent 100%);
+        mask-image: linear-gradient(to bottom, black 0, black calc(100% - var(--scrollbar-fade)), transparent 100%);
+    }
+
+    /* At bottom — fade top only */
+    .edgeFade[data-scroll-v-start='false'][data-scroll-v-end='true'] > .container {
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0, black var(--scrollbar-fade), black 100%);
+        mask-image: linear-gradient(to bottom, transparent 0, black var(--scrollbar-fade), black 100%);
+    }
+
+    /* No overflow / both edges */
+    .edgeFade[data-scroll-v-start='true'][data-scroll-v-end='true'] > .container {
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+}

@@ -1,0 +1,187 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    /* Panel.module.css */
+    .panel {
+        @ruleset typography-text-sm;
+
+        display: flex;
+        flex-direction: column;
+        background-color: var(--color-surface);
+        color: var(--color-text);
+        flex-shrink: 0;
+        height: 100%;
+    }
+
+    .panelLeft {
+        border-right: 1px solid var(--color-surface-border);
+        width: var(--panel-width, 15.625rem); /* 250px */
+        animation: panel-side-enter-left 0.22s var(--ease-in-out) both;
+    }
+
+    .panelLeft[data-collapsed] {
+        width: 35px;
+    }
+
+    .panelRight {
+        border-left: 1px solid var(--color-surface-border);
+        width: var(--panel-width, 15.625rem); /* 250px */
+        animation: panel-side-enter-right 0.22s var(--ease-in-out) both;
+    }
+
+    .panelSearch {
+        padding: var(--spacing-xs);
+        border-bottom: 1px solid var(--color-surface-border);
+    }
+
+    /* The inline variant has no radius; the clear button's corners are derived from it. */
+    .panelSearchInput[data-size][data-variant] {
+        --clowdy-input-radius: var(--radius-md);
+        --clowdy-input-height: var(--spacing-30);
+        --clowdy-input-padding-block: var(--spacing-10);
+        --clowdy-input-padding-inline: var(--spacing-md);
+
+        @ruleset typography-text-sm;
+
+        width: 100%;
+        min-width: 0;
+    }
+
+    .title {
+        @ruleset typography-heading-6;
+
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-4);
+        flex-shrink: 0;
+        min-height: var(--spacing-40);
+        padding-inline: var(--spacing-12);
+        border-bottom: 1px solid var(--color-surface-border);
+
+        /* A padded control on the right (search, menu, icon buttons) sits 6px off the edge. */
+        > :last-child:not(:first-child) {
+            margin-right: calc(var(--spacing-6) * -1);
+        }
+    }
+
+    .title[data-presentation='floating'] {
+        height: var(--spacing-44);
+    }
+
+    .titleActions {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        gap: var(--spacing-2);
+    }
+
+    .body {
+        height: 100%;
+    }
+
+    .headerTabs {
+        flex: 1 1 auto;
+        align-self: stretch;
+        min-width: 0;
+        margin-right: var(--spacing-10);
+    }
+
+    /* Full header height, so the tab underline sits on the header border.
+       Must outrank ToggleButtonGroup's `.item[data-size][data-variant]` height. */
+    .headerTabs button[data-size][data-variant] {
+        height: 100%;
+    }
+
+    /* Same slot as the tabs: arrow + label, tab weight, truncates before the search icon. */
+    .headerBack[data-size][data-variant] {
+        @ruleset typography-tab-tab-sm;
+
+        justify-content: flex-start;
+        align-self: center;
+        flex-shrink: 1;
+        min-width: 0;
+        max-width: 100%;
+        padding-inline: var(--spacing-2) var(--spacing-10);
+    }
+
+    .tab {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .tabEnter {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-height: 0;
+        /* Delay so Design side-slide finishes a beat before content reveals. */
+        animation: panel-tab-enter-fade 0.22s var(--ease-in-out) 0.12s both;
+    }
+
+    /* Same height as one style control row, so an empty section doesn't collapse. */
+    .emptyRow {
+        min-height: 50px;
+    }
+
+    /* Out of flow — indent is the row's paddingLeft only; icons stay aligned.
+       Hit box is the 8px glyph plus 4px on each side. `right` gives that padding back so the glyph stays put. */
+    .treeChevron {
+        position: absolute;
+        top: 50%;
+        right: calc(100% + var(--spacing-6) - var(--spacing-4));
+        transform: translateY(-50%);
+        box-sizing: content-box;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--spacing-8);
+        height: var(--spacing-8);
+        padding: var(--spacing-4);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .panelLeft,
+        .panelRight,
+        .tabEnter {
+            animation: none;
+        }
+    }
+}
+
+@keyframes panel-side-enter-left {
+    from {
+        opacity: 0;
+        transform: translateX(-16px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes panel-side-enter-right {
+    from {
+        opacity: 0;
+        transform: translateX(16px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes panel-tab-enter-fade {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}

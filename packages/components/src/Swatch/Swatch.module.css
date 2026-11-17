@@ -1,0 +1,126 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .swatch {
+        --clowdy-swatch-size: var(--spacing-22);
+        --clowdy-swatch-radius: var(--radius-sm);
+        --clowdy-swatch-border-width: var(--spacing-1);
+        --clowdy-swatch-bg: var(--color-surface);
+        --clowdy-swatch-checker-color: var(--color-dark);
+        --clowdy-swatch-checker-size: var(--spacing-4);
+
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: var(--clowdy-swatch-size);
+        height: var(--clowdy-swatch-size);
+        box-sizing: border-box;
+        overflow: hidden;
+        border-radius: calc(var(--clowdy-swatch-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background: var(--clowdy-swatch-bg);
+        color: var(--color-secondary-content);
+    }
+
+    .swatch::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        box-sizing: border-box;
+        border: var(--clowdy-swatch-border-width) solid var(--color-secondary-muted-border);
+        border-radius: inherit;
+        corner-shape: inherit;
+        pointer-events: none;
+        z-index: 2;
+    }
+
+    .swatch[data-size='xs'] {
+        --clowdy-swatch-size: var(--spacing-16);
+        --clowdy-swatch-radius: var(--radius-xs);
+    }
+
+    .swatch[data-size='sm'] {
+        --clowdy-swatch-size: var(--spacing-22);
+        --clowdy-swatch-radius: var(--radius-sm);
+    }
+
+    .swatch[data-size='md'] {
+        --clowdy-swatch-size: var(--spacing-24);
+        --clowdy-swatch-radius: var(--radius-sm);
+    }
+
+    .swatch[data-size='lg'] {
+        --clowdy-swatch-size: var(--spacing-32);
+        --clowdy-swatch-radius: var(--radius-md);
+    }
+
+    .swatch[data-disabled] {
+        opacity: var(--opacity-disabled);
+    }
+
+    .swatchButton {
+        padding: 0;
+        line-height: 1;
+    }
+
+    .swatchButton[data-variant='inline'][data-size='unset'] {
+        width: var(--clowdy-swatch-size);
+        min-width: var(--clowdy-swatch-size);
+        height: var(--clowdy-swatch-size);
+    }
+
+    .checker {
+        position: absolute;
+        inset: 0;
+        opacity: 0.1;
+        background:
+            repeating-conic-gradient(var(--clowdy-swatch-checker-color) 0% 25%, transparent 0% 50%) 0 0 / var(--clowdy-swatch-checker-size) var(--clowdy-swatch-checker-size),
+            var(--color-white);
+        z-index: 0;
+    }
+
+    .colorFill,
+    .image {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        corner-shape: inherit;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    .colorFill {
+        display: flex;
+        overflow: hidden;
+    }
+
+    .colorHalf {
+        flex: 1 1 0;
+        background: var(--clowdy-swatch-value, transparent);
+    }
+
+    .cssColor {
+        position: absolute;
+        inset: 0;
+        background: var(--clowdy-swatch-value, transparent);
+        z-index: 1;
+    }
+
+    .image {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .empty {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        corner-shape: inherit;
+        background: var(--color-secondary-muted-light);
+        z-index: 1;
+    }
+}

@@ -1,0 +1,17 @@
+{
+    "extends": "@clowdy/config-typescript/react-library.json",
+    "include": [
+        "src/**/*",
+        "../config-typescript/types/css-modules.d.ts",
+        "../config-typescript/types/global.d.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "src/**/*.test.ts",
+        "src/**/*.test.tsx"
+    ],
+    "compilerOptions": {
+        "resolveJsonModule": true,
+        "types": ["node"]
+    }
+}

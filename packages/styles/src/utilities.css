@@ -1,0 +1,39 @@
+.visibility-hidden {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+}
+
+.visibility-visible {
+    opacity: 1;
+    pointer-events: auto;
+    visibility: visible;
+}
+
+.inset-0 {
+    position: absolute;
+    inset: 0;
+}
+
+/**
+ * Collapsible chevrons (ChevronDown icon). Two rotation modes:
+ *
+ * - `.chevron` — closed points down, open points up (`aria-expanded` on the icon).
+ * - `.chevron.next` — closed points right, open points down (`aria-expanded` on the icon).
+ */
+.chevron {
+    flex-shrink: 0;
+    transition: transform var(--transition-duration-fast) var(--ease-in-out);
+}
+
+.chevron[aria-expanded='true'] {
+    transform: rotate(180deg);
+}
+
+.chevron.next {
+    transform: rotate(-90deg);
+}
+
+.chevron.next[aria-expanded='true'] {
+    transform: rotate(0deg);
+}

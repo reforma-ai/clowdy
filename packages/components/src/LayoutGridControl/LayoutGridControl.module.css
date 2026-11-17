@@ -1,0 +1,518 @@
+@layer components {
+    .root {
+        --clowdy-layout-grid-background: var(--color-secondary);
+        --clowdy-layout-grid-accent: var(--color-primary-text);
+        --clowdy-layout-grid-inactive: var(--color-secondary-muted);
+        --clowdy-layout-grid-preview: var(--color-primary-muted-text);
+        --clowdy-layout-grid-accent-fill: var(--color-primary-muted-light);
+        --clowdy-layout-grid-radius: var(--radius-md);
+        --clowdy-layout-grid-line-size: var(--spacing-2);
+        --clowdy-layout-grid-active-length: var(--spacing-14);
+        --clowdy-layout-grid-inactive-length: var(--spacing-10);
+        --clowdy-layout-grid-edge-inset: var(--spacing-4);
+        --clowdy-layout-grid-stretch-inset: var(--spacing-8);
+        --clowdy-layout-grid-marker-size: var(--spacing-4);
+
+        position: relative;
+        display: grid;
+        box-sizing: border-box;
+        inline-size: 100%;
+        block-size: 100%;
+        min-inline-size: 0;
+        min-block-size: 0;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(3, minmax(0, 1fr));
+        overflow: hidden;
+        border-radius: calc(var(--clowdy-layout-grid-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background: var(--clowdy-layout-grid-background);
+        color: var(--clowdy-layout-grid-accent);
+        isolation: isolate;
+    }
+
+    .cell {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        min-width: 0;
+        min-height: 0;
+        place-items: center;
+        padding: 0;
+        border: 0;
+        appearance: none;
+        background: var(--clowdy-layout-grid-background);
+        color: inherit;
+        line-height: 1;
+        outline: none;
+    }
+
+    button.cell {
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    button.cell:disabled,
+    .cell[data-disabled],
+    .root[data-disabled] .cell {
+        cursor: not-allowed;
+        opacity: var(--opacity-disabled);
+    }
+
+    .root[data-readonly] button.cell,
+    .cell[data-readonly] {
+        cursor: default;
+    }
+
+    .cell[data-preview-visible] {
+        z-index: 3;
+    }
+
+    .cell:focus-visible {
+        z-index: 4;
+        outline: var(--clowdy-layout-grid-line-size) solid currentcolor;
+        outline-offset: calc(var(--clowdy-layout-grid-line-size) * -1);
+    }
+
+    .glyph {
+        position: relative;
+        display: block;
+        inline-size: var(--clowdy-layout-grid-active-length);
+        block-size: var(--clowdy-layout-grid-active-length);
+        overflow: visible;
+        pointer-events: none;
+    }
+
+    .previewGlyph {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: var(--clowdy-layout-grid-preview);
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .cell[data-preview-visible] > .previewGlyph {
+        opacity: 1;
+    }
+
+    .cell[data-preview-visible] > .dot,
+    .cell[data-overlay-preview-visible] > .dot,
+    .cell[data-overlay-selected-visible] > .dot {
+        opacity: 0;
+    }
+
+    .glyphItem {
+        position: absolute;
+        display: block;
+        box-sizing: border-box;
+        border-radius: var(--radius-full);
+        background: currentcolor;
+        font-style: normal;
+    }
+
+    /* Flex alignment glyphs are centred inside their independent grid cell. */
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='horizontal'] .glyphItem {
+        left: 50%;
+        height: var(--clowdy-layout-grid-line-size);
+        transform: translateX(-50%);
+    }
+
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='horizontal'] .glyphItem[data-item='line-start'] {
+        top: var(--spacing-2);
+        width: var(--spacing-8);
+    }
+
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='horizontal'] .glyphItem[data-item='line-center'] {
+        top: var(--spacing-6);
+        width: var(--spacing-10);
+    }
+
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='horizontal'] .glyphItem[data-item='line-end'] {
+        top: var(--spacing-10);
+        width: var(--spacing-6);
+    }
+
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='horizontal'][data-placement='left'] .glyphItem {
+        left: var(--spacing-2);
+        transform: none;
+    }
+
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='horizontal'][data-placement='right'] .glyphItem {
+        right: var(--spacing-2);
+        left: auto;
+        transform: none;
+    }
+
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='vertical'] .glyphItem {
+        top: 50%;
+        width: var(--clowdy-layout-grid-line-size);
+        transform: translateY(-50%);
+    }
+
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='vertical'] .glyphItem[data-item='line-start'] {
+        left: var(--spacing-2);
+        height: var(--spacing-8);
+    }
+
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='vertical'] .glyphItem[data-item='line-center'] {
+        left: var(--spacing-6);
+        height: var(--spacing-10);
+    }
+
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='vertical'] .glyphItem[data-item='line-end'] {
+        left: var(--spacing-10);
+        height: var(--spacing-6);
+    }
+
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='vertical'][data-placement='top'] .glyphItem {
+        top: var(--spacing-2);
+        transform: none;
+    }
+
+    .glyph[data-variant='bars'][data-flow='nowrap'][data-axis='vertical'][data-placement='bottom'] .glyphItem {
+        top: auto;
+        bottom: var(--spacing-2);
+        transform: none;
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='horizontal'] .glyphItem {
+        width: var(--clowdy-layout-grid-line-size);
+        height: var(--spacing-4);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='horizontal'] .glyphItem[data-item^='wrap-first'] {
+        top: var(--spacing-2);
+    }
+
+    .glyph[data-variant='bars'][data-flow='wrap-reverse'][data-axis='horizontal'] .glyphItem[data-item^='wrap-first'] {
+        top: var(--spacing-8);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='horizontal'] .glyphItem[data-item^='wrap-second'] {
+        top: var(--spacing-8);
+    }
+
+    .glyph[data-variant='bars'][data-flow='wrap-reverse'][data-axis='horizontal'] .glyphItem[data-item^='wrap-second'] {
+        top: var(--spacing-2);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'] .glyphItem[data-item$='1'] {
+        left: var(--spacing-2);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'] .glyphItem[data-item$='2'] {
+        left: var(--spacing-6);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'] .glyphItem[data-item='wrap-first-3'] {
+        left: var(--spacing-10);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='horizontal'][data-placement='center'] .glyphItem[data-item='wrap-second-1'] {
+        left: var(--spacing-4);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='horizontal'][data-placement='center'] .glyphItem[data-item='wrap-second-2'] {
+        left: var(--spacing-8);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='horizontal'][data-placement='right'] .glyphItem[data-item='wrap-second-1'] {
+        left: var(--spacing-6);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='horizontal'][data-placement='right'] .glyphItem[data-item='wrap-second-2'] {
+        left: var(--spacing-10);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='vertical'] .glyphItem {
+        width: var(--spacing-4);
+        height: var(--clowdy-layout-grid-line-size);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='vertical'] .glyphItem[data-item^='wrap-first'] {
+        left: var(--spacing-2);
+    }
+
+    .glyph[data-variant='bars'][data-flow='wrap-reverse'][data-axis='vertical'] .glyphItem[data-item^='wrap-first'] {
+        left: var(--spacing-8);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='vertical'] .glyphItem[data-item^='wrap-second'] {
+        left: var(--spacing-8);
+    }
+
+    .glyph[data-variant='bars'][data-flow='wrap-reverse'][data-axis='vertical'] .glyphItem[data-item^='wrap-second'] {
+        left: var(--spacing-2);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='vertical'] .glyphItem[data-item$='1'] {
+        top: var(--spacing-2);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='vertical'] .glyphItem[data-item$='2'] {
+        top: var(--spacing-6);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='vertical'] .glyphItem[data-item='wrap-first-3'] {
+        top: var(--spacing-10);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='vertical'][data-placement='center'] .glyphItem[data-item='wrap-second-1'] {
+        top: var(--spacing-4);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='vertical'][data-placement='center'] .glyphItem[data-item='wrap-second-2'] {
+        top: var(--spacing-8);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='vertical'][data-placement='bottom'] .glyphItem[data-item='wrap-second-1'] {
+        top: var(--spacing-6);
+    }
+
+    .glyph[data-variant='bars'][data-flow^='wrap'][data-axis='vertical'][data-placement='bottom'] .glyphItem[data-item='wrap-second-2'] {
+        top: var(--spacing-10);
+    }
+
+    /* Flex distribution glyph. */
+    .glyph[data-variant='distribution'],
+    .glyph[data-variant='stretch-line'] {
+        --clowdy-layout-grid-item-length: var(--clowdy-layout-grid-inactive-length);
+
+        inline-size: 100%;
+        block-size: 100%;
+    }
+
+    .glyph[data-variant='distribution']:not([data-active]) {
+        color: var(--clowdy-layout-grid-inactive);
+    }
+
+    .glyph[data-variant='stretch-line']:not([data-active]) {
+        color: var(--clowdy-layout-grid-inactive);
+    }
+
+    .glyph[data-variant='distribution'][data-active] {
+        --clowdy-layout-grid-item-length: var(--clowdy-layout-grid-active-length);
+    }
+
+    .glyph[data-variant='distribution'][data-axis='vertical'],
+    .glyph[data-variant='stretch-line'][data-axis='vertical'] {
+        --clowdy-layout-grid-position: 50%;
+    }
+
+    .glyph[data-variant='distribution'][data-axis='horizontal'],
+    .glyph[data-variant='stretch-line'][data-axis='horizontal'] {
+        --clowdy-layout-grid-position: 50%;
+    }
+
+    .glyph[data-variant='distribution'][data-axis='vertical'][data-distribution='space-between'][data-placement='left'] {
+        --clowdy-layout-grid-position: var(--clowdy-layout-grid-edge-inset);
+    }
+
+    .glyph[data-variant='distribution'][data-axis='vertical'][data-distribution='space-between'][data-placement='right'] {
+        --clowdy-layout-grid-position: calc(100% - var(--clowdy-layout-grid-edge-inset));
+    }
+
+    .glyph[data-variant='distribution'][data-axis='vertical'][data-distribution='space-evenly'][data-placement='left'] {
+        --clowdy-layout-grid-position: calc(50% + var(--clowdy-layout-grid-inactive-length) / 2);
+    }
+
+    .glyph[data-variant='distribution'][data-axis='vertical'][data-distribution='space-evenly'][data-placement='right'] {
+        --clowdy-layout-grid-position: calc(50% - var(--clowdy-layout-grid-inactive-length) / 2);
+    }
+
+    .glyph[data-variant='distribution'][data-axis='horizontal'][data-distribution='space-between'][data-placement='top'] {
+        --clowdy-layout-grid-position: var(--clowdy-layout-grid-edge-inset);
+    }
+
+    .glyph[data-variant='distribution'][data-axis='horizontal'][data-distribution='space-between'][data-placement='bottom'] {
+        --clowdy-layout-grid-position: calc(100% - var(--clowdy-layout-grid-edge-inset));
+    }
+
+    .glyph[data-variant='distribution'][data-axis='horizontal'][data-distribution='space-evenly'][data-placement='top'] {
+        --clowdy-layout-grid-position: calc(50% + var(--clowdy-layout-grid-inactive-length) / 2);
+    }
+
+    .glyph[data-variant='distribution'][data-axis='horizontal'][data-distribution='space-evenly'][data-placement='bottom'] {
+        --clowdy-layout-grid-position: calc(50% - var(--clowdy-layout-grid-inactive-length) / 2);
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='vertical'] .glyphItem {
+        top: 0;
+        width: var(--clowdy-layout-grid-line-size);
+        height: 100%;
+        border-radius: 0;
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='vertical'] .glyphItem[data-item='line-start'] {
+        left: calc(50% - var(--spacing-4));
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='vertical'] .glyphItem[data-item='line-center'] {
+        left: calc(50% - var(--clowdy-layout-grid-line-size) / 2);
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='vertical'] .glyphItem[data-item='line-end'] {
+        left: calc(50% + var(--spacing-2));
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='vertical'][data-connection='start'] .glyphItem {
+        top: var(--clowdy-layout-grid-stretch-inset);
+        height: calc(100% - var(--clowdy-layout-grid-stretch-inset));
+        border-radius: var(--radius-full) var(--radius-full) 0 0;
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='vertical'][data-connection='end'] .glyphItem {
+        height: calc(100% - var(--clowdy-layout-grid-stretch-inset));
+        border-radius: 0 0 var(--radius-full) var(--radius-full);
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='horizontal'] .glyphItem {
+        left: 0;
+        width: 100%;
+        height: var(--clowdy-layout-grid-line-size);
+        border-radius: 0;
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='horizontal'] .glyphItem[data-item='line-start'] {
+        top: calc(50% - var(--spacing-4));
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='horizontal'] .glyphItem[data-item='line-center'] {
+        top: calc(50% - var(--clowdy-layout-grid-line-size) / 2);
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='horizontal'] .glyphItem[data-item='line-end'] {
+        top: calc(50% + var(--spacing-2));
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='horizontal'][data-connection='start'] .glyphItem {
+        left: var(--clowdy-layout-grid-stretch-inset);
+        width: calc(100% - var(--clowdy-layout-grid-stretch-inset));
+        border-radius: var(--radius-full) 0 0 var(--radius-full);
+    }
+
+    .glyph[data-variant='stretch-line'][data-axis='horizontal'][data-connection='end'] .glyphItem {
+        width: calc(100% - var(--clowdy-layout-grid-stretch-inset));
+        border-radius: 0 var(--radius-full) var(--radius-full) 0;
+    }
+
+    .glyph[data-axis='vertical'] .glyphItem[data-item='line'] {
+        top: calc(50% - var(--clowdy-layout-grid-item-length) / 2);
+        left: calc(var(--clowdy-layout-grid-position) - var(--clowdy-layout-grid-line-size) / 2);
+        width: var(--clowdy-layout-grid-line-size);
+        height: var(--clowdy-layout-grid-item-length);
+    }
+
+    .glyph[data-axis='horizontal'] .glyphItem[data-item='line'] {
+        top: calc(var(--clowdy-layout-grid-position) - var(--clowdy-layout-grid-line-size) / 2);
+        left: calc(50% - var(--clowdy-layout-grid-item-length) / 2);
+        width: var(--clowdy-layout-grid-item-length);
+        height: var(--clowdy-layout-grid-line-size);
+    }
+
+    .glyph[data-connection][data-axis='vertical'] .glyphItem[data-item='line'] {
+        top: 0;
+        height: 100%;
+        border-radius: 0;
+    }
+
+    .glyph[data-connection='start'][data-axis='vertical'] .glyphItem[data-item='line'] {
+        top: var(--clowdy-layout-grid-stretch-inset);
+        height: calc(100% - var(--clowdy-layout-grid-stretch-inset));
+        border-radius: var(--radius-full) var(--radius-full) 0 0;
+    }
+
+    .glyph[data-connection='end'][data-axis='vertical'] .glyphItem[data-item='line'] {
+        height: calc(100% - var(--clowdy-layout-grid-stretch-inset));
+        border-radius: 0 0 var(--radius-full) var(--radius-full);
+    }
+
+    .glyph[data-connection][data-axis='horizontal'] .glyphItem[data-item='line'] {
+        left: 0;
+        width: 100%;
+        border-radius: 0;
+    }
+
+    .glyph[data-connection='start'][data-axis='horizontal'] .glyphItem[data-item='line'] {
+        left: var(--clowdy-layout-grid-stretch-inset);
+        width: calc(100% - var(--clowdy-layout-grid-stretch-inset));
+        border-radius: var(--radius-full) 0 0 var(--radius-full);
+    }
+
+    .glyph[data-connection='end'][data-axis='horizontal'] .glyphItem[data-item='line'] {
+        width: calc(100% - var(--clowdy-layout-grid-stretch-inset));
+        border-radius: 0 var(--radius-full) var(--radius-full) 0;
+    }
+
+    .glyph[data-variant='distribution'] .glyphItem[data-item^='marker-'] {
+        width: 0;
+        height: 0;
+        background: none;
+        color: var(--clowdy-layout-grid-inactive);
+    }
+
+    .glyph[data-axis='vertical'] .glyphItem[data-item='marker-inline-start'],
+    .glyph[data-axis='vertical'] .glyphItem[data-item='marker-inline-end'] {
+        top: calc(50% - var(--clowdy-layout-grid-marker-size));
+        border-top: var(--clowdy-layout-grid-marker-size) solid transparent;
+        border-bottom: var(--clowdy-layout-grid-marker-size) solid transparent;
+    }
+
+    .glyph[data-axis='vertical'] .glyphItem[data-item='marker-inline-start'] {
+        left: var(--clowdy-layout-grid-edge-inset);
+        border-left: var(--clowdy-layout-grid-marker-size) solid currentcolor;
+    }
+
+    .glyph[data-axis='vertical'] .glyphItem[data-item='marker-inline-end'] {
+        right: var(--clowdy-layout-grid-edge-inset);
+        border-right: var(--clowdy-layout-grid-marker-size) solid currentcolor;
+    }
+
+    .glyph[data-axis='horizontal'] .glyphItem[data-item='marker-block-start'],
+    .glyph[data-axis='horizontal'] .glyphItem[data-item='marker-block-end'] {
+        left: calc(50% - var(--clowdy-layout-grid-marker-size));
+        border-right: var(--clowdy-layout-grid-marker-size) solid transparent;
+        border-left: var(--clowdy-layout-grid-marker-size) solid transparent;
+    }
+
+    .glyph[data-axis='horizontal'] .glyphItem[data-item='marker-block-start'] {
+        top: var(--clowdy-layout-grid-edge-inset);
+        border-top: var(--clowdy-layout-grid-marker-size) solid currentcolor;
+    }
+
+    .glyph[data-axis='horizontal'] .glyphItem[data-item='marker-block-end'] {
+        bottom: var(--clowdy-layout-grid-edge-inset);
+        border-bottom: var(--clowdy-layout-grid-marker-size) solid currentcolor;
+    }
+
+    .overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+    }
+
+    .overlayBox {
+        position: absolute;
+        inset: var(--clowdy-layout-grid-stretch-inset);
+        box-sizing: border-box;
+        border: 0.0625rem solid var(--clowdy-layout-grid-accent);
+        border-radius: calc(var(--spacing-2) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background: var(--clowdy-layout-grid-accent-fill);
+    }
+
+    .overlay[data-preview] .overlayBox {
+        border-color: var(--clowdy-layout-grid-preview);
+    }
+
+    .dot {
+        display: block;
+        width: var(--clowdy-layout-grid-line-size);
+        height: var(--clowdy-layout-grid-line-size);
+        border-radius: var(--radius-full);
+        background: var(--clowdy-layout-grid-inactive);
+        pointer-events: none;
+    }
+}

@@ -1,0 +1,37 @@
+{
+    "name": "@clowdy/desktop",
+    "productName": "Clowdy Dev",
+    "private": true,
+    "version": "0.0.1",
+    "description": "Clowdy desktop app",
+    "type": "module",
+    "main": "dist/main/index.cjs",
+    "scripts": {
+        "dev": "bun scripts/dev.ts",
+        "build:app": "bun scripts/build.ts",
+        "package": "bun scripts/build.ts && electron-builder --mac --dir -c.mac.identity=- -c.mac.hardenedRuntime=false",
+        "package:win": "bun scripts/build.ts && electron-builder --win --dir --x64 --arm64",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "test": "vitest run --passWithNoTests",
+        "typecheck": "tsc --noEmit && tsc --noEmit -p scripts",
+        "clean": "rm -rf node_modules/{*,.*} .turbo dist app release 2>/dev/null || true"
+    },
+    "dependencies": {
+        "@clowdy/components": "workspace:*",
+        "@clowdy/constants": "workspace:*",
+        "@clowdy/icons": "workspace:*",
+        "@clowdy/lib": "workspace:*",
+        "@clowdy/styles": "workspace:*",
+        "mobx": "^7.0.3",
+        "mobx-react-lite": "^5.0.3",
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8"
+    },
+    "devDependencies": {
+        "@clowdy/config-typescript": "workspace:*",
+        "@clowdy/eslint-config": "workspace:*",
+        "electron": "45.2.1",
+        "electron-builder": "^26.18.0"
+    }
+}

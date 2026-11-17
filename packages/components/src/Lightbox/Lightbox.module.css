@@ -1,0 +1,96 @@
+.overlay:before {
+    backdrop-filter: blur(3px);
+    animation: lightbox-backdrop-in 200ms ease-out both;
+}
+
+/* More specific than the shared overlay scroll styles, so the preview stays inside the viewport. */
+.overlay:global([data-modal-overlay]).overlay {
+    --lightbox-inset: var(--spacing-xl);
+    --lightbox-image-max-height: calc(100dvh - 2 * var(--lightbox-inset) - var(--modal-title-height));
+
+    padding: var(--lightbox-inset);
+    overflow: hidden;
+}
+
+.overlay:global([data-modal-overlay]) .window:global([data-modal-window]) {
+    width: fit-content;
+    max-width: 100%;
+    height: auto;
+    max-height: 100%;
+}
+
+.overlay:global([data-modal-overlay]) :global([data-modal-data]) {
+    min-width: 0;
+    max-width: 100%;
+    height: auto;
+    max-height: none;
+}
+
+.window:global([data-modal-window]) {
+    --modal-border: 0;
+
+    overflow: hidden;
+    outline: 2px solid var(--color-secondary-muted-border);
+}
+
+/* Title follows the image width. A long caption truncates instead of stretching the window. */
+.window :global([data-modal-title]) {
+    width: 0;
+    min-width: 100%;
+}
+
+.window :global([data-modal-title]) > :first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stage {
+    --lightbox-stage-size: min(26rem, var(--lightbox-image-max-height), calc(100dvw - 2 * var(--lightbox-inset)));
+
+    min-width: var(--lightbox-stage-size);
+    min-height: var(--lightbox-stage-size);
+    max-width: 100%;
+    background-color: var(--color-white);
+    background-image: repeating-conic-gradient(color-mix(in srgb, var(--color-black) 8%, transparent) 0% 25%, transparent 0% 50%);
+    background-size: 1rem 1rem;
+}
+
+.stage[data-small-image] {
+    width: var(--lightbox-stage-size);
+    aspect-ratio: 1;
+}
+
+.image {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    max-height: var(--lightbox-image-max-height);
+}
+
+.stage[data-small-image] .image {
+    width: 80%;
+    height: 80%;
+    max-height: none;
+    object-fit: contain;
+}
+
+@keyframes lightbox-backdrop-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .overlay:before {
+        animation: none;
+    }
+}
+
+/* --tablet-max */
+@media (max-width: 639px) {
+    .overlay:global([data-modal-overlay]).overlay {
+        --lightbox-inset: var(--spacing-sm);
+    }
+}

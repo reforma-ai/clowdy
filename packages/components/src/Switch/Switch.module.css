@@ -1,0 +1,154 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    /* Switch.module.css */
+    .root {
+        --clowdy-switch-track-width: var(--spacing-36);
+        --clowdy-switch-track-height: var(--spacing-20);
+        --clowdy-switch-track-padding: var(--spacing-xxs);
+        --clowdy-switch-handle-size: var(--spacing-16);
+
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+        outline: none;
+    }
+
+    .root:focus-visible .track {
+        outline: var(--spacing-4) solid var(--color-primary-muted-border);
+        outline-offset: 0;
+    }
+
+    .track {
+        position: relative;
+        flex-shrink: 0;
+        width: var(--clowdy-switch-track-width);
+        height: var(--clowdy-switch-track-height);
+        padding: var(--clowdy-switch-track-padding);
+        border-radius: var(--radius-full);
+        transition-property: background-color, box-shadow;
+        transition-duration: var(--transition-duration-fast);
+        transition-timing-function: var(--ease-in-out);
+    }
+
+    .handle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--clowdy-switch-handle-size);
+        height: var(--clowdy-switch-handle-size);
+        border-radius: var(--radius-full);
+        background-color: var(--color-white);
+        box-shadow: 0 1px var(--spacing-2) var(--color-dark-a15);
+        transition: transform var(--transition-duration-fast) var(--ease-in-out);
+        transform-origin: left center;
+    }
+
+    .spinner {
+        --spinner-size: calc(var(--clowdy-switch-handle-size) * 0.6);
+        --spinner-width: 1px;
+        --spinner-color: var(--color-primary);
+    }
+
+    .root[data-selected='true'] .handle {
+        transform: translateX(calc(var(--clowdy-switch-track-width) - var(--clowdy-switch-handle-size) - var(--clowdy-switch-track-padding) * 2));
+    }
+
+    /* ============================================
+   SIZE VARIANTS
+   ============================================ */
+
+    .root[data-size='sm'] {
+        --clowdy-switch-track-width: var(--spacing-28);
+        --clowdy-switch-track-height: var(--spacing-16);
+        --clowdy-switch-track-padding: var(--spacing-xxs);
+        --clowdy-switch-handle-size: var(--spacing-12);
+
+        @ruleset typography-text-sm;
+    }
+
+    .root[data-size='md'] {
+        --clowdy-switch-track-width: var(--spacing-32);
+        --clowdy-switch-track-height: var(--spacing-18);
+        --clowdy-switch-track-padding: var(--spacing-xxs);
+        --clowdy-switch-handle-size: var(--spacing-14);
+
+        @ruleset typography-text-md;
+    }
+
+    .root[data-size='lg'] {
+        --clowdy-switch-track-width: var(--spacing-36);
+        --clowdy-switch-track-height: var(--spacing-20);
+        --clowdy-switch-track-padding: var(--spacing-xxs);
+        --clowdy-switch-handle-size: var(--spacing-16);
+
+        @ruleset typography-text-lg;
+    }
+
+    /* ============================================
+   TRACK: DEFAULT (off)
+   ============================================ */
+
+    .track {
+        background-color: var(--color-secondary-muted);
+        box-shadow: inset 0 1px var(--spacing-2) var(--color-dark-a5);
+    }
+
+    .root[data-hovered='true']:not([data-disabled='true']) .track {
+        background-color: var(--color-secondary-muted);
+    }
+
+    .root[data-pressed='true']:not([data-disabled='true']) .track {
+        background-color: var(--color-secondary-muted-light);
+    }
+
+    /* ============================================
+   TRACK: SELECTED (on)
+   ============================================ */
+
+    .root[data-selected='true'] .track {
+        background-color: var(--color-primary);
+        box-shadow: inset 0 1px 2px var(--color-dark-a15);
+    }
+
+    .root[data-selected='true'][data-hovered='true']:not([data-disabled='true']) .track {
+        background-color: var(--color-primary-light);
+    }
+
+    /* ============================================
+   DISABLED
+   ============================================ */
+
+    .root[data-disabled='true'] {
+        pointer-events: none;
+        opacity: var(--opacity-disabled);
+        cursor: not-allowed;
+    }
+
+    /* ============================================
+   READONLY
+   ============================================ */
+
+    .root[data-readonly='true']:not([data-pending='true']) .track {
+        pointer-events: none;
+        background-color: var(--color-secondary-muted-light);
+    }
+
+    .root[data-selected='true'][data-readonly='true']:not([data-pending='true']) .track {
+        pointer-events: none;
+        background-color: var(--color-primary-light);
+    }
+
+    /* ============================================
+   PENDING
+   ============================================ */
+
+    .root[data-pending='true'] {
+        pointer-events: none;
+        cursor: progress;
+    }
+}

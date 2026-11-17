@@ -1,0 +1,34 @@
+:root {
+    /* Base layer — default stacking. */
+    --z-base: 0;
+
+    /* Raised — above flow: sticky headers, resize handle, toolbar controls. */
+    --z-raised: 10;
+
+    /* Dropdown — in-flow menus below modal. RAC overlays use --z-popover instead. */
+    --z-dropdown: 100;
+
+    /* Overlay — Dialog backdrop. */
+    --z-overlay: 1000;
+
+    /* Modal — @clowdy/components Modal overlay container. */
+    --z-modal: 100999;
+
+    /* Popover — popovers, selects, context menus that must appear above modals. */
+    --z-popover: 101000;
+
+    /* Popover elevated — RAC overlays when a modal is open (Select inside settings, etc.). */
+    --z-popover-elevated: calc(var(--z-modal) + 1);
+
+    /* Confirm — confirm dialogs above popovers (e.g. delete from a menu); keep in sync with ConfirmModal. */
+    --z-confirm: 101100;
+
+    /* Tooltip — above modals, popovers, and confirm (HelpTip inside dialogs). Below toast. */
+    --z-tooltip: 101200;
+
+    /* Toast — notifications above everything. */
+    --z-toast: 102000;
+
+    /* Max — critical layer: fullscreen takeover, drag preview. */
+    --z-max: 109999;
+}

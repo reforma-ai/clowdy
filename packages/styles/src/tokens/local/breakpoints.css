@@ -1,0 +1,31 @@
+/** Mobile first **/
+/* From 640px and up (tablet starts) */
+@custom-media --tablet (min-width: 640px);
+/* From 1024px and up (desktop starts) */
+@custom-media --desktop-sm (min-width: 1024px);
+/* From 1280px and up (HD) */
+@custom-media --desktop (min-width: 1280px);
+/* From 1440px and up */
+@custom-media --desktop-md (min-width: 1440px);
+/* From 1900px and up (Full HD / 1080p) */
+@custom-media --fhd (min-width: 1900px);
+/* From 2500px and up (QHD / 2K / 1440p) */
+@custom-media --qhd (min-width: 2500px);
+/* From 3800px and up (UHD / 4K / 2160p) */
+@custom-media --uhd (min-width: 3800px);
+
+/** Desktop first **/
+/* Below tablet (mobile only) */
+@custom-media --tablet-max (max-width: 639px);
+/* Below desktop-sm */
+@custom-media --desktop-sm-max (max-width: 1023px);
+/* Below desktop */
+@custom-media --desktop-max (max-width: 1279px);
+/* Below desktop-md */
+@custom-media --desktop-md-max (max-width: 1439px);
+/* Below fhd */
+@custom-media --fhd-max (max-width: 1899px);
+/* Below qhd */
+@custom-media --qhd-max (max-width: 2499px);
+/* Below uhd */
+@custom-media --uhd-max (max-width: 3799px);

@@ -1,0 +1,41 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .root {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        width: 100%;
+        min-height: var(--spacing-xl);
+        text-align: left;
+        color: var(--color-secondary-muted-text);
+        @ruleset typography-text-xs;
+    }
+
+    .root[data-variant='separator']::before,
+    .root[data-variant='separator']::after {
+        content: '';
+        flex: 1;
+        min-width: 0;
+        height: 1px;
+        background-color: var(--color-secondary-muted);
+    }
+
+    .icon {
+        display: inline-flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        color: currentColor;
+    }
+
+    .content {
+        min-width: 0;
+        overflow-wrap: break-word;
+    }
+
+    .root[data-variant='separator'] .content {
+        flex: none;
+        text-align: center;
+    }
+}

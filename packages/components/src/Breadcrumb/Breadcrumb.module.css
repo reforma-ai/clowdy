@@ -1,0 +1,55 @@
+@layer components {
+    .root {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .list {
+        display: flex;
+        align-items: center;
+        gap: 1ex;
+        min-width: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .item {
+        display: flex;
+        align-items: center;
+        gap: 1ex;
+        min-width: 0;
+    }
+
+    .item:last-child {
+        flex: 1;
+    }
+
+    .item:first-child .sep {
+        display: none;
+    }
+
+    .item > :not(.sep) {
+        min-width: 0;
+    }
+
+    .sep {
+        display: block;
+        flex-shrink: 0;
+        width: 1ex;
+        height: 1ex;
+        color: var(--color-secondary-muted-content);
+    }
+
+    .sep :global(path) {
+        fill: currentColor;
+    }
+
+    .page {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}

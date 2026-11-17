@@ -1,0 +1,30 @@
+{
+    "optimization": {
+        "excludeFromOptimizationSuffix": "."
+    },
+    "packs": {
+        "assets": {
+            "excludeFromOptimization": [
+                "*"
+            ]
+        },
+        "8": {
+            "defaultSize": 8
+        },
+        "10": {
+            "defaultSize": 10
+        },
+        "12": {
+            "defaultSize": 12
+        },
+        "14": {
+            "defaultSize": 14
+        },
+        "16": {
+            "defaultSize": 16
+        },
+        "20": {
+            "defaultSize": 20
+        }
+    }
+}

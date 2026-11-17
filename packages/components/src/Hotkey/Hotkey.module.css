@@ -1,0 +1,45 @@
+@layer components {
+    :global(:root) {
+        --hotkey-background: color-mix(in oklab, currentColor 5%, transparent);
+    }
+
+    :global(.dark) {
+        --hotkey-background: color-mix(in oklab, currentColor 20%, transparent);
+    }
+
+    .hotkey {
+        --clowdy-hotkey-radius: var(--radius-sm);
+
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        color: inherit;
+        white-space: nowrap;
+        vertical-align: baseline;
+        background: var(--hotkey-background);
+        border-radius: calc(var(--clowdy-hotkey-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+    }
+
+    .hotkey[data-size='xs'] {
+        --clowdy-hotkey-radius: var(--radius-xs);
+        min-width: calc(1em + var(--spacing-6));
+        min-height: calc(1em + var(--spacing-4));
+        padding: var(--spacing-2) var(--spacing-4);
+    }
+
+    .hotkey[data-size='sm'] {
+        --clowdy-hotkey-radius: var(--radius-sm);
+        min-width: calc(1em + var(--spacing-8));
+        min-height: calc(1em + var(--spacing-6));
+        padding: var(--spacing-4) var(--spacing-6);
+    }
+
+    .hotkey[data-size='md'] {
+        --clowdy-hotkey-radius: var(--radius-sm);
+        min-width: calc(1em + var(--spacing-10));
+        min-height: calc(1em + var(--spacing-8));
+        padding: var(--spacing-6) var(--spacing-8);
+    }
+}

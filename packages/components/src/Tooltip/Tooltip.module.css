@@ -1,0 +1,88 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    /* ============================================
+   TOOLTIP BASE
+   ============================================ */
+    .tooltip {
+        @ruleset typography-text-sm;
+        border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background: var(--color-tooltip);
+        color: var(--color-tooltip-foreground);
+        padding: var(--spacing-xs) var(--spacing-md);
+        max-width: min(20rem, calc(100vw - var(--spacing-16)));
+        overflow-wrap: anywhere;
+        overflow: hidden;
+        box-shadow: var(--shadow-xs);
+        z-index: var(--z-tooltip) !important;
+        forced-color-adjust: none;
+        transform: translate3d(0, 0, 0);
+        transition:
+            transform var(--transition-duration-fast),
+            opacity var(--transition-duration-fast);
+
+        --hotkey-background: color-mix(in oklab, currentColor 20%, transparent);
+    }
+
+    .tooltip :global([data-hotkey]) {
+        margin-inline-end: calc(-1 * var(--spacing-xs));
+    }
+
+    .tooltip[data-entering],
+    .tooltip[data-exiting] {
+        transform: var(--tooltip-origin);
+        opacity: 0;
+    }
+
+    :global(.dark) .tooltip {
+        --hotkey-background: color-mix(in oklab, currentColor 5%, transparent);
+    }
+
+    /* ============================================
+   PLACEMENT
+   ============================================ */
+    .tooltip[data-placement^='top'] {
+        --tooltip-origin: translateY(var(--spacing-xs));
+        margin-bottom: var(--spacing-xs);
+    }
+
+    .tooltip[data-placement^='bottom'] {
+        --tooltip-origin: translateY(calc(-1 * var(--spacing-xs)));
+        margin-top: var(--spacing-xs);
+    }
+
+    .tooltip[data-placement^='right'],
+    .tooltip[data-placement^='end'] {
+        --tooltip-origin: translateX(calc(-1 * var(--spacing-xs)));
+        margin-left: var(--spacing-xs);
+    }
+
+    .tooltip[data-placement^='left'],
+    .tooltip[data-placement^='start'] {
+        --tooltip-origin: translateX(var(--spacing-xs));
+        margin-right: var(--spacing-xs);
+    }
+
+    /* ============================================
+   ARROW
+   ============================================ */
+    .arrow svg {
+        display: block;
+        fill: var(--color-tooltip);
+    }
+
+    .tooltip[data-placement^='bottom'] .arrow svg {
+        transform: rotate(180deg);
+    }
+
+    .tooltip[data-placement^='right'] .arrow svg,
+    .tooltip[data-placement^='end'] .arrow svg {
+        transform: rotate(90deg);
+    }
+
+    .tooltip[data-placement^='left'] .arrow svg,
+    .tooltip[data-placement^='start'] .arrow svg {
+        transform: rotate(-90deg);
+    }
+}

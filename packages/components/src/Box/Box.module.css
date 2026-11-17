@@ -1,0 +1,34 @@
+@layer components {
+    .box[data-radius='xs'] {
+        --clowdy-box-radius: var(--radius-xs);
+    }
+
+    .box[data-radius='sm'] {
+        --clowdy-box-radius: var(--radius-sm);
+    }
+
+    .box[data-radius='md'] {
+        --clowdy-box-radius: var(--radius-md);
+    }
+
+    .box[data-radius='lg'] {
+        --clowdy-box-radius: var(--radius-lg);
+    }
+
+    .box[data-radius='xl'] {
+        --clowdy-box-radius: var(--radius-xl);
+    }
+
+    .box[data-radius='xs'],
+    .box[data-radius='sm'],
+    .box[data-radius='md'],
+    .box[data-radius='lg'],
+    .box[data-radius='xl'] {
+        border-radius: calc(var(--clowdy-box-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+    }
+
+    .box[data-radius='full'] {
+        border-radius: var(--radius-full);
+    }
+}

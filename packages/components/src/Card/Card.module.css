@@ -1,0 +1,138 @@
+@layer components {
+    .card {
+        --clowdy-card-bg: transparent;
+        --clowdy-card-border-color: transparent;
+        --clowdy-card-border-width: 0.0625rem;
+        --clowdy-card-bg--hover: var(--clowdy-card-bg);
+        --clowdy-card-border-color--hover: var(--clowdy-card-border-color);
+        --clowdy-card-border-color--active: var(--color-primary);
+        --clowdy-card-radius: var(--radius-lg);
+        border-radius: calc(var(--clowdy-card-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        border-style: solid;
+        border-width: var(--clowdy-card-border-width);
+        border-color: var(--clowdy-card-border-color);
+        background-color: var(--clowdy-card-bg);
+        transition-property: background-color, border-color, scale, translate;
+        transition-duration: 150ms;
+        transition-timing-function: ease-out;
+    }
+
+    .card:is(button) {
+        font: inherit;
+        text-align: start;
+    }
+
+    /* ============================================
+    STYLE VARIANTS
+============================================ */
+
+    .card[data-variant='filled'] {
+        --clowdy-card-bg: var(--color-secondary-muted-light);
+        --clowdy-card-border-color: transparent;
+        --clowdy-card-bg--hover: var(--color-secondary-muted);
+    }
+
+    .card[data-variant='filled'][data-color='primary'] {
+        --clowdy-card-bg: var(--color-primary-muted-light);
+        --clowdy-card-bg--hover: var(--color-primary-muted);
+    }
+
+    .card[data-variant='filled'][data-color='success'] {
+        --clowdy-card-bg: var(--color-success-muted-light);
+        --clowdy-card-bg--hover: var(--color-success-muted);
+    }
+
+    .card[data-variant='filled'][data-color='warning'] {
+        --clowdy-card-bg: var(--color-warning-muted-light);
+        --clowdy-card-bg--hover: var(--color-warning-muted);
+    }
+
+    .card[data-variant='filled'][data-color='danger'] {
+        --clowdy-card-bg: var(--color-danger-muted-light);
+        --clowdy-card-bg--hover: var(--color-danger-muted);
+    }
+
+    .card[data-variant='filled'][data-color='accent'] {
+        --clowdy-card-bg: var(--color-accent-muted-light);
+        --clowdy-card-bg--hover: var(--color-accent-muted);
+    }
+
+    .card[data-variant='bordered'] {
+        --clowdy-card-bg: transparent;
+        --clowdy-card-border-color: var(--color-secondary-muted-border);
+        --clowdy-card-border-color--hover: var(--color-secondary-muted-border-hover);
+    }
+
+    .card[data-variant='transparent'] {
+        --clowdy-card-bg: transparent;
+        --clowdy-card-border-color: transparent;
+        --clowdy-card-bg--hover: var(--color-secondary-muted-light);
+    }
+
+    /* ============================================
+    SIZE VARIANTS
+============================================ */
+
+    .card[data-size='sm'] {
+        --clowdy-card-radius: var(--radius-md);
+    }
+
+    .card[data-size='md'] {
+        --clowdy-card-radius: var(--radius-lg);
+    }
+
+    .card[data-size='lg'] {
+        --clowdy-card-radius: var(--radius-xl);
+    }
+
+    /* ============================================
+    STATES
+============================================ */
+
+    .card[data-hoverable='true']:hover,
+    .card[data-hoverable='true']:active,
+    .card[data-hoverable='true'][data-pressed],
+    [data-pressed] > .card[data-hoverable='true'] {
+        background-color: var(--clowdy-card-bg--hover);
+        border-color: var(--clowdy-card-border-color--hover);
+        cursor: pointer;
+    }
+
+    .card[data-hoverable='true']:active,
+    .card[data-hoverable='true'][data-pressed],
+    [data-pressed] > .card[data-hoverable='true'] {
+        translate: 0 2px;
+        scale: 0.98;
+        z-index: 1;
+    }
+
+    .card[data-hoverable='true']:has(:is(button, a[href], [role='button'], [data-react-aria-pressable]):active),
+    :has(:is(button, a[href], [role='button'], [data-react-aria-pressable]):active) > .card[data-hoverable='true'] {
+        translate: none;
+        scale: none;
+        z-index: auto;
+    }
+
+    .card[data-active='true'],
+    .card[data-hoverable='true'][data-active='true']:hover {
+        border-color: var(--clowdy-card-border-color--active);
+    }
+
+    .card[data-hoverable='outline'] {
+        --clowdy-card-border-color--active: var(--clowdy-card-border-color);
+
+        outline: 2px solid transparent;
+        outline-offset: 3px;
+        cursor: pointer;
+        transition-property: background-color, border-color, outline-color, scale, translate;
+    }
+
+    .card[data-hoverable='outline']:hover {
+        outline-color: var(--color-secondary-border-hover);
+    }
+
+    .card[data-hoverable='outline']:is(:focus-visible, [data-active='true']) {
+        outline-color: var(--color-secondary-content);
+    }
+}

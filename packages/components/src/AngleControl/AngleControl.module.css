@@ -1,0 +1,231 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .trigger {
+        --clowdy-angle-preview-size: var(--spacing-64);
+        --clowdy-button-transform-pressed: none;
+
+        width: var(--clowdy-angle-preview-size, var(--spacing-30));
+        height: var(--clowdy-angle-preview-size, var(--spacing-30));
+        min-width: var(--clowdy-angle-preview-size, var(--spacing-30));
+        padding: 0;
+        border-radius: var(--radius-full);
+        color: inherit;
+    }
+
+    .trigger[data-focus-visible='true'] {
+        outline: var(--spacing-4) solid var(--color-primary-muted-border);
+        outline-offset: 0;
+    }
+
+    .trigger[data-overlay-open] .previewDial {
+        opacity: 0;
+    }
+
+    .trigger[data-readonly] {
+        pointer-events: none;
+        cursor: default;
+    }
+
+    .dial,
+    .previewDial {
+        --clowdy-angle-ring-bg: var(--color-surface);
+        --clowdy-angle-ring-border: var(--clowdy-angle-ring-width, var(--spacing-2)) solid var(--color-secondary);
+        --clowdy-angle-preset: var(--color-secondary);
+        --clowdy-angle-preset-active: var(--color-primary);
+        --clowdy-angle-text: var(--color-secondary-muted-text);
+        --clowdy-angle-handle: var(--color-primary);
+
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--clowdy-angle-size);
+        height: var(--clowdy-angle-size);
+        flex: 0 0 var(--clowdy-angle-size);
+        color: var(--clowdy-angle-text);
+        outline: none;
+        user-select: none;
+    }
+
+    .dial {
+        touch-action: none;
+    }
+
+    .dial[data-disabled] {
+        cursor: default;
+        opacity: var(--opacity-disabled);
+    }
+
+    .dial[data-readonly] {
+        cursor: default;
+    }
+
+    .previewDial {
+        pointer-events: none;
+    }
+
+    .ring {
+        position: absolute;
+        inset: 0;
+        border: var(--clowdy-angle-ring-border);
+        border-radius: var(--radius-full);
+        background: var(--clowdy-angle-ring-bg);
+        box-shadow: 0 0 0 var(--spacing-4) var(--color-surface);
+    }
+
+    .preset {
+        position: absolute;
+        z-index: 1;
+        width: var(--spacing-20);
+        height: var(--spacing-20);
+        padding: 0;
+        border: 0;
+        border-radius: var(--radius-full);
+        background: transparent;
+        cursor: pointer;
+        transform: translate(-50%, -50%);
+    }
+
+    .preset::before {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: var(--spacing-4);
+        height: var(--spacing-4);
+        border-radius: var(--radius-full);
+        background: var(--clowdy-angle-preset);
+        content: '';
+        transform: translate(-50%, -50%);
+        transition:
+            background-color var(--transition-duration-fast) var(--ease-in-out),
+            transform var(--transition-duration-fast) var(--ease-in-out);
+    }
+
+    .preset:not(:disabled):hover::before {
+        background: var(--clowdy-angle-preset-active);
+        transform: translate(-50%, -50%) scale(1.5);
+    }
+
+    .preset:disabled {
+        cursor: default;
+    }
+
+    .valueInput {
+        position: relative;
+        z-index: 4;
+        appearance: none;
+        width: 5ch;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        outline: none;
+        background: transparent;
+        color: var(--clowdy-angle-text);
+        pointer-events: auto;
+        text-align: center;
+        user-select: text;
+
+        @ruleset typography-text-xs;
+    }
+
+    .valueInput:focus {
+        color: var(--color-text);
+    }
+
+    .valueInput[data-preview] {
+        color: var(--color-primary-muted-text);
+    }
+
+    .sliderInput {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        border: 0;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .handle {
+        position: absolute;
+        z-index: 3;
+        width: var(--clowdy-angle-handle-size);
+        height: var(--clowdy-angle-handle-size);
+        border-radius: var(--radius-full);
+        background: var(--clowdy-angle-handle);
+        box-shadow: 0 0 0 var(--spacing-1, 1px) var(--color-surface);
+        cursor: grab;
+        transform: translate(-50%, -50%);
+        transition:
+            box-shadow var(--transition-duration-fast) var(--ease-in-out),
+            transform var(--transition-duration-fast) var(--ease-in-out);
+    }
+
+    .handle:before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        border-radius: var(--radius-full);
+        width: calc(var(--clowdy-angle-handle-size) * 2);
+        height: calc(var(--clowdy-angle-handle-size) * 2);
+    }
+
+    .previewDial .handle {
+        cursor: inherit;
+    }
+
+    .dial[data-disabled] .handle,
+    .dial[data-readonly] .handle {
+        cursor: default;
+    }
+
+    .dial[data-dragging] .handle {
+        cursor: grabbing;
+    }
+
+    .dial:not([data-disabled]):not([data-readonly]) .handle:hover {
+        transform: translate(-50%, -50%) scale(1.08);
+        box-shadow:
+            0 0 0 var(--spacing-1, 1px) var(--color-surface),
+            0 0 0 var(--spacing-4) var(--color-primary-muted-light);
+    }
+
+    .overlayLayer {
+        position: fixed;
+        inset: 0;
+        z-index: var(--z-popover);
+        pointer-events: none;
+    }
+
+    .overlay {
+        position: absolute;
+        inset: 0;
+        background: transparent;
+        pointer-events: auto;
+    }
+
+    .floatingDial {
+        position: fixed;
+        display: flex;
+        width: var(--clowdy-angle-size);
+        height: var(--clowdy-angle-size);
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+        outline: none;
+        transform-origin: top right;
+        will-change: transform, opacity;
+    }
+
+    .dialogSurface {
+        display: flex;
+        width: 100%;
+        height: 100%;
+        align-items: center;
+        justify-content: center;
+        outline: none;
+    }
+}

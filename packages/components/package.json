@@ -1,0 +1,87 @@
+{
+    "name": "@clowdy/components",
+    "private": true,
+    "description": "Clowdy design system components",
+    "type": "module",
+    "version": "0.0.0",
+    "sideEffects": [
+        "**/*.css"
+    ],
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "import": "./src/index.ts",
+            "style": "./src/index.css",
+            "default": "./src/index.ts"
+        },
+        "./css": "./src/index.css",
+        "./*": {
+            "types": "./src/*/index.ts",
+            "import": "./src/*/index.ts",
+            "default": "./src/*/index.ts"
+        }
+    },
+    "scripts": {
+        "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
+        "lint": "eslint .",
+        "test": "vitest run",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@clowdy/constants": "workspace:*",
+        "@clowdy/icons": "workspace:*",
+        "@clowdy/lib": "workspace:*",
+        "@codemirror/lang-css": "6.3.1",
+        "@codemirror/lang-html": "6.4.12",
+        "@codemirror/lang-javascript": "^6.2.5",
+        "@codemirror/lang-json": "^6",
+        "@codemirror/lang-markdown": "^6.5.2",
+        "@codemirror/language": "^6.13.1",
+        "@codemirror/view": "^6.43.15",
+        "@dnd-kit/react": "0.5.0",
+        "@lezer/highlight": "1.2.5",
+        "@react-stately/utils": "^3.11.0",
+        "@sanity/diff-match-patch": "3.2.1",
+        "@shikijs/types": "^4.6.0",
+        "@tiptap/core": "3.32.2",
+        "@tiptap/extension-bold": "3.32.2",
+        "@tiptap/extension-code": "3.32.2",
+        "@tiptap/extension-document": "3.32.2",
+        "@tiptap/extension-hard-break": "3.32.2",
+        "@tiptap/extension-history": "3.32.2",
+        "@tiptap/extension-image": "3.32.2",
+        "@tiptap/extension-italic": "3.32.2",
+        "@tiptap/extension-list": "3.32.2",
+        "@tiptap/extension-mention": "3.32.2",
+        "@tiptap/extension-paragraph": "3.32.2",
+        "@tiptap/extension-placeholder": "3.32.2",
+        "@tiptap/extension-table": "3.32.2",
+        "@tiptap/extension-text": "3.32.2",
+        "@tiptap/markdown": "3.32.2",
+        "@tiptap/pm": "3.32.2",
+        "@tiptap/react": "3.32.2",
+        "@tiptap/starter-kit": "3.32.2",
+        "@tiptap/suggestion": "3.32.2",
+        "@uiw/react-codemirror": "^4.25.11",
+        "anser": "2.3.5",
+        "lottie-react": "2.4.1",
+        "marked": "17.0.6",
+        "material-icon-theme": "^5.40.0",
+        "mobx": "^7.0.3",
+        "mobx-react-lite": "^5.0.3",
+        "motion": "^13.4.0",
+        "prosemirror-highlight": "0.16.0",
+        "react-aria": "^3.48.0",
+        "react-aria-components": "^1.17.0",
+        "react-resizable-panels": "^4.7.5",
+        "react-shiki": "^0.9.1",
+        "react-stately": "^3.46.0"
+    },
+    "devDependencies": {
+        "@clowdy/styles": "workspace:*"
+    },
+    "peerDependencies": {
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8"
+    }
+}

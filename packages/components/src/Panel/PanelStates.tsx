@@ -1,0 +1,69 @@
+import { cn } from '@clowdy/lib';
+
+import { Box } from '../Box';
+import { Show } from '../Show';
+import { SpinnerLabel } from '../Spinner';
+import { Text } from '../Text';
+import styles from './Panel.module.css';
+
+import type { ReactNode } from 'react';
+
+/** Centered note in place of an empty list or section. */
+export function PanelEmptyRow({ children, className }: { children: ReactNode; className?: string }) {
+    return (
+        <Box align="center" justify="center" className={ cn(styles.emptyRow, className) }>
+            <Text variant="label" color="secondary">
+                { children }
+            </Text>
+        </Box>
+    );
+}
+
+PanelEmptyRow.displayName = 'PanelEmptyRow';
+
+export function PanelLoadingState() {
+    return (
+        <Box className="m-auto" padding="lg">
+            <SpinnerLabel>Loading</SpinnerLabel>
+        </Box>
+    );
+}
+
+/** Centered optional icon, title, optional description, and optional action that fill the panel body. */
+export function PanelEmptyState({
+    icon,
+    title,
+    description,
+    action,
+}: {
+    /** Shown above the title. */
+    icon?: ReactNode;
+    title: ReactNode;
+    description?: ReactNode;
+    action?: ReactNode;
+}) {
+    return (
+        <Box
+            className="m-auto"
+            padding="lg"
+            gap="md"
+            grow
+            fullHeight
+            justify="center"
+            align="center"
+        >
+            { icon }
+            <Box gap="xs" align="center">
+                <Text variant="heading-5" align="center">
+                    { title }
+                </Text>
+                <Show when={ description }>
+                    <Text variant="sm" color="secondary" align="center">
+                        { description }
+                    </Text>
+                </Show>
+            </Box>
+            { action }
+        </Box>
+    );
+}

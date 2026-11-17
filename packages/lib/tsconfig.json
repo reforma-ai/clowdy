@@ -1,0 +1,9 @@
+{
+  "extends": "@clowdy/config-typescript/base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["src", "specs"],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,62 @@
+/* App-level base styles for the desktop shell. */
+
+/*
+ * The desktop app has no title bar. Its window controls sit over the page:
+ * the leading edge on macOS, the trailing edge on Windows.
+ * Only there are the titlebar-area variables set; everywhere else every inset is 0.
+ */
+:root {
+    /* Where the top band's content starts past the window buttons: 8px closer than the overlay's own inset. */
+    --titlebar-inset: max(0px, env(titlebar-area-x, 0px) - var(--spacing-8));
+    /* Windows caption buttons sit past the titlebar area. On macOS this is 0. */
+    --titlebar-inset-end: max(0px, 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+    --titlebar-height: env(titlebar-area-height, 0px);
+    /* The window buttons' height over the top-left corner: macOS only, 0 on Windows. */
+    --titlebar-leading-height: 0px;
+}
+
+html[data-window-buttons-leading] {
+    --titlebar-leading-height: var(--titlebar-height);
+}
+
+/* The top band moves the window, except where a control sits. */
+body::before {
+    content: '';
+    position: fixed;
+    z-index: -1;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: var(--titlebar-height);
+    app-region: drag;
+}
+
+/* The page color lives on the body. Over a system material it tints that color, so the theme shows and the blur comes through. */
+html[data-window-material] body {
+    background-color: color-mix(in srgb, var(--color-background) 60%, transparent);
+}
+
+:is(a, button, input, select, textarea, label, [contenteditable], [role='button'], [role='link'], [role='menuitem'], [role='option'], [role='tab'], [role='combobox'], [tabindex='0']) {
+    app-region: no-drag;
+}
+
+/* Modal.create appends its root container to <body>. */
+[data-modal-root-container] {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    z-index: var(--z-modal);
+}
+
+/* React Aria portals tooltips/popovers/selects into [data-overlay-container]. */
+[data-overlay-container] {
+    z-index: var(--z-popover);
+}
+
+/* Selects and other RAC overlays inside an open modal must stack above it. */
+body:has([data-modal-overlay].on) [data-overlay-container],
+body:has([data-modal-overlay].shadow) [data-overlay-container] {
+    z-index: var(--z-popover-elevated);
+}

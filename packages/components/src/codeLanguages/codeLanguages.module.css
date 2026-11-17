@@ -1,0 +1,52 @@
+@layer components {
+    .keyword {
+        color: var(--color-accent-text);
+    }
+
+    .string {
+        color: var(--color-success-text);
+    }
+
+    .number {
+        color: var(--color-primary-text);
+    }
+
+    .comment {
+        color: var(--color-secondary-muted-text);
+        font-style: italic;
+    }
+
+    .function {
+        color: var(--color-interactive-text);
+    }
+
+    .type {
+        color: var(--color-warning-text);
+    }
+
+    .tag {
+        color: var(--color-danger-text);
+    }
+
+    .heading {
+        color: var(--color-primary-text);
+        font-weight: bold;
+    }
+
+    .emphasis {
+        font-style: italic;
+    }
+
+    .strong {
+        font-weight: bold;
+    }
+
+    .strikethrough {
+        text-decoration: line-through;
+    }
+
+    .link {
+        color: var(--color-interactive-text);
+        text-decoration: underline;
+    }
+}

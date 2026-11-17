@@ -1,0 +1,171 @@
+@reference '@clowdy/styles/rulesets';
+
+/* Ball under the dot mask — must interpolate as percentages. */
+@property --shimmer-ball-x {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: -30%;
+}
+
+@property --shimmer-ball-y {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 48%;
+}
+
+@layer components {
+    .root {
+        /* Highlight band (inherits --spread from inline style, px) */
+        --shimmer-highlight: var(--color-text);
+        --shimmer-text: var(--color-secondary-muted-text);
+        --shimmer-band: linear-gradient(90deg, transparent calc(50% - var(--spread)), var(--shimmer-highlight), transparent calc(50% + var(--spread)));
+
+        --shimmer-duration: 2s;
+
+        position: relative;
+        display: inline-block;
+        color: transparent;
+        -webkit-text-fill-color: transparent;
+        background-image: var(--shimmer-band), linear-gradient(var(--shimmer-text), var(--shimmer-text));
+        background-size:
+            250% 100%,
+            auto;
+        background-position:
+            100% center,
+            0 0;
+        background-repeat: no-repeat, no-repeat;
+        -webkit-background-clip: text;
+        background-clip: text;
+        animation: shimmer-text-sweep var(--shimmer-duration) linear infinite;
+    }
+
+    /* Block skeleton — soft band slides fully across (same ease in and out). */
+    .block {
+        --shimmer-block-base: var(--color-secondary-muted-light);
+        --shimmer-block-highlight: color-mix(in srgb, var(--color-text) 12%, transparent);
+        --shimmer-block-duration: 1.6s;
+
+        position: relative;
+        overflow: hidden;
+        width: 100%;
+        min-height: 1rem;
+        border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background-color: var(--shimmer-block-base);
+    }
+
+    .block[data-variant='sweep']::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent 0%, var(--shimmer-block-highlight) 50%, transparent 100%);
+        transform: translateX(-100%);
+        animation: shimmer-block-sweep var(--shimmer-block-duration) linear infinite;
+    }
+
+    /*
+     * Dim peg grid on the plate; ::after is a soft ball whose glow is masked
+     * to the same dots — the mesh stays put, colors swell as the ball rolls by.
+     */
+    .block[data-variant='dots'] {
+        --shimmer-block-duration: 5s;
+        --shimmer-dot-gap: 12px;
+        --shimmer-dot-dim: color-mix(in srgb, var(--color-text) 18%, transparent);
+        --shimmer-dot-mask: radial-gradient(circle, #000 1.15px, transparent 1.4px);
+        /* Radii as % of the block box; soft falloff eats some size, so keep these large. */
+        --shimmer-ball-radius-x: 42%;
+        --shimmer-ball-radius-y: 55%;
+        --shimmer-ball-x: -28%;
+        --shimmer-ball-y: 42%;
+
+        background-color: var(--shimmer-block-base);
+        background-image: radial-gradient(circle, var(--shimmer-dot-dim) 1.15px, transparent 1.4px);
+        background-size: var(--shimmer-dot-gap) var(--shimmer-dot-gap);
+    }
+
+    .block[data-variant='dots']::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+            ellipse var(--shimmer-ball-radius-x) var(--shimmer-ball-radius-y) at var(--shimmer-ball-x) var(--shimmer-ball-y),
+            color-mix(in srgb, var(--color-text) 50%, transparent) 0%,
+            color-mix(in srgb, var(--color-text) 26%, transparent) 40%,
+            color-mix(in srgb, var(--color-text) 8%, transparent) 68%,
+            transparent 88%
+        );
+        -webkit-mask-image: var(--shimmer-dot-mask);
+        mask-image: var(--shimmer-dot-mask);
+        -webkit-mask-size: var(--shimmer-dot-gap) var(--shimmer-dot-gap);
+        mask-size: var(--shimmer-dot-gap) var(--shimmer-dot-gap);
+        -webkit-mask-repeat: repeat;
+        mask-repeat: repeat;
+        animation: shimmer-dot-ball-path var(--shimmer-block-duration) ease-in-out infinite;
+    }
+}
+
+@keyframes shimmer-text-sweep {
+    to {
+        background-position:
+            0% center,
+            0 0;
+    }
+}
+
+@keyframes shimmer-block-sweep {
+    from {
+        transform: translateX(-100%);
+    }
+
+    to {
+        transform: translateX(100%);
+    }
+}
+
+/* Pseudo-random wander (CSS can’t RNG — hand-authored loop that doesn’t ping-pong). */
+@keyframes shimmer-dot-ball-path {
+    0% {
+        --shimmer-ball-x: -28%;
+        --shimmer-ball-y: 42%;
+    }
+
+    12% {
+        --shimmer-ball-x: 22%;
+        --shimmer-ball-y: 72%;
+    }
+
+    24% {
+        --shimmer-ball-x: 58%;
+        --shimmer-ball-y: 28%;
+    }
+
+    38% {
+        --shimmer-ball-x: 108%;
+        --shimmer-ball-y: 62%;
+    }
+
+    50% {
+        --shimmer-ball-x: 78%;
+        --shimmer-ball-y: 18%;
+    }
+
+    63% {
+        --shimmer-ball-x: 18%;
+        --shimmer-ball-y: 80%;
+    }
+
+    76% {
+        --shimmer-ball-x: 92%;
+        --shimmer-ball-y: 48%;
+    }
+
+    88% {
+        --shimmer-ball-x: 35%;
+        --shimmer-ball-y: 22%;
+    }
+
+    100% {
+        --shimmer-ball-x: -28%;
+        --shimmer-ball-y: 42%;
+    }
+}

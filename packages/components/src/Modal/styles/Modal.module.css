@@ -1,0 +1,208 @@
+@reference '@clowdy/styles/rulesets';
+
+/**
+ * Modal styles (CSS module)
+ */
+:global(.modal-content) {
+    padding: var(--modal-content-gap);
+}
+
+.root {
+    font-style: normal;
+    -webkit-font-smoothing: antialiased;
+
+    position: relative;
+
+    will-change: top, left;
+    max-height: 100vh;
+    display: flex;
+    pointer-events: all;
+    flex-flow: column nowrap;
+    user-select: text;
+    border-radius: calc(var(--modal-border-radius) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+
+    box-shadow: var(--modal-box-shadow);
+    background: var(--modal-background);
+    border: 1px solid var(--modal-border);
+    color: var(--modal-text-color);
+    z-index: 10;
+}
+
+.root::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--color-surface);
+    border-radius: inherit;
+    corner-shape: inherit;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-duration-fast);
+    z-index: 20;
+}
+
+.root[aria-disabled]::before {
+    opacity: 0.5;
+    pointer-events: all;
+}
+
+.root:global(.loading)::before {
+    opacity: 0.4;
+    pointer-events: all;
+}
+
+.root.noanimate {
+    transition: none !important;
+}
+
+.root[data-modal-in-move],
+.root[data-modal-in-resize] {
+    transition: none;
+    pointer-events: none;
+}
+
+.root[data-modal-in-move] [handle],
+.root[data-modal-in-resize] [handle] {
+    pointer-events: all;
+}
+
+.root.overlay {
+    margin: auto;
+    width: 100%;
+    max-width: min(var(--modal-overlay-max-width, 100%), calc(100% - 2 * var(--modal-overlay-inset, var(--spacing-xxl))));
+    height: 100%;
+    max-height: min(var(--modal-overlay-max-height, 100%), calc(100% - 2 * var(--modal-overlay-inset, var(--spacing-xxl))));
+}
+
+.data {
+    display: grid;
+    position: relative;
+    height: 100%;
+    min-height: 40px;
+    max-height: 100vh;
+    border-radius: inherit;
+    corner-shape: inherit;
+}
+
+/* fit-content has no definite height. Safari resolves height: 100% as min-height and the body collapses. */
+.root[data-modal-height='content'] .data {
+    height: auto;
+}
+
+.title {
+    @ruleset typography-heading-6;
+
+    min-height: var(--modal-title-height);
+    padding: 1px var(--modal-content-gap) 0;
+    border-bottom: 1px solid var(--modal-border);
+
+    position: relative;
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.title.draggable {
+    cursor: move;
+    user-select: none;
+}
+
+.title ~ .data {
+    max-height: calc(100vh - var(--modal-title-height));
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+.titleText {
+    margin-right: auto;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: nowrap;
+    margin-left: var(--spacing-8);
+    gap: var(--spacing-4);
+    font-size: var(--text-sm);
+}
+
+.responsiveToggle {
+    --switchItemIconColorActive: var(--color-primary);
+
+    margin-left: var(--spacing-8);
+}
+
+.responsiveToggle :global(.switch-item) {
+    min-width: 30px;
+}
+
+.tabsList {
+    margin-right: auto;
+    margin-left: calc(var(--modal-tab-padding) / -2);
+}
+
+/* Same weight as the single window title (heading-6 is 500). Size stays with the tab size. */
+.title .tabsList[data-size] {
+    font-weight: 500;
+}
+
+.tabsList :global(.switch-item) {
+    flex: unset !important;
+    white-space: nowrap;
+}
+
+.title .close {
+    margin-right: calc(var(--spacing-8) * -1);
+}
+
+.root > .close {
+    position: absolute;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
+    z-index: 1;
+}
+
+.resizeHandle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 16px;
+    height: 16px;
+    z-index: 10;
+    opacity: 0.3;
+    cursor: nwse-resize;
+    transition: opacity var(--transition-duration-fast);
+}
+
+.resizeHandle[data-resize='x'] {
+    cursor: ew-resize;
+    width: 4px;
+    height: 100%;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background: transparent;
+}
+
+.resizeHandle[data-resize='y'] {
+    cursor: ns-resize;
+    width: 100%;
+    height: 4px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: transparent;
+}
+
+.loader {
+    position: absolute !important;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 21;
+}

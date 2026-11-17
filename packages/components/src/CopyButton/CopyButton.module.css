@@ -1,0 +1,41 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .icons {
+        display: grid;
+        place-items: center;
+    }
+
+    .idle,
+    .done {
+        grid-area: 1 / 1;
+        display: flex;
+        transition-property: opacity, transform;
+        transition-duration: var(--transition-duration-fast);
+        transition-timing-function: var(--ease);
+    }
+
+    .done {
+        opacity: 0;
+        transform: scale(0.45) rotate(-50deg);
+    }
+
+    .icons[data-copied] .idle {
+        opacity: 0;
+        transform: scale(0.45) rotate(50deg);
+    }
+
+    .icons[data-copied] .done {
+        opacity: 1;
+        transform: none;
+        transition-duration: var(--transition-duration);
+        transition-timing-function: var(--ease-bounce);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .idle,
+        .done {
+            transition: none;
+        }
+    }
+}

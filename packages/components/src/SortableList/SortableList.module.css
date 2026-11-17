@@ -1,0 +1,127 @@
+@layer components {
+    .list,
+    .previewList {
+        --clowdy-sortable-list-gap: var(--spacing-md);
+
+        display: flex;
+        flex-direction: column;
+        gap: var(--clowdy-sortable-list-gap);
+        width: 100%;
+        overflow: visible;
+    }
+
+    .list[data-gap='sm'],
+    .previewList[data-gap='sm'] {
+        --clowdy-sortable-list-gap: var(--spacing-sm);
+    }
+
+    .item {
+        position: relative;
+        width: 100%;
+        overflow: visible;
+    }
+
+    .content {
+        width: 100%;
+        min-width: 0;
+        transition: opacity var(--transition-duration-fast);
+    }
+
+    .dropTarget {
+        position: absolute;
+        z-index: 1;
+        inset: 0;
+        pointer-events: none;
+    }
+
+    .dropTarget[data-container] {
+        bottom: auto;
+        height: var(--spacing-40);
+    }
+
+    .dragHandle {
+        position: absolute;
+        z-index: 2;
+        top: 50%;
+        left: calc(var(--spacing-xs) * -1);
+        display: grid;
+        place-items: center;
+        width: var(--spacing-14);
+        height: var(--spacing-14);
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        outline: none;
+        background: transparent;
+        color: var(--color-secondary-muted-text);
+        cursor: grab;
+        opacity: 0;
+        pointer-events: auto;
+        transform: translate(-100%, -50%);
+        transition:
+            color var(--transition-duration-fast),
+            opacity var(--transition-duration-fast);
+        touch-action: none;
+    }
+
+    .dragHandle[data-variant='surface'] {
+        left: 0;
+        background: var(--color-surface);
+        box-shadow: 0 0 0 var(--spacing-xxs) var(--color-surface);
+        transform: translate(-50%, -50%);
+    }
+
+    .dragHandle[data-variant='surface'][data-edge-offset='sm'] {
+        left: calc(var(--spacing-sm) * -1);
+    }
+
+    .dragHandle[data-variant='surface'][data-edge-offset='md'] {
+        left: calc(var(--spacing-md) * -1);
+    }
+
+    .dragHandle[data-alignment='top'] {
+        top: var(--spacing-20);
+    }
+
+    .item:hover:not(:has(.item:hover)) > .dragHandle,
+    .item[data-dragging] > .dragHandle {
+        opacity: 1;
+    }
+
+    .dragHandle:hover {
+        color: var(--color-text);
+    }
+
+    .dragHandle:active {
+        cursor: grabbing;
+    }
+
+    .item[data-dragging] > .content {
+        opacity: var(--opacity-inactive);
+    }
+
+    .list[data-drop-target]:empty {
+        min-height: var(--spacing-20);
+    }
+
+    .dragOverlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+        user-select: none;
+    }
+
+    .dragOverlay:empty {
+        display: none;
+    }
+
+    .dragPreviewItem {
+        width: 100%;
+        overflow: hidden;
+        border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background: var(--color-surface);
+        box-shadow: var(--shadow-sm);
+    }
+}
