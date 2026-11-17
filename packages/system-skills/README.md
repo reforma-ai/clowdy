@@ -12,8 +12,8 @@ Design settled in `.briefback/mvp/research/skills-in-engines.md` and built in St
 
 - The daemon copies the package to `<dataDir>/system-skills/<contentHash>/` (read-only, outside the app bundle) and points every engine at that copy.
 - **Claude** gets it as `plugins: [{ type: "local", path }]`; skills load without any user or project settings sources. Subagents see the same plugin.
-- **Codex** gets the same `skills/` directory as an extra skill root and derives the same `clowdy:<skill>` names from the manifest.
-- A skill listing is advisory, so loading is made deterministic: the system prompt of every run carries one line pointing at the entry skill, an orchestrator run starts with `/clowdy:orchestrate <message>` and a spawned executor with `/clowdy:executor`. Verifier runs are told to follow `clowdy:verify` in their prompt.
+- **Codex** (its engine is not built yet) gets the same `skills/` directory as an extra skill root and derives the same `clowdy:<skill>` names from the manifest.
+- A skill listing is advisory, so loading is made deterministic: the system prompt of every run carries one line pointing at the entry skill, and the first message of a run starts with it: `/clowdy:orchestrate` for an orchestrator, `/clowdy:executor` for an executor, `/clowdy:verify` for a verifier, then `Mode: autopilot` or `Mode: semi-manual` and the content.
 - Project and user skills work alongside these. Plugin skills are namespaced, so a project skill never shadows one of ours.
 
 ## The skills
@@ -35,6 +35,8 @@ How they plug together: `orchestrate` is the loop. It loads `autopilot` or `semi
 Bare names; the harness adds its prefix. Nothing else may appear in a skill, and there are no git tools: git is plain `git` in Bash, the agent's own business.
 
 `task_create`, `task_update`, `task_list`, `task_get`, `run_spawn`, `run_inspect`, `run_wait`, `run_cancel`, `ask_user` (semi-manual orchestrator only), `report_result` (executors and verifiers end with it).
+
+The fields come from the daemon's tool definitions (`apps/daemon/src/runs/`): `ask_user` options carry an `id` and `recommended` is that id, `run_spawn` takes an absolute `cwd`, `run_inspect` and `run_cancel` reach only the caller's own child runs, and a run has one open question at a time. `apps/daemon/test/skills-vocabulary.test.ts` checks the tool names, the fields of one-line calls and the `ask_user` examples against the real tools.
 
 ## Authoring rules
 

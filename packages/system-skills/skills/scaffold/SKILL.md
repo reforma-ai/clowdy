@@ -45,16 +45,16 @@ Check what is installed before you commit to a toolchain (`bun --version`, `node
 
 **Autopilot:** decide, then write `decisions/<date>-stack.md` at once (clowdy:docs, decision template).
 
-**Semi-manual:** the stack itself is never a card. The cards are the forks that change the product: platform, hosting, data and sign-in (table in stack-criteria), plus a product reading from step 1 when two readings give different products. Ask the ones the brief leaves open in one round of at most four cards (card format and rules: clowdy:semi-manual), decide the rest yourself. After the answers write `product.md` and the records (the user's answers as `Decided by: user (semi-manual)`, your stack choices under "Decided by the agent"), then ask the one confirmation card; its body holds the first milestone and the choices in plain words. Create no tasks and start no run before the user confirms.
+**Semi-manual:** the stack itself is never a card. The cards are the forks that change the product: platform, hosting, data and sign-in (table in stack-criteria), plus a product reading from step 1 when two readings give different products. Ask the ones the brief leaves open in one round of at most four cards, one at a time (card format and rules: clowdy:semi-manual), decide the rest yourself. After the answers write `product.md` and the records (the user's answers as `Decided by: user (semi-manual)`, your stack choices under "Decided by the agent"), then ask the one confirmation card; its body holds the first milestone and the choices in plain words. Create no tasks and start no run before the user confirms.
 
 ```js
 ask_user({
   question: "Do people use this in a browser, or install it on their phone?\n\nThe brief does not say. A phone app needs store accounts and review.\n\nMy pick: In a browser because it works on every device with nothing to install.",
   options: [
-    { label: "In a browser", consequence: "Works on every device with nothing to install. No push notifications at first." },
-    { label: "Installed app", consequence: "Needs app store accounts and review. Adds weeks before the first release." }
+    { id: "browser", label: "In a browser", consequence: "Works on every device with nothing to install. No push notifications at first." },
+    { id: "installed", label: "Installed app", consequence: "Needs app store accounts and review. Adds weeks before the first release." }
   ],
-  recommended: "In a browser"
+  recommended: "browser"
 })
 ```
 

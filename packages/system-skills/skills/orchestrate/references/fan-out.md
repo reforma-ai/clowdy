@@ -13,8 +13,7 @@ If the graph is a straight line, there is nothing to parallelize: one executor f
 | Choice | Use when | Cost and limits |
 | --- | --- | --- |
 | **You** | The piece is small, or it is the glue between pieces (integration, a conflict, a one-line contract fix). | Uses your context; keep it for decisions. |
-| **Engine sub-agent** (Claude's `Agent` tool; Codex's own sub-agent facility if it has one) | Read-only research and review; file-disjoint edits small enough for one sub-agent turn; many similar probes. The result is only needed by you. | Cheap, in-process, shares your cache. Launch 5-15 per wave in one message. They die with your turn if the app restarts. |
-| **Workflow tool** (Claude `Workflow`, "ultracode") | One mechanical job over many items: the same change in 50 modules, a review of 100 files. | Hundreds of agents possible; plan the item list first and keep each item independent. |
+| **Engine sub-agent** (Claude's `Agent` tool; Codex's own sub-agent facility if it has one) | Read-only research and review; file-disjoint edits small enough for one sub-agent turn; many similar probes, one item each (the same check over many modules, a review of many files). The result is only needed by you. | Cheap, in-process, shares your cache. Launch 5-15 per wave in one message; the engine allows about 20 at once. They die with your turn if the app restarts. |
 | **`run_spawn`** | A coarse piece of work worth tracking as its own task-bound agent: large, long (more than 10-15 minutes), needs its own session you may inspect or cancel, needs another engine or model, or is a verifier. | About 20k tokens fixed overhead each, bounded by the daemon cap (extra runs queue; that is fine). Visible in the Agents screen. Survives a restart. |
 
 Rules of thumb: research and review are sub-agents; implementation of a task is a `run_spawn`; independent verification is a `run_spawn` verifier. Do not spawn a run for something a sub-agent would finish in one turn, and do not hide hours of work in a sub-agent. Leave `engine` and `model` unset unless the manager asked or you have a reason (for example a verifier on the other engine for a second opinion).
@@ -30,7 +29,7 @@ An engine sub-agent does not load these skills. Its prompt must hold everything 
 
 ## 4. Where to work
 
-Your call per task, as in any session. Default: one checkout, disjoint ownership, no extra copies; a worktree costs an install and adds a merge. Create one with plain git (`git worktree add <path outside the repository> -b <task key>`), install dependencies there and pass `cwd: <path>` to `run_spawn` when:
+Your call per task, as in any session. Default: one checkout, disjoint ownership, no extra copies; a worktree costs an install and adds a merge. Create one with plain git (`git worktree add <path outside the repository> -b <task key>`), install dependencies there and pass `cwd: <path>` to `run_spawn` (an absolute path to an existing folder, or the call is refused) when:
 
 - two tasks must change the same files and cannot be serialized;
 - a task may break the build or the tests for a long time (migration, big refactor, dependency upgrade);
@@ -85,5 +84,5 @@ Give a verifier the claim and the criteria. Do not give it the executor's summar
 ## 7. While children run
 
 - You are idle: end the turn. Do not read their files and do not poll `run_inspect`.
-- `run_wait({ runIds, timeoutSeconds })` is for a short wait (seconds to a couple of minutes) when the next step needs a result now and you have nothing else to do. It is not a way to babysit.
+- `run_wait({ runIds, timeoutSeconds })` is for a short wait (one call waits at most 60 seconds) when the next step needs a result now and you have nothing else to do. It is not a way to babysit.
 - If the manager sends a message: answer it. If it changes scope, update tasks, `run_cancel` the affected runs, replan.

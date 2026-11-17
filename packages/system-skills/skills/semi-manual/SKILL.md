@@ -35,8 +35,8 @@ Never ask: commits, branches, worktrees, tool use, file or function names, libra
 
 ## 3. Ask the round
 
-- Send one `ask_user` call per frontier node, all in the same turn, at most four. With more than four, ask the four whose answers unlock the most other nodes, and the rest next round.
-- If only one call per turn works, ask one by one in that order. Before each, re-check it against the answers so far, and drop it if an answer made it moot.
+- One `ask_user` call per frontier node, one at a time: the call waits for the answer, then you make the next. Never put two `ask_user` calls in one message; the second is refused. A round is at most four cards. With more than four nodes, ask the four whose answers unlock the most other nodes first, and the rest in a later round.
+- Before each card, re-check it against the answers so far, and drop it if an answer made it moot.
 - A node that depends on another open node in this round waits for a later round.
 - Every card has the same shape (details and examples in [question-card.md](references/question-card.md), read it before your first card):
 
@@ -46,8 +46,8 @@ question: "<Title: one decision, as a question in the user's words>
 <Facts: one to four short lines. What is true now, what constrains it, why it needs deciding. No options, no advice.>
 
 My pick: <label> because <reason>."
-options: 2 to 4. label = one approach in a few words. consequence = one sentence on what the user gets, pays or risks.
-recommended: the label of your pick, copied exactly.
+options: 2 to 4, each { id, label, consequence }. id = a short lowercase slug, unique in the card. label = one approach in a few words. consequence = one sentence on what the user gets, pays or risks.
+recommended: the id of your pick, copied exactly.
 ```
 
 - One decision per card. Options are exclusive and all viable. The card already has a field for the user's own answer, so do not add "Other".

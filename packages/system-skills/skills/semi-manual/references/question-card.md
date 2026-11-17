@@ -2,7 +2,7 @@
 
 Read this before your first card in a cycle, and again when a round feels clumsy.
 
-A card is one `ask_user` call: `{question, options: [{label, consequence?}], recommended?}`. The user sees the question text, the options with their consequences, the recommended one marked, and a field for their own answer. The call returns the chosen option's label, or the user's own words. The run waits.
+A card is one `ask_user` call: `{question, options: [{id, label, consequence?}], recommended?}`. The user sees the question text, the options with their consequences, the recommended one marked, and a field for their own answer. The call returns the chosen option's label, or the user's own words. The run waits.
 
 ## Parts
 
@@ -10,15 +10,15 @@ A card is one `ask_user` call: `{question, options: [{label, consequence?}], rec
 
 **Body.** One to four short lines after a blank line. Facts only: what is true now, what limits the choice, why it must be decided now. Cite what you found ("the orders page is visible to every signed-in user"). No options, no advice, no instructions in the body.
 
-**My pick.** The last line of `question`: `My pick: <label> because <reason>.` One reason, in what the user cares about: users, cost, time, risk, effort to undo. The reason goes here because `recommended` carries only the label.
+**My pick.** The last line of `question`: `My pick: <label> because <reason>.` One reason, in what the user cares about: users, cost, time, risk, effort to undo. The reason goes here because `recommended` carries only the id.
 
-**Options.** Two to four. Each is one approach, so no option contains "and" joining two choices. Each is viable: someone sensible could choose it. Label: a few words naming the approach. `consequence`: one sentence on what the user gets, pays or risks if they pick it, in business terms (what users see, how long, how much, what can go wrong). Include "skip it" or "do less" when that is a real choice. Keep the options at the same level of detail and the same length.
+**Options.** Two to four. Each has an `id` (a short lowercase slug, unique in the card). Each is one approach, so no option contains "and" joining two choices. Each is viable: someone sensible could choose it. Label: a few words naming the approach. `consequence`: one sentence on what the user gets, pays or risks if they pick it, in business terms (what users see, how long, how much, what can go wrong). Include "skip it" or "do less" when that is a real choice. Keep the options at the same level of detail and the same length.
 
-**Recommended.** Always set, exactly one, and copy the label character for character.
+**Recommended.** Always set, exactly one: the `id` of your pick, copied character for character.
 
 **Custom answer.** The card has its own field. Do not add "Other", "Something else" or "You decide".
 
-**Batch.** Several cards in one turn belong to one round. They must not depend on each other. At most four.
+**Round.** Cards asked one after another belong to one round. They must not depend on each other. At most four. Ask them one at a time: each call waits for its answer, and a second call while a card is open is refused.
 
 ## A card
 
@@ -26,11 +26,11 @@ A card is one `ask_user` call: `{question, options: [{label, consequence?}], rec
 ask_user({
   question: "Who can export orders?\n\nThe orders page is visible to every signed-in user. An export includes customer emails and addresses. There are two roles today: admin and member.\n\nMy pick: Admins only because the file contains personal data, and opening it up later is a small change while taking it back is not.",
   options: [
-    { label: "Admins only", consequence: "Members keep what they see today; nobody gains access to personal data." },
-    { label: "Everyone who sees orders", consequence: "Fastest to ship, but every member can download all customer emails." },
-    { label: "Admins, with a download log", consequence: "Same access as the first option plus a record of who exported what; adds about one task." }
+    { id: "admins", label: "Admins only", consequence: "Members keep what they see today; nobody gains access to personal data." },
+    { id: "everyone", label: "Everyone who sees orders", consequence: "Fastest to ship, but every member can download all customer emails." },
+    { id: "admins-log", label: "Admins, with a download log", consequence: "Same access as the first option plus a record of who exported what; adds about one task." }
   ],
-  recommended: "Admins only"
+  recommended: "admins"
 })
 ```
 
@@ -42,10 +42,10 @@ Ask it once, when the frontier is empty. The settled list goes in the body in pl
 ask_user({
   question: "Start with this plan?\n\nExport contains the orders the user is currently looking at (their filters apply). Only admins can export. The file is a CSV. The button goes on the orders page. Large exports are not a concern at that size.\n\nMy pick: Start because every point above was your answer or follows from it.",
   options: [
-    { label: "Start", consequence: "I create three tasks and begin; you see progress in Tasks and Agents." },
-    { label: "Change something", consequence: "Tell me what; I will only revisit that point." }
+    { id: "start", label: "Start", consequence: "I create three tasks and begin; you see progress in Tasks and Agents." },
+    { id: "change", label: "Change something", consequence: "Tell me what; I will only revisit that point." }
   ],
-  recommended: "Start"
+  recommended: "start"
 })
 ```
 

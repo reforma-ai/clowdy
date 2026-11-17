@@ -30,8 +30,8 @@ Careful: <stored data changes, anything that cannot be undone>, or "nothing"
 
 Manager: "Make the Agents screen show how long each run has been going." Mode: autopilot.
 
-1. This is Clowdy's own repo. Create the copy `../clowdy-run-timer` with `git worktree add ../clowdy-run-timer -b run-timer`; install there.
+1. This is Clowdy's own repo. Create the copy next to it, `/work/clowdy-run-timer`, with `git worktree add /work/clowdy-run-timer -b run-timer`; install there.
 2. Plan: CLW-41 renderer change (Owns `apps/desktop/src/renderer/agents/**`), CLW-42 a daemon field if needed (Owns `apps/daemon/src/runs/**`).
-3. `run_spawn` both with `cwd: ../clowdy-run-timer`.
+3. `run_spawn` both with `cwd: /work/clowdy-run-timer` (an absolute path).
 4. Integrate in the copy, build the candidate there; a verifier run in the copy exercises the screen against a scratch daemon.
-5. Report: candidate at `../clowdy-run-timer`, no data changes; the manager closes the app and starts the candidate to try it.
+5. Report: candidate at `/work/clowdy-run-timer`, no data changes; the manager closes the app and starts the candidate to try it.
