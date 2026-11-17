@@ -24,6 +24,7 @@ Tests build a real daemon on a temp data dir (`test/helpers.ts`: `startHarness`,
 | `CLOWDY_MAX_RUNS` | `8`, global cap of runs in `running` |
 | `CLOWDY_MAX_RUNS_CLAUDE`, `_CODEX`, `_FAKE` | `6`, `4`, `1000`: per-engine cap of runs in `running` (subscription signals lower it at run time, see "Runtime") |
 | `CLOWDY_MAX_PROCESSES` | `24`, hard cap of live engine sessions; a spawn guard far above the run caps |
+| `CLOWDY_WAKE_WINDOW_MS` | `10000`, how long after the first finished child an orchestrator waits for more before it is resumed (each resume is a quota-costing turn) |
 | `CLOWDY_DEBUG` | off; any value logs raw engine `limit` events |
 | `CLOWDY_FAKE_SPEED` | `1`, multiplier for the fake engine's delays |
 | `CLOWDY_PROJECTS_DIR` | `~/Clowdy`, parent folder for `project.create` |

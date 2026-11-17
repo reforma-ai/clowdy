@@ -48,7 +48,7 @@ export interface Timings {
     pauseJitterMs: number;
 }
 
-export const DEFAULT_TIMINGS: Timings = { wakeWindowMs: 2000, killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000 };
+export const DEFAULT_TIMINGS: Timings = { wakeWindowMs: 10_000, killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000 };
 
 export class ConfigError extends Error {}
 
@@ -94,7 +94,8 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
             fake: numberFrom(env, 'CLOWDY_MAX_RUNS_FAKE', 1000, isCap, 'a positive integer'),
         },
         maxProcesses: numberFrom(env, 'CLOWDY_MAX_PROCESSES', 24, isCap, 'a positive integer'),
-        timings: DEFAULT_TIMINGS,
+        // Each wake-up is a resumed orchestrator turn that costs quota, so children that finish within this window share one.
+        timings: { ...DEFAULT_TIMINGS, wakeWindowMs: numberFrom(env, 'CLOWDY_WAKE_WINDOW_MS', DEFAULT_TIMINGS.wakeWindowMs, v => v >= 0, 'a number of milliseconds') },
         fakeSpeed: numberFrom(env, 'CLOWDY_FAKE_SPEED', 1, v => v >= 0, 'a number of at least 0'),
         systemSkillsSource: env.CLOWDY_SYSTEM_SKILLS_DIR || undefined,
         userSkillRoots: env.CLOWDY_USER_SKILLS_DIRS ? env.CLOWDY_USER_SKILLS_DIRS.split(delimiter).filter(Boolean) : [join(homedir(), '.claude', 'skills'), join(homedir(), '.agents', 'skills')],
