@@ -20,14 +20,17 @@
 - Daemon: Bun, `bun:sqlite`, `Bun.serve` HTTP + SSE on loopback with a bearer token. Dogfooding runs the daemon from the repo with Bun; packaging it comes later.
 - Cursor events carry whole entities (upserts), clients resync from a snapshot, commands are idempotent by `requestId`.
 - Daemon tests run with `bun test` (they need Bun's runtime); everything else keeps Vitest.
+- Skills are first-class. System skills ship with the app and encode the delivery loop (research, grill, task-graph planning, parallel fan-out, serialized integration, merged-result verification), scaffolding from scratch, and the autopilot and semi-manual modes; project and user skills work alongside them. See `system-skills.md`.
 - Everything is files and SQLite. The app is fully desktop now and the daemon will later run on a remote machine, so all state lives in the daemon's data dir (SQLite plus plain files; documents are files in the repo) and nothing depends on a cloud service or on sharing a process with the UI.
-- Working copy rule: agents never touch the user's checkout or the running app; each executor works in its own git worktree and branch, integration is serialized.
+- Working copies are the orchestrator's decision, like a human developer's. By default every run of a chat works in the project's main checkout, and one orchestrator may start any number of sub-agents there ("one branch if it wants"). The daemon provides `worktree_create` / `worktree_remove` tools (tracked per project, with path, branch, owning run) and `run_spawn` takes an optional `cwd`; the agent decides when isolation is worth it (a big module, work that must not disturb what is running). A question-only chat touches no worktree. Merging is the agent's job with git, as in any session; there is no daemon merge queue in the MVP. The system skills teach when to isolate and how to partition files between parallel agents.
+- One task, one chat: starting a task opens a new chat whose orchestrator is bound to it. A chat can create 0-N tasks and work on them, or just answer a question.
+- Fan-out has two forms and the orchestrator picks: engine-native sub-agents (cheap, in-process, hundreds possible; the adapter maps their events to child runs so the Agents tree shows them) and Clowdy-level runs through `run_spawn` (own process and session, can use another engine, bounded by the scheduler caps).
 
 **Reuse:** `packages/components` (UI), `packages/styles`, `packages/icons`, the renderer shell in `apps/desktop`, and parts of Reforma's agent (catalog in `research/reforma-agent/README.md`).
 
 ## Out of scope
 
-- Linear or any provider sync, webhooks, remote UI, cloud execution, auto-update, installers and signing, an engine connect/auth UI, BriefBack's exact method (semi-manual mode asks questions through a simple card protocol).
+- A daemon-side merge queue or integration branch (agents merge themselves), Linear or any provider sync, webhooks, remote UI, cloud execution, auto-update, installers and signing, an engine connect/auth UI, BriefBack's exact method (semi-manual mode asks questions through a simple card protocol).
 
 ## Stage 1 — Contract
 
@@ -105,11 +108,11 @@
 
 **Depends on:** Stages 2 and 5.
 
-**This stage:** the scheduler (caps, queue, backoff), git worktrees per executor, orchestrator tools (create/update tasks, spawn executors bound to tasks, wait, cancel), subtree cancellation, restart recovery, serialized integration and checks.
+**This stage:** the scheduler (caps, queue, backoff on subscription limits), orchestrator tools (create/update tasks, spawn runs bound to tasks with an optional cwd, wait, cancel, worktree create/remove), mapping of engine-native sub-agent events to child runs, subtree cancellation, restart recovery, one chat per started task.
 
 - [ ] Complete
 
-**Done when:** an orchestrator turns a request into tasks and runs several executors in parallel; a dependent task waits.
+**Done when:** an orchestrator turns a request into tasks and runs several sub-agents in parallel in one checkout; it can create a worktree for a larger piece of work; a dependent task waits; a plain question starts no worktree.
 **Commits:** None yet.
 
 ## Stage 7 — Shell integration and dogfooding
@@ -121,4 +124,15 @@
 - [ ] Complete
 
 **Done when:** `./clowdy dev` opens the app wired to a live daemon, and a real change to this repo is made through it.
+**Commits:** None yet.
+
+## Stage 8 — System skills
+
+**Depends on:** Stages 5 and 6.
+
+**This stage:** the bundled system skills (`system-skills.md`) and skill loading for every engine: discovery roots and precedence, a catalog the daemon serves, and a settings view. The orchestrator and executors are driven by these skills, so this stage turns the machinery of Stages 5-6 into the intended workflow.
+
+- [ ] Complete
+
+**Done when:** a new run in autopilot and one in semi-manual mode follow the system skills visibly, and a project skill is picked up alongside them.
 **Commits:** None yet.
