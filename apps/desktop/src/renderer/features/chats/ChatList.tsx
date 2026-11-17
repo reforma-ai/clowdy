@@ -24,13 +24,13 @@ export function ChatList({ selectedId }: { selectedId: ChatId | undefined }) {
     return (
         <Panel side="left" className={ styles.panel }>
             <PanelHeader>
-                Chats
-                <span className={ styles.create }>
-                    <Button variant="bordered" size="sm" isPending={ isCreating } onPress={ () => void start() }>
+                <span>Chats</span>
+                <PanelHeader.Actions>
+                    <Button variant="ghost" size="sm" isPending={ isCreating } onPress={ () => void start() }>
                         <Plus />
                         New chat
                     </Button>
-                </span>
+                </PanelHeader.Actions>
             </PanelHeader>
 
             <PanelContent contentClass={ styles.content }>

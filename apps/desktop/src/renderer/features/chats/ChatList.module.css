@@ -7,10 +7,6 @@
     padding: var(--spacing-md);
 }
 
-.create {
-    flex-shrink: 0;
-}
-
 .title {
     display: block;
     overflow: hidden;

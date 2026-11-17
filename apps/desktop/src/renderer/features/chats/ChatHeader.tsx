@@ -37,12 +37,12 @@ export function ChatHeader({ chat, run }: ChatHeaderProps) {
                 { run && <RunStatusPill status={ run.status } reason={ run.statusReason } /> }
             </span>
             { isRunActive(run) && (
-                <span className={ styles.stop }>
+                <PanelHeader.Actions>
                     <Button variant="bordered" size="sm" isPending={ isStopping } onPress={ () => void stop() }>
                         <StopBold size={ 14 } />
                         Stop
                     </Button>
-                </span>
+                </PanelHeader.Actions>
             ) }
         </PanelHeader>
     );

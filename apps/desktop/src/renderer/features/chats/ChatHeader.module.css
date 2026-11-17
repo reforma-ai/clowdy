@@ -10,9 +10,3 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-
-/* The header pulls its last control 6px past the inset, which suits an icon button; a bordered one keeps the inset. */
-.stop {
-    flex-shrink: 0;
-    padding-right: var(--spacing-6);
-}
