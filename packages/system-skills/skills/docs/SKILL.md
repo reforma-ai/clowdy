@@ -1,0 +1,137 @@
+---
+name: docs
+description: "The contract for a project's documents in .clowdy/docs/: layout, file names, plain-Markdown rules, facts versus plans, decisions and how to supersede them, who writes which file, what never goes in, how a new chat reads them, and how to edit them safely next to the user. Use before reading, creating or editing any project document, and whenever you record a decision, a research note or a check result."
+---
+
+# Project documents
+
+Project memory is plain Markdown in `<project>/.clowdy/docs/`. The user reads and edits it in the Documents screen, and every chat and agent shares it. Chat history does not carry over: if a decision, finding or result is not in the docs, the next chat does not know it.
+
+Always use the docs folder of the project's main checkout (the folder the project was opened from; give agents its absolute path in prompts), even when your code work happens in another copy. That is where the Documents screen looks, so what you write there is visible at once. Committing documents is ordinary git practice: commit them with the change they describe if the project tracks them.
+
+## Layout
+
+Create files only when there is something to say. No empty placeholders.
+
+| Path | Holds | Write it when | Who writes |
+| --- | --- | --- | --- |
+| `index.md` | Map: one line per document (link, what it answers, status) | Any document is added, replaced or removed | Orchestrator only |
+| `product.md` | What the product is for, who uses it, what it does today, what is planned, what is not | Behavior the user sees changes | Orchestrator |
+| `architecture.md` | Stack, folder layout, commands, conventions, how to add things, constraints | Structure, conventions or commands change | Orchestrator; the skeleton builder writes the first one |
+| `decisions/` | One file per significant decision | The moment you decide | Whoever decides, as new files only |
+| `research/` | One note per investigated question, with sources | You finish investigating, before you build on it | Whoever investigated, one file each |
+| `checks/` | One report per verification: what ran, result, evidence, limits | After each verification (clowdy:verify) | The verifier, or whoever verified |
+
+Working alone in a chat with no child runs, you are the orchestrator. Executors, verifiers and sub-agents never edit `index.md`, `product.md` or `architecture.md`: they put proposed changes under "Docs to update" in their report, and list the path of every file they created. Sub-agents write no documents; they return findings to their parent.
+
+Other topic documents (a runbook, a glossary) are fine at top level or in a new folder if `index.md` lists them. Templates are in [references/](references/): [index.md](references/index-template.md), [product.md and architecture.md](references/product-and-architecture.md), [research note](references/research-template.md), [decision record](references/decision-template.md), [check report](references/check-template.md).
+
+## File rules
+
+- Names: lowercase kebab-case ASCII ending in `.md`. Decisions, research and checks start with a date: `2026-11-17-use-sqlite.md`. Take the date from `date +%F`, not from memory. Same topic twice in a day: add a distinguishing word.
+- One topic per file. Keep `index.md` under about 60 lines and other files under about 300; split by topic when longer.
+- Plain Markdown that the visual editor round-trips: headings, paragraphs, bullet and numbered lists, tables of at most 5 columns, code fences with a language, links, bold, blockquotes. No front matter, no HTML, no base64 images, no footnotes, no checkbox lists (task state lives in the task list), no diagrams as code. Put metadata as plain lines or a short bullet list under the title (`Status: accepted`).
+- Link to other documents with a path relative to the docs folder, for example the target `decisions/2026-11-17-auth.md`. Write code paths as code spans, not links; the Documents screen opens only its own folder.
+- Write prose in the language the user and the existing docs use. Keep file names and the labels below in English so every agent finds them.
+- Never rename or delete a document others may link to. Supersede it instead (below). Rename only when the user asks.
+
+## Keep four kinds of statements apart
+
+| Label | Means | Must have |
+| --- | --- | --- |
+| Fact | True now, checked | A source (below) |
+| Hypothesis | Believed, not checked | How to check it |
+| Plan | Decided, not built | The task key, if a task exists |
+| Implemented | Exists and was seen working | The date and the check |
+
+Give each kind its own heading in `product.md` and `architecture.md` (`## Implemented`, `## Plan`, `## Hypotheses`), and use the label in research notes. A plan moves to Implemented only after you ran it. Never write a hypothesis as a fact. When code changes a statement, fix the statement in the same task.
+
+## Decisions
+
+Record every significant decision when you make it, not at the end of the task: a product fork, the stack, the data model, auth, hosting, a trade-off, a reversal. Routine choices (names, small refactors) get no record. clowdy:autopilot and clowdy:semi-manual say who decides; the [decision template](references/decision-template.md) says how it is written down.
+
+To supersede:
+
+1. Write the new record with `Supersedes:` pointing at the old file, and say in its Context why the old one no longer fits.
+2. In the old file change only two lines: `Status: superseded` and `Superseded by:` pointing at the new file. Leave the rest unchanged.
+3. In `index.md` list the new record, and move the old one under `Superseded`. The orchestrator makes the edit; anyone else reports both paths.
+
+Fix a typo in an accepted record in place. If the choice changed, supersede. Before you rely on a decision, check its status. A record with `Decided by: user` is replaced only on the user's word.
+
+## Cite sources
+
+- Code: path, lines and symbol, with the date once per note: `apps/api/src/auth.ts:42-60 (verifyToken)`. Line numbers drift, so the symbol matters most.
+- Web: `[title](https://example.com/page), accessed 2026-11-17`.
+- Commands: the command, exit code, date, and at most 20 lines of output that prove the point.
+- Another document: a relative link.
+
+A claim with no source is a Hypothesis.
+
+## Never put in documents
+
+- Secrets: keys, tokens, passwords, connection strings with credentials, `.env` values, personal data of real people. If you find one already there, remove it and tell the user it must be rotated.
+- Raw logs, full command output, stack dumps over 20 lines, whole files copied from the code, chat transcripts.
+- Binaries, builds, databases, video.
+
+Summarize instead: the excerpt that proves the point, the command to reproduce, the task key. A screenshot may sit next to the document as a small image file (under about 500 KB, relative link) when a user flow needs visual proof. Never embed it as base64.
+
+## Start a chat from the docs
+
+1. Read `index.md`. If it does not exist, the project has no memory yet: skim `README` and the top-level layout, and write documents only when you have something worth keeping. A new app starts with clowdy:scaffold.
+2. Open only the documents the task needs, chosen from the index lines and the links in the task. When several cover one topic, read the newest and skip superseded ones.
+3. Verify before you rely: open the cited file, run the cheap command. Docs go stale. If the code disagrees, trust the code, fix the document or relabel the claim as a Hypothesis, and tell the user in one line only when it changes the plan. A chat that only asks a question reports the mismatch and does not edit the document unless asked.
+4. Do not read every document and do not paste documents back at the user.
+
+## Update as you go
+
+- Decided something significant: `decisions/` now.
+- Finished investigating a question: `research/` note, then build on it.
+- Changed what the user sees: `product.md` Implemented, in the same task.
+- Changed structure, conventions or commands: `architecture.md`.
+- Verified a result: `checks/` report.
+- Created a document: it needs a line in `index.md`, added by the orchestrator from the paths that others report.
+
+Before you finish a task, spend a minute on this: what would a new chat need that only you know? Is `index.md` still true? Did a Plan item you built move to Implemented?
+
+## Edit safely
+
+The user and other agents edit the same files, and the daemon reports a conflict when a save meets a changed file.
+
+1. Read the file immediately before you edit it, even if you read it earlier.
+2. Change existing files with a targeted edit (your Edit or patch tool) anchored on a small unique snippet. Write a whole file only when it is new. An edit that fails means the text changed under you: re-read and redo it.
+3. Never replace a document wholesale or delete text you did not write unless the user asked. Keep the user's wording. If you disagree, add your view under a `Proposed change` heading or say it in chat.
+4. If the user says they are editing a document, or your edits to it keep failing, stop touching it. Put your change in a new file and name it in your report.
+5. If your task gives you part of `index.md`, `product.md` or `architecture.md`, change only your own lines and do not restructure the file while other runs are active.
+
+## Telling the user
+
+Name a document by its path under the docs folder, in a clause: "the reasoning is in `decisions/2026-11-17-use-sqlite.md`". Say what changed and why, not how the files work.
+
+## Example
+
+Autopilot, building a bakery ordering page. You choose SQLite over a hosted database because there is one shop and no hosting yet. Immediately write `decisions/2026-11-17-use-sqlite.md` (abbreviated here; a real record has every section of the decision template):
+
+```markdown
+# Store orders in SQLite
+
+- Status: accepted
+- Date: 2026-11-17
+- Decided by: autopilot
+- Scope: order and menu data. Not login or file uploads.
+- Related tasks: CLW-2
+- Supersedes: none
+- Superseded by: none
+
+## Context
+One shop, one server, no hosting chosen yet. `src/db/` does not exist yet.
+
+## Decision
+Keep orders in a single SQLite file inside the app folder.
+
+## Reason
+Runs locally, so agents can verify it. Easy to replace later: all queries live in `src/db/`.
+```
+
+Then the orchestrator adds one line for it under `## Decisions` in `index.md` (an executor lists the path in its report instead). The format is in the [index template](references/index-template.md).
+
+A later chat opens `index.md`, sees the line, reads only that decision, opens the cited code to confirm the database file exists, and goes on. If the shop outgrows SQLite, a new record carries `Supersedes:` and the old one gets `Status: superseded`.
