@@ -87,7 +87,7 @@ Final report: the format of clowdy:orchestrate with the `Decided for you` line f
 Parallel runs would ask duplicate or contradictory questions, so only you talk to the user.
 
 - Put `Mode: semi-manual` and the paths of the settled records in every `run_spawn` prompt and every engine sub-agent prompt.
-- An executor follows the settled list and decides routine matters alone. For a significant fork the list does not cover, it finishes what does not depend on it and ends with `report_result({status: "blocked"})`, the fork written as card fields: title, facts, options with consequences, its pick.
+- An executor follows the settled list and decides routine matters alone. For a significant fork the list does not cover, it finishes what does not depend on it and ends with `report_result({ status: "blocked", summary })`, the fork written as card fields: title, facts, options with consequences, its pick.
 - You merge the forks from several children into one round, drop duplicates, and ask.
 
 ## Example
