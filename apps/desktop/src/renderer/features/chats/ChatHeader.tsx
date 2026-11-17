@@ -1,5 +1,5 @@
 import { Button } from '@clowdy/components/Button';
-import { Text } from '@clowdy/components/Text';
+import { PanelHeader } from '@clowdy/components/Panel';
 import { StopBold } from '@clowdy/icons/16';
 import { useState } from 'react';
 
@@ -17,7 +17,7 @@ export interface ChatHeaderProps {
     run: Run | undefined;
 }
 
-/** The chat's title, what its orchestrator is doing, and Stop while it does it. */
+/** The chat's title, what its orchestrator is doing, and Stop while it does it, in the same header bar as the panels beside it. */
 export function ChatHeader({ chat, run }: ChatHeaderProps) {
     const root = useRootStore();
     const [isStopping, setIsStopping] = useState(false);
@@ -31,15 +31,19 @@ export function ChatHeader({ chat, run }: ChatHeaderProps) {
     };
 
     return (
-        <header className={ styles.header }>
-            <Text variant="heading-5" truncate>{ chat.title }</Text>
-            { run && <RunStatusPill status={ run.status } reason={ run.statusReason } /> }
+        <PanelHeader>
+            <span className={ styles.heading }>
+                <span className={ styles.title }>{ chat.title }</span>
+                { run && <RunStatusPill status={ run.status } reason={ run.statusReason } /> }
+            </span>
             { isRunActive(run) && (
-                <Button className={ styles.stop } variant="bordered" size="sm" isPending={ isStopping } onPress={ () => void stop() }>
-                    <StopBold size={ 14 } />
-                    Stop
-                </Button>
+                <span className={ styles.stop }>
+                    <Button variant="bordered" size="sm" isPending={ isStopping } onPress={ () => void stop() }>
+                        <StopBold size={ 14 } />
+                        Stop
+                    </Button>
+                </span>
             ) }
-        </header>
+        </PanelHeader>
     );
 }
