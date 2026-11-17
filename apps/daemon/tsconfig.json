@@ -1,0 +1,11 @@
+{
+    "extends": "@clowdy/config-typescript/base.json",
+    "compilerOptions": {
+        "types": ["bun"],
+        "lib": ["ES2023"],
+        "target": "ES2022",
+        "resolveJsonModule": true
+    },
+    "include": ["src", "test"],
+    "exclude": ["node_modules"]
+}

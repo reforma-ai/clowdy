@@ -1,0 +1,182 @@
+# Clowdy Daemon (`@clowdy/daemon`)
+
+The standalone Bun process that owns projects, chats, tasks, runs, documents and the SQLite store, and serves the loopback HTTP + SSE contract in `packages/protocol`. It never imports Electron or React. The contract is the source of truth: read `packages/protocol/src/api.ts` for the routes.
+
+## Run and test
+
+| Command | What it does |
+| --- | --- |
+| `bun run dev` | `bun --watch src/main.ts`. |
+| `bun run start` | `bun src/main.ts`. |
+| `bun run test` | `bun test`. Daemon tests use `bun:sqlite`, so Vitest cannot run them. |
+| `bun run typecheck`, `bun run lint` | `tsc --noEmit`, `eslint .`. |
+
+Tests build a real daemon on a temp data dir (`test/helpers.ts`: `startHarness`, `GateEngine` for runs the test releases by hand, `ScriptEngine` for sessions a test scripts event by event and tool call by tool call, `SHORT_TIMINGS`). No network, no real agents. `CLOWDY_FAKE_SPEED=0` removes the fake engine's delays.
+
+## Environment
+
+| Variable | Default |
+| --- | --- |
+| `CLOWDY_DATA_DIR` | `daemonDataDir()` from `@clowdy/protocol`, shared with the desktop app so it finds `daemon.json` (macOS `~/Library/Application Support/Clowdy/daemon`; `CLOWDY_PROFILE=dev` uses a separate folder) |
+| `CLOWDY_PORT` | `0` (random free port) |
+| `CLOWDY_TOKEN` | 32 random bytes, hex |
+| `CLOWDY_ENGINE` | `fake`; `claude` registers the Claude engine too (settings below, see "Claude engine") |
+| `CLOWDY_MAX_RUNS` | `8`, global cap of runs in `running` |
+| `CLOWDY_MAX_RUNS_CLAUDE`, `_CODEX`, `_FAKE` | `6`, `4`, `1000`: per-engine cap of runs in `running` (subscription signals lower it at run time, see "Runtime") |
+| `CLOWDY_MAX_PROCESSES` | `24`, hard cap of live engine sessions; a spawn guard far above the run caps |
+| `CLOWDY_DEBUG` | off; any value logs raw engine `limit` events |
+| `CLOWDY_FAKE_SPEED` | `1`, multiplier for the fake engine's delays |
+| `CLOWDY_PROJECTS_DIR` | `~/Clowdy`, parent folder for `project.create` |
+| `CLOWDY_SYSTEM_SKILLS_DIR` | the repository's `packages/system-skills`; the plugin folder (manifest and `skills/`) copied at start, see "Skills" |
+| `CLOWDY_USER_SKILLS_DIRS` | `~/.claude/skills` and `~/.agents/skills` (path-delimited list, weakest first); point it at a scratch folder to keep your own skills out of a test run |
+
+On start the daemon takes `<dataDir>/daemon.lock` (its pid; a lock whose process is dead is taken over, a live one exits with code 1 and a message) and writes `<dataDir>/daemon.json` (`DaemonInfo`, mode 0600). SIGINT/SIGTERM remove both. A reused pid can make a stale lock look live; delete the file by hand then.
+
+## Layout
+
+```
+src/main.ts, daemon.ts   Entry and wiring (startDaemon is what tests call)
+src/config.ts, ids.ts, errors.ts, instance.ts
+src/db/                  Connection, versioned migrations, row <-> entity queries per table
+src/store.ts             tx / emit / afterCommit / subscribe; the event log and command results
+src/domain/              Projects, chats, tasks, stream items, snapshots (plain functions over Store)
+src/commands/            One handler per command type, typed against the protocol, plus the executor
+src/runs/                The run runtime, see "Runtime": RunService, Scheduler, EngineLimits, RunDriver, tools, wake-ups, native sub-agents
+src/engine/              AgentEngine seam (types.ts), the scripted fake engine, `claude/` (Claude Agent SDK adapter)
+src/docs/                Docs folder service, path safety, tree, watcher
+src/skills/              System skills copy, skill catalog, enabled state, the user skills plugin, folder watchers (see "Skills")
+src/http/                Server, guards (host, origin, bearer, protocol), routes, SSE
+```
+
+## Invariants
+
+- Every mutation runs in `store.tx` and inserts its event row(s) with `store.emit` in the same transaction. Never await inside a transaction. Start background work with `store.afterCommit`.
+- A run's status changes only through `RunService.setStatus`, which checks `runs/transitions.ts`. A run becomes `running` only from `queued`, via the scheduler (a sub-agent inside a session is inserted `running` by `createNative`; it holds no slot).
+- Commands are synchronous. The first result for a `requestId` (success or caller error, not `internal`) is stored with the effects and returned again for a repeat.
+- Snapshots read the cursor and the state in one read transaction.
+- Engines never write to the database. They emit `EngineEvent`s and call the `ToolDefinition`s they were given.
+- Docs paths are normalized relative paths whose realpath stays inside the docs root, checked also for files that do not exist yet.
+
+## Runtime
+
+`src/runs/` turns the engine seam into orchestration. Design inputs: `.briefback/mvp/research/orchestration.md` (fan-out; its worktree and merge-queue parts are superseded), `packages/system-skills` (the skills define the tool vocabulary and what an agent expects from the daemon).
+
+| File | Does |
+| --- | --- |
+| `service.ts` | `RunService`: create runs, the status machine, slots, dependency waits, `ask`, cancel (with the kill ladder), recovery, session details |
+| `driver.ts` | `RunDriver`: `spawn` (the `run_spawn` rules), `launch` (one flight per run turn, queued behind the run's previous flight), the engine event loop, `settle` |
+| `scheduler.ts`, `limits.ts` | Slots under the global, engine and project caps with a reason for every wait; `EngineLimits` (warning, rejection, transient failures) |
+| `wake.ts`, `reports.ts` | `Wakeups` (coalesced, serialized wake-ups from the SQLite mailbox), the bounded child summaries |
+| `native.ts` | `NativeAgents`: `subagent` events as child runs |
+| `tools.ts`, `tool-kit.ts`, `task-tools.ts`, `run-tools.ts` | The tools of each role |
+| `processes.ts` | Process start times, group signals, killing survivors |
+| `prompts.ts` | System prompt, first message, task message |
+
+### Tools
+
+Names and fields are the system skills' vocabulary; tool descriptions say how to use each. `toolsFor(run, mode)` picks them by role.
+
+| Role | Tools |
+| --- | --- |
+| Orchestrator | `task_create`, `task_update`, `task_list`, `task_get`, `run_spawn`, `run_inspect`, `run_wait`, `run_cancel`, and `ask_user` in semi-manual chats only |
+| Executor, verifier | `task_get`, `task_list`, `task_update` (own tasks, up to Review), `report_result` |
+
+- Tasks come back as `{ id, key, title, description, statusId, status, category, dependsOn: keys, activeRuns }`; `task_list` adds `statuses: [{ id, name, category }]` and cuts descriptions at 400 characters. A task reference is a key or an id. `statusId` (and the alias `status`) is looked up as an id, then a status name, then a category, case-insensitive; a miss lists the project's statuses. `task_update` takes the whole new description; a `note` in `report_result.taskUpdates` is appended under a `## Notes` heading as `<date> (<role>): <note>`.
+- `run_spawn({ taskIds, prompt, role?, engine?, model?, cwd?, idempotencyKey })` returns at once with `{ runId, status, statusReason, duplicate }`. The same key under the same parent returns the first run. Limits: runs nest 2 levels (`MAX_DEPTH`; executors get no `run_spawn`), 50 spawned children per orchestrator (`MAX_CHILDREN`), one active executor per task (the orchestrator's own assignment on a chat's bound task does not count). A verifier is bound with relation `verifies` and waits for no dependency; an executor on a task with unfinished dependencies is `blocked` ("Waiting for CLW-1") and starts by itself when the last one reaches a `done` category, through any path. `cwd` must be an existing absolute folder and is stored on the run (the project folder by default).
+- `run_wait` waits at most 60 s with the session open and its slot held, for a short wait only; it marks the children it reports as seen. `run_cancel` stops a child subtree and marks the cancellations seen (the caller did it). `run_inspect` adds the last stream lines of a child.
+- `report_result({ status: done|failed|blocked, summary, taskUpdates? })` validates every task update first (own tasks, never Done or Canceled), applies them, and ends the run's work: the session gets `killGraceMs` to end its turn, then is closed. `done` is `succeeded`; `failed` and `blocked` are `failed` (a blocked report keeps `outcome` internally so parents see the state `blocked`). A run that ends its turn without reporting is `succeeded` with its final text, or `failed` on an engine error.
+
+### Prompts
+
+The system prompt of every turn is short: where the system skills are (`Follow clowdy:orchestrate`, `clowdy:executor` or `clowdy:verify`), the mode and the project facts. The first message of a run is `/clowdy:<entry skill> Mode: autopilot|semi-manual`, a blank line, then the content (the user's text, the task message, the `prompt` of `run_spawn`). Later turns carry no prefix. The user item in a chat shows the content only.
+
+### Turns, parking and wake-ups
+
+- A run's turn is one engine session: slot, `engine.start`, events, settle. `runs.next_prompt` holds the message of the turn that has not started (user text, assignment) and survives a restart; the turn also takes the unseen finished children of the run's mailbox and adds their summaries to the message. A run keeps one `sessionId` across turns and later turns pass it as `resumeSessionId`.
+- An orchestrator whose turn ends with spawned children still active, or finished children it has not seen, becomes `waiting_children`: its session is closed, its slot and process are free. A parent never becomes `succeeded` while it has a non-terminal spawned child. Native sub-agents still running at the end of a turn are cancelled with it.
+- `run_mailbox` (SQLite) gets a row in the same transaction that finishes a spawned child. `Wakeups` waits `timings.wakeWindowMs` after the last child, so children finishing together arrive in one message, then moves a `waiting_children` parent to `queued` and launches the next turn. Running, cancelled and finished parents are skipped (a running one looks at its mailbox when its turn ends; a cancelled one hears about its children with the next user message). Rows are marked delivered when the engine session has started, so a crash before that loses nothing and a row is delivered once. Each run's turns are chained, so a wake-up never overlaps the previous session's shutdown.
+- Each child is told in at most about 2,000 characters: `N. <name> (<runId>) on <task keys>: <state>`, then `Reason:` and `Summary:`. States: `succeeded`, `failed`, `blocked`, `cancelled`, `interrupted`. A cancelled child comes with the instruction not to restart it silently. The whole message is capped at 24 KB; the rest is named for `run_inspect`. A note per finished child goes into the orchestrator's stream.
+- After a restart, parents whose children finished or were interrupted while the daemon was down are woken the same way. Interrupted runs are never resumed by the daemon; a user message to a chat orchestrator resumes it.
+
+### Native sub-agents
+
+`subagent` events create child runs (role `executor`, same engine, `origin: 'native'`, no process, no slot, not numbered, not counted as active work) under the run of the session. `running` creates or renames, `done` is `succeeded`, `error` is `failed`, `cancelled` is `cancelled`; `text` and `tool` events with an `agentId` go to that child's stream (throttled to 250 ms). Events are applied in batches of at most 30 ms in one transaction, and at most 300 sub-agents per turn are listed, with one note saying how many more ran. A native child cannot be cancelled alone (`conflict`); cancelling its parent ends it.
+
+### Scheduler and limits
+
+- Promotion needs room under the global cap, the engine's cap (`engineCaps`) and the project's `maxParallelRuns`; a run that waits says why (`Waiting for a free slot`, or the engine's pause with the reset time).
+- `limit` events are read in `limits.ts` (`parseLimit`: `resetsAt` in seconds or milliseconds becomes milliseconds; raw events are logged with `CLOWDY_DEBUG`). `warning` halves the engine's cap for 10 minutes. `rejected` pauses the engine until `resetsAt` plus up to 30 s of jitter (5 minutes when no reset time is given), stores the pause in `engine_pauses`, publishes one `notice` (level `error` when the reset is more than 24 h away), and every live run of the engine stops its turn and goes `blocked` ("... is at its usage limit until 14:30; this run continues then"). When the pause ends each run goes back through the queue and continues the same session with a short "continue" message.
+- A retryable engine `error` (overload, 429, 529) lowers the engine's cap by one (one back per quiet 5 minutes) and puts the run `blocked` for an exponential backoff with jitter (`retryBaseMs` doubling, at most 5 minutes), then continues the session; after 4 failures in a row the run fails with the engine's message.
+- `maxProcesses` counts engine sessions started and not closed; one more fails the run before it starts.
+
+### Process safety and recovery
+
+- The engine's `process` event records `{ pid, pgid, start time }` on the run (the start time is read from the OS with `ps`, to the second, independent of the time zone; Windows has no start time yet). It is cleared when the session closes.
+- Cancel aborts the engine's signal; after `killGraceMs` (5 s) a process still recorded gets SIGTERM for its group, after as long again SIGKILL (Windows: `taskkill /T /F`, untested). Stopping the daemon does the same for what is left.
+- At start, a recorded process whose pid is alive and whose start time still matches (within 5 s, so a reused pid is left alone) is killed first; then runs with a process, `running` or `waiting_user` become `interrupted`. `queued` and `blocked` runs are launched again from `next_prompt`; the engine pause is restored from `engine_pauses`.
+
+### Chat per task
+
+`task.start` creates a chat titled after the task (mode `settings.chatMode`, else autopilot), links it to the task (`ChatTaskLink`), creates an orchestrator run bound to it (`RunTaskLink` assigned) and sends the task message ("Complete task CLW-3: ...", the description, "This chat is bound to CLW-3; read it with task_get..."). A task with an active run is refused with `already_running` unless `force`.
+
+### Fake engine
+
+`engine/fake.ts` follows the same contract: the orchestrator plans three tasks (the third depends on the first), calls `run_spawn` for each and ends its turn; when resumed with child summaries it marks tasks done with `task_update`, ends the turn again while tasks remain, and reports when all are done (a failed or cancelled child fails the run). An executor reads its tasks with `task_get`, works with one native sub-agent, and ends with `report_result`. A chat bound to a task gets one executor.
+
+## Skills
+
+The system skills (`packages/system-skills`) and the person's own skills reach engines as plugins, so no engine reads `~/.claude` settings, hooks or CLAUDE.md for them. Design: `.briefback/mvp/research/skills-in-engines.md`. `SkillsService` (`src/skills/service.ts`) is built in `startDaemon` before the engines, and it writes two keys into `Config` that **engines must read when a run starts, not when they are built**:
+
+| Config key | What | Engine use |
+| --- | --- | --- |
+| `systemSkillsDir` | `<dataDir>/system-skills/<hash>`: the plugin folder (`.claude-plugin/plugin.json` named `clowdy`, and `skills/`) | Claude `plugins: [{ type: 'local', path }]`; Codex extra root `<dir>/skills` (names come out as `clowdy:<skill>` from the manifest) |
+| `extraPluginDirs` | `[<dataDir>/user-skills-plugin/<hash>]`, or `[]` when no user skill is enabled. Replaced whenever the user skills change | the same, one entry per folder (the plugin is named `user`, skills read `user:<skill>`) |
+
+Project skills are not mirrored: Claude reads `<cwd>/.claude/skills` through `settingSources: ['project']`, Codex reads `.agents/skills` from the repository by itself. Claude does not read `.agents/skills` and Codex does not read `.claude/skills`, so a project entry lists the engine that sees it.
+
+- **Materialization** (`materialize.ts`): the manifest and `skills/**` (nothing else, no `.DS_Store`) are copied to `<dataDir>/system-skills/<hash>` where `hash` is 16 hex of SHA-256 over the copied file names and contents. Built in a temp folder and renamed into place. Files are `0444` (folders stay owner-writable so `rm -rf` of the data folder works). A copy that exists is reused when it still hashes to its name, rebuilt when it does not; the newest two copies (by last use) are kept. The manifest name must be `clowdy`, else the daemon refuses to start; so does a missing source. The source is the repository checkout (`packages/system-skills`, found from this file's location) or `CLOWDY_SYSTEM_SKILLS_DIR`. A build without the checkout ships that folder beside the daemon (not built yet; embedding it into a `bun build --compile` binary is also not built, and that binary must never embed an agent SDK).
+- **Discovery** (`scan.ts`): a skill is a direct child folder of a root with a `SKILL.md`, which is all the engines load. Roots: system (the materialized `skills/`), user (`config.userSkillRoots`, `~/.claude/skills` then `~/.agents/skills`; a later root hides the same name in an earlier one and says so), project (`<project>/.claude/skills` for Claude, `<project>/.agents/skills` for Codex; one real folder reached from both is one entry with both engines). Symlinked folders are followed; each real folder counts once, and a link back to the root or above is ignored. Folders starting with `.`, `node_modules` are skipped. Front matter (`frontmatter.ts`) is parsed with `Bun.YAML`: `description` is required, `name` (when given) must equal the folder, other keys are ignored. A skill that fails is left out and named in `warnings` with the reason; a folder name must be a plain word (letters, digits, `.`, `_`, `-`, at most 64). Caps: 200 skills per root, a SKILL.md of 256 KB, a description of 1,536 characters (the engines' own cut). Logic ported from Reforma's `workspace-skills.ts` and `skills.ts` (fingerprint of the files, layered merge by name).
+- **Cache**: a root is re-listed on every request (one `readdir` and a `stat` of each SKILL.md), but only parsed again when a folder, its real path or its SKILL.md mtime or size changed (the fingerprint).
+- **Catalog** (`catalog.ts`, `GET /v1/skills?projectId=`): `SkillCatalog { entries, tokens, warnings }`. Entry names are the ones the engines show: `clowdy:<skill>` (system), `user:<skill>` (user), plain (project). `tokens` per entry is an estimate of its line in the engine's listing (`16 + ceil(chars / 4)`, measured 33 to 48 for one-line skills); the catalog `tokens` sums the enabled entries for the engine that sees the most, and a warning appears above 2,000 (both engines shorten descriptions past about that). System entries have no `path`.
+- **Enabled state** (`settings.ts`): `<dataDir>/skills.json` is `{ "disabled": ["folder-name"] }`, a deny list so new skills start on. Only user skills can be switched (`skills.setEnabled { name: 'user:deploy', enabled }` gives `{ name, enabled }`); a system or project name is `invalid`, an unknown user name `not_found`. A damaged file leaves everything on and adds a warning.
+- **User plugin** (`mirror.ts`): `<dataDir>/user-skills-plugin/<hash>/` holds `.claude-plugin/plugin.json` (name `user`) and `skills/<folder>` symlinks to the real folders of the enabled user skills (copies on Windows). The hash covers names, real paths and SKILL.md mtimes and sizes, so any change makes a new folder and a path an engine already holds stays valid; the newest five are kept.
+- **Events**: `skills.changed` (no payload) means refetch the catalog. A change to the user folders or a switch is announced once per project (events are per project); a change in a project's skill folders only to that project. Recursive `fs.watch` on each existing root with a 300 ms debounce; an event is announced only when the fingerprint really changed. A root that does not exist yet is watched from the next catalog request on, and that request also brings the `user` plugin up to date (announcing `skills.changed` when it had to). Watchers do not see edits behind a symlink that leaves the root (the next request still reads them fresh).
+
+## Claude engine
+
+`src/engine/claude/` runs agents on `@anthropic-ai/claude-agent-sdk` **0.3.325** (exact pin, bundles Claude Code 2.1.325; the SDK ships almost daily, so read its changelog before bumping). `CLOWDY_ENGINE=claude` registers it next to the fake engine. It is created only when selected, so a bad setting stops the daemon at start and nothing is read for an engine nobody uses. Research: `.briefback/mvp/research/claude-agent-sdk.md`.
+
+| Variable | Default |
+| --- | --- |
+| `CLOWDY_CLAUDE_AUTH` | `subscription`: the login of the `claude` CLI (`claude auth login`), never an API key. `api-key` and `oauth-token` make the daemon hand a secret to the agents; each needs its secret below |
+| `CLOWDY_CLAUDE_API_KEY`, `CLOWDY_CLAUDE_OAUTH_TOKEN` | unset. Read from the daemon's own environment only when that provider is selected, passed to the process as `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN`, never logged, stored, or sent to the renderer (the config object does not even hold them) |
+| `CLOWDY_PERMISSION_MODE` | `bypassPermissions` (with `allowDangerouslySkipPermissions`); `acceptEdits` or `auto` |
+| `CLOWDY_CLAUDE_SETTING_SOURCES` | `project`: the repository's CLAUDE.md, `.claude/settings.json`, `.mcp.json` and `.claude/skills` apply. A comma list of `user,project,local`, or `none` |
+| `CLOWDY_CLAUDE_MAX_SUBAGENT_DEPTH`, `CLOWDY_CLAUDE_MAX_SUBAGENTS` | `3` and `20`: `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` and `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` of every session (native sub-agents are a feature, this only caps hidden fan-out) |
+| `CLOWDY_CLAUDE_BIN` | the binary the SDK bundles (`@anthropic-ai/claude-agent-sdk-<platform>`, about 350 MB) |
+| `CLOWDY_CLAUDE_DEBUG` | off; `1` logs raw `rate_limit_event`s |
+
+- **One session is one `claude` process**, `query()` in streaming-input mode. The prompt goes out exactly as given (the runtime prefixes `/clowdy:orchestrate`); `send()` adds a message that the CLI folds into the running turn (or runs as the next one). `resumeSessionId` is the SDK's `resume`, and it needs the same `cwd` as the first run (transcripts live in `~/.claude/projects/<cwd>`). Cancel aborts the SDK's controller (stdin EOF, about 2 s, then kill); `close()` returns when the process is gone.
+- **Process group.** `spawnClaudeCodeProcess` starts `claude` detached, as the leader of its own group, and kills the whole group on abort (SIGTERM, SIGKILL after 2 s) and after it exits. The first events of a session are `process { pid, pgid }`, so the runtime can kill the group after a daemon crash. The CLI keeps its tool shells in groups of their own and cleans them up on SIGTERM; a SIGKILL of `claude` leaves them behind, so send SIGTERM first. On Windows the tree is stopped with `taskkill /T /F`; untested.
+- **Environment.** The SDK's `env` replaces the child's, so `buildClaudeEnv` builds it: an allowlist (`PATH` as the daemon resolved it, `HOME`, `USER`, locale, `TMPDIR`, proxies and CA files, the ssh agent socket, the Windows basics), the sub-agent caps, and the selected provider's secret. `CLAUDECODE`, `CLAUDE_CODE_*`, `ELECTRON_RUN_AS_NODE`, `ANTHROPIC_*`, `CLAUDE_CONFIG_DIR`, `NODE_OPTIONS` and every other variable stay behind (a stray `ANTHROPIC_API_KEY` would silently move billing off the subscription). It also sets `ENABLE_CLAUDEAI_MCP_SERVERS=false` (otherwise the user's claude.ai connectors, Drive and Docs among them, load into every agent) and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. The default config dir stays untouched: no `CLAUDE_CONFIG_DIR`, since the login lives under it. Under subscription auth the engine warns (once per distinct value) when an init reports an `apiKeySource` other than `none`; `ClaudeEngine.diagnostics` holds the last init (version, model, `apiKeySource`, plan; never the account's email).
+- **Tools.** The runtime's `ToolDefinition`s are an in-process MCP server `clowdy` (zod schema from the definition, results as text, a throw as an `isError` result). The runtime sees them by their own names (`task_create`), not `mcp__clowdy__task_create`. Built-ins are an explicit list (`BUILT_IN_TOOLS` in `session.ts`): no `AskUserQuestion` or `ExitPlanMode`, which wait for a terminal. `Agent` is there; `Workflow` is not.
+- **Skills.** `plugins` are `config.systemSkillsDir` (the repository's `packages/system-skills` when the daemon has not set it) and `config.extraPluginDirs`, read at each run start. A plugin that fails to load is silent in the SDK; the engine warns from `plugin_errors` in init.
+- **Events.** `system/init` gives `session`. Text is streamed from `stream_event` deltas (one message per text block, closed with `done`); an assistant message already streamed is not repeated, and one that was not (sub-agents) arrives whole. Thinking blocks never leave the adapter. `tool_use` gives a running `tool`, the `tool_result` finishes it (output cut at 20,000 characters). `system/task_*` of local agents and workflows give `subagent` events, and everything a sub-agent says or does carries its `agentId`; shells, monitors and ambient tasks are not children. `rate_limit_event` gives `limit` (`allowed_warning` is `warning`, `rejected` is `rejected`; `resetsAt` untouched, observed in epoch seconds). Usage events are per-turn shares: the SDK's totals are cumulative and a resumed session inherits its transcript's, so the adapter subtracts the last totals it saw (kept in memory per session id). After a daemon restart the first turn of a resumed session has no baseline and reports tokens without a cost.
+- **A turn ends** with `done` (the final result text) or `error`, but not at every `result`: a `result` with another message queued, or while a **background sub-agent is still running** (the model's `Agent` calls are background by default in this version), only reports usage. The CLI starts the next turn itself when the sub-agent ends, and `done` follows the turn that reports it. A sub-agent that never reports would keep the run open until it is cancelled. `error_during_execution` after a cancel is a cancellation, not an error.
+- **Errors** (`error.code`, `failure.ts`): `not_logged_in` ("Run `claude auth login` in a terminal"), `auth_failed` (a rejected key or token, or a blocked account), `usage_limit` (retryable, says when it resets), `rate_limited`, `overloaded`, `server_error` (retryable), `context_too_long`, `billing`, `invalid_request`, `session_not_found` (resume with a different cwd or lost transcript), `engine_missing`, `process_crashed` (retryable, quotes the end of stderr), `unknown`. Classification is by the assistant message's `error` kind, the HTTP status in the CLI's text, and its wording.
+- **Subscription terms.** Personal use on the user's own machine and login is what Anthropic's terms allow; shipping Clowdy to others with subscription login is not cleared (see the research note). `CLOWDY_CLAUDE_AUTH=api-key` is the way to ship.
+- Tests are in `test/claude-*.test.ts`; `test/fixtures/claude/` are real recordings (haiku, 2.1.325) reduced to what the adapter reads. No test starts the real engine.
+
+## API decisions
+
+- Command `data`: `project.open|create|update` give `{ project }`; `chat.create|rename|setMode` give `{ chat }`; `chat.send` gives `{ chatId, runId }`; `task.create|update` give `{ task }`; `task.delete` gives `{ taskId }`; `task.start` gives `{ runId, chatId }`; `run.cancel` gives `{ cancelled: RunId[] }` (children first, empty when already finished); `run.answer` gives `{ runId }`; `docs.write` gives `{ path, hash }`; `skills.setEnabled` gives `{ name, enabled }`.
+- Errors: `invalid` 400, `unauthorized` 401 (bad bearer) or 403 (foreign host or origin), `not_found` 404, `conflict` and `already_running` 409, `unavailable` 503, `internal` 500. Error bodies have the shape of a failed `CommandResult`; a 401 on `/v1/commands` carries `requestId: ""`. `docs.write` conflicts put `{ path, content, hash }` in `error.details`.
+- `GET /v1/events`: with neither `?cursor=` nor `Last-Event-ID` the stream is live only. A cursor above the log head answers 410 with a JSON error (`details: { cursor, head }`). The first bytes are `retry: 2000`; idle streams get `: heartbeat` every 15 s. The log is never pruned yet. Clients need `fetch` streaming, since `EventSource` cannot send the bearer header.
+- A chat has one orchestrator run for life. The first `chat.send` creates it and names the chat after the message (if still "New chat"); a message to a finished chat, or to one parked in `waiting_children`, moves the same run back to `queued` and resumes the session; a message to a live run goes to the engine session. `chat.setMode` is refused while the orchestrator is active (parked counts as active). `project.update` takes `settings.chatMode`, the mode of chats the daemon opens itself (a started task) and of `chat.create` without one.
+- `project.create`'s `path` is the project folder itself; without it the folder is `<projectsDir>/<kebab-name>`. An empty existing folder is reused, a non-empty one is a `conflict`. `project.open` wants the repository root and normalizes to its realpath.
+- Run slots: only `running` counts against the caps (global, engine, project); sub-agents inside a session (`origin: 'native'`) never do. A run that waited (answer, blocked) returns through `queued` ("Waiting for a free slot"). A run whose tasks depend on unfinished tasks starts `blocked` ("Waiting for CLW-1") and queues once every dependency is in a `done` category. An orchestrator that ended its turn while children work is `waiting_children` and holds no slot and no process.
+- Tasks follow runs: assigned tasks move to the first `active` status when the run starts, to `review` when it succeeds (executors move their own tasks there with `report_result` first), and back to `todo` when it ends otherwise with no other active run. Marking tasks `done` is the orchestrator's or the user's job; the tools of executors and verifiers refuse it.
+- Stream items: one `assistant` item per message, updated in place at most every 50 ms and closed with `done: true`; one `tool` item per tool call. Orchestrators also get `ask_user` in semi-manual chats: it becomes a `question` item, the run goes to `waiting_user`, and `run.answer` resumes it. A run has one open question at a time: a second `ask_user` call while one waits fails at once (an answer wakes the run, so a second open card could not be answered any more).
+- Startup kills engine processes that outlived the daemon, marks every run that was mid-turn `interrupted` ("Daemon restarted") and publishes one `notice` per affected project. Runs that only waited (`queued`, `blocked`, `waiting_children`) keep waiting and are started again. Graceful stop (SIGINT, SIGTERM, `POST /v1/shutdown`) aborts engines but leaves statuses for the next start to fix. `GET /v1/health` carries `activeRuns` (queued, running, waiting or blocked runs, sub-agents not counted) so a client can ask before stopping the daemon.
+- Docs: `.clowdy/docs` is created on first access. Symlinks are not listed. The watcher reports Markdown files and folders (`created`, `modified`, `removed`) after about 100 ms and skips what the daemon wrote itself; if the platform cannot watch, one `notice` says so.
+- Not built yet: artifacts are only readable (nothing creates them, no `artifact.added`), git worktrees, the Codex engine, event log retention. `Run.usage` is an additive protocol field the runtime fills from `usage` engine events.

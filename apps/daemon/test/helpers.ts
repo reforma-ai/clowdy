@@ -1,0 +1,334 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { executeCommand } from '../src/commands';
+import { startDaemon } from '../src/daemon';
+
+import type { ClowdyEvent, Command, CommandResult, EngineId, Run } from '@clowdy/protocol';
+import type { Config } from '../src/config';
+import type { Daemon, DaemonOptions } from '../src/daemon';
+import type { AgentEngine, EngineEvent, EngineSession, EngineStartOptions } from '../src/engine/types';
+
+const roots: string[] = [];
+
+/** A fresh empty directory, removed when the test file ends. */
+export function tempDir(label = 'clowdy-test'): string {
+    const dir = mkdtempSync(join(tmpdir(), `${ label }-`));
+
+    roots.push(dir);
+
+    return dir;
+}
+
+export function cleanTempDirs(): void {
+    for (const dir of roots.splice(0)) {
+        rmSync(dir, { recursive: true, force: true });
+    }
+}
+
+const GIT_IDENTITY = ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false'];
+
+export function git(cwd: string, ...args: string[]): string {
+    const result = Bun.spawnSync(['git', ...GIT_IDENTITY, ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
+
+    if (result.exitCode !== 0) {
+        throw new Error(`git ${ args.join(' ') } failed: ${ result.stderr.toString() }`);
+    }
+
+    return result.stdout.toString().trim();
+}
+
+/** A throwaway repository with one commit. */
+export function makeRepo(parent: string, name = 'repo'): string {
+    const path = join(parent, name);
+
+    mkdirSync(path, { recursive: true });
+    git(path, 'init', '-q', '-b', 'main');
+    writeFileSync(join(path, 'README.md'), '# Test\n');
+    git(path, 'add', '.');
+    git(path, 'commit', '-q', '-m', 'Initial commit');
+
+    return path;
+}
+
+/** Delays of the runtime shrunk for tests. */
+export const SHORT_TIMINGS = { wakeWindowMs: 15, killGraceMs: 150, retryBaseMs: 10, pauseJitterMs: 0 };
+
+export function testConfig(overrides: Partial<Config> = {}): Config {
+    const root = tempDir();
+
+    return {
+        dataDir: join(root, 'data'),
+        projectsDir: join(root, 'projects'),
+        port: 0,
+        token: 'test-token',
+        engine: 'fake',
+        maxRuns: 8,
+        engineCaps: { claude: 6, codex: 4, fake: 1000 },
+        maxProcesses: 24,
+        timings: SHORT_TIMINGS,
+        fakeSpeed: 0,
+        ...overrides,
+    };
+}
+
+let counter = 0;
+
+export function command(type: Command['type'], fields: Record<string, unknown> = {}): Command {
+    return { requestId: `req-${ Date.now() }-${ ++counter }`, type, ...fields } as unknown as Command;
+}
+
+export class Harness {
+    constructor(readonly daemon: Daemon, readonly config: Config) {}
+
+    get url(): string {
+        return `http://127.0.0.1:${ this.daemon.info.port }`;
+    }
+
+    get store() {
+        return this.daemon.services.store;
+    }
+
+    /** Executes a command directly and returns its result. */
+    send(type: Command['type'], fields: Record<string, unknown> = {}): CommandResult {
+        return executeCommand(this.daemon.services, command(type, fields));
+    }
+
+    /** Executes a command and returns its `data`, failing the test when it did not succeed. */
+    ok(type: Command['type'], fields: Record<string, unknown> = {}): any {
+        const result = this.send(type, fields);
+
+        if (!result.ok) {
+            throw new Error(`${ type } failed: ${ result.error.code } ${ result.error.message }`);
+        }
+
+        return result.data;
+    }
+
+    fetch(path: string, init: RequestInit = {}): Promise<Response> {
+        return fetch(`${ this.url }${ path }`, { ...init, headers: { authorization: `Bearer ${ this.config.token }`, ...init.headers } });
+    }
+
+    events(after = 0): ClowdyEvent[] {
+        return this.store.eventsAfter(after, undefined, 100_000);
+    }
+
+    run(runId: string): Run {
+        return this.daemon.services.runs.require(runId);
+    }
+
+    openRepo(name?: string): { id: string; path: string } {
+        const path = makeRepo(this.config.projectsDir, name);
+        const { project } = this.ok('project.open', { path });
+
+        return { id: project.id, path: project.path };
+    }
+
+    async stop(): Promise<void> {
+        await this.daemon.stop();
+    }
+}
+
+export async function startHarness(overrides: Partial<Config> = {}, options: DaemonOptions = {}): Promise<Harness> {
+    const config = testConfig(overrides);
+
+    return new Harness(await startDaemon(config, options), config);
+}
+
+/** Restarts a daemon on the data directory of an earlier harness. */
+export async function restartHarness(previous: Harness, options: DaemonOptions = {}, overrides: Partial<Config> = {}): Promise<Harness> {
+    const config = { ...previous.config, ...overrides };
+
+    return new Harness(await startDaemon(config, options), config);
+}
+
+export async function waitFor<T>(check: () => T | undefined | false | null, what: string, timeoutMs = 4000): Promise<T> {
+    const deadline = Date.now() + timeoutMs;
+
+    for (;;) {
+        const value = check();
+
+        if (value) {
+            return value;
+        }
+
+        if (Date.now() > deadline) {
+            throw new Error(`Timed out waiting for ${ what }`);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
+}
+
+/**
+ * An engine whose sessions block until the test releases them, for exercising the scheduler and cancellation.
+ * A session is identified by a substring of its prompt (executors get `Task KEY: title`).
+ */
+export class GateEngine implements AgentEngine {
+    readonly id: EngineId = 'fake';
+    readonly started: string[] = [];
+    readonly aborted: string[] = [];
+    private gates = new Map<string, () => void>();
+
+    start(options: EngineStartOptions): EngineSession {
+        this.started.push(options.prompt);
+
+        const gates = this.gates;
+        const aborted = this.aborted;
+
+        return {
+            send() {},
+            close() {},
+            async *[Symbol.asyncIterator](): AsyncGenerator<EngineEvent> {
+                yield { type: 'session', sessionId: `gate-${ options.prompt }` };
+                yield { type: 'text', delta: 'working', done: true };
+
+                await new Promise<void>((resolve, reject) => {
+                    gates.set(options.prompt, resolve);
+                    options.signal.addEventListener('abort', () => {
+                        aborted.push(options.prompt);
+                        reject(options.signal.reason);
+                    }, { once: true });
+                });
+
+                yield { type: 'done', result: `finished ${ options.prompt }` };
+            },
+        };
+    }
+
+    isStarted(match: string): boolean {
+        return this.started.some(prompt => prompt.includes(match));
+    }
+
+    release(match: string): void {
+        const entry = [...this.gates].find(([prompt]) => prompt.includes(match));
+
+        if (!entry) {
+            throw new Error(`No gated session matches ${ match }`);
+        }
+
+        this.gates.delete(entry[0]);
+        entry[1]();
+    }
+}
+
+export const gateEngines = (engine: GateEngine) => new Map<EngineId, AgentEngine>([['fake', engine]]);
+
+/** What a script sees of one session: the start options and a way to call the runtime's tools like a model would. */
+export interface Turn {
+    options: EngineStartOptions;
+    /** Aborts when the run is cancelled, the turn is interrupted, or the runtime closes the session. */
+    signal: AbortSignal;
+    /** The 1-based number of this session among all the engine started. */
+    number: number;
+    /** Runs a tool the runtime gave this session and reports it as tool events. Returns what the tool returned. */
+    call(name: string, input?: unknown): AsyncGenerator<EngineEvent, any>;
+}
+
+export type Script = (turn: Turn) => AsyncGenerator<EngineEvent>;
+
+/**
+ * An engine whose sessions run a script the test wrote: the script yields engine events and calls tools through
+ * `turn.call`. It decides by the options (role, prompt, resume id) what this session does.
+ */
+export class ScriptEngine implements AgentEngine {
+    readonly id: EngineId = 'fake';
+    readonly turns: EngineStartOptions[] = [];
+    /** Messages the runtime sent into live sessions, by session number. */
+    readonly sent: string[] = [];
+    closed = 0;
+    /** When each session started and finished closing (epoch ms), by session number minus one. */
+    readonly startedAt: number[] = [];
+    readonly closedAt: number[] = [];
+    private calls = 0;
+
+    /** `closeMs` makes `close()` slow, like an engine that takes a moment to shut its process down. */
+    constructor(private script: Script, private closeMs = 0) {}
+
+    start(options: EngineStartOptions): EngineSession {
+        this.turns.push(options);
+        this.startedAt.push(Date.now());
+
+        const number = this.turns.length;
+        const script = this.script;
+        const engine = this;
+        const closing = new AbortController();
+        const turn: Turn = {
+            options,
+            signal: AbortSignal.any([options.signal, closing.signal]),
+            number,
+            async *call(name, input = {}) {
+                const tool = options.tools.find(candidate => candidate.name === name);
+
+                if (!tool) {
+                    throw new Error(`No ${ name } tool in this session (${ options.tools.map(candidate => candidate.name).join(', ') })`);
+                }
+
+                const toolCallId = `script-call-${ ++engine.calls }`;
+
+                yield { type: 'tool', toolCallId, name, input, state: 'running' };
+
+                try {
+                    const output = await tool.execute(input, options.signal);
+
+                    yield { type: 'tool', toolCallId, name, input, state: 'done', output };
+
+                    return output;
+                }
+                catch (error) {
+                    yield { type: 'tool', toolCallId, name, input, state: 'error', error: error instanceof Error ? error.message : String(error) };
+                    throw error;
+                }
+            },
+        };
+
+        return {
+            send: text => void engine.sent.push(text),
+            close: async () => {
+                engine.closed++;
+                closing.abort();
+
+                if (engine.closeMs > 0) {
+                    await Bun.sleep(engine.closeMs);
+                }
+
+                engine.closedAt[number - 1] = Date.now();
+            },
+            [Symbol.asyncIterator]: () => script(turn),
+        };
+    }
+
+    /** Prompts of the sessions started so far. */
+    get prompts(): string[] {
+        return this.turns.map(options => options.prompt);
+    }
+}
+
+export const scriptEngines = (engine: AgentEngine) => new Map<EngineId, AgentEngine>([['fake', engine]]);
+
+/** Resolves when `release()` is called; scripts use it to hold a session open until the test says so. Rejects when `signal` aborts first. */
+export function latch(): { wait(signal?: AbortSignal): Promise<void>; release(): void } {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+
+    return {
+        release,
+        wait: signal => new Promise<void>((resolve, reject) => {
+            void released.then(resolve);
+
+            if (signal?.aborted) {
+                reject(signal.reason);
+            }
+
+            signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+        }),
+    };
+}
+
+/** Never resolves; rejects when `signal` aborts. A session that is waiting for the model uses it. */
+export function untilAborted(signal: AbortSignal): Promise<never> {
+    return latch().wait(signal) as Promise<never>;
+}
