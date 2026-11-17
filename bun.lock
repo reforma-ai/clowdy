@@ -182,6 +182,13 @@
         "react-dom": "^19.2.8",
       },
     },
+    "packages/protocol": {
+      "name": "@clowdy/protocol",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+    },
     "packages/styles": {
       "name": "@clowdy/styles",
       "version": "0.0.0",
@@ -285,6 +292,8 @@
     "@clowdy/icons": ["@clowdy/icons@workspace:packages/icons"],
 
     "@clowdy/lib": ["@clowdy/lib@workspace:packages/lib"],
+
+    "@clowdy/protocol": ["@clowdy/protocol@workspace:packages/protocol"],
 
     "@clowdy/styles": ["@clowdy/styles@workspace:packages/styles"],
 

@@ -1,0 +1,56 @@
+/** Version of this contract. The daemon refuses clients that send a different major in `x-clowdy-protocol`. */
+export const PROTOCOL_VERSION = 1;
+
+export const PROTOCOL_HEADER = 'x-clowdy-protocol';
+
+/**
+ * HTTP surface, loopback only, `Authorization: Bearer <token>` on everything but `/v1/health`.
+ *
+ * GET  /v1/health                         -> Health
+ * GET  /v1/snapshot                       -> RootSnapshot
+ * GET  /v1/projects/:id/snapshot          -> ProjectSnapshot
+ * GET  /v1/events?cursor=N                -> text/event-stream of ClowdyEvent (frame name `clowdy`, id = cursor);
+ *                                            `Last-Event-ID` also resumes. 410 when the cursor is older than retained history.
+ * POST /v1/commands                       -> body Command, answers CommandResult
+ * GET  /v1/runs/:id/items?after=SEQ       -> StreamItem[] (a run's stream, also an orchestrator's chat)
+ * GET  /v1/chats/:id/items?after=SEQ      -> StreamItem[] (the chat's orchestrator stream)
+ * GET  /v1/tasks/:id/detail               -> TaskDetail
+ * GET  /v1/projects/:id/docs              -> DocsTree
+ * GET  /v1/projects/:id/docs/file?path=   -> DocFile
+ */
+export const ROUTES = {
+    health: '/v1/health',
+    snapshot: '/v1/snapshot',
+    projectSnapshot: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/snapshot`,
+    events: '/v1/events',
+    commands: '/v1/commands',
+    runItems: (runId: string) => `/v1/runs/${ encodeURIComponent(runId) }/items`,
+    chatItems: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/items`,
+    taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
+    docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
+    docsFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs/file`,
+} as const;
+
+export interface Health {
+    ok: true;
+    protocol: number;
+    version: string;
+    pid: number;
+    startedAt: number;
+}
+
+/** What a client needs to find a running daemon; the daemon writes it to its data dir on start. */
+export interface DaemonInfo {
+    pid: number;
+    port: number;
+    token: string;
+    protocol: number;
+    startedAt: number;
+}
+
+export interface TaskDetail {
+    taskId: string;
+    chatIds: string[];
+    runIds: string[];
+    artifacts: import('./domain').Artifact[];
+}
