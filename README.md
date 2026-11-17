@@ -33,7 +33,7 @@ bun install
 4. The renderer reloads by itself as agents edit it. A change under `apps/desktop/src/main` restarts the app window but not the daemon, so running work continues. A change to the daemon takes effect when you restart it: `CLOWDY_PROFILE=dev bun run --cwd apps/daemon stop`, then reopen the app (the daemon restarts, runs that were live show as *Interrupted*; send a message in the chat to resume).
 5. Agents edit this checkout directly unless they decide to work in a copy. The system skills tell them to use a copy for changes to Clowdy itself.
 
-`CLOWDY_ENGINE=fake ./clowdy dev` plays a scripted demo without spending any quota.
+`CLOWDY_ENGINE=fake ./clowdy dev` plays a scripted demo without spending any quota. A daemon that is already running keeps the engine it started with, so stop it first (step 4) or the app attaches to it and its agents run on your subscription.
 
 ## Daemon
 

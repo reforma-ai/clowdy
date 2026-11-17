@@ -11,9 +11,11 @@
  *
  * `CLOWDY_RENDERER_PORT` moves the dev server off 5273. Arguments go to Electron.
  */
+import { daemonDataDir } from '@clowdy/protocol';
 import { $, type Subprocess } from 'bun';
-import { watch } from 'node:fs';
+import { readFileSync, watch } from 'node:fs';
 import { connect } from 'node:net';
+import { homedir } from 'node:os';
 import path from 'node:path';
 
 import { buildMain } from './main-bundle';
@@ -59,6 +61,11 @@ process.on('exit', () => {
 if (await listening(port)) {
     console.error(`Port ${ port } is taken, maybe by another \`./clowdy dev\`. Stop it, or set CLOWDY_RENDERER_PORT to a free port.`);
     process.exit(1);
+}
+
+// The daemon outlives the app and keeps the engine it started with, so the engine asked for reaches only a daemon this run starts.
+if (process.env.CLOWDY_ENGINE && daemonRunning()) {
+    console.warn(`A daemon is already running and keeps its own engine, so CLOWDY_ENGINE=${ process.env.CLOWDY_ENGINE } does not apply to it. To switch: CLOWDY_PROFILE=dev bun run --cwd apps/daemon stop`);
 }
 
 // The packages the renderer imports, built first (the icon pack is generated); turbo's cache makes a repeat run cheap.
@@ -130,6 +137,20 @@ async function quitApp(): Promise<void> {
 
     await running.exited;
     clearTimeout(forced);
+}
+
+/** True when `daemon.json` of this run's data folder names a live process. */
+function daemonRunning(): boolean {
+    try {
+        const file = path.join(daemonDataDir({ platform: process.platform, home: homedir(), env }), 'daemon.json');
+
+        process.kill((JSON.parse(readFileSync(file, 'utf8')) as { pid: number }).pid, 0);
+
+        return true;
+    }
+    catch {
+        return false;
+    }
 }
 
 /** True when something accepts connections on the port. A plain TCP probe, so an HTTP proxy in the environment plays no part. */

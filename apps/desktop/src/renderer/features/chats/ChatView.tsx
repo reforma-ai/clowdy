@@ -57,9 +57,12 @@ export function ChatView({ chat }: { chat: Chat }) {
                     working={ isRunActive(run) && liveLine(run.status) }
                     emptyState={ <EmptyChat /> }
                     decorate={ item => (progress && item.id === cardAfter ? <ProgressCard progress={ progress } /> : null) }
-                    onAnswer={ async (questionId, answer) => {
-                        if (run) await perform(root, { type: 'run.answer', runId: run.id, questionId, answer });
-                    } }
+                    // A question the orchestrator no longer waits on (stopped, interrupted) is shown but cannot be answered.
+                    onAnswer={ run?.status === 'waiting_user'
+                        ? async (questionId, answer) => {
+                            await perform(root, { type: 'run.answer', runId: run.id, questionId, answer });
+                        }
+                        : undefined }
                 />
             ) }
 

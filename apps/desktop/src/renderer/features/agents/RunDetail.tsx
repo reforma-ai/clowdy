@@ -64,12 +64,15 @@ function RunHeader({ run, parent }: { run: Run; parent: Run | undefined }) {
                     </div>
                     <Text color="secondary" truncate>{ run.summary ? `${ ROLE_LABEL[run.role] } · ${ run.summary }` : ROLE_LABEL[run.role] }</Text>
                 </div>
-                { !isTerminalRunStatus(run.status) && (
-                    <Button variant="bordered" size="sm" isPending={ isStopping } onPress={ () => void stop() }>
-                        <StopBold aria-hidden />
-                        Stop
-                    </Button>
-                ) }
+                { !isTerminalRunStatus(run.status) && (run.origin === 'native'
+                    // A sub-agent lives inside its parent's session: the daemon refuses to stop it alone.
+                    ? <Text variant="sm" color="secondary">{ `Runs inside ${ parent?.name ?? 'its parent run' }` }</Text>
+                    : (
+                        <Button variant="bordered" size="sm" isPending={ isStopping } onPress={ () => void stop() }>
+                            <StopBold aria-hidden />
+                            Stop
+                        </Button>
+                    )) }
             </div>
 
             { reason && <Text variant="sm" color="secondary">{ reason }</Text> }

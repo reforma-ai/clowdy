@@ -49,7 +49,8 @@ function Outlet() {
 
     if (root.phase === 'loading') return <Loading />;
 
-    if (root.phase === 'unreachable') return <Unreachable message={ root.loadError } onRetry={ () => void root.load() } />;
+    // The desktop shell hands over the daemon's address once, while the page loads: only a reload finds a daemon that started or moved since.
+    if (root.phase === 'unreachable') return <Unreachable message={ root.loadError } onRetry={ () => (window.desktop ? location.reload() : void root.load()) } />;
 
     if (root.ui.settingsOpen) return <SettingsScreen />;
 

@@ -34,6 +34,10 @@ function start(): void {
     // The ID the installer gives its shortcuts (`appId`), so Windows groups the window and notifications under them.
     if (process.platform === 'win32') app.setAppUserModelId('app.clowdy.desktop');
 
+    // False while the first window waits for the daemon (up to 15 s). macOS sends `activate` at launch, and a window
+    // opened then would load without a daemon and be followed by a second one.
+    let firstWindowOpen = false;
+
     app.on('web-contents-created', (_event, contents) => {
         lockNavigation(contents, trustedOrigin, url => void shell.openExternal(url));
     });
@@ -42,7 +46,11 @@ function start(): void {
     app.on('second-instance', () => {
         const [window] = BrowserWindow.getAllWindows();
 
-        if (!window) return void openWindow();
+        if (!window) {
+            if (firstWindowOpen) openWindow();
+
+            return;
+        }
 
         if (window.isMinimized()) window.restore();
         window.focus();
@@ -54,7 +62,7 @@ function start(): void {
     });
 
     app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) openWindow();
+        if (firstWindowOpen && BrowserWindow.getAllWindows().length === 0) openWindow();
     });
 
     void app.whenReady().then(async () => {
@@ -79,6 +87,8 @@ function start(): void {
 
         const daemonError = await connectDaemon();
         const window = openWindow();
+
+        firstWindowOpen = true;
 
         // A sheet on the visible window: an unparented dialog would block the main process's event loop on macOS.
         if (daemonError) window.once('ready-to-show', () => void showDaemonError(daemonError, window));
