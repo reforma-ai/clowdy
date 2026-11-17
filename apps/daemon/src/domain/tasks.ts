@@ -84,6 +84,17 @@ function checkDependencies(store: Store, projectId: string, taskId: string, refe
     return ids;
 }
 
+/** A title is what a person reads on a card: whitespace around it is dropped, and nothing but whitespace is refused. */
+function cleanTitle(title: string): string {
+    const trimmed = title.trim();
+
+    if (!trimmed) {
+        throw invalid('The task title cannot be empty');
+    }
+
+    return trimmed;
+}
+
 export interface NewTask {
     projectId: string;
     title: string;
@@ -113,7 +124,7 @@ export function createTask(store: Store, input: NewTask): Task {
             projectId: project.id,
             number,
             key: `${ project.taskPrefix }-${ number }`,
-            title: input.title.trim(),
+            title: cleanTitle(input.title),
             description: input.description ?? '',
             statusId,
             dependsOn: [],
@@ -146,7 +157,7 @@ export function updateTask(store: Store, taskId: string, patch: TaskPatch): Task
         const task = requireTask(store, taskId);
         const next: Task = {
             ...task,
-            title: patch.title?.trim() ?? task.title,
+            title: patch.title === undefined ? task.title : cleanTitle(patch.title),
             description: patch.description ?? task.description,
             statusId: patch.statusId ? requireStatus(store, task.projectId, patch.statusId).id : task.statusId,
             dependsOn: patch.dependsOn ? checkDependencies(store, task.projectId, task.id, patch.dependsOn) : task.dependsOn,

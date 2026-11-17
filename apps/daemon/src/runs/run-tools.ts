@@ -17,7 +17,8 @@ export const ASK_USER = 'ask_user';
 const MAX_WAIT_SECONDS = 60;
 const RECENT_ITEMS = 8;
 
-const engine = z.enum(['claude', 'codex', 'fake']);
+// The fake engine is for demos and tests: a model that picked it would report work nobody did.
+const engine = z.enum(['claude', 'codex']);
 
 /** A stream item as one short line, for `run_inspect`. */
 function describeItem(item: StreamItem): string {

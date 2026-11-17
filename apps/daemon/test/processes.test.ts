@@ -168,4 +168,20 @@ describe('the process guard', () => {
         expect(runs.slice(0, 2).map(id => h.run(id).status)).toEqual(['running', 'running']);
         expect(engine.turns).toHaveLength(2);
     });
+
+    test('a run whose slot came free while the previous session still shuts down waits for it instead of being refused', async () => {
+        const engine = new ScriptEngine(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'done', result: 'ok' };
+        }, 100);
+        const h = await startHarness({ maxProcesses: 1, maxRuns: 1 }, { engines: scriptEngines(engine) });
+
+        harnesses.push(h);
+
+        const project = h.openRepo();
+        const runs = ['A', 'B', 'C'].map(title => h.ok('task.start', { taskId: h.ok('task.create', { projectId: project.id, title }).task.id }).runId as string);
+
+        await waitFor(() => runs.every(id => h.run(id).status === 'succeeded'), 'every run to finish');
+        expect(engine.turns).toHaveLength(3);
+    });
 });

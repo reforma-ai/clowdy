@@ -9,8 +9,10 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/health                         -> Health
  * GET  /v1/snapshot                       -> RootSnapshot
  * GET  /v1/projects/:id/snapshot          -> ProjectSnapshot
- * GET  /v1/events?cursor=N                -> text/event-stream of ClowdyEvent (frame name `clowdy`, id = cursor);
- *                                            `Last-Event-ID` also resumes. 410 when the cursor is older than retained history.
+ * GET  /v1/events?cursor=N                -> text/event-stream of ClowdyEvent (frame name `clowdy`, id = cursor); without a
+ *                                            cursor the stream is live only; `Last-Event-ID` also resumes; `&projectId=ID`
+ *                                            limits it to one project. 410 when the cursor is ahead of the log (the log is not pruned
+ *                                            yet, so a cursor is never too old): fetch a snapshot and resume from its cursor.
  * POST /v1/commands                       -> body Command, answers CommandResult
  * GET  /v1/runs/:id/items?after=SEQ       -> StreamItem[] (a run's stream, also an orchestrator's chat)
  * GET  /v1/chats/:id/items?after=SEQ      -> StreamItem[] (the chat's orchestrator stream)

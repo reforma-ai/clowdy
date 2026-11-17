@@ -56,7 +56,7 @@ export const commandSchema = z.discriminatedUnion('type', [
         dependsOn: z.array(z.string()).optional(),
     }),
     z.object({ ...base, type: z.literal('task.delete'), taskId: z.string() }),
-    /** Starts a run on the task now (a root executor run, no chat needed). One active run per task unless `force`. */
+    /** Opens a new chat bound to the task, with an orchestrator run that starts on it now; answers `{ runId, chatId }`. One active run per task unless `force`. */
     z.object({ ...base, type: z.literal('task.start'), taskId: z.string(), engine: engine.optional(), force: z.boolean().optional() }),
 
     /* Runs */

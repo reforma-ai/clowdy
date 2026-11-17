@@ -23,7 +23,7 @@ import type { RunService } from './service';
 
 /** Runs nested below a root, counting the root: an orchestrator starts executors and verifiers, and they start nothing. */
 export const MAX_DEPTH = 2;
-/** Runs one orchestrator may start with `run_spawn`; sub-agents inside its session do not count. */
+/** Runs one orchestrator may start with `run_spawn` in all, finished ones included; sub-agents inside its session do not count. */
 export const MAX_CHILDREN = 50;
 /** A run that fails this many times in a row on passing engine errors (overload, rate limit) is failed for good. */
 const MAX_TRANSIENT_FAILURES = 4;
@@ -114,7 +114,7 @@ export class RunDriver {
             }
 
             if (countSpawnedChildren(store.db, parent.id) >= MAX_CHILDREN) {
-                throw conflict(`${ parent.name } already started ${ MAX_CHILDREN } runs, the most one orchestrator may start; wait for them or cancel some`);
+                throw conflict(`${ parent.name } already started ${ MAX_CHILDREN } runs, the most one orchestrator may start over the life of its chat (finished ones count too); continue the work in a new chat`);
             }
 
             if (input.cwd !== undefined && !(isAbsolute(input.cwd) && statSync(input.cwd, { throwIfNoEntry: false })?.isDirectory())) {
@@ -242,15 +242,15 @@ export class RunDriver {
 
     private async drive(runId: string, live: LiveRun): Promise<void> {
         const { runs } = this.deps;
-
-        if (!['queued', 'blocked'].includes(runs.require(runId).status)) {
-            return;
-        }
-
         const signal = runs.register(runId);
         let failures = 0;
 
         try {
+            // Cancelled or taken over while this flight waited behind the previous one.
+            if (!['queued', 'blocked'].includes(runs.require(runId).status)) {
+                return;
+            }
+
             await runs.waitUnblocked(runId, signal);
 
             for (;;) {
@@ -283,6 +283,18 @@ export class RunDriver {
     /** One engine session, from its start until the turn ends. Returns what to wait for when the turn has to be repeated. */
     private async turn(runId: string, live: LiveRun, signal: AbortSignal, failures: number): Promise<Retry | undefined> {
         const { store, runs, engines, config } = this.deps;
+        const deadline = Date.now() + 2 * config.timings.killGraceMs;
+
+        // The sessions of runs that just ended or were cancelled still shut down while the next runs already hold their
+        // slots, so a start waits for them before it counts as a runaway. No await between this check and `sessions++`.
+        while (this.sessions >= config.maxProcesses) {
+            if (Date.now() >= deadline) {
+                throw new EngineFailure(`${ this.sessions } engine processes are alive, the most this daemon allows (CLOWDY_MAX_PROCESSES); the run was not started`);
+            }
+
+            await sleep(25, signal);
+        }
+
         const run = runs.require(runId);
         const project = runs.projectOf(run);
         const mode = runs.modeOf(run);
@@ -290,10 +302,6 @@ export class RunDriver {
 
         if (!engine) {
             throw new EngineFailure(`The ${ run.engine } engine is not available in this daemon`);
-        }
-
-        if (this.sessions >= config.maxProcesses) {
-            throw new EngineFailure(`${ this.sessions } engine processes are alive, the most this daemon allows (CLOWDY_MAX_PROCESSES); the run was not started`);
         }
 
         const work = getRunWork(store.db, runId);

@@ -230,6 +230,16 @@ describe('run_spawn', () => {
         expect(engine.turns[1].cwd).toBe(entity.path);
     });
 
+    test('never offers the fake engine to a model: a child on it would report work nobody did', async () => {
+        const { exec, orchestrator, task, toolsOf, h } = await setup();
+        const a = await task('A');
+        const schema = toolsOf(orchestrator).find(tool => tool.name === 'run_spawn')!.inputSchema as { properties: { engine: { enum: string[] } } };
+
+        expect(schema.properties.engine.enum).toEqual(['claude', 'codex']);
+        await expect(exec(orchestrator, 'run_spawn', { taskIds: [a.key], prompt: 'go', idempotencyKey: 'k', engine: 'fake' })).rejects.toThrow(/Invalid input for run_spawn/);
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM runs WHERE parent_run_id = ?').get(orchestrator.id)).toEqual({ n: 0 });
+    });
+
     test('a verifier starts with /clowdy:verify, is bound to the tasks it checks, and waits for no dependency', async () => {
         const { engine, exec, orchestrator, task, h } = await setup();
         const a = await task('A');

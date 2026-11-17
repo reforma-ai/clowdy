@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { cleanTempDirs, git, Harness, makeRepo, startHarness, tempDir } from './helpers';
 
@@ -118,6 +118,18 @@ describe('projects', () => {
         expect(failure(h.send('project.create', { name: 'x', path: empty })).code).toBe('conflict');
     });
 
+    test('project.create takes absolute paths only and a name that is not blank; project.update and project.open keep the name non-blank too', () => {
+        expect(failure(h.send('project.create', { name: 'Rel', path: 'relative-project' })).message).toContain('absolute');
+        expect(existsSync(resolve('relative-project'))).toBe(false);
+        expect(failure(h.send('project.create', { name: '   ' })).code).toBe('invalid');
+        expect(existsSync(h.config.projectsDir)).toBe(false);
+
+        const { id } = h.openRepo();
+
+        expect(failure(h.send('project.update', { projectId: id, name: '  ' })).code).toBe('invalid');
+        expect(failure(h.send('project.open', { path: makeRepo(h.config.projectsDir, 'unopened'), name: ' ' })).code).toBe('invalid');
+    });
+
     test('project.update renames and merges settings', () => {
         const { id } = h.openRepo();
 
@@ -173,6 +185,15 @@ describe('tasks', () => {
         expect(failure(h.send('task.create', { projectId, title: 'x', chatId: foreignChat.id })).code).toBe('invalid');
         expect(failure(h.send('task.create', { projectId, title: 'x', dependsOn: [foreignTask.id] })).code).toBe('invalid');
         expect(create('ok').dependsOn).toEqual([]);
+    });
+
+    test('a task title that is only whitespace is refused, on create and on update', () => {
+        const { projectId, create } = setup();
+        const task = create('Kept');
+
+        expect(failure(h.send('task.create', { projectId, title: '   ' })).code).toBe('invalid');
+        expect(failure(h.send('task.update', { taskId: task.id, title: ' \n ' })).code).toBe('invalid');
+        expect(h.ok('task.update', { taskId: task.id, title: '  Padded  ' }).task.title).toBe('Padded');
     });
 
     test('task.create with a chat links them and publishes the link', () => {

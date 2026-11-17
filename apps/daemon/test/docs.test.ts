@@ -123,6 +123,26 @@ describe('paths', () => {
         expect(fx.docs.write(fx.project, { path: 'UPPER.MD', content: 'x', baseHash: null }).path).toBe('UPPER.MD');
     });
 
+    test('a path that runs through a file, or has a name too long for the file system, is invalid and names no absolute path', () => {
+        mkdirSync(fx.root, { recursive: true });
+        writeFileSync(join(fx.root, 'a.md'), 'x');
+
+        for (const path of ['a.md/b.md', `${ 'n'.repeat(300) }.md`]) {
+            for (const action of [() => fx.docs.read(fx.project, path), () => fx.docs.write(fx.project, { path, content: 'x', baseHash: null })]) {
+                try {
+                    action();
+                    throw new Error('expected an invalid error');
+                }
+                catch (error) {
+                    expect((error as { code?: string }).code).toBe('invalid');
+                    expect((error as Error).message).not.toContain(fx.root);
+                }
+            }
+        }
+
+        expect(readFileSync(join(fx.root, 'a.md'), 'utf8')).toBe('x');
+    });
+
     symlinks('a symbolic link cannot lead out of the docs folder, for existing and new files', () => {
         mkdirSync(fx.root, { recursive: true });
         symlinkSync(fx.outside, join(fx.root, 'linked-dir'));
@@ -242,6 +262,27 @@ describe('watcher', () => {
         await new Promise(resolve => setTimeout(resolve, 300));
 
         expect(changes()).toEqual(['created:outside.md', 'modified:outside.md', 'removed:outside.md']);
+    });
+
+    test('an entry that vanishes while the watcher looks at it is skipped, and the next change is still reported', async () => {
+        fx.docs.root(fx.project);
+        await Bun.sleep(150);
+
+        const changes = () => fx.store.eventsAfter(0, undefined, 1000).flatMap(event => (event.data.type === 'docs.changed' ? [`${ event.data.change }:${ event.data.path }`] : []));
+        const spy = spyOn(fs, 'lstatSync').mockImplementationOnce(() => {
+            throw Object.assign(new Error('ENOENT: no such file or directory, lstat'), { code: 'ENOENT' });
+        });
+
+        try {
+            writeFileSync(join(fx.root, 'racy.md'), 'v1');
+            await waitFor(() => spy.mock.calls.length > 0, 'the watcher to look at the file');
+            await Bun.sleep(100);
+            writeFileSync(join(fx.root, 'later.md'), 'v1');
+            await waitFor(() => changes().includes('created:later.md'), 'the event after the failed look');
+        }
+        finally {
+            spy.mockRestore();
+        }
     });
 
     test('a watcher that cannot start is reported once and does not break the service', () => {

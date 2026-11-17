@@ -68,7 +68,16 @@ export class DocsWatcher {
         this.dirty.clear();
 
         for (const path of paths) {
-            const change = this.classify(path);
+            let change: DocsChange | undefined;
+
+            try {
+                change = this.classify(path);
+            }
+            catch {
+                // The entry changed again while it was being looked at (a checkout or a removal that is still going):
+                // that change raises its own event, which settles what the path is. Nothing may escape a timer callback.
+                continue;
+            }
 
             if (change && !this.isOwnWrite(path)) {
                 this.publish(path, change);

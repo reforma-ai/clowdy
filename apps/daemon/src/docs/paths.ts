@@ -10,6 +10,13 @@ const DOC_EXTENSION = /\.(md|markdown)$/i;
 
 export const isDocFile = (name: string) => DOC_EXTENSION.test(name);
 
+/** What the file system says about a path that cannot exist, as the client may hear it (no absolute paths). */
+const UNUSABLE_PATH = {
+    ENOTDIR: 'A part of the document path is a file, not a folder',
+    ENAMETOOLONG: 'A name in the document path is too long',
+    ELOOP: 'The document path runs through a loop of symbolic links',
+} as const;
+
 /**
  * Validates a client-supplied path and returns it normalized: `/`-separated, relative, no `.` or empty segments.
  * Rejects absolute paths, drive letters, backslashes, `..` and NUL.
@@ -63,7 +70,13 @@ export function resolveInside(root: string, relative: string): string {
             return target;
         }
         catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            const { code } = error as NodeJS.ErrnoException;
+
+            if (code === 'ENOTDIR' || code === 'ENAMETOOLONG' || code === 'ELOOP') {
+                throw invalid(UNUSABLE_PATH[code]);
+            }
+
+            if (code !== 'ENOENT') {
                 throw error;
             }
         }

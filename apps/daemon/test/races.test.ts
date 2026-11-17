@@ -1,8 +1,8 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 
-import { getRunWork } from '../src/db/runs';
 import { getProject } from '../src/db/projects';
+import { getRunWork } from '../src/db/runs';
 import { isAlive } from '../src/runs/processes';
 import { toolsFor } from '../src/runs/tools';
 import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
@@ -36,8 +36,8 @@ function startProcess(command: string): number {
     return child.pid!;
 }
 
-async function setup(script: Script, overrides: Parameters<typeof startHarness>[0] = {}) {
-    const engine = new ScriptEngine(script);
+async function setup(script: Script, overrides: Parameters<typeof startHarness>[0] = {}, closeMs = 0) {
+    const engine = new ScriptEngine(script, closeMs);
     const h = await startHarness(overrides, { engines: scriptEngines(engine) });
 
     harnesses.push(h);
@@ -119,6 +119,27 @@ describe('cancelling', () => {
 
         await expect(exec('run_spawn', { taskIds: [task.key], prompt: 'Goal', idempotencyKey: 'k1' })).rejects.toThrow(/not running|cancelled/i);
         expect(store.db.query('SELECT COUNT(*) AS n FROM runs WHERE parent_run_id = ?').get(orchestrator.id)).toEqual({ n: 0 });
+    });
+
+    test('a run cancelled while its next turn waits behind the previous session leaves nothing registered behind', async () => {
+        const { h, project } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'done', result: 'ok' };
+        }, {}, 300);
+        const { chat } = h.ok('chat.create', { projectId: project.id });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'first' });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the first turn to end');
+
+        // The first session is still shutting down, so the next turn has not started when the run is cancelled.
+        h.ok('chat.send', { chatId: chat.id, text: 'second' });
+        h.ok('run.cancel', { runId });
+
+        const driver = h.daemon.services.driver as unknown as { live: Map<string, unknown>; flights: Map<string, unknown> };
+
+        await waitFor(() => driver.flights.size === 0, 'the turns to be over');
+        expect(h.run(runId).status).toBe('cancelled');
+        expect(driver.live.size).toBe(0);
     });
 
     test('the kill ladder of a cancelled run does not touch the process of its next turn', async () => {

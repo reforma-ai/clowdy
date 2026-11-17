@@ -39,6 +39,16 @@ function kebabCase(name: string): string {
     return name.normalize('NFKD').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'project';
 }
 
+function cleanName(name: string): string {
+    const trimmed = name.trim();
+
+    if (!trimmed) {
+        throw invalid('The project name cannot be empty');
+    }
+
+    return trimmed;
+}
+
 function publishProject(store: Store, project: Project): void {
     store.emit(project.id, { type: 'project.upserted', project, statuses: listStatuses(store.db, project.id) });
 }
@@ -97,7 +107,7 @@ export function openProject(store: Store, input: { path: string; name?: string }
         throw invalid(`${ path } is inside the repository ${ top.stdout }; open the repository root`);
     }
 
-    return insertProject(store, { name: input.name ?? basename(path), path });
+    return insertProject(store, { name: input.name === undefined ? basename(path) : cleanName(input.name), path });
 }
 
 /**
@@ -106,11 +116,15 @@ export function openProject(store: Store, input: { path: string; name?: string }
  * An existing empty folder is reused; a non-empty one is never touched.
  */
 export function createProject(store: Store, config: Config, input: { name: string; path?: string }): Project {
-    const target = input.path === undefined ? join(config.projectsDir, kebabCase(input.name)) : resolve(input.path);
+    const name = cleanName(input.name);
+    const wanted = input.path === undefined ? join(config.projectsDir, kebabCase(name)) : input.path;
 
-    if (!isAbsolute(target)) {
-        throw invalid(`The path must be absolute: ${ target }`);
+    // A relative path would land wherever the daemon was started.
+    if (!isAbsolute(wanted)) {
+        throw invalid(`The path must be absolute: ${ wanted }`);
     }
+
+    const target = resolve(wanted);
 
     if (existsSync(target)) {
         if (!statSync(target).isDirectory() || readdirSync(target).length > 0) {
@@ -135,7 +149,7 @@ export function createProject(store: Store, config: Config, input: { name: strin
         throw unavailable(`The initial commit failed: ${ commit.stderr }`);
     }
 
-    return insertProject(store, { name: input.name, path: realpathSync.native(target) });
+    return insertProject(store, { name, path: realpathSync.native(target) });
 }
 
 export interface ProjectPatch {
@@ -146,7 +160,7 @@ export interface ProjectPatch {
 export function updateProject(store: Store, projectId: string, patch: ProjectPatch): Project {
     return store.tx(() => {
         const current = requireProject(store, projectId);
-        const next: Project = { ...current, name: patch.name ?? current.name, settings: { ...current.settings, ...patch.settings } };
+        const next: Project = { ...current, name: patch.name === undefined ? current.name : cleanName(patch.name), settings: { ...current.settings, ...patch.settings } };
 
         upsertProject(store.db, next);
         publishProject(store, next);

@@ -30,7 +30,7 @@ export interface ProjectSettings {
     /** The mode of chats the daemon opens itself (a started task) and of new chats that name none. Defaults to autopilot. */
     chatMode?: ChatMode;
     model?: string;
-    /** Branch executors branch from and integrations land on. Defaults to the repository's current branch. */
+    /** Not used by the daemon: agents decide about branches themselves. Kept so older settings stay valid. */
     targetBranch?: string;
 }
 
@@ -141,6 +141,7 @@ export interface Run {
     model?: string;
     /** The engine's own session id, for resuming. */
     sessionId?: string;
+    /** Not filled in: the daemon has no git machinery, agents manage their own worktrees. */
     worktree?: RunWorktree;
     /** Final report on success, error message on failure. */
     result?: string;
