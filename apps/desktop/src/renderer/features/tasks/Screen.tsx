@@ -35,7 +35,7 @@ export function Screen() {
         <div className={ styles.screen }>
             <div className={ styles.main }>
                 <TasksHeader
-                    subtitle={ `${ tasksSource(tasks) } · ${ project.project.name }` }
+                    subtitle={ tasksSource(tasks) }
                     view={ ui.tasksView }
                     onViewChange={ view => ui.setTasksView(view) }
                     onCreate={ () => openCreateTask({ root, project, ui }) }

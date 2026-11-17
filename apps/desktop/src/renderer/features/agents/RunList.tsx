@@ -1,6 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { Panel, PanelContent, PanelEmptyState, PanelHeader, PanelSearch } from '@clowdy/components/Panel';
-import { Switch } from '@clowdy/components/Switch';
+import { Eye } from '@clowdy/icons/14';
 import { useEffect, useRef, type KeyboardEvent } from 'react';
 
 import { useProjectState } from '../../stores';
@@ -24,7 +24,7 @@ export interface RunListProps {
     onToggle: (runId: RunId) => void;
 }
 
-/** The left column: heading with the "Show finished" switch, search, and the run tree. */
+/** The left column: heading with the "Show finished" toggle, search, and the run tree. */
 export function RunList({ rows, runCount, activeChildCounts, selectedId, query, showFinished, onQueryChange, onShowFinishedChange, onSelect, onToggle }: RunListProps) {
     const project = useProjectState();
     const treeRef = useRef<HTMLDivElement>(null);
@@ -98,7 +98,14 @@ export function RunList({ rows, runCount, activeChildCounts, selectedId, query, 
             <PanelHeader>
                 <span>Agents</span>
                 <PanelHeader.Actions>
-                    <Switch size="sm" isSelected={ showFinished } onChange={ onShowFinishedChange }>Show finished</Switch>
+                    <PanelHeader.Button
+                        aria-label="Show finished"
+                        tooltip="Show finished"
+                        isPressed={ showFinished }
+                        onPress={ () => onShowFinishedChange(!showFinished) }
+                    >
+                        <Eye />
+                    </PanelHeader.Button>
                 </PanelHeader.Actions>
             </PanelHeader>
 

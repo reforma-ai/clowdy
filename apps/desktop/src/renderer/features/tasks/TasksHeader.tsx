@@ -12,7 +12,7 @@ import type { TasksView } from '../../stores';
 import type { TaskFilter } from './taskView';
 
 export interface TasksHeaderProps {
-    /** Source and project: `Internal · Car Rental`. */
+    /** Where the tasks come from: `Internal`, `Internal + Linear`. */
     subtitle: string;
     view: TasksView;
     onViewChange: (view: TasksView) => void;
