@@ -1,5 +1,5 @@
 :root,
-.light {
+[data-theme='light'] {
     --color-surface: var(--color-light);
     --color-surface-float: var(--color-white);
     --color-surface-border: var(--color-secondary-200);
@@ -114,7 +114,8 @@
     --scrollbar-thumb-bg-hover: var(--color-black-a60);
 }
 
-.dark {
+.dark,
+[data-theme='dark'] {
     --color-surface: var(--color-secondary-900);
     --color-surface-float: var(--color-secondary-950);
     --color-surface-border: var(--color-light-a10);
