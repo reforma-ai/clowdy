@@ -97,7 +97,7 @@ function ProjectForm({ root, mode }: { root: RootStore; mode: 'create' | 'open' 
             { error && <Text color="danger" role="alert">{ error }</Text> }
 
             {/* No Cancel: the window's close button, Escape and a click outside already close it. */}
-            <Button type="submit" color="primary" size="lg" fullWidth isDisabled={ !canSubmit } isPending={ isPending }>
+            <Button type="submit" color="primary" fullWidth isDisabled={ !canSubmit } isPending={ isPending }>
                 { mode === 'create' ? 'Create project' : 'Open project' }
             </Button>
         </form>
