@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, Menu, nativeTheme, protocol, session, shel
 import { release } from 'node:os';
 import path from 'node:path';
 
+import { attachDaemon, daemonAddress, ensureDaemon } from './daemon';
+import { showDaemonError } from './daemonDialog';
 import { registerIpc } from './ipc';
 import { createAppMenu } from './menu';
 import { createProtocolHandler } from './protocol';
@@ -55,19 +57,49 @@ function start(): void {
         if (BrowserWindow.getAllWindows().length === 0) openWindow();
     });
 
-    void app.whenReady().then(() => {
+    void app.whenReady().then(async () => {
         restrictPermissions(session.defaultSession, trustedOrigin);
 
         if (!devRendererUrl) {
             protocol.handle(APP_SCHEME, createProtocolHandler(path.join(app.getAppPath(), 'renderer')));
         }
 
-        registerIpc(ipcMain, trustedOrigin, theme => {
-            nativeTheme.themeSource = theme;
+        registerIpc(ipcMain, trustedOrigin, {
+            setThemeSource: theme => {
+                nativeTheme.themeSource = theme;
+            },
+            // Asked on every page load, so a daemon the person restarted is found again by reloading the window.
+            getDaemon: async () => {
+                const info = await attachDaemon();
+
+                return info && daemonAddress(info);
+            },
         });
         Menu.setApplicationMenu(createAppMenu());
-        openWindow();
+
+        const daemonError = await connectDaemon();
+        const window = openWindow();
+
+        // A sheet on the visible window: an unparented dialog would block the main process's event loop on macOS.
+        if (daemonError) window.once('ready-to-show', () => void showDaemonError(daemonError, window));
     });
+}
+
+/**
+ * Finds the daemon or starts one before the window opens, so the page loads with its address. Resolves with the
+ * reason when there is none, and the window opens anyway. The daemon is never stopped from here: it outlives the app.
+ */
+async function connectDaemon(): Promise<unknown> {
+    try {
+        const { pid, port } = await ensureDaemon();
+
+        console.info(`Using the daemon with pid ${ pid } on port ${ port }.`);
+    }
+    catch (error) {
+        console.error('No daemon:', error);
+
+        return error;
+    }
 }
 
 function openWindow(): BrowserWindow {

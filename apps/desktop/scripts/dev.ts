@@ -6,6 +6,8 @@
  * - Main and preload are bundled with Bun. A change under `src/main`, `src/preload`, or `src/shared`
  *   rebuilds them and restarts the app; so does the next save after the app crashed.
  * - Quitting the app ends the session.
+ * - The app finds or starts the daemon from this checkout (`apps/daemon`) and leaves it running. Nothing here watches
+ *   the daemon's sources: agents edit them while it runs, and the person restarts it deliberately.
  *
  * `CLOWDY_RENDERER_PORT` moves the dev server off 5273. Arguments go to Electron.
  */
@@ -25,7 +27,15 @@ const port = Number(process.env.CLOWDY_RENDERER_PORT ?? 5273);
 const rendererUrl = `http://127.0.0.1:${ port }`;
 // `ELECTRON_RUN_AS_NODE` (set by VS Code's extension host, for one) would start Electron as plain Node.
 const { ELECTRON_RUN_AS_NODE: _runAsNode, ...inherited } = process.env;
-const env = { ...inherited, CLOWDY_RENDERER_URL: rendererUrl, CLOWDY_RENDERER_PORT: String(port) };
+const env = {
+    ...inherited,
+    CLOWDY_RENDERER_URL: rendererUrl,
+    CLOWDY_RENDERER_PORT: String(port),
+    // A dev run keeps its own data folder (`Clowdy Dev`), and starts the daemon with this Bun from this checkout.
+    CLOWDY_PROFILE: 'dev',
+    CLOWDY_BUN: process.execPath,
+    CLOWDY_DAEMON_ENTRY: path.join(repoRoot, 'apps/daemon/src/main.ts'),
+};
 // Vite's own script, run with Node: a `bunx` wrapper would be the process a stop kills on Windows, leaving Vite behind.
 const viteBin = path.join(path.dirname(Bun.resolveSync('vite/package.json', desktopRoot)), 'bin/vite.js');
 // Electron quits gracefully on SIGTERM; this is how long a restart waits before forcing it.
