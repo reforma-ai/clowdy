@@ -11,11 +11,15 @@ import styles from './projectDialogs.module.css';
 import type { CommandResult } from '@clowdy/protocol';
 import type { RootStore } from '../stores';
 
-const MODAL_OPTIONS = { width: 420, shadow: true, clickOut: true, closeOnEscape: true, closeButton: false } as const;
+/**
+ * No `title` option: the heading is drawn in the form, bigger, as Reforma's dialogs do, and the window's own close button floats at the corner.
+ * `handle: false` keeps the dialog where it opens; window-type modals can be dragged by their title bar.
+ */
+const MODAL_OPTIONS = { width: 420, shadow: true, clickOut: true, closeOnEscape: true, closeButton: true, handle: false } as const;
 
 /** "Create project": a name, and optionally the folder it lives in. */
 export function openCreateProject(root: RootStore): void {
-    Modal.create({ ...MODAL_OPTIONS, title: 'Create project', component: <ProjectForm root={ root } mode="create" /> });
+    Modal.create({ ...MODAL_OPTIONS, component: <ProjectForm root={ root } mode="create" /> });
 }
 
 /** "Open existing project…": the system folder dialog in the desktop app; a path field in a plain browser. */
@@ -23,7 +27,7 @@ export async function openExistingProject(root: RootStore): Promise<void> {
     const choose = window.desktop?.chooseDirectory;
 
     if (!choose) {
-        Modal.create({ ...MODAL_OPTIONS, title: 'Open existing project', component: <ProjectForm root={ root } mode="open" /> });
+        Modal.create({ ...MODAL_OPTIONS, component: <ProjectForm root={ root } mode="open" /> });
 
         return;
     }
@@ -64,6 +68,8 @@ function ProjectForm({ root, mode }: { root: RootStore; mode: 'create' | 'open' 
 
     return (
         <form className={ styles.form } onSubmit={ event => void submit(event) }>
+            <Text variant="heading-3">{ mode === 'create' ? 'Create project' : 'Open existing project' }</Text>
+
             { mode === 'create' && (
                 <FormField layout="vertical">
                     <FormField.Label>Name</FormField.Label>

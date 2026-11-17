@@ -28,8 +28,9 @@ export function openCreateTask(props: CreateTaskDialogProps): void {
         shadow: true,
         clickOut: true,
         closeOnEscape: true,
-        closeButton: false,
-        title: 'New task',
+        // No `title` option: the heading is drawn in the form. The window's own close button floats at the corner, and a form dialog stays where it opens.
+        closeButton: true,
+        handle: false,
         component: <CreateTaskForm { ...props } />,
     });
 }
@@ -78,6 +79,8 @@ function CreateTaskForm({ root, project, ui }: CreateTaskDialogProps) {
 
     return (
         <form className={ styles.form } onSubmit={ event => void submit(event) }>
+            <Text variant="heading-3">New task</Text>
+
             <FormField layout="vertical">
                 <FormField.Label>Title</FormField.Label>
                 <Input type="text" aria-label="Title" value={ title } onChange={ setTitle } placeholder="What needs doing?" autoFocus />
