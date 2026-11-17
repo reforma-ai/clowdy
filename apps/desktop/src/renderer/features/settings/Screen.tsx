@@ -1,72 +1,92 @@
-import { Box } from '@clowdy/components/Box';
-import { SettingsField } from '@clowdy/components/SettingsField';
+import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
+import { Panel, PanelContent, PanelHeader } from '@clowdy/components/Panel';
+import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
-import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/ToggleButtonGroup';
-import { THEMES, type Theme } from '@clowdy/constants';
-import { Devices, Moon, Sun } from '@clowdy/icons/14';
-import { useState } from 'react';
+import { Book, PaintBucket, Robot } from '@clowdy/icons/14';
 
-import { useRootStore } from '../../stores';
-import { getTheme, setTheme } from '../../theme';
+import { useRootStore, type SettingsPage } from '../../stores';
+import { AppearancePage } from './AppearancePage';
+import { EnginePage } from './EnginePage';
 import styles from './Screen.module.css';
 import { SkillsSection } from './skills';
 
-const ENGINE_NAMES = { claude: 'Claude', codex: 'Codex', fake: 'the built-in test engine' } as const;
+import type { ReactNode } from 'react';
 
-const APPEARANCES: ReadonlyArray<{ value: Theme; label: string; icon: React.ReactNode }> = [
-    { value: 'system', label: 'System', icon: <Devices /> },
-    { value: 'light', label: 'Light', icon: <Sun /> },
-    { value: 'dark', label: 'Dark', icon: <Moon /> },
+interface PageView {
+    id: SettingsPage;
+    label: string;
+    icon: ReactNode;
+    render: () => ReactNode;
+}
+
+/** The sidebar's groups, top to bottom. A page belongs to one group. */
+const GROUPS: ReadonlyArray<{ id: string; label: string; pages: readonly PageView[] }> = [
+    {
+        id: 'general',
+        label: 'General',
+        pages: [
+            { id: 'appearance', label: 'Appearance', icon: <PaintBucket />, render: () => <AppearancePage /> },
+        ],
+    },
+    {
+        id: 'agents',
+        label: 'Agents',
+        pages: [
+            { id: 'engine', label: 'Engine', icon: <Robot />, render: () => <EnginePage /> },
+            { id: 'skills', label: 'Skills', icon: <Book />, render: () => <SkillsSection /> },
+        ],
+    },
 ];
 
-/** Global settings: nothing here belongs to a project. */
+const PAGES = GROUPS.flatMap(group => group.pages);
+
+/** Global settings: a sidebar of groups, and the page chosen in it. Nothing here belongs to a project. */
 export function Screen() {
-    const root = useRootStore();
-    const [theme, setThemeState] = useState(getTheme);
-    const engine = root.selectedProject?.project.settings.engine;
+    const { ui } = useRootStore();
+    const page = PAGES.find(candidate => candidate.id === ui.settingsPage) ?? PAGES[0]!;
 
     return (
-        <div className={ styles.page }>
-            <Text variant="heading-2">Settings</Text>
+        <div className={ styles.screen }>
+            <Panel side="left" className={ styles.panel }>
+                <PanelHeader>Settings</PanelHeader>
 
-            <Box gap="md" className={ styles.section }>
-                <Text variant="heading-4">Appearance</Text>
-                <SettingsField layout="horizontal">
-                    <SettingsField.Label>Theme</SettingsField.Label>
-                    <ToggleButtonGroup
-                        aria-label="Theme"
-                        size="sm"
-                        selectedKeys={ [theme] }
+                <PanelContent>
+                    <ListBox
+                        aria-label="Settings pages"
+                        size="md"
+                        selectionMode="single"
+                        disallowEmptySelection
+                        selectedKeys={ page.id }
                         onSelectionChange={ (keys) => {
-                            const next = THEMES.find(candidate => keys.has(candidate));
+                            const [id] = keys === 'all' ? [] : keys;
+                            const next = PAGES.find(candidate => candidate.id === id);
 
-                            if (next) {
-                                setTheme(next);
-                                setThemeState(next);
-                            }
+                            if (next) ui.showSettingsPage(next.id);
                         } }
                     >
-                        { APPEARANCES.map(({ value, label, icon }) => (
-                            <ToggleButtonGroupItem key={ value } value={ value }>
-                                { icon }
-                                { label }
-                            </ToggleButtonGroupItem>
+                        { GROUPS.map(group => (
+                            <ListBoxSection key={ group.id }>
+                                <ListBoxHeader>{ group.label }</ListBoxHeader>
+                                { group.pages.map(item => (
+                                    <ListBoxItem key={ item.id } id={ item.id } icon={ item.icon } textValue={ item.label }>
+                                        { item.label }
+                                    </ListBoxItem>
+                                )) }
+                            </ListBoxSection>
                         )) }
-                    </ToggleButtonGroup>
-                </SettingsField>
-            </Box>
+                    </ListBox>
+                </PanelContent>
+            </Panel>
 
-            <Box gap="md" className={ styles.section }>
-                <Text variant="heading-4">Engine</Text>
-                <Text color="secondary">
-                    { engine ? `This project runs agents on ${ ENGINE_NAMES[engine] }. ` : 'Agents run on the engine the daemon is set up with. ' }
-                    Engines and accounts are part of the daemon&apos;s configuration, so there is nothing to connect here yet.
-                </Text>
-            </Box>
-
-            <Box gap="md" className={ styles.section }>
-                <SkillsSection />
-            </Box>
+            <section className={ styles.main } aria-label={ page.label }>
+                <header className={ styles.header }>
+                    <Text variant="heading-4">{ page.label }</Text>
+                </header>
+                {/* The key restarts the scroll position when another page is chosen. */}
+                <Scrollable key={ page.id } className={ styles.scroll } contentClass={ styles.page }>
+                    { page.render() }
+                </Scrollable>
+            </section>
         </div>
     );
 }

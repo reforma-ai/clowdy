@@ -72,6 +72,18 @@ describe('UiStore', () => {
         expect([store.settingsOpen, ui.section]).toEqual([false, 'docs']);
     });
 
+    it('keeps the Settings page it was left on, and opens on another when asked', () => {
+        const store = new UiStore();
+
+        store.openSettings();
+        expect(store.settingsPage).toBe('appearance');
+        store.showSettingsPage('skills');
+        store.openSettings();
+        expect(store.settingsPage).toBe('skills');
+        store.openSettings('engine');
+        expect([store.settingsOpen, store.settingsPage]).toEqual([true, 'engine']);
+    });
+
     it('starts from what the page URL preselects, ahead of the stored state', () => {
         const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&finished=1&chat=c-1&run=r-1&doc=a.md');
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","tasksView":"board"}' }), initial).forProject('p1');

@@ -7,6 +7,11 @@ import type { ChatId, ProjectId, RunId, TaskId } from '@clowdy/protocol';
 export const SECTIONS = ['chats', 'tasks', 'agents', 'docs'] as const;
 
 export type Section = typeof SECTIONS[number];
+
+/** The pages of the global Settings window, in the order they appear in its sidebar. */
+export const SETTINGS_PAGES = ['appearance', 'engine', 'skills'] as const;
+
+export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
 
 interface StoredProjectUi {
@@ -122,6 +127,7 @@ export class ProjectUi {
 /** Window state: one `ProjectUi` per project, and the global Settings page that sits over the sections. */
 export class UiStore {
     settingsOpen = false;
+    settingsPage: SettingsPage = 'appearance';
     readonly #projects = new Map<ProjectId, ProjectUi>();
 
     constructor(private readonly storage?: KeyValueStorage, private readonly initial?: InitialProjectUi) {
@@ -145,7 +151,14 @@ export class UiStore {
         ui.section = section;
     }
 
-    openSettings(): void {
+    /** Opens Settings, on `page` when given and else on the page last shown. */
+    openSettings(page?: SettingsPage): void {
         this.settingsOpen = true;
+
+        if (page) this.settingsPage = page;
+    }
+
+    showSettingsPage(page: SettingsPage): void {
+        this.settingsPage = page;
     }
 }

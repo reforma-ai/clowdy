@@ -11,13 +11,12 @@ import styles from './SkillsSection.module.css';
 import { groupSkills, tokenLabel } from './skillView';
 import { useSkills } from './useSkills';
 
-/** Settings > Skills: every skill agents can use, grouped by where it comes from, with what it costs and a switch for the person's own. */
+/** Settings > Skills (the page's title is the window's own): every skill agents can use, grouped by where it comes from, with what it costs and a switch for the person's own. */
 export function SkillsSection() {
     const project = useRootStore().selectedProject?.project;
 
     return (
         <>
-            <Text variant="heading-4">Skills</Text>
             <Text color="secondary">
                 A skill is a short playbook an agent reads when a job calls for it. Every enabled skill adds its name and description to the start of every run,
                 so a long list makes runs slower and dearer.
