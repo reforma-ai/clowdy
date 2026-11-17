@@ -1,40 +1,66 @@
 # Clowdy
 
-Working name. A local desktop app for autonomous software development: chats, tasks, agents, and documents per project. See [`spec.md`](./spec.md) for the product spec and [`DESIGN.md`](./DESIGN.md) for the visual language.
+Working name. A local desktop app for running software work through agents: you chat with an orchestrator, it plans tasks and runs many agents in parallel, and you watch tasks, agents and project documents. Product spec: [`spec.md`](./spec.md) (older, partly superseded by [`.briefback/mvp/plan.md`](./.briefback/mvp/plan.md)); visual language: [`DESIGN.md`](./DESIGN.md).
 
-This is the app skeleton: an Electron window (macOS, Windows) with the design system wired in and hot reload working. No product logic or backend yet.
+How it fits together:
+
+- **Daemon** (`apps/daemon`, Bun + SQLite) owns projects, chats, tasks, agent runs and documents. It runs on its own, outlives the app, and serves an HTTP + SSE API on loopback (`packages/protocol`).
+- **Desktop app** (`apps/desktop`, Electron + React + Vite) is a client of the daemon. It starts or attaches to the daemon on launch.
+- **Engine**: agents are Claude Code sessions through the Claude Agent SDK, on your own Claude login (no API key). Codex is planned.
+- **System skills** (`packages/system-skills`) teach agents the delivery loop, scaffolding, and the autopilot and semi-manual modes.
 
 ## Requirements
 
-- [Bun](https://bun.sh) 1.4+
-- Node 22.12+ (Vite and Electron's tooling run on it)
+- [Bun](https://bun.sh) 1.4+ and Node 22.12+
+- Claude Code logged in with your subscription: run `claude auth login` once in a terminal. Clowdy never reads or stores the token. Without a login a run fails with a message that says so.
+- `git` on your PATH (agents use it themselves).
 
 ## Start
 
 ```sh
 bun install
-./clowdy dev      # the app with hot reload
+./clowdy dev      # the app with hot reload (starts the daemon with the Claude engine)
 ./clowdy build    # unpacked app for this OS in apps/desktop/release/
 ```
 
-`./clowdy build win` builds the Windows apps (x64, arm64) from any OS; a macOS build needs a Mac. Builds are unpacked and unsigned (ad-hoc signed on macOS): there are no installers yet. Where `./clowdy` cannot run, use `bun run clowdy dev` and `bun run clowdy build`.
+`./clowdy build win` builds the Windows apps (x64, arm64) from any OS; a macOS build needs a Mac. Builds are unpacked and unsigned (ad-hoc signed on macOS). Where `./clowdy` cannot run, use `bun run clowdy dev`.
 
-`./clowdy dev`:
+## Develop Clowdy with Clowdy
 
-- builds the icon pack first (Turbo);
-- serves the renderer from a Vite dev server on `127.0.0.1:5273` (`CLOWDY_RENDERER_PORT` changes the port), so edits to React, CSS, and the design system packages reach the open window without a reload;
-- bundles main and preload with Bun and restarts the app when `src/main`, `src/preload`, or `src/shared` change;
-- ends when you quit the app; after a crash it waits for the next save. Arguments after `dev` go to Electron.
+1. `./clowdy dev`, then in the app: project select (top left) → **Open existing project…** → choose this repository.
+2. **Chats** → **New chat**, and describe what you want changed. The orchestrator reads the repo and the docs, answers questions without touching anything, and for real work creates tasks and runs agents in parallel. Pick *Semi-manual* in the composer if you want it to ask you about significant decisions first.
+3. Watch **Tasks** (board), **Agents** (the run tree and each agent's stream) and **Documents** (`.clowdy/docs/`, plain Markdown in the repo).
+4. The renderer reloads by itself as agents edit it. A change under `apps/desktop/src/main` restarts the app window but not the daemon, so running work continues. A change to the daemon takes effect when you restart it: `CLOWDY_PROFILE=dev bun run --cwd apps/daemon stop`, then reopen the app (the daemon restarts, runs that were live show as *Interrupted*; send a message in the chat to resume).
+5. Agents edit this checkout directly unless they decide to work in a copy. The system skills tell them to use a copy for changes to Clowdy itself.
+
+`CLOWDY_ENGINE=fake ./clowdy dev` plays a scripted demo without spending any quota.
+
+## Daemon
+
+```sh
+bun run --cwd apps/daemon start    # standalone, listens on 127.0.0.1 (random port, see daemon.json)
+CLOWDY_PROFILE=dev bun run --cwd apps/daemon stop
+```
+
+Data lives in `~/Library/Application Support/Clowdy[ Dev]/daemon` (macOS; `%LOCALAPPDATA%` on Windows): `clowdy.db`, `daemon.json` (port and token), `daemon.log`. Settings are environment variables; see [`apps/daemon/AGENTS.md`](./apps/daemon/AGENTS.md) for the list (engine, caps, permission mode, skills).
 
 ## Layout
 
 ```
+apps/daemon           Daemon: HTTP + SSE API, SQLite, run runtime, engines, skills catalog, documents
 apps/desktop          Electron app: src/main, src/preload, src/renderer, src/shared
+packages/protocol     The contract between daemon and clients
+packages/system-skills  The skills that ship with Clowdy (plugin "clowdy")
 packages/components   Design system components
 packages/styles       Tokens, reset, fonts
 packages/icons        Icon packs
-packages/lib          Shared helpers
-packages/constants    Shared constants
+packages/lib, constants
 ```
 
-Checks: `bun run lint`, `bun run typecheck`, `bun run test`.
+Checks: `bun run lint`, `bun run typecheck`, `bun run test` (daemon tests run with `bun test`). The design system package has known failing tests and lint errors inherited from Reforma.
+
+## Known limits
+
+- macOS is the tested platform; Windows builds but was never run.
+- Subscription login is for personal use on your own machine; shipping Clowdy to other people with subscription login needs Anthropic's approval (see `.briefback/mvp/research/claude-agent-sdk.md`).
+- Many parallel agents share your plan's limits (five-hour and weekly windows, shared with your own Claude use). The scheduler caps live agents (default 6 Claude) and backs off when the engine reports limits.

@@ -33,6 +33,8 @@ const env = {
     CLOWDY_RENDERER_PORT: String(port),
     // A dev run keeps its own data folder (`Clowdy Dev`), and starts the daemon with this Bun from this checkout.
     CLOWDY_PROFILE: 'dev',
+    // The daemon starts once and keeps running, so this only matters for a daemon this run starts. `fake` plays a scripted demo.
+    CLOWDY_ENGINE: process.env.CLOWDY_ENGINE || 'claude',
     CLOWDY_BUN: process.execPath,
     CLOWDY_DAEMON_ENTRY: path.join(repoRoot, 'apps/daemon/src/main.ts'),
 };

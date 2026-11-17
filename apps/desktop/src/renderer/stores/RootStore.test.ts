@@ -152,6 +152,19 @@ describe('RootStore', () => {
 
         expect(notify).toHaveBeenCalledWith({ level: 'warn', text: 'The disk is almost full' });
     });
+
+    it('shows the first project that appears while none is selected, and leaves a later one alone', async () => {
+        const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
+        const project = { ...createFixtureData().projects[0], id: 'prj-new', name: 'Opened elsewhere', path: '/tmp/opened-elsewhere' };
+        const upsert = (cursor: number, id: string): ClowdyEvent => ({ cursor, at: 0, projectId: id, data: { type: 'project.upserted', project: { ...project, id }, statuses: [] } });
+
+        root.handleEvent(upsert(6000, 'prj-new'));
+        root.handleEvent(upsert(6001, 'prj-later'));
+
+        expect(root.selectedProjectId).toBe('prj-new');
+        expect(root.projects.map(candidate => candidate.id)).toEqual(['prj-new', 'prj-later']);
+        root.dispose();
+    });
 });
 
 describe('RootStore sync status', () => {

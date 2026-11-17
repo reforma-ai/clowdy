@@ -160,6 +160,9 @@ export class RootStore {
             const known = this.projects.some(project => project.id === data.project.id);
 
             this.projects = known ? this.projects.map(project => (project.id === data.project.id ? data.project : project)) : [...this.projects, data.project];
+
+            // The first project to appear, opened from another client or by the daemon, is the one to show.
+            if (!known && !this.selectedProjectId) this.selectProject(data.project.id);
         }
         else if (data.type === 'stream.item') {
             this.streams.applyItem(data.item);
