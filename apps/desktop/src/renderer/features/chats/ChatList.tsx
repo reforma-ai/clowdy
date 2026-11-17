@@ -14,7 +14,7 @@ import { useStartChat } from './useStartChat';
 
 import type { Chat, ChatId } from '@clowdy/protocol';
 
-/** The project's chats, newest activity first, and the button that starts another one. */
+/** The project's chats, newest activity first, and the header button that starts another one. */
 export function ChatList({ selectedId }: { selectedId: ChatId | undefined }) {
     const project = useProjectState();
     const ui = useProjectUi();
@@ -23,14 +23,15 @@ export function ChatList({ selectedId }: { selectedId: ChatId | undefined }) {
 
     return (
         <Panel side="left" className={ styles.panel }>
-            <PanelHeader>Chats</PanelHeader>
-
-            <div className={ styles.create }>
-                <Button variant="bordered" fullWidth isPending={ isCreating } onPress={ () => void start() }>
-                    <Plus />
-                    New chat
-                </Button>
-            </div>
+            <PanelHeader>
+                Chats
+                <span className={ styles.create }>
+                    <Button variant="bordered" size="sm" isPending={ isCreating } onPress={ () => void start() }>
+                        <Plus />
+                        New chat
+                    </Button>
+                </span>
+            </PanelHeader>
 
             <PanelContent contentClass={ styles.content }>
                 { project.chatList.length === 0

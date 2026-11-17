@@ -4,12 +4,11 @@
 }
 
 .content {
-    padding: 0 var(--spacing-md) var(--spacing-md);
+    padding: var(--spacing-md);
 }
 
 .create {
     flex-shrink: 0;
-    padding: var(--spacing-md);
 }
 
 .title {
