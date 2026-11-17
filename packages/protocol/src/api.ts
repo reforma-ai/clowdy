@@ -17,6 +17,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/tasks/:id/detail               -> TaskDetail
  * GET  /v1/projects/:id/docs              -> DocsTree
  * GET  /v1/projects/:id/docs/file?path=   -> DocFile
+ * POST /v1/shutdown                       -> { ok: true }; stops the daemon gracefully (live engines are aborted, their runs
+ *                                            come back `interrupted` at the next start, nothing is marked cancelled)
+ * GET  /v1/skills?projectId=              -> SkillCatalog (system and user skills; with `projectId` also that project's skills)
  */
 export const ROUTES = {
     health: '/v1/health',
@@ -29,6 +32,8 @@ export const ROUTES = {
     taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
     docsFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs/file`,
+    skills: '/v1/skills',
+    shutdown: '/v1/shutdown',
 } as const;
 
 export interface Health {
@@ -37,6 +42,8 @@ export interface Health {
     version: string;
     pid: number;
     startedAt: number;
+    /** Runs that are queued, running, waiting or blocked, not counting sub-agents inside a session. A client asks before stopping a daemon where this is above 0. */
+    activeRuns?: number;
 }
 
 /** What a client needs to find a running daemon; the daemon writes it to its data dir on start. */

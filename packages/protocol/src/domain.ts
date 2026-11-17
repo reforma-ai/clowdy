@@ -27,6 +27,8 @@ export interface ProjectSettings {
     /** Concurrent runs for this project; the daemon also applies a global cap. */
     maxParallelRuns?: number;
     engine?: EngineId;
+    /** The mode of chats the daemon opens itself (a started task) and of new chats that name none. Defaults to autopilot. */
+    chatMode?: ChatMode;
     model?: string;
     /** Branch executors branch from and integrations land on. Defaults to the repository's current branch. */
     targetBranch?: string;
@@ -92,6 +94,8 @@ export interface ChatTaskLink {
 
 export type RunRole = 'orchestrator' | 'executor' | 'verifier';
 
+export type RunOrigin = 'spawned' | 'native';
+
 /** What a run is doing, or why it is not. `waiting_*` and `blocked` always carry a reason on the run. */
 export type RunStatus =
     | 'queued'
@@ -120,6 +124,12 @@ export interface Run {
     /** The chat this run answers, for orchestrators started from a chat. */
     chatId?: ChatId;
     role: RunRole;
+    /**
+     * `native` marks a sub-agent that lives inside its parent's engine session (Claude's `Agent` tool and the like): it
+     * has no process, no slot and no tasks of its own. `spawned` marks a run another run started with `run_spawn`.
+     * Absent for roots (a chat's orchestrator).
+     */
+    origin?: RunOrigin;
     /** Short label: an agent name such as `Executor 07`, or the orchestrator's. */
     name: string;
     /** One line on the current work. */
@@ -135,9 +145,17 @@ export interface Run {
     /** Final report on success, error message on failure. */
     result?: string;
     error?: string;
+    /** Tokens and cost the engine reported, summed over the run's turns. */
+    usage?: RunUsage;
     createdAt: number;
     startedAt?: number;
     finishedAt?: number;
+}
+
+export interface RunUsage {
+    inputTokens: number;
+    outputTokens: number;
+    costUsd?: number;
 }
 
 export interface RunWorktree {

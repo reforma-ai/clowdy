@@ -23,6 +23,7 @@ export const commandSchema = z.discriminatedUnion('type', [
             maxParallelRuns: z.number().int().min(1).max(1000).optional(),
             engine: engine.optional(),
             model: z.string().optional(),
+            chatMode: chatMode.optional(),
             targetBranch: z.string().optional(),
         }).optional(),
     }),
@@ -73,6 +74,10 @@ export const commandSchema = z.discriminatedUnion('type', [
         /** Hash of the version the edit started from; `null` creates a new file. A mismatch answers `conflict`. */
         baseHash: z.string().nullable(),
     }),
+
+    /* Skills */
+    /** Switches a user skill on or off for every run. `name` is the entry's name from `GET /v1/skills` (`user:deploy`). */
+    z.object({ ...base, type: z.literal('skills.setEnabled'), name: z.string().min(1), enabled: z.boolean() }),
 ]);
 
 export type Command = z.infer<typeof commandSchema>;

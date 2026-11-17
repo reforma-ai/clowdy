@@ -26,6 +26,11 @@ export type EventData =
     | { type: 'artifact.added'; artifact: Artifact }
     /** A file under the project's docs folder changed on disk. Clients refetch the tree or the open file. */
     | { type: 'docs.changed'; path: string; change: 'created' | 'modified' | 'removed' }
+    /**
+     * The skills this project's runs see changed: a skill folder was edited, or a user skill was switched.
+     * User-level changes are announced once per project. Clients refetch `GET /v1/skills`.
+     */
+    | { type: 'skills.changed' }
     | { type: 'notice'; level: 'info' | 'warn' | 'error'; text: string };
 
 export type EventType = EventData['type'];
