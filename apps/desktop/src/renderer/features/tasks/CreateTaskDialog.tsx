@@ -118,10 +118,8 @@ function CreateTaskForm({ root, project, ui }: CreateTaskDialogProps) {
 
             { error && <Text color="danger" role="alert">{ error }</Text> }
 
-            <div className={ styles.actions }>
-                <Button variant="bordered" onPress={ () => modal.cancel() }>Cancel</Button>
-                <Button type="submit" color="primary" isDisabled={ !canSubmit } isPending={ isPending }>Create task</Button>
-            </div>
+            {/* No Cancel: the window's close button, Escape and a click outside already close it. */}
+            <Button type="submit" color="primary" size="lg" fullWidth isDisabled={ !canSubmit } isPending={ isPending }>Create task</Button>
         </form>
     );
 }

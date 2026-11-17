@@ -5,12 +5,6 @@
     padding: var(--spacing-20);
 }
 
-.actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--spacing-md);
-}
-
 .field {
     display: flex;
     flex-direction: column;
