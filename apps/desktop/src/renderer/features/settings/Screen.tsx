@@ -50,7 +50,7 @@ export function Screen() {
             <Panel side="left" className={ styles.panel }>
                 <PanelHeader>Settings</PanelHeader>
 
-                <PanelContent>
+                <PanelContent contentClass={ styles.list }>
                     <ListBox
                         aria-label="Settings pages"
                         size="md"

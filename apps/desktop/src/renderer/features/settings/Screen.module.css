@@ -9,6 +9,10 @@
     --panel-width: 16.875rem;
 }
 
+.list {
+    padding: var(--spacing-md);
+}
+
 .main {
     display: flex;
     flex: 1;

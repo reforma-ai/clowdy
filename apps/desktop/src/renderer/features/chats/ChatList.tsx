@@ -32,7 +32,7 @@ export function ChatList({ selectedId }: { selectedId: ChatId | undefined }) {
                 </Button>
             </div>
 
-            <PanelContent>
+            <PanelContent contentClass={ styles.content }>
                 { project.chatList.length === 0
                     ? <PanelEmptyRow>No chats yet</PanelEmptyRow>
                     : (
