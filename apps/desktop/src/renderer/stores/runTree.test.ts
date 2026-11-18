@@ -41,6 +41,17 @@ describe('buildRunTree', () => {
         expect(ids(buildRunTree(runs, { showFinished: true }))).toHaveLength(2);
     });
 
+    it('leaves native sub-agents out: each is a card on the call that started it', () => {
+        const tree = buildRunTree([
+            run('root', 'running', { createdAt: 1 }),
+            run('spawned', 'running', { parentRunId: 'root', origin: 'spawned', createdAt: 2 }),
+            run('native', 'running', { parentRunId: 'root', origin: 'native', parentToolCallId: 'call-1', createdAt: 3 }),
+            run('native-of-spawned', 'succeeded', { parentRunId: 'spawned', origin: 'native', createdAt: 4 }),
+        ]);
+
+        expect(ids(tree)).toEqual([['root', ['spawned']]]);
+    });
+
     it('does not loop on a parent cycle', () => {
         const tree = buildRunTree([run('a', 'running', { parentRunId: 'b' }), run('b', 'running', { parentRunId: 'a' })]);
 

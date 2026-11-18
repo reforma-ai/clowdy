@@ -75,6 +75,9 @@ describe('the list', () => {
 
         expect(keys).not.toContain('r-orch-1');
         expect(below).toContain('r-ex-07');
+        // Native sub-agents are cards on the calls that started them, not rows.
+        expect(keys).not.toContain('r-na-01');
+        expect(keys).not.toContain('r-na-02');
         expect(below.indexOf('r-ver-02')).toBe(below.indexOf('r-ex-07') + 1);
     });
 
@@ -160,6 +163,13 @@ describe('what is open', () => {
 
         expect(rowKeys()).toContain('r-ver-02');
         expect(isSelected('r-ver-02')).toBe(true);
+    });
+
+    it('opens a native sub-agent beside its chat, which stays selected since the sub-agent has no row', async () => {
+        await draw(() => ui().openRun('r-na-02'));
+
+        expect(container.querySelector('[data-testid="run"]')?.getAttribute('data-run-id')).toBe('r-na-02');
+        expect(isSelected('c-1')).toBe(true);
     });
 
     it('falls back to a chat when the remembered run is gone', async () => {

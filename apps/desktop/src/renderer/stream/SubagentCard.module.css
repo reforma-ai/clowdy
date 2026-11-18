@@ -1,0 +1,87 @@
+@reference '@clowdy/styles/rulesets';
+
+/* An agent's card sits in the turn among the tool lines, as a bordered plate: it stands for a whole run, not one call. */
+.card {
+    @ruleset typography-text-md;
+
+    width: 100%;
+    max-width: 100%;
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+    overflow: hidden;
+}
+
+.body {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    width: 100%;
+    margin: 0;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+}
+
+button.body {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+button.body:hover {
+    background-color: var(--color-secondary-muted-light);
+}
+
+button.body:focus-visible {
+    outline: var(--spacing-4) solid var(--color-primary-muted-border);
+    outline-offset: calc(var(--spacing-4) * -1);
+}
+
+.icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    height: var(--spacing-20);
+    color: var(--color-secondary-muted-text);
+}
+
+.text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    min-width: 0;
+}
+
+.titleLine {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-width: 0;
+    line-height: var(--spacing-20);
+}
+
+.title {
+    flex-shrink: 0;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.aside {
+    flex: 1;
+    min-width: 0;
+}
+
+.trailing {
+    display: inline-flex;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.error {
+    overflow-wrap: anywhere;
+}

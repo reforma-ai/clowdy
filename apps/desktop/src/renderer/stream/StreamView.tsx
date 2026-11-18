@@ -10,6 +10,8 @@ import { NoteLine } from './NoteLine';
 import { QuestionCard } from './QuestionCard';
 import { NO_LINKS, StreamLinksContext, type StreamLinks } from './StreamLinks';
 import styles from './StreamView.module.css';
+import { SpawnCard, SubagentCard } from './SubagentCard';
+import { isSubagentTool, RUN_SPAWN } from './subagents';
 import { ToolCard } from './ToolCard';
 import { foldFinishedWork } from './turns';
 import { UserBubble } from './UserBubble';
@@ -58,7 +60,10 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
             case 'assistant':
                 return <AssistantMessage text={ body.text } streaming={ !body.done } />;
             case 'tool':
-                return <ToolCard call={ body } />;
+                // A call that started another agent is that agent's card; every other call is a line.
+                if (body.name === RUN_SPAWN) return <SpawnCard call={ body } />;
+
+                return isSubagentTool(body.name) ? <SubagentCard call={ body } active={ active } /> : <ToolCard call={ body } />;
             case 'note':
                 return <NoteLine text={ body.text } at={ item.at } />;
             case 'question':

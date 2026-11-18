@@ -17,6 +17,7 @@ import { Composer, type ComposerHandle } from './Composer';
 import { chatProgress } from './progress';
 import { ProgressCard } from './ProgressCard';
 import { ReadOnlyNotice } from './ReadOnlyNotice';
+import { RunningAgents } from './RunningAgents';
 
 import type { Attachment, Chat } from '@clowdy/protocol';
 
@@ -83,6 +84,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             ) }
 
             <ContentColumn className={ styles.composer }>
+                <RunningAgents chat={ chat } />
                 { writability.writable
                     ? <Composer ref={ composer } chat={ chat } run={ run } />
                     : <ReadOnlyNotice chat={ chat } run={ run } message={ writability.message } /> }

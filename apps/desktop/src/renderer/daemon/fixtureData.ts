@@ -415,6 +415,25 @@ export function createFixtureData(now = Date.now()): FixtureData {
             createdAt: ago(21),
             startedAt: ago(21),
         }),
+        // Sub-agents of the orchestrator's own `Agent` calls (tc-agent-1, tc-agent-2 in its stream): cards there, not rows of the tree.
+        run('r-na-01', 'Explore', 'executor', 'succeeded', {
+            parentRunId: 'r-orch-1',
+            origin: 'native',
+            parentToolCallId: 'tc-agent-1',
+            summary: 'Map the booking flow',
+            result: 'Three step components in src/booking/steps.tsx share one context; the price is computed only on the last step.',
+            createdAt: ago(93),
+            startedAt: ago(93),
+            finishedAt: ago(92),
+        }),
+        run('r-na-02', 'Explore', 'executor', 'running', {
+            parentRunId: 'r-orch-1',
+            origin: 'native',
+            parentToolCallId: 'tc-agent-2',
+            summary: 'Find where the price is computed',
+            createdAt: ago(2),
+            startedAt: ago(2),
+        }),
         run('r-ver-02', 'Verifier 02', 'verifier', 'queued', {
             parentRunId: 'r-ex-07',
             summary: 'Check the form against the spec',
@@ -531,13 +550,50 @@ export function createFixtureData(now = Date.now()): FixtureData {
         [94, { kind: 'user', text: 'Simplify the booking flow: one form instead of three steps, and show the price while the person types.', attachments: FIXTURE_ATTACHMENTS.map(file => file.attachment) }],
         [94, { kind: 'assistant', done: true, text: 'I read the current flow. It has **three steps** and recalculates the price only on the last one.\n\nPlan:\n\n1. Move availability into one API call (`CAR-22`).\n2. Rebuild the form as one view (`CAR-24`).\n3. Send a short confirmation email (`CAR-25`).\n\nI will start the independent parts now.' }],
         [93, { kind: 'tool', toolCallId: 'tc-1', name: 'Grep', state: 'done', input: { pattern: 'BookingStep', path: 'src' }, output: 'src/booking/steps.tsx:12\nsrc/booking/steps.tsx:40\nsrc/booking/index.tsx:8' }],
+        [93, {
+            kind: 'tool',
+            toolCallId: 'tc-agent-1',
+            name: 'Agent',
+            state: 'done',
+            input: { subagent_type: 'Explore', description: 'Map the booking flow', prompt: 'Find the components of the booking flow and where each step keeps its state.' },
+            output: 'Three step components in src/booking/steps.tsx share one context; the price is computed only on the last step.',
+        }],
         [92, { kind: 'tool', toolCallId: 'tc-2', name: 'Read', state: 'done', input: { file_path: 'src/booking/index.tsx' }, output: 'export function Booking() {\n    return <Steps />;\n}' }],
         [90, { kind: 'tool', toolCallId: 'tc-3', name: 'create_task', state: 'done', input: { title: 'Update the booking form', dependsOn: ['CAR-22'] }, output: { key: 'CAR-24' } }],
         [89, { kind: 'note', text: '2 executors started' }],
         [60, { kind: 'assistant', done: true, text: 'Executor 09 finished the schema in `src/db/schema.ts`. Executor 10 failed on the pricing rules; I will look at its report before I retry.\n\n### What changed\n\n| File | Change |\n| --- | --- |\n| `src/db/schema.ts` | adds the `bookings` table |\n| `src/booking/price.ts` | weekend surcharge |\n\n```src/booking/price.ts\nexport const weekendRate = 1.15;\n```\n\n> The price must be visible before the person commits.\n\nSee [the decision](https://example.com/decision) and `CAR-23`.' }],
         [41, { kind: 'error', text: 'Executor 10 failed: Typecheck failed in 3 files and the run could not repair them.' }],
+        // The result of `run_spawn` as agents hand it back: JSON text for the first, the tool's own object for the second.
+        [21, {
+            kind: 'tool',
+            toolCallId: 'tc-spawn-07',
+            name: 'run_spawn',
+            state: 'done',
+            input: { taskIds: ['CAR-24'], role: 'executor', prompt: 'Update the booking form: one view with dates, car and live price.', idempotencyKey: 'car-24-form' },
+            output: JSON.stringify({ runId: 'r-ex-07', name: 'Executor 07', role: 'executor', status: 'running', duplicate: false }),
+        }],
+        [21, {
+            kind: 'tool',
+            toolCallId: 'tc-spawn-08',
+            name: 'run_spawn',
+            state: 'done',
+            input: { taskIds: ['CAR-25', 'CAR-26'], role: 'executor', prompt: 'Write the confirmation email and the cancellation flow.', idempotencyKey: 'car-25-email' },
+            output: { runId: 'r-ex-08', name: 'Executor 08', role: 'executor', status: 'running', duplicate: false },
+        }],
         [21, { kind: 'note', text: '2 executors started' }],
         [20, { kind: 'assistant', done: true, text: 'Executor 07 is on the form, and Executor 08 asked which mail provider to use. I am waiting on you for that one.' }],
+        [2, { kind: 'tool', toolCallId: 'tc-agent-2', name: 'Agent', state: 'running', input: { subagent_type: 'Explore', description: 'Find where the price is computed', prompt: 'Find where the booking price is computed and who calls it.' } }],
+    ]);
+
+    stream('r-na-01', [
+        [93, { kind: 'tool', toolCallId: 'tc-1', name: 'Glob', state: 'done', input: { pattern: 'src/booking/**' }, output: 'src/booking/index.tsx\nsrc/booking/steps.tsx\nsrc/booking/price.ts' }],
+        [93, { kind: 'tool', toolCallId: 'tc-2', name: 'Read', state: 'done', input: { file_path: 'src/booking/steps.tsx' }, output: 'export const steps = [Dates, Car, Confirm];' }],
+        [92, { kind: 'assistant', done: true, text: 'Three step components in `src/booking/steps.tsx` share one context; the price is computed only on the last step.' }],
+    ]);
+
+    stream('r-na-02', [
+        [2, { kind: 'assistant', done: true, text: 'Looking for the price helper and its callers.' }],
+        [1, { kind: 'tool', toolCallId: 'tc-1', name: 'Grep', state: 'running', input: { pattern: 'useBookingPrice', path: 'src' } }],
     ]);
 
     stream('r-ex-07', [

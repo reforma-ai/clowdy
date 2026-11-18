@@ -10,9 +10,10 @@ const byCreatedAt = (a: Run, b: Run) => a.createdAt - b.createdAt || a.id.locale
 /**
  * Runs as a forest: roots (no parent, or a parent that is not in the list) newest first, children in the order
  * they were spawned. Without `showFinished`, a finished run stays only while a run below it is still active.
+ * Native sub-agents are not in it: each is a card on the call that started it, in its parent's stream.
  */
 export function buildRunTree(runs: Iterable<Run>, { showFinished = true }: { showFinished?: boolean } = {}): RunNode[] {
-    const all = [...runs];
+    const all = [...runs].filter(run => run.origin !== 'native');
     const ids = new Set(all.map(run => run.id));
     const childrenOf = new Map<string, Run[]>();
     const roots: Run[] = [];

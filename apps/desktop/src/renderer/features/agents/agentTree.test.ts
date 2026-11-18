@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildRunTree } from '../../stores/runTree';
-import { agentRows, ancestorIds, chatDotTone, countActiveChildren, describeRun, resolveSelection, visibleChats } from './agentTree';
+import { agentRows, ancestorIds, chatDotTone, countActiveChildren, describeRun, listedRunId, resolveSelection, visibleChats } from './agentTree';
 
 import type { Chat, Run, RunStatus } from '@clowdy/protocol';
 
@@ -153,6 +153,28 @@ describe('countActiveChildren', () => {
         expect(counts.get('orch')).toBe(2);
         expect(counts.get('a')).toBe(1);
         expect(counts.has('b')).toBe(false);
+    });
+
+    it('leaves native sub-agents out', () => {
+        const counts = countActiveChildren([...runs, run('n1', 'running', { parentRunId: 'b', rootRunId: 'orch', origin: 'native' })]);
+
+        expect(counts.has('b')).toBe(false);
+    });
+});
+
+describe('listedRunId', () => {
+    const native = run('n1', 'running', { parentRunId: 'a', rootRunId: 'orch', origin: 'native' });
+    const nativeOfOrchestrator = run('n2', 'running', { parentRunId: 'orch', rootRunId: 'orch', origin: 'native' });
+    const byId = new Map([...runs, native, nativeOfOrchestrator].map(candidate => [candidate.id, candidate]));
+
+    it('is the run\'s own row, or for a native sub-agent the row of the run it lives in', () => {
+        expect(listedRunId(byId, byId.get('a1')!)).toBe('a1');
+        expect(listedRunId(byId, native)).toBe('a');
+    });
+
+    it('is nothing when that run is the orchestrator, whose row is the chat\'s', () => {
+        expect(listedRunId(byId, nativeOfOrchestrator)).toBeUndefined();
+        expect(listedRunId(byId, byId.get('orch')!)).toBeUndefined();
     });
 });
 

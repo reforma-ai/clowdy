@@ -21,7 +21,7 @@ import { ProviderIcon } from '../settings/providers/ProviderIcon';
 import { PROVIDER_IDS } from '../settings/providers/providerView';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
-import { agentRows, ancestorIds, chatDotTone, countActiveChildren, describeRun, type AgentRow, type AgentSelection } from './agentTree';
+import { agentRows, ancestorIds, chatDotTone, countActiveChildren, describeRun, listedRunId, type AgentRow, type AgentSelection } from './agentTree';
 
 import type { Chat, ChatId, Run } from '@clowdy/protocol';
 
@@ -84,7 +84,8 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     const archivedRows = agentRows(chats.filter(chat => chat.archivedAt !== undefined), forest, collapsed);
     const isGrouped = archivedRows.length > 0;
     const activeChildren = countActiveChildren(project.runs.values());
-    const selectedId = selection.draft ? NEW_CHAT_ROW : (selection.run?.id ?? selection.chat?.id);
+    // A native sub-agent has no row: the run it lives in, or the chat, stays selected while its page is open.
+    const selectedId = selection.draft ? NEW_CHAT_ROW : ((selection.run && listedRunId(project.runs, selection.run)) ?? selection.chat?.id);
 
     // A run opened from elsewhere may sit below a fold: open the folds above it.
     useEffect(() => {

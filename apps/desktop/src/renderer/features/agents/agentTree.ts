@@ -104,12 +104,26 @@ export function ancestorIds(runs: ReadonlyMap<RunId, Run>, runId: RunId): RunId[
     return ancestors;
 }
 
-/** How many children of each run are still going. Counted over every run, so what is folded away does not change it. */
+/**
+ * The row of the list that stands for a run below a chat: its own, or, for a native sub-agent, which has no row, the row of the run whose session
+ * it lives in. Nothing when that is the chat's orchestrator, whose row is the chat's.
+ */
+export function listedRunId(runs: ReadonlyMap<RunId, Run>, run: Run): RunId | undefined {
+    // The daemon puts a sub-agent under the run of the session it came from, never under another sub-agent.
+    const listed = run.origin === 'native' && run.parentRunId !== undefined ? runs.get(run.parentRunId) : run;
+
+    return listed?.parentRunId === undefined ? undefined : listed.id;
+}
+
+/**
+ * How many spawned children of each run are still going. Counted over every run, so what is folded away does not change it. Native sub-agents
+ * are not counted: they are not rows, and they end with their parent's turn.
+ */
 export function countActiveChildren(runs: Iterable<Run>): Map<RunId, number> {
     const counts = new Map<RunId, number>();
 
     for (const run of runs) {
-        if (run.parentRunId !== undefined && ACTIVE_RUN_STATUSES.includes(run.status)) counts.set(run.parentRunId, (counts.get(run.parentRunId) ?? 0) + 1);
+        if (run.parentRunId !== undefined && run.origin !== 'native' && ACTIVE_RUN_STATUSES.includes(run.status)) counts.set(run.parentRunId, (counts.get(run.parentRunId) ?? 0) + 1);
     }
 
     return counts;

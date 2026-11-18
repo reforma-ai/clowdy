@@ -51,6 +51,8 @@ async function draw(chatId: string) {
 const field = () => container.querySelector('[contenteditable="true"]');
 const notice = () => container.querySelector<HTMLElement>('[aria-label="This chat is read only"]');
 const button = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent === label);
+// The notice's own buttons: the strip of the chat's working agents above it has a Stop per agent.
+const noticeButton = (label: string) => [...notice()?.querySelectorAll<HTMLButtonElement>('button') ?? []].find(candidate => candidate.textContent === label);
 
 /** Starts the store on the fixtures, with the agents read, after `change` has had its say about them. */
 async function start(change?: (agents: FixtureData['agents']) => void, tweak?: (data: FixtureData) => void) {
@@ -185,14 +187,14 @@ describe('a chat on a provider that cannot run', () => {
 
         expect(store.selectedProject!.runs.get('r-orch-1')!.status).toBe('running');
 
-        await act(async () => button('Stop')!.click());
+        await act(async () => noticeButton('Stop')!.click());
 
         expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-orch-1' });
 
         // The run ends, and the way to stop it goes with it.
         await draw('c-1');
 
-        expect(button('Stop')).toBeUndefined();
+        expect(noticeButton('Stop')).toBeUndefined();
         expect(button('Hand off to a new chat')).toBeDefined();
     });
 
@@ -203,7 +205,7 @@ describe('a chat on a provider that cannot run', () => {
         await draw('c-1');
 
         expect(notice()).not.toBeNull();
-        expect(button('Stop')).toBeUndefined();
+        expect(noticeButton('Stop')).toBeUndefined();
     });
 
     it('does not take the person to the new-chat page when they left the chat while the hand-off was loading', async () => {
@@ -214,8 +216,9 @@ describe('a chat on a provider that cannot run', () => {
             release = resolve;
         });
 
-        vi.spyOn(transport, 'getItems').mockImplementationOnce(async (...args) => {
-            await gate;
+        // Only the chat's own stream is held: the strip above the notice reads the streams of the agents at work.
+        vi.spyOn(transport, 'getItems').mockImplementation(async (...args) => {
+            if ('runId' in args[0] && args[0].runId === 'r-orch-1') await gate;
 
             return FixtureTransport.prototype.getItems.apply(transport, args);
         });
