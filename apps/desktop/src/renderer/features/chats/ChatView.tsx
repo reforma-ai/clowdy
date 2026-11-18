@@ -5,20 +5,25 @@ import { Text } from '@clowdy/components/Text';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { useMemo, useRef } from 'react';
 
-import { useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
+import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { StreamView } from '../../stream';
 import { ChatDropZone } from './ChatDropZone';
 import { ChatHeader } from './ChatHeader';
+import { chatWritability } from './chatProvider';
 import { isRunActive, liveLine } from './chatRun';
 import styles from './ChatView.module.css';
 import { perform } from './commands';
 import { Composer, type ComposerHandle } from './Composer';
 import { chatProgress } from './progress';
 import { ProgressCard } from './ProgressCard';
+import { ReadOnlyNotice } from './ReadOnlyNotice';
 
 import type { Attachment, Chat } from '@clowdy/protocol';
 
-/** One chat: the header, the orchestrator's stream with the progress card in it, and the composer. */
+/**
+ * One chat: the header, the orchestrator's stream with the progress card in it, and the composer. When the chat's provider cannot run
+ * (switched off, not installed, signed out) the stream stays as it is and a notice stands in place of the composer.
+ */
 export function ChatView({ chat }: { chat: Chat }) {
     const root = useRootStore();
     const project = useProjectState();
@@ -32,13 +37,15 @@ export function ChatView({ chat }: { chat: Chat }) {
     const composer = useRef<ComposerHandle>(null);
     const stream = useChatStream(chat);
     const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
+    const { agents, status: agentsStatus } = useAgents();
+    const writability = chatWritability(chat, run, agents, agentsStatus);
     const progress = chatProgress(project.tasksOfChat(chat.id), project.statuses);
     const items = stream?.items ?? [];
     // The card follows the orchestrator's latest message, where the person is looking.
     const cardAfter = items.findLast(item => item.body.kind === 'assistant')?.id;
 
     return (
-        <ChatDropZone onFiles={ files => composer.current?.addFiles(files) }>
+        <ChatDropZone disabled={ !writability.writable } onFiles={ files => composer.current?.addFiles(files) }>
             <ChatHeader chat={ chat } run={ run } />
 
             { stream?.status === 'failed' && (
@@ -78,7 +85,9 @@ export function ChatView({ chat }: { chat: Chat }) {
             ) }
 
             <div className={ styles.composer }>
-                <Composer ref={ composer } chat={ chat } run={ run } />
+                { writability.writable
+                    ? <Composer ref={ composer } chat={ chat } run={ run } />
+                    : <ReadOnlyNotice chat={ chat } run={ run } message={ writability.message } /> }
             </div>
         </ChatDropZone>
     );

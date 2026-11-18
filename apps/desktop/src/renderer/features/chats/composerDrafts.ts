@@ -4,6 +4,9 @@ import { serializeMention } from './composerMentions';
 
 import type { ChatId } from '@clowdy/protocol';
 
+/** Where the words typed on the new-chat page are kept: there is no chat id to keep them under yet. */
+export const NEW_CHAT_DRAFT = '@new-chat';
+
 /** What was typed and not sent, so that moving to another chat and back does not lose it. */
 const drafts = new Map<ChatId, ComposerDoc>();
 

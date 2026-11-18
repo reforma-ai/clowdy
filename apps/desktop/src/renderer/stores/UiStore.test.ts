@@ -42,6 +42,24 @@ describe('UiStore', () => {
         expect([ui.chatId, ui.runId, ui.draft]).toEqual(['c2', null, false]);
     });
 
+    it('holds the files a hand-off gives the new-chat page until the page takes them, once, and does not keep them', () => {
+        const storage = memoryStorage();
+        const ui = new UiStore(storage).forProject('p1');
+        const file = new File(['conversation'], 'chat-conversation.md');
+
+        ui.openDraft();
+        expect(ui.pendingFiles).toEqual([]);
+
+        ui.openChat('c1');
+        ui.openDraft([file]);
+        expect([ui.draft, ui.pendingFiles]).toEqual([true, [file]]);
+        expect(JSON.stringify(storage.data)).not.toContain('chat-conversation');
+
+        expect(ui.takePendingFiles()).toEqual([file]);
+        expect(ui.takePendingFiles()).toEqual([]);
+        expect(ui.pendingFiles).toEqual([]);
+    });
+
     it('does not keep the new-chat row between sessions, but shows it again with back and forward', () => {
         const storage = memoryStorage();
         const first = new UiStore(storage).forProject('p1');

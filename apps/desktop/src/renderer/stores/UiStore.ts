@@ -1,4 +1,4 @@
-import { makeAutoObservable, reaction } from 'mobx';
+import { makeAutoObservable, observableRef, reaction } from 'mobx';
 
 import { readStored, writeStored, type KeyValueStorage } from './storage';
 
@@ -91,6 +91,8 @@ export class ProjectUi {
     /** Agents: list the chats that were archived. */
     showArchived = false;
     tasksView: TasksView = 'board';
+    /** Agents: files that a hand-off from another chat left for the new-chat page, which takes them once it is open. Not kept between sessions. */
+    pendingFiles: readonly File[] = [];
 
     constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}) {
         const key = `clowdy:ui:${ projectId }`;
@@ -109,7 +111,7 @@ export class ProjectUi {
         }
 
         Object.assign(this, initial);
-        makeAutoObservable(this, { projectId: false });
+        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef });
         reaction(
             (): StoredProjectUi => ({
                 section: this.section,
@@ -149,11 +151,25 @@ export class ProjectUi {
         this.draft = false;
     }
 
-    /** Shows the new-chat row of the Agents section: a chat that is only made when its first message is sent. */
-    openDraft(): void {
+    /**
+     * Shows the new-chat row of the Agents section: a chat that is only made when its first message is sent. `attach` are files for
+     * its message box (a hand-off brings the old conversation this way): the page picks them up with `takePendingFiles`.
+     */
+    openDraft(attach: readonly File[] = []): void {
         this.section = 'agents';
         this.runId = null;
         this.draft = true;
+
+        if (attach.length > 0) this.pendingFiles = [...this.pendingFiles, ...attach];
+    }
+
+    /** The files `openDraft` was given, handed over once: the next call finds none. */
+    takePendingFiles(): readonly File[] {
+        const files = this.pendingFiles;
+
+        this.pendingFiles = [];
+
+        return files;
     }
 
     /** Shows the task in the Tasks section; `null` closes its detail panel. */

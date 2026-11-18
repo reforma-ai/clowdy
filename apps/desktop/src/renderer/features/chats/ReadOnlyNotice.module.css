@@ -1,0 +1,42 @@
+/*
+ * A calm plate in the place of the message box: the same width, the composer's own plate and corner, with a hairline instead of the
+ * composer's running ring. Nothing here is an error, so no tone, and Terracotta is only the one primary button.
+ */
+.notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-lg);
+    width: 100%;
+    padding: var(--spacing-xl);
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-chat-composer);
+}
+
+.icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    padding-block-start: var(--spacing-xxs);
+    color: var(--color-secondary-muted-text);
+}
+
+.body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.message {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+    margin-block-start: var(--spacing-md);
+}
