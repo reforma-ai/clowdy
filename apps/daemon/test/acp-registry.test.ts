@@ -149,7 +149,7 @@ describe('AgentRegistry', () => {
         const claude = program('claude', '2.1.325 (Claude Code)');
         const reg = registry();
 
-        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: `bun x --bun ${ pinned('claude') }`, fetches: pinned('claude'), login: 'claude auth login' });
+        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: `bun x --bun ${ pinned('claude') }`, fetches: pinned('claude'), login: 'claude auth login', settings: expect.any(Array) });
 
         const resolved = await reg.resolve('claude');
 
@@ -157,6 +157,72 @@ describe('AgentRegistry', () => {
         expect(resolved.ok && resolved.agent.env).toMatchObject({ CLAUDE_CODE_EXECUTABLE: claude, ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' });
         expect(resolved.ok && resolved.agent.scrub.some(pattern => pattern.test('ANTHROPIC_API_KEY'))).toBe(true);
         expect(resolved.ok && resolved.agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
+    });
+
+    describe('settings', () => {
+        const settingsOf = async (reg: AgentRegistry) => Object.fromEntries(((await byId(reg, 'claude'))?.settings ?? []).map(setting => [setting.id, setting.value]));
+        const start = async (reg: AgentRegistry) => {
+            const resolved = await reg.resolve('claude');
+
+            if (!resolved.ok) {
+                throw new Error(resolved.message);
+            }
+
+            return resolved.agent;
+        };
+
+        test('Claude Code lists its settings at their defaults, and the defaults are what a run gets today', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+
+            const reg = registry();
+
+            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: false, subagents: true, longContext: true });
+            expect((await byId(reg, 'claude'))?.settings?.[0]).toMatchObject({ id: 'memory', default: false, label: expect.any(String), description: expect.any(String) });
+
+            const agent = await start(reg);
+
+            expect(agent.env).toMatchObject({ ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' });
+            expect(agent.env).not.toHaveProperty('CLAUDE_CODE_DISABLE_1M_CONTEXT');
+            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
+        });
+
+        test('a setting turned on or off changes the environment and the tools the agent starts with', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+
+            const reg = registry();
+
+            reg.update('claude', { settings: { memory: true, connectors: true, subagents: false, longContext: false } });
+
+            expect(await settingsOf(reg)).toEqual({ memory: true, connectors: true, subagents: false, longContext: false });
+
+            const agent = await start(reg);
+
+            expect(agent.env).not.toHaveProperty('CLAUDE_CODE_DISABLE_AUTO_MEMORY');
+            expect(agent.env).not.toHaveProperty('ENABLE_CLAUDEAI_MCP_SERVERS');
+            expect(agent.env).toMatchObject({ CLAUDE_CODE_DISABLE_1M_CONTEXT: '1', CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3' });
+            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task', 'ListAgents'] } } });
+
+            // A change names only what it changes.
+            reg.update('claude', { settings: { memory: false } });
+
+            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: true, subagents: false, longContext: false });
+        });
+
+        test('are kept in agents.json, refuse a setting the agent does not have, and give way to the variables the person set', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+
+            const dir = mkdtempSync(join(root, 'data-'));
+            const reg = registry(dir);
+
+            reg.update('claude', { settings: { memory: true }, env: { ENABLE_CLAUDEAI_MCP_SERVERS: 'true' } });
+
+            expect(() => reg.update('claude', { settings: { nothing: true } })).toThrow('no setting called');
+            expect(() => reg.update('cursor', { settings: { memory: true } })).toThrow('no setting called');
+            expect(await settingsOf(registry(dir))).toMatchObject({ memory: true });
+            expect((await start(registry(dir))).env).toMatchObject({ ENABLE_CLAUDEAI_MCP_SERVERS: 'true' });
+            expect((await byId(registry(dir), 'claude'))?.overrides).toEqual({ env: { ENABLE_CLAUDEAI_MCP_SERVERS: 'true' } });
+            expect((await byId(reg, 'cursor'))?.settings).toBeUndefined();
+        });
     });
 
     test('an adapter agent needs its program and a Bun to fetch the adapter; both are named when one is missing', async () => {

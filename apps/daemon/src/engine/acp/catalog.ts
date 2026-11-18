@@ -8,6 +8,22 @@ export type Launch =
      */
     | { kind: 'package'; package: string; pathEnv: string };
 
+/** What the agent is started with for one value of a setting. A variable that is `null` is taken out of the environment. */
+export interface SettingEffect {
+    env?: Record<string, string | null>;
+    /** Tools the agent is not given (Claude's adapter reads them from `_meta.claudeCode.options.disallowedTools`). */
+    disallowedTools?: string[];
+}
+
+/** A switch of an agent that Clowdy can turn by itself: it only changes the environment or the session options the agent starts with. */
+export interface AgentSettingSpec {
+    id: string;
+    label: string;
+    description: string;
+    default: boolean;
+    effect: (on: boolean) => SettingEffect;
+}
+
 /** A built-in agent: what finds it, how it starts, and what to tell the user about it. */
 export interface AgentSpec {
     id: string;
@@ -23,6 +39,8 @@ export interface AgentSpec {
     login?: string;
     /** Sent as the `_meta` of `session/new`: options the agent's adapter reads (Claude's adapter takes SDK options under `claudeCode.options`). */
     sessionMeta?: Record<string, unknown>;
+    /** The agent's own switches, shown with its account. */
+    settings?: AgentSettingSpec[];
 }
 
 /**
@@ -38,9 +56,39 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         name: 'Claude Code',
         programs: ['claude'],
         launch: { kind: 'package', package: '@agentclientprotocol/claude-agent-acp@0.107.0', pathEnv: 'CLAUDE_CODE_EXECUTABLE' },
-        // The user's claude.ai connectors (Drive, Docs) would load into every run, and an orchestrated run must not write the
-        // user's memory; sub-agents are a feature, this only caps hidden fan-out. All of it can be undone with the agent's `env`.
-        env: { ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '20' },
+        // Sub-agents are a feature, this only caps hidden fan-out. The rest of what a run does not do by default (claude.ai
+        // connectors, the agent's own memory) is a setting below, off until the person turns it on.
+        env: { CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '20' },
+        settings: [
+            {
+                id: 'memory',
+                label: 'Memory',
+                description: 'Let Claude Code read and write its own auto-memory in your runs.',
+                default: false,
+                effect: on => ({ env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: on ? null : '1' } }),
+            },
+            {
+                id: 'connectors',
+                label: 'claude.ai connectors',
+                description: 'Load the connectors set up on claude.ai (Drive, Docs and the like) into every run.',
+                default: false,
+                effect: on => ({ env: { ENABLE_CLAUDEAI_MCP_SERVERS: on ? null : 'false' } }),
+            },
+            {
+                id: 'subagents',
+                label: 'Its own sub-agents',
+                description: 'Let Claude Code start sub-agents inside a run. Off hides them, so agents delegate through Clowdy only.',
+                default: true,
+                effect: on => on ? {} : { disallowedTools: ['Agent', 'Task', 'ListAgents'] },
+            },
+            {
+                id: 'longContext',
+                label: '1M-token context',
+                description: 'Use the 1M-token context window where the plan has one.',
+                default: true,
+                effect: on => ({ env: { CLAUDE_CODE_DISABLE_1M_CONTEXT: on ? null : '1' } }),
+            },
+        ],
         // A stray key in the daemon's environment would move billing off the user's subscription; a key the user wants goes in the agent's `env`.
         scrub: [/^ANTHROPIC_API_KEY$/, /^ANTHROPIC_AUTH_TOKEN$/, /^CLAUDE_CODE_OAUTH_TOKEN$/],
         login: 'claude auth login',
@@ -120,6 +168,8 @@ export interface AgentOverride {
     path?: string;
     /** Variables to start the agent with, after its own. */
     env?: Record<string, string>;
+    /** The values the person chose for the agent's settings (`AgentSettingSpec.id`); one not named has its default. */
+    settings?: Record<string, boolean>;
 }
 
 export const AGENT_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;

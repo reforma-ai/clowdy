@@ -31,10 +31,12 @@ export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agen
 
         return { id };
     }),
-    'agent.update': (services, { id, enabled, path, env, name, command, args }) => change(services, id, () => {
-        services.agents.update(id, { enabled, path, env, name, command, args });
-        // Another program, environment or switch can mean another account: read it again.
-        services.providers.forget(id);
+    'agent.update': (services, { id, enabled, path, env, name, command, args, settings }) => change(services, id, () => {
+        services.agents.update(id, { enabled, path, env, name, command, args, settings });
+        // Another program, environment or switch can mean another account: read it again. A setting cannot.
+        if (enabled !== undefined || path !== undefined || env !== undefined) {
+            services.providers.forget(id);
+        }
 
         return { id };
     }),

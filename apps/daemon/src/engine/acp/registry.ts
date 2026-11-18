@@ -5,8 +5,8 @@ import { AGENT_ID, KNOWN_AGENTS } from './catalog';
 import { Discovery } from './discovery';
 import { buildAgentEnv } from './env';
 
-import type { AgentInfo } from '@clowdy/protocol';
-import type { AgentOverride, AgentSpec, CustomAgent } from './catalog';
+import type { AgentInfo, AgentSetting } from '@clowdy/protocol';
+import type { AgentOverride, AgentSettingSpec, AgentSpec, CustomAgent, SettingEffect } from './catalog';
 
 /** Detection results are reused this long, so a settings screen can poll without spawning a probe each time. */
 const INFO_TTL_MS = 30_000;
@@ -155,7 +155,13 @@ export class AgentRegistry {
             throw new AgentRegistryError('not_found', `There is no agent called "${ id }"`);
         }
 
-        const { name, command, args, path, enabled, env } = patch;
+        const { name, command, args, path, enabled, env, settings } = patch;
+
+        for (const settingId of Object.keys(settings ?? {})) {
+            if (!this.spec(id)?.settings?.some(setting => setting.id === settingId)) {
+                throw new AgentRegistryError('invalid', `${ this.nameOf(id) } has no setting called "${ settingId }"`);
+            }
+        }
 
         if (path) {
             checkProgram(path, true);
@@ -171,7 +177,12 @@ export class AgentRegistry {
             }
 
             // Only what the patch names changes; a field left out (or passed as `undefined`) keeps its value.
-            const next: AgentOverride = { ...this.stored.overrides[id], ...(enabled !== undefined && { enabled }), ...(env !== undefined && { env }) };
+            const next: AgentOverride = {
+                ...this.stored.overrides[id],
+                ...(enabled !== undefined && { enabled }),
+                ...(env !== undefined && { env }),
+                ...(settings !== undefined && { settings: { ...this.stored.overrides[id]?.settings, ...settings } }),
+            };
 
             if (path === null) {
                 delete next.path;
@@ -241,10 +252,11 @@ export class AgentRegistry {
         }
 
         const { spec } = entry;
-        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, sessionMeta: spec.sessionMeta };
+        const applied = appliedSettings(spec, override);
+        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, sessionMeta: withDisallowedTools(spec.sessionMeta, applied.disallowedTools) };
 
         if (spec.launch.kind === 'binary') {
-            return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: { ...spec.env, ...override.env } } };
+            return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: withoutRemoved({ ...spec.env, ...applied.env, ...override.env }) } };
         }
 
         const runtime = await this.runtime();
@@ -255,7 +267,7 @@ export class AgentRegistry {
 
         return {
             ok: true,
-            agent: { ...base, program, command: runtime, args: ['x', '--bun', spec.launch.package], env: { ...PACKAGE_RUNNER_ENV, ...spec.env, [spec.launch.pathEnv]: program, ...override.env } },
+            agent: { ...base, program, command: runtime, args: ['x', '--bun', spec.launch.package], env: withoutRemoved({ ...PACKAGE_RUNNER_ENV, ...spec.env, ...applied.env, [spec.launch.pathEnv]: program, ...override.env }) },
         };
     }
 
@@ -281,6 +293,8 @@ export class AgentRegistry {
             launch,
             ...(fetches && { fetches }),
             ...(spec?.login && { login: spec.login }),
+            ...(spec?.settings?.length && { settings: settingsOf(spec, override) }),
+            ...((override.path || override.env) && { overrides: { ...(override.path && { path: override.path }), ...(override.env && { env: override.env }) } }),
         };
     }
 
@@ -374,11 +388,51 @@ function parseStored(data: unknown): Stored {
                 ...(typeof value.enabled === 'boolean' && { enabled: value.enabled }),
                 ...(typeof value.path === 'string' && value.path !== '' && { path: value.path }),
                 ...(isStrings(value.env) && { env: value.env }),
+                ...(isRecord(value.settings) && { settings: Object.fromEntries(Object.entries(value.settings).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean')) }),
             };
         }
     }
 
     return { agents: [...agents.values()], overrides };
+}
+
+const settingValue = (setting: AgentSettingSpec, override: AgentOverride): boolean => override.settings?.[setting.id] ?? setting.default;
+
+/** The agent's settings with their values, for a person to see and change. */
+function settingsOf(spec: AgentSpec, override: AgentOverride): AgentSetting[] {
+    return (spec.settings ?? []).map(setting => ({ id: setting.id, label: setting.label, description: setting.description, value: settingValue(setting, override), default: setting.default }));
+}
+
+/** What the settings, at their values, do to the environment and the tools of the agent. A later setting wins over an earlier one. */
+function appliedSettings(spec: AgentSpec, override: AgentOverride): Required<SettingEffect> {
+    const applied: Required<SettingEffect> = { env: {}, disallowedTools: [] };
+
+    for (const setting of spec.settings ?? []) {
+        const effect = setting.effect(settingValue(setting, override));
+
+        Object.assign(applied.env, effect.env);
+        applied.disallowedTools.push(...effect.disallowedTools ?? []);
+    }
+
+    return applied;
+}
+
+/** The environment with the variables a setting removed (`null`) taken out. */
+function withoutRemoved(env: Record<string, string | null>): Record<string, string> {
+    return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== null));
+}
+
+/** The agent's `_meta` for `session/new`, with the tools its settings take away added to the ones the catalog already withholds. */
+function withDisallowedTools(meta: Record<string, unknown> | undefined, extra: string[]): Record<string, unknown> | undefined {
+    if (extra.length === 0) {
+        return meta;
+    }
+
+    const claudeCode = isRecord(meta?.claudeCode) ? meta.claudeCode : {};
+    const options = isRecord(claudeCode.options) ? claudeCode.options : {};
+    const already = Array.isArray(options.disallowedTools) ? options.disallowedTools as string[] : [];
+
+    return { ...meta, claudeCode: { ...claudeCode, options: { ...options, disallowedTools: [...new Set([...already, ...extra])] } } };
 }
 
 /** How an agent starts, as a person would type it. */

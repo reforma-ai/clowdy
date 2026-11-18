@@ -38,6 +38,13 @@ export interface AgentInfo {
     signInSession?: AgentSignInSession;
     /** The agent's own settings Clowdy can control, with their current values. Empty or absent when there are none. */
     settings?: AgentSetting[];
+    /** What the person changed about how the agent starts: a program they chose, variables they added. Absent when nothing was changed. */
+    overrides?: AgentOverrides;
+}
+
+export interface AgentOverrides {
+    path?: string;
+    env?: Record<string, string>;
 }
 
 /** Whether somebody is signed in. `unknown`: the daemon could not tell (the program is missing or did not answer). */
