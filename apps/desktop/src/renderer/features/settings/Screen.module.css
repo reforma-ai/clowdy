@@ -25,6 +25,5 @@
     flex-direction: column;
     /* At least 24px between the blocks of a page. */
     gap: var(--spacing-24);
-    max-width: 40rem;
     padding: var(--spacing-xxl);
 }

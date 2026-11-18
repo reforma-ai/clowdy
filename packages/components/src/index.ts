@@ -18,6 +18,7 @@ export * from './ColorArea';
 export * from './ColorInput';
 export * from './ColorSlider';
 export * from './ConfirmButton';
+export * from './ContentColumn';
 export * from './ControlGroup';
 export * from './CopyButton';
 export * from './FileDropOverlay';

@@ -1,4 +1,7 @@
 :root {
+    /* How wide a column of content may be: a chat, a settings page. `ContentColumn` in `@clowdy/components` applies it. */
+    --content-width: 52rem;
+
     --squircle-value: 1.75;
     --squircle-radius-factor: 1;
 

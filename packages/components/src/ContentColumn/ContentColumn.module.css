@@ -1,0 +1,8 @@
+@layer components {
+    .column {
+        width: 100%;
+        max-width: var(--content-width);
+        min-width: 0;
+        margin-inline: auto;
+    }
+}

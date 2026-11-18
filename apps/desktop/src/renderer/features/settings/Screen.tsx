@@ -1,3 +1,4 @@
+import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Scrollable } from '@clowdy/components/Scrollable';
@@ -57,8 +58,10 @@ export function Screen() {
         <SidebarLayout screen="settings" defaultWidth={ 270 } sidebar={ <PagesSidebar page={ page } /> }>
             <section className={ styles.main } aria-label={ page.label }>
                 {/* The key restarts the scroll position when another page is chosen. */}
-                <Scrollable key={ page.id } className={ styles.scroll } contentClass={ styles.page }>
-                    { page.render() }
+                <Scrollable key={ page.id } className={ styles.scroll }>
+                    <ContentColumn className={ styles.page }>
+                        { page.render() }
+                    </ContentColumn>
                 </Scrollable>
             </section>
         </SidebarLayout>

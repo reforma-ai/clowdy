@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { useStickToBottom } from '@clowdy/components/hooks';
 import { ArrowDown } from '@clowdy/icons/14';
 import { Fragment, useMemo, useState } from 'react';
@@ -71,7 +72,7 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
         <StreamLinksContext value={ links }>
             <div className={ styles.root }>
                 <div ref={ scrollRef } className={ styles.scroll }>
-                    <div ref={ contentRef } className={ styles.content }>
+                    <ContentColumn ref={ contentRef } className={ styles.content }>
                         { items.length === 0 && emptyState }
                         { blocks.map(block => (block.kind === 'worked'
                             ? (
@@ -86,7 +87,7 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
                                 </Fragment>
                             ))) }
                         { showWorking && <WorkingLine text={ typeof working === 'string' ? working : undefined } /> }
-                    </div>
+                    </ContentColumn>
                 </div>
 
                 <Button

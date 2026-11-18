@@ -1,5 +1,6 @@
 import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
+import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle } from '@clowdy/icons/14';
@@ -81,11 +82,11 @@ export function ChatView({ chat }: { chat: Chat }) {
                 />
             ) }
 
-            <div className={ styles.composer }>
+            <ContentColumn className={ styles.composer }>
                 { writability.writable
                     ? <Composer ref={ composer } chat={ chat } run={ run } />
                     : <ReadOnlyNotice chat={ chat } run={ run } message={ writability.message } /> }
-            </div>
+            </ContentColumn>
         </ChatDropZone>
     );
 }

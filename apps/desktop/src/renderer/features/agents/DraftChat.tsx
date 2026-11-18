@@ -1,3 +1,4 @@
+import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { Text } from '@clowdy/components/Text';
 import { useEffect, useRef } from 'react';
 
@@ -33,9 +34,9 @@ export function DraftChat() {
                 <div className={ styles.center }>
                     <Text variant="heading-3">What should we work on?</Text>
 
-                    <div className={ styles.composerSlot }>
+                    <ContentColumn className={ styles.composerSlot }>
                         <Composer ref={ composer } chat={ undefined } run={ undefined } minLines={ 3 } start={ { projectId: project.id, onStarted: chatId => ui.openChat(chatId) } } />
-                    </div>
+                    </ContentColumn>
                 </div>
             </div>
         </ChatDropZone>
