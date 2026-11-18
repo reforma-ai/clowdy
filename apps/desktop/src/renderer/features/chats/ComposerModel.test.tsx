@@ -276,7 +276,7 @@ describe('on the new-chat page', () => {
 
         expect(sent).toEqual([
             { type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'codex', model: 'gpt-6.2-sol', effort: 'ultra' },
-            { type: 'chat.send', chatId: 'c-new', text: 'Build the thing' },
+            { type: 'chat.send', chatId: 'c-new', text: 'Build the thing', mode: 'steer' },
         ]);
         expect(started).toEqual(['c-new']);
     });

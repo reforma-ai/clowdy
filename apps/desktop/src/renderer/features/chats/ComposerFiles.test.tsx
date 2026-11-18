@@ -107,7 +107,7 @@ describe('Composer files', () => {
 
         await act(async () => button('Send')!.click());
 
-        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: '', attachmentIds: ['a-a.txt'] }]);
+        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: '', attachmentIds: ['a-a.txt'], mode: 'steer' }]);
         expect(tiles()).toHaveLength(0);
     });
 
@@ -119,7 +119,7 @@ describe('Composer files', () => {
         });
         await act(async () => button('Send')!.click());
 
-        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Look at this', attachmentIds: ['a-a.txt'] }]);
+        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Look at this', attachmentIds: ['a-a.txt'], mode: 'steer' }]);
     });
 
     it('holds the message back while a file is going up, and says why', async () => {

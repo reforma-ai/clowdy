@@ -126,6 +126,65 @@ describe('FixtureTransport', () => {
         expect(items[1].body).toMatchObject({ done: true });
     });
 
+    describe('the queue of a chat', () => {
+        const chatOf = async (transport: FixtureTransport, id: string) => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(chat => chat.id === id)!;
+        const people = async (transport: FixtureTransport, chatId: string) => (await transport.getItems({ chatId })).flatMap(item => (item.body.kind === 'user' ? [item.body.text] : []));
+
+        it('keeps a message for a busy orchestrator in the queue, and takes a steer a moment later', async () => {
+            const { transport } = await connected();
+            const before = await people(transport, 'c-1');
+
+            await transport.command({ type: 'chat.send', chatId: 'c-1', text: 'Later', mode: 'queue' });
+            await transport.command({ type: 'chat.send', chatId: 'c-1', text: 'Now', mode: 'steer' });
+
+            expect((await chatOf(transport, 'c-1')).queue?.map(item => [item.mode, item.text])).toEqual([['steer', 'Now'], ['queue', 'Later']]);
+            expect(await people(transport, 'c-1')).toEqual(before);
+
+            await vi.advanceTimersByTimeAsync(1000);
+
+            expect((await chatOf(transport, 'c-1')).queue?.map(item => item.text)).toEqual(['Later']);
+            expect(await people(transport, 'c-1')).toEqual([...before, 'Now']);
+        });
+
+        it('holds the queue after Stop, and Send now sends a message as the next turn, after which the queue flows', async () => {
+            const { transport } = await connected();
+
+            await transport.command({ type: 'chat.send', chatId: 'c-1', text: 'First' });
+            await transport.command({ type: 'chat.send', chatId: 'c-1', text: 'Second' });
+            await transport.command({ type: 'run.cancel', runId: 'r-orch-1' });
+
+            const stopped = await chatOf(transport, 'c-1');
+
+            expect(stopped.queuePaused).toBe('stopped');
+
+            await transport.command({ type: 'chat.sendQueued', chatId: 'c-1', itemId: stopped.queue![1].id });
+
+            expect(await chatOf(transport, 'c-1')).toMatchObject({ queue: [{ text: 'First' }] });
+            expect((await chatOf(transport, 'c-1')).queuePaused).toBeUndefined();
+            expect((await people(transport, 'c-1')).at(-1)).toBe('Second');
+
+            // The turn ends, and the rest of the queue is the next one.
+            await vi.advanceTimersByTimeAsync(1500);
+
+            expect((await people(transport, 'c-1')).at(-1)).toBe('First');
+            expect((await chatOf(transport, 'c-1')).queue).toBeUndefined();
+        });
+
+        it('moves a message among its own kind and removes one', async () => {
+            const { transport } = await connected();
+
+            for (const text of ['one', 'two', 'three']) await transport.command({ type: 'chat.send', chatId: 'c-1', text });
+
+            const queue = (await chatOf(transport, 'c-1')).queue!;
+
+            await transport.command({ type: 'chat.moveQueued', chatId: 'c-1', itemId: queue[2].id, index: 0 });
+            await transport.command({ type: 'chat.removeQueued', chatId: 'c-1', itemId: queue[1].id });
+
+            expect((await chatOf(transport, 'c-1')).queue?.map(item => item.text)).toEqual(['three', 'one']);
+            expect(await transport.command({ type: 'chat.removeQueued', chatId: 'c-1', itemId: 'q-missing' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        });
+    });
+
     it('rejects a document write that started from an old version, and a create over an existing file', async () => {
         const { transport } = await connected();
         const path = 'decisions/pricing.md';

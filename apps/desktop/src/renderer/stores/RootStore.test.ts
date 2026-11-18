@@ -93,12 +93,13 @@ describe('RootStore', () => {
         await root.load();
         await settle();
 
-        const stream = root.streams.of('r-orch-1');
+        // The orchestrator of this chat has finished, so the message goes to it at once (a busy one would queue it).
+        const stream = root.streams.of('r-orch-2');
 
         await stream.load();
         const before = stream.items.length;
 
-        await root.command({ type: 'chat.send', chatId: 'c-1', text: 'Also add a dark theme' });
+        await root.command({ type: 'chat.send', chatId: 'c-2', text: 'Also add a dark theme' });
         await settle();
 
         expect(stream.items).toHaveLength(before + 1);

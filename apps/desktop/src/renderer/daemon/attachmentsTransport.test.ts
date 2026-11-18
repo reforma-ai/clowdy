@@ -59,7 +59,8 @@ describe('HttpTransport attachments', () => {
 });
 
 describe('FixtureTransport attachments', () => {
-    const chatOf = async (transport: FixtureTransport) => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats[0]!;
+    // A chat whose orchestrator has finished, so a message reaches it at once instead of waiting in its queue.
+    const chatOf = async (transport: FixtureTransport) => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(chat => chat.id === 'c-2')!;
 
     it('keeps an uploaded file until it is sent, shows it on the message, and then keeps it for good', async () => {
         const transport = new FixtureTransport();

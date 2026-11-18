@@ -6,13 +6,15 @@ import { Clip } from '@clowdy/icons/14';
 import { useImperativeHandle, useRef, useState, type MouseEvent, type Ref } from 'react';
 
 import { useRootStore } from '../../stores';
+import { busyEnter, sendMode } from './busyEnter';
 import { readRememberedMode, startingMode, writeRememberedMode } from './chatModeMemory';
-import { isRunActive } from './chatRun';
+import { isRunActive, isRunBusy } from './chatRun';
 import { perform } from './commands';
 import styles from './Composer.module.css';
-import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
-import { filesOf, releaseFiles, restoreFiles, takeFiles } from './composerFiles';
+import { draftOf, messageOf, newChatDraftKey, saveDraft, withTextFirst } from './composerDrafts';
+import { filesOf, releaseFiles, restoreFiles, takeFiles, type DraftFile } from './composerFiles';
 import { serializeMention } from './composerMentions';
+import { ComposerQueue } from './ComposerQueue';
 import { ComposerSend } from './ComposerSend';
 import { ContextRing } from './ContextRing';
 import { MentionChip } from './MentionChip';
@@ -23,7 +25,7 @@ import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
 import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
 
-import type { Chat, ChatId, ChatMode, ProjectId, Run } from '@clowdy/protocol';
+import type { Chat, ChatId, ChatMode, ProjectId, QueuedMessage, Run } from '@clowdy/protocol';
 
 /** What a press on the card's empty parts must leave alone: the controls, which take the press themselves. */
 const CONTROLS = 'button, [role="button"], [role="combobox"], [contenteditable="true"], a, input';
@@ -53,11 +55,12 @@ export interface ComposerProps {
 }
 
 /**
- * The message box: the files picked for the message and the text on top, below them attach, the model and its reasoning level, the
- * mode and send. Enter sends, Shift+Enter starts a new line, `@` mentions a task, document or file and `/` asks for a skill. While the
- * orchestrator works and nothing is typed, the send button stops it. Without a chat the first message makes one, on the model the
- * picker holds, so opening the new-chat page again and again leaves no empty chats behind; if the message then fails the chat
- * stays, and the retry goes to it.
+ * The message box: the messages waiting for the orchestrator, the files picked for the message and the text, below them attach, the model and its
+ * reasoning level, the mode and send. Enter sends, Shift+Enter starts a new line, `@` mentions a task, document or file and `/` asks for a skill.
+ * While the orchestrator works a message waits for it in the chat's queue: Enter steers the running turn or queues the message for the next turn,
+ * as Settings > Chat says, and Cmd/Ctrl+Enter does the other; the send button sends the way Enter does, and stops the orchestrator while nothing
+ * is typed. Without a chat the first message makes one, on the model the picker holds, so opening the new-chat page again and again leaves no
+ * empty chats behind; if the message then fails the chat stays, and the retry goes to it.
  */
 export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
     const root = useRootStore();
@@ -81,6 +84,8 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
     const made = madeIn?.projectId === start?.projectId ? madeIn : undefined;
     const target = chat ?? made;
     const running = isRunActive(run);
+    // A message to a busy orchestrator waits in the queue; the box says so, and Send now on a queued message steers.
+    const busy = isRunBusy(run);
     const model = useModelChoice({ chat, made, run, preferredEngine: start?.defaults?.engine });
     const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
     const picker = useRef<HTMLInputElement>(null);
@@ -97,7 +102,8 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
         setShown({ key, doc: next });
     };
 
-    const send = async (from: ComposerDoc) => {
+    /** Sends the message; `mod` (Cmd/Ctrl+Enter) sends it the other way than Enter while the orchestrator works. */
+    const send = async (from: ComposerDoc, mod = false) => {
         const message = messageOf(from);
         const held = filesOf(key);
 
@@ -141,9 +147,15 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
             chatId = fresh.chat.id;
         }
 
-        // The daemon decides what a message to a working orchestrator means, so there is no case to handle here.
+        // The daemon decides whether the orchestrator takes the message now or it waits; the mode says how it waits, so it goes with every message.
         const attachmentIds = files.flatMap(file => (file.attachment ? [file.attachment.id] : []));
-        const result = await perform(root, { type: 'chat.send', chatId, text: message, ...(attachmentIds.length > 0 && { attachmentIds }) });
+        const result = await perform(root, {
+            type: 'chat.send',
+            chatId,
+            text: message,
+            ...(attachmentIds.length > 0 && { attachmentIds }),
+            mode: sendMode(busyEnter.mode, mod),
+        });
 
         if (!result.ok) {
             giveBack();
@@ -158,6 +170,24 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
             setMade(undefined);
             start?.onStarted(chatId);
         }
+    };
+
+    /** Edit on a queued message: it has left the queue, and its words go in front of the draft and its files back into the box, uploaded already. */
+    const editQueued = (item: QueuedMessage) => {
+        edit(withTextFirst(draftOf(key), item.text));
+
+        const files = (item.attachments ?? []).map((attachment): DraftFile => ({
+            key: crypto.randomUUID(),
+            name: attachment.name,
+            mediaType: attachment.mediaType,
+            size: attachment.size,
+            status: 'ready',
+            attachment,
+        }));
+
+        if (files.length > 0) restoreFiles(key, files);
+
+        field.current?.focus();
     };
 
     const stop = async () => {
@@ -181,6 +211,8 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
 
     return (
         <div ref={ box } className={ styles.surface }>
+            { chat && <ComposerQueue chat={ chat } busy={ busy } onEdit={ editQueued } /> }
+
             { /* The field is the keyboard way in; this only gives the mouse the whole card. */ }
             <div className={ styles.main } onMouseDown={ focusField }>
                 { attach.files.length > 0 && (
@@ -209,9 +241,9 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
                     className={ styles.field }
                     minHeight={ minLines ? minLines * LINE_HEIGHT : undefined }
                     aria-label="Message"
-                    placeholder="Write a message…"
+                    placeholder={ busy ? 'Queue another message…' : 'Write a message…' }
                     submitOnEnter
-                    onSubmit={ next => void send(next) }
+                    onSubmit={ (next, origin) => void send(next, origin?.mod === true) }
                     // Files before text, as the zone around the page does: a file copied in Finder also puts its name on the clipboard as text.
                     onPasteFiles={ attach.add }
                 />
@@ -265,6 +297,7 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
                                 canSend={ hasMessage }
                                 blocked={ blocked !== undefined }
                                 running={ running }
+                                waits={ busy ? busyEnter.mode : undefined }
                                 isStopping={ isStopping }
                                 onSend={ () => {
                                     void send(doc);

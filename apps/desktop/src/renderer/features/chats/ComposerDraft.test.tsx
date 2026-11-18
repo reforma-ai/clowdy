@@ -88,7 +88,7 @@ describe('Composer without a chat', () => {
 
         expect(sent).toEqual([
             { type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'claude', model: 'opus', effort: 'high' },
-            { type: 'chat.send', chatId: 'c-new', text: 'Build the thing' },
+            { type: 'chat.send', chatId: 'c-new', text: 'Build the thing', mode: 'steer' },
         ]);
         expect(started).toEqual(['c-new']);
         expect(text()).toBe('');
@@ -131,7 +131,7 @@ describe('Composer without a chat', () => {
         await pressEnter();
 
         expect(sent.map(input => input.type)).toEqual(['chat.create', 'chat.send', 'chat.send']);
-        expect(sent[2]).toEqual({ type: 'chat.send', chatId: 'c-new', text: 'Build the thing' });
+        expect(sent[2]).toEqual({ type: 'chat.send', chatId: 'c-new', text: 'Build the thing', mode: 'steer' });
         expect(started).toEqual(['c-new']);
     });
 

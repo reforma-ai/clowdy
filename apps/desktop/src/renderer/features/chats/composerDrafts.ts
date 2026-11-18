@@ -1,4 +1,4 @@
-import { docToPlainText, emptyComposerDoc, type ComposerDoc } from '@clowdy/components/RichInput';
+import { docToPlainText, emptyComposerDoc, plainTextToDoc, type ComposerDoc } from '@clowdy/components/RichInput';
 
 import { serializeMention } from './composerMentions';
 
@@ -30,4 +30,16 @@ export function saveDraft(key: string, doc: ComposerDoc): void {
 /** The words a draft sends: the document as markdown with its mentions written out, trimmed. Empty when there is nothing to send. */
 export function messageOf(doc: ComposerDoc): string {
     return docToPlainText(doc, serializeMention).trim();
+}
+
+/**
+ * The draft with `text` in front: alone in an empty draft, and as a paragraph of its own before the words of one that has them, since it was written
+ * first (a queued message the person takes back to edit).
+ */
+export function withTextFirst(draft: ComposerDoc, text: string): ComposerDoc {
+    if (!text) return draft;
+
+    if (messageOf(draft) === '') return plainTextToDoc(text);
+
+    return { ...draft, content: [...(plainTextToDoc(text).content ?? []), ...(draft.content ?? [])] };
 }

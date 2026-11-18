@@ -29,6 +29,8 @@ import type {
     ProjectId,
     ProjectInfo,
     ProjectSnapshot,
+    QueuedMessage,
+    QueuedMessageMode,
     RootSnapshot,
     Run,
     RunId,
@@ -70,6 +72,25 @@ const FIXTURE_SIGN_IN_LINKS: Record<string, string> = {
 };
 const SIGN_IN_LINK_MS = 400;
 const SIGN_IN_DONE_MS = 4000;
+/** How long a turn the fixture starts lasts, and how long its agent takes to take a steer. */
+const TURN_MS = 1400;
+const STEER_MS = 800;
+const REPLY = 'Got it. I will split this into tasks, start the independent ones in parallel, and report back here.';
+
+/** The daemon's rule: an orchestrator that works, or waits for an answer, a slot or a reset, gets a message later; any other takes it now. */
+const isBusy = (run: Run): boolean => !isTerminalRunStatus(run.status) && run.status !== 'waiting_children';
+
+/** Puts a message at the end of its own kind (or at `index` in it), the steers before the next turns, as the daemon does. */
+function placeQueued(queue: readonly QueuedMessage[], item: QueuedMessage, index?: number): QueuedMessage[] {
+    const others = queue.filter(entry => entry.id !== item.id);
+    const steers = others.filter(entry => entry.mode === 'steer');
+    const turns = others.filter(entry => entry.mode !== 'steer');
+    const part = item.mode === 'steer' ? steers : turns;
+
+    part.splice(Math.min(index ?? part.length, part.length), 0, item);
+
+    return [...steers, ...turns];
+}
 
 /** The overrides of an agent without the parts that are not set, or none at all when nothing is left. */
 function withoutEmpty(overrides: AgentOverrides): AgentOverrides | undefined {
@@ -99,6 +120,8 @@ export class FixtureTransport implements Transport {
     #idCounter = 100;
     #timelineStarted = false;
     readonly #files = new Map<string, StoredFile>();
+    /** The turn each run is on, so the end of an older turn does not end a newer one. */
+    readonly #turns = new Map<RunId, number>();
 
     constructor({ data = createFixtureData(), timeline = false }: FixtureTransportOptions = {}) {
         this.#data = data;
@@ -671,7 +694,13 @@ export class FixtureTransport implements Transport {
                 return ok({ chatId: chat.id });
             }
             case 'chat.send':
-                return this.#sendMessage(command.chatId, command.text, command.attachmentIds ?? []);
+                return this.#sendMessage(command.chatId, command.text, command.attachmentIds ?? [], command.mode ?? 'queue');
+            case 'chat.removeQueued':
+                return this.#removeQueued(command.chatId, command.itemId, command.keepFiles === true);
+            case 'chat.moveQueued':
+                return this.#changeQueued(command.chatId, command.itemId, (chat, item) => placeQueued(chat.queue ?? [], item, command.index));
+            case 'chat.sendQueued':
+                return this.#sendQueued(command.chatId, command.itemId);
 
             case 'task.create': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
@@ -817,13 +846,14 @@ export class FixtureTransport implements Transport {
         return ok(structuredClone(project));
     }
 
-    #sendMessage(chatId: string, text: string, attachmentIds: string[]): Outcome {
+    #sendMessage(chatId: string, rawText: string, attachmentIds: string[], mode: QueuedMessageMode): Outcome {
         const data = this.#data;
         const chat = data.chats.find(candidate => candidate.id === chatId);
+        const text = rawText.trim();
 
         if (!chat) return fail('not_found', 'No such chat');
 
-        if (!text.trim() && attachmentIds.length === 0) return fail('invalid', 'The message is empty');
+        if (!text && attachmentIds.length === 0) return fail('invalid', 'The message is empty');
 
         const files: StoredFile[] = [];
 
@@ -839,7 +869,26 @@ export class FixtureTransport implements Transport {
 
         if (files.reduce((sum, stored) => sum + stored.attachment.size, 0) > MAX_ATTACHMENTS_BYTES_PER_MESSAGE) return fail('invalid', 'The files are over the size limit of one message');
 
-        let run = data.runs.find(candidate => candidate.id === chat.orchestratorRunId);
+        for (const stored of files) stored.sent = true;
+
+        const attachments = files.map(stored => structuredClone(stored.attachment));
+        const existing = data.runs.find(candidate => candidate.id === chat.orchestratorRunId);
+
+        chat.updatedAt = Date.now();
+
+        // A busy orchestrator gets the message later: it waits in the chat's queue, and a steer is taken a moment later, as an agent would.
+        if (existing && isBusy(existing)) {
+            const item: QueuedMessage = { id: this.#id('q'), mode, text, ...(attachments.length > 0 && { attachments }), content: text, createdAt: Date.now() };
+
+            chat.queue = placeQueued(chat.queue ?? [], item);
+            this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+
+            if (mode === 'steer') this.#later(STEER_MS, () => this.#takeSteer(chat.id, item.id));
+
+            return ok({ chatId: chat.id, runId: existing.id });
+        }
+
+        let run = existing;
 
         if (!run) {
             const number = data.runs.filter(candidate => candidate.role === 'orchestrator').length + 1;
@@ -865,24 +914,132 @@ export class FixtureTransport implements Transport {
             chat.orchestratorRunId = id;
         }
 
-        chat.updatedAt = Date.now();
         this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+        this.#startTurn(chat, run, { kind: 'user', text, ...(attachments.length > 0 && { attachments }) });
+
+        return ok({ chatId: chat.id, runId: run.id });
+    }
+
+    /** A turn of a chat's orchestrator: the person's bubble, a canned reply, and the end of the turn, after which the queue gives the next one. */
+    #startTurn(chat: Chat, run: Run, body: StreamItemBody): void {
+        const turn = (this.#turns.get(run.id) ?? 0) + 1;
+
+        this.#turns.set(run.id, turn);
 
         if (run.status !== 'running') {
             run.status = 'running';
             run.statusReason = undefined;
+            delete run.finishedAt;
             this.#saveRun(run);
         }
 
-        for (const stored of files) stored.sent = true;
+        this.#appendItem(run, body);
+        this.#later(400, () => this.#streamReply(run, REPLY));
+        this.#later(TURN_MS, () => {
+            if (this.#turns.get(run.id) !== turn || run.status !== 'running') return;
 
-        this.#appendItem(run, { kind: 'user', text, ...(files.length > 0 && { attachments: files.map(stored => structuredClone(stored.attachment)) }) });
+            run.status = 'succeeded';
+            run.finishedAt = Date.now();
+            this.#saveRun(run);
+            this.#settleQueue(chat);
+        });
+    }
 
-        const target = run;
+    /** The orchestrator rests: steers it did not take go first as next turns, and a queue that is not paused gives it its head. */
+    #settleQueue(chat: Chat): void {
+        const run = this.#data.runs.find(candidate => candidate.id === chat.orchestratorRunId);
+        const queue = (chat.queue ?? []).map(item => (item.mode === 'steer' ? { ...item, mode: 'queue' as const } : item));
+        const [head] = queue;
 
-        this.#later(400, () => this.#streamReply(target, 'Got it. I will split this into tasks, start the independent ones in parallel, and report back here.'));
+        if (!run || isBusy(run) || !head) return;
 
-        return ok();
+        chat.queue = queue;
+
+        if (chat.queuePaused) {
+            this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+
+            return;
+        }
+
+        this.#dispatch(chat, run, head);
+    }
+
+    /** Takes a message out of the queue and makes it the orchestrator's next turn; sending a message from the queue lets a paused one flow again. */
+    #dispatch(chat: Chat, run: Run, item: QueuedMessage): void {
+        this.#setQueue(chat, (chat.queue ?? []).filter(entry => entry.id !== item.id));
+        delete chat.queuePaused;
+        this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+        this.#startTurn(chat, run, { kind: 'user', text: item.text, ...(item.attachments && { attachments: item.attachments }) });
+    }
+
+    /** The agent took a steer: it leaves the queue, and its bubble goes where the agent got it. */
+    #takeSteer(chatId: string, itemId: string): void {
+        const chat = this.#data.chats.find(candidate => candidate.id === chatId);
+        const run = this.#data.runs.find(candidate => candidate.id === chat?.orchestratorRunId);
+        const item = chat?.queue?.find(entry => entry.id === itemId && entry.mode === 'steer');
+
+        if (!chat || !item || run?.status !== 'running') return;
+
+        this.#setQueue(chat, (chat.queue ?? []).filter(entry => entry.id !== itemId));
+        this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+        this.#appendItem(run, { kind: 'user', text: item.text, ...(item.attachments && { attachments: item.attachments }) });
+        this.#later(300, () => this.#streamReply(run, 'Noted. I will take that into account.'));
+    }
+
+    #setQueue(chat: Chat, queue: QueuedMessage[]): void {
+        if (queue.length > 0) {
+            chat.queue = queue;
+
+            return;
+        }
+
+        delete chat.queue;
+        delete chat.queuePaused;
+    }
+
+    #changeQueued(chatId: string, itemId: string, change: (chat: Chat, item: QueuedMessage) => QueuedMessage[]): Outcome {
+        const chat = this.#data.chats.find(candidate => candidate.id === chatId);
+        const item = chat?.queue?.find(entry => entry.id === itemId);
+
+        if (!chat || !item) return fail('not_found', `Queued message ${ itemId } does not exist`);
+
+        this.#setQueue(chat, change(chat, item));
+        this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+
+        return ok({ chat: structuredClone(chat) });
+    }
+
+    #removeQueued(chatId: string, itemId: string, keepFiles: boolean): Outcome {
+        return this.#changeQueued(chatId, itemId, (chat, item) => {
+            for (const attachment of item.attachments ?? []) {
+                const stored = this.#files.get(attachment.id);
+
+                if (stored && keepFiles) stored.sent = false;
+                else this.#files.delete(attachment.id);
+            }
+
+            return (chat.queue ?? []).filter(entry => entry.id !== itemId);
+        });
+    }
+
+    #sendQueued(chatId: string, itemId: string): Outcome {
+        const chat = this.#data.chats.find(candidate => candidate.id === chatId);
+        const item = chat?.queue?.find(entry => entry.id === itemId);
+        const run = this.#data.runs.find(candidate => candidate.id === chat?.orchestratorRunId);
+
+        if (!chat || !item || !run) return fail('not_found', `Queued message ${ itemId } does not exist`);
+
+        if (isBusy(run)) {
+            this.#setQueue(chat, placeQueued(chat.queue ?? [], { ...item, mode: 'steer' }));
+            this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+            this.#later(STEER_MS, () => this.#takeSteer(chat.id, item.id));
+        }
+        else {
+            chat.updatedAt = Date.now();
+            this.#dispatch(chat, run, item);
+        }
+
+        return ok({ chatId: chat.id, runId: run.id });
     }
 
     #startTask(taskId: TaskId, force: boolean): Outcome {
@@ -962,6 +1119,14 @@ export class FixtureTransport implements Transport {
             run.statusReason = undefined;
             run.finishedAt = Date.now();
             this.#saveRun(run);
+
+            // Stop holds the queue of the chat whose orchestrator it stopped.
+            const chat = data.chats.find(candidate => candidate.orchestratorRunId === run.id);
+
+            if (chat?.queue?.length) {
+                chat.queuePaused = 'stopped';
+                this.#settleQueue(chat);
+            }
         }
 
         return ok();

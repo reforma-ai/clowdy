@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RootStoreProvider, type RootStore } from '../../stores';
+import { busyEnter } from './busyEnter';
 import { Composer } from './Composer';
 import { modelStore } from './modelTestKit';
 
@@ -66,9 +67,9 @@ function type(value: string) {
     });
 }
 
-async function press(key: string, shiftKey = false) {
+async function press(key: string, shiftKey = false, metaKey = false) {
     await act(async () => {
-        field().dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true }));
+        field().dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, metaKey, bubbles: true, cancelable: true }));
     });
 }
 
@@ -92,7 +93,7 @@ describe('Composer', () => {
         type('  Add a cancel button  ');
         await press('Enter');
 
-        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Add a cancel button' }]);
+        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Add a cancel button', mode: 'steer' }]);
         expect(text()).toBe('');
     });
 
@@ -152,7 +153,7 @@ describe('Composer', () => {
 
         await press('Enter');
 
-        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Make the **title** bigger' }]);
+        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Make the **title** bigger', mode: 'steer' }]);
     });
 
     it('sends with the send button and keeps it off while the field is empty', async () => {
@@ -165,7 +166,7 @@ describe('Composer', () => {
 
         await act(async () => button('Send')!.click());
 
-        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Hello' }]);
+        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Hello', mode: 'steer' }]);
     });
 
     it('puts the caret back in the field after the send button, which is off by then', async () => {
@@ -235,7 +236,7 @@ describe('Composer', () => {
             await choose('CAR-24');
             await press('Enter');
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Do CAR-24' }]);
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Do CAR-24', mode: 'steer' }]);
         });
 
         it('narrows the list as the person types and sends a file as @path', async () => {
@@ -247,7 +248,7 @@ describe('Composer', () => {
             await choose('price.ts');
             await press('Enter');
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Look at @src/booking/price.ts' }]);
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Look at @src/booking/price.ts', mode: 'steer' }]);
         });
 
         it('sends a document as @path from the project folder', async () => {
@@ -256,7 +257,7 @@ describe('Composer', () => {
             await choose('pricing.md');
             await press('Enter');
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Follow @.clowdy/docs/decisions/pricing.md' }]);
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Follow @.clowdy/docs/decisions/pricing.md', mode: 'steer' }]);
         });
 
         it('still lists the rest when one source is down', async () => {
@@ -277,7 +278,7 @@ describe('Composer', () => {
             await type('the diff');
             await press('Enter');
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Use the skill "review" the diff' }]);
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Use the skill "review" the diff', mode: 'steer' }]);
         });
 
         it('asks for the skills again after a read that failed, not once the skills change', async () => {
@@ -297,7 +298,7 @@ describe('Composer', () => {
 
             await press('Enter');
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Mail me@home or @zzz' }]);
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Mail me@home or @zzz', mode: 'steer' }]);
         });
 
         it('keeps a mention in the draft when the chat is shown again', async () => {
@@ -309,7 +310,7 @@ describe('Composer', () => {
             await mount(accepted);
             await press('Enter');
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Do CAR-24' }]);
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Do CAR-24', mode: 'steer' }]);
         });
     });
 
@@ -393,7 +394,7 @@ describe('Composer', () => {
 
             await act(async () => button('Send')!.click());
 
-            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Use the blue one' }]);
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Use the blue one', mode: 'steer' }]);
         });
 
         it('has no Stop for a run that is over', async () => {
@@ -401,6 +402,56 @@ describe('Composer', () => {
 
             expect(button('Stop')).toBeNull();
             expect(button('Send')).not.toBeNull();
+        });
+    });
+
+    describe('how a message waits for a busy orchestrator', () => {
+        const placeholder = () => field().querySelector('[data-placeholder]')?.getAttribute('data-placeholder');
+
+        afterEach(() => busyEnter.setMode('steer'));
+
+        it('steers the running turn on Enter and queues the message for the next turn on Cmd+Enter, by default', async () => {
+            await mount(accepted, runWith('running'));
+            type('Use the blue one');
+            await press('Enter');
+            type('Then the footer');
+            await press('Enter', false, true);
+
+            expect(sent).toEqual([
+                { type: 'chat.send', chatId: chat.id, text: 'Use the blue one', mode: 'steer' },
+                { type: 'chat.send', chatId: chat.id, text: 'Then the footer', mode: 'queue' },
+            ]);
+            expect(text()).toBe('');
+        });
+
+        it('queues on Enter and steers on Cmd+Enter when the setting says to queue', async () => {
+            busyEnter.setMode('queue');
+            await mount(accepted, runWith('waiting_user'));
+            type('Later');
+            await press('Enter');
+            type('Now');
+            await press('Enter', false, true);
+
+            expect(sent.map(input => input.type === 'chat.send' && input.mode)).toEqual(['queue', 'steer']);
+        });
+
+        it('sends with the send button the way Enter does', async () => {
+            busyEnter.setMode('queue');
+            await mount(accepted, runWith('running'));
+            type('Later');
+            await act(async () => button('Send')!.click());
+
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Later', mode: 'queue' }]);
+        });
+
+        it('says the message will wait while the orchestrator works, and not while it waits for its executors', async () => {
+            await mount(accepted, runWith('running'));
+
+            expect(placeholder()).toBe('Queue another message…');
+
+            await mount(accepted, runWith('waiting_children'));
+
+            expect(placeholder()).toBe('Write a message…');
         });
     });
 });

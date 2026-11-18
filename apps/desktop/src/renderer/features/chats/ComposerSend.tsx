@@ -5,6 +5,14 @@ import { SendBold, StopBold } from '@clowdy/icons/16';
 
 import styles from './ComposerSend.module.css';
 
+import type { QueuedMessageMode } from '@clowdy/protocol';
+
+/** What the button says it does with a message for a busy orchestrator. */
+const WAITS: Record<QueuedMessageMode, string> = {
+    steer: 'Steer the current turn',
+    queue: 'Add to queue',
+};
+
 export interface ComposerSendProps {
     /** There is a message to send. */
     canSend: boolean;
@@ -12,13 +20,15 @@ export interface ComposerSendProps {
     blocked?: boolean;
     /** The orchestrator is working: an empty field offers Stop where Send would be. */
     running: boolean;
+    /** How a message waits for the busy orchestrator when it is sent the way Enter sends it; absent while the orchestrator takes it at once. */
+    waits?: QueuedMessageMode;
     isStopping: boolean;
     onSend: () => void;
     onStop: () => void;
 }
 
 /** The round button at the end of the composer: Send, or Stop while the orchestrator works and nothing is typed. */
-export function ComposerSend({ canSend, blocked = false, running, isStopping, onSend, onStop }: ComposerSendProps) {
+export function ComposerSend({ canSend, blocked = false, running, waits, isStopping, onSend, onStop }: ComposerSendProps) {
     if (running && !canSend) {
         return (
             <Button
@@ -45,7 +55,7 @@ export function ComposerSend({ canSend, blocked = false, running, isStopping, on
             rounded
             isDisabled={ !canSend || blocked }
             aria-label="Send"
-            tooltip={ tooltipWithHotkey('Send', 'enter') }
+            tooltip={ tooltipWithHotkey(waits ? WAITS[waits] : 'Send', 'enter') }
             onPress={ onSend }
         >
             <SendBold />
