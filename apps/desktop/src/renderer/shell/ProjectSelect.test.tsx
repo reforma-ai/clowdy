@@ -74,12 +74,23 @@ describe('ProjectSelect', () => {
     it('marks the open project and switches to the one chosen', async () => {
         await open();
 
-        expect(items()[1].querySelector('svg')).not.toBeNull();
+        // Every project has its icon; the open one has the check after it.
+        expect(items()[1].querySelectorAll('svg')).toHaveLength(2);
+        expect(items()[2].querySelectorAll('svg')).toHaveLength(1);
         expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
 
         await act(async () => items()[2].click());
 
         expect(store.selectedProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
+    });
+
+    it('draws an icon before every project and sets it level with the middle of the two lines', async () => {
+        await open();
+
+        for (const item of items().slice(0, 3)) {
+            expect(item.querySelector('svg')).not.toBeNull();
+            expect(item.getAttribute('data-align')).toBe('center');
+        }
     });
 
     it('can switch to the personal space', async () => {

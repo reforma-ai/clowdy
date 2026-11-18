@@ -267,6 +267,11 @@
         align-items: flex-start;
     }
 
+    /* A stacked item's icon is level with its first line; `data-align='center'` puts it level with the middle of both lines. */
+    .itemStacked[data-align='center'] .itemStart {
+        align-items: center;
+    }
+
     .itemCopy {
         display: flex;
         flex-direction: column;

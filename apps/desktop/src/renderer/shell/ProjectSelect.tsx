@@ -41,7 +41,7 @@ export function ProjectSelect() {
                         else root.selectProject(String(key));
                     } }
                 >
-                    { personal && <MenuItem id={ personal.id } text={ personal.name } description="Chats without a project" icon={ <Home /> } stacked endAffix={ check(personal.id) } /> }
+                    { personal && <MenuItem id={ personal.id } text={ personal.name } description="Chats without a project" icon={ <Home /> } stacked data-align="center" endAffix={ check(personal.id) } /> }
                     { personal && own.length > 0 && <MenuSeparator /> }
                     { own.map(project => (
                         <MenuItem
@@ -49,7 +49,9 @@ export function ProjectSelect() {
                             id={ project.id }
                             text={ project.name }
                             description={ project.path }
+                            icon={ <Folder /> }
                             stacked
+                            data-align="center"
                             endAffix={ check(project.id) }
                         />
                     )) }
