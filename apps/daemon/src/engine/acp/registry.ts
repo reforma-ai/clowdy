@@ -11,7 +11,8 @@ import type { AgentOverride, AgentSpec, CustomAgent } from './catalog';
 const INFO_TTL_MS = 30_000;
 
 /** Fetching an adapter must not download an agent bundled inside it, and must not stop to ask anything. */
-const PACKAGE_RUNNER_ENV = { npm_config_omit: 'optional', npm_config_yes: 'true', npm_config_update_notifier: 'false', npm_config_fund: 'false', npm_config_audit: 'false' };
+/** Asks the package manager to leave optional packages out, so an adapter's bundled copy of its agent is not downloaded. `bun x` may not honor it; the adapters are pointed at the user's own program either way. */
+const PACKAGE_RUNNER_ENV = { npm_config_omit: 'optional' };
 
 /** What a run needs to start an agent. */
 export interface ResolvedAgent {
@@ -40,6 +41,8 @@ export interface AgentRegistryOptions {
     dataDir?: string;
     discovery?: Discovery;
     now?: () => number;
+    /** The Bun that runs adapter packages with `bun x`: the daemon's own by default, since the daemon runs on Bun. Tests replace it. */
+    runtime?: () => Promise<string | undefined>;
 }
 
 export class AgentRegistryError extends Error {
@@ -57,11 +60,13 @@ export class AgentRegistry {
     private cache?: { at: number; infos: Promise<AgentInfo[]> };
     private discovery: Discovery;
     private now: () => number;
+    private runtime: () => Promise<string | undefined>;
     private file?: string;
 
     constructor(options: AgentRegistryOptions = {}) {
         this.discovery = options.discovery ?? new Discovery();
         this.now = options.now ?? Date.now;
+        this.runtime = options.runtime ?? (async () => process.versions.bun ? process.execPath : (await this.discovery.find(['bun']))?.path);
 
         if (options.dataDir) {
             this.file = join(options.dataDir, 'agents.json');
@@ -232,15 +237,15 @@ export class AgentRegistry {
             return { ok: true, agent: { ...base, command: program, args: spec.launch.args, env: { ...spec.env, ...override.env } } };
         }
 
-        const runner = await this.discovery.find(['npx']);
+        const runtime = await this.runtime();
 
-        if (!runner) {
-            return { ok: false, message: `${ spec.name } needs Node.js: its adapter is fetched with \`npx\`, which was not found. Install Node.js, then try again` };
+        if (!runtime) {
+            return { ok: false, message: `${ spec.name } needs Bun: its adapter is fetched with \`bun x\`, and no bun was found. Install Bun, then try again` };
         }
 
         return {
             ok: true,
-            agent: { ...base, command: runner.path, args: ['-y', spec.launch.package], env: { ...PACKAGE_RUNNER_ENV, ...spec.env, [spec.launch.pathEnv]: program, ...override.env } },
+            agent: { ...base, command: runtime, args: ['x', '--bun', spec.launch.package], env: { ...PACKAGE_RUNNER_ENV, ...spec.env, [spec.launch.pathEnv]: program, ...override.env } },
         };
     }
 
@@ -372,7 +377,7 @@ function launchLine({ launch, programs }: AgentSpec): string {
         case 'native':
             return `${ programs[0] } (Claude Agent SDK)`;
         case 'package':
-            return `npx ${ launch.package }`;
+            return `bun x --bun ${ launch.package }`;
         case 'binary':
             return [programs[0], ...launch.args].join(' ');
     }

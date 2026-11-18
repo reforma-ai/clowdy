@@ -22,7 +22,7 @@ const CANCEL_GRACE_MS = 1000;
 
 /**
  * How long a program may take to answer `initialize`. A command that is not an ACP agent never does, and the first start
- * of an adapter fetched with `npx` can be slow, so the bound is generous.
+ * of an adapter fetched with `bun x` can be slow, so the bound is generous.
  */
 const INITIALIZE_TIMEOUT_MS = 120_000;
 

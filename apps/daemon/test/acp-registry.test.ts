@@ -131,25 +131,25 @@ describe('AgentRegistry', () => {
         expect(await reg.resolve('claude')).toMatchObject({ ok: true, agent: { command: claude, args: [], acp: false } });
     });
 
-    test('an adapter agent needs its program and a package runner; both are named when one is missing', async () => {
+    test('an adapter agent needs its program and a Bun to fetch the adapter; both are named when one is missing', async () => {
         const codex = program('codex', 'codex-cli 0.166.0');
-        const reg = registry();
+        let bun: string | undefined;
+        const reg = new AgentRegistry({ discovery: discovery(), runtime: async () => bun });
 
-        expect(await byId(reg, 'codex')).toMatchObject({ status: 'needs-runtime', path: codex, detail: expect.stringContaining('npx'), fetches: '@agentclientprotocol/codex-acp@2.7.0' });
+        expect(await byId(reg, 'codex')).toMatchObject({ status: 'needs-runtime', path: codex, detail: expect.stringContaining('bun x'), fetches: '@agentclientprotocol/codex-acp@2.7.0' });
 
-        program('npx', '10.0.0');
+        bun = program('bun', '1.4.0');
         reg.refresh();
 
         expect(await byId(reg, 'codex')).toMatchObject({ status: 'ready', version: '0.166.0' });
         expect(await byId(reg, 'claude')).toMatchObject({ status: 'missing' });
     });
 
-    test('an adapter starts through npx with the user\'s own program, and without optional dependencies', async () => {
+    test('an adapter starts through the daemon\'s own Bun (`bun x --bun`) with the user\'s own program, and without optional dependencies', async () => {
         const codex = program('codex', 'x');
-        const npx = program('npx', 'x');
         const resolved = await registry().resolve('codex');
 
-        expect(resolved).toMatchObject({ ok: true, agent: { command: npx, args: ['-y', '@agentclientprotocol/codex-acp@2.7.0'] } });
+        expect(resolved).toMatchObject({ ok: true, agent: { command: process.execPath, args: ['x', '--bun', '@agentclientprotocol/codex-acp@2.7.0'] } });
         expect(resolved.ok && resolved.agent.env).toMatchObject({ CODEX_PATH: codex, npm_config_omit: 'optional' });
         expect(resolved.ok && resolved.agent.scrub.some(pattern => pattern.test('OPENAI_API_KEY'))).toBe(true);
     });

@@ -8,7 +8,7 @@ export type Launch =
     /** The agent's own program speaks ACP when given these arguments (`cursor-agent acp`). */
     | { kind: 'binary'; args: string[] }
     /**
-     * An adapter package wraps the agent. It is fetched on first use by `npx`; `pathEnv` is the variable that points it at
+     * An adapter package wraps the agent. It is fetched on first use by `bun x --bun` (the daemon's own Bun; no Node is needed); `pathEnv` is the variable that points it at
      * the user's own installed program, so the adapter's bundled copy of the agent is neither downloaded nor used.
      */
     | { kind: 'package'; package: string; pathEnv: string };

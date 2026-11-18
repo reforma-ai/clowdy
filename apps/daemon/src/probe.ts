@@ -7,7 +7,7 @@ import { errorMessage } from './errors';
 /**
  * `bun run probe [agent...]`: starts each agent the way a run does and asks it to open a session, without sending a
  * prompt, so no model is called. Without arguments it tries every ACP agent found on this machine. For checking a new agent,
- * or why one fails. An adapter agent (Codex) is fetched with `npx` the first time.
+ * or why one fails. An adapter agent (Codex) is fetched with `bun x` the first time.
  */
 const registry = new AgentRegistry({ dataDir: loadConfig().dataDir });
 const bridge = new ToolBridge();
