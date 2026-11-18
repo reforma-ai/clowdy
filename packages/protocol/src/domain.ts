@@ -191,8 +191,20 @@ export interface StreamItem {
     body: StreamItemBody;
 }
 
+/** A file the person attached to a message. The daemon keeps the bytes; the agent is told where they are. */
+export interface Attachment {
+    id: string;
+    /** The file name as the person's computer had it, cleaned of path parts. */
+    name: string;
+    /** IANA media type; `application/octet-stream` when nothing better is known. */
+    mediaType: string;
+    /** Bytes. */
+    size: number;
+}
+
 export type StreamItemBody =
-    | { kind: 'user'; text: string }
+    /** `text` is what the person wrote, and may be empty when files are attached; the line that tells the agent where the files are is not part of it. */
+    | { kind: 'user'; text: string; attachments?: Attachment[] }
     | { kind: 'assistant'; text: string; done: boolean }
     | { kind: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string }
     /** A system line such as "2 executors started". */

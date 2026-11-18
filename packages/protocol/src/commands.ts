@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { MAX_ATTACHMENTS_PER_MESSAGE } from './api';
+
 /**
  * Everything a client may ask the daemon to do. Each command carries a `requestId`; sending the same id again
  * returns the first result instead of acting twice, so a retry after a dropped response is safe.
@@ -36,7 +38,8 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('chat.setArchived'), chatId: z.string(), archived: z.boolean() }),
     /** Removes the chat with its orchestrator's conversation and every run below it; the tasks stay. Refused while any of its runs is active. */
     z.object({ ...base, type: z.literal('chat.delete'), chatId: z.string() }),
-    z.object({ ...base, type: z.literal('chat.send'), chatId: z.string(), text: z.string().min(1) }),
+    /** `text` may be empty when `attachmentIds` (files uploaded to the chat's project, not sent yet) name at least one file. */
+    z.object({ ...base, type: z.literal('chat.send'), chatId: z.string(), text: z.string(), attachmentIds: z.array(z.string()).max(MAX_ATTACHMENTS_PER_MESSAGE).optional() }),
 
     /* Tasks */
     z.object({

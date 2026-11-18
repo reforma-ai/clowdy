@@ -13,6 +13,14 @@ export const notFound = (what: string, id: string) => new CommandError('not_foun
 export const conflict = (message: string, details?: unknown) => new CommandError('conflict', message, details);
 export const unavailable = (message: string) => new CommandError('unavailable', message);
 
+/** An upload over its size limit: `invalid` to a client, answered with HTTP 413 rather than 400. */
+export class TooLargeError extends CommandError {
+    constructor(message: string, details?: unknown) {
+        super('invalid', message, details);
+        this.name = 'TooLargeError';
+    }
+}
+
 export const HTTP_STATUS: Record<ErrorCode, number> = {
     invalid: 400,
     unauthorized: 401,

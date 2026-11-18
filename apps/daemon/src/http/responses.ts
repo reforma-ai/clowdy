@@ -7,10 +7,15 @@ export function json(body: unknown, status = 200): Response {
 }
 
 /** The error body every route uses; it has the shape of a failed `CommandResult`. */
-export function failure(code: ErrorCode, message: string, details?: unknown, requestId?: string): Response {
+export function failure(code: ErrorCode, message: string, details?: unknown, requestId?: string, status: number = HTTP_STATUS[code]): Response {
     const body = { ok: false, ...(requestId !== undefined && { requestId }), error: { code, message, ...(details !== undefined && { details }) } };
 
-    return json(body, HTTP_STATUS[code]);
+    return json(body, status);
+}
+
+/** What Bun itself answered to a body over its limit before the daemon set its own: status and reason, no body. */
+export function bodyTooLarge(): Response {
+    return new Response(null, { status: 413, statusText: 'Request Entity Too Large', headers: { connection: 'close' } });
 }
 
 export function commandResponse(result: CommandResult): Response {

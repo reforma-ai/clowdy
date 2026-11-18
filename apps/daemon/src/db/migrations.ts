@@ -178,4 +178,26 @@ export const MIGRATIONS: Migration[] = [
             db.run('ALTER TABLE chats ADD COLUMN archived_at INTEGER');
         },
     },
+    {
+        version: 4,
+        up(db) {
+            // Files the person attached to a message. The bytes live in <dataDir>/attachments/<id>/<name>. A file is unsent
+            // (chat_id and run_id NULL) from its upload until a chat.send claims it; the rows of a deleted chat go with it.
+            db.run(`
+                CREATE TABLE attachments (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    media_type TEXT NOT NULL,
+                    size INTEGER NOT NULL,
+                    chat_id TEXT REFERENCES chats(id) ON DELETE CASCADE,
+                    run_id TEXT REFERENCES runs(id) ON DELETE CASCADE,
+                    created_at INTEGER NOT NULL
+                );
+                CREATE INDEX attachments_project ON attachments(project_id);
+                CREATE INDEX attachments_chat ON attachments(chat_id) WHERE chat_id IS NOT NULL;
+                CREATE INDEX attachments_unsent ON attachments(created_at) WHERE chat_id IS NULL;
+            `);
+        },
+    },
 ];

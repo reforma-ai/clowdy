@@ -2,6 +2,7 @@ import { PROTOCOL_VERSION } from '@clowdy/protocol';
 import { join } from 'node:path';
 
 import pkg from '../package.json';
+import { AttachmentsService } from './attachments/service';
 import { openDatabase } from './db/connection';
 import { listProjects } from './db/projects';
 import { DocsService } from './docs/service';
@@ -60,9 +61,11 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         const driver: RunDriver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, driver }, run, mode) });
         const wakes = new Wakeups(store, runs, driver, config.timings.wakeWindowMs);
         const docs = new DocsService(store);
-        const services: Services = { config, store, runs, driver, docs, files: new FilesService(), skills, agents };
+        const attachments = new AttachmentsService(store, config.dataDir);
+        const services: Services = { config, store, runs, driver, docs, files: new FilesService(), attachments, skills, agents };
 
         await runs.recover();
+        attachments.sweep();
         docs.watchExisting(listProjects(store.db));
         skills.watchFolders(listProjects(store.db));
         driver.resumeWaiting();

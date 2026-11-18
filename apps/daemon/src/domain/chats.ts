@@ -7,6 +7,7 @@ import { newId } from '../ids';
 import { requireProject } from './projects';
 
 import type { Chat, ChatMode } from '@clowdy/protocol';
+import type { AttachmentsService } from '../attachments/service';
 import type { Store } from '../store';
 
 export const DEFAULT_CHAT_TITLE = 'New chat';
@@ -46,8 +47,11 @@ export function createChat(store: Store, input: { projectId: string; title?: str
     });
 }
 
-/** Removes the chat and its runs. Their agents must have stopped: a live run would be left without its row. */
-export function deleteChat(store: Store, chatId: string): string[] {
+/**
+ * Removes the chat and its runs, and the files sent in it. Their agents must have stopped: a live run would be left without its row.
+ * The files' folders go once the transaction commits.
+ */
+export function deleteChat(store: Store, chatId: string, attachments: AttachmentsService): string[] {
     return store.tx(() => {
         const chat = requireChat(store, chatId);
         const runs = runsOfChat(store.db, chatId);
@@ -58,6 +62,7 @@ export function deleteChat(store: Store, chatId: string): string[] {
 
         const runIds = runs.map(run => run.id);
 
+        attachments.removeOfChat(chatId);
         deleteChatAndRuns(store.db, chatId);
         store.emit(chat.projectId, { type: 'chat.deleted', chatId, runIds });
 

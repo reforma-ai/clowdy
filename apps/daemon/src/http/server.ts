@@ -1,8 +1,9 @@
 import { PROTOCOL_HEADER, PROTOCOL_VERSION } from '@clowdy/protocol';
 
-import { CommandError, invalid } from '../errors';
+import { CommandError, invalid, TooLargeError } from '../errors';
+import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT } from './body';
 import { ALLOWED_HEADERS, isAllowedOrigin, isLoopbackHost, protocolMismatch, tokenMatches } from './guard';
-import { failure, forbidden } from './responses';
+import { bodyTooLarge, failure, forbidden } from './responses';
 import { createRoutes } from './routes';
 
 import type { Server } from 'bun';
@@ -35,6 +36,12 @@ export function startServer({ services, version, startedAt, heartbeatMs, shutdow
         const url = new URL(request.url);
         const candidates = routes.filter(candidate => candidate.pattern.test(url.pathname));
 
+        // Bun's own limit is the largest of any route (an upload's), so the smaller ones are kept here: a body a route does not
+        // read stays unread, and one it reads is cut off by the route (`readText`) when no length was declared.
+        if (declaredLength(request) > Math.max(JSON_BODY_LIMIT, ...candidates.map(candidate => candidate.maxBody ?? 0))) {
+            return bodyTooLarge();
+        }
+
         if (candidates.length === 0) {
             return failure('not_found', `No route ${ url.pathname }`);
         }
@@ -55,6 +62,14 @@ export function startServer({ services, version, startedAt, heartbeatMs, shutdow
             return await match.handle(request, url, params);
         }
         catch (error) {
+            if (error instanceof TooLargeError) {
+                return failure(error.code, error.message, error.details, undefined, 413);
+            }
+
+            if (error instanceof BodyTooLarge) {
+                return bodyTooLarge();
+            }
+
             if (error instanceof CommandError) {
                 return failure(error.code, error.message, error.details);
             }
@@ -81,7 +96,7 @@ export function startServer({ services, version, startedAt, heartbeatMs, shutdow
         if (request.method === 'OPTIONS') {
             return new Response(null, {
                 status: 204,
-                headers: { ...cors, 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': ALLOWED_HEADERS, 'access-control-max-age': '600' },
+                headers: { ...cors, 'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS', 'access-control-allow-headers': ALLOWED_HEADERS, 'access-control-max-age': '600' },
             });
         }
 
@@ -99,7 +114,8 @@ export function startServer({ services, version, startedAt, heartbeatMs, shutdow
     const server: Server<undefined> = Bun.serve({
         hostname: '127.0.0.1',
         port: config.port,
-        maxRequestBodySize: 8 * 1024 * 1024,
+        // Bun applies one limit to every route; the biggest body any of them takes (an upload) is what it may let in.
+        maxRequestBodySize: Math.max(JSON_BODY_LIMIT, ...routes.map(candidate => candidate.maxBody ?? 0)),
         fetch: handle,
     });
 

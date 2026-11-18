@@ -1,5 +1,6 @@
-import { commandSchema, PROTOCOL_VERSION } from '@clowdy/protocol';
+import { commandSchema, MAX_ATTACHMENT_BYTES, PROTOCOL_VERSION } from '@clowdy/protocol';
 
+import { contentDisposition, servedMediaType } from '../attachments/names';
 import { executeCommand } from '../commands';
 import { listItems } from '../db/items';
 import { getRun } from '../db/runs';
@@ -7,6 +8,7 @@ import { requireChat } from '../domain/chats';
 import { requireProject } from '../domain/projects';
 import { projectSnapshot, rootSnapshot, taskDetail } from '../domain/snapshots';
 import { invalid, notFound } from '../errors';
+import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body';
 import { commandResponse, failure, json } from './responses';
 import { eventStream } from './sse';
 
@@ -24,12 +26,20 @@ export interface RouteContext {
 }
 
 interface Route {
-    method: 'GET' | 'POST';
+    method: 'GET' | 'POST' | 'DELETE';
     pattern: RegExp;
     /** Only the health check is open. */
     open?: boolean;
+    /** The most bytes of request body the route takes; `JSON_BODY_LIMIT` when absent. Only an upload asks for more. */
+    maxBody?: number;
     handle(request: Request, url: URL, params: string[]): Response | Promise<Response>;
 }
+
+/**
+ * An upload may be a little over `MAX_ATTACHMENT_BYTES` on the wire before the daemon looks: past it Bun refuses the request with its
+ * own bare 413, up to it the route answers with a JSON error that says what the limit is.
+ */
+const UPLOAD_BODY_SLACK = 1024 * 1024;
 
 /** How many paths a file search answers with when it is not told, and the most it ever does. */
 const DEFAULT_FILE_LIMIT = 40;
@@ -50,7 +60,7 @@ function integerParam(raw: string | null, name: string, fallback: number): numbe
 
 export function createRoutes(context: RouteContext): Route[] {
     const { services } = context;
-    const { store, docs, files, skills } = services;
+    const { store, docs, files, skills, attachments } = services;
 
     return [
         {
@@ -95,9 +105,13 @@ export function createRoutes(context: RouteContext): Route[] {
                 let body: unknown;
 
                 try {
-                    body = await request.json();
+                    body = JSON.parse(await readText(request, JSON_BODY_LIMIT));
                 }
-                catch {
+                catch (error) {
+                    if (error instanceof BodyTooLarge) {
+                        throw error;
+                    }
+
                     return failure('invalid', 'The body is not valid JSON', undefined, '');
                 }
 
@@ -145,6 +159,43 @@ export function createRoutes(context: RouteContext): Route[] {
                 const limit = Math.min(Math.max(integerParam(url.searchParams.get('limit'), 'limit', DEFAULT_FILE_LIMIT), 1), MAX_FILE_LIMIT);
 
                 return json(await files.search(requireProject(store, id), url.searchParams.get('query') ?? '', limit));
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/attachments$/,
+            maxBody: MAX_ATTACHMENT_BYTES + UPLOAD_BODY_SLACK,
+            handle: async (request, url, [id]) => json(await attachments.upload(requireProject(store, id), {
+                name: url.searchParams.get('name'),
+                contentType: request.headers.get('content-type'),
+                body: request.body,
+                declaredLength: declaredLength(request),
+            })),
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/attachments\/([^/]+)$/,
+            handle: (_request, _url, [id, attachmentId]) => {
+                const { record, path } = attachments.read(requireProject(store, id).id, attachmentId);
+
+                // The bytes of a stranger's file next to the daemon's API: nothing here may be taken for a page, whatever its name says.
+                return new Response(Bun.file(path), {
+                    headers: {
+                        'content-type': servedMediaType(record.mediaType),
+                        'content-disposition': contentDisposition(record.name),
+                        'x-content-type-options': 'nosniff',
+                        'content-security-policy': 'sandbox',
+                    },
+                });
+            },
+        },
+        {
+            method: 'DELETE',
+            pattern: /^\/v1\/projects\/([^/]+)\/attachments\/([^/]+)$/,
+            handle: (_request, _url, [id, attachmentId]) => {
+                attachments.remove(requireProject(store, id).id, attachmentId);
+
+                return json({ ok: true });
             },
         },
         { method: 'GET', pattern: /^\/v1\/agents$/, handle: async () => json(await services.agents.list()) },

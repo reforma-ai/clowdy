@@ -22,6 +22,11 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/projects/:id/files?query=&limit= -> string[] (paths below the project folder that contain every word of `query`,
  *                                            best match first, at most `limit` (default 40, most 100); git's tracked and
  *                                            unignored files, or a walk outside a repository; never the project's `.clowdy` folder)
+ * POST /v1/projects/:id/attachments?name= -> Attachment (the raw request body is the file, `Content-Type` its media type; the daemon keeps
+ *                                            it until the message it is sent with is deleted. Refused above `MAX_ATTACHMENT_BYTES`.
+ *                                            A file that is never sent is removed after a day)
+ * GET  /v1/projects/:id/attachments/:attachmentId -> the file's bytes, with its media type
+ * DELETE /v1/projects/:id/attachments/:attachmentId -> { ok: true }; only for a file that was not sent yet (`conflict` otherwise)
  * POST /v1/shutdown                       -> { ok: true }; stops the daemon gracefully (live engines are aborted, their runs
  *                                            come back `interrupted` at the next start, nothing is marked cancelled)
  * GET  /v1/skills?projectId=              -> SkillCatalog (system and user skills; with `projectId` also that project's skills)
@@ -39,10 +44,17 @@ export const ROUTES = {
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
     docsFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs/file`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
+    projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
+    projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
     skills: '/v1/skills',
     agents: '/v1/agents',
     shutdown: '/v1/shutdown',
 } as const;
+
+/** What one message may carry. The composer checks these before it uploads; the daemon refuses what is over. */
+export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
+export const MAX_ATTACHMENTS_BYTES_PER_MESSAGE = 100 * 1024 * 1024;
 
 export interface Health {
     ok: true;
