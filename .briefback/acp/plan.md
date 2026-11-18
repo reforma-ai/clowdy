@@ -24,6 +24,7 @@
 - Native sub-agent events over ACP (unstable) are not requested: there a sub-agent is an ordinary tool call in the parent's stream. `NativeAgents` serves the Claude and fake engines.
 - ACP usage: tokens from `PromptResponse.usage` when present; cost from the cumulative `usage_update.cost` (USD) minus the baseline kept per session in memory, none on the first turn of a resumed session. ACP limits: Claude's `_meta["_claude/rateLimit"]` on `usage_update` is read if an adapter sends it; every other ACP agent only has the reactive path through errors. The Claude engine keeps its own usage and rate limit events.
 - An ACP agent's environment is the daemon's minus `CLOWDY_*` (the daemon token and old secrets), `ELECTRON_*`, `NODE_OPTIONS`, `CLAUDECODE`-style markers, plus the resolved login-shell `PATH`. The Codex entry also scrubs its provider keys (`OPENAI_API_KEY`, `CODEX_API_KEY`) so billing never silently leaves the login; a key the owner wants goes in that agent's own `env` setting. The Claude engine keeps its strict allowlist (`buildClaudeEnv`).
+- Direction under test (owner, later the same day): one mechanism for every agent, so Claude and Codex also go over ACP through their official adapters and an agent's own sub-agent tools are switched off wherever the agent has a switch; delegation is Clowdy's `run_spawn` for all. The split decided above stays in force until Stage 6's live check passes.
 - Nested work has two kinds, and the UI draws one tree from `Run.parentRunId` and `Run.origin`. `spawned` is Clowdy's own `run_spawn`: a real run with its own session, process and slot, for any agent, and the child may be another agent. It is the delegation mechanism for every agent. `native` is an agent's own `Agent` or `Task` tool, with no process or slot of its own; it exists only where the engine reports it: Claude (SDK events) today, Codex in Stage 6. The generic ACP engine does not opt in to the unstable `subagents` capability, because only the Claude and Codex adapters implement it and neither is used; for the other ACP agents a sub-agent stays a tool call in the parent's stream (Cursor's `cursor/task`, Grok's `spawn_subagent` and OpenCode's child sessions can get a per-agent mapping later).
 - Process control is the old ladder: leader of its own group, `session/cancel`, stdin close, SIGTERM, SIGKILL; the `process` event is synthesized from the spawn.
 - Resume: `session/resume` when advertised, else `session/load` with replayed updates swallowed, else a fresh session. A failed resume also falls back to a fresh session with a warning.
@@ -155,21 +156,24 @@
 **Verify:** `bun run typecheck`, `bun run lint` and `bun test` in `apps/daemon` (502 pass), typecheck in `packages/protocol` and `apps/desktop`
 **Commits:** the review fixes are in `88aa3b1`; the plan and research are in `7bc41d0`.
 
-## Stage 6 — Native Codex engine
+## Stage 6 — Every agent over ACP, native sub-agents off
 
-**Depends on:** Stage 5.
+**Depends on:** Stage 5. Stage 7 can go before or with it.
 
-**This stage:** Codex gets an engine of its own on `codex app-server`, as bb and Orca have, so the most used agents are both integrated first-hand. The adapter entry stays in the catalog until this lands, and a live `bun run probe codex` of the adapter tells what the native engine must at least match.
+**This stage:** the owner wants one mechanism so every agent behaves alike, which turns the earlier split (native Claude, adapter for Codex) into a single path: Claude Code and Codex run through their official ACP adapters (`@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp`), started on the user's own `claude` and `codex` (`CLAUDE_CODE_EXECUTABLE`, `CODEX_PATH`). What the native Claude engine gave beyond that is the sub-agents shown as child runs, which this stage replaces with a rule: delegation goes through Clowdy's `run_spawn` for every agent, and an agent's own sub-agent tools are switched off where it has a switch. Nothing is deleted until the live check passes; if an adapter falls short, the native engine for that agent stays (Claude) or is written (Codex on `codex app-server`).
 
 - [ ] Complete
-  - [ ] Research: the app-server protocol (handshake, turns, approvals, usage and rate limits, resume, MCP tools) read from its schema, with bb's `plugins/provider-codex` and Orca's `src/main/codex/app-server/` as references
-  - [ ] `engine/codex/` engine on the user's `codex`, events mapped onto `EngineEvent`, process group and cancel as for the others
-  - [ ] Runtime tools reach Codex (MCP stdio through the bridge, or app-server dynamic tools if they are the better fit)
-  - [ ] Tests on a scripted app-server; `AGENTS.md` and the catalog updated; adapter entry removed
+  - [ ] Live check of both adapters on this machine with `bun run probe` (no model call), then one trivial prompt each: text, a tool call, the runtime's tool through the bridge, cancel, resume, usage, and the user's own `~/.claude` and `~/.codex` login
+  - [ ] Catalog: `claude` becomes a `package` launch like `codex`, with its own scrub list and login command
+  - [ ] Native sub-agents off at session start: Claude through `_meta.claudeCode.options.disallowedTools` (`Agent`, `Task`, `ListAgents`, as bb does); Codex through its session config (`agents.enabled=false` and `features.multi_agent_v2=false`, or `features.multi_agent=false` with one concurrent thread on older Codex, chosen by version), passed in `CODEX_CONFIG`. For an agent with no switch the system prompt says to delegate through `run_spawn`, and whatever it starts shows as a tool call
+  - [ ] Delete the native Claude engine, `NativeAgents` and the Claude-only settings once the check passes; keep `origin: 'native'` in the protocol only if some engine still reports it
+  - [ ] `AGENTS.md`, the catalog and the tests describe the single path
 
-**Done when:** a run on Codex streams text and tools, calls the daemon's tools, resumes, reports usage and limits, and is cancelled with its process group gone, without `npx`.
-**Verify:** `bun test` in `apps/daemon`; a live handshake against the installed `codex` (no model call)
+**Done when:** a run on Claude and a run on Codex stream text and tools, call the daemon's tools, resume, report usage, are cancelled with their process groups gone, and neither starts a native sub-agent.
+**Verify:** `bun test` in `apps/daemon`; the live check above
 **Commits:** None yet.
+
+**Open:** the adapters are fetched with `npx` on first use (network, Node, a third-party package at run time); vendoring them as pinned daemon dependencies, with optional packages omitted so no agent is shipped, is the alternative to decide when packaging lands. The Codex switch keys differ between Codex versions. Light helper agents (search or explore) are lost for every agent; a cheap `run_spawn` role for them is the answer if they are missed.
 
 ## Stage 7 — Steer or queue a message
 
