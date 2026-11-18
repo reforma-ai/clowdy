@@ -308,6 +308,93 @@ describe('the usage', () => {
         expect(command).toHaveBeenCalledWith({ type: 'agents.refresh' });
     });
 
+    describe('the refresh button', () => {
+        /** The fixture's agents as they were at one moment (the fixture itself stamps every fetch with the time), with Claude's last read moved on once `reads.newer` is set. */
+        async function reading() {
+            const reads = { newer: false };
+            const snapshot = await transport.getAgents();
+            const getAgents = vi.fn<() => Promise<AgentInfo[]>>(async () => snapshot.map(agent => (
+                agent.id === 'claude' && reads.newer ? { ...agent, signIn: { ...agent.signIn!, checkedAt: agent.signIn!.checkedAt + 1_000 } } : agent
+            )));
+
+            return { reads, getAgents };
+        }
+
+        const spins = () => button(card('Claude Code'), 'Read the usage again')!.hasAttribute('data-pending');
+        const later = (ms: number) => act(async () => {
+            await vi.advanceTimersByTimeAsync(ms);
+        });
+
+        beforeEach(() => {
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('keeps spinning until the agent was read again, because the daemon answers before it has read', async () => {
+            const { reads, getAgents } = await reading();
+
+            await start(overrideTransport(transport, { getAgents }));
+            await press(button(card('Claude Code'), 'Read the usage again'));
+
+            expect(spins()).toBe(true);
+
+            await later(3_000);
+
+            expect(spins()).toBe(true);
+
+            reads.newer = true;
+            await later(1_500);
+
+            expect(spins()).toBe(false);
+        });
+
+        it('gives up after a while when no new read ever shows', async () => {
+            const { getAgents } = await reading();
+
+            await start(overrideTransport(transport, { getAgents }));
+            await press(button(card('Claude Code'), 'Read the usage again'));
+            await later(20_000);
+
+            expect(spins()).toBe(true);
+
+            await later(15_000);
+
+            expect(spins()).toBe(false);
+        });
+    });
+
+    it('asks for the agents every minute while the page is open, and no longer once it is closed', async () => {
+        vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+
+        try {
+            const getAgents = vi.fn<() => Promise<AgentInfo[]>>(() => transport.getAgents());
+
+            await start(overrideTransport(transport, { getAgents }));
+
+            const asked = getAgents.mock.calls.length;
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(60_000);
+            });
+
+            expect(getAgents.mock.calls.length).toBe(asked + 1);
+
+            act(() => reactRoot.unmount());
+            reactRoot = createRoot(container);
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5 * 60_000);
+            });
+
+            expect(getAgents.mock.calls.length).toBe(asked + 1);
+        }
+        finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('says why there is nothing to show, and shows the last reading when a new one failed', async () => {
         await start(withAgent('codex', (agent) => {
             agent.usage = { state: 'unavailable', windows: [], detail: 'Signed in with an API key: there are no plan limits.' };

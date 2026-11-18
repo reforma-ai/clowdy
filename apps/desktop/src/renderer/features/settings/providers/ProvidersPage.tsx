@@ -11,6 +11,9 @@ import { ProviderCard } from './ProviderCard';
 import styles from './ProvidersPage.module.css';
 import { providerAgents } from './providerView';
 
+/** How often the page asks for the agents while it is open; the daemon reads again only what is older than its own freshness. */
+const POLL_MS = 60_000;
+
 const INTRO = (
     <Text color="secondary">
         The agents Clowdy runs: who is signed in to each, what is left of its plan, and how it starts. Clowdy uses the login the program already has on this computer.
@@ -27,6 +30,13 @@ export function ProvidersPage() {
     // finished sign-in lapse the same way: what the app fetched an hour ago is not what the page should show.
     useEffect(() => {
         void root.refreshAgents();
+
+        // Usage moves while the page is open; a hidden window does not need it.
+        const timer = setInterval(() => {
+            if (!document.hidden) void root.refreshAgents();
+        }, POLL_MS);
+
+        return () => clearInterval(timer);
     }, [root]);
 
     if (status === 'loading' && agents.length === 0) {
