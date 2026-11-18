@@ -2,6 +2,7 @@ import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
 import { Message } from '@clowdy/icons/14';
 import { ProgressLoader } from '@clowdy/icons/assets';
+import { isTerminalRunStatus, type Run, type StreamItemBody } from '@clowdy/protocol';
 
 import { RUN_STATUS_VIEW, RunStatusPill } from '../shared';
 import { useProjectState, useProjectUi } from '../stores';
@@ -9,7 +10,6 @@ import styles from './SubagentCard.module.css';
 import { agentStatusLine, childOfCall, spawnedRunId, subagentLabel, subagentName, subagentTitle } from './subagents';
 import { useAgentActivity } from './useAgentActivity';
 
-import type { Run, StreamItemBody } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
 
 type ToolBody = Extract<StreamItemBody, { kind: 'tool' }>;
@@ -69,7 +69,7 @@ function AgentCard({ title, aside, line, error, running, muted, trailing, onOpen
 export interface SubagentCardProps {
     /** An agent's own sub-agent call: `Agent`, `Task`, `spawnAgent`, `spawn_subagent`. */
     call: ToolBody;
-    /** The stream's run is going: a call that is still running is live, not left unfinished. */
+    /** The stream's run is going: a call that is still running may be live, not left unfinished. */
     active: boolean;
 }
 
@@ -83,10 +83,12 @@ export function SubagentCard({ call, active }: SubagentCardProps) {
     const ui = useProjectUi();
     const child = childOfCall(project.runs.values(), call.toolCallId);
     const failed = call.state === 'error';
-    const live = call.state === 'running' && active;
-    const stalled = call.state === 'running' && !active;
+    // A call that never ended is over once its run is, or once its child ended with the turn (a stop or a retry), though the run works again.
+    const stalled = call.state === 'running' && (!active || (child !== undefined && isTerminalRunStatus(child.status)));
+    const live = call.state === 'running' && !stalled;
     const { activity } = useAgentActivity(live ? child?.id : undefined);
-    const label = subagentLabel(subagentName(call.input) ?? child?.name);
+    // Only the call names the type: the child's own name is the same, or the daemon's placeholder for a call that names none.
+    const label = subagentLabel(subagentName(call.input));
 
     return (
         <AgentCard

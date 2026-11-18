@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { runInAction } from 'mobx';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -110,6 +111,27 @@ describe('the card of an agent\'s own sub-agent', () => {
 
         expect(text()).toBe('Running agentStarting…');
         expect(opener()).toBeNull();
+    });
+
+    it('says the agent did not finish when its child ended with the turn while the call never did, though the run works again', async () => {
+        const runs = store.selectedProject!.runs;
+
+        // The turn was stopped mid-call and the person wrote again: the run is going, the old call is still `running`, its child was cancelled.
+        runInAction(() => runs.set('r-na-02', { ...runs.get('r-na-02')!, status: 'cancelled', statusReason: 'The parent run ended its turn' }));
+        await draw([fixtureCall('tc-agent-2')]);
+
+        expect(text()).toBe('The agent did not finish');
+        expect(card().getAttribute('aria-busy')).toBeNull();
+    });
+
+    it('is named by the call alone, not by the placeholder name the daemon gives a child the call does not name', async () => {
+        const runs = store.selectedProject!.runs;
+
+        runInAction(() => runs.set('r-na-x', { ...runs.get('r-na-01')!, id: 'r-na-x', name: 'Sub-agent', parentToolCallId: 'tc-unnamed' }));
+        await draw([{ kind: 'tool', toolCallId: 'tc-unnamed', name: 'Agent', input: { description: 'Look around', prompt: 'Look around' }, state: 'done', output: 'Done' }]);
+
+        expect(text()).toBe('Ran agentFinished');
+        expect(opener()).not.toBeNull();
     });
 });
 
