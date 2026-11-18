@@ -3,12 +3,22 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writ
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { KNOWN_AGENTS } from '../src/engine/acp/catalog';
 import { Discovery, parseVersion, readLoginPath } from '../src/engine/acp/discovery';
 import { buildAgentEnv } from '../src/engine/acp/env';
 import { AgentRegistry, AgentRegistryError } from '../src/engine/acp/registry';
 
 let root: string;
 let bin: string;
+
+/** The package an adapter agent is fetched as, from the catalog, so a new pin touches no test. */
+function pinned(id: string): string {
+    const launch = KNOWN_AGENTS.find(agent => agent.id === id)?.launch;
+
+    if (launch?.kind !== 'package') throw new Error(`${ id } is not run from a package`);
+
+    return launch.package;
+}
 
 /** An executable that prints `output` when run. */
 function program(name: string, output: string): string {
@@ -30,6 +40,18 @@ beforeEach(() => {
 });
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+describe('the catalog', () => {
+    test('fetches each adapter at one exact, stable version, never a range, a tag or a preview', () => {
+        const packages = KNOWN_AGENTS.flatMap(agent => agent.launch.kind === 'package' ? [agent.launch.package] : []);
+
+        expect(packages.length).toBeGreaterThan(0);
+
+        for (const name of packages) {
+            expect(name).toMatch(/^@[a-z0-9-]+\/[a-z0-9-]+@\d+\.\d+\.\d+$/);
+        }
+    });
+});
 
 describe('buildAgentEnv', () => {
     test('passes the user\'s environment, drops the daemon\'s secrets and the agent\'s provider keys, and sets the path', () => {
@@ -127,11 +149,11 @@ describe('AgentRegistry', () => {
         const claude = program('claude', '2.1.325 (Claude Code)');
         const reg = registry();
 
-        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: 'bun x --bun @agentclientprotocol/claude-agent-acp@0.108.0', fetches: '@agentclientprotocol/claude-agent-acp@0.108.0', login: 'claude auth login' });
+        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: `bun x --bun ${ pinned('claude') }`, fetches: pinned('claude'), login: 'claude auth login' });
 
         const resolved = await reg.resolve('claude');
 
-        expect(resolved).toMatchObject({ ok: true, agent: { command: process.execPath, args: ['x', '--bun', '@agentclientprotocol/claude-agent-acp@0.108.0'] } });
+        expect(resolved).toMatchObject({ ok: true, agent: { command: process.execPath, args: ['x', '--bun', pinned('claude')] } });
         expect(resolved.ok && resolved.agent.env).toMatchObject({ CLAUDE_CODE_EXECUTABLE: claude, ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' });
         expect(resolved.ok && resolved.agent.scrub.some(pattern => pattern.test('ANTHROPIC_API_KEY'))).toBe(true);
         expect(resolved.ok && resolved.agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
@@ -142,7 +164,7 @@ describe('AgentRegistry', () => {
         let bun: string | undefined;
         const reg = new AgentRegistry({ discovery: discovery(), runtime: async () => bun });
 
-        expect(await byId(reg, 'codex')).toMatchObject({ status: 'needs-runtime', path: codex, detail: expect.stringContaining('bun x'), fetches: '@agentclientprotocol/codex-acp@2.7.0' });
+        expect(await byId(reg, 'codex')).toMatchObject({ status: 'needs-runtime', path: codex, detail: expect.stringContaining('bun x'), fetches: pinned('codex') });
 
         bun = program('bun', '1.4.0');
         reg.refresh();
@@ -155,7 +177,7 @@ describe('AgentRegistry', () => {
         const codex = program('codex', 'x');
         const resolved = await registry().resolve('codex');
 
-        expect(resolved).toMatchObject({ ok: true, agent: { command: process.execPath, args: ['x', '--bun', '@agentclientprotocol/codex-acp@2.7.0'] } });
+        expect(resolved).toMatchObject({ ok: true, agent: { command: process.execPath, args: ['x', '--bun', pinned('codex')] } });
         expect(resolved.ok && resolved.agent.env).toMatchObject({ CODEX_PATH: codex, npm_config_omit: 'optional' });
         expect(resolved.ok && resolved.agent.scrub.some(pattern => pattern.test('OPENAI_API_KEY'))).toBe(true);
     });

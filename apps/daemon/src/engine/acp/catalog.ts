@@ -27,14 +27,17 @@ export interface AgentSpec {
 
 /**
  * The agents Clowdy knows how to start. Most run their own program in ACP mode; Claude Code and Codex have no ACP mode of
- * their own and run through the official adapters, pinned here (read the adapter's changelog before bumping it).
+ * their own and run through the official adapters, pinned here (read the adapter's changelog before bumping it). Pin a
+ * version at least three days old: `bun x` reads the `bunfig.toml` of the folder the run works in, and this repository's
+ * `minimumReleaseAge` refuses anything newer ("No version matching ... blocked by minimum-release-age"), which ends the
+ * run before the agent starts. `npm view <package> time` shows when each version was published.
  */
 export const KNOWN_AGENTS: readonly AgentSpec[] = [
     {
         id: 'claude',
         name: 'Claude Code',
         programs: ['claude'],
-        launch: { kind: 'package', package: '@agentclientprotocol/claude-agent-acp@0.108.0', pathEnv: 'CLAUDE_CODE_EXECUTABLE' },
+        launch: { kind: 'package', package: '@agentclientprotocol/claude-agent-acp@0.107.0', pathEnv: 'CLAUDE_CODE_EXECUTABLE' },
         // The user's claude.ai connectors (Drive, Docs) would load into every run, and an orchestrated run must not write the
         // user's memory; sub-agents are a feature, this only caps hidden fan-out. All of it can be undone with the agent's `env`.
         env: { ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '20' },
@@ -48,7 +51,7 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         id: 'codex',
         name: 'Codex',
         programs: ['codex'],
-        launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.7.0', pathEnv: 'CODEX_PATH' },
+        launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.6.0', pathEnv: 'CODEX_PATH' },
         scrub: [/^OPENAI_API_KEY$/, /^CODEX_API_KEY$/],
         login: 'codex login',
     },

@@ -22,7 +22,7 @@ export interface AgentInfo {
     /** The agent's program, as found on this machine. */
     path?: string;
     version?: string;
-    /** How the daemon starts it, as a command line: `cursor-agent acp`, `bun x --bun @agentclientprotocol/codex-acp@2.7.0`. */
+    /** How the daemon starts it, as a command line: `cursor-agent acp`, `bun x --bun @agentclientprotocol/codex-acp@2.6.0`. */
     launch: string;
     /** The package fetched on first start (an adapter), when there is one. Needs network once. */
     fetches?: string;

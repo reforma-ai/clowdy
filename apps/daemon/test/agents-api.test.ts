@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
+import { KNOWN_AGENTS } from '../src/engine/acp/catalog';
 import { FAKE_AGENT } from './acp-helpers';
 import { cleanTempDirs, Harness, restartHarness, startHarness, waitFor } from './helpers';
 
@@ -8,6 +9,8 @@ import type { AgentInfo } from '@clowdy/protocol';
 afterAll(cleanTempDirs);
 
 const harnesses: Harness[] = [];
+const codexLaunch = KNOWN_AGENTS.find(agent => agent.id === 'codex')?.launch;
+const codexPackage = codexLaunch?.kind === 'package' ? codexLaunch.package : undefined;
 
 afterEach(async () => {
     await Promise.all(harnesses.splice(0).map(h => h.stop().catch(() => undefined)));
@@ -34,7 +37,7 @@ describe('GET /v1/agents', () => {
         // The test daemon finds nothing on this machine, so every built-in agent is missing whatever is installed here.
         expect(agents.every(agent => !agent.custom && agent.enabled && agent.launch !== '' && agent.status === 'missing' && agent.detail !== undefined)).toBe(true);
         expect(agents.find(agent => agent.id === 'claude')).toMatchObject({ name: 'Claude Code', login: 'claude auth login' });
-        expect(agents.find(agent => agent.id === 'codex')?.fetches).toBe('@agentclientprotocol/codex-acp@2.7.0');
+        expect(agents.find(agent => agent.id === 'codex')?.fetches).toBe(codexPackage);
         expect((await fetch(`${ h.url }/v1/agents`)).status).toBe(401);
     });
 });
