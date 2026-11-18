@@ -15,7 +15,7 @@ export interface SettingsPageProps {
     parents?: ReadonlyArray<{ label: string; onPress: () => void }>;
     /** What the page is for, under the title. */
     description?: ReactNode;
-    /** At the end of the title's line: the page's main action. */
+    /** At the end of the header, level with the title and apart from the words: the page's main action, a small `filled` `contrast` button. */
     actions?: ReactNode;
     children?: ReactNode;
 }
@@ -28,18 +28,21 @@ export function SettingsPage({ title, parents = [], description, actions, childr
     return (
         <>
             <header className={ styles.header }>
-                <div className={ styles.titleLine }>
-                    { parents.length === 0
-                        ? <Text as="h1" variant={ SCREEN_TITLE } className={ styles.title }>{ title }</Text>
-                        : (
-                            <Breadcrumb variant={ SCREEN_TITLE } aria-label="Settings path">
-                                { parents.map(parent => <Breadcrumb.Link key={ parent.label } onPress={ parent.onPress }>{ parent.label }</Breadcrumb.Link>) }
-                                <Breadcrumb.Page>{ title }</Breadcrumb.Page>
-                            </Breadcrumb>
-                        ) }
-                    { actions }
+                <div className={ styles.text }>
+                    <div className={ styles.titleLine }>
+                        { parents.length === 0
+                            ? <Text as="h1" variant={ SCREEN_TITLE } className={ styles.title }>{ title }</Text>
+                            : (
+                                <Breadcrumb variant={ SCREEN_TITLE } aria-label="Settings path">
+                                    { parents.map(parent => <Breadcrumb.Link key={ parent.label } onPress={ parent.onPress }>{ parent.label }</Breadcrumb.Link>) }
+                                    <Breadcrumb.Page>{ title }</Breadcrumb.Page>
+                                </Breadcrumb>
+                            ) }
+                    </div>
+                    { description && <Text color="secondary">{ description }</Text> }
                 </div>
-                { description && <Text color="secondary">{ description }</Text> }
+
+                { actions && <div className={ styles.actions }>{ actions }</div> }
             </header>
 
             { children }

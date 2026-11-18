@@ -37,7 +37,7 @@ export function ProjectsPage() {
             description="The folders Clowdy can work in. Your personal space is always first. Drag a project to change the order of the project menu."
             actions={ (
                 <MenuTrigger>
-                    <Button variant="bordered" size="sm"><Plus />Add project</Button>
+                    <Button variant="filled" color="contrast" size="sm"><Plus />Add project</Button>
                     <Popover placement="bottom end" width={ 240 }>
                         <Menu
                             aria-label="Add a project"
@@ -72,7 +72,7 @@ export function ProjectsPage() {
                             items={ own }
                             getKey={ project => project.id }
                             getTextValue={ project => project.name }
-                            getDragHandleOptions={ () => ({ variant: 'surface', edgeOffset: 'sm' }) }
+                            getDragHandleOptions={ () => ({ variant: 'surface', edgeOffset: '10' }) }
                             onChange={ projects => void reorderProjects(root, projects) }
                         >
                             { project => (

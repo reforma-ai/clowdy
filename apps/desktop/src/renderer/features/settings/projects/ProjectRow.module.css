@@ -58,11 +58,6 @@
     min-width: 0;
 }
 
-.chevron {
-    flex-shrink: 0;
-    color: var(--color-secondary-muted-text);
-}
-
 .menu {
     flex-shrink: 0;
     margin-inline-end: var(--spacing-md);

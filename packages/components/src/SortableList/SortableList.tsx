@@ -24,7 +24,8 @@ import {
 import type { ReactElement, ReactNode } from 'react';
 
 export type SortableListDragHandleAlignment = 'center' | 'top';
-export type SortableListDragHandleEdgeOffset = 'none' | 'sm' | 'md';
+/** How far outside the item's edge the `surface` handle's centre sits: the spacing tokens `sm` (6px), `md` (8px) and `10` (10px). */
+export type SortableListDragHandleEdgeOffset = 'none' | 'sm' | 'md' | '10';
 export type SortableListDragHandleVariant = 'plain' | 'surface';
 
 export interface SortableListDragHandleOptions {

@@ -104,6 +104,14 @@ describe('ProjectsPage list', () => {
         expect(row(FIXTURE_EMPTY_PROJECT_ID)).not.toBeNull();
     });
 
+    it('opens the page of a project from its menu', async () => {
+        await open();
+        await click(button('Clowdy actions'));
+        await click([...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Configure')!);
+
+        expect(store.ui.settingsProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
+    });
+
     it('opens a project from its menu, leaving Settings', async () => {
         await open();
         await click(button('Clowdy actions'));
@@ -127,7 +135,7 @@ describe('ProjectsPage list', () => {
         await open();
         await click(button('Personal actions'));
 
-        expect([...document.body.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(['Open project']);
+        expect([...document.body.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(['Configure', 'Open project']);
     });
 
     it('asks before removing a project from its menu, and removes it once confirmed', async () => {

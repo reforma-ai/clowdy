@@ -79,6 +79,10 @@
         left: calc(var(--spacing-md) * -1);
     }
 
+    .dragHandle[data-variant='surface'][data-edge-offset='10'] {
+        left: calc(var(--spacing-10) * -1);
+    }
+
     .dragHandle[data-alignment='top'] {
         top: var(--spacing-20);
     }

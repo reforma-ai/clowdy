@@ -1,21 +1,42 @@
-/* The page's title block: the title (or the path to it), what the page is for, and a hairline under it. The page puts 24px between its blocks. */
+/*
+ * The page's title block: the words (the title or the path to it, and what the page is for) on the left and the page's action on the
+ * right, in a column of its own so a long description wraps beside the button and not under it. A hairline closes it. The page puts
+ * 24px between its blocks.
+ */
 .header {
     display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-xl);
     padding-bottom: var(--spacing-xl);
     border-bottom: 1px solid var(--color-secondary-muted-border);
 }
 
+.text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    min-width: 0;
+}
+
+/* As tall as a small button, so the header is the same height with an action and without one (a page inside another has none). */
 .titleLine {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-xl);
+    min-height: var(--spacing-30);
     min-width: 0;
 }
 
 .title {
     min-width: 0;
     margin: 0;
+}
+
+.actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-height: var(--spacing-30);
 }
