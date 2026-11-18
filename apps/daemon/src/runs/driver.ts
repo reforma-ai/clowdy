@@ -13,7 +13,7 @@ import { childReport, wakeMessage } from './reports';
 import { ASK_USER } from './tools';
 import { TurnWriter } from './writer';
 
-import type { ChatMode, EngineId, Run, RunRole, Task } from '@clowdy/protocol';
+import type { ChatMode, EngineId, Run, RunContext, RunRole, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunOutcome } from '../db/runs';
 import type { EngineRegistry, EngineSession, ToolDefinition } from '../engine/types';
@@ -391,57 +391,71 @@ export class RunDriver {
     private async consume(run: Run, session: EngineSession, writer: TurnWriter, live: LiveRun): Promise<string | undefined> {
         const { runs } = this.deps;
         const native = live.native as NativeAgents;
+        let context: RunContext | undefined;
 
-        for await (const event of session) {
-            switch (event.type) {
-                case 'session':
-                    runs.setSessionId(run.id, event.sessionId);
-                    break;
-                case 'process':
-                    runs.setProcess(run.id, describeProcess({ pid: event.pid, pgid: event.pgid, startedAt: event.startedAt }));
-                    break;
-                case 'text':
-                    if (event.agentId === undefined) {
-                        writer.text(event.delta, event.done);
-                    }
-                    else {
-                        native.stream({ ...event, agentId: event.agentId });
-                    }
-
-                    break;
-                case 'tool':
-                    // `ask_user` shows as a question card instead.
-                    if (event.name === ASK_USER) {
+        try {
+            for await (const event of session) {
+                switch (event.type) {
+                    case 'session':
+                        runs.setSessionId(run.id, event.sessionId);
                         break;
-                    }
+                    case 'process':
+                        runs.setProcess(run.id, describeProcess({ pid: event.pid, pgid: event.pgid, startedAt: event.startedAt }));
+                        break;
+                    case 'text':
+                        if (event.agentId === undefined) {
+                            writer.text(event.delta, event.done);
+                        }
+                        else {
+                            native.stream({ ...event, agentId: event.agentId });
+                        }
 
-                    if (event.agentId === undefined) {
-                        writer.tool(event);
-                    }
-                    else {
-                        native.stream({ ...event, agentId: event.agentId });
-                    }
+                        break;
+                    case 'tool':
+                        // `ask_user` shows as a question card instead.
+                        if (event.name === ASK_USER) {
+                            break;
+                        }
 
-                    break;
-                case 'subagent':
-                    native.state(event);
-                    break;
-                case 'limit':
-                    this.onLimit(run, parseLimit(event));
-                    break;
-                case 'usage':
-                    runs.addUsage(run.id, event);
-                    break;
-                case 'done':
-                    writer.end();
+                        if (event.agentId === undefined) {
+                            writer.tool(event);
+                        }
+                        else {
+                            native.stream({ ...event, agentId: event.agentId });
+                        }
 
-                    return event.result;
-                case 'error':
-                    throw new EngineFailure(event.message, event.retryable);
+                        break;
+                    case 'subagent':
+                        native.state(event);
+                        break;
+                    case 'limit':
+                        this.onLimit(run, parseLimit(event));
+                        break;
+                    case 'usage':
+                        runs.addUsage(run.id, event);
+                        break;
+                    case 'context':
+                        context = { used: event.used, size: event.size };
+                        runs.setContext(run.id, context);
+                        break;
+                    case 'done':
+                        writer.end();
+
+                        return event.result;
+                    case 'error':
+                        throw new EngineFailure(event.message, event.retryable);
+                }
+            }
+
+            throw new EngineFailure('The engine ended without a result');
+        }
+        finally {
+            // However the turn ended (a result, a failure, a cancel, an engine that threw), the number shown afterwards is the last one it reported,
+            // whatever the throttle skipped on the way.
+            if (context) {
+                runs.setContext(run.id, context, true);
             }
         }
-
-        throw new EngineFailure('The engine ended without a result');
     }
 
     /* ----------------------------- Limits and retries ---------------------------- */

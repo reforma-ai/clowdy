@@ -3,7 +3,7 @@ import { ACTIVE_RUN_STATUSES, isTerminalRunStatus } from '@clowdy/protocol';
 import { getChat } from '../db/chats';
 import { findQuestion } from '../db/items';
 import { getProject } from '../db/projects';
-import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, insertMailbox, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
+import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, insertMailbox, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, pendingMailbox, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
 import { getTask } from '../db/tasks';
 import { appendItem, updateItem } from '../domain/items';
 import { categoryOf, linkRunTask, moveTask, requireTask } from '../domain/tasks';
@@ -14,7 +14,7 @@ import { killSurvivor, signalProcess } from './processes';
 import { QUEUE_REASON, Scheduler } from './scheduler';
 import { canTransition, NEEDS_REASON } from './transitions';
 
-import type { ChatMode, EngineId, Project, QuestionOption, Run, RunRole, RunStatus, RunUsage, Task } from '@clowdy/protocol';
+import type { ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunRole, RunStatus, RunUsage, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunProcess } from '../db/runs';
 import type { EngineRegistry } from '../engine/types';
@@ -271,6 +271,11 @@ export class RunService {
 
             return this.setStatus(runId, 'queued');
         });
+    }
+
+    /** Whether children finished that the run has not been told about: whatever its next turn is asked, their results are added to it. */
+    hasUnseenResults(runId: string): boolean {
+        return pendingMailbox(this.store.db, runId).length > 0;
     }
 
     /** Task columns follow the work: started runs move tasks to active, a finished run to review, a dead one back to todo. */
@@ -637,6 +642,21 @@ export class RunService {
 
             return { ...rest, ...(choice.model && { model: choice.model }), ...(choice.effort && { effort: choice.effort }) };
         });
+    }
+
+    /**
+     * Keeps the latest reading of the session's context window. Agents report it with every message, so a reading is written when it moved by a percent of
+     * the window (or the window changed) and, with `settled`, whenever it differs: the turn ended, and the number a person sees is the final one.
+     */
+    setContext(runId: string, context: RunContext, settled = false): void {
+        const current = this.require(runId).context;
+        const step = settled ? 1 : context.size / 100;
+
+        if (current?.size === context.size && Math.abs(context.used - current.used) < step) {
+            return;
+        }
+
+        this.update(runId, run => ({ ...run, context }));
     }
 
     /** Changes the run's one-line description. */

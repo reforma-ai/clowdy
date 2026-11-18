@@ -256,6 +256,21 @@ const app = agent({ name: 'fake-acp-agent' })
                     await send({ sessionUpdate: 'usage_update', used: input + output, size: 200_000, cost: { amount: session.cost, currency: 'USD' } });
                     break;
                 }
+                case 'context': {
+                    const [used, size] = rest;
+
+                    await send({ sessionUpdate: 'usage_update', used: Number(used), size: Number(size) });
+                    break;
+                }
+                case '/compact': {
+                    // What Claude's adapter reports for its own command: a tool call and a smaller window, and no words.
+                    const toolCallId = `k${ session.count }`;
+
+                    await send({ sessionUpdate: 'tool_call', toolCallId, title: 'Compact conversation', kind: 'think', status: 'in_progress', _meta: { claudeCode: { toolName: 'compact' } } });
+                    await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'completed', _meta: { claudeCode: { toolName: 'compact' } } });
+                    await send({ sessionUpdate: 'usage_update', used: 6111, size: 1_000_000 });
+                    break;
+                }
                 case 'limit': {
                     const [status, resetsAt] = rest;
 

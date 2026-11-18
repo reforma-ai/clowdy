@@ -54,6 +54,14 @@ describe('runs on an ACP agent, through the real runtime', () => {
         expect(h.run(runId).sessionId).toBe('fake-1');
     });
 
+    test('the window\'s fill the agent reports is left on the run, the last reading of the turn included', async () => {
+        const { h, say } = await setup();
+        const runId = say('context 40000 200000\ncontext 40100 200000');
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the turn', 15_000);
+        expect(h.run(runId).context).toEqual({ used: 40_100, size: 200_000 });
+    });
+
     test('the agent calls the runtime\'s own tools through the bridge', async () => {
         const { h, project, say, texts } = await setup();
         const task = h.ok('task.create', { projectId: project.id, title: 'Fix the footer' }).task;

@@ -5,7 +5,7 @@ import { toAttachment } from '../attachments/service';
 import { choiceOf, createChat, DEFAULT_CHAT_TITLE, deleteChat, renameChat, requireChat, saveChat, setChatArchived, setChatMode, setChatModel } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
-import { invalid, unavailable } from '../errors';
+import { conflict, invalid, unavailable } from '../errors';
 import { firstMessage } from '../runs/prompts';
 
 import type { AgentRegistry } from '../engine/acp/registry';
@@ -83,7 +83,7 @@ function send({ store, runs, driver, attachments, agents }: Services, chatId: st
     return { chatId, runId: run.id };
 }
 
-export const chatHandlers: Pick<Handlers, 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.setModel' | 'chat.setArchived' | 'chat.delete' | 'chat.send'> = {
+export const chatHandlers: Pick<Handlers, 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.setModel' | 'chat.compact' | 'chat.setArchived' | 'chat.delete' | 'chat.send'> = {
     'chat.create': ({ store, runs }, command) => {
         const project = requireProject(store, command.projectId);
 
@@ -112,6 +112,43 @@ export const chatHandlers: Pick<Handlers, 'chat.create' | 'chat.rename' | 'chat.
         }
 
         return { chat };
+    },
+
+    /**
+     * The agent's own compact command, as a turn of the orchestrator: the person's message is not in the stream (they did not write it), a note says
+     * what is happening, and the agent's report of it follows. Only a chat that rests can do it, as `chat.setMode` only changes at rest. Like
+     * `chat.setModel` it is not activity, so the chat's `updatedAt` stays.
+     */
+    'chat.compact': ({ store, runs, driver, agents }, command) => {
+        const chat = requireChat(store, command.chatId);
+        const run = chat.orchestratorRunId ? runs.require(chat.orchestratorRunId) : undefined;
+
+        if (!run?.sessionId) {
+            throw invalid('This chat has no conversation to compact yet');
+        }
+
+        const message = agents.compactCommand(run.engine);
+
+        if (!message) {
+            throw invalid(`${ agents.nameOf(run.engine) } has no command to compact its conversation`);
+        }
+
+        requireEnabled(agents, run.engine);
+
+        if (!isTerminalRunStatus(run.status)) {
+            throw conflict(run.status === 'waiting_children' ? 'The orchestrator is waiting for its child runs. Compact the chat when they have finished' : 'The orchestrator is working on this chat. Compact it when it has finished');
+        }
+
+        // A turn starts with the results of the children the orchestrator has not seen, so the command would not be all of its prompt.
+        if (runs.hasUnseenResults(run.id)) {
+            throw conflict('Some child runs finished that the orchestrator has not read yet. Send it a message first, then compact the chat');
+        }
+
+        appendItem(store, run.id, { kind: 'note', text: 'Compacting the conversation' });
+        runs.resume(run.id, message);
+        driver.launch(run.id);
+
+        return { chatId: chat.id, runId: run.id };
     },
 
     'chat.setArchived': ({ store }, command) => ({ chat: setChatArchived(store, command.chatId, command.archived) }),

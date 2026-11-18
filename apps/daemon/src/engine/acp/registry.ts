@@ -92,6 +92,11 @@ export class AgentRegistry {
         return this.stored.overrides[id]?.enabled !== false;
     }
 
+    /** The message that makes the agent compact its conversation, or `undefined` for an agent with no such command. */
+    compactCommand(id: string): string | undefined {
+        return this.spec(id)?.compact;
+    }
+
     nameOf(id: string): string {
         return this.spec(id)?.name ?? this.stored.agents.find(agent => agent.id === id)?.name ?? id;
     }

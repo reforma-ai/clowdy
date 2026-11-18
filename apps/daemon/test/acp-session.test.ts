@@ -107,6 +107,26 @@ describe('a turn on an ACP agent', () => {
         expect(usage.map(event => event.type === 'usage' && event.costUsd)).toEqual([expect.closeTo(0.1), expect.closeTo(0.2)]);
     });
 
+    test('the window\'s fill the agent reports becomes a context event', async () => {
+        const { session } = use().start('context 21269 1000000\ncontext 22062 1000000\nsay ok');
+        const events = await collect(session);
+
+        await session.close();
+
+        expect(events.filter(event => event.type === 'context')).toEqual([{ type: 'context', used: 21269, size: 1_000_000 }, { type: 'context', used: 22062, size: 1_000_000 }]);
+    });
+
+    test('a compact command reports its tool call and the smaller window, and a turn with no words still ends with done', async () => {
+        const { session } = use().start('/compact');
+        const events = await collect(session);
+
+        await session.close();
+
+        expect(events.filter(event => event.type === 'tool').map(event => event.type === 'tool' && [event.name, event.state])).toEqual([['compact', 'running'], ['compact', 'done']]);
+        expect(events.filter(event => event.type === 'context')).toEqual([{ type: 'context', used: 6111, size: 1_000_000 }]);
+        expect(events.at(-1)).toEqual({ type: 'done', result: undefined });
+    });
+
     test('a rate limit signal in the Claude adapter format becomes a limit event', async () => {
         const { session } = use().start('limit rejected 1900000000\nlimit allowed 1');
         const events = await collect(session);

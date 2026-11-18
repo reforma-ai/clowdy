@@ -88,6 +88,7 @@ export class UpdateMapper {
     /** The session's cumulative cost in USD, as of the latest `usage_update`. */
     cost?: number;
     private limit?: string;
+    private fill?: string;
 
     constructor(private options: MapperOptions) {}
 
@@ -243,6 +244,27 @@ export class UpdateMapper {
             this.cost = update.cost.amount;
         }
 
+        return [...this.context(update), ...this.rateLimit(update)];
+    }
+
+    /** The window's fill, when the agent reports one that makes sense. The agents repeat it with every update. */
+    private context({ used, size }: { used: number; size: number }): EngineEvent[] {
+        if (!Number.isFinite(used) || !Number.isFinite(size) || used < 0 || size <= 0) {
+            return [];
+        }
+
+        const signature = `${ used }/${ size }`;
+
+        if (signature === this.fill) {
+            return [];
+        }
+
+        this.fill = signature;
+
+        return [{ type: 'context', used, size }];
+    }
+
+    private rateLimit(update: Extract<SessionUpdate, { sessionUpdate: 'usage_update' }>): EngineEvent[] {
         // Claude's adapter forwards the SDK's rate-limit info; no other agent says anything about quotas.
         const info = update._meta?.['_claude/rateLimit'];
 

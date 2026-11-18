@@ -129,13 +129,13 @@ describe('numbers', () => {
     test('tokens come from the prompt response and cost is the rise over the session\'s earlier total', () => {
         const { events } = run([cost(1.5)], { costBefore: 1 }, { stopReason: 'end_turn', usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14, cachedReadTokens: 6 } });
 
-        expect(events).toEqual([{ type: 'usage', inputTokens: 16, outputTokens: 4, costUsd: 0.5 }]);
+        expect(events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 16, outputTokens: 4, costUsd: 0.5 }]);
     });
 
     test('a resumed session this daemon never measured reports tokens without a cost', () => {
         const { events } = run([cost(9)], { costBefore: undefined }, { stopReason: 'end_turn', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } });
 
-        expect(events).toEqual([{ type: 'usage', inputTokens: 1, outputTokens: 1 }]);
+        expect(events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 1, outputTokens: 1 }]);
     });
 
     test('nothing is reported when the agent reports nothing', () => {
@@ -143,18 +143,46 @@ describe('numbers', () => {
     });
 
     test('a cost in another currency is ignored', () => {
-        const { events } = run([{ sessionUpdate: 'usage_update', used: 1, size: 1, cost: { amount: 5, currency: 'EUR' } }]);
+        const { events, mapper } = run([{ sessionUpdate: 'usage_update', used: 1, size: 1, cost: { amount: 5, currency: 'EUR' } }]);
 
-        expect(events).toEqual([]);
+        expect(mapper.cost).toBeUndefined();
+        expect(events.filter(event => event.type === 'usage')).toEqual([]);
     });
 
     test('rate limits: warnings and rejections are signals, repeats and "allowed" are not', () => {
         const limit = (status: string, resetsAt?: number): SessionUpdate => ({ sessionUpdate: 'usage_update', used: 1, size: 1, _meta: { '_claude/rateLimit': { status, rateLimitType: 'seven_day', utilization: 0.8, resetsAt } } });
         const { events } = run([limit('allowed'), limit('allowed_warning', 100), limit('allowed_warning', 100), limit('rejected', 200)]);
 
-        expect(events).toEqual([
+        expect(events.filter(event => event.type === 'limit')).toEqual([
             { type: 'limit', status: 'warning', kind: 'seven_day', utilization: 0.8, resetsAt: 100 },
             { type: 'limit', status: 'rejected', kind: 'seven_day', utilization: 0.8, resetsAt: 200 },
         ]);
+    });
+});
+
+describe('the context window', () => {
+    const fill = (used: number, size: number): SessionUpdate => ({ sessionUpdate: 'usage_update', used, size });
+    const contexts = (events: EngineEvent[]) => events.filter(event => event.type === 'context');
+
+    test('a usage update reports how full the window is, and the same reading again is not repeated', () => {
+        const { events } = run([fill(21269, 1_000_000), fill(21269, 1_000_000), fill(21491, 1_000_000), fill(21491, 200_000)]);
+
+        expect(contexts(events)).toEqual([
+            { type: 'context', used: 21269, size: 1_000_000 },
+            { type: 'context', used: 21491, size: 1_000_000 },
+            { type: 'context', used: 21491, size: 200_000 },
+        ]);
+    });
+
+    test('comes with the cost and the rate limit of the same update, each in its own event', () => {
+        const update: SessionUpdate = { sessionUpdate: 'usage_update', used: 5, size: 100, cost: { amount: 1, currency: 'USD' }, _meta: { '_claude/rateLimit': { status: 'rejected', rateLimitType: 'five_hour' } } };
+
+        expect(run([update]).events.map(event => event.type)).toEqual(['context', 'limit', 'usage']);
+    });
+
+    test('a reading that makes no sense is ignored', () => {
+        const { events } = run([fill(5, 0), fill(-1, 100), fill(Number.NaN, 100), fill(5, Number.POSITIVE_INFINITY)]);
+
+        expect(contexts(events)).toEqual([]);
     });
 });

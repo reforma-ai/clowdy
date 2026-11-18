@@ -161,9 +161,17 @@ export interface Run {
     error?: string;
     /** Tokens and cost the engine reported, summed over the run's turns. */
     usage?: RunUsage;
+    /** The context window of the engine's session, as of its latest report (written when it moves by a percent, and when a turn ends). */
+    context?: RunContext;
     createdAt: number;
     startedAt?: number;
     finishedAt?: number;
+}
+
+/** How full the agent's context window was at its latest report, in tokens. Only agents that report it have one (Claude and Codex do, Cursor does not). */
+export interface RunContext {
+    used: number;
+    size: number;
 }
 
 export interface RunUsage {

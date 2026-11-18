@@ -41,6 +41,8 @@ export interface AgentSpec {
     sessionMeta?: Record<string, unknown>;
     /** The agent's own switches, shown with its account. */
     settings?: AgentSettingSpec[];
+    /** The message that makes the agent compact its conversation (verified: both report it as a "Compact conversation" tool call and a smaller context). Absent when it has none. */
+    compact?: string;
 }
 
 /**
@@ -56,6 +58,7 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         name: 'Claude Code',
         programs: ['claude'],
         launch: { kind: 'package', package: '@agentclientprotocol/claude-agent-acp@0.107.0', pathEnv: 'CLAUDE_CODE_EXECUTABLE' },
+        compact: '/compact',
         // Sub-agents are a feature, this only caps hidden fan-out. The rest of what a run does not do by default (claude.ai
         // connectors, the agent's own memory) is a setting below, off until the person turns it on.
         env: { CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '20' },
@@ -100,6 +103,7 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         name: 'Codex',
         programs: ['codex'],
         launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.6.0', pathEnv: 'CODEX_PATH' },
+        compact: '/compact',
         scrub: [/^OPENAI_API_KEY$/, /^CODEX_API_KEY$/],
         login: 'codex login',
     },

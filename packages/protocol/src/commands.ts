@@ -42,6 +42,12 @@ export const commandSchema = z.discriminatedUnion('type', [
      * choice); `engine` only while the chat has no orchestrator yet, and a new `engine` without a `model` clears both.
      */
     z.object({ ...base, type: z.literal('chat.setModel'), chatId: z.string(), engine: engine.optional(), model: model.nullable().optional(), effort: effort.nullable().optional() }),
+    /**
+     * Asks the chat's agent to compact its context (its own `/compact`) as a turn of the orchestrator, which the stream shows. Refused (`conflict`) while the orchestrator
+     * works or waits for its children, and while it has child results it has not read (a message reads them); refused (`invalid`) for a chat that has not started
+     * or whose agent has no such command. It is not activity: the chat keeps its place in the order.
+     */
+    z.object({ ...base, type: z.literal('chat.compact'), chatId: z.string() }),
     /** Hides the chat from the lists without deleting anything (refused while any of its runs is active), or brings it back. */
     z.object({ ...base, type: z.literal('chat.setArchived'), chatId: z.string(), archived: z.boolean() }),
     /** Removes the chat with its orchestrator's conversation and every run below it; the tasks stay. Refused while any of its runs is active. */

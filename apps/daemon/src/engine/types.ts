@@ -64,6 +64,8 @@ export type EngineEvent =
     | { type: 'limit'; status: 'warning' | 'rejected'; kind?: string; utilization?: number; resetsAt?: number }
     /** The OS process behind the session, so the runtime can kill its group on cancel and after a daemon crash. */
     | { type: 'process'; pid: number; pgid?: number; startedAt?: number }
+    /** How full the session's context window is: tokens in it and the window's size. Only agents that report it send one. */
+    | { type: 'context'; used: number; size: number }
     | { type: 'usage'; inputTokens: number; outputTokens: number; costUsd?: number }
     | { type: 'done'; result?: string }
     /** A failure that ends the turn. `code` is a stable identifier of the cause (`not_logged_in`, `usage_limit`, ...). */

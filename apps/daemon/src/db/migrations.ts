@@ -217,4 +217,11 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 6,
+        up(db) {
+            // The context window of a run's session, as `{ used, size }` in tokens (see `Run.context`).
+            db.run('ALTER TABLE runs ADD COLUMN context TEXT');
+        },
+    },
 ];
