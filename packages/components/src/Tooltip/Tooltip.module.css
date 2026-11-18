@@ -29,6 +29,12 @@
         margin-inline-end: calc(-1 * var(--spacing-xs));
     }
 
+    /* The capsule has its own padding, so the label needs more room than the space between them to read as separate from it. */
+    .tooltip > :global([data-hotkey]),
+    .tooltip > :global([data-hotkey-sequence]) {
+        margin-inline-start: var(--spacing-sm);
+    }
+
     .tooltip[data-entering],
     .tooltip[data-exiting] {
         transform: var(--tooltip-origin);

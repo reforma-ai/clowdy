@@ -7,6 +7,7 @@
         --hotkey-background: color-mix(in oklab, currentColor 20%, transparent);
     }
 
+    /* A single key is a square: the minimum width equals the height the line and the padding make (the leading token of its text size). */
     .hotkey {
         --clowdy-hotkey-radius: var(--radius-sm);
 
@@ -24,22 +25,22 @@
 
     .hotkey[data-size='xs'] {
         --clowdy-hotkey-radius: var(--radius-xs);
-        min-width: calc(1em + var(--spacing-6));
-        min-height: calc(1em + var(--spacing-4));
+        min-width: calc(var(--leading-xs) + 2 * var(--spacing-2));
+        min-height: calc(var(--leading-xs) + 2 * var(--spacing-2));
         padding: var(--spacing-2) var(--spacing-4);
     }
 
     .hotkey[data-size='sm'] {
         --clowdy-hotkey-radius: var(--radius-sm);
-        min-width: calc(1em + var(--spacing-8));
-        min-height: calc(1em + var(--spacing-6));
+        min-width: calc(var(--leading-sm) + 2 * var(--spacing-4));
+        min-height: calc(var(--leading-sm) + 2 * var(--spacing-4));
         padding: var(--spacing-4) var(--spacing-6);
     }
 
     .hotkey[data-size='md'] {
         --clowdy-hotkey-radius: var(--radius-sm);
-        min-width: calc(1em + var(--spacing-10));
-        min-height: calc(1em + var(--spacing-8));
+        min-width: calc(var(--leading-md) + 2 * var(--spacing-6));
+        min-height: calc(var(--leading-md) + 2 * var(--spacing-6));
         padding: var(--spacing-6) var(--spacing-8);
     }
 

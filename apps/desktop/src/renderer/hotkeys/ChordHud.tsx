@@ -16,13 +16,13 @@ export function ChordHud({ registry = hotkeys }: { registry?: HotkeyRegistry }) 
     return (
         <div className={ styles.layer }>
             <div className={ styles.hud } role="status" aria-label="Shortcut in progress">
-                <Hotkey sequence={ pending.typed } size="sm" className={ styles.typed } />
+                <Hotkey sequence={ pending.typed } size="xs" className={ styles.typed } />
                 <ul className={ styles.next }>
                     { pending.candidates.map(({ command, remaining }, index) => (
                         // The same command can continue in two ways, so its id alone is not unique.
                         <li key={ `${ command.id }:${ index }` } className={ styles.item }>
-                            <Hotkey sequence={ remaining } size="sm" />
-                            <Text color="secondary" whitespace="nowrap">{ command.title }</Text>
+                            <Hotkey sequence={ remaining } size="xs" />
+                            <Text variant="sm" color="secondary" whitespace="nowrap">{ command.title }</Text>
                         </li>
                     )) }
                 </ul>
