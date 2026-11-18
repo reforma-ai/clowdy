@@ -5,6 +5,7 @@ import { TransportError, type CommandInput, type FeedStatus, type StreamTarget, 
 
 import type {
     AgentInfo,
+    AgentModels,
     Attachment,
     ClowdyEvent,
     CommandResult,
@@ -138,6 +139,10 @@ export class HttpTransport implements Transport {
 
     getAgents(): Promise<AgentInfo[]> {
         return this.#get(ROUTES.agents);
+    }
+
+    getAgentModels(agentId: string): Promise<AgentModels> {
+        return this.#get(ROUTES.agentModels(agentId));
     }
 
     async command(command: CommandInput): Promise<CommandResult> {

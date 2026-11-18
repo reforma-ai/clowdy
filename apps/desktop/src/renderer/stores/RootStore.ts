@@ -1,5 +1,6 @@
 import { makeAutoObservable, observableRef, runInAction } from 'mobx';
 
+import { ModelsStore } from './ModelsStore';
 import { NavHistory } from './NavHistory';
 import { ProjectState } from './ProjectState';
 import { browserStorage, readStored, writeStored, type KeyValueStorage } from './storage';
@@ -49,6 +50,8 @@ export class RootStore {
     agentsError = '';
     readonly ui: UiStore;
     readonly streams: StreamStore;
+    /** The models each agent offers, read when a model picker first asks. */
+    readonly models: ModelsStore;
     /** Back and forward through what the window showed. */
     readonly history: NavHistory;
     readonly #states = new Map<ProjectId, ProjectState>();
@@ -66,7 +69,8 @@ export class RootStore {
         this.#notify = notify;
         this.ui = new UiStore(storage, initialUi);
         this.streams = new StreamStore(transport);
-        makeAutoObservable<RootStore, 'transport'>(this, { transport: false, ui: false, streams: false, history: false, projects: observableRef, agents: observableRef });
+        this.models = new ModelsStore(transport);
+        makeAutoObservable<RootStore, 'transport'>(this, { transport: false, ui: false, streams: false, models: false, history: false, projects: observableRef, agents: observableRef });
         // After `makeAutoObservable`: the history watches `selectedProjectId`, which is not observable before it.
         this.history = new NavHistory(this);
     }
@@ -256,6 +260,8 @@ export class RootStore {
         queueMicrotask(() => {
             this.#agentsScheduled = false;
             void this.refreshAgents();
+            // The model lists the UI opened follow the agents: a sign-in or a switch changes what an agent offers.
+            void this.models.reloadOpened();
         });
     }
 
@@ -280,6 +286,8 @@ export class RootStore {
             });
             this.#follow(snapshot.cursor);
             void this.refreshAgents();
+            // An `agents.changed` may have been lost in the gap, and the lists that were opened follow it.
+            void this.models.reloadOpened();
         }
         catch {
             this.#resyncTimer = setTimeout(() => void this.#resync(), RESYNC_RETRY_MS);

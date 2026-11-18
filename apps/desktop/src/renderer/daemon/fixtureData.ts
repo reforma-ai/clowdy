@@ -1,5 +1,6 @@
 import type {
     AgentInfo,
+    AgentModels,
     Artifact,
     Attachment,
     Chat,
@@ -39,6 +40,8 @@ export interface FixtureData {
     skillWarnings: string[];
     /** The agents the daemon knows, as `GET /v1/agents` lists them. */
     agents: AgentInfo[];
+    /** What `GET /v1/agents/:id/models` answers, by agent id. */
+    agentModels: Record<string, AgentModels>;
 }
 
 /** A file a message already carries: the metadata the stream shows and the content the fixture serves. */
@@ -99,6 +102,49 @@ export const FIXTURE_LIVE_TEXT_ID = 'r-ex-07-9';
 
 const MINUTE = 60_000;
 
+const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const CODEX_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+
+/** The models the three agents list, in the spelling of each: Claude's `default` row stands for Opus, a Cursor id is a family, Codex has `ultra`. */
+function fixtureAgentModels(now: number): Record<string, AgentModels> {
+    return {
+        claude: {
+            state: 'ok',
+            fetchedAt: now,
+            models: [
+                { id: 'default', name: 'Default (recommended)', description: 'Opus 5.5 · Best for complex work', isDefault: true, resolvedId: 'claude-opus-5-5', efforts: CLAUDE_EFFORTS },
+                { id: 'opus', name: 'Opus 5.5', description: 'Best for complex work', resolvedId: 'claude-opus-5-5', efforts: CLAUDE_EFFORTS },
+                { id: 'fable', name: 'Fable 5.2', description: 'Deep reasoning and writing', resolvedId: 'claude-fable-5-2', efforts: CLAUDE_EFFORTS },
+                { id: 'sonnet', name: 'Sonnet 5.5', description: 'Best for everyday tasks', resolvedId: 'claude-sonnet-5-5', efforts: CLAUDE_EFFORTS },
+                { id: 'haiku', name: 'Haiku 5.5', description: 'Fastest for quick answers', resolvedId: 'claude-haiku-5-5', efforts: CLAUDE_EFFORTS },
+                { id: 'claude-opus-4-6', name: 'Opus 4.6', description: 'Previous generation', efforts: ['low', 'medium', 'high', 'max'] },
+                { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', description: 'Small and quick, with no reasoning control' },
+            ],
+        },
+        codex: {
+            state: 'ok',
+            fetchedAt: now,
+            models: [
+                { id: 'gpt-6.2-sol', name: 'GPT-6.2 Sol', description: 'Frontier model for coding and agentic work', isDefault: true, efforts: CODEX_EFFORTS, defaultEffort: 'low' },
+                { id: 'gpt-6-sol', name: 'GPT-6 Sol', description: 'The previous Sol', efforts: CODEX_EFFORTS, defaultEffort: 'medium' },
+                { id: 'gpt-6-luna', name: 'GPT-6 Luna', description: 'Smaller and faster', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' },
+                { id: 'gpt-6-mini', name: 'GPT-6 Mini', description: 'Quick answers, one reasoning level', efforts: ['medium'], defaultEffort: 'medium' },
+            ],
+        },
+        cursor: {
+            state: 'ok',
+            fetchedAt: now,
+            models: [
+                { id: 'default', name: 'Auto', description: 'Cursor picks the model for each request', isDefault: true },
+                { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', efforts: CLAUDE_EFFORTS, defaultEffort: 'medium' },
+                { id: 'gpt-5.5', name: 'GPT-5.5', efforts: ['none', 'low', 'medium', 'high', 'extra-high'], defaultEffort: 'medium' },
+                { id: 'grok-4.5', name: 'Grok 4.5', efforts: ['low', 'medium', 'high'], defaultEffort: 'high' },
+                { id: 'composer-2.5', name: 'Composer 2.5' },
+            ],
+        },
+    };
+}
+
 /** The three built-in agents as a daemon on a developer's machine would list them: installed, signed in, with their plan limits. */
 function fixtureAgents(now: number): AgentInfo[] {
     const inMinutes = (minutes: number) => now + minutes * MINUTE;
@@ -151,8 +197,8 @@ function fixtureAgents(now: number): AgentInfo[] {
                 state: 'ok',
                 fetchedAt: now,
                 windows: [
-                    { id: 'session', label: '5h', usedPercent: 0, resetsAt: inMinutes(4 * 60 + 59) },
-                    { id: 'weekly', label: '7d', usedPercent: 17, resetsAt: inMinutes(24 * 60) },
+                    { id: 'codex:primary', label: '5h', usedPercent: 0, resetsAt: inMinutes(4 * 60 + 59) },
+                    { id: 'codex:secondary', label: '7d', usedPercent: 17, resetsAt: inMinutes(24 * 60) },
                 ],
             },
             settings: [],
@@ -555,7 +601,12 @@ export function createFixtureData(now = Date.now()): FixtureData {
     return {
         projects,
         statuses: { [projectId]: DEFAULT_STATUSES, [FIXTURE_EMPTY_PROJECT_ID]: DEFAULT_STATUSES },
-        chats,
+        // As the daemon's migration leaves them: a chat that has an orchestrator records the engine and model it runs on.
+        chats: chats.map((chat) => {
+            const orchestrator = runs.find(candidate => candidate.id === chat.orchestratorRunId);
+
+            return orchestrator ? { ...chat, engine: orchestrator.engine, ...(orchestrator.model && { model: orchestrator.model }) } : chat;
+        }),
         tasks,
         runs,
         chatTaskLinks,
@@ -568,5 +619,6 @@ export function createFixtureData(now = Date.now()): FixtureData {
         skills: fixtureSkills(projectId),
         skillWarnings: ['~/.claude/skills: Skipped "old-notes": it has no description'],
         agents: fixtureAgents(now),
+        agentModels: fixtureAgentModels(now),
     };
 }

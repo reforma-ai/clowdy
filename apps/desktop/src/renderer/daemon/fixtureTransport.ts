@@ -15,8 +15,10 @@ import { TransportError, type CommandInput, type FeedStatus, type StreamTarget, 
 
 import type {
     AgentInfo,
+    AgentModels,
     AgentOverrides,
     Attachment,
+    Chat,
     ClowdyEvent,
     CommandResult,
     DocFile,
@@ -76,6 +78,9 @@ function withoutEmpty(overrides: AgentOverrides): AgentOverrides | undefined {
 }
 
 type Outcome = { ok: true; data: unknown } | { ok: false; error: { code: ErrorCode; message: string; details?: unknown } };
+
+/** What a field becomes when a command may name it: the value it names, nothing for `null`, and `kept` when the command leaves it out. */
+const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefined => (change === undefined ? kept : change ?? undefined);
 
 const ok = (data: unknown = {}): Outcome => ({ ok: true, data });
 const fail = (code: ErrorCode, message: string, details?: unknown): Outcome => ({ ok: false, error: { code, message, details } });
@@ -229,6 +234,10 @@ export class FixtureTransport implements Transport {
         return structuredClone(this.#data.agents);
     }
 
+    async getAgentModels(agentId: string): Promise<AgentModels> {
+        return structuredClone(this.#data.agentModels[agentId] ?? { state: 'unavailable', models: [], detail: `Clowdy cannot list the models of ${ agentId }` });
+    }
+
     /* --------------------------------- Events --------------------------------- */
 
     #emit(projectId: ProjectId, data: EventData): void {
@@ -257,6 +266,11 @@ export class FixtureTransport implements Transport {
         if (!project) throw new TransportError(`No such project: ${ projectId }`, 404);
 
         return project;
+    }
+
+    /** The daemon refuses an agent it does not know when a chat is made or changed; one that is switched off waits for the first message. */
+    #refuseEngine(engine: string | undefined): Outcome | undefined {
+        return engine && !this.#data.agents.some(agent => agent.id === engine) ? fail('unavailable', `The ${ engine } engine is not available in this daemon`) : undefined;
     }
 
     #saveRun(run: Run): void {
@@ -434,8 +448,22 @@ export class FixtureTransport implements Transport {
             }
 
             case 'chat.create': {
+                const refused = this.#refuseEngine(command.engine);
+
+                if (refused) return refused;
+
                 const now = Date.now();
-                const chat = { id: this.#id('c'), projectId: command.projectId, title: command.title ?? 'New chat', mode: command.mode ?? 'autopilot', createdAt: now, updatedAt: now };
+                const chat: Chat = {
+                    id: this.#id('c'),
+                    projectId: command.projectId,
+                    title: command.title ?? 'New chat',
+                    mode: command.mode ?? 'autopilot',
+                    ...(command.engine && { engine: command.engine }),
+                    ...(command.model && { model: command.model }),
+                    ...(command.effort && { effort: command.effort }),
+                    createdAt: now,
+                    updatedAt: now,
+                };
 
                 data.chats.push(chat);
                 this.#emit(chat.projectId, { type: 'chat.upserted', chat });
@@ -456,6 +484,76 @@ export class FixtureTransport implements Transport {
                 this.#emit(chat.projectId, { type: 'chat.upserted', chat });
 
                 return ok();
+            }
+            case 'chat.setModel': {
+                const chat = data.chats.find(candidate => candidate.id === command.chatId);
+
+                if (!chat) return fail('not_found', 'No such chat');
+
+                const refused = this.#refuseEngine(command.engine);
+
+                if (refused) return refused;
+
+                // The daemon's rules (`setChatModel`): the provider is fixed by the first message, another provider brings its own models, a new model its own levels.
+                const switched = (command.engine ?? chat.engine) !== chat.engine;
+
+                if (switched && chat.orchestratorRunId) return fail('conflict', 'The provider of a chat is fixed once its first message was sent');
+
+                const model = named(command.model, switched ? undefined : chat.model);
+                const effort = named(command.effort, switched || model !== chat.model ? undefined : chat.effort);
+
+                // Nothing changes silently: a call that changes nothing announces nothing and does not move the chat up the list.
+                if (switched || model !== chat.model || effort !== chat.effort) {
+                    delete chat.model;
+                    delete chat.effort;
+
+                    if (command.engine) chat.engine = command.engine;
+                    if (model) chat.model = model;
+                    if (effort) chat.effort = effort;
+
+                    chat.updatedAt = Date.now();
+                    this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+                }
+
+                // The orchestrator's next turn reads its own row.
+                const run = data.runs.find(candidate => candidate.id === chat.orchestratorRunId);
+
+                if (run && (run.model !== chat.model || run.effort !== chat.effort)) {
+                    delete run.model;
+                    delete run.effort;
+
+                    if (chat.model) run.model = chat.model;
+                    if (chat.effort) run.effort = chat.effort;
+
+                    this.#saveRun(run);
+                }
+
+                return ok({ chat: structuredClone(chat) });
+            }
+            case 'chat.compact': {
+                const chat = data.chats.find(candidate => candidate.id === command.chatId);
+
+                if (!chat) return fail('not_found', 'No such chat');
+
+                const run = data.runs.find(candidate => candidate.id === chat.orchestratorRunId);
+
+                if (!run) return fail('invalid', 'This chat has no conversation to compact yet');
+
+                // Only these agents have a command of their own to compact the conversation.
+                if (run.engine !== 'claude' && run.engine !== 'codex') {
+                    return fail('invalid', `${ data.agents.find(agent => agent.id === run.engine)?.name ?? run.engine } has no command to compact its conversation`);
+                }
+
+                if (!isTerminalRunStatus(run.status)) return fail('conflict', 'The orchestrator is working on this chat. Compact it when it has finished');
+
+                this.#appendItem(run, { kind: 'note', text: 'Compacting the conversation' });
+
+                // The agent reports a lower reading once it has compacted.
+                if (run.context) run.context = { ...run.context, used: Math.round(run.context.used / 2) };
+
+                this.#saveRun(run);
+
+                return ok({ chatId: chat.id, runId: run.id });
             }
             case 'chat.setArchived': {
                 const chat = data.chats.find(candidate => candidate.id === command.chatId);
@@ -670,7 +768,9 @@ export class FixtureTransport implements Transport {
                 name: `Orchestrator ${ String(number).padStart(2, '0') }`,
                 summary: chat.title,
                 status: 'running',
-                engine: 'fake',
+                engine: chat.engine ?? 'fake',
+                ...(chat.model && { model: chat.model }),
+                ...(chat.effort && { effort: chat.effort }),
                 createdAt: Date.now(),
                 startedAt: Date.now(),
             };

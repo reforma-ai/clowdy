@@ -1,5 +1,6 @@
 import type {
     AgentInfo,
+    AgentModels,
     Attachment,
     ChatId,
     ClowdyEvent,
@@ -61,6 +62,8 @@ export interface Transport {
     getSkills: (projectId?: ProjectId) => Promise<SkillCatalog>;
     /** Every agent the daemon knows, with who is signed in to it, its usage and its settings. */
     getAgents: () => Promise<AgentInfo[]>;
+    /** The models an agent offers, with the reasoning levels of each. The daemon reads them from the agent's own program and keeps them for ten minutes. */
+    getAgentModels: (agentId: string) => Promise<AgentModels>;
 }
 
 /** The daemon could not be reached, or answered something other than the contract. */

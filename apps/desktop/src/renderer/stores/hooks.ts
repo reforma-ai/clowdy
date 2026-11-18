@@ -1,6 +1,7 @@
 import { createContext, use, useEffect } from 'react';
 
 import type { AgentInfo, Chat, RunId } from '@clowdy/protocol';
+import type { AgentModelList } from './ModelsStore';
 import type { ProjectState } from './ProjectState';
 import type { RootStore } from './RootStore';
 import type { RunStream } from './StreamStore';
@@ -58,4 +59,16 @@ export function useAgents(): { agents: AgentInfo[]; status: RootStore['agentsSta
     const root = useRootStore();
 
     return { agents: root.agents, status: root.agentsStatus, error: root.agentsError, refresh: () => root.refreshAgents() };
+}
+
+/** The models an agent offers, read the first time a component asks. */
+export function useAgentModels(agentId: string | undefined): AgentModelList | undefined {
+    const models = useRootStore().models;
+    const list = agentId ? models.of(agentId) : undefined;
+
+    useEffect(() => {
+        void list?.load();
+    }, [list]);
+
+    return list;
 }

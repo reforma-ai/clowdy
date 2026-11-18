@@ -45,6 +45,7 @@ const unconfigured: Transport = {
     deleteAttachment: noDaemon,
     getSkills: noDaemon,
     getAgents: noDaemon,
+    getAgentModels: noDaemon,
 };
 
 export function createTransport(config: DaemonConfig): Transport {

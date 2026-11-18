@@ -244,6 +244,35 @@ describe('RootStore resync', () => {
         root.dispose();
     });
 
+    it('reads the model lists that were opened again, for an agents.changed it may have missed', async () => {
+        const transport = new FixtureTransport();
+        const feeds: Array<(status: FeedStatus) => void> = [];
+        const asked: string[] = [];
+        const spy = overrideTransport(transport, {
+            getAgentModels: (agentId: string) => {
+                asked.push(agentId);
+
+                return transport.getAgentModels(agentId);
+            },
+            subscribe: (cursor, onEvent, onStatus) => {
+                feeds.push(onStatus);
+
+                return transport.subscribe(cursor, onEvent, onStatus);
+            },
+        });
+        const root = new RootStore(spy, { storage: memoryStorage() });
+
+        await root.load();
+        await root.models.of('claude').load();
+        root.models.of('codex');
+        asked.length = 0;
+        feeds[0]('resync');
+        await settle();
+
+        expect(asked).toEqual(['claude']);
+        root.dispose();
+    });
+
     it('tries again while the daemon stays out of reach', async () => {
         const transport = new FixtureTransport();
         let down = false;
