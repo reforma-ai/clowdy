@@ -67,6 +67,7 @@ export function useCommands(scope: string, commands: readonly ScopedCommand[], r
             ...command,
             scope,
             when: () => current(command.id)?.when?.() ?? true,
+            focus: () => current(command.id)?.focus?.() ?? true,
             handler: event => current(command.id)?.handler(event),
         }));
 

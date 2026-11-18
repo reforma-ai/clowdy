@@ -290,13 +290,13 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **This stage:** Finish the first keymap and teach it in place. `C` opens the create dialog. The view toggle, the filter popover and the search field get keys. Copy keys put the task key or title on the clipboard with a toast. `O C` and `O D` jump from a task to its chat or its newest document. Every Tasks button and menu that has a key shows it, and a button that is unavailable shows no hint, as the spec says no non-working buttons.
 
-- [ ] Complete
-  - [ ] `C` opens the create dialog through `openCreateTask`
-  - [ ] `Cmd+B` toggles board and list, `F` opens the filter popover, `/` focuses the search field
-  - [ ] `Cmd+.` copies the task key and `Cmd+Shift+'` copies the title (several lines for a selection), each with a toast
-  - [ ] `O C` opens the cursor task's newest chat and `O D` its newest document result, through `ProjectUi` and `getTaskDetail`, and both say so in a toast when there is none
-  - [ ] Hints through `commandHint` on `TasksHeader` buttons, the `DetailPanel` foot buttons and the picker rows
-  - [ ] Every Tasks command appears in the help overlay under its group
+- [x] Complete
+  - [x] `C` opens the create dialog through `openCreateTask`
+  - [x] `Cmd+B` toggles board and list, `F` opens the filter popover, `/` focuses the search field
+  - [x] `Cmd+.` copies the task key and `Cmd+Shift+'` copies the title (several lines for a selection), each with a toast
+  - [x] `O C` opens the cursor task's newest chat and `O D` its newest document result, through `ProjectUi` and `getTaskDetail`, and both say so in a toast when there is none
+  - [x] Hints through `commandHint` on `TasksHeader` buttons, the `DetailPanel` foot buttons and the picker rows
+  - [x] Every Tasks command appears in the help overlay under its group
 
 **Files**
 
@@ -308,6 +308,24 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **Done when:** from a fresh Tasks screen, the keys `C`, `F`, `/`, `Cmd+B`, `Cmd+.`, `O C` and `O D` each do their thing, and each button with a key shows it in its tooltip.
 **Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/desktop`, then a screenshot pass of the tooltips and the help overlay with all Tasks groups
+**Landed in the stage**
+
+- `tasks.create` (`c`), `tasks.view.toggle` (`$mod+b`), `tasks.filter` (`f`), `tasks.search` (`/`), `tasks.copy.key` (`$mod+.`), `tasks.copy.title` (`$mod+Shift+Quote`), `tasks.chat.open` (`o c`), `tasks.doc.open` (`o d`). `o c` and `o d` are available for any cursor task and toast "CAR-30 has no chat yet" or "… has no document yet" when there is nothing to open.
+- `Command.focus?: () => boolean`: the dispatcher checks it together with `when`, while the help overlay and the hints ignore it, so the overlay no longer dims every focus-dependent command while its search field has focus. The zone checks of Tasks, Chats, Agents and Docs moved from `when` to `focus`. `focusZoneOf` delegates to `listFocusOf`.
+- The dispatcher keeps claiming the repeats of a key it claimed on press until another key goes down, so a held `c` does not type "ccc" into the New task dialog.
+- Cursor-follow overwrites the current history entry through `replacing`, so holding `J` with the panel open leaves one entry; `Enter` pushes its own.
+- `Enter` in the search field leaves it, as does `Esc` on an empty field; `TasksHeader` takes that `Enter` so it does not open the first card.
+- The view toggle's tooltip reads "Switch view ⌘B" on both items, because a hint on only the inactive item remounted the pressed button.
+- After a rename ends, focus returns to the cursor's card or row through Screen's focus restoration.
+- Clipboard refusals show an error toast.
+
+**Follow-ups**
+
+- `ConfirmButton` still shows the Delete tooltip on its armed "Confirm" label. Dropping it while armed rebuilds the button, so the fix belongs in `ConfirmButton`.
+- Hovering another card moves the cursor but not the open panel, and `Cmd+Enter` starts the cursor task, so the panel's Start hint could name a key that starts a different task than the panel shows. Fixed by the parent after the stage: with the panel open, `Cmd+Enter` starts the open task.
+- `c`, `f` and `/` still work with a panel control focused, such as a closed Select. That is deliberate and tested.
+- Chord abort: a second key that matches no continuation still starts a fresh command. Swallowing it would either break `Tab` and `Cmd+C` or let a row's type-ahead take it, and the `o c` case that exposed it is gone.
+
 **Commits:** None yet.
 
 ## Stage 7 — Undo for reversible task edits (optional)
@@ -408,4 +426,6 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 - A stale stored id at startup (a task or chat deleted since the last run) makes the first entry unreachable once the project snapshot arrives. A fix would rewrite entry 0 to what the window actually shows when the first project is ready.
 - Mouse side buttons, Cmd+←/→ and a history that survives a restart are out of scope.
 
-**Commits:** None yet.
+**Commits:**
+
+- `80d7d3c` feat(desktop): back and forward history with title band buttons

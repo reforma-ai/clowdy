@@ -1,6 +1,6 @@
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
-import type { Actor, Artifact, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId, TaskStatus } from '@clowdy/protocol';
+import type { Actor, Artifact, Chat, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId, TaskStatus } from '@clowdy/protocol';
 import type { StatusTone } from '../../shared';
 import type { TasksView } from '../../stores';
 
@@ -344,6 +344,16 @@ export function resultRows(artifacts: readonly Artifact[], { expectChecks }: { e
     }
 
     return rows;
+}
+
+/** The path of the document the task produced last, which is the first document row of `resultRows`. A document artifact that names no file is not one. */
+export function newestDocPath(artifacts: readonly Artifact[]): string | null {
+    return resultRows(artifacts, { expectChecks: false }).find(row => row.docPath)?.docPath ?? null;
+}
+
+/** The chat that was active last among the chats that discuss a task. */
+export function newestChat<T extends Pick<Chat, 'updatedAt'>>(chats: readonly T[]): T | undefined {
+    return chats.reduce<T | undefined>((newest, chat) => (newest === undefined || chat.updatedAt > newest.updatedAt ? chat : newest), undefined);
 }
 
 /** The id of the task a `task.create` answered with. The daemon answers `{ task }`, the fixture daemon the task itself. */

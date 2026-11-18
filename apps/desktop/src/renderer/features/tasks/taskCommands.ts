@@ -1,8 +1,9 @@
+import { listFocusOf } from '../../hotkeys/listNavigation';
 import { statusOptions, taskOptions } from './pickerOptions';
-import { adjacentStatus, blockedByOptions, blockingOptions, toggleDependency } from './taskView';
+import { adjacentStatus, blockedByOptions, blockingOptions, newestChat, toggleDependency } from './taskView';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
-import type { CommandResult, Task, TaskId, TaskStatus } from '@clowdy/protocol';
+import type { Chat, CommandResult, Task, TaskId, TaskStatus } from '@clowdy/protocol';
 import type { CommandInput } from '../../daemon/transport';
 import type { Command } from '../../hotkeys';
 import type { Direction, ListCursor } from '../../hotkeys/listCursor';
@@ -23,20 +24,24 @@ export type FocusZone = 'list' | 'nav' | 'other';
 /** Marks what on a card or row does its own thing when pressed (the agent chips). It is not the task, so the task's keys leave it alone. */
 export const TASK_CONTROL = '[data-task-control]';
 
-/** The zone of the element that has focus, given the element that holds the board or the list. */
+/** The id of the task whose card or row holds the element, or null for what is not the task itself: an agent chip, or anything outside a card or row. */
+const taskIdOf = (element: Element): TaskId | null => (element.closest(TASK_CONTROL) ? null : element.closest<HTMLElement>('[data-task-id]')?.dataset.taskId ?? null);
+
+/**
+ * The zone of the element that has focus, given the element that holds the board or the list.
+ * A focusable thing inside the region that is not a card or row (a table's column header) keeps its own keys too.
+ */
 export function focusZoneOf(active: Element | null, region: Element | null): FocusZone {
-    if (!active || active === active.ownerDocument.body || active === active.ownerDocument.documentElement) return 'list';
+    const focus = listFocusOf(region, taskIdOf, active);
 
-    if (active.closest(TASK_CONTROL)) return 'other';
+    if (focus.zone === 'other') return 'other';
 
-    if (region?.contains(active)) return 'list';
-
-    return active.closest('nav') ? 'nav' : 'other';
+    return focus.zone === 'idle' && active?.closest('nav') ? 'nav' : 'list';
 }
 
 export interface TaskCommandDeps {
     cursor: ListCursor;
-    ui: Pick<ProjectUi, 'taskId' | 'openTask'>;
+    ui: Pick<ProjectUi, 'taskId' | 'openTask' | 'openChat' | 'openDoc' | 'setTasksView'>;
     /** Whether the task still exists. The open task can be one that is gone, and then there is no panel to follow with. */
     hasTask: (taskId: TaskId) => boolean;
     view: () => TasksView;
@@ -61,6 +66,22 @@ export interface TaskCommandDeps {
     confirm: (request: OpenConfirmModalOptions) => void;
     /** Puts the keyboard in the title of the task's panel, which is open (or opening) when this is called. */
     focusTitle: (taskId: TaskId) => void;
+    /** Opens the "New task" dialog, as the header's button does. */
+    create: () => void;
+    /** Opens the filter popover, with the keyboard in it. */
+    openFilter: () => void;
+    /** Puts the keyboard in the search field and selects its text. The key that asked for it is not typed into it. */
+    focusSearch: () => void;
+    /** The chats that discuss a task. */
+    chatsOf: (taskId: TaskId) => readonly Pick<Chat, 'id' | 'updatedAt'>[];
+    /** The path of the newest document the task produced, or null when it has none. Asks the daemon, so it can reject. */
+    docPathOf: (taskId: TaskId) => Promise<string | null>;
+    /** Puts the text on the clipboard and says `message` once it is there, or that it could not be. */
+    copy: (text: string, message: string) => void;
+    /** Shows a short message to the person. */
+    notify: (message: string, tone?: 'info' | 'error') => void;
+    /** Runs a change of what the window shows so that it overwrites the current history entry instead of adding one. See `NavHistory.replacing`. */
+    replacing: (change: () => void) => void;
 }
 
 /**
@@ -81,15 +102,29 @@ function onTargets(deps: TaskCommandDeps, act: () => void) {
     else deps.revealCursor();
 }
 
-/** After the cursor moved: an open panel follows it, and the item shows. */
-function settle({ cursor, ui, hasTask, revealCursor }: TaskCommandDeps) {
-    if (cursor.cursorId !== null && ui.taskId !== null && hasTask(ui.taskId)) ui.openTask(cursor.cursorId);
+/**
+ * After the cursor moved: an open panel follows it, and the item shows.
+ * The following replaces the history entry, so holding `J` does not fill Back with every task it passed. Opening a task on purpose (`Enter`, a click) is an entry.
+ */
+function settle({ cursor, ui, hasTask, revealCursor, replacing }: TaskCommandDeps) {
+    const { cursorId } = cursor;
+
+    if (cursorId !== null && ui.taskId !== null && hasTask(ui.taskId)) replacing(() => ui.openTask(cursorId));
 
     revealCursor();
 }
 
-/** Whether the list's keys apply: there is a task, and the focus is not in a widget that keeps its own arrows and letters. */
-const reachable = ({ cursor, focusZone }: TaskCommandDeps) => cursor.cursorId !== null && focusZone() !== 'other';
+/** Whether there is a task under the cursor. The help overlay and the key hints ask this too. */
+const hasCursor = ({ cursor }: TaskCommandDeps) => cursor.cursorId !== null;
+
+/**
+ * Whether the focus is not in a widget that keeps its own arrows and letters. Only the dispatcher asks: the help overlay's search field
+ * has the focus while it lists the commands, and it would show every one of them as unavailable.
+ */
+const inList = ({ focusZone }: TaskCommandDeps) => focusZone() !== 'other';
+
+/** The gates of a key that acts on the cursor task where the list has the focus. */
+const onTheList = (deps: TaskCommandDeps): Pick<Command, 'when' | 'focus'> => ({ when: () => hasCursor(deps), focus: () => inList(deps) });
 
 /** The cursor, `Enter` and `Escape`. `Enter` only acts where the list has the focus, so it never takes a key from a widget that uses it. */
 function navigationCommands(deps: TaskCommandDeps): Command[] {
@@ -100,7 +135,7 @@ function navigationCommands(deps: TaskCommandDeps): Command[] {
         group: GROUP,
         keys,
         scope: TASKS_SCOPE,
-        when: () => reachable(deps),
+        ...onTheList(deps),
         repeat: true,
         handler: () => onCursor(deps, () => {
             cursor.move(direction);
@@ -112,8 +147,8 @@ function navigationCommands(deps: TaskCommandDeps): Command[] {
     return [
         move('tasks.cursor.down', 'Move down', ['ArrowDown', 'j'], 'down'),
         move('tasks.cursor.up', 'Move up', ['ArrowUp', 'k'], 'up'),
-        move('tasks.cursor.left', 'Move to the column on the left', 'ArrowLeft', 'left', { when: () => view() === 'board' && reachable(deps) }),
-        move('tasks.cursor.right', 'Move to the column on the right', 'ArrowRight', 'right', { when: () => view() === 'board' && reachable(deps) }),
+        move('tasks.cursor.left', 'Move to the column on the left', 'ArrowLeft', 'left', { when: () => view() === 'board' && hasCursor(deps) }),
+        move('tasks.cursor.right', 'Move to the column on the right', 'ArrowRight', 'right', { when: () => view() === 'board' && hasCursor(deps) }),
         move('tasks.cursor.first', 'Jump to the first task', 'Home', 'first', { repeat: false }),
         move('tasks.cursor.last', 'Jump to the last task', 'End', 'last', { repeat: false }),
         {
@@ -122,7 +157,9 @@ function navigationCommands(deps: TaskCommandDeps): Command[] {
             group: GROUP,
             keys: 'Enter',
             scope: TASKS_SCOPE,
-            when: () => cursor.cursorId !== null && focusZone() === 'list',
+            when: () => hasCursor(deps),
+            // Enter presses a button, so unlike the arrows it is not ours on a rail button either.
+            focus: () => focusZone() === 'list',
             handler: () => onCursor(deps, () => {
                 if (cursor.cursorId !== null) ui.openTask(cursor.cursorId);
             }),
@@ -157,7 +194,7 @@ function selectionCommands(deps: TaskCommandDeps): Command[] {
         group: GROUP,
         keys,
         scope: TASKS_SCOPE,
-        when: () => reachable(deps),
+        ...onTheList(deps),
         repeat: true,
         handler: () => onCursor(deps, () => {
             cursor.extend(direction);
@@ -172,7 +209,7 @@ function selectionCommands(deps: TaskCommandDeps): Command[] {
             group: GROUP,
             keys: 'x',
             scope: TASKS_SCOPE,
-            when: () => reachable(deps),
+            ...onTheList(deps),
             handler: () => onCursor(deps, () => cursor.toggle()),
         },
         extend('tasks.select.extend.down', 'Extend the selection down', 'Shift+ArrowDown', 'down'),
@@ -205,7 +242,7 @@ function statusCommands(deps: TaskCommandDeps): Command[] {
         group: GROUP,
         keys,
         scope: TASKS_SCOPE,
-        when: () => reachable(deps),
+        ...onTheList(deps),
         // One press is one step: a held key would run through the whole workflow before the first move has come back.
         handler: () => onTargets(deps, () => {
             const inputs: CommandInput[] = targetTasks(deps).flatMap((task) => {
@@ -225,7 +262,7 @@ function statusCommands(deps: TaskCommandDeps): Command[] {
             group: GROUP,
             keys: 's',
             scope: TASKS_SCOPE,
-            when: () => reachable(deps),
+            ...onTheList(deps),
             handler: () => onTargets(deps, () => {
                 const targets = targetTasks(deps);
 
@@ -267,7 +304,7 @@ function dependencyCommands(deps: TaskCommandDeps): Command[] {
         group: GROUP,
         keys,
         scope: TASKS_SCOPE,
-        when: () => reachable(deps),
+        ...onTheList(deps),
         handler: () => onCursor(deps, () => {
             const all = tasks();
             const task = all.find(candidate => candidate.id === cursor.cursorId);
@@ -317,7 +354,7 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
             group: GROUP,
             keys: 'Shift+r',
             scope: TASKS_SCOPE,
-            when: () => reachable(deps),
+            ...onTheList(deps),
             handler: () => onCursor(deps, () => {
                 if (cursor.cursorId === null) return;
 
@@ -335,8 +372,9 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
             when: () => {
                 const { cursorId } = cursor;
 
-                return reachable(deps) && cursorId !== null && hasTask(cursorId) && startBlocked(cursorId) === null;
+                return cursorId !== null && hasTask(cursorId) && startBlocked(cursorId) === null;
             },
+            focus: () => inList(deps),
             handler: () => onCursor(deps, () => {
                 if (cursor.cursorId !== null) void start(cursor.cursorId);
             }),
@@ -347,7 +385,7 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
             group: GROUP,
             keys: { mac: '$mod+Backspace', win: '$mod+Delete' },
             scope: TASKS_SCOPE,
-            when: () => reachable(deps),
+            ...onTheList(deps),
             handler: () => onTargets(deps, () => {
                 const targets = targetTasks(deps);
 
@@ -372,7 +410,123 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
     ];
 }
 
-/** The commands of the Tasks screen, for the `tasks` scope. Stages add their groups here. */
+/**
+ * `C` creates a task, `Cmd/Ctrl+B` switches the view, `F` opens the filter and `/` the search. They belong to the screen, not to a task,
+ * so they work wherever the key is not a character of a text field, which the dispatcher already keeps out.
+ */
+function screenCommands({ ui, view, create, openFilter, focusSearch }: TaskCommandDeps): Command[] {
+    return [
+        { id: 'tasks.create', title: 'New task', group: GROUP, keys: 'c', scope: TASKS_SCOPE, handler: () => create() },
+        { id: 'tasks.view.toggle', title: 'Switch between board and list', group: GROUP, keys: '$mod+b', scope: TASKS_SCOPE, handler: () => ui.setTasksView(view() === 'board' ? 'list' : 'board') },
+        { id: 'tasks.filter', title: 'Filter tasks', group: GROUP, keys: 'f', scope: TASKS_SCOPE, handler: () => openFilter() },
+        { id: 'tasks.search', title: 'Search tasks', group: GROUP, keys: '/', scope: TASKS_SCOPE, handler: () => focusSearch() },
+    ];
+}
+
+/**
+ * Copy the key or the title of the target tasks, one per line, with a toast that says what is on the clipboard.
+ * A copy changes nothing and its toast names the task, so unlike the actions it needs no cursor on screen first and no focus on the list.
+ */
+function copyCommands(deps: TaskCommandDeps): Command[] {
+    const copy = (id: string, title: string, keys: string, part: 'key' | 'title'): Command => ({
+        id,
+        title,
+        group: GROUP,
+        keys,
+        scope: TASKS_SCOPE,
+        when: () => targetTasks(deps).length > 0,
+        handler: () => {
+            const targets = targetTasks(deps);
+
+            if (targets.length === 0) return;
+
+            const text = targets.map(task => task[part]).join('\n');
+            const [first] = targets;
+            const what = targets.length === 1 ? (part === 'key' ? first.key : `the title of ${ first.key }`) : `${ targets.length } task ${ part }s`;
+
+            deps.copy(text, `Copied ${ what }`);
+        },
+    });
+
+    return [
+        copy('tasks.copy.key', 'Copy task key', '$mod+.', 'key'),
+        // Shift turns `'` into `"` on a US layout, so this one is the physical key.
+        copy('tasks.copy.title', 'Copy task title', '$mod+Shift+Quote', 'title'),
+    ];
+}
+
+/** The task under the cursor, when it still exists. */
+function cursorTask({ cursor, tasks }: TaskCommandDeps): Task | undefined {
+    return cursor.cursorId === null ? undefined : tasks().find(task => task.id === cursor.cursorId);
+}
+
+/** Opens the task's newest document in Documents, or says why it cannot. Asking the daemon takes a moment, so the task is the one the key was pressed on. */
+async function openLatestDoc({ ui, docPathOf, notify }: TaskCommandDeps, task: Task): Promise<void> {
+    try {
+        const path = await docPathOf(task.id);
+
+        if (path === null) notify(`${ task.key } has no document yet`);
+        else ui.openDoc(path);
+    }
+    catch (error) {
+        notify(`Could not load the results of ${ task.key }: ${ error instanceof Error ? error.message : String(error) }`, 'error');
+    }
+}
+
+/**
+ * `O` then `C` opens the cursor task's newest chat and `O` then `D` its newest document. Both take the cursor task only, never the selection.
+ * Both exist for every task and say so when there is nothing to open: a `O` that waited for a `C` which then fell through to "New task" would be worse than a toast.
+ */
+function linkedCommands(deps: TaskCommandDeps): Command[] {
+    const { ui, chatsOf, notify } = deps;
+
+    return [
+        {
+            id: 'tasks.chat.open',
+            title: 'Open linked chat',
+            group: GROUP,
+            keys: 'o c',
+            scope: TASKS_SCOPE,
+            when: () => cursorTask(deps) !== undefined,
+            focus: () => inList(deps),
+            handler: () => onCursor(deps, () => {
+                const task = cursorTask(deps);
+
+                if (!task) return;
+
+                const chat = newestChat(chatsOf(task.id));
+
+                if (chat) ui.openChat(chat.id);
+                else notify(`${ task.key } has no chat yet`);
+            }),
+        },
+        {
+            id: 'tasks.doc.open',
+            title: 'Open latest document',
+            group: GROUP,
+            keys: 'o d',
+            scope: TASKS_SCOPE,
+            when: () => cursorTask(deps) !== undefined,
+            focus: () => inList(deps),
+            handler: () => onCursor(deps, () => {
+                const task = cursorTask(deps);
+
+                if (task) void openLatestDoc(deps, task);
+            }),
+        },
+    ];
+}
+
+/** The commands of the Tasks screen, for the `tasks` scope. */
 export function taskCommands(deps: TaskCommandDeps): Command[] {
-    return [...navigationCommands(deps), ...selectionCommands(deps), ...statusCommands(deps), ...dependencyCommands(deps), ...actionCommands(deps)];
+    return [
+        ...navigationCommands(deps),
+        ...selectionCommands(deps),
+        ...statusCommands(deps),
+        ...dependencyCommands(deps),
+        ...actionCommands(deps),
+        ...screenCommands(deps),
+        ...copyCommands(deps),
+        ...linkedCommands(deps),
+    ];
 }

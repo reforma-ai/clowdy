@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { installDispatcher } from './dispatcher';
 import { listFocusOf, listMoveCommands } from './listNavigation';
+import { commandHint } from './react';
 import { createRegistry } from './registry';
 
 import type { HotkeyRegistry } from './registry';
@@ -210,6 +211,23 @@ describe('J and K', () => {
         expect(press('j', {}, element('a'))).toBe(false);
         expect(press('j')).toBe(false);
         expect(focused()).toBe('a');
+    });
+
+    it('stay listed and keep their hint while the focus is in a field, though the key is its own there', () => {
+        const { element } = setup();
+
+        element('search').focus();
+
+        expect(press('j', {}, element('search'))).toBe(false);
+        expect(registry.listCommands().live.map(command => command.id)).toEqual(['list.cursor.down', 'list.cursor.up']);
+        expect(commandHint('list.cursor.down', registry)).toEqual([['j']]);
+    });
+
+    it('are not live without items, so there is nothing to list or hint', () => {
+        setup({ ids: [] });
+
+        expect(registry.listCommands().live).toEqual([]);
+        expect(commandHint('list.cursor.up', registry)).toBeUndefined();
     });
 
     it('do nothing and take no key without items, or when the scope is not on the stack', () => {

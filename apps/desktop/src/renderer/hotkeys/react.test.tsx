@@ -89,6 +89,22 @@ describe('useCommands and useHotkeyScope', () => {
         expect(handler).toHaveBeenCalledTimes(1);
     });
 
+    it('reads the latest focus', () => {
+        const handler = vi.fn();
+        let inList = false;
+
+        render('tasks', [{ id: 'tasks.x', title: 'X', group: 'Tasks', keys: 'x', focus: () => inList, handler }]);
+        press('x');
+
+        expect(handler).not.toHaveBeenCalled();
+        expect(registry.listCommands().live.map(({ id }) => id)).toEqual(['tasks.x']);
+
+        inList = true;
+        press('x');
+
+        expect(handler).toHaveBeenCalledTimes(1);
+    });
+
     it('lets a scope that mounts later win over the one already mounted, and gives the key back when it leaves', () => {
         const tasks = vi.fn();
         const picker = vi.fn();
@@ -225,6 +241,13 @@ describe('commandHint', () => {
         enabled = true;
 
         expect(hint('nav.tasks')).toEqual([['g'], ['t']]);
+    });
+
+    it('still gives the keys while the focus is not where the command applies, because the focus is not part of the answer', () => {
+        define({ focus: () => false });
+
+        expect(hint('nav.tasks')).toEqual([['g'], ['t']]);
+        expect(commandTooltip('Go to Tasks', 'nav.tasks', registry)).not.toBeUndefined();
     });
 
     it('makes a component render again when the observable a when reads changes', () => {

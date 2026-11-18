@@ -1,3 +1,4 @@
+import { copyWithFeedback } from '@clowdy/components/CopyButton';
 import { toast } from '@clowdy/components/Toast';
 
 import type { CommandResult, TaskId } from '@clowdy/protocol';
@@ -47,4 +48,9 @@ export async function startTask(root: RootStore, taskId: TaskId): Promise<boolea
     finally {
         starting.delete(taskId);
     }
+}
+
+/** Puts the text on the clipboard and says so in a toast, or says it could not when the system refuses the write. */
+export function copyWithToast(text: string, message: string): void {
+    copyWithFeedback(text, () => toast.success({ message }));
 }

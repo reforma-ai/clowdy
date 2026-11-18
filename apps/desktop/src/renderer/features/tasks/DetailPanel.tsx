@@ -6,6 +6,7 @@ import { Text } from '@clowdy/components/Text';
 import { ArrowUpRight, Box, Close } from '@clowdy/icons/14';
 import { useState, type Ref } from 'react';
 
+import { commandTooltip } from '../../hotkeys';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { sendCommand, startTask } from './commands';
 import { DependencyList } from './DependencyList';
@@ -121,7 +122,8 @@ export function DetailPanel({ task, taskRuns, titleRef }: DetailPanelProps) {
             <div className={ styles.foot }>
                 { blocked && <Text color="secondary">{ blocked }</Text> }
                 <div className={ styles.actions }>
-                    <Button color="primary" size="sm" isDisabled={ blocked !== null } isPending={ isStarting } onPress={ () => void start() }>Start</Button>
+                    {/* The keys act on the cursor task, which is this one while the panel follows the cursor. A task that cannot start has no hint (the command is off). */}
+                    <Button color="primary" size="sm" isDisabled={ blocked !== null } isPending={ isStarting } tooltip={ commandTooltip('Start with an agent', 'tasks.start') } onPress={ () => void start() }>Start</Button>
                     { link && (
                         <Button variant="bordered" size="sm" href={ link.url } target="_blank" rel="noreferrer">
                             { `Open in ${ link.label }` }
@@ -129,7 +131,7 @@ export function DetailPanel({ task, taskRuns, titleRef }: DetailPanelProps) {
                         </Button>
                     ) }
                     <span className={ styles.spacer } />
-                    <ConfirmButton variant="filling" color="danger" size="sm" confirmColor="danger" confirmVariant="filled" onConfirm={ remove }>Delete</ConfirmButton>
+                    <ConfirmButton variant="filling" color="danger" size="sm" confirmColor="danger" confirmVariant="filled" tooltip={ commandTooltip('Delete task', 'tasks.delete') } onConfirm={ remove }>Delete</ConfirmButton>
                 </div>
             </div>
         </aside>

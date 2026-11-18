@@ -11,10 +11,10 @@ import { createRegistry } from '../../hotkeys/registry';
 import { RootStore } from '../../stores';
 import { sendEach, startTask } from './commands';
 import { taskCommands, TASKS_SCOPE, type TaskCommandDeps } from './taskCommands';
-import { runsByTask, startBlockedReason, taskGrid } from './taskView';
+import { newestDocPath, runsByTask, startBlockedReason, taskGrid } from './taskView';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
-import type { CommandResult } from '@clowdy/protocol';
+import type { Artifact, CommandResult, TaskDetail } from '@clowdy/protocol';
 import type { CommandInput, Transport } from '../../daemon/transport';
 import type { PickerRequest } from '../../shared/PickerPopover';
 import type { KeyValueStorage } from '../../stores/storage';
@@ -44,6 +44,12 @@ let pickers: PickerRequest[];
 let confirms: OpenConfirmModalOptions[];
 let titles: string[];
 let sent: CommandInput[];
+let copied: { text: string; message: string }[];
+let notices: { message: string; tone?: 'info' | 'error' }[];
+/** What the daemon answers for a task's results, by task id. A task not in it has none. */
+let artifactsOf: Record<string, Artifact[]>;
+/** Makes the daemon fail to answer for results. */
+let resultsFail: boolean;
 
 const settle = () => vi.advanceTimersByTimeAsync(0);
 const project = () => root.selectedProject!;
@@ -60,6 +66,11 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
             const message = refuse(input);
 
             return message ? { ok: false, requestId: 'r', error: { code: 'invalid', message } } satisfies CommandResult : base.command(input);
+        },
+        getTaskDetail: async (taskId): Promise<TaskDetail> => {
+            if (resultsFail) throw new Error('The daemon is not answering');
+
+            return { taskId, chatIds: [], runIds: [], artifacts: artifactsOf[taskId] ?? [] };
         },
     });
 
@@ -89,6 +100,14 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         openPicker: request => pickers.push(request),
         confirm: options => confirms.push(options),
         focusTitle: id => titles.push(id),
+        create: () => undefined,
+        openFilter: () => undefined,
+        focusSearch: () => undefined,
+        chatsOf: id => project().chatsOfTask(id),
+        docPathOf: async id => newestDocPath((await root.transport.getTaskDetail(id)).artifacts),
+        copy: (text, message) => copied.push({ text, message }),
+        notify: (message, tone) => notices.push({ message, tone }),
+        replacing: change => root.history.replacing(change),
     };
     const registry = createRegistry('darwin');
 
@@ -110,6 +129,10 @@ beforeEach(() => {
     confirms = [];
     titles = [];
     sent = [];
+    copied = [];
+    notices = [];
+    artifactsOf = {};
+    resultsFail = false;
     toasts.error.mockClear();
     document.body.innerHTML = '';
 });
@@ -407,5 +430,160 @@ describe('Delete', () => {
         expect(confirms).toHaveLength(1);
         expect(sent).toEqual([]);
         expect(project().tasks.has('t-28')).toBe(true);
+    });
+});
+
+const docArtifact = (id: string, path: string | undefined, createdAt: number): Artifact => ({ id, projectId: FIXTURE_PROJECT_ID, kind: 'doc', title: id, ref: path ? { path } : {}, createdAt });
+
+describe('Copy', () => {
+    it('copies the key of the cursor task and says so', async () => {
+        await mount();
+        goTo('t-24');
+        press('.', { metaKey: true });
+
+        expect(copied).toEqual([{ text: 'CAR-24', message: 'Copied CAR-24' }]);
+    });
+
+    it('copies the titles of a selection, one per line in the order of the list, on the physical quote key', async () => {
+        await mount();
+        goTo('t-26');
+        press('x');
+        goTo('t-24');
+        press('x');
+        press('"', { metaKey: true, shiftKey: true, code: 'Quote' });
+
+        expect(copied).toHaveLength(1);
+        expect(copied[0].text.split('\n')).toEqual([project().tasks.get('t-24')!.title, project().tasks.get('t-26')!.title]);
+        expect(copied[0].message).toBe('Copied 2 task titles');
+    });
+});
+
+describe('Open the linked chat', () => {
+    it('opens the newest chat that discusses the cursor task, in Chats', async () => {
+        await mount();
+        // CAR-28 is discussed in c-2 (four days ago) and now in c-4 (minutes ago).
+        project().applyEvent({ cursor: project().cursor + 1, at: 0, projectId: FIXTURE_PROJECT_ID, data: { type: 'link.chatTask', link: { chatId: 'c-4', taskId: 't-28' }, present: true } });
+        goTo('t-28');
+        press('o');
+        press('c');
+
+        expect(project().chatsOfTask('t-28').map(chat => chat.id).sort()).toEqual(['c-2', 'c-4']);
+        expect(ui().section).toBe('chats');
+        expect(ui().chatId).toBe('c-4');
+    });
+
+    it('says so for a task no chat discusses, and stays on the Tasks screen', async () => {
+        await mount();
+        ui().openTask(null);
+        goTo('t-30');
+        press('o');
+        press('c');
+
+        expect(project().chatsOfTask('t-30')).toEqual([]);
+        expect(ui().section).toBe('tasks');
+        expect(notices).toEqual([{ message: 'CAR-30 has no chat yet', tone: undefined }]);
+    });
+});
+
+describe('Open the latest document', () => {
+    it('opens the newest document the daemon lists for the task, in Documents', async () => {
+        await mount();
+        artifactsOf['t-23'] = [docArtifact('old', 'notes/old.md', 1), docArtifact('new', 'decisions/pricing.md', 9)];
+        goTo('t-23');
+        press('o');
+        press('d');
+        await settle();
+
+        expect(ui().section).toBe('docs');
+        expect(ui().docPath).toBe('decisions/pricing.md');
+        expect(notices).toEqual([]);
+    });
+
+    it('says so when the task has no document, and stays where it is', async () => {
+        await mount();
+        goTo('t-23');
+        press('o');
+        press('d');
+        await settle();
+
+        expect(ui().docPath).toBeNull();
+        expect(notices).toEqual([{ message: 'CAR-23 has no document yet', tone: undefined }]);
+    });
+
+    it('says that the results did not load when the daemon fails', async () => {
+        await mount();
+        resultsFail = true;
+        goTo('t-23');
+        press('o');
+        press('d');
+        await settle();
+
+        expect(ui().docPath).toBeNull();
+        expect(notices).toEqual([{ message: 'Could not load the results of CAR-23: The daemon is not answering', tone: 'error' }]);
+    });
+
+    it('opens the document of the task the key was pressed on, even when the cursor moves while the daemon answers', async () => {
+        await mount();
+        artifactsOf['t-23'] = [docArtifact('a', 'decisions/pricing.md', 1)];
+        goTo('t-23');
+        press('o');
+        press('d');
+        goTo('t-24');
+        await settle();
+
+        expect(ui().docPath).toBe('decisions/pricing.md');
+    });
+});
+
+describe('Back and forward', () => {
+    /** How many steps Back can take from here. */
+    function stepsBack(): number {
+        let steps = 0;
+
+        while (root.history.canGoBack) {
+            root.history.back();
+            steps++;
+        }
+
+        return steps;
+    }
+
+    it('records the open panel following the cursor as one entry, however far the cursor goes', async () => {
+        await mount();
+        root.ui.showSection(ui(), 'tasks');
+        ui().openTask('t-20');
+        goTo('t-20');
+        press('j');
+        press('j');
+        press('ArrowDown');
+        press('End');
+
+        expect(ui().taskId).toBe('t-30');
+        // Chats, the Tasks screen and the open task: the tasks the cursor passed are not stops.
+        expect(stepsBack()).toBe(2);
+        expect(ui().section).toBe('chats');
+
+        root.history.forward();
+        root.history.forward();
+
+        expect(ui().taskId).toBe('t-30');
+    });
+
+    it('records Enter as an entry of its own, and the following of the cursor after it as no more', async () => {
+        await mount();
+        root.ui.showSection(ui(), 'tasks');
+        press('Enter');
+
+        expect(ui().taskId).toBe('t-20');
+
+        press('j');
+        press('j');
+
+        expect(ui().taskId).toBe('t-22');
+
+        root.history.back();
+
+        expect(ui().section).toBe('tasks');
+        expect(ui().taskId).toBeNull();
     });
 });

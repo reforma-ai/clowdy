@@ -122,4 +122,12 @@ describe('run tree commands', () => {
 
         expect(select).not.toHaveBeenCalled();
     });
+
+    it('stay live for the help overlay and the key hints while a field has the focus, as the overlay\'s own search field does', () => {
+        setup();
+        element('search').focus();
+
+        expect(press('j', element('search'))).toBe(false);
+        expect(registry.listCommands().live.map(({ id }) => id)).toEqual(['agents.cursor.down', 'agents.cursor.up']);
+    });
 });

@@ -16,6 +16,8 @@ import {
     formatAgo,
     groupByStatus,
     isFiltering,
+    newestChat,
+    newestDocPath,
     NO_FILTER,
     resultRows,
     runsByTask,
@@ -378,6 +380,41 @@ describe('resultRows', () => {
         expect(resultRows([], { expectChecks: true })).toEqual([{ id: 'checks-waiting', kind: 'check', title: 'Checks', verdict: { label: 'Waiting', tone: 'warning' } }]);
         expect(resultRows([], { expectChecks: false })).toEqual([]);
         expect(resultRows([artifact('a', 'check', 'Lint', { exitCode: 0 })], { expectChecks: true })).toHaveLength(1);
+    });
+});
+
+describe('newestDocPath', () => {
+    const artifact = (id: string, kind: Artifact['kind'], ref: Artifact['ref'], createdAt: number): Artifact => ({ id, projectId: 'p', kind, title: id, ref, createdAt });
+
+    it('is the path of the document created last, whatever else the task produced', () => {
+        expect(newestDocPath([
+            artifact('old', 'doc', { path: 'notes/old.md' }, 1),
+            artifact('diff', 'diff', { files: 1 }, 9),
+            artifact('new', 'doc', { path: 'decisions/pricing.md' }, 5),
+        ])).toBe('decisions/pricing.md');
+    });
+
+    it('is null when the task has no document', () => {
+        expect(newestDocPath([])).toBeNull();
+        expect(newestDocPath([artifact('c', 'check', { exitCode: 0 }, 1), artifact('d', 'build', { path: 'release/app.zip' }, 2)])).toBeNull();
+    });
+
+    it('skips a document artifact that names no file', () => {
+        expect(newestDocPath([artifact('e', 'doc', {}, 3)])).toBeNull();
+        expect(newestDocPath([artifact('e', 'doc', {}, 3), artifact('f', 'doc', { path: 'a.md' }, 1)])).toBe('a.md');
+    });
+});
+
+describe('newestChat', () => {
+    it('is the chat updated last, and nothing for no chats', () => {
+        const chats = [{ id: 'a', updatedAt: 5 }, { id: 'b', updatedAt: 9 }, { id: 'c', updatedAt: 2 }];
+
+        expect(newestChat(chats)?.id).toBe('b');
+        expect(newestChat([])).toBeUndefined();
+    });
+
+    it('keeps the first of chats updated at the same time', () => {
+        expect(newestChat([{ id: 'a', updatedAt: 1 }, { id: 'b', updatedAt: 1 }])?.id).toBe('a');
     });
 });
 

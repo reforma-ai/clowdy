@@ -112,6 +112,14 @@ describe('document tree commands', () => {
             expect(focused()).toBe(id);
         }
     });
+
+    it('stay live for the help overlay and the key hints while a field has the focus, as the overlay\'s own search field does', () => {
+        setup();
+        element('search').focus();
+
+        expect(press('j', element('search'))).toBe(false);
+        expect(registry.listCommands().live.map(({ id }) => id)).toEqual(['docs.cursor.down', 'docs.cursor.up']);
+    });
 });
 
 describe('save', () => {

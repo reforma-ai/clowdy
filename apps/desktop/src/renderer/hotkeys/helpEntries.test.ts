@@ -41,6 +41,18 @@ describe('helpEntries', () => {
     });
 });
 
+describe('helpEntries and the focus', () => {
+    it('lists a command as live whatever the focus says, because the overlay\'s own search field has the focus while it is open', () => {
+        const registry = createRegistry('darwin');
+
+        registry.pushScope('tasks');
+        registry.defineCommand({ id: 'tasks.cursor.down', title: 'Move down', group: 'Tasks', keys: 'j', scope: 'tasks', when: () => true, focus: () => false, handler: noop });
+        registry.defineCommand({ id: 'tasks.chat.open', title: 'Open linked chat', group: 'Tasks', keys: 'o c', scope: 'tasks', when: () => false, handler: noop });
+
+        expect(helpEntries(registry).map(entry => entry.live)).toEqual([true, false]);
+    });
+});
+
 describe('filterHelpEntries', () => {
     it('keeps everything for an empty query', () => {
         const { entries } = setup();

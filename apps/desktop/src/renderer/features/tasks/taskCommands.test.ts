@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 
 import { commandHint, findKeyConflicts } from '../../hotkeys';
 import { installDispatcher } from '../../hotkeys/dispatcher';
+import { groupHelpEntries, helpEntries } from '../../hotkeys/helpEntries';
 import { ListCursor, type Grid } from '../../hotkeys/listCursor';
-import { createRegistry } from '../../hotkeys/registry';
+import { createRegistry, type HotkeyRegistry } from '../../hotkeys/registry';
 import { focusZoneOf, taskCommands, TASKS_SCOPE, type FocusZone, type TaskCommandDeps } from './taskCommands';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
@@ -43,7 +44,13 @@ function fakeTask(id: string, rest: Partial<Task> = {}): Task {
 
 interface Harness {
     cursor: ListCursor;
-    ui: { taskId: string | null; openTask: Mock<(taskId: string | null) => void> };
+    ui: {
+        taskId: string | null;
+        openTask: Mock<(taskId: string | null) => void>;
+        openChat: Mock<(chatId: string | null) => void>;
+        openDoc: Mock<(path: string | null) => void>;
+        setTasksView: Mock<(view: TasksView) => void>;
+    };
     reveal: Mock<() => void>;
     known: Set<string>;
     state: {
@@ -56,6 +63,12 @@ interface Harness {
         refused: Set<string>;
         /** Why the task cannot be started, by task id. */
         blocked: Map<string, string>;
+        /** The chats that discuss each task, by task id. */
+        chats: Map<string, { id: string; updatedAt: number }[]>;
+        /** The newest document of each task, by task id; a task not in it has none. Resolves later than the key, as the daemon does. */
+        docs: Map<string, string>;
+        /** Makes the lookup of a task's documents fail. */
+        docsFail: boolean;
     };
     /** What the commands sent, one array per call. */
     sent: CommandInput[][];
@@ -63,6 +76,13 @@ interface Harness {
     confirms: OpenConfirmModalOptions[];
     started: string[];
     titles: string[];
+    registry: HotkeyRegistry;
+    /** What the commands asked the screen to do. */
+    asked: { created: number; filter: number; search: number };
+    copied: { text: string; message: string }[];
+    notices: { message: string; tone?: 'info' | 'error' }[];
+    /** The tasks opened inside `replacing`, which overwrites the history entry. */
+    replaced: (string | null)[];
     deps: TaskCommandDeps;
 }
 
@@ -78,20 +98,32 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
 
     const registry = createRegistry('darwin');
     const cursor = new ListCursor();
+    const replaced: Harness['replaced'] = [];
+    let isReplacing = false;
     const ui: Harness['ui'] = {
         taskId: null,
         openTask: vi.fn<(taskId: string | null) => void>((id) => {
             ui.taskId = id;
+
+            if (isReplacing) replaced.push(id);
+        }),
+        openChat: vi.fn<(chatId: string | null) => void>(),
+        openDoc: vi.fn<(path: string | null) => void>(),
+        setTasksView: vi.fn<(view: TasksView) => void>((next) => {
+            state.view = next;
         }),
     };
     const known = new Set(grid.flat());
-    const state: Harness['state'] = { view, zone: 'list', focused: true, tasks, refused: new Set(), blocked: new Map() };
+    const state: Harness['state'] = { view, zone: 'list', focused: true, tasks, refused: new Set(), blocked: new Map(), chats: new Map(), docs: new Map(), docsFail: false };
     const reveal = vi.fn<() => void>();
     const sent: CommandInput[][] = [];
     const pickers: PickerRequest[] = [];
     const confirms: OpenConfirmModalOptions[] = [];
     const started: string[] = [];
     const titles: string[] = [];
+    const asked = { created: 0, filter: 0, search: 0 };
+    const copied: Harness['copied'] = [];
+    const notices: Harness['notices'] = [];
     const deps: TaskCommandDeps = {
         cursor,
         ui,
@@ -116,6 +148,27 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
         openPicker: request => pickers.push(request),
         confirm: options => confirms.push(options),
         focusTitle: id => titles.push(id),
+        create: () => void asked.created++,
+        openFilter: () => void asked.filter++,
+        focusSearch: () => void asked.search++,
+        chatsOf: id => state.chats.get(id) ?? [],
+        docPathOf: async (id) => {
+            if (state.docsFail) throw new Error('No answer');
+
+            return state.docs.get(id) ?? null;
+        },
+        copy: (text, message) => copied.push({ text, message }),
+        notify: (message, tone) => notices.push({ message, tone }),
+        replacing: (change) => {
+            isReplacing = true;
+
+            try {
+                change();
+            }
+            finally {
+                isReplacing = false;
+            }
+        },
     };
 
     cursor.setGrid(grid);
@@ -125,7 +178,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
 
     uninstall = installDispatcher(registry);
 
-    return { cursor, ui, reveal, known, state, sent, pickers, confirms, started, titles, deps };
+    return { cursor, ui, reveal, known, state, sent, pickers, confirms, started, titles, registry, asked, copied, notices, replaced, deps };
 }
 
 /** Returns whether a command took the key (the dispatcher calls `preventDefault`). */
@@ -298,6 +351,21 @@ describe('the open panel', () => {
         expect(ui.taskId).toBe('c1');
     });
 
+    it('follows as a replacement of the history entry, and opens on purpose as a new one', () => {
+        const { ui, replaced } = setup(list, 'list');
+
+        ui.taskId = 'a1';
+        press('j');
+        press('ArrowDown');
+
+        expect(replaced).toEqual(['a2', 'a3']);
+
+        press('Enter');
+
+        expect(ui.openTask).toHaveBeenLastCalledWith('a3');
+        expect(replaced).toEqual(['a2', 'a3']);
+    });
+
     it('does not follow when the open task is gone', () => {
         const { ui } = setup(list, 'list');
 
@@ -420,7 +488,7 @@ describe('where the keys apply', () => {
             document.body.innerHTML = `
                 <nav><button id="rail"></button></nav>
                 <header><button id="toggle"></button></header>
-                <div id="region"><article data-task-id="a1"><button id="title"></button><div data-task-control><button id="chip"></button></div></article></div>
+                <div id="region"><button id="column"></button><article data-task-id="a1"><button id="title"></button><div data-task-control><button id="chip"></button></div></article></div>
                 <aside><button id="panel"></button></aside>`;
 
             const region = document.getElementById('region')!;
@@ -442,6 +510,28 @@ describe('where the keys apply', () => {
             expect(zoneOn('rail')).toBe('nav');
             expect(zoneOn('toggle')).toBe('other');
             expect(zoneOn('panel')).toBe('other');
+        });
+
+        it('is other for a control in the region that is not a card or row, such as a column header, which keeps its own arrows', () => {
+            const { element, zone } = mount();
+
+            element('column').focus();
+
+            expect(zone()).toBe('other');
+        });
+
+        it('is the nav only for the shell\'s navigation, and other for a nav inside the screen', () => {
+            document.body.innerHTML = '<nav><button id="rail"></button></nav><main><nav><button id="crumb"></button></nav><div id="region"></div></main>';
+
+            const region = document.getElementById('region');
+
+            document.getElementById('rail')!.focus();
+
+            expect(focusZoneOf(document.activeElement, region)).toBe('nav');
+
+            document.getElementById('crumb')!.focus();
+
+            expect(focusZoneOf(document.activeElement, region)).toBe('other');
         });
 
         it('leaves an agent chip to its own keys, so Enter on it still opens the run and not the task', () => {
@@ -1100,6 +1190,367 @@ describe('while a picker or a dialog is open, or a text field has focus', () => 
     });
 });
 
+describe('New task, view, filter and search', () => {
+    it('C opens the New task dialog', () => {
+        const harness = setup(list, 'list');
+
+        expect(press('c')).toBe(true);
+        expect(harness.asked.created).toBe(1);
+    });
+
+    it('C is a plain key: not with a modifier, not in a text field, and not while the key is held', () => {
+        const harness = setup(list, 'list');
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        expect(press('c', { metaKey: true })).toBe(false);
+        expect(press('c', {}, input)).toBe(false);
+        expect(press('c', { repeat: true })).toBe(true);
+        expect(harness.asked.created).toBe(0);
+    });
+
+    it('C, F and / work with no task, and while a widget of the screen has the focus', () => {
+        const empty = setup([[]], 'list');
+
+        press('c');
+        press('f');
+        press('/');
+
+        expect(empty.asked).toEqual({ created: 1, filter: 1, search: 1 });
+
+        const harness = setup(list, 'list');
+
+        harness.state.zone = 'other';
+        press('c');
+        press('f');
+        press('/');
+
+        expect(harness.asked).toEqual({ created: 1, filter: 1, search: 1 });
+    });
+
+    it('F opens the filter and / puts the keyboard in the search field', () => {
+        const harness = setup(list, 'list');
+
+        press('f');
+
+        expect(harness.asked).toEqual({ created: 0, filter: 1, search: 0 });
+
+        press('/');
+
+        expect(harness.asked).toEqual({ created: 0, filter: 1, search: 1 });
+    });
+
+    it('takes the / key, so it is not typed into the search field it focuses', () => {
+        setup(list, 'list');
+
+        // The dispatcher calls `preventDefault` on a key a command takes, which cancels the character the keypress would have inserted.
+        expect(press('/')).toBe(true);
+        expect(press('/', {}, document.createElement('input'))).toBe(false);
+    });
+
+    it('keeps / and ? apart: a ? is the help key, not a search', () => {
+        const harness = setup(list, 'list');
+
+        expect(press('?', { shiftKey: true })).toBe(false);
+        expect(harness.asked.search).toBe(0);
+    });
+
+    it('Cmd+B switches between the board and the list, whichever it shows', () => {
+        const harness = setup(board);
+
+        expect(press('b', { metaKey: true })).toBe(true);
+        expect(harness.ui.setTasksView).toHaveBeenLastCalledWith('list');
+
+        press('b', { metaKey: true });
+
+        expect(harness.ui.setTasksView).toHaveBeenLastCalledWith('board');
+    });
+
+    it('Cmd+B does not take a plain B, and is off in a text field', () => {
+        const harness = setup(board);
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        expect(press('b')).toBe(false);
+        expect(press('b', { metaKey: true }, input)).toBe(false);
+        expect(harness.ui.setTasksView).not.toHaveBeenCalled();
+    });
+
+    it('uses Ctrl+B on Windows', () => {
+        const registry = createRegistry('win32');
+        const harness = setup(board);
+
+        uninstall?.();
+        registry.pushScope(TASKS_SCOPE);
+        taskCommands(harness.deps).forEach(command => registry.defineCommand(command));
+        uninstall = installDispatcher(registry);
+
+        expect(press('b', { metaKey: true })).toBe(false);
+        expect(press('b', { ctrlKey: true })).toBe(true);
+        expect(harness.ui.setTasksView).toHaveBeenCalledTimes(1);
+    });
+
+    it('is off while a dialog or a popover is open', () => {
+        const harness = setup(list, 'list');
+        const dialog = document.createElement('div');
+
+        dialog.setAttribute('data-modal-overlay', '');
+        document.body.append(dialog);
+
+        for (const [key, init] of [['c', {}], ['f', {}], ['/', {}], ['b', { metaKey: true }]] as [string, KeyboardEventInit][]) expect(press(key, init)).toBe(false);
+
+        expect(harness.asked).toEqual({ created: 0, filter: 0, search: 0 });
+    });
+});
+
+describe('Copy the key or the title', () => {
+    it('Cmd+. copies the key of the cursor task and says so', () => {
+        const harness = setup(list, 'list');
+
+        press('j');
+
+        expect(press('.', { metaKey: true })).toBe(true);
+        expect(harness.copied).toEqual([{ text: 'A2', message: 'Copied A2' }]);
+    });
+
+    it('Cmd+Shift+\' copies the title, by the physical key because Shift types a double quote', () => {
+        const harness = setup(list, 'list');
+
+        press('j');
+
+        expect(press('"', { metaKey: true, shiftKey: true, code: 'Quote' })).toBe(true);
+        expect(harness.copied).toEqual([{ text: 'Task a2', message: 'Copied the title of A2' }]);
+    });
+
+    it('copies a line per task of the selection, in the order of the list, and says how many', () => {
+        const harness = setup(list, 'list');
+
+        press('ArrowDown');
+        press('ArrowDown');
+        press('x');
+        press('ArrowUp');
+        press('ArrowUp');
+        press('x');
+        press('.', { metaKey: true });
+        press('"', { metaKey: true, shiftKey: true, code: 'Quote' });
+
+        expect(harness.copied).toEqual([
+            { text: 'A1\nA3', message: 'Copied 2 task keys' },
+            { text: 'Task a1\nTask a3', message: 'Copied 2 task titles' },
+        ]);
+    });
+
+    it('does not take the key it cannot write: a plain period, a Shift-only quote, and a text field', () => {
+        const harness = setup(list, 'list');
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        expect(press('.')).toBe(false);
+        expect(press('"', { shiftKey: true, code: 'Quote' })).toBe(false);
+        expect(press('.', { metaKey: true }, input)).toBe(false);
+        expect(harness.copied).toEqual([]);
+    });
+
+    it('acts at once: a copy changes nothing, so it needs neither the cursor on screen nor the focus on the list', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.focused = false;
+        harness.state.zone = 'other';
+        press('.', { metaKey: true });
+
+        expect(harness.copied).toEqual([{ text: 'A1', message: 'Copied A1' }]);
+        expect(harness.reveal).not.toHaveBeenCalled();
+    });
+
+    it('is off, with no key hint, when there is no task to copy', () => {
+        const harness = setup([[]], 'list');
+
+        expect(press('.', { metaKey: true })).toBe(false);
+        expect(commandHint('tasks.copy.key', harness.registry)).toBeUndefined();
+    });
+
+    it('shows the keys as the capsules read them', () => {
+        const { registry } = setup(list, 'list');
+
+        expect(commandHint('tasks.copy.key', registry)).toEqual([['meta', '.']]);
+        expect(commandHint('tasks.copy.title', registry)).toEqual([['shift', 'meta', '\'']]);
+    });
+});
+
+describe('Open the linked chat and document', () => {
+    it('O then C opens the newest chat of the cursor task', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.chats.set('a2', [{ id: 'older', updatedAt: 5 }, { id: 'newest', updatedAt: 9 }, { id: 'middle', updatedAt: 7 }]);
+        press('j');
+        press('o');
+
+        expect(press('c')).toBe(true);
+        expect(harness.ui.openChat).toHaveBeenCalledTimes(1);
+        expect(harness.ui.openChat).toHaveBeenCalledWith('newest');
+    });
+
+    it('takes the cursor task and not the selection', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.chats.set('a1', [{ id: 'mine', updatedAt: 1 }]);
+        harness.state.chats.set('a2', [{ id: 'other', updatedAt: 2 }]);
+        press('a', { metaKey: true });
+        press('o');
+        press('c');
+
+        expect(harness.ui.openChat).toHaveBeenCalledWith('mine');
+    });
+
+    it('is offered for every task with a cursor, with its hint, whether or not the task has a chat', () => {
+        const harness = setup(list, 'list');
+
+        expect(commandHint('tasks.chat.open', harness.registry)).toEqual([['o'], ['c']]);
+        expect(harness.registry.listCommands().live.map(command => command.id)).toContain('tasks.chat.open');
+
+        const empty = setup([[]], 'list');
+
+        expect(commandHint('tasks.chat.open', empty.registry)).toBeUndefined();
+    });
+
+    it('says so, and opens nothing, for a task that has no chat, and does not fall through to New task', () => {
+        const harness = setup(list, 'list');
+
+        press('o');
+
+        expect(press('c')).toBe(true);
+        expect(harness.ui.openChat).not.toHaveBeenCalled();
+        expect(harness.notices).toEqual([{ message: 'A1 has no chat yet', tone: undefined }]);
+        expect(harness.asked.created).toBe(0);
+    });
+
+    it('O then D opens the newest document the daemon lists for the cursor task, in Documents', async () => {
+        const harness = setup(list, 'list');
+
+        harness.state.docs.set('a2', 'decisions/pricing.md');
+        press('j');
+        press('o');
+        press('d');
+
+        // Nothing happens before the daemon answers.
+        expect(harness.ui.openDoc).not.toHaveBeenCalled();
+
+        await vi.waitFor(() => expect(harness.ui.openDoc).toHaveBeenCalledWith('decisions/pricing.md'));
+
+        expect(harness.notices).toEqual([]);
+    });
+
+    it('says so, and opens nothing, when the task has no document', async () => {
+        const harness = setup(list, 'list');
+
+        press('o');
+        press('d');
+        await vi.waitFor(() => expect(harness.notices).toHaveLength(1));
+
+        expect(harness.notices[0]).toEqual({ message: 'A1 has no document yet', tone: undefined });
+        expect(harness.ui.openDoc).not.toHaveBeenCalled();
+    });
+
+    it('says so when the daemon does not answer', async () => {
+        const harness = setup(list, 'list');
+
+        harness.state.docsFail = true;
+        press('o');
+        press('d');
+        await vi.waitFor(() => expect(harness.notices).toHaveLength(1));
+
+        expect(harness.notices[0]).toEqual({ message: 'Could not load the results of A1: No answer', tone: 'error' });
+        expect(harness.ui.openDoc).not.toHaveBeenCalled();
+    });
+
+    it('O D is offered for every task with a cursor, because only the daemon knows whether it has a document', () => {
+        const harness = setup(list, 'list');
+
+        expect(commandHint('tasks.doc.open', harness.registry)).toEqual([['o'], ['d']]);
+
+        const empty = setup([[]], 'list');
+
+        expect(commandHint('tasks.doc.open', empty.registry)).toBeUndefined();
+    });
+
+    it('shows the cursor first when it is not in view, like the other keys that act on the cursor task', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.chats.set('a1', [{ id: 'c1', updatedAt: 1 }]);
+        harness.state.focused = false;
+        press('o');
+        press('c');
+
+        expect(harness.ui.openChat).not.toHaveBeenCalled();
+        expect(harness.reveal).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays off while another widget of the screen has the focus', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.chats.set('a1', [{ id: 'c1', updatedAt: 1 }]);
+        harness.state.zone = 'other';
+
+        expect(press('o')).toBe(false);
+        expect(harness.ui.openChat).not.toHaveBeenCalled();
+    });
+});
+
+describe('where the focus is, and the help overlay and the key hints', () => {
+    it('keeps a key off while a widget has the focus, but the command is still listed and still has its hint', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.zone = 'other';
+
+        expect(press('j')).toBe(false);
+        expect(harness.registry.listCommands().live.map(command => command.id)).toContain('tasks.cursor.down');
+        expect(commandHint('tasks.cursor.down', harness.registry)).toEqual([['down']]);
+        expect(commandHint('tasks.start', harness.registry)).toEqual([['meta', 'enter']]);
+        expect(commandHint('tasks.delete', harness.registry)).toEqual([['meta', 'backspace']]);
+    });
+
+    it('lists every Tasks command as live for the screen, wherever the focus is', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.zone = 'other';
+
+        const dead = harness.registry.listCommands().all.filter(command => !harness.registry.listCommands().live.includes(command)).map(command => command.id);
+
+        // Only what has nothing to act on: the board's column keys in a list, and Escape with nothing open or selected.
+        expect(dead.sort()).toEqual(['tasks.cursor.left', 'tasks.cursor.right', 'tasks.escape'].sort());
+    });
+});
+
+describe('the help overlay', () => {
+    it('shows every command under Tasks with a title that says what it does', () => {
+        const harness = setup(list, 'list');
+        const groups = groupHelpEntries(helpEntries(harness.registry));
+
+        expect(groups.map(group => group.name)).toEqual(['Tasks']);
+
+        const titles = groups[0].entries.map(entry => entry.command.title);
+
+        expect(new Set(titles).size).toBe(titles.length);
+        expect(titles.every(title => title.trim().length >= 4 && !title.endsWith('.'))).toBe(true);
+        expect(titles).toEqual(expect.arrayContaining(['New task', 'Switch between board and list', 'Filter tasks', 'Search tasks', 'Copy task key', 'Copy task title', 'Open linked chat', 'Open latest document']));
+    });
+
+    it('writes the new keys as the capsules read them', () => {
+        const harness = setup(list, 'list');
+        const keysOf = (id: string) => helpEntries(harness.registry).find(entry => entry.command.id === id)?.sequences;
+
+        expect(keysOf('tasks.create')).toEqual([[['c']]]);
+        expect(keysOf('tasks.view.toggle')).toEqual([[['meta', 'b']]]);
+        expect(keysOf('tasks.filter')).toEqual([[['f']]]);
+        expect(keysOf('tasks.search')).toEqual([[['/']]]);
+        expect(keysOf('tasks.chat.open')).toEqual([[['o'], ['c']]]);
+        expect(keysOf('tasks.doc.open')).toEqual([[['o'], ['d']]]);
+    });
+});
+
 describe('the keymap', () => {
     it('has no key collisions inside the scope', () => {
         const { deps } = setup(list);
@@ -1107,7 +1558,7 @@ describe('the keymap', () => {
         expect(findKeyConflicts(taskCommands(deps))).toEqual([]);
     });
 
-    it('registers every command of Stages 4 and 5 in the Tasks group', () => {
+    it('registers every Tasks command in the Tasks group', () => {
         const { deps } = setup(list);
         const commands = taskCommands(deps);
 
@@ -1132,6 +1583,14 @@ describe('the keymap', () => {
             'tasks.rename',
             'tasks.start',
             'tasks.delete',
+            'tasks.create',
+            'tasks.view.toggle',
+            'tasks.filter',
+            'tasks.search',
+            'tasks.copy.key',
+            'tasks.copy.title',
+            'tasks.chat.open',
+            'tasks.doc.open',
         ]);
         expect(new Set(commands.map(command => command.group))).toEqual(new Set(['Tasks']));
         expect(new Set(commands.map(command => command.scope))).toEqual(new Set([TASKS_SCOPE]));

@@ -363,6 +363,42 @@ describe('key repeat', () => {
     it('leaves a held key that no command takes alone', () => {
         expect(press(body, 'q', { repeat: true }).defaultPrevented).toBe(false);
     });
+
+    describe('after the command moved the keyboard into a text field', () => {
+        let field: HTMLInputElement;
+
+        beforeEach(() => {
+            field = document.createElement('input');
+            document.body.append(field);
+            define('/', { handler: () => field.focus() });
+        });
+
+        it('keeps taking the held key, so the field does not type it again and again', () => {
+            press(body, '/', { code: 'Slash' });
+
+            expect(document.activeElement).toBe(field);
+            expect(press(field, '/', { code: 'Slash', repeat: true }).defaultPrevented).toBe(true);
+            expect(press(field, '/', { code: 'Slash', repeat: true }).defaultPrevented).toBe(true);
+        });
+
+        it('leaves the key to the field once it was let go and pressed again, and when another key came between', () => {
+            press(body, '/', { code: 'Slash' });
+
+            expect(press(field, '/', { code: 'Slash' }).defaultPrevented).toBe(false);
+            expect(press(field, '/', { code: 'Slash', repeat: true }).defaultPrevented).toBe(false);
+
+            press(body, '/', { code: 'Slash' });
+            press(field, 'a', { code: 'KeyA' });
+
+            expect(press(field, '/', { code: 'Slash', repeat: true }).defaultPrevented).toBe(false);
+        });
+
+        it('takes no other key that is held', () => {
+            press(body, '/', { code: 'Slash' });
+
+            expect(press(field, 'a', { code: 'KeyA', repeat: true }).defaultPrevented).toBe(false);
+        });
+    });
 });
 
 describe('overlays', () => {
@@ -617,6 +653,85 @@ describe('scopes and when', () => {
         press(body, 'Enter');
 
         expect(outer).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('focus', () => {
+    it('does not run a command whose focus says the keyboard is elsewhere, and leaves the key alone', () => {
+        let inList = false;
+        const handler = define('j', { focus: () => inList });
+
+        expect(press(body, 'j').defaultPrevented).toBe(false);
+        expect(handler).not.toHaveBeenCalled();
+
+        inList = true;
+
+        expect(press(body, 'j').defaultPrevented).toBe(true);
+        expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('needs both when and focus', () => {
+        let exists = true;
+        let inList = true;
+        const handler = define('j', { when: () => exists, focus: () => inList });
+
+        exists = false;
+        press(body, 'j');
+        exists = true;
+        inList = false;
+        press(body, 'j');
+
+        expect(handler).not.toHaveBeenCalled();
+
+        inList = true;
+        press(body, 'j');
+
+        expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets the key reach a command of an outer scope when the inner one has no focus, as it does for when', () => {
+        const outer = define('Enter', { scope: 'tasks' });
+
+        define('Enter', { scope: 'picker', focus: () => false });
+        registry.pushScope('tasks');
+        registry.pushScope('picker');
+        press(body, 'Enter');
+
+        expect(outer).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not start a chord for a command without focus, and checks it again for the next key', () => {
+        let inList = false;
+        const chord = define('o c', { focus: () => inList });
+
+        press(body, 'o');
+
+        expect(registry.pending).toBeNull();
+
+        inList = true;
+        press(body, 'o');
+
+        expect(registry.pending?.typed).toEqual([['o']]);
+
+        inList = false;
+        press(body, 'c');
+
+        expect(chord).not.toHaveBeenCalled();
+        expect(registry.pending).toBeNull();
+    });
+
+    it('is asked while a command is held, so a held key is still swallowed only where the command applies', () => {
+        let inList = true;
+        const handler = define('j', { repeat: true, focus: () => inList });
+
+        press(body, 'j', { repeat: true });
+
+        expect(handler).toHaveBeenCalledTimes(1);
+
+        inList = false;
+
+        expect(press(body, 'j', { repeat: true }).defaultPrevented).toBe(false);
+        expect(handler).toHaveBeenCalledTimes(1);
     });
 });
 

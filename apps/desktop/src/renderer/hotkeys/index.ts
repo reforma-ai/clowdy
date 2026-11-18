@@ -6,6 +6,8 @@
  * or `{ mac: '$mod+Backspace', win: '$mod+Delete' }`. A symbol key (`?`, `/`) also takes Shift; other modifiers are strict.
  * `useHotkeyScope('tasks')` makes the commands of the `tasks` scope live while a component is mounted; `app` is always live.
  * When two live commands share keys the innermost scope wins, and `defineCommand` throws when keys collide inside one scope or against `app`.
+ * `when` says whether a command exists for the screen now; `focus` says whether the keyboard focus is where its keys belong. Both gate the dispatcher,
+ * but only `when` reaches the help overlay and the key hints, which must not change while the focus sits in the overlay's search field.
  *
  * Single keys are off while a text field has focus and while a dialog, popover or `Modal` overlay is open (the key came from inside one),
  * unless the command sets `inInputs` or `inOverlays`. IME composition is ignored. A held key runs only a command with `repeat`.

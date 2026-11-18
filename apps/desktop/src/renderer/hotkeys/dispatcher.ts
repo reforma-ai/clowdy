@@ -92,6 +92,8 @@ function claim(event: KeyboardEvent) {
  */
 export function installDispatcher(registry: HotkeyRegistry): () => void {
     let chord: Chord | null = null;
+    /** The `code` of the key that a command took when it went down, while it is held. */
+    let held: string | null = null;
 
     function cancel() {
         if (!chord) return;
@@ -114,7 +116,9 @@ export function installDispatcher(registry: HotkeyRegistry): () => void {
             return matchKeybindingPress(keys, sequence.presses[typed])
                 && (!textTarget || command.inInputs)
                 && (!overlayOpen || command.inOverlays)
-                && registry.isEntryLive(entry);
+                && registry.isEntryLive(entry)
+                // Part of the match, like `when`: a command whose focus is elsewhere lets the key through to another scope's command or to the widget.
+                && (command.focus?.() ?? true);
         });
 
         // The innermost scope wins when two live commands share keys.
@@ -138,6 +142,8 @@ export function installDispatcher(registry: HotkeyRegistry): () => void {
 
     function onKeyDown(event: KeyboardEvent) {
         if (isInvisible(event) || MODIFIER_KEYS.has(event.key)) return;
+
+        if (!event.repeat) held = null;
 
         const altGraph = isAltGraph(event);
         let matched: Candidate[] = [];
@@ -165,10 +171,17 @@ export function installDispatcher(registry: HotkeyRegistry): () => void {
 
         if (!matched.length && !altGraph) matched = matching(starts(), event);
 
-        if (!matched.length) return;
+        if (!matched.length) {
+            // What the command did (a dialog, a search field with the keyboard in it) may be where the held key lands now, and a text field would type it again and again.
+            if (event.repeat && held !== null && event.code === held) claim(event);
+
+            return;
+        }
 
         // The command claims the key, even a repeat it will not run for: it must not fall through to type-ahead or a native click.
         claim(event);
+
+        if (!event.repeat) held = event.code || null;
 
         const advanced = matched.map(candidate => ({ ...candidate, typed: candidate.typed + 1 }));
         const done = advanced.find(({ sequence, typed }) => typed === sequence.presses.length);

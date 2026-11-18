@@ -1,6 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { Text } from '@clowdy/components/Text';
+import { toast } from '@clowdy/components/Toast';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { useCommands, useHotkeyScope } from '../../hotkeys';
@@ -8,17 +9,17 @@ import { ListCursor } from '../../hotkeys/listCursor';
 import { PickerPopover, type PickerRequest } from '../../shared/PickerPopover';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { Board } from './Board';
-import { sendCommand, sendEach, startTask } from './commands';
+import { copyWithToast, sendCommand, sendEach, startTask } from './commands';
 import { openCreateTask } from './CreateTaskDialog';
 import { DetailPanel } from './DetailPanel';
 import styles from './Screen.module.css';
 import { focusZoneOf, TASK_CONTROL, taskCommands, TASKS_SCOPE } from './taskCommands';
 import { TaskList } from './TaskList';
 import { TasksHeader } from './TasksHeader';
-import { agentOptions, boardColumns, filterTasks, isFiltering, NO_FILTER, runsByTask, startBlockedReason, taskGrid, tasksSource } from './taskView';
+import { agentOptions, boardColumns, filterTasks, isFiltering, newestDocPath, NO_FILTER, runsByTask, startBlockedReason, taskGrid, tasksSource } from './taskView';
 
 import type { TaskId } from '@clowdy/protocol';
-import type { FocusEvent, MouseEvent, PointerEvent } from 'react';
+import type { FocusEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react';
 
 /** The card or row the target is in or is. */
 const itemAt = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>('[data-task-id]') : null);
@@ -57,11 +58,17 @@ export function Screen() {
     const [filter, setFilter] = useState(NO_FILTER);
     const [cursor] = useState(() => new ListCursor());
     const [picker, setPicker] = useState<OpenPicker | null>(null);
+    const [isFilterOpen, setFilterOpen] = useState(false);
     const screen = useRef<HTMLDivElement>(null);
     const region = useRef<HTMLDivElement>(null);
     const titleField = useRef<HTMLTextAreaElement>(null);
+    const searchField = useRef<HTMLInputElement>(null);
     // The card or row that last had focus, to notice when it has left the page.
     const focusedItem = useRef<Element | null>(null);
+    // The filter popover was opened with `F`, and the keyboard goes back to the list when it closes.
+    const filterFromKey = useRef(false);
+    // The title is being edited after `Shift+R`, and the key that ends the edit hands the keyboard back to the list.
+    const renaming = useRef(false);
 
     const runsOfTask = runsByTask(project.runTaskLinks.values(), project.runs);
     const tasks = project.taskList;
@@ -98,12 +105,54 @@ export function Screen() {
 
         if (!item || item.isConnected || !isFocusLost()) return;
 
+        // The focus event of the new item records it, so the old one is dropped first.
         focusedItem.current = null;
         revealCursor();
+
+        // The list builds its rows a render after the board's cards are gone, so the item may not be there yet: the view switch below asks again.
+        if (isFocusLost()) focusedItem.current = item;
     };
 
     // After the cursor has its new grid and the board its new cards.
     useLayoutEffect(refocusIfRemoved);
+
+    // The other view has drawn its items a frame after the switch.
+    useEffect(() => {
+        const frame = requestAnimationFrame(() => {
+            refocusIfRemoved();
+
+            // Still gone after a frame: the item is not coming back, and a later blur is not the view's doing.
+            if (focusedItem.current?.isConnected === false) focusedItem.current = null;
+        });
+
+        return () => cancelAnimationFrame(frame);
+    }, [ui.tasksView]);
+
+    /** Something that held the keyboard (a dialog, the title field, the filter popover) is gone and it fell to the page: the cursor takes it, so the next key works on the list. */
+    const refocusIfLost = () => {
+        if (isFocusLost()) revealCursor();
+    };
+
+    const createTask = () => openCreateTask({ root, project, ui }, { onClose: () => setTimeout(refocusIfLost) });
+
+    // Shown after React Aria hands focus back to the Filter button, and only if it is still there: a click on another control moved it on purpose.
+    const leaveFilter = () => setTimeout(() => {
+        if (isFocusLost() || document.activeElement?.closest('[data-filter-trigger]')) revealCursor();
+    });
+
+    const onFilterOpenChange = (isOpen: boolean) => {
+        setFilterOpen(isOpen);
+
+        if (!isOpen && filterFromKey.current) {
+            filterFromKey.current = false;
+            leaveFilter();
+        }
+    };
+
+    const exitSearch = () => {
+        if (cursor.cursorId === null) searchField.current?.blur();
+        else revealCursor();
+    };
 
     useHotkeyScope(TASKS_SCOPE);
     useCommands(TASKS_SCOPE, taskCommands({
@@ -126,11 +175,36 @@ export function Screen() {
         focusTitle: () => {
             // The panel for the task is drawn by the time of the next frame.
             requestAnimationFrame(() => {
+                renaming.current = titleField.current !== null;
                 titleField.current?.focus({ preventScroll: true });
                 titleField.current?.select();
             });
         },
+        create: createTask,
+        openFilter: () => {
+            filterFromKey.current = true;
+            setFilterOpen(true);
+        },
+        focusSearch: () => {
+            searchField.current?.focus();
+            searchField.current?.select();
+        },
+        chatsOf: taskId => project.chatsOfTask(taskId),
+        docPathOf: async taskId => newestDocPath((await root.transport.getTaskDetail(taskId)).artifacts),
+        copy: copyWithToast,
+        notify: (message, tone = 'info') => void (tone === 'error' ? toast.error({ message }) : toast.info({ message })),
+        replacing: change => root.history.replacing(change),
     }));
+
+    // Enter saves a title and Esc drops the edit, and both leave the field. The capture runs before the field's own handler blurs it.
+    const onKeyDownCapture = (event: KeyboardEvent) => {
+        if (renaming.current && event.target === titleField.current && (event.key === 'Enter' || event.key === 'Escape')) setTimeout(refocusIfLost);
+    };
+
+    // The edit is over however it ended, so a later click into the title is not a rename from the keyboard.
+    const onBlur = (event: FocusEvent) => {
+        if (event.target === titleField.current) renaming.current = false;
+    };
 
     // A click opens the task, Cmd/Ctrl toggles it in the selection, Shift selects the range from the anchor. One place for board and list.
     const onClickCapture = (event: MouseEvent) => {
@@ -173,17 +247,21 @@ export function Screen() {
     };
 
     return (
-        <div ref={ screen } className={ styles.screen }>
+        <div ref={ screen } className={ styles.screen } onKeyDownCapture={ onKeyDownCapture } onBlur={ onBlur }>
             <div className={ styles.main }>
                 <TasksHeader
                     subtitle={ tasksSource(tasks) }
                     view={ ui.tasksView }
                     onViewChange={ view => ui.setTasksView(view) }
-                    onCreate={ () => openCreateTask({ root, project, ui }) }
+                    onCreate={ createTask }
                     filter={ filter }
                     onFilterChange={ setFilter }
                     statuses={ project.statuses }
                     agents={ agentOptions(runsOfTask) }
+                    searchRef={ searchField }
+                    onSearchExit={ exitSearch }
+                    isFilterOpen={ isFilterOpen }
+                    onFilterOpenChange={ onFilterOpenChange }
                 />
 
                 { visible.length === 0

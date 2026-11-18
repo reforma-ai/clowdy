@@ -110,4 +110,12 @@ describe('chat commands', () => {
             expect(focused()).toBe(id);
         }
     });
+
+    it('stay live for the help overlay and the key hints while a field has the focus, as the overlay\'s own search field does', () => {
+        setup();
+        element('composer').focus();
+
+        expect(press('j', element('composer'))).toBe(false);
+        expect(registry.listCommands().live.map(({ id }) => id)).toEqual(['chats.cursor.down', 'chats.cursor.up']);
+    });
 });

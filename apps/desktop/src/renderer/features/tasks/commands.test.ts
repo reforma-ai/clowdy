@@ -1,12 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { sendCommand, sendEach, startTask } from './commands';
+import { copyWithToast, sendCommand, sendEach, startTask } from './commands';
 
 import type { CommandResult } from '@clowdy/protocol';
 import type { CommandInput } from '../../daemon/transport';
 import type { RootStore } from '../../stores';
 
-const toasts = vi.hoisted(() => ({ error: vi.fn<(options: { message: string }) => void>() }));
+const toasts = vi.hoisted(() => ({ error: vi.fn<(options: { message: string }) => void>(), success: vi.fn<(options: { message: string }) => void>() }));
 
 vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
 
@@ -30,6 +30,7 @@ function store(...results: CommandResult[]) {
 
 beforeEach(() => {
     toasts.error.mockClear();
+    toasts.success.mockClear();
 });
 
 describe('sendCommand', () => {
@@ -134,5 +135,38 @@ describe('startTask', () => {
         await Promise.all([startTask(root, 't-1'), startTask(root, 't-2')]);
 
         expect(asked.map(input => 'taskId' in input && input.taskId)).toEqual(['t-1', 't-2']);
+    });
+});
+
+describe('copyWithToast', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('writes the text to the clipboard and says what was copied', async () => {
+        const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+
+        vi.stubGlobal('navigator', { clipboard: { writeText } });
+        copyWithToast('CAR-12\nCAR-14', 'Copied 2 task keys');
+        await vi.waitFor(() => expect(toasts.success).toHaveBeenCalledWith({ message: 'Copied 2 task keys' }));
+
+        expect(writeText).toHaveBeenCalledWith('CAR-12\nCAR-14');
+        expect(toasts.error).not.toHaveBeenCalled();
+    });
+
+    it('shows an error and no confirmation when the write is refused', async () => {
+        vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('Denied')) } });
+        copyWithToast('CAR-12', 'Copied CAR-12');
+        await vi.waitFor(() => expect(toasts.error).toHaveBeenCalledTimes(1));
+
+        expect(toasts.success).not.toHaveBeenCalled();
+    });
+
+    it('shows an error when there is no clipboard at all', async () => {
+        vi.stubGlobal('navigator', {});
+        copyWithToast('CAR-12', 'Copied CAR-12');
+        await vi.waitFor(() => expect(toasts.error).toHaveBeenCalledTimes(1));
+
+        expect(toasts.success).not.toHaveBeenCalled();
     });
 });

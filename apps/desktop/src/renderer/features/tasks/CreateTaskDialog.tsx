@@ -21,9 +21,13 @@ export interface CreateTaskDialogProps {
     ui: ProjectUi;
 }
 
-/** "New task": title, description, status and dependencies. The new task opens in the detail panel. */
-export function openCreateTask(props: CreateTaskDialogProps): void {
+/**
+ * "New task": title, description, status and dependencies. The new task opens in the detail panel.
+ * `onClose` runs when the dialog is closed, however it was: the window hands focus back after it, so a caller that wants it elsewhere acts a tick later.
+ */
+export function openCreateTask(props: CreateTaskDialogProps, { onClose }: { onClose?: () => void } = {}): void {
     Modal.create({
+        onClose,
         width: 480,
         shadow: true,
         clickOut: true,

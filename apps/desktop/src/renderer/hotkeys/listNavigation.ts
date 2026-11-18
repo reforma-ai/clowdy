@@ -57,7 +57,9 @@ export interface ListMoveOptions {
  * to the open item without moving it, so it cannot skip an item the person has not seen.
  */
 export function listMoveCommands({ scope, prefix, group, ids, focus, openId, focusItem, follow }: ListMoveOptions): Command[] {
-    const reachable = () => ids().length > 0 && focus().zone !== 'other';
+    // The zone is a focus gate and not part of `when`: the help overlay's search field has the focus while it lists these commands, and it must not show them as dead.
+    const inList = () => focus().zone !== 'other';
+    const hasItems = () => ids().length > 0;
 
     const move = (direction: 'down' | 'up') => () => {
         const items = ids();
@@ -82,7 +84,7 @@ export function listMoveCommands({ scope, prefix, group, ids, focus, openId, foc
     };
 
     return [
-        { id: `${ prefix }.cursor.down`, title: 'Move down', group, keys: 'j', scope, when: reachable, repeat: true, handler: move('down') },
-        { id: `${ prefix }.cursor.up`, title: 'Move up', group, keys: 'k', scope, when: reachable, repeat: true, handler: move('up') },
+        { id: `${ prefix }.cursor.down`, title: 'Move down', group, keys: 'j', scope, when: hasItems, focus: inList, repeat: true, handler: move('down') },
+        { id: `${ prefix }.cursor.up`, title: 'Move up', group, keys: 'k', scope, when: hasItems, focus: inList, repeat: true, handler: move('up') },
     ];
 }

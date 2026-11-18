@@ -38,8 +38,17 @@ export interface Command {
     keys: CommandKeys;
     /** The command is live while this scope is on the stack. `app` is always live. */
     scope: string;
-    /** Switches the command off while it returns false. */
+    /**
+     * Switches the command off while it returns false: it does not exist for the screen now (no task under the cursor, nothing to save).
+     * The help overlay lists it as unavailable and a key hint is not shown for it.
+     */
     when?: () => boolean;
+    /**
+     * Whether the keyboard focus is where the command's keys belong, for a key that a widget has its own use for (the arrows in a text field's neighbour, a Select's type-ahead).
+     * The dispatcher runs the command only while this and `when` agree, but the help overlay and the key hints ignore it: they say whether the command
+     * exists on this screen, not where the focus is, and the focus is in the overlay's search field whenever the overlay is open.
+     */
+    focus?: () => boolean;
     /** Also runs while a text field has focus (modifier chords, Escape). */
     inInputs?: boolean;
     /** Also runs while a dialog, menu or listbox is open. */
