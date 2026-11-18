@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { startDaemon } from '../src/daemon';
 import { listItems } from '../src/db/items';
+import { projectSnapshot } from '../src/domain/snapshots';
 import { FAKE_AGENT } from './acp-helpers';
 import { cleanTempDirs, Harness, testAgents, testConfig, waitFor } from './helpers';
 
@@ -90,6 +91,26 @@ describe('runs on an ACP agent, through the real runtime', () => {
         expect(systemPrompt).toContain('You are the orchestrator of a Clowdy chat.');
         expect(systemPrompt).toContain('<skill name="clowdy:orchestrate">');
         expect(systemPrompt).toContain('/skills/<name>/SKILL.md');
+    });
+
+    test('a sub-agent Claude\'s adapter stamps becomes a native child run under its call, ended by the call', async () => {
+        const { h, project, say, texts } = await setup();
+        const runId = say('subagent Explore Map the docs\nsay all mapped');
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the turn', 15_000);
+
+        const [child] = projectSnapshot(h.store, project.id).runs.filter(run => run.origin === 'native');
+        const body = (id: string) => listItems(h.store.db, id, 0).map(item => item.body);
+
+        expect(child).toMatchObject({ parentRunId: runId, parentToolCallId: 'a1-1', name: 'Explore', summary: 'Map the docs', status: 'succeeded', result: 'Explore found the readme.' });
+        expect(body(child.id)).toEqual([
+            { kind: 'assistant', text: 'Looking around.', done: true },
+            { kind: 'tool', toolCallId: 'a1-1-read', name: 'Read', input: { file_path: 'README.md' }, state: 'done', output: '# Readme' },
+        ]);
+        // The parent keeps the call that started it, and none of what the sub-agent said or did.
+        expect(body(runId).flatMap(item => (item.kind === 'tool' ? [[item.toolCallId, item.name, item.state]] : []))).toEqual([['a1-1', 'Agent', 'done']]);
+        expect(texts(runId)).toEqual(['ok', 'all mapped']);
+        expect(h.run(runId).result).toBe('all mapped');
     });
 
     test('cancelling a run stops the agent and leaves no process behind', async () => {

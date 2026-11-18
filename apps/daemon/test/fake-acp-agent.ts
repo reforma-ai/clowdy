@@ -4,6 +4,8 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
  *
  *   say <text>                  an assistant message (in two chunks)
  *   tool <name> <json>          a tool call that completes with the JSON as its raw output
+ *   subagent <type> <brief>     an `Agent` call whose sub-agent says something and reads a file, reported as Claude's adapter does without
+ *                               child sessions (stamped with `parentToolUseId`, one update without the stamp); the call's result is its report
  *   call <tool> <json>          calls a tool of the first MCP server the session was given, and says what came back
  *   perm                        asks for permission and says which option the client chose
  *   usage <in> <out> <cost>     token usage for the prompt and a cumulative cost update
@@ -226,6 +228,20 @@ const app = agent({ name: 'fake-acp-agent' })
 
                     await send({ sessionUpdate: 'tool_call', toolCallId, title: name, kind: 'read', status: 'in_progress', rawInput: input });
                     await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'completed', rawOutput: { output: `${ name } finished` } });
+                    break;
+                }
+                case 'subagent': {
+                    const [type, ...brief] = rest;
+                    const agentId = `a${ session.count }-${ ++calls }`;
+                    const readId = `${ agentId }-read`;
+                    const child = { claudeCode: { parentToolUseId: agentId } };
+
+                    await send({ sessionUpdate: 'tool_call', toolCallId: agentId, title: brief.join(' '), kind: 'think', status: 'in_progress', rawInput: { subagent_type: type, description: brief.join(' '), prompt: 'Look around' }, _meta: { claudeCode: { toolName: 'Agent' } } });
+                    await send({ sessionUpdate: 'agent_message_chunk', messageId: crypto.randomUUID(), content: { type: 'text', text: 'Looking around.' }, _meta: child });
+                    await send({ sessionUpdate: 'tool_call', toolCallId: readId, title: 'Read README.md', kind: 'read', status: 'in_progress', rawInput: { file_path: 'README.md' }, _meta: { claudeCode: { toolName: 'Read', parentToolUseId: agentId } } });
+                    // A later update of the sub-agent's call can lose the stamp.
+                    await send({ sessionUpdate: 'tool_call_update', toolCallId: readId, status: 'completed', rawOutput: '# Readme' });
+                    await send({ sessionUpdate: 'tool_call_update', toolCallId: agentId, status: 'completed', content: [{ type: 'content', content: { type: 'text', text: `${ type } found the readme.` } }], _meta: { claudeCode: { toolName: 'Agent' } } });
                     break;
                 }
                 case 'call': {

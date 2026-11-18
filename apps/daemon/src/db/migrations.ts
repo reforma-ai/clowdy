@@ -239,4 +239,11 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 8,
+        up(db) {
+            // A native sub-agent keeps the id of its parent's tool call that started it (see `Run.parentToolCallId`).
+            db.run('ALTER TABLE runs ADD COLUMN parent_tool_call_id TEXT');
+        },
+    },
 ];

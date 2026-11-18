@@ -62,8 +62,54 @@ interface Tool {
     state: ToolEvent['state'];
     output?: string;
     error?: string;
+    /** The sub-agent that made the call, when it was not the session's own. */
+    agentId?: string;
     /** What was last sent, to skip updates that change nothing. */
     sent?: string;
+}
+
+/** An assistant message as it streams. The session's own and each sub-agent's are kept apart, so one never closes or joins another. */
+interface Message {
+    text: string;
+    open: boolean;
+    openId?: string;
+}
+
+/** A sub-agent the agent reported inside this prompt, known by the id of the call that started it. */
+interface Child {
+    name: string;
+    message: Message;
+    /** The call that started it ended, and so did it: whatever it still reports is dropped. */
+    ended: boolean;
+}
+
+/** A sub-agent's brief longer than this is cut: it is a one-line summary of the run, and the whole prompt is in the parent's call. */
+const MAX_BRIEF_CHARS = 120;
+
+/**
+ * The call whose sub-agent sent an update. Claude's adapter, when the client has not opted in to child sessions, reports a sub-agent's
+ * messages and tool calls on the parent's session and stamps each with the id of the `Agent` or `Task` call that started it.
+ */
+function parentToolUseOf(update: SessionUpdate): string | undefined {
+    const claude = (update as { _meta?: Json | null })._meta?.claudeCode;
+    const id = isRecord(claude) ? claude.parentToolUseId : undefined;
+
+    return typeof id === 'string' && id !== '' ? id : undefined;
+}
+
+/** A sub-agent's name and brief, from the input of the call that started it: Claude's `Agent` and `Task` take `subagent_type`, `description` and `prompt`. */
+function identityOf(input: unknown): { name: string; description?: string } {
+    const field = (key: string) => {
+        const value = isRecord(input) ? input[key] : undefined;
+
+        return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+    };
+    const brief = field('prompt')?.split('\n')[0].trim();
+
+    return {
+        name: field('name') ?? field('subagent_type') ?? 'Sub-agent',
+        description: field('description') ?? (brief && brief.length > MAX_BRIEF_CHARS ? `${ brief.slice(0, MAX_BRIEF_CHARS) }…` : brief),
+    };
 }
 
 /** How the engine's numbers move: cumulative cost the agent reported, and the baseline this prompt started from. */
@@ -77,14 +123,19 @@ export interface MapperOptions {
 
 /**
  * Turns the `session/update`s of one prompt into engine events. One mapper per prompt: it tracks the open assistant
- * message, the tool calls, and the numbers (cumulative cost, rate limits) the updates carry.
+ * message, the tool calls, the sub-agents, and the numbers (cumulative cost, rate limits) the updates carry.
+ *
+ * A sub-agent's updates carry its `agentId` (the id of the call that started it), so the runtime writes them to a child run instead of the
+ * parent's stream. Its first update announces it with a `subagent` event, and the end of the call that started it ends it, with that call's
+ * result as its report. An agent that does not say which updates are a sub-agent's leaves them in the parent's stream, and its call stays a
+ * plain tool call.
  */
 export class UpdateMapper {
-    private message = '';
-    private open = false;
-    private openId?: string;
+    /** The session's own message. */
+    private message: Message = { text: '', open: false };
     private last = '';
     private tools = new Map<string, Tool>();
+    private children = new Map<string, Child>();
     /** The session's cumulative cost in USD, as of the latest `usage_update`. */
     cost?: number;
     private limit?: string;
@@ -92,12 +143,18 @@ export class UpdateMapper {
 
     constructor(private options: MapperOptions) {}
 
-    /** The text of the last assistant message so far: what `done` reports. */
+    /** The text of the session's last assistant message so far: what `done` reports. */
     result(): string | undefined {
-        return (this.open ? this.message : this.last).trim() || undefined;
+        return (this.message.open ? this.message.text : this.last).trim() || undefined;
     }
 
     update(update: SessionUpdate): EngineEvent[] {
+        const agentId = this.ownerOf(update);
+
+        if (agentId !== undefined) {
+            return this.child(agentId, update);
+        }
+
         switch (update.sessionUpdate) {
             case 'agent_message_chunk':
                 return update.content.type === 'text' ? this.text(update.content.text, update.messageId ?? undefined) : [];
@@ -132,36 +189,108 @@ export class UpdateMapper {
         return events;
     }
 
-    /** Ends the open assistant message, if there is one. */
-    close(): EngineEvent[] {
-        if (!this.open) {
+    /** Ends the open assistant message of the session, or of the sub-agent `agentId`, if there is one. */
+    close(agentId?: string): EngineEvent[] {
+        const message = this.messageOf(agentId);
+
+        if (!message.open) {
             return [];
         }
 
-        this.open = false;
-        this.openId = undefined;
-        this.last = this.message;
-        this.message = '';
+        message.open = false;
+        message.openId = undefined;
 
-        return [{ type: 'text', delta: '', done: true }];
+        if (agentId === undefined) {
+            this.last = message.text;
+        }
+
+        message.text = '';
+
+        return [{ type: 'text', delta: '', done: true, ...(agentId !== undefined && { agentId }) }];
     }
 
-    private text(delta: string, messageId: string | undefined): EngineEvent[] {
+    /**
+     * The sub-agent an update belongs to: the call Claude's adapter stamped on it, else the sub-agent that made the tool call it updates, since a
+     * later update of a call can come without the stamp (a progress beat after the sub-agent finished).
+     */
+    private ownerOf(update: SessionUpdate): string | undefined {
+        const isTool = update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update';
+        const stamped = parentToolUseOf(update);
+
+        // A call is never its own sub-agent's.
+        if (stamped !== undefined && !(isTool && stamped === update.toolCallId)) {
+            return stamped;
+        }
+
+        return isTool ? this.tools.get(update.toolCallId)?.agentId : undefined;
+    }
+
+    /** An update of a sub-agent: its first one announces it, then its messages and tool calls go to its own stream. */
+    private child(agentId: string, update: SessionUpdate): EngineEvent[] {
+        const events: EngineEvent[] = [];
+        let child = this.children.get(agentId);
+
+        if (!child) {
+            const call = this.tools.get(agentId);
+
+            // A sub-agent first heard of after the call that started it ended has nothing left to show.
+            if (call && call.state !== 'running') {
+                return [];
+            }
+
+            const { name, description } = identityOf(call?.input);
+
+            child = { name, message: { text: '', open: false }, ended: false };
+            this.children.set(agentId, child);
+            events.push({ type: 'subagent', agentId, parentToolCallId: agentId, name, ...(description !== undefined && { description }), state: 'running' });
+        }
+
+        if (child.ended) {
+            return [];
+        }
+
+        switch (update.sessionUpdate) {
+            case 'agent_message_chunk':
+                if (update.content.type === 'text') {
+                    events.push(...this.text(update.content.text, update.messageId ?? undefined, agentId));
+                }
+
+                break;
+            case 'tool_call':
+                events.push(...this.close(agentId), ...this.tool(update, agentId));
+                break;
+            case 'tool_call_update':
+                events.push(...this.tool(update, agentId));
+                break;
+            default:
+                // Its thoughts and plans are not shown, as the session's own are not; the window and the cost are the session's.
+                break;
+        }
+
+        return events;
+    }
+
+    private messageOf(agentId: string | undefined): Message {
+        return (agentId === undefined ? undefined : this.children.get(agentId)?.message) ?? this.message;
+    }
+
+    private text(delta: string, messageId: string | undefined, agentId?: string): EngineEvent[] {
+        const message = this.messageOf(agentId);
         const events: EngineEvent[] = [];
 
         // A new message id is a new message, even with nothing between.
-        if (this.open && messageId !== undefined && this.openId !== undefined && messageId !== this.openId) {
-            events.push(...this.close());
+        if (message.open && messageId !== undefined && message.openId !== undefined && messageId !== message.openId) {
+            events.push(...this.close(agentId));
         }
 
         if (!delta) {
             return events;
         }
 
-        this.open = true;
-        this.openId ??= messageId;
-        this.message += delta;
-        events.push({ type: 'text', delta, done: false });
+        message.open = true;
+        message.openId ??= messageId;
+        message.text += delta;
+        events.push({ type: 'text', delta, done: false, ...(agentId !== undefined && { agentId }) });
 
         return events;
     }
@@ -187,10 +316,11 @@ export class UpdateMapper {
         return (typeof claude === 'string' && claude) || update.name || kind || previous || update.title || 'Tool';
     }
 
-    private tool(update: ToolCall | ToolCallUpdate): EngineEvent[] {
+    /** A tool call of the session, or of the sub-agent `agentId`. */
+    private tool(update: ToolCall | ToolCallUpdate, agentId?: string): EngineEvent[] {
         const id = update.toolCallId;
         const known = this.tools.get(id);
-        const tool: Tool = known ?? { name: '', input: undefined, state: 'running' };
+        const tool: Tool = known ?? { name: '', input: undefined, state: 'running', ...(agentId !== undefined && { agentId }) };
 
         tool.name = this.nameOf(update, known?.name);
 
@@ -227,6 +357,7 @@ export class UpdateMapper {
             state: tool.state,
             ...(tool.output !== undefined && { output: tool.output }),
             ...(tool.error !== undefined && { error: tool.error }),
+            ...(tool.agentId !== undefined && { agentId: tool.agentId }),
         };
         const signature = JSON.stringify(event);
 
@@ -236,7 +367,24 @@ export class UpdateMapper {
 
         tool.sent = signature;
 
-        return [event];
+        return [event, ...this.settle(id, tool)];
+    }
+
+    /** The call that started a sub-agent ended, and so did the sub-agent: the call's result is its report. */
+    private settle(id: string, call: Tool): EngineEvent[] {
+        const child = this.children.get(id);
+
+        if (!child || child.ended || call.state === 'running') {
+            return [];
+        }
+
+        const summary = call.state === 'error' ? call.error : call.output;
+        const events = this.close(id);
+
+        child.ended = true;
+        events.push({ type: 'subagent', agentId: id, parentToolCallId: id, name: child.name, state: call.state, ...(summary !== undefined && { summary }) });
+
+        return events;
     }
 
     private usage(update: Extract<SessionUpdate, { sessionUpdate: 'usage_update' }>): EngineEvent[] {

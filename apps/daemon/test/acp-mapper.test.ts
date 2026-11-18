@@ -123,6 +123,132 @@ describe('tool calls', () => {
     });
 });
 
+describe('sub-agents, as Claude\'s adapter reports them without child sessions', () => {
+    const stamp = (parentToolUseId: string, toolName?: string) => ({ claudeCode: { parentToolUseId, ...(toolName && { toolName }) } });
+    const agentCall = (toolCallId: string, input: unknown = { subagent_type: 'Explore', description: 'Map the router', prompt: 'Find every route.' }): SessionUpdate => ({
+        sessionUpdate: 'tool_call',
+        toolCallId,
+        title: 'Map the router',
+        kind: 'think',
+        status: 'in_progress',
+        rawInput: input,
+        _meta: { claudeCode: { toolName: 'Agent' } },
+    });
+    const childChunk = (parentToolUseId: string, text: string, messageId?: string): SessionUpdate => ({ ...chunk(text, messageId), _meta: stamp(parentToolUseId) });
+    const subagents = (events: EngineEvent[]) => events.filter(event => event.type === 'subagent');
+
+    test('a stamped update goes to the sub-agent, which its first one announces with the name and brief of the call that started it', () => {
+        const { events, mapper } = run([
+            chunk('Let me delegate.', 'p1'),
+            agentCall('agent-1'),
+            childChunk('agent-1', 'Looking ', 'c1'),
+            childChunk('agent-1', 'around.', 'c1'),
+            { sessionUpdate: 'tool_call', toolCallId: 'read-1', title: 'Read a.ts', kind: 'read', status: 'in_progress', rawInput: { file_path: 'a.ts' }, _meta: stamp('agent-1', 'Read') },
+            chunk('Still mine.', 'p2'),
+        ]);
+
+        expect(events).toEqual([
+            { type: 'text', delta: 'Let me delegate.', done: false },
+            { type: 'text', delta: '', done: true },
+            { type: 'tool', toolCallId: 'agent-1', name: 'Agent', input: { subagent_type: 'Explore', description: 'Map the router', prompt: 'Find every route.' }, state: 'running' },
+            { type: 'subagent', agentId: 'agent-1', parentToolCallId: 'agent-1', name: 'Explore', description: 'Map the router', state: 'running' },
+            { type: 'text', delta: 'Looking ', done: false, agentId: 'agent-1' },
+            { type: 'text', delta: 'around.', done: false, agentId: 'agent-1' },
+            // The sub-agent's call ends its own message, not the session's.
+            { type: 'text', delta: '', done: true, agentId: 'agent-1' },
+            { type: 'tool', toolCallId: 'read-1', name: 'Read', input: { file_path: 'a.ts' }, state: 'running', agentId: 'agent-1' },
+            { type: 'text', delta: 'Still mine.', done: false },
+            { type: 'text', delta: '', done: true },
+        ]);
+        expect(mapper.result()).toBe('Still mine.');
+    });
+
+    test('the session\'s open message stays open through the sub-agent\'s text and calls, and is the result', () => {
+        const { events, mapper } = run([agentCall('agent-1'), chunk('Waiting ', 'p1'), childChunk('agent-1', 'Busy.', 'c1'), { sessionUpdate: 'tool_call', toolCallId: 'grep-1', title: 'Grep', kind: 'search', _meta: stamp('agent-1') }, chunk('on it.', 'p1')]);
+        const own = events.filter(event => event.type === 'text' && event.agentId === undefined);
+
+        expect(own).toEqual([{ type: 'text', delta: 'Waiting ', done: false }, { type: 'text', delta: 'on it.', done: false }, { type: 'text', delta: '', done: true }]);
+        expect(mapper.result()).toBe('Waiting on it.');
+    });
+
+    test('a later update of the sub-agent\'s call that lost the stamp stays with the sub-agent', () => {
+        const { events } = run([
+            agentCall('agent-1'),
+            { sessionUpdate: 'tool_call', toolCallId: 'read-1', title: 'Read', kind: 'read', _meta: stamp('agent-1') },
+            { sessionUpdate: 'tool_call_update', toolCallId: 'read-1', status: 'completed', rawOutput: 'text' },
+        ]);
+
+        expect(tools(events).at(-1)).toEqual({ type: 'tool', toolCallId: 'read-1', name: 'Read', input: { title: 'Read' }, state: 'done', output: 'text', agentId: 'agent-1' });
+    });
+
+    test('the call that started it ends it: done with the call\'s result as its report, or failed with its error', () => {
+        const { events } = run([
+            agentCall('agent-1'),
+            childChunk('agent-1', 'Half a sentence', 'c1'),
+            { sessionUpdate: 'tool_call_update', toolCallId: 'agent-1', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'Three routes.' } }] },
+            agentCall('agent-2', { subagent_type: 'Plan' }),
+            childChunk('agent-2', 'Planning'),
+            { sessionUpdate: 'tool_call_update', toolCallId: 'agent-2', status: 'failed', rawOutput: 'The sub-agent stopped' },
+        ]);
+
+        expect(events.slice(3, 6)).toEqual([
+            { type: 'tool', toolCallId: 'agent-1', name: 'Agent', input: { subagent_type: 'Explore', description: 'Map the router', prompt: 'Find every route.' }, state: 'done', output: 'Three routes.' },
+            { type: 'text', delta: '', done: true, agentId: 'agent-1' },
+            { type: 'subagent', agentId: 'agent-1', parentToolCallId: 'agent-1', name: 'Explore', state: 'done', summary: 'Three routes.' },
+        ]);
+        expect(subagents(events)).toEqual([
+            { type: 'subagent', agentId: 'agent-1', parentToolCallId: 'agent-1', name: 'Explore', description: 'Map the router', state: 'running' },
+            { type: 'subagent', agentId: 'agent-1', parentToolCallId: 'agent-1', name: 'Explore', state: 'done', summary: 'Three routes.' },
+            { type: 'subagent', agentId: 'agent-2', parentToolCallId: 'agent-2', name: 'Plan', state: 'running' },
+            { type: 'subagent', agentId: 'agent-2', parentToolCallId: 'agent-2', name: 'Plan', state: 'error', summary: 'The sub-agent stopped' },
+        ]);
+    });
+
+    test('what a sub-agent reports after its call ended is dropped, and so is one first heard of then', () => {
+        const { events } = run([
+            agentCall('agent-1'),
+            childChunk('agent-1', 'Working'),
+            { sessionUpdate: 'tool_call_update', toolCallId: 'agent-1', status: 'completed', rawOutput: 'Done' },
+            childChunk('agent-1', 'A late beat'),
+            agentCall('agent-2'),
+            { sessionUpdate: 'tool_call_update', toolCallId: 'agent-2', status: 'completed', rawOutput: 'Done' },
+            childChunk('agent-2', 'Too late'),
+        ]);
+
+        expect(events.filter(event => event.type === 'text' && (event.delta === 'A late beat' || event.delta === 'Too late'))).toEqual([]);
+        expect(subagents(events).map(event => event.type === 'subagent' && [event.agentId, event.state])).toEqual([['agent-1', 'running'], ['agent-1', 'done']]);
+    });
+
+    test('a sub-agent heard of before its call is named by default; the brief falls back to the first line of the prompt', () => {
+        const long = 'word '.repeat(40).trim();
+        const { events } = run([childChunk('ghost', 'Boo'), agentCall('agent-2', { prompt: `${ long }\nMore detail` }), childChunk('agent-2', 'Hi')]);
+
+        expect(subagents(events)).toEqual([
+            { type: 'subagent', agentId: 'ghost', parentToolCallId: 'ghost', name: 'Sub-agent', state: 'running' },
+            { type: 'subagent', agentId: 'agent-2', parentToolCallId: 'agent-2', name: 'Sub-agent', description: `${ long.slice(0, 120) }…`, state: 'running' },
+        ]);
+    });
+
+    test('a sub-agent call of an agent that stamps nothing stays a plain call, with the traffic in the session\'s stream', () => {
+        const { events } = run([agentCall('agent-1'), chunk('child words'), { sessionUpdate: 'tool_call_update', toolCallId: 'agent-1', status: 'completed', rawOutput: 'Done' }]);
+
+        expect(subagents(events)).toEqual([]);
+        expect(events.every(event => !('agentId' in event))).toBe(true);
+    });
+
+    test('a nested sub-agent is announced on its own, and its call in the outer sub-agent\'s stream ends it', () => {
+        const { events } = run([
+            agentCall('outer'),
+            { ...agentCall('inner'), _meta: stamp('outer', 'Agent') },
+            childChunk('inner', 'Deep'),
+            { sessionUpdate: 'tool_call_update', toolCallId: 'inner', status: 'completed', rawOutput: 'Inner done', _meta: stamp('outer', 'Agent') },
+        ]);
+
+        expect(tools(events).map(event => event.type === 'tool' && [event.toolCallId, event.state, event.agentId])).toEqual([['outer', 'running', undefined], ['inner', 'running', 'outer'], ['inner', 'done', 'outer']]);
+        expect(subagents(events).map(event => event.type === 'subagent' && [event.agentId, event.state])).toEqual([['outer', 'running'], ['inner', 'running'], ['inner', 'done']]);
+    });
+});
+
 describe('numbers', () => {
     const cost = (amount: number): SessionUpdate => ({ sessionUpdate: 'usage_update', used: 1, size: 100, cost: { amount, currency: 'USD' } });
 

@@ -285,14 +285,21 @@ class FakeSession implements EngineSession {
         return result;
     }
 
-    /** A sub-agent inside the session that looks at the callers of the change, the way an engine's own `Agent` tool would. */
+    /**
+     * A sub-agent inside the session that looks at the callers of the change, started by an `Agent` call the way Claude's is: the call is in the
+     * session's own stream, the sub-agent is known by the call's id, and the call's result is its report.
+     */
     private async *subagent(path: string): Step {
-        const agentId = `fake-agent-${ hash(path) }`;
+        const agentId = `fake-call-${ this.tag }-${ ++this.calls }`;
+        const input = { subagent_type: 'Explore', description: `Check the callers of ${ path }`, prompt: `Find the callers of ${ path } and say whether the change affects them.` };
+        const summary = `Three callers of ${ path }, none affected by the change.`;
 
-        yield { type: 'subagent', agentId, name: 'Explore', description: `Check the callers of ${ path }`, state: 'running' };
+        yield { type: 'tool', toolCallId: agentId, name: 'Agent', input, state: 'running' };
+        yield { type: 'subagent', agentId, parentToolCallId: agentId, name: 'Explore', description: input.description, state: 'running' };
         yield* this.say('Checking the callers in a sub-agent.', agentId);
         yield* this.tool('grep', { pattern: path }, async () => ({ matches: 3 }), agentId);
-        yield { type: 'subagent', agentId, name: 'Explore', state: 'done', summary: `Three callers of ${ path }, none affected by the change.` };
+        yield { type: 'tool', toolCallId: agentId, name: 'Agent', input, state: 'done', output: summary };
+        yield { type: 'subagent', agentId, parentToolCallId: agentId, name: 'Explore', state: 'done', summary };
     }
 
     private async *followUp(): Step<string> {

@@ -54,8 +54,10 @@ describe('native sub-agents as child runs', () => {
         const [explore, review, plan, slow] = natives();
 
         expect([explore, review, plan, slow].map(run => run.name)).toEqual(['Explore', 'Review', 'Plan', 'Slow']);
-        expect(explore).toMatchObject({ role: 'executor', origin: 'native', engine: 'fake', parentRunId: runId, rootRunId: runId, status: 'succeeded', summary: 'Look at the callers of the router', result: 'Three callers, none affected.', startedAt: expect.any(Number), finishedAt: expect.any(Number) });
+        expect(explore).toMatchObject({ role: 'executor', origin: 'native', parentToolCallId: 't1', engine: 'fake', parentRunId: runId, rootRunId: runId, status: 'succeeded', summary: 'Look at the callers of the router', result: 'Three callers, none affected.', startedAt: expect.any(Number), finishedAt: expect.any(Number) });
         expect(review).toMatchObject({ status: 'failed', error: 'The diff was unreadable' });
+        // An engine that does not say which call started a sub-agent leaves the run without one.
+        expect(review.parentToolCallId).toBeUndefined();
         expect(plan).toMatchObject({ status: 'cancelled', statusReason: 'Not needed' });
 
         // Still running when the parent's turn ended: it ended with the turn.

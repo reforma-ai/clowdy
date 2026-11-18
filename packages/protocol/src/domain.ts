@@ -166,6 +166,11 @@ export interface Run {
      * Absent for roots (a chat's orchestrator).
      */
     origin?: RunOrigin;
+    /**
+     * For a `native` run, the id of the tool call in its parent's stream that started it (the agent's own `Agent` or `Task` call), so the card
+     * drawn for that call finds its child. Absent when the engine did not say, and for every other run.
+     */
+    parentToolCallId?: string;
     /** Short label: an agent name such as `Executor 07`, or the orchestrator's. */
     name: string;
     /** One line on the current work. */

@@ -156,9 +156,10 @@ export class RunService {
 
     /**
      * A sub-agent inside `parent`'s engine session, shown as a child run. It starts `running` without a slot: the
-     * parent's process does its work. It ends with the parent's turn at the latest.
+     * parent's process does its work. It ends with the parent's turn at the latest. `parentToolCallId` is the parent's call that started it, when
+     * the engine said, so the parent's stream can draw that call as the child's card.
      */
-    createNative(parent: Run, input: { name: string; summary: string }): Run {
+    createNative(parent: Run, input: { name: string; summary: string; parentToolCallId?: string }): Run {
         return this.store.tx(() => {
             const id = newId('run');
             const run: Run = {
@@ -168,6 +169,7 @@ export class RunService {
                 rootRunId: parent.rootRunId,
                 role: 'executor',
                 origin: 'native',
+                ...(input.parentToolCallId && { parentToolCallId: input.parentToolCallId }),
                 name: input.name,
                 summary: input.summary,
                 status: 'running',

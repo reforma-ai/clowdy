@@ -171,9 +171,17 @@ describe('the scripted orchestrator', () => {
         const executor = snapshot(h, project.id).runs.find(run => run.origin === 'spawned')!;
         const tools = toolItems(items(h, executor.id));
 
-        expect(tools.map(tool => [tool.name, tool.state])).toEqual([['task_get', 'done'], ['read_file', 'done'], ['edit_file', 'done'], ['bash', 'done'], ['report_result', 'done']]);
-        expect(tools[2].output).toEqual({ path: expect.stringMatching(/^src\/.*\.ts$/), added: expect.any(Number), removed: expect.any(Number) });
-        expect(tools[3]).toMatchObject({ input: { command: 'bun run typecheck' }, output: { command: 'bun run typecheck', exitCode: 0 } });
+        expect(tools.map(tool => [tool.name, tool.state])).toEqual([['task_get', 'done'], ['read_file', 'done'], ['Agent', 'done'], ['edit_file', 'done'], ['bash', 'done'], ['report_result', 'done']]);
+        expect(tools[3].output).toEqual({ path: expect.stringMatching(/^src\/.*\.ts$/), added: expect.any(Number), removed: expect.any(Number) });
+        expect(tools[4]).toMatchObject({ input: { command: 'bun run typecheck' }, output: { command: 'bun run typecheck', exitCode: 0 } });
+
+        // The sub-agent is a native child of the executor, known by the `Agent` call that started it, and that call's result is its report.
+        const agent = tools[2];
+        const native = snapshot(h, project.id).runs.find(run => run.origin === 'native' && run.parentRunId === executor.id)!;
+
+        expect(agent).toMatchObject({ input: { subagent_type: 'Explore' }, output: expect.stringContaining('none affected') });
+        expect(native).toMatchObject({ parentToolCallId: agent.toolCallId, name: 'Explore', status: 'succeeded', result: agent.output });
+        expect(toolItems(items(h, native.id)).map(tool => tool.name)).toEqual(['grep']);
 
         const stream = items(h, executor.id);
 

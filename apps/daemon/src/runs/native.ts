@@ -90,14 +90,14 @@ export class NativeAgents {
         });
     }
 
-    private open(agentId: string, name: string, description?: string): Agent | undefined {
+    private open(agentId: string, name: string, description?: string, parentToolCallId?: string): Agent | undefined {
         if (this.agents.size >= MAX_AGENTS) {
             this.skipped.add(agentId);
 
             return undefined;
         }
 
-        const run = this.runs.createNative(this.parent, { name, summary: description ?? name });
+        const run = this.runs.createNative(this.parent, { name, summary: description ?? name, parentToolCallId });
         const agent: Agent = { run, writer: new TurnWriter(this.store, run.id, TEXT_THROTTLE_MS) };
 
         this.agents.set(agentId, agent);
@@ -106,7 +106,7 @@ export class NativeAgents {
     }
 
     private applyState(event: SubagentEvent): void {
-        const agent = this.agents.get(event.agentId) ?? this.open(event.agentId, event.name, event.description);
+        const agent = this.agents.get(event.agentId) ?? this.open(event.agentId, event.name, event.description, event.parentToolCallId);
 
         if (!agent || !this.isRunning(agent)) {
             return;
