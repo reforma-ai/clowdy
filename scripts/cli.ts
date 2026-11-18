@@ -1,7 +1,7 @@
 /**
  * The `./clowdy` command line.
  *
- *   ./clowdy dev [electron args]   Run the desktop app with hot module replacement.
+ *   ./clowdy dev [electron args]   Run the desktop app, rebuilding and reloading as you edit.
  *   ./clowdy build [mac|win]       Build the unpacked desktop app for an OS (default: this one).
  *   ./clowdy worktree add|remove   Extra checkout for work that should not share this branch.
  *
@@ -17,7 +17,7 @@ const [command, ...args] = process.argv.slice(2);
 const HELP = `Usage: ./clowdy <command>
 
 Commands:
-  dev [electron args]   Run the desktop app; the renderer reloads as you edit, main and preload restart the app
+  dev [electron args]   Run the desktop app; the renderer is rebuilt and the window reloads as you edit, main and preload restart the app
   build [mac|win]       Build the unpacked desktop app into apps/desktop/release (default: this OS; mac needs a Mac)
   worktree add <slug>   New checkout at ../clowdy-<slug> on <nickname>/<slug> from origin/main
   worktree remove <slug>  Remove that checkout. Refuses uncommitted work

@@ -1,4 +1,5 @@
-// The renderer. `scripts/dev.ts` serves it for HMR; `scripts/build.ts` builds it into the packaged app.
+// The renderer. `scripts/dev.ts` builds it in watch mode into `dist/renderer` (the app serves that from `app://clowdy`) and
+// `scripts/build.ts` builds it into the packaged app. The `server` block below is for `scripts/screenshot.ts`, which loads a page from a dev server.
 import react from '@vitejs/plugin-react';
 import observingComponentsPlugin from 'babel-plugin-observing-components';
 import { createHash } from 'node:crypto';
