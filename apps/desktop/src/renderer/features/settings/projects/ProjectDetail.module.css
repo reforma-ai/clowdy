@@ -1,24 +1,9 @@
-@reference '@clowdy/styles/rulesets';
-
-.back {
-    align-self: flex-start;
-    margin-inline-start: calc(var(--spacing-md) * -1);
+/* A path or an address is one long word: let it break anywhere rather than push the row wide. */
+.value {
+    overflow-wrap: anywhere;
 }
 
-.header {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xs);
-}
-
-.title {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-}
-
-.note {
-    padding: var(--spacing-lg);
-    border: 1px dashed var(--color-surface-border);
-    border-radius: var(--radius-lg);
+.nameInput {
+    width: 16rem;
+    max-width: 100%;
 }

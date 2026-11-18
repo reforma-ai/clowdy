@@ -1,6 +1,5 @@
 import { Box } from '@clowdy/components/Box';
 import { Card } from '@clowdy/components/Card';
-import { SettingsField } from '@clowdy/components/SettingsField';
 import { Text } from '@clowdy/components/Text';
 import { cn } from '@clowdy/lib';
 import { useState } from 'react';
@@ -8,6 +7,10 @@ import { useState } from 'react';
 import { getTheme, setTheme } from '../../theme';
 import styles from './AppearancePage.module.css';
 import { ThemePreview } from './ThemePreview';
+import { SettingsCard } from './ui/SettingsCard';
+import { SettingsPage } from './ui/SettingsPage';
+import { SettingsRow } from './ui/SettingsRow';
+import { SettingsSection } from './ui/SettingsSection';
 
 import type { Theme } from '@clowdy/constants';
 
@@ -40,24 +43,28 @@ export function AppearancePage() {
     const [theme, setThemeState] = useState(getTheme);
 
     return (
-        <SettingsField>
-            <SettingsField.Label>Theme</SettingsField.Label>
-            <Box direction="row" gap="lg" role="group" aria-label="Theme">
-                { THEME_CARDS.map(({ id, label }) => (
-                    <ThemeCard
-                        key={ id }
-                        theme={ id }
-                        label={ label }
-                        isActive={ theme === id }
-                        onSelect={ () => {
-                            setThemeState(id);
-                            applyTheme(id);
-                        } }
-                    />
-                )) }
-            </Box>
-            <SettingsField.Description>Choose your preferred color theme.</SettingsField.Description>
-        </SettingsField>
+        <SettingsPage title="Appearance" description="How Clowdy looks on this computer.">
+            <SettingsSection title="Theme">
+                <SettingsCard>
+                    <SettingsRow title="Color theme" description="Choose your preferred color theme.">
+                        <Box direction="row" gap="lg" role="group" aria-label="Theme">
+                            { THEME_CARDS.map(({ id, label }) => (
+                                <ThemeCard
+                                    key={ id }
+                                    theme={ id }
+                                    label={ label }
+                                    isActive={ theme === id }
+                                    onSelect={ () => {
+                                        setThemeState(id);
+                                        applyTheme(id);
+                                    } }
+                                />
+                            )) }
+                        </Box>
+                    </SettingsRow>
+                </SettingsCard>
+            </SettingsSection>
+        </SettingsPage>
     );
 }
 

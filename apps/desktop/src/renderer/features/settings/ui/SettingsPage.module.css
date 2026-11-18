@@ -1,0 +1,21 @@
+/* The page's title block: the title (or the path to it), what the page is for, and a hairline under it. The page puts 24px between its blocks. */
+.header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding-bottom: var(--spacing-xl);
+    border-bottom: 1px solid var(--color-secondary-muted-border);
+}
+
+.titleLine {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-xl);
+    min-width: 0;
+}
+
+.title {
+    min-width: 0;
+    margin: 0;
+}

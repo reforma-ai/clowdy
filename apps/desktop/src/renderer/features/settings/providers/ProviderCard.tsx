@@ -1,6 +1,8 @@
 import { Switch } from '@clowdy/components/Switch';
 import { Text } from '@clowdy/components/Text';
 
+import { SettingsBlock } from '../ui/SettingsBlock';
+import { SettingsCard } from '../ui/SettingsCard';
 import { AccountRow } from './AccountRow';
 import styles from './ProviderCard.module.css';
 import { ProviderIcon } from './ProviderIcon';
@@ -21,36 +23,36 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
     const usage = isOn ? agent.usage : undefined;
 
     return (
-        <section className={ styles.card } aria-label={ agent.name }>
-            <header className={ styles.header }>
-                <span className={ styles.icon }><ProviderIcon agentId={ agent.id } size={ 22 } /></span>
-                <div className={ styles.title }>
-                    <Text bold>{ agent.name }</Text>
-                    { agent.version && <Text variant="xs" color="secondary" className={ styles.version }>{ `v${ agent.version }` }</Text> }
-                </div>
-                <Switch
-                    size="sm"
-                    isSelected={ isOn }
-                    isDisabled={ !installed }
-                    isPending={ commands.pending.has('enabled') }
-                    aria-label={ `Use ${ agent.name } in Clowdy` }
-                    onChange={ enabled => void commands.setEnabled(enabled) }
-                />
-            </header>
+        <SettingsCard as="section" divided aria-label={ agent.name }>
+            <SettingsBlock className={ styles.identity }>
+                <header className={ styles.header }>
+                    <span className={ styles.icon }><ProviderIcon agentId={ agent.id } size={ 22 } /></span>
+                    <div className={ styles.title }>
+                        <Text bold>{ agent.name }</Text>
+                        { agent.version && <Text variant="xs" color="secondary" className={ styles.version }>{ `v${ agent.version }` }</Text> }
+                    </div>
+                    <Switch
+                        size="sm"
+                        isSelected={ isOn }
+                        isDisabled={ !installed }
+                        isPending={ commands.pending.has('enabled') }
+                        aria-label={ `Use ${ agent.name } in Clowdy` }
+                        onChange={ enabled => void commands.setEnabled(enabled) }
+                    />
+                </header>
 
-            <div className={ styles.section }>
                 <AccountRow agent={ agent } commands={ commands } />
-            </div>
+            </SettingsBlock>
 
             { usage && (
-                <div className={ styles.section }>
+                <SettingsBlock>
                     <UsageBlock usage={ usage } isRefreshing={ commands.pending.has('refresh') } onRefresh={ () => void commands.refresh() } />
-                </div>
+                </SettingsBlock>
             ) }
 
-            <div className={ styles.section } data-dim={ !isOn || undefined }>
+            <SettingsBlock data-dim={ !isOn || undefined } className={ styles.settings }>
                 <ProviderSettings agent={ agent } commands={ commands } />
-            </div>
-        </section>
+            </SettingsBlock>
+        </SettingsCard>
     );
 }

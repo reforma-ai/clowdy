@@ -5,6 +5,7 @@ import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { ChevronRight, Folder, Home, More, Trash } from '@clowdy/icons/14';
 
+import { SettingsCard } from '../ui/SettingsCard';
 import styles from './ProjectRow.module.css';
 import { holdingsLine } from './projectView';
 
@@ -30,7 +31,7 @@ export function ProjectRow({ project, info, onManage, onOpen, onRemove }: Projec
     const missing = info !== undefined && !info.folderExists;
 
     return (
-        <div className={ styles.row }>
+        <SettingsCard className={ styles.row }>
             <button type="button" className={ styles.open } data-project-id={ project.id } onClick={ onManage }>
                 <span className={ styles.icon }>{ project.personal ? <Home /> : <Folder /> }</span>
                 <span className={ styles.text }>
@@ -62,6 +63,6 @@ export function ProjectRow({ project, info, onManage, onOpen, onRemove }: Projec
                     </Menu>
                 </Popover>
             </MenuTrigger>
-        </div>
+        </SettingsCard>
     );
 }

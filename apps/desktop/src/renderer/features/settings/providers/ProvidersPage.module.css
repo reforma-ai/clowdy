@@ -3,9 +3,3 @@
     flex-direction: column;
     gap: var(--spacing-xl);
 }
-
-.empty {
-    padding: var(--spacing-lg);
-    border: 1px dashed var(--color-surface-border);
-    border-radius: var(--radius-lg);
-}

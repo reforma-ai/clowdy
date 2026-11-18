@@ -7,6 +7,8 @@ import { AttentionCircle } from '@clowdy/icons/14';
 import { useEffect } from 'react';
 
 import { useAgents, useRootStore } from '../../../stores';
+import { SettingsEmpty } from '../ui/SettingsEmpty';
+import { SettingsPage } from '../ui/SettingsPage';
 import { ProviderCard } from './ProviderCard';
 import styles from './ProvidersPage.module.css';
 import { providerAgents } from './providerView';
@@ -14,13 +16,9 @@ import { providerAgents } from './providerView';
 /** How often the page asks for the agents while it is open; the daemon reads again only what is older than its own freshness. */
 const POLL_MS = 60_000;
 
-const INTRO = (
-    <Text color="secondary">
-        The agents Clowdy runs: who is signed in to each, what is left of its plan, and how it starts. Clowdy uses the login the program already has on this computer.
-    </Text>
-);
+const INTRO = 'The agents Clowdy runs: who is signed in to each, what is left of its plan, and how it starts. Clowdy uses the login the program already has on this computer.';
 
-/** Settings > Providers (the window's own title is the page's): one card per provider, with its account, its usage and its settings. */
+/** Settings > Providers: one card per provider, with its account, its usage and its settings. */
 export function ProvidersPage() {
     const { agents, status, error, refresh } = useAgents();
     const root = useRootStore();
@@ -41,31 +39,28 @@ export function ProvidersPage() {
 
     if (status === 'loading' && agents.length === 0) {
         return (
-            <>
-                { INTRO }
+            <SettingsPage title="Providers" description={ INTRO }>
                 <Box direction="row" gap="md" align="center">
                     <Loader size="md" />
                     <Text color="secondary">Looking for agents…</Text>
                 </Box>
-            </>
+            </SettingsPage>
         );
     }
 
     if (status === 'failed' && agents.length === 0) {
         return (
-            <>
-                { INTRO }
+            <SettingsPage title="Providers" description={ INTRO }>
                 <Box gap="md" align="start">
                     <Text color="danger">The agents could not be loaded. { error }</Text>
                     <Button variant="bordered" size="sm" onPress={ () => void refresh() }>Try again</Button>
                 </Box>
-            </>
+            </SettingsPage>
         );
     }
 
     return (
-        <>
-            { INTRO }
+        <SettingsPage title="Providers" description={ INTRO }>
             { status === 'failed' && (
                 <Alert color="danger">
                     <AlertIcon><AttentionCircle /></AlertIcon>
@@ -74,8 +69,8 @@ export function ProvidersPage() {
                 </Alert>
             ) }
             { providers.length === 0
-                ? <Text color="secondary" className={ styles.empty }>The daemon lists none of Claude Code, Codex or Cursor.</Text>
+                ? <SettingsEmpty>The daemon lists none of Claude Code, Codex or Cursor.</SettingsEmpty>
                 : <div className={ styles.cards }>{ providers.map(agent => <ProviderCard key={ agent.id } agent={ agent } />) }</div> }
-        </>
+        </SettingsPage>
     );
 }

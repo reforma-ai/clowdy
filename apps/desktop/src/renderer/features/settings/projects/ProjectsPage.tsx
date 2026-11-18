@@ -2,12 +2,13 @@ import { Button } from '@clowdy/components/Button';
 import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { SortableList } from '@clowdy/components/SortableList';
-import { Text } from '@clowdy/components/Text';
 import { Folder, Plus } from '@clowdy/icons/14';
 import { useMemo } from 'react';
 
 import { openCreateProject, openExistingProject } from '../../../shell/projectDialogs';
 import { useRootStore } from '../../../stores';
+import { SettingsEmpty } from '../ui/SettingsEmpty';
+import { SettingsPage } from '../ui/SettingsPage';
 import { openProject, removeProject, reorderProjects } from './projectActions';
 import { ProjectDetail } from './ProjectDetail';
 import { ProjectRow } from './ProjectRow';
@@ -31,11 +32,10 @@ export function ProjectsPage() {
     if (selected) return <ProjectDetail project={ selected } info={ info.get(selected.id) } infoFailed={ failed } onBack={ () => root.ui.openProjectSettings() } />;
 
     return (
-        <>
-            <div className={ styles.header }>
-                <Text color="secondary" className={ styles.intro }>
-                    The folders Clowdy can work in. Your personal space is always first. Drag a project to change the order of the project menu.
-                </Text>
+        <SettingsPage
+            title="Projects"
+            description="The folders Clowdy can work in. Your personal space is always first. Drag a project to change the order of the project menu."
+            actions={ (
                 <MenuTrigger>
                     <Button variant="bordered" size="sm"><Plus />Add project</Button>
                     <Popover placement="bottom end" width={ 240 }>
@@ -52,8 +52,8 @@ export function ProjectsPage() {
                         </Menu>
                     </Popover>
                 </MenuTrigger>
-            </div>
-
+            ) }
+        >
             <div className={ styles.list }>
                 { personal && (
                     <ProjectRow
@@ -65,7 +65,7 @@ export function ProjectsPage() {
                 ) }
 
                 { own.length === 0
-                    ? <Text color="secondary" className={ styles.empty }>No projects yet. Create one, or open a folder you already work in.</Text>
+                    ? <SettingsEmpty>No projects yet. Create one, or open a folder you already work in.</SettingsEmpty>
                     : (
                         <SortableList
                             aria-label="Projects"
@@ -87,6 +87,6 @@ export function ProjectsPage() {
                         </SortableList>
                     ) }
             </div>
-        </>
+        </SettingsPage>
     );
 }

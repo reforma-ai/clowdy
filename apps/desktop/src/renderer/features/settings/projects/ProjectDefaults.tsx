@@ -1,10 +1,11 @@
-import { Text } from '@clowdy/components/Text';
 import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/ToggleButtonGroup';
 
 import { useAgents, useRootStore } from '../../../stores';
 import { providerAgents } from '../providers/providerView';
+import { SettingsCard } from '../ui/SettingsCard';
+import { SettingsRow } from '../ui/SettingsRow';
+import { SettingsSection } from '../ui/SettingsSection';
 import { setProjectDefaults } from './projectActions';
-import section from './ProjectSection.module.css';
 
 import type { ChatMode, Project } from '@clowdy/protocol';
 
@@ -26,12 +27,9 @@ export function ProjectDefaults({ project }: { project: Project }) {
     const unlisted = engine && !providers.some(agent => agent.id === engine) ? engine : undefined;
 
     return (
-        <section className={ section.section } aria-label="New chats">
-            <Text variant="heading-5">New chats</Text>
-            <div className={ section.card }>
-                <div className={ section.field }>
-                    <Text variant="sm" bold>Agent</Text>
-                    <Text variant="sm" color="secondary">The agent a new chat starts with. Default leaves the choice to Clowdy.</Text>
+        <SettingsSection title="New chats">
+            <SettingsCard divided>
+                <SettingsRow title="Agent" description="The agent a new chat starts with. Default leaves the choice to Clowdy." stacked>
                     <ToggleButtonGroup
                         aria-label="Agent for new chats"
                         size="sm"
@@ -50,11 +48,9 @@ export function ProjectDefaults({ project }: { project: Project }) {
                         )) }
                         { unlisted && <ToggleButtonGroupItem value={ unlisted }>{ unlisted }</ToggleButtonGroupItem> }
                     </ToggleButtonGroup>
-                </div>
+                </SettingsRow>
 
-                <div className={ section.field }>
-                    <Text variant="sm" bold>Mode</Text>
-                    <Text variant="sm" color="secondary">Autopilot decides alone. Semi-manual asks you before a significant fork.</Text>
+                <SettingsRow title="Mode" description="Autopilot decides alone. Semi-manual asks you before a significant fork." stacked>
                     <ToggleButtonGroup
                         aria-label="Mode for new chats"
                         size="sm"
@@ -67,8 +63,8 @@ export function ProjectDefaults({ project }: { project: Project }) {
                     >
                         { MODES.map(mode => <ToggleButtonGroupItem key={ mode.id } value={ mode.id }>{ mode.label }</ToggleButtonGroupItem>) }
                     </ToggleButtonGroup>
-                </div>
-            </div>
-        </section>
+                </SettingsRow>
+            </SettingsCard>
+        </SettingsSection>
     );
 }

@@ -1,16 +1,18 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
-import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
-import { ArrowUpRight, ChevronLeft, Folder, Home } from '@clowdy/icons/14';
+import { ArrowUpRight } from '@clowdy/icons/14';
 import { useEffect, useState } from 'react';
 
 import { useRootStore } from '../../../stores';
+import { SettingsCard } from '../ui/SettingsCard';
+import { SettingsPage } from '../ui/SettingsPage';
+import { SettingsRow } from '../ui/SettingsRow';
+import { SettingsSection } from '../ui/SettingsSection';
 import { removeProject, renameProject } from './projectActions';
 import { ProjectDefaults } from './ProjectDefaults';
 import styles from './ProjectDetail.module.css';
 import { ProjectFolder } from './ProjectFolder';
-import section from './ProjectSection.module.css';
 import { holdingsLine, remoteLink } from './projectView';
 
 import type { Project, ProjectInfo } from '@clowdy/protocol';
@@ -23,39 +25,37 @@ export interface ProjectDetailProps {
     onBack: () => void;
 }
 
-/** The page of one project in Settings: its name, folder, git remote, what new chats start with, and removing it. The personal space has the last of these only for new chats. */
+const PERSONAL_NOTE = 'Your personal space is for chats that belong to no repository. It lives in Clowdy\'s own folder, and it cannot be renamed, moved or removed.';
+
+/**
+ * The page of one project in Settings, under the Projects page: its name and folder, git remote, what new chats start with, and removing it.
+ * The personal space has the folder and the new-chat settings only.
+ */
 export function ProjectDetail({ project, info, infoFailed, onBack }: ProjectDetailProps) {
-    const holdings = holdingsLine(info);
-
     return (
-        <>
-            <Button variant="inline" color="secondary" size="sm" className={ styles.back } onPress={ onBack }><ChevronLeft />Projects</Button>
-
-            <header className={ styles.header }>
-                <div className={ styles.title }>
-                    { project.personal ? <Home /> : <Folder /> }
-                    <Text variant="heading-3">{ project.name }</Text>
-                </div>
-                { holdings && <Text color="secondary">{ holdings }</Text> }
-            </header>
-
-            { project.personal
-                ? <Text color="secondary" className={ styles.note }>Your personal space is for chats that belong to no repository. It lives in Clowdy&apos;s own folder, and it cannot be renamed, moved or removed.</Text>
-                : <NameSection project={ project } /> }
-
-            <ProjectFolder project={ project } info={ info } />
+        <SettingsPage
+            title={ project.name }
+            parents={ [{ label: 'Projects', onPress: onBack }] }
+            description={ project.personal ? PERSONAL_NOTE : holdingsLine(info) }
+        >
+            <SettingsSection title="Project">
+                <SettingsCard divided>
+                    { !project.personal && <NameRow project={ project } /> }
+                    <ProjectFolder project={ project } info={ info } />
+                </SettingsCard>
+            </SettingsSection>
 
             { !project.personal && <GitSection info={ info } failed={ infoFailed } /> }
 
             <ProjectDefaults project={ project } />
 
             { !project.personal && <RemoveSection project={ project } info={ info } /> }
-        </>
+        </SettingsPage>
     );
 }
 
 /** Rename on blur or Enter; Escape puts the name back. The draft stays on screen until the daemon's own name arrives. */
-function NameSection({ project }: { project: Project }) {
+function NameRow({ project }: { project: Project }) {
     const root = useRootStore();
     const [draft, setDraft] = useState<string>();
 
@@ -75,11 +75,11 @@ function NameSection({ project }: { project: Project }) {
     };
 
     return (
-        <section className={ section.section } aria-label="Name">
-            <Text variant="heading-5">Name</Text>
+        <SettingsRow title="Name" description="How the project is listed in Clowdy.">
             <Input
                 type="text"
                 variant="bordered"
+                className={ styles.nameInput }
                 aria-label="Project name"
                 value={ draft ?? project.name }
                 onChange={ setDraft }
@@ -89,7 +89,7 @@ function NameSection({ project }: { project: Project }) {
                     else if (event.key === 'Escape') setDraft(undefined);
                 } }
             />
-        </section>
+        </SettingsRow>
     );
 }
 
@@ -97,27 +97,26 @@ function GitSection({ info, failed }: { info: ProjectInfo | undefined; failed: b
     const remote = remoteLink(info?.remoteUrl);
 
     return (
-        <section className={ section.section } aria-label="Git">
-            <Text variant="heading-5">Git</Text>
-            <div className={ section.card }>
-                { !info && <Text color="secondary">{ failed ? 'The repository could not be read.' : 'Reading the repository…' }</Text> }
-                { info && !remote && <Text color="secondary">{ info.folderExists ? 'This repository has no origin remote.' : 'The folder is missing, so there is nothing to read.' }</Text> }
+        <SettingsSection title="Git">
+            <SettingsCard divided>
+                { !info && <SettingsRow title="Repository" description={ failed ? 'The repository could not be read.' : 'Reading the repository…' } /> }
+                { info && !remote && (
+                    <SettingsRow title="Remote" description={ info.folderExists ? 'This repository has no origin remote.' : 'The folder is missing, so there is nothing to read.' } />
+                ) }
                 { remote && (
-                    <div className={ section.field }>
-                        <Text variant="sm" color="secondary">Remote</Text>
+                    <SettingsRow title="Remote">
                         { remote.href
-                            ? <Button variant="inline" size="sm" href={ remote.href } target="_blank" rel="noreferrer" className={ section.path }>{ remote.text }<ArrowUpRight /></Button>
-                            : <Text className={ section.path }>{ remote.text }</Text> }
-                    </div>
+                            ? <Button variant="inline" size="sm" href={ remote.href } target="_blank" rel="noreferrer" className={ styles.value }>{ remote.text }<ArrowUpRight /></Button>
+                            : <Text className={ styles.value }>{ remote.text }</Text> }
+                    </SettingsRow>
                 ) }
                 { info?.branch && (
-                    <div className={ section.field }>
-                        <Text variant="sm" color="secondary">Branch</Text>
+                    <SettingsRow title="Branch">
                         <Text>{ info.branch }</Text>
-                    </div>
+                    </SettingsRow>
                 ) }
-            </div>
-        </section>
+            </SettingsCard>
+        </SettingsSection>
     );
 }
 
@@ -126,17 +125,16 @@ function RemoveSection({ project, info }: { project: Project; info: ProjectInfo 
     const working = (info?.activeRuns ?? 0) > 0;
 
     return (
-        <section className={ section.section } aria-label="Danger zone">
-            <Text variant="heading-5">Danger zone</Text>
-            <div className={ section.card }>
-                <Text color="secondary">
-                    Removing { project.name } deletes its chats, tasks and the work of its agents from Clowdy. The folder and its files stay on your computer.
-                </Text>
-                { working && <Text color="warning" role="status">Agents are working in this project. Stop them first.</Text> }
-                <div>
+        <SettingsSection title="Danger zone">
+            <SettingsCard>
+                <SettingsRow
+                    title="Remove project"
+                    description={ `Deletes ${ project.name }'s chats, tasks and the work of its agents from Clowdy. The folder and its files stay on your computer.` }
+                    footer={ working && <Text variant="sm" color="warning" role="status">Agents are working in this project. Stop them first.</Text> }
+                >
                     <Button color="danger" isDisabled={ working } onPress={ () => removeProject(root, project, info) }>Remove project</Button>
-                </div>
-            </div>
-        </section>
+                </SettingsRow>
+            </SettingsCard>
+        </SettingsSection>
     );
 }

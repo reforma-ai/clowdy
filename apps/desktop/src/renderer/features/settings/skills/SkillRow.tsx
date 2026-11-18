@@ -3,6 +3,7 @@ import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { Lock } from '@clowdy/icons/12';
 
+import { SettingsBlock } from '../ui/SettingsBlock';
 import styles from './SkillRow.module.css';
 import { engineLabel, tokenLabel } from './skillView';
 
@@ -22,7 +23,7 @@ export function SkillRow({ skill, isPending, onToggle }: SkillRowProps) {
     const { name, source, description, enabled, path, tokens, engines } = skill;
 
     return (
-        <li className={ styles.row } data-off={ !enabled || undefined }>
+        <SettingsBlock as="li" className={ styles.row } data-off={ !enabled || undefined }>
             <div className={ styles.body }>
                 <div className={ styles.titleLine }>
                     <Text bold truncate className={ styles.name }>{ name }</Text>
@@ -40,6 +41,6 @@ export function SkillRow({ skill, isPending, onToggle }: SkillRowProps) {
                     ? <Switch size="sm" isSelected={ enabled } isPending={ isPending } aria-label={ `Use ${ name }` } onChange={ onToggle } />
                     : <span className={ styles.lock } role="img" aria-label="Always on" title="Always on"><Lock /></span> }
             </div>
-        </li>
+        </SettingsBlock>
     );
 }

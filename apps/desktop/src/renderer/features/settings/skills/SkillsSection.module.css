@@ -1,36 +1,3 @@
-/* The intro and the cost line read as one block; the page puts 24px between its blocks. */
-.summary {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-}
-
-.group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-}
-
-.groupHeader {
-    display: flex;
-    align-items: baseline;
-    gap: var(--spacing-md);
-}
-
-.list {
-    margin: 0;
-    padding: 0;
-    border: 1px solid var(--color-surface-border);
-    border-radius: var(--radius-lg);
-    list-style: none;
-}
-
-.empty {
-    padding: var(--spacing-lg);
-    border: 1px dashed var(--color-surface-border);
-    border-radius: var(--radius-lg);
-}
-
 .warnings {
     display: flex;
     flex-direction: column;
