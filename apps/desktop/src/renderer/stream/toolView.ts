@@ -9,12 +9,12 @@ export interface ToolView {
     diff?: { added: number; removed: number };
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+export const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const lineCount = (text: string) => (text === '' ? 0 : text.split('\n').length);
 
 /** The first of `keys` that holds a non-empty string. */
-function firstString(value: unknown, keys: string[]): string | undefined {
+export function firstString(value: unknown, keys: string[]): string | undefined {
     if (!isRecord(value)) return undefined;
 
     for (const key of keys) {

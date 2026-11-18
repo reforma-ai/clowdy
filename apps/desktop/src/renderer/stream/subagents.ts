@@ -1,6 +1,6 @@
 import { basename } from '@clowdy/lib';
 
-import { describeTool } from './toolView';
+import { describeTool, firstString, isRecord } from './toolView';
 
 import type { Run, StreamItem, StreamItemBody } from '@clowdy/protocol';
 
@@ -11,20 +11,6 @@ const SUBAGENT_TOOLS = new Set(['Agent', 'Task', 'spawnAgent', 'spawn_subagent']
 export const RUN_SPAWN = 'run_spawn';
 
 export const isSubagentTool = (name: string): boolean => SUBAGENT_TOOLS.has(name);
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
-
-function field(value: unknown, keys: string[]): string | undefined {
-    if (!isRecord(value)) return undefined;
-
-    for (const key of keys) {
-        const found = value[key];
-
-        if (typeof found === 'string' && found.trim() !== '') return found.trim();
-    }
-
-    return undefined;
-}
 
 /** What people call an agent type whose id says it badly. */
 const LABELS: Record<string, string> = { 'general-purpose': 'General' };
@@ -43,7 +29,7 @@ export function subagentLabel(name: string | undefined): string | undefined {
 
 /** The agent type a sub-agent call asks for, from its input: Claude's `subagent_type` or `name`, Codex's and others' `agent_type`. */
 export function subagentName(input: unknown): string | undefined {
-    return field(input, ['name', 'subagent_type', 'agent_type', 'agentType']);
+    return firstString(input, ['name', 'subagent_type', 'agent_type', 'agentType']);
 }
 
 /** The card's title: a verb while the sub-agent works, `Ran Explore agent` once it is over. */
