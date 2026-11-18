@@ -1,0 +1,124 @@
+import { Autocomplete, useAutocompleteEnterAction } from '@clowdy/components/Autocomplete';
+import { ListBox, ListBoxItem } from '@clowdy/components/List';
+import { Popover } from '@clowdy/components/Popover';
+import { Check } from '@clowdy/icons/14';
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+
+import styles from './PickerPopover.module.css';
+
+export interface PickerOption {
+    id: string;
+    /** What the row says, and what typing filters on. */
+    label: string;
+    icon?: ReactNode;
+    /** Smaller text after the label. It is not searched, so put whatever should be findable in the label. */
+    description?: ReactNode;
+}
+
+export interface PickerPopoverProps {
+    /** The element the popover opens beside. Without one it opens near the top of the window. */
+    anchor: Element | null;
+    options: readonly PickerOption[];
+    /** The options that hold the current value; each gets a check. Picking one is still a pick, so a list that toggles can take a link off. */
+    selectedIds?: readonly string[];
+    /** Names the list for a screen reader. */
+    'aria-label': string;
+    /** The hint in the search field. */
+    placeholder?: string;
+    /** The person chose an option. The popover closes right after. */
+    onPick: (id: string) => void;
+    /** The popover closed: after a pick, `Esc`, or a press outside. The owner stops rendering it. */
+    onClose: () => void;
+}
+
+/** What a caller says to open a picker: everything but the place it opens and what happens when it closes, which the screen that renders it supplies. */
+export type PickerRequest = Omit<PickerPopoverProps, 'anchor' | 'onClose'>;
+
+/** Every word typed has to be in the label, in any order, so `car 12` finds `CAR-12 Fix login`. */
+const matches = (label: string, query: string) => query.toLowerCase().split(/\s+/).filter(Boolean).every(word => label.toLowerCase().includes(word));
+
+/**
+ * A searchable list that opens beside an element to choose one option, with no trigger of its own: a command opens it, so render it only while it is open.
+ * Typing filters, the arrows move, `Enter` picks the highlighted row or else the first, `Esc` closes. Focus goes to the search field and,
+ * when the popover closes, back to the element that had it (react-aria's focus scope does that). When that element is gone by then, say a
+ * card that moved to another column, nothing has focus and the owner has to put it somewhere.
+ * The popover is a modal layer for the hotkey dispatcher (`data-modal-clickout-layer`), so no command of the page behind it runs while it is open.
+ */
+export function PickerPopover({ anchor, options, selectedIds = [], 'aria-label': ariaLabel, placeholder, onPick, onClose }: PickerPopoverProps) {
+    const [query, setQuery] = useState('');
+    const fallback = useRef<HTMLSpanElement>(null);
+    const list = useRef<HTMLDivElement>(null);
+    const anchorRef = useMemo(() => (anchor ? { current: anchor } : fallback), [anchor]);
+    // A pick can arrive twice, from the key and from the list's own action.
+    const picked = useRef(false);
+
+    const pick = (id: string) => {
+        if (picked.current) return;
+
+        picked.current = true;
+        onPick(id);
+        onClose();
+    };
+
+    const pickOnEnter = useAutocompleteEnterAction({ onAction: key => pick(String(key)) });
+
+    // The Enter that ends an IME composition (Japanese, Chinese, Korean) confirms the text typed. It is not a pick.
+    const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+
+        pickOnEnter(event);
+    };
+
+    // The search field focuses itself after 50 ms, and keys typed before that would land on the popover. A picker is opened by a key, so the next one is already on its way.
+    useLayoutEffect(() => {
+        list.current?.closest('[data-modal-clickout-layer]')?.querySelector('input')?.focus({ preventScroll: true });
+    }, []);
+
+    const current = new Set(selectedIds);
+
+    return (
+        <>
+            { !anchor && <span ref={ fallback } className={ styles.fallbackAnchor } aria-hidden /> }
+            <Popover
+                triggerRef={ anchorRef }
+                isOpen
+                onOpenChange={ (isOpen) => {
+                    if (!isOpen) onClose();
+                } }
+                placement={ anchor ? 'bottom start' : 'bottom' }
+                className={ styles.popover }
+            >
+                <Autocomplete
+                    inputValue={ query }
+                    onInputChange={ setQuery }
+                    filter={ matches }
+                    maxHeight="16rem"
+                    placeholder={ placeholder }
+                    aria-label={ ariaLabel }
+                    onKeyDown={ onKeyDown }
+                >
+                    <ListBox
+                        aria-label={ ariaLabel }
+                        ref={ list }
+                        size="sm"
+                        className={ styles.list }
+                        autoFocus={ false }
+                        items={ options }
+                        onAction={ key => pick(String(key)) }
+                        renderEmptyState={ () => <div className={ styles.empty }>Nothing found</div> }
+                    >
+                        { option => (
+                            <ListBoxItem
+                                id={ option.id }
+                                text={ option.label }
+                                icon={ option.icon }
+                                description={ option.description }
+                                endAffix={ current.has(option.id) ? <Check className={ styles.current } aria-label="Current" /> : undefined }
+                            />
+                        ) }
+                    </ListBox>
+                </Autocomplete>
+            </Popover>
+        </>
+    );
+}

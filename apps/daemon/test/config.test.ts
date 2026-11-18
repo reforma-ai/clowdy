@@ -36,6 +36,11 @@ describe('config', () => {
         expect(loadConfig({ CLOWDY_ENGINE: ' cursor ' }).engine).toBe('cursor');
     });
 
+    test('CORS origins: none by default, a comma-separated list on request', () => {
+        expect(loadConfig({}, 'linux').corsOrigins).toEqual([]);
+        expect(loadConfig({ CLOWDY_CORS_ORIGINS: ' http://127.0.0.1:5300 , ,http://localhost:5400' }, 'linux').corsOrigins).toEqual(['http://127.0.0.1:5300', 'http://localhost:5400']);
+    });
+
     test('invalid values name the variable', () => {
         expect(() => loadConfig({ CLOWDY_PORT: 'abc' })).toThrow(ConfigError);
         expect(() => loadConfig({ CLOWDY_PORT: '70000' })).toThrow(/CLOWDY_PORT/);

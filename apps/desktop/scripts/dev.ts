@@ -1,23 +1,25 @@
 /**
- * `bun run dev`: the app with hot module replacement.
+ * `bun run dev`: the app, rebuilt as you edit.
  *
- * - The renderer is a Vite dev server, so edits to React, CSS, and the design system packages reach the
- *   open window without a reload.
+ * - The renderer is built by `vite build --watch` into `dist/renderer` and served by the app from `app://clowdy`, as in
+ *   a packaged app: the same origin and CSP, and no open port. After each rebuild lands, the app reloads its window
+ *   (a marker file in the folder tells it); there is no hot module replacement, so the window's state is lost.
  * - Main and preload are bundled with Bun. A change under `src/main`, `src/preload`, or `src/shared`
  *   rebuilds them and restarts the app; so does the next save after the app crashed.
  * - Quitting the app ends the session.
- * - The app finds or starts the daemon from this checkout (`apps/daemon`) and leaves it running. Nothing here watches
- *   the daemon's sources: agents edit them while it runs, and the person restarts it deliberately.
+ * - The app finds or starts the daemon from this checkout (`apps/daemon`) and leaves it running. It replaces a daemon
+ *   whose sources changed, once it has no runs in progress (`src/main/daemonKeeper.ts`).
  *
- * `CLOWDY_RENDERER_PORT` moves the dev server off 5273. Arguments go to Electron.
+ * Arguments go to Electron.
  */
 import { daemonDataDir } from '@clowdy/protocol';
 import { $, type Subprocess } from 'bun';
 import { readFileSync, watch } from 'node:fs';
-import { connect } from 'node:net';
+import { mkdir, rename, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
+import { DEV_BUILD_MARKER } from '../src/shared/dev';
 import { buildMain } from './main-bundle';
 
 // Outside Electron, the `electron` package exports the path to its binary (downloaded on first use).
@@ -25,14 +27,13 @@ const electronBinary = (await import('electron')).default as unknown as string;
 
 const desktopRoot = path.resolve(import.meta.dir, '..');
 const repoRoot = path.resolve(desktopRoot, '../..');
-const port = Number(process.env.CLOWDY_RENDERER_PORT ?? 5273);
-const rendererUrl = `http://127.0.0.1:${ port }`;
+// The folder the app serves in a development run.
+const rendererDir = path.join(desktopRoot, 'dist/renderer');
 // `ELECTRON_RUN_AS_NODE` (set by VS Code's extension host, for one) would start Electron as plain Node.
 const { ELECTRON_RUN_AS_NODE: _runAsNode, ...inherited } = process.env;
 const env = {
     ...inherited,
-    CLOWDY_RENDERER_URL: rendererUrl,
-    CLOWDY_RENDERER_PORT: String(port),
+    CLOWDY_RENDERER_DIR: rendererDir,
     // A dev run keeps its own data folder (`Clowdy Dev`), and starts the daemon with this Bun from this checkout.
     CLOWDY_PROFILE: 'dev',
     // The daemon starts once and keeps running, so this only matters for a daemon this run starts. `fake` plays a scripted demo.
@@ -46,24 +47,20 @@ const env = {
 const viteBin = path.join(path.dirname(Bun.resolveSync('vite/package.json', desktopRoot)), 'bin/vite.js');
 // Electron quits gracefully on SIGTERM; this is how long a restart waits before forcing it.
 const QUIT_TIMEOUT_MS = 3_000;
-const RENDERER_START_TIMEOUT_MS = 60_000;
+// How long the renderer's folder stays unwritten before a build counts as landed.
+const QUIET_MS = 300;
 
 let app: Subprocess | null = null;
 let renderer: Subprocess | null = null;
 let restarts = Promise.resolve();
 
-process.on('SIGINT', () => process.exit(130));
-process.on('SIGTERM', () => process.exit(143));
+process.on('SIGINT', () => stop(130));
+process.on('SIGTERM', () => stop(143));
 // However this process ends, its children end with it.
 process.on('exit', () => {
     renderer?.kill();
     app?.kill();
 });
-
-if (await listening(port)) {
-    console.error(`Port ${ port } is taken, maybe by another \`./clowdy dev\`. Stop it, or set CLOWDY_RENDERER_PORT to a free port.`);
-    process.exit(1);
-}
 
 // The daemon outlives the app and keeps the engine it started with, so the engine asked for reaches only a daemon this run starts.
 if (process.env.CLOWDY_ENGINE && daemonRunning()) {
@@ -73,12 +70,48 @@ if (process.env.CLOWDY_ENGINE && daemonRunning()) {
 // The packages the renderer imports, built first (the icon pack is generated); turbo's cache makes a repeat run cheap.
 await $`bunx turbo run dev:prepare --filter=${ '@clowdy/desktop^...' }`.cwd(repoRoot);
 
-renderer = Bun.spawn(['node', viteBin, '--config', path.join(desktopRoot, 'vite.config.ts')], { cwd: desktopRoot, env, stdout: 'inherit', stderr: 'inherit' });
-void renderer.exited.then(code => {
-    console.error(`The renderer dev server stopped with code ${ code }.`);
-    process.exit(1);
+// Start from an empty folder, then never empty it again: files the open page still loads stay in place while a rebuild runs.
+await rm(rendererDir, { recursive: true, force: true });
+await mkdir(rendererDir, { recursive: true });
+
+let lastWrite = 0;
+
+watch(rendererDir, { recursive: true }, () => {
+    lastWrite = Date.now();
 });
-await rendererReady();
+
+// Development mode (readable class names, React's own warnings) and unminified, so a rebuild takes a moment.
+const build = Bun.spawn(
+    ['node', viteBin, 'build', '--watch', '--config', path.join(desktopRoot, 'vite.config.ts'), '--outDir', rendererDir, '--emptyOutDir=false', '--minify=false'],
+    { cwd: desktopRoot, env: { ...env, NODE_ENV: 'development' }, stdout: 'pipe', stderr: 'inherit' }
+);
+let builds = 0;
+let firstBuilt!: () => void;
+const firstBuild = new Promise<void>(resolve => {
+    firstBuilt = resolve;
+});
+
+renderer = build;
+void build.exited.then((code) => {
+    console.error(`The renderer build stopped with code ${ code }.`);
+    stop(1);
+});
+void echoBuilds(build.stdout, async () => {
+    await landed();
+    builds += 1;
+
+    if (builds === 1) {
+        firstBuilt();
+
+        return;
+    }
+
+    // A rename is one event in the folder itself, which every OS reports to a plain watch.
+    await Bun.write(path.join(rendererDir, `${ DEV_BUILD_MARKER }.tmp`), String(builds));
+    await rename(path.join(rendererDir, `${ DEV_BUILD_MARKER }.tmp`), path.join(rendererDir, DEV_BUILD_MARKER));
+    console.info('The renderer was rebuilt; reloading the window');
+});
+await firstBuild;
 await startApp();
 
 let pending: ReturnType<typeof setTimeout> | undefined;
@@ -155,29 +188,27 @@ function daemonRunning(): boolean {
     }
 }
 
-/** True when something accepts connections on the port. A plain TCP probe, so an HTTP proxy in the environment plays no part. */
-function listening(target: number): Promise<boolean> {
-    return new Promise(resolve => {
-        const socket = connect(target, '127.0.0.1');
+/** Passes the renderer build's output through and runs `built` after each build, one at a time. */
+async function echoBuilds(output: ReadableStream<Uint8Array>, built: () => Promise<void>): Promise<void> {
+    const decoder = new TextDecoder();
+    let queue = Promise.resolve();
 
-        socket.once('connect', () => {
-            socket.destroy();
-            resolve(true);
-        });
-        socket.once('error', () => resolve(false));
-    });
+    for await (const chunk of output) {
+        const text = decoder.decode(chunk, { stream: true });
+
+        process.stdout.write(text);
+
+        if (text.includes('built in')) queue = queue.then(built).catch((error: unknown) => console.error(error));
+    }
 }
 
-/** Waits until the dev server listens, so the window never opens on a refused connection. */
-async function rendererReady(): Promise<void> {
-    const deadline = Date.now() + RENDERER_START_TIMEOUT_MS;
+/** Vite reports a build before every file may have landed on disk; this waits for the folder to go quiet. */
+async function landed(): Promise<void> {
+    while (Date.now() - lastWrite < QUIET_MS) await Bun.sleep(QUIET_MS / 2);
+}
 
-    while (Date.now() < deadline) {
-        if (await listening(port)) return;
-
-        await Bun.sleep(150);
-    }
-
-    console.error(`The renderer dev server did not listen at ${ rendererUrl } within ${ RENDERER_START_TIMEOUT_MS / 1000 }s.`);
-    process.exit(1);
+function stop(code: number): never {
+    renderer?.kill();
+    app?.kill();
+    process.exit(code);
 }

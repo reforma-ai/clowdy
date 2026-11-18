@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 
+import { useCommands, useHotkeyScope } from '../../hotkeys';
+import { DOCS_SCOPE, docSaveCommand } from './docCommands';
 import { DocsMain } from './DocsMain';
 import { DocsSidebar } from './DocsSidebar';
 import styles from './Screen.module.css';
@@ -11,18 +13,8 @@ export function Screen() {
 
     useEffect(() => store.activate(), [store]);
 
-    useEffect(() => {
-        const onKeyDown = (event: KeyboardEvent) => {
-            if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 's') {
-                event.preventDefault();
-                void store.save();
-            }
-        };
-
-        window.addEventListener('keydown', onKeyDown);
-
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, [store]);
+    useHotkeyScope(DOCS_SCOPE);
+    useCommands(DOCS_SCOPE, [docSaveCommand(store)]);
 
     return (
         <div className={ styles.screen }>

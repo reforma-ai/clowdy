@@ -1,6 +1,5 @@
 import { ChevronDown } from '@clowdy/icons/8';
 import { BARE_NUMBER_RE, clamp, cn, parseUnitValue, roundForUnit, shiftStepForUnit, stepForUnit } from '@clowdy/lib';
-import hotkeys from '@clowdy/lib/hotkeys';
 import { useRunner } from '@clowdy/lib/useRunner';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -431,7 +430,7 @@ export function UnitInput({
             setLocalInput(null);
             onCommit?.(nextValue);
         },
-        shouldRun: target => !hideUnit && (target.closest('[data-scrub-handle]') != null || hotkeys.altKey),
+        shouldRun: (target, event) => !hideUnit && (target.closest('[data-scrub-handle]') != null || event.altKey),
     });
 
     // Keep selection covering the whole keyword so any typing replaces it

@@ -1,9 +1,12 @@
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { Checkbox } from '@clowdy/icons/14';
 import { Chat, File, Settings, Team } from '@clowdy/icons/16';
 import { cn } from '@clowdy/lib';
 
+import { commandTooltip } from '../hotkeys';
 import { SECTIONS, useRootStore, type Section } from '../stores';
 import styles from './Rail.module.css';
+import { navCommandId } from './shellCommands';
 
 import type { ComponentType, SVGProps } from 'react';
 
@@ -27,19 +30,21 @@ export function Rail() {
                     const { label, icon: Icon, size } = SECTION_VIEWS[section];
 
                     return (
-                        <button
-                            key={ section }
-                            type="button"
-                            className={ styles.item }
-                            disabled={ !ui }
-                            aria-current={ ui && !root.ui.settingsOpen && ui.section === section ? 'page' : undefined }
-                            onClick={ () => ui && root.ui.showSection(ui, section) }
-                        >
-                            <span className={ styles.glyph }>
-                                <Icon width={ size } height={ size } aria-hidden />
-                            </span>
-                            <span className={ styles.label }>{ label }</span>
-                        </button>
+                        // The label is already on the button, so the tooltip only appears to teach the chord, and not at all while the chord does nothing.
+                        <Tooltip key={ section } content={ commandTooltip(label, navCommandId(section)) } placement="right">
+                            <button
+                                type="button"
+                                className={ styles.item }
+                                disabled={ !ui }
+                                aria-current={ ui && !root.ui.settingsOpen && ui.section === section ? 'page' : undefined }
+                                onClick={ () => ui && root.ui.showSection(ui, section) }
+                            >
+                                <span className={ styles.glyph }>
+                                    <Icon width={ size } height={ size } aria-hidden />
+                                </span>
+                                <span className={ styles.label }>{ label }</span>
+                            </button>
+                        </Tooltip>
                     );
                 }) }
             </div>

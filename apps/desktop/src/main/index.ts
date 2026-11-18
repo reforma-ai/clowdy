@@ -1,22 +1,27 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, protocol, session, shell } from 'electron';
+import { watch } from 'node:fs';
 import { release } from 'node:os';
 import path from 'node:path';
 
 import { IPC_CHANNELS } from '../shared/bridge';
+import { DEV_BUILD_MARKER } from '../shared/dev';
 import { attachDaemon, currentContext, daemonAddress, ensureDaemon } from './daemon';
 import { showDaemonError } from './daemonDialog';
 import { keepDaemonFresh, type DaemonKeeper } from './daemonKeeper';
 import { registerIpc } from './ipc';
 import { createAppMenu } from './menu';
 import { createProtocolHandler } from './protocol';
-import { APP_ORIGIN, APP_SCHEME, appScheme, captionSymbolColor, hasLaunchSwitches, lockNavigation, originOf, restrictPermissions, windowOptions, windowsBuild } from './security';
+import { APP_ORIGIN, APP_SCHEME, appScheme, captionSymbolColor, hasLaunchSwitches, lockNavigation, restrictPermissions, windowOptions, windowsBuild } from './security';
 
 /**
- * A development run loads the renderer from the Vite dev server (`scripts/dev.ts` sets this),
- * which is what gives it HMR. A packaged app never reads it and serves its own files.
+ * The renderer's files, served from `app://clowdy` in every run, so a development run has the same origin, the same
+ * CSP and no open port, as the packaged app. A packaged app carries them in `renderer`; a development run
+ * (`scripts/dev.ts` rebuilds them on every change) names the folder in `CLOWDY_RENDERER_DIR`.
  */
-const devRendererUrl = app.isPackaged ? undefined : process.env.CLOWDY_RENDERER_URL;
-const trustedOrigin = (devRendererUrl && originOf(devRendererUrl)) || APP_ORIGIN;
+const rendererRoot = app.isPackaged
+    ? path.join(app.getAppPath(), 'renderer')
+    : process.env.CLOWDY_RENDERER_DIR ?? path.join(app.getAppPath(), 'dist/renderer');
+const trustedOrigin = APP_ORIGIN;
 
 if (app.isPackaged && hasLaunchSwitches(process.argv.slice(1))) {
     console.error('Clowdy does not start with command-line switches.');
@@ -70,9 +75,9 @@ function start(): void {
     void app.whenReady().then(async () => {
         restrictPermissions(session.defaultSession, trustedOrigin);
 
-        if (!devRendererUrl) {
-            protocol.handle(APP_SCHEME, createProtocolHandler(path.join(app.getAppPath(), 'renderer')));
-        }
+        protocol.handle(APP_SCHEME, createProtocolHandler(rendererRoot));
+
+        if (!app.isPackaged) reloadAfterRendererBuilds(rendererRoot);
 
         registerIpc(ipcMain, trustedOrigin, {
             setThemeSource: theme => {
@@ -140,6 +145,24 @@ function startKeeper(): DaemonKeeper | undefined {
     });
 }
 
+/** A development run: every rebuild of the renderer ends with the marker, and the windows load the new files. */
+function reloadAfterRendererBuilds(root: string): void {
+    let pending: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+        watch(root, (_event, file) => {
+            if (file !== DEV_BUILD_MARKER) return;
+
+            // A rename can arrive as more than one event.
+            clearTimeout(pending);
+            pending = setTimeout(() => BrowserWindow.getAllWindows().forEach(window => window.webContents.reloadIgnoringCache()), 50);
+        });
+    }
+    catch (error) {
+        console.warn('Not watching the renderer build; reload the window by hand after a rebuild:', error);
+    }
+}
+
 function openWindow(): BrowserWindow {
     const window = new BrowserWindow(windowOptions(
         path.join(app.getAppPath(), 'dist/preload/index.cjs'),
@@ -149,7 +172,7 @@ function openWindow(): BrowserWindow {
     ));
 
     window.once('ready-to-show', () => window.show());
-    window.loadURL(devRendererUrl ?? `${ APP_ORIGIN }/`).catch((error: unknown) => console.error('The window did not load:', error));
+    window.loadURL(`${ APP_ORIGIN }/`).catch((error: unknown) => console.error('The window did not load:', error));
 
     if (process.platform === 'win32') {
         // Windows draws the caption buttons over the page; their symbols follow the appearance.

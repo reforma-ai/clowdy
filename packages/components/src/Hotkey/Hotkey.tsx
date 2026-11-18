@@ -1,4 +1,5 @@
 import { cn } from '@clowdy/lib';
+import { Fragment } from 'react';
 import { Keyboard as AriaKeyboard } from 'react-aria-components';
 
 import { Text } from '../Text';
@@ -22,6 +23,11 @@ export interface HotkeyProps extends Omit<AriaKeyboardProps, 'children' | 'class
     ref?: Ref<HTMLElement>;
     className?: string;
     hotkey?: HotkeyValue;
+    /**
+     * Presses typed one after another, one capsule each, joined by a quiet "then": `[['g'], ['c']]` shows "G then C".
+     * Takes the place of `hotkey` and `children`. `ref` and the other props go to the wrapper.
+     */
+    sequence?: readonly HotkeyValue[];
     /** Capsule scale. Drives default type size; override with `textVariant`. */
     size?: HotkeySize;
     /** Type size. Omit to follow `size`; pass `false` to inherit ambient typography. */
@@ -33,15 +39,36 @@ export function Hotkey({
     ref,
     className,
     hotkey,
+    sequence,
     size = 'xs',
     textVariant,
     children,
     ...props
 }: HotkeyProps) {
-    const content = children ?? (hotkey != null ? hotkeysToSymbols(hotkey).join(' ') : undefined);
     const variant = textVariant === false
         ? undefined
         : (textVariant ?? SIZE_TEXT_VARIANT[size]);
+
+    if (sequence) {
+        return (
+            <span
+                { ...props }
+                ref={ ref }
+                data-hotkey-sequence=""
+                className={ cn(styles.sequence, className) }
+            >
+                { sequence.map((press, index) => (
+                    // A sequence never reorders, so the position is the identity of a press.
+                    <Fragment key={ index }>
+                        { index > 0 && <Text as="span" variant={ variant } color="inherit" whitespace="nowrap" className={ styles.then }>then</Text> }
+                        <Hotkey hotkey={ press } size={ size } textVariant={ textVariant } />
+                    </Fragment>
+                )) }
+            </span>
+        );
+    }
+
+    const content = children ?? (hotkey != null ? hotkeysToSymbols(hotkey).join(' ') : undefined);
 
     return (
         <AriaKeyboard
@@ -64,14 +91,3 @@ export function Hotkey({
 }
 
 Hotkey.displayName = 'Hotkey';
-
-/** Label + shortcut for Button / ToggleButton tooltips. */
-export function tooltipWithHotkey(label: string, hotkey: HotkeyValue): ReactNode {
-    return (
-        <>
-            { label }
-            { ' ' }
-            <Hotkey hotkey={ hotkey } size="xs" />
-        </>
-    );
-}

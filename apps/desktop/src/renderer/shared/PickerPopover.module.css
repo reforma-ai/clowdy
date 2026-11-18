@@ -1,0 +1,35 @@
+@reference '@clowdy/styles/rulesets';
+
+.popover {
+    width: 17rem;
+}
+
+/* The list sits flush in the popover: the popover's own padding already insets it. */
+.list {
+    padding: 0;
+    border: none;
+    outline: none;
+}
+
+.current {
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+.empty {
+    @ruleset typography-text-sm;
+
+    padding: var(--spacing-md);
+    color: var(--color-secondary-muted-text);
+    text-align: center;
+}
+
+/* Where a picker opens when the item it is for is not on the page: a point near the top of the window, centered. */
+.fallbackAnchor {
+    position: fixed;
+    inset-block-start: var(--spacing-64);
+    inset-inline-start: 50%;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}

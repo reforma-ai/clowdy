@@ -3,6 +3,7 @@ import { Checkbox } from '@clowdy/components/Checkbox';
 import { Popover, PopoverTrigger } from '@clowdy/components/Popover';
 import { Sliders } from '@clowdy/icons/14';
 
+import { commandTooltip } from '../../hotkeys';
 import { RunStatusPill } from '../../shared';
 import styles from './FilterPopover.module.css';
 import { StatusIcon } from './status';
@@ -16,6 +17,9 @@ export interface FilterPopoverProps {
     statuses: readonly TaskStatus[];
     /** The agents a person may filter by. */
     agents: readonly Run[];
+    /** Whether the popover is open, for a key that opens it. Without it the popover keeps its own state. */
+    isOpen?: boolean;
+    onOpenChange?: (isOpen: boolean) => void;
 }
 
 function toggle<T>(list: readonly T[], value: T): T[] {
@@ -23,12 +27,18 @@ function toggle<T>(list: readonly T[], value: T): T[] {
 }
 
 /** "Filter": status and agent checkboxes in a popover. Nothing checked in a group means no narrowing by it. */
-export function FilterPopover({ filter, onChange, statuses, agents }: FilterPopoverProps) {
+export function FilterPopover({ filter, onChange, statuses, agents, isOpen, onOpenChange }: FilterPopoverProps) {
     const facets = facetCount(filter);
 
     return (
-        <PopoverTrigger>
-            <Button variant="bordered" size="sm" aria-label={ facets > 0 ? `Filter, ${ facets } active` : 'Filter' }>
+        <PopoverTrigger isOpen={ isOpen } onOpenChange={ onOpenChange }>
+            <Button
+                variant="bordered"
+                size="sm"
+                aria-label={ facets > 0 ? `Filter, ${ facets } active` : 'Filter' }
+                tooltip={ commandTooltip('Filter', 'tasks.filter') }
+                data-filter-trigger
+            >
                 <Sliders />
                 Filter
                 { facets > 0 && <span className={ styles.count }>{ facets }</span> }

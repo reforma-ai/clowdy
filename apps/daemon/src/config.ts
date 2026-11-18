@@ -10,6 +10,8 @@ export interface Config {
     /** 0 picks a random free port. */
     port: number;
     token: string;
+    /** Origins besides `app://clowdy` that may call the API from a browser page, for development tools: a Vite dev server, say. */
+    corsOrigins: string[];
     engine: EngineId;
     /** Global cap of runs in the `running` state. */
     maxRuns: number;
@@ -99,6 +101,7 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
         projectsDir: env.CLOWDY_PROJECTS_DIR || join(homedir(), 'Clowdy'),
         port: numberFrom(env, 'CLOWDY_PORT', 0, v => Number.isInteger(v) && v >= 0 && v <= 65535, 'a port between 0 and 65535'),
         token: env.CLOWDY_TOKEN || randomBytes(32).toString('hex'),
+        corsOrigins: (env.CLOWDY_CORS_ORIGINS ?? '').split(',').map(origin => origin.trim()).filter(Boolean),
         engine,
         maxRuns: numberFrom(env, 'CLOWDY_MAX_RUNS', 8, v => Number.isInteger(v) && v >= 1, 'a positive integer'),
         engineCaps: {

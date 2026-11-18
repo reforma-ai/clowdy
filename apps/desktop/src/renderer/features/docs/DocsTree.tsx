@@ -3,7 +3,10 @@ import { Text } from '@clowdy/components/Text';
 import { Folder, Page } from '@clowdy/icons/14';
 import { ChevronDown, ChevronRight } from '@clowdy/icons/8';
 import { cn } from '@clowdy/lib';
+import { useRef } from 'react';
 
+import { useCommands } from '../../hotkeys';
+import { DOCS_SCOPE, docTreeCommands } from './docCommands';
 import styles from './DocsTree.module.css';
 import { visibleRows } from './tree';
 
@@ -15,8 +18,13 @@ export function DocsTree({ store }: { store: DocsStore }) {
     const rows = visibleRows(store.visibleTree, dir => store.isOpen(dir));
     const removed = store.removedBuffers;
     const selected = store.currentPath;
+    const paths = [...rows.map(row => row.node.path), ...removed.map(buffer => buffer.path)];
     // One row takes Tab; the others are reached with the arrows.
-    const entry = [...rows.map(row => row.node.path), ...removed.map(buffer => buffer.path)].find(path => path === selected) ?? rows[0]?.node.path ?? removed[0]?.path;
+    const entry = paths.find(path => path === selected) ?? paths[0];
+    const treeRef = useRef<HTMLDivElement>(null);
+
+    // The `docs` scope is pushed by the screen, which also owns Save.
+    useCommands(DOCS_SCOPE, docTreeCommands({ tree: () => treeRef.current, ids: () => paths, openId: () => selected }));
 
     const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="treeitem"]')];
@@ -58,7 +66,7 @@ export function DocsTree({ store }: { store: DocsStore }) {
 
     return (
         <Scrollable className={ styles.scroll } contentClass={ styles.content }>
-            <div role="tree" aria-label="Documents" className={ styles.tree } onKeyDown={ onKeyDown }>
+            <div ref={ treeRef } role="tree" aria-label="Documents" className={ styles.tree } onKeyDown={ onKeyDown }>
                 { rows.map(({ node, depth, open }) => (
                     <TreeRow
                         key={ node.path }
@@ -114,6 +122,7 @@ function TreeRow({ path, name, depth, folder, selected, entry, unsaved, onActiva
     return (
         <div
             role="treeitem"
+            data-path={ path }
             aria-level={ depth + 1 }
             aria-expanded={ folder?.open }
             aria-selected={ selected }

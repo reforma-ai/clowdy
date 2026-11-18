@@ -4,10 +4,11 @@ import { ListBoxItem } from '@clowdy/components/List';
 import { Select } from '@clowdy/components/Select';
 import { Text } from '@clowdy/components/Text';
 import { ArrowUpRight, Box, Close } from '@clowdy/icons/14';
-import { useState } from 'react';
+import { useState, type Ref } from 'react';
 
+import { commandTooltip } from '../../hotkeys';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { sendCommand } from './commands';
+import { sendCommand, startTask } from './commands';
 import { DependencyList } from './DependencyList';
 import styles from './DetailPanel.module.css';
 import { Executors, LatestActivity, RelatedChats, Results, Section } from './DetailSections';
@@ -22,12 +23,14 @@ export interface DetailPanelProps {
     task: Task;
     /** The runs on the task: assigned and verifying ones. */
     taskRuns: readonly TaskRun[];
+    /** The title field, for the rename key to put the keyboard in. */
+    titleRef?: Ref<HTMLTextAreaElement | null>;
 }
 
 type TaskChanges = Partial<Pick<Extract<CommandInput, { type: 'task.update' }>, 'title' | 'description' | 'statusId' | 'dependsOn'>>;
 
 /** The selected task, on the right of the section: edit it, see who works on it and what came out, start or delete it. */
-export function DetailPanel({ task, taskRuns }: DetailPanelProps) {
+export function DetailPanel({ task, taskRuns, titleRef }: DetailPanelProps) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -41,7 +44,7 @@ export function DetailPanel({ task, taskRuns }: DetailPanelProps) {
 
     const start = async () => {
         setIsStarting(true);
-        await sendCommand(root, { type: 'task.start', taskId: task.id });
+        await startTask(root, task.id);
         setIsStarting(false);
     };
 
@@ -66,6 +69,7 @@ export function DetailPanel({ task, taskRuns }: DetailPanelProps) {
             <div className={ styles.body }>
                 <div className={ styles.top }>
                     <EditableText
+                        ref={ titleRef }
                         variant="title"
                         aria-label="Title"
                         required
@@ -118,7 +122,8 @@ export function DetailPanel({ task, taskRuns }: DetailPanelProps) {
             <div className={ styles.foot }>
                 { blocked && <Text color="secondary">{ blocked }</Text> }
                 <div className={ styles.actions }>
-                    <Button color="primary" size="sm" isDisabled={ blocked !== null } isPending={ isStarting } onPress={ () => void start() }>Start</Button>
+                    {/* The keys act on the cursor task, which is this one while the panel follows the cursor. A task that cannot start has no hint (the command is off). */}
+                    <Button color="primary" size="sm" isDisabled={ blocked !== null } isPending={ isStarting } tooltip={ commandTooltip('Start with an agent', 'tasks.start') } onPress={ () => void start() }>Start</Button>
                     { link && (
                         <Button variant="bordered" size="sm" href={ link.url } target="_blank" rel="noreferrer">
                             { `Open in ${ link.label }` }
@@ -126,7 +131,7 @@ export function DetailPanel({ task, taskRuns }: DetailPanelProps) {
                         </Button>
                     ) }
                     <span className={ styles.spacer } />
-                    <ConfirmButton variant="filling" color="danger" size="sm" confirmColor="danger" confirmVariant="filled" onConfirm={ remove }>Delete</ConfirmButton>
+                    <ConfirmButton variant="filling" color="danger" size="sm" confirmColor="danger" confirmVariant="filled" tooltip={ commandTooltip('Delete task', 'tasks.delete') } onConfirm={ remove }>Delete</ConfirmButton>
                 </div>
             </div>
         </aside>

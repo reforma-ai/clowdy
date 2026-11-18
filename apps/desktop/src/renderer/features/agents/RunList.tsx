@@ -3,7 +3,9 @@ import { Panel, PanelContent, PanelEmptyState, PanelHeader, PanelSearch } from '
 import { Eye } from '@clowdy/icons/14';
 import { useEffect, useRef, type KeyboardEvent } from 'react';
 
+import { useCommands, useHotkeyScope } from '../../hotkeys';
 import { useProjectState } from '../../stores';
+import { AGENTS_SCOPE, focusRun, runCommands } from './runCommands';
 import styles from './RunList.module.css';
 import { RunRow } from './RunRow';
 
@@ -41,8 +43,16 @@ export function RunList({ rows, runCount, activeChildCounts, selectedId, query, 
         if (runId === undefined) return;
 
         onSelect(runId);
-        treeRef.current?.querySelector<HTMLElement>(`[data-run-id="${ CSS.escape(runId) }"]`)?.focus();
+        focusRun(treeRef.current, runId);
     };
+
+    useHotkeyScope(AGENTS_SCOPE);
+    useCommands(AGENTS_SCOPE, runCommands({
+        tree: () => treeRef.current,
+        ids: () => rows.map(row => row.run.id),
+        openId: () => selectedId,
+        select: onSelect,
+    }));
 
     const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         // Chevrons and chips inside a row have their own keys.

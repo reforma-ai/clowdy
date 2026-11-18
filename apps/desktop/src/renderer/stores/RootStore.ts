@@ -1,5 +1,6 @@
 import { makeAutoObservable, observableRef, runInAction } from 'mobx';
 
+import { NavHistory } from './NavHistory';
 import { ProjectState } from './ProjectState';
 import { browserStorage, readStored, writeStored, type KeyValueStorage } from './storage';
 import { StreamStore } from './StreamStore';
@@ -43,6 +44,8 @@ export class RootStore {
     skillsRevision = 0;
     readonly ui: UiStore;
     readonly streams: StreamStore;
+    /** Back and forward through what the window showed. */
+    readonly history: NavHistory;
     readonly #states = new Map<ProjectId, ProjectState>();
     readonly #storage: KeyValueStorage | undefined;
     readonly #notify: ((notice: Notice) => void) | undefined;
@@ -55,12 +58,19 @@ export class RootStore {
         this.#notify = notify;
         this.ui = new UiStore(storage, initialUi);
         this.streams = new StreamStore(transport);
-        makeAutoObservable<RootStore, 'transport'>(this, { transport: false, ui: false, streams: false, projects: observableRef });
+        makeAutoObservable<RootStore, 'transport'>(this, { transport: false, ui: false, streams: false, history: false, projects: observableRef });
+        // After `makeAutoObservable`: the history watches `selectedProjectId`, which is not observable before it.
+        this.history = new NavHistory(this);
     }
 
     /** The selected project, once it has a state (it may still be loading). */
     get selectedProject(): ProjectState | undefined {
         return this.selectedProjectId ? this.#states.get(this.selectedProjectId) : undefined;
+    }
+
+    /** A project's state, once the project was selected. */
+    projectState(projectId: ProjectId): ProjectState | undefined {
+        return this.#states.get(projectId);
     }
 
     /** Fetches the project list and follows the event feed. Called at start and by the retry button. */
@@ -128,6 +138,7 @@ export class RootStore {
 
     /** Ends the feed and the timers: for a replaced store (hot reload) and for tests. */
     dispose(): void {
+        this.history.dispose();
         this.#unsubscribe?.();
         clearTimeout(this.#bannerTimer);
         clearTimeout(this.#resyncTimer);

@@ -1,5 +1,5 @@
 import { Textarea } from '@clowdy/components/Textarea';
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent, type Ref } from 'react';
 
 import styles from './EditableText.module.css';
 
@@ -13,13 +13,15 @@ export interface EditableTextProps {
     placeholder?: string;
     /** An empty edit goes back to `value` instead of saving. */
     required?: boolean;
+    /** The field, for a command that puts the keyboard in it. */
+    ref?: Ref<HTMLTextAreaElement | null>;
 }
 
 /**
  * Text edited in place and saved when the field loses focus. Escape drops the edit; Enter ends it in a title.
  * A change that arrives from outside shows at once, unless the person is typing: their text is kept and saved on blur.
  */
-export function EditableText({ value, onCommit, variant, placeholder, required, 'aria-label': ariaLabel }: EditableTextProps) {
+export function EditableText({ value, onCommit, variant, placeholder, required, ref, 'aria-label': ariaLabel }: EditableTextProps) {
     const [draft, setDraft] = useState(value);
     const [seen, setSeen] = useState(value);
     const [isFocused, setIsFocused] = useState(false);
@@ -60,6 +62,7 @@ export function EditableText({ value, onCommit, variant, placeholder, required, 
 
     return (
         <Textarea
+            ref={ ref }
             aria-label={ ariaLabel }
             variant={ variant === 'title' ? 'inline' : 'filled' }
             size="md"

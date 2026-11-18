@@ -1,7 +1,8 @@
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
-import type { Actor, Artifact, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId } from '@clowdy/protocol';
+import type { Actor, Artifact, Chat, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId, TaskStatus } from '@clowdy/protocol';
 import type { StatusTone } from '../../shared';
+import type { TasksView } from '../../stores';
 
 /* ---------------------------------- Runs ---------------------------------- */
 
@@ -98,6 +99,23 @@ export function groupByStatus(tasks: readonly Task[]): Map<string, Task[]> {
     return groups;
 }
 
+/** The board's columns: a column per status in workflow order, with the tasks of that status. A task whose status is gone sits in none. */
+export function boardColumns(statuses: readonly TaskStatus[], tasks: readonly Task[]): { status: TaskStatus; tasks: Task[] }[] {
+    const byStatus = groupByStatus(tasks);
+
+    return statuses.map(status => ({ status, tasks: byStatus.get(status.id) ?? [] }));
+}
+
+/**
+ * The ids the cursor walks, in the order the view draws them: the board's columns in workflow order, or the list's one column in the order it is given.
+ * `tasks` is what the view shows, in task order.
+ */
+export function taskGrid(view: TasksView, tasks: readonly Task[], statuses: readonly TaskStatus[]): TaskId[][] {
+    if (view === 'board') return boardColumns(statuses, tasks).map(column => column.tasks.map(task => task.id));
+
+    return [tasks.map(task => task.id)];
+}
+
 /* ------------------------------- Dependencies ------------------------------ */
 
 /**
@@ -121,6 +139,53 @@ export function dependencyCandidates(tasks: readonly Task[], { taskId, taken }: 
     }
 
     return tasks.filter(task => !dependents.has(task.id) && !taken.includes(task.id));
+}
+
+/**
+ * The tasks that may still start to depend on `taskId`: not itself, none that already does, and none it depends on,
+ * directly or through others, because that would close a loop the other way round.
+ */
+export function blockingCandidates(tasks: readonly Task[], { taskId }: { taskId: TaskId }): Task[] {
+    const byId = new Map(tasks.map(task => [task.id, task]));
+    const upstream = new Set<TaskId>();
+    const pending = [...byId.get(taskId)?.dependsOn ?? []];
+
+    for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+        if (upstream.has(id)) continue;
+
+        upstream.add(id);
+        pending.push(...byId.get(id)?.dependsOn ?? []);
+    }
+
+    return tasks.filter(task => task.id !== taskId && !upstream.has(task.id) && !task.dependsOn.includes(taskId));
+}
+
+/** What the "blocked by" picker lists for a task: the tasks it depends on (to remove) and those it may still depend on (to add), in task order. */
+export function blockedByOptions(tasks: readonly Task[], task: Pick<Task, 'id' | 'dependsOn'>): Task[] {
+    const listed = new Set([...task.dependsOn, ...dependencyCandidates(tasks, { taskId: task.id, taken: task.dependsOn }).map(({ id }) => id)]);
+
+    return tasks.filter(({ id }) => listed.has(id));
+}
+
+/** What the "blocking" picker lists for a task: the tasks that depend on it (to remove) and those that may start to (to add), in task order. */
+export function blockingOptions(tasks: readonly Task[], task: Pick<Task, 'id'>): Task[] {
+    const listed = new Set([...tasks.filter(({ dependsOn }) => dependsOn.includes(task.id)), ...blockingCandidates(tasks, { taskId: task.id })].map(({ id }) => id));
+
+    return tasks.filter(({ id }) => listed.has(id));
+}
+
+/** The dependency list with `id` taken out when it is there and added at the end when it is not. `task.update` replaces the whole list, so this is what to send. */
+export function toggleDependency(dependsOn: readonly TaskId[], id: TaskId): TaskId[] {
+    return dependsOn.includes(id) ? dependsOn.filter(candidate => candidate !== id) : [...dependsOn, id];
+}
+
+/* --------------------------------- Statuses -------------------------------- */
+
+/** The status one step along the workflow from `statusId`, or nothing at either end and for a status the workflow no longer has. */
+export function adjacentStatus(statuses: readonly TaskStatus[], statusId: string, step: 1 | -1): TaskStatus | undefined {
+    const index = statuses.findIndex(status => status.id === statusId);
+
+    return index < 0 ? undefined : statuses[index + step];
 }
 
 /* --------------------------------- Sources -------------------------------- */
@@ -279,6 +344,16 @@ export function resultRows(artifacts: readonly Artifact[], { expectChecks }: { e
     }
 
     return rows;
+}
+
+/** The path of the document the task produced last, which is the first document row of `resultRows`. A document artifact that names no file is not one. */
+export function newestDocPath(artifacts: readonly Artifact[]): string | null {
+    return resultRows(artifacts, { expectChecks: false }).find(row => row.docPath)?.docPath ?? null;
+}
+
+/** The chat that was active last among the chats that discuss a task. */
+export function newestChat<T extends Pick<Chat, 'updatedAt'>>(chats: readonly T[]): T | undefined {
+    return chats.reduce<T | undefined>((newest, chat) => (newest === undefined || chat.updatedAt > newest.updatedAt ? chat : newest), undefined);
 }
 
 /** The id of the task a `task.create` answered with. The daemon answers `{ task }`, the fixture daemon the task itself. */

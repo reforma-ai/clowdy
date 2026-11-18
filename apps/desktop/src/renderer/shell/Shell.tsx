@@ -1,16 +1,20 @@
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { cn } from '@clowdy/lib';
+import { useEffect } from 'react';
 
 import { Screen as AgentsScreen } from '../features/agents';
 import { Screen as ChatsScreen } from '../features/chats';
 import { Screen as DocsScreen } from '../features/docs';
 import { Screen as SettingsScreen } from '../features/settings';
 import { Screen as TasksScreen } from '../features/tasks';
+import { ChordHud, hotkeys, installDispatcher, useCommands } from '../hotkeys';
+import { openHelp } from '../hotkeys/openHelp';
 import { useProjectUi, useRootStore } from '../stores';
 import { NoProject } from './NoProject';
 import { Rail } from './Rail';
 import styles from './Shell.module.css';
+import { shellCommands } from './shellCommands';
 import { SyncBanner } from './SyncBanner';
 import { TitleBand } from './TitleBand';
 import { Unreachable } from './Unreachable';
@@ -29,6 +33,9 @@ const SCREENS: Record<Section, ComponentType> = {
 export function Shell() {
     const root = useRootStore();
 
+    useEffect(() => installDispatcher(hotkeys), []);
+    useCommands('app', shellCommands(root, openHelp));
+
     return (
         <div className={ styles.shell }>
             <TitleBand />
@@ -39,6 +46,7 @@ export function Shell() {
                 </main>
             </div>
             <SyncBanner />
+            <ChordHud />
         </div>
     );
 }

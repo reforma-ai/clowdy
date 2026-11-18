@@ -14,6 +14,21 @@ export const SETTINGS_PAGES = ['appearance', 'engine', 'skills'] as const;
 export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
 
+/** Where a project's window is: the section and what is open in it. History walks these; the view options of a section are not places. */
+export interface ProjectView {
+    section: Section;
+    chatId: ChatId | null;
+    taskId: TaskId | null;
+    runId: RunId | null;
+    docPath: string | null;
+}
+
+/** Whether Settings covers the window, and on which page. The page is `null` while Settings is closed, because it does not show then. */
+export interface SettingsView {
+    open: boolean;
+    page: SettingsPage | null;
+}
+
 interface StoredProjectUi {
     section: Section;
     chatId: ChatId | null;
@@ -93,6 +108,20 @@ export class ProjectUi {
         );
     }
 
+    /** The place the window shows, as a value that can be kept and shown again with `show`. */
+    get view(): ProjectView {
+        return { section: this.section, chatId: this.chatId, taskId: this.taskId, runId: this.runId, docPath: this.docPath };
+    }
+
+    /** Shows a place kept from `view`, as one change. */
+    show({ section, chatId, taskId, runId, docPath }: ProjectView): void {
+        this.section = section;
+        this.chatId = chatId;
+        this.taskId = taskId;
+        this.runId = runId;
+        this.docPath = docPath;
+    }
+
     /** Shows the chat, in the Chats section; `null` leaves none selected. */
     openChat(chatId: ChatId | null): void {
         this.section = 'chats';
@@ -143,6 +172,18 @@ export class UiStore {
         }
 
         return ui;
+    }
+
+    get settingsView(): SettingsView {
+        return { open: this.settingsOpen, page: this.settingsOpen ? this.settingsPage : null };
+    }
+
+    /** Shows a place of the project and the Settings state that went with it, as one change: what back and forward do. */
+    restore(ui: ProjectUi, view: ProjectView, settings: SettingsView): void {
+        ui.show(view);
+        this.settingsOpen = settings.open;
+
+        if (settings.page) this.settingsPage = settings.page;
     }
 
     /** Rail navigation: shows a section of the project and leaves Settings. */

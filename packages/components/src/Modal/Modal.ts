@@ -68,6 +68,13 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
         return visible.at(-1);
     }
 
+    /** The focused element, or null when nothing is (`body` has focus). */
+    private static focusedElement(): HTMLElement | null {
+        const { activeElement } = document;
+
+        return activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null;
+    }
+
     static create(opts: Partial<ModalOptions> = {}): Modal {
         if (!popstated) {
             popstated = true;
@@ -221,7 +228,8 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
     #scrollableEl?: HTMLElement[];
     #clickOutInclude: (Document | Element)[];
     #eventsAbortController: AbortController;
-    #prevActiveElement!: HTMLElement;
+    /** What had focus when the modal was created, so closing it hands focus back there. */
+    #prevActiveElement: HTMLElement | null = null;
     #scrollPositions: WeakMap<HTMLElement, { top: number; left: number }>;
     #targetWatchInterval: number | null = null;
 
@@ -423,6 +431,9 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
     constructor(opts: Partial<Opts>) {
         // Add in list
         Modal.list.add(this);
+
+        // A child that autofocuses itself gets there before `focus()` runs, so the element to return to is read here, before anything moves focus.
+        this.#prevActiveElement = Modal.focusedElement();
 
         // Extend options by getOptions function
         if (typeof opts.getOptions === 'function') {
@@ -1142,8 +1153,9 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             return;
         }
 
-        if (restoreFocus && this.#prevActiveElement) {
-            this.#prevActiveElement.focus();
+        // An element that is gone by now (a deleted row) cannot take focus, so it stays where the browser put it and the caller picks the next place.
+        if (restoreFocus) {
+            this.#prevActiveElement?.focus();
         }
 
         if (isOverlayStyle || options.overlay) {
@@ -1561,7 +1573,8 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
         }
 
         if (document.activeElement !== this.overlay) {
-            this.#prevActiveElement = document.activeElement as HTMLElement;
+            // `body` means nothing had focus: keep the element noted at creation, if any.
+            this.#prevActiveElement = Modal.focusedElement() ?? this.#prevActiveElement;
 
             this.overlay.focus();
         }

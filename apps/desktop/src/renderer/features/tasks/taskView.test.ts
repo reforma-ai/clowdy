@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
     activeExecutors,
+    adjacentStatus,
     agentOptions,
+    blockedByOptions,
+    blockingCandidates,
+    blockingOptions,
+    boardColumns,
     createdTaskId,
     dependencyCandidates,
     externalLink,
@@ -11,16 +16,20 @@ import {
     formatAgo,
     groupByStatus,
     isFiltering,
+    newestChat,
+    newestDocPath,
     NO_FILTER,
     resultRows,
     runsByTask,
     startBlockedReason,
     taskActivity,
+    taskGrid,
     tasksSource,
+    toggleDependency,
     type TaskRun,
 } from './taskView';
 
-import type { Artifact, Run, RunTaskLink, Task } from '@clowdy/protocol';
+import type { Artifact, Run, RunTaskLink, Task, TaskStatus } from '@clowdy/protocol';
 
 const MINUTE = 60_000;
 
@@ -163,6 +172,103 @@ describe('dependencyCandidates', () => {
     });
 });
 
+describe('blockingCandidates', () => {
+    // 1 <- 2 <- 3: task 2 depends on 1, and task 3 on 2.
+    const tasks = [task(1), task(2, { dependsOn: ['t-1'] }), task(3, { dependsOn: ['t-2'] }), task(4)];
+    const ids = (list: Task[]) => list.map(item => item.id);
+
+    it('lists the tasks that may start to depend on the task, not itself and not the ones that already do', () => {
+        expect(ids(blockingCandidates(tasks, { taskId: 't-1' }))).toEqual(['t-3', 't-4']);
+        expect(ids(blockingCandidates(tasks, { taskId: 't-4' }))).toEqual(['t-1', 't-2', 't-3']);
+    });
+
+    it('leaves out everything the task depends on, directly or through others, because that would close a loop', () => {
+        expect(ids(blockingCandidates(tasks, { taskId: 't-3' }))).toEqual(['t-4']);
+        expect(ids(blockingCandidates(tasks, { taskId: 't-2' }))).toEqual(['t-4']);
+    });
+
+    it('does not offer a loop that dependencyCandidates would refuse from the other side', () => {
+        for (const owner of tasks) {
+            for (const candidate of blockingCandidates(tasks, { taskId: owner.id })) {
+                expect(ids(dependencyCandidates(tasks, { taskId: candidate.id, taken: candidate.dependsOn }))).toContain(owner.id);
+            }
+        }
+    });
+
+    it('terminates on data that already has a loop', () => {
+        const looped = [task(1, { dependsOn: ['t-2'] }), task(2, { dependsOn: ['t-1'] }), task(3)];
+
+        expect(ids(blockingCandidates(looped, { taskId: 't-1' }))).toEqual(['t-3']);
+    });
+
+    it('offers every other task for one that is not in the list', () => {
+        expect(ids(blockingCandidates(tasks, { taskId: 'gone' }))).toEqual(['t-1', 't-2', 't-3', 't-4']);
+    });
+});
+
+describe('dependency pickers', () => {
+    const tasks = [task(1), task(2, { dependsOn: ['t-1'] }), task(3, { dependsOn: ['t-2'] }), task(4), task(5, { dependsOn: ['t-2'] })];
+    const ids = (list: Task[]) => list.map(item => item.id);
+
+    it('"blocked by" lists what the task depends on and what it may still depend on, in task order', () => {
+        expect(ids(blockedByOptions(tasks, tasks[1]))).toEqual(['t-1', 't-4']);
+        expect(ids(blockedByOptions(tasks, tasks[3]))).toEqual(['t-1', 't-2', 't-3', 't-5']);
+    });
+
+    it('"blocking" lists what depends on the task and what may start to, in task order', () => {
+        expect(ids(blockingOptions(tasks, tasks[1]))).toEqual(['t-3', 't-4', 't-5']);
+        expect(ids(blockingOptions(tasks, tasks[0]))).toEqual(['t-2', 't-3', 't-4', 't-5']);
+    });
+
+    it('leaves out a dependency whose task is gone', () => {
+        expect(ids(blockedByOptions([task(1, { dependsOn: ['gone'] })], { id: 't-1', dependsOn: ['gone'] }))).toEqual([]);
+    });
+});
+
+describe('toggleDependency', () => {
+    it('adds a task at the end and takes one out, leaving the rest in order', () => {
+        expect(toggleDependency(['t-1', 't-2'], 't-3')).toEqual(['t-1', 't-2', 't-3']);
+        expect(toggleDependency(['t-1', 't-2', 't-3'], 't-2')).toEqual(['t-1', 't-3']);
+        expect(toggleDependency([], 't-1')).toEqual(['t-1']);
+        expect(toggleDependency(['t-1'], 't-1')).toEqual([]);
+    });
+
+    it('does not change the list it is given', () => {
+        const list = ['t-1'];
+
+        toggleDependency(list, 't-2');
+        toggleDependency(list, 't-1');
+
+        expect(list).toEqual(['t-1']);
+    });
+});
+
+describe('adjacentStatus', () => {
+    const statuses: TaskStatus[] = [
+        { id: 'todo', name: 'To do', category: 'todo' },
+        { id: 'active', name: 'In progress', category: 'active' },
+        { id: 'done', name: 'Done', category: 'done' },
+    ];
+
+    it('is the next and the previous status in workflow order', () => {
+        expect(adjacentStatus(statuses, 'todo', 1)?.id).toBe('active');
+        expect(adjacentStatus(statuses, 'active', 1)?.id).toBe('done');
+        expect(adjacentStatus(statuses, 'done', -1)?.id).toBe('active');
+        expect(adjacentStatus(statuses, 'active', -1)?.id).toBe('todo');
+    });
+
+    it('is nothing at either end', () => {
+        expect(adjacentStatus(statuses, 'done', 1)).toBeUndefined();
+        expect(adjacentStatus(statuses, 'todo', -1)).toBeUndefined();
+    });
+
+    it('is nothing for a status the workflow no longer has, and for an empty workflow', () => {
+        expect(adjacentStatus(statuses, 'removed', 1)).toBeUndefined();
+        expect(adjacentStatus(statuses, 'removed', -1)).toBeUndefined();
+        expect(adjacentStatus([], 'todo', 1)).toBeUndefined();
+    });
+});
+
 describe('sources', () => {
     const linear = { provider: 'linear', externalId: 'ENG-1', url: 'https://linear.app/x/issue/ENG-1' };
 
@@ -277,11 +383,87 @@ describe('resultRows', () => {
     });
 });
 
+describe('newestDocPath', () => {
+    const artifact = (id: string, kind: Artifact['kind'], ref: Artifact['ref'], createdAt: number): Artifact => ({ id, projectId: 'p', kind, title: id, ref, createdAt });
+
+    it('is the path of the document created last, whatever else the task produced', () => {
+        expect(newestDocPath([
+            artifact('old', 'doc', { path: 'notes/old.md' }, 1),
+            artifact('diff', 'diff', { files: 1 }, 9),
+            artifact('new', 'doc', { path: 'decisions/pricing.md' }, 5),
+        ])).toBe('decisions/pricing.md');
+    });
+
+    it('is null when the task has no document', () => {
+        expect(newestDocPath([])).toBeNull();
+        expect(newestDocPath([artifact('c', 'check', { exitCode: 0 }, 1), artifact('d', 'build', { path: 'release/app.zip' }, 2)])).toBeNull();
+    });
+
+    it('skips a document artifact that names no file', () => {
+        expect(newestDocPath([artifact('e', 'doc', {}, 3)])).toBeNull();
+        expect(newestDocPath([artifact('e', 'doc', {}, 3), artifact('f', 'doc', { path: 'a.md' }, 1)])).toBe('a.md');
+    });
+});
+
+describe('newestChat', () => {
+    it('is the chat updated last, and nothing for no chats', () => {
+        const chats = [{ id: 'a', updatedAt: 5 }, { id: 'b', updatedAt: 9 }, { id: 'c', updatedAt: 2 }];
+
+        expect(newestChat(chats)?.id).toBe('b');
+        expect(newestChat([])).toBeUndefined();
+    });
+
+    it('keeps the first of chats updated at the same time', () => {
+        expect(newestChat([{ id: 'a', updatedAt: 1 }, { id: 'b', updatedAt: 1 }])?.id).toBe('a');
+    });
+});
+
 describe('createdTaskId', () => {
     it('reads the id from the daemon answer and from the fixture answer', () => {
         expect(createdTaskId({ task: { id: 't-9' } })).toBe('t-9');
         expect(createdTaskId({ id: 't-9' })).toBe('t-9');
         expect(createdTaskId(undefined)).toBeUndefined();
         expect(createdTaskId({ task: {} })).toBeUndefined();
+    });
+});
+
+describe('task grid', () => {
+    const statuses: TaskStatus[] = [
+        { id: 'todo', name: 'To do', category: 'todo' },
+        { id: 'active', name: 'In progress', category: 'active' },
+        { id: 'done', name: 'Done', category: 'done' },
+    ];
+    const tasks = [
+        task(1, { statusId: 'done' }),
+        task(2, { statusId: 'todo' }),
+        task(3, { statusId: 'active' }),
+        task(4, { statusId: 'todo' }),
+        task(5, { statusId: 'removed' }),
+    ];
+
+    it('lists the board column by column in workflow order, empty columns included, tasks in task order', () => {
+        expect(taskGrid('board', tasks, statuses)).toEqual([['t-2', 't-4'], ['t-3'], ['t-1']]);
+        expect(taskGrid('board', [task(2, { statusId: 'done' })], statuses)).toEqual([[], [], ['t-2']]);
+    });
+
+    it('leaves out a task whose status is gone, as the board does', () => {
+        expect(taskGrid('board', tasks, statuses).flat()).not.toContain('t-5');
+        expect(boardColumns(statuses, tasks).flatMap(column => column.tasks).map(item => item.id)).not.toContain('t-5');
+    });
+
+    it('lists the list as one column in the order the list draws it', () => {
+        expect(taskGrid('list', [tasks[0], tasks[2], tasks[3]], statuses)).toEqual([['t-1', 't-3', 't-4']]);
+    });
+
+    it('has one empty column for an empty list and one per status for an empty board', () => {
+        expect(taskGrid('list', [], statuses)).toEqual([[]]);
+        expect(taskGrid('board', [], statuses)).toEqual([[], [], []]);
+    });
+
+    it('matches the columns the board draws', () => {
+        const columns = boardColumns(statuses, tasks);
+
+        expect(columns.map(column => column.status.id)).toEqual(['todo', 'active', 'done']);
+        expect(taskGrid('board', tasks, statuses)).toEqual(columns.map(column => column.tasks.map(item => item.id)));
     });
 });

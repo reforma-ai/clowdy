@@ -2,7 +2,8 @@ import { PROTOCOL_VERSION } from '@clowdy/protocol';
 import { createHash, timingSafeEqual } from 'node:crypto';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
-const ALLOWED_ORIGIN = /^(app:\/\/clowdy|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)$/;
+/** The app's own origin, which the desktop shell serves its files from. Anything else must be named in `CLOWDY_CORS_ORIGINS`. */
+const APP_ORIGIN = 'app://clowdy';
 
 export const ALLOWED_HEADERS = 'Authorization, Content-Type, x-clowdy-protocol, Last-Event-ID';
 
@@ -17,8 +18,9 @@ export function isLoopbackHost(host: string | null): boolean {
     return LOOPBACK_HOSTS.has(name.toLowerCase());
 }
 
-export function isAllowedOrigin(origin: string): boolean {
-    return ALLOWED_ORIGIN.test(origin);
+/** The app's origin always; any other only when it is listed exactly (a tool's dev server, say). */
+export function isAllowedOrigin(origin: string, extra: readonly string[] = []): boolean {
+    return origin === APP_ORIGIN || extra.includes(origin);
 }
 
 /** Compares in constant time regardless of where the strings differ. */

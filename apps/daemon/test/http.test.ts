@@ -110,12 +110,37 @@ describe('host guard', () => {
 
 describe('CORS', () => {
     test('allowed origins', () => {
-        for (const origin of ['app://clowdy', 'http://127.0.0.1:5273', 'http://localhost:5173', 'http://localhost']) {
-            expect(isAllowedOrigin(origin)).toBe(true);
+        expect(isAllowedOrigin('app://clowdy')).toBe(true);
+
+        // No loopback page is trusted by default, only what is listed.
+        for (const origin of ['http://127.0.0.1:5273', 'http://localhost:5173', 'http://localhost', 'https://evil.example', 'http://evil.example', 'app://evil', 'http://127.0.0.1.evil.example', 'http://localhost.evil.example:80', 'https://localhost:3000', 'null', 'file://']) {
+            expect(isAllowedOrigin(origin)).toBe(false);
         }
 
-        for (const origin of ['https://evil.example', 'http://evil.example', 'app://evil', 'http://127.0.0.1.evil.example', 'http://localhost.evil.example:80', 'https://localhost:3000', 'null', 'file://']) {
-            expect(isAllowedOrigin(origin)).toBe(false);
+        const extra = ['http://127.0.0.1:5300'];
+
+        expect(isAllowedOrigin('http://127.0.0.1:5300', extra)).toBe(true);
+        expect(isAllowedOrigin('http://127.0.0.1:5301', extra)).toBe(false);
+        expect(isAllowedOrigin('app://clowdy', extra)).toBe(true);
+    });
+
+    test('a loopback page is refused unless the daemon was started with its origin, and then only that one', async () => {
+        const tool = 'http://127.0.0.1:5300';
+
+        expect((await fetch(`${ h.url }/v1/snapshot`, { headers: { origin: tool, ...bearer } })).status).toBe(403);
+
+        const listed = await startHarness({ corsOrigins: [tool] });
+
+        try {
+            const allowed = await fetch(`${ listed.url }/v1/snapshot`, { headers: { origin: tool, authorization: 'Bearer test-token' } });
+            const other = await fetch(`${ listed.url }/v1/snapshot`, { headers: { origin: 'http://127.0.0.1:5301', authorization: 'Bearer test-token' } });
+
+            expect(allowed.status).toBe(200);
+            expect(allowed.headers.get('access-control-allow-origin')).toBe(tool);
+            expect(other.status).toBe(403);
+        }
+        finally {
+            await listed.stop();
         }
     });
 
@@ -136,11 +161,11 @@ describe('CORS', () => {
     test('preflight answers without a token and lists the headers the client needs', async () => {
         const response = await fetch(`${ h.url }/v1/commands`, {
             method: 'OPTIONS',
-            headers: { origin: 'http://localhost:5173', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization,content-type,x-clowdy-protocol' },
+            headers: { origin: 'app://clowdy', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization,content-type,x-clowdy-protocol' },
         });
 
         expect(response.status).toBe(204);
-        expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+        expect(response.headers.get('access-control-allow-origin')).toBe('app://clowdy');
         expect(response.headers.get('access-control-allow-methods')).toBe('GET, POST, OPTIONS');
 
         const allowed = response.headers.get('access-control-allow-headers')!.toLowerCase();
