@@ -3,4 +3,4 @@ export { RUN_STATUS_VIEW, type RunStatusView, type StatusTone } from './runStatu
 export { RunStatusPill, type RunStatusPillProps } from './RunStatusPill';
 export { StatusDot, type StatusDotProps } from './StatusDot';
 export { TaskChip, type TaskChipProps } from './TaskChip';
-export { formatDuration, formatTime } from './time';
+export { formatDuration, formatRemaining, formatTime } from './time';

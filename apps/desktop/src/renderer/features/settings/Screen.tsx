@@ -5,7 +5,7 @@ import { Book, PaintBucket, Robot } from '@clowdy/icons/14';
 
 import { useRootStore, type SettingsPage } from '../../stores';
 import { AppearancePage } from './AppearancePage';
-import { EnginePage } from './EnginePage';
+import { ProvidersPage } from './providers';
 import styles from './Screen.module.css';
 import { SkillsSection } from './skills';
 
@@ -31,7 +31,7 @@ const GROUPS: ReadonlyArray<{ id: string; label: string; pages: readonly PageVie
         id: 'agents',
         label: 'Agents',
         pages: [
-            { id: 'providers', label: 'Providers', icon: <Robot />, render: () => <EnginePage /> },
+            { id: 'providers', label: 'Providers', icon: <Robot />, render: () => <ProvidersPage /> },
             { id: 'skills', label: 'Skills', icon: <Book />, render: () => <SkillsSection /> },
         ],
     },

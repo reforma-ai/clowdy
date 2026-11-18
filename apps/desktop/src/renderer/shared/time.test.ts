@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatDuration, formatTime } from './time';
+import { formatDuration, formatRemaining, formatTime } from './time';
 
 describe('formatTime', () => {
     it('shows a 24-hour clock with a leading zero', () => {
@@ -20,5 +20,23 @@ describe('formatDuration', () => {
 
     it('never goes below zero', () => {
         expect(formatDuration(-5000)).toBe('0s');
+    });
+});
+
+describe('formatRemaining', () => {
+    const MINUTE = 60_000;
+
+    it('counts minutes, then hours, then days, leaving out a unit that is zero', () => {
+        expect(formatRemaining(30_000)).toBe('now');
+        expect(formatRemaining(-5 * MINUTE)).toBe('now');
+        expect(formatRemaining(4 * MINUTE)).toBe('4m');
+        expect(formatRemaining(60 * MINUTE)).toBe('1h');
+        expect(formatRemaining((4 * 60 + 45) * MINUTE)).toBe('4h 45m');
+        expect(formatRemaining(24 * 60 * MINUTE)).toBe('1d');
+        expect(formatRemaining((17 * 24 * 60 + 5 * 60 + 30) * MINUTE)).toBe('17d 5h');
+    });
+
+    it('rounds down', () => {
+        expect(formatRemaining(28 * MINUTE + 59_000)).toBe('28m');
     });
 });

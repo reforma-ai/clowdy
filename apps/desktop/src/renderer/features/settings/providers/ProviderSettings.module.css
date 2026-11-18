@@ -1,0 +1,56 @@
+.block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.setting {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-xl);
+}
+
+.text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    min-width: 0;
+}
+
+.trigger {
+    align-self: flex-start;
+}
+
+.advanced {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    padding-top: var(--spacing-md);
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.inputs {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.inputs > :first-child {
+    flex: 1;
+    min-width: 0;
+}

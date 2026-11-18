@@ -1,0 +1,69 @@
+.account {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+    min-height: var(--spacing-32);
+}
+
+.who {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.session {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-secondary-muted);
+}
+
+.progress {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.step {
+    flex: 1;
+    min-width: 0;
+}
+
+.link {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-md);
+    max-width: 100%;
+}
+
+/* The address is long and only there to be copied: it gives way to the buttons. */
+.url {
+    flex: 1 1 8rem;
+    min-width: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.code {
+    display: flex;
+    flex-basis: 100%;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.done {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
