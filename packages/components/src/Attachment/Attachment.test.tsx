@@ -43,14 +43,7 @@ afterEach(() => {
 });
 
 describe('Attachment', () => {
-    it('shows the name and size of a lone attachment', () => {
-        render(<Attachments><Attachment data={ report } /></Attachments>);
-
-        expect(container.textContent).toContain('report.pdf');
-        expect(container.textContent).toContain('3.0 MB');
-    });
-
-    it('keeps the name out of the page when several tiles share the row', () => {
+    it('shows the name and size on the card, whether it is alone or among others', () => {
         render(
             <Attachments>
                 <Attachment data={ report } />
@@ -58,9 +51,9 @@ describe('Attachment', () => {
             </Attachments>
         );
 
-        // Only the accessible name carries it; the tooltip shows it on hover.
-        expect(container.textContent).not.toContain('report.pdf');
-        expect(container.querySelector('[data-slot="attachment"][aria-label="report.pdf"]')).not.toBeNull();
+        expect(container.textContent).toContain('report.pdf');
+        expect(container.textContent).toContain('3.0 MB');
+        expect(container.textContent).toContain(photo.filename ?? '');
     });
 
     it('prefers the title over the filename', () => {
@@ -217,15 +210,5 @@ describe('Attachments', () => {
 
         expect(tiles()).toHaveLength(5);
         expect(showMore()).toBeNull();
-    });
-
-    it('marks a lone attachment as a card', () => {
-        render(<Attachments><Attachment data={ files[0]! } /></Attachments>);
-
-        expect(container.querySelector('[data-slot="attachments"]')?.hasAttribute('data-single')).toBe(true);
-
-        render(<Attachments>{ files.slice(0, 2).map(file => <Attachment key={ file.id } data={ file } />) }</Attachments>);
-
-        expect(container.querySelector('[data-slot="attachments"]')?.hasAttribute('data-single')).toBe(false);
     });
 });

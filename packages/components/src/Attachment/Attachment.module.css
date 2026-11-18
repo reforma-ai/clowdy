@@ -2,12 +2,10 @@
 
 @layer components {
     .attachments {
-        --attachment-size: 60px;
         --attachment-width: var(--spacing-224);
+        --attachment-preview: 40px;
         --attachment-radius: var(--radius-lg);
-        --attachment-remove-offset: 4px;
-        --attachment-remove-size: 18px;
-        --attachment-remove-icon-size: 8px;
+        --attachment-remove-size: var(--spacing-24);
         --attachment-background: var(--color-background);
         --attachment-text: var(--color-text);
         --attachment-border: var(--color-secondary-muted-border);
@@ -19,18 +17,23 @@
         gap: var(--spacing-xs);
 
         &[data-size='sm'] {
-            --attachment-size: 36px;
             --attachment-width: var(--spacing-192);
+            --attachment-preview: 32px;
             --attachment-radius: var(--radius-sm);
-            --attachment-remove-offset: 2px;
-            --attachment-remove-size: 14px;
+            --attachment-remove-size: var(--spacing-20);
         }
     }
 
+    /* A card: the preview, then the name and size. Its height follows its content, so the text never crowds the padding. */
     .attachment {
         position: relative;
-        width: var(--attachment-size);
-        height: var(--attachment-size);
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        box-sizing: border-box;
+        width: var(--attachment-width);
+        max-width: 100%;
+        min-width: 0;
         color: var(--attachment-text);
         background-color: var(--attachment-background);
         outline: 1px solid var(--attachment-border);
@@ -41,6 +44,17 @@
         user-select: none;
         -webkit-user-drag: none;
         @ruleset typography-text-sm;
+
+        /* The padding sits on the card, or on the hit button that fills it. */
+        &:not(.pressable),
+        .attachmentHit {
+            padding: var(--spacing-sm);
+        }
+
+        /* The remove button floats at the end of the row, so the name stops short of it. */
+        &[data-removable] .info {
+            padding-inline-end: calc(var(--attachment-remove-size) + var(--spacing-xs));
+        }
     }
 
     @media (hover: hover) {
@@ -56,7 +70,7 @@
         }
     }
 
-    /* The hit button fills the tile and its own focus ring would be clipped by `overflow: hidden`. */
+    /* The hit button fills the card and its own focus ring would be clipped by `overflow: hidden`. */
     .attachment:has(.attachmentHit[data-focus-visible='true']) {
         outline: var(--spacing-4) solid var(--color-primary-muted-border);
         outline-offset: 0;
@@ -66,18 +80,17 @@
         outline-color: var(--color-danger);
     }
 
-    /* Primary hit target when `onPress` is set (design-system `Button`). */
+    /* Primary hit target when `onPress` is set (design-system `Button`): fills the card and lays its content out the same way. */
     .attachmentHit {
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
+        gap: var(--spacing-md);
         box-sizing: border-box;
         width: 100%;
-        height: 100%;
         min-width: 0;
         min-height: 0;
         margin: 0;
-        padding: 0;
         align-self: stretch;
         border-radius: inherit;
         corner-shape: inherit;
@@ -85,18 +98,18 @@
 
     .preview {
         display: flex;
+        flex-shrink: 0;
         align-items: center;
         justify-content: center;
-        aspect-ratio: 1/1;
+        width: var(--attachment-preview);
+        height: var(--attachment-preview);
         min-width: 0;
         min-height: 0;
         overflow: hidden;
     }
 
-    /* Behind the bitmap only: transparent pixels need a checker. Icon tiles stay flat. */
+    /* Behind the bitmap only: transparent pixels need a checker. Icon previews stay flat. */
     .previewImg {
-        width: 100%;
-        height: 100%;
         border-radius: calc(var(--attachment-radius) * var(--squircle-radius-factor));
         corner-shape: superellipse(var(--squircle-value));
         object-fit: cover;
@@ -129,8 +142,6 @@
 
     .previewError {
         position: relative;
-        width: 100%;
-        height: 100%;
     }
 
     .previewError .previewImg,
@@ -150,7 +161,7 @@
         corner-shape: superellipse(var(--squircle-value));
     }
 
-    /* Name and size beside the preview, on a lone tile only. */
+    /* Name and size beside the preview. */
     .info {
         display: flex;
         flex-direction: column;
@@ -168,93 +179,35 @@
         flex-direction: column;
     }
 
+    /* The remove button sits at the end of the row. Centered with margins: a `transform` would be replaced by the button's pressed scale. */
     .removeButton {
         position: absolute;
-        top: var(--attachment-remove-offset);
-        right: var(--attachment-remove-offset);
+        top: 0;
+        bottom: 0;
+        right: var(--spacing-sm);
         width: var(--attachment-remove-size);
         height: var(--attachment-remove-size);
-        /* `size="unset"` buttons get no radius from Button. */
-        --clowdy-button-radius: var(--radius-xs);
+        margin-block: auto;
+        --clowdy-button-radius: var(--radius-sm);
+        --clowdy-button-bg: var(--attachment-background);
+        --clowdy-button-color: var(--color-text);
+        --clowdy-button-bg--hover: color-mix(in srgb, var(--color-text) 8%, var(--attachment-background));
+        --clowdy-button-color--hover: var(--color-text);
         border-radius: calc(var(--clowdy-button-radius) * var(--squircle-radius-factor));
         corner-shape: superellipse(var(--squircle-value));
-        /* Hidden until the tile is hovered or holds focus; still reachable from the keyboard. */
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.2s ease;
 
         svg {
-            width: var(--attachment-remove-icon-size);
-            height: var(--attachment-remove-icon-size);
+            width: var(--spacing-12);
+            height: var(--spacing-12);
         }
-    }
-
-    .attachment:is(:hover, :focus-within) .removeButton {
-        opacity: 1;
-        pointer-events: auto;
     }
 
     .showMore {
         flex-shrink: 0;
         align-self: stretch;
         min-width: 34px;
-        height: var(--attachment-size);
         padding: var(--spacing-4) var(--spacing-6);
         border-radius: calc(var(--attachment-radius) * var(--squircle-radius-factor));
         corner-shape: superellipse(var(--squircle-value));
-    }
-
-    /* A lone attachment becomes a card with its name beside the preview. */
-    .attachments[data-single] .attachment {
-        display: flex;
-        align-items: center;
-        gap: var(--spacing-md);
-        box-sizing: border-box;
-        width: var(--attachment-width);
-        max-width: 100%;
-        min-width: 0;
-
-        &:not(.pressable),
-        .attachmentHit {
-            padding: var(--spacing-sm);
-        }
-
-        .attachmentHit {
-            justify-content: flex-start;
-            gap: var(--spacing-md);
-        }
-
-        .preview {
-            flex-shrink: 0;
-            width: calc(var(--attachment-size) - var(--spacing-sm) * 2);
-            height: calc(var(--attachment-size) - var(--spacing-sm) * 2);
-        }
-
-        /* Remove floats at the end of the row, so the name stops short of it. */
-        &[data-removable] .info {
-            padding-inline-end: calc(var(--spacing-24) + var(--spacing-xs));
-        }
-
-        .removeButton {
-            /* Centered with margins: a `transform` would be replaced by the button's pressed scale. */
-            top: 0;
-            bottom: 0;
-            right: var(--spacing-sm);
-            width: var(--spacing-24);
-            height: var(--spacing-24);
-            margin-block: auto;
-            opacity: 1;
-            pointer-events: auto;
-            --clowdy-button-radius: var(--radius-sm);
-            --clowdy-button-bg: var(--attachment-background);
-            --clowdy-button-color: var(--color-text);
-            --clowdy-button-bg--hover: color-mix(in srgb, var(--color-text) 8%, var(--attachment-background));
-            --clowdy-button-color--hover: var(--color-text);
-
-            svg {
-                width: var(--spacing-12);
-                height: var(--spacing-12);
-            }
-        }
     }
 }

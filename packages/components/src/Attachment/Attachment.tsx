@@ -4,8 +4,6 @@ import { Refresh } from '@clowdy/icons/14';
 import { cn, extractExtension, formatFileSize } from '@clowdy/lib';
 import {
     Children,
-    createContext,
-    use,
     useRef,
     useState,
     type ComponentProps,
@@ -23,7 +21,7 @@ import { Text } from '../Text';
 import { Tooltip } from '../Tooltip';
 import styles from './Attachment.module.css';
 
-/** What a tile needs to know about a file. Not tied to any transport or storage. */
+/** What a card needs to know about a file. Not tied to any transport or storage. */
 export type AttachmentData = {
     id?: string;
     /** Display name; wins over `filename`. */
@@ -40,14 +38,11 @@ export type AttachmentData = {
 
 export type AttachmentsSize = 'sm' | 'md';
 
-/** A lone attachment renders as a card with its name beside the preview. */
-const SingleAttachmentContext = createContext(false);
-
 export type AttachmentsProps = HTMLAttributes<HTMLDivElement> & {
-    /** Tile edge length. @default 'md' */
+    /** How big the card is: its preview, its text and its width. @default 'md' */
     size?: AttachmentsSize;
     /**
-     * Max tiles shown before a "+N" control that reveals the rest; unset or non-positive shows all.
+     * Max cards shown before a "+N" control that reveals the rest; unset or non-positive shows all.
      * Pass each `<Attachment />` as a **direct child** (e.g. `items.map(...)`) so the list can be split;
      * one wrapper child counts as one item.
      */
@@ -56,7 +51,7 @@ export type AttachmentsProps = HTMLAttributes<HTMLDivElement> & {
     showMoreLabel?: string;
 };
 
-/** A wrapping row of {@link Attachment} tiles; a single child renders as a wider card. */
+/** A wrapping row of {@link Attachment} cards. */
 export function Attachments({
     size = 'md',
     defaultLimitCount,
@@ -76,12 +71,9 @@ export function Attachments({
             className={ cn(styles.attachments, className) }
             data-slot="attachments"
             data-size={ size }
-            data-single={ items.length === 1 || undefined }
             { ...props }
         >
-            <SingleAttachmentContext value={ items.length === 1 }>
-                { collapsed ? items.slice(0, limit) : items }
-            </SingleAttachmentContext>
+            { collapsed ? items.slice(0, limit) : items }
 
             <Show when={ collapsed }>
                 <Button
@@ -109,16 +101,16 @@ export type AttachmentProps = Omit<HTMLAttributes<HTMLDivElement>, 'children'> &
     error?: boolean;
     /** Shows the retry button while `error`. */
     onRetry?: () => void;
-    /** Shows the remove button (not while `loading`). Leave unset for a read-only tile. */
+    /** Shows the remove button (not while `loading`). Leave unset for a read-only card. */
     onRemove?: () => void;
     /**
-     * Makes the whole tile a button. Remove stays a sibling, so no `<button>` nests in another.
+     * Makes the whole card a button. Remove stays a sibling, so no `<button>` nests in another.
      * Ignored while `loading` or `error`.
      */
     onPress?: ComponentProps<typeof Button>['onPress'];
 };
 
-/** One attachment tile: image preview or file icon, with loading, error, retry and remove states. */
+/** One attachment card: image preview or file icon beside the name and size, with loading, error, retry and remove states. */
 export function Attachment({
     data,
     loading = false,
@@ -129,7 +121,6 @@ export function Attachment({
     className,
     ...props
 }: AttachmentProps) {
-    const card = use(SingleAttachmentContext);
     const label = attachmentLabel(data);
     const interactive = onPress !== undefined && !loading && !error;
     const removable = onRemove !== undefined && !loading;
@@ -169,20 +160,18 @@ export function Attachment({
                 </Show>
             </Show>
 
-            <Show when={ card }>
-                <div className={ styles.info }>
-                    <Text variant="label" truncate>{ label }</Text>
-                    <Show when={ size }>
-                        <Text variant="label" truncate className={ styles.infoDetail }>{ size }</Text>
-                    </Show>
-                </div>
-            </Show>
+            <div className={ styles.info }>
+                <Text variant="label" truncate>{ label }</Text>
+                <Show when={ size }>
+                    <Text variant="label" truncate className={ styles.infoDetail }>{ size }</Text>
+                </Show>
+            </div>
         </>
     );
 
     return (
-        // The card shows the name and size itself; a bare tile gets them in the tooltip.
-        <Tooltip content={ card ? null : <AttachmentTip label={ label } details={ details } /> }>
+        // The card truncates a long name; the tooltip gives it whole, with the type.
+        <Tooltip content={ <AttachmentTip label={ label } details={ details } /> }>
             <AttachmentTile
                 className={ cn(
                     styles.attachment,
@@ -237,7 +226,7 @@ export function Attachment({
     );
 }
 
-/** An {@link Attachment} whose image opens in a {@link Lightbox} on press. Other files render as a plain tile. */
+/** An {@link Attachment} whose image opens in a {@link Lightbox} on press. Other files render as a plain card. */
 export function PreviewableAttachment(props: AttachmentProps) {
     const src = imageSource(props.data);
 
@@ -253,8 +242,8 @@ export function PreviewableAttachment(props: AttachmentProps) {
 }
 
 /**
- * The tile root. It takes the tooltip trigger's hover and focus handlers as a button would,
- * so the tooltip needs no `Focusable` wrapper, which would make every tile a tab stop.
+ * The card root. It takes the tooltip trigger's hover and focus handlers as a button would,
+ * so the tooltip needs no `Focusable` wrapper, which would make every card a tab stop.
  */
 function AttachmentTile(props: HTMLAttributes<HTMLDivElement>) {
     const ref = useRef<HTMLDivElement>(null);
