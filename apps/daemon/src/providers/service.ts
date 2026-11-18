@@ -3,6 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { claude } from './claude';
 import { codex } from './codex';
 import { cursor } from './cursor';
+import { LoginSessions } from './login';
 
 import type { AgentInfo, AgentSignIn, AgentUsage } from '@clowdy/protocol';
 import type { AgentRegistry } from '../engine/acp/registry';
@@ -26,6 +27,7 @@ export interface ProvidersOptions {
     platform?: NodeJS.Platform;
     home?: string;
     cwd?: string;
+    loginTimeoutMs?: number;
 }
 
 interface Entry {
@@ -49,11 +51,36 @@ export class ProvidersService {
     private providers: Map<string, Provider>;
     private now: () => number;
     private freshMs: number;
+    private logins: LoginSessions;
 
     constructor(private options: ProvidersOptions) {
         this.providers = new Map((options.providers ?? PROVIDERS).map(provider => [provider.id, provider]));
         this.now = options.now ?? Date.now;
         this.freshMs = options.freshMs ?? FRESH_MS;
+        this.logins = new LoginSessions({
+            registry: options.registry,
+            providers: this.providers,
+            announce: options.announce,
+            // The account is read again as soon as the vendor's program says it is done.
+            onSignedIn: id => void this.readNow(id).then(options.announce),
+            now: this.now,
+            cwd: options.cwd ?? tmpdir(),
+            timeoutMs: options.loginTimeoutMs,
+        });
+    }
+
+    /** Starts the agent's own login for the person; progress shows in `signInSession`. */
+    signIn(id: string): void {
+        this.logins.start(id);
+    }
+
+    cancelSignIn(id: string): void {
+        this.logins.cancel(id);
+    }
+
+    /** Ends what runs for the agents, for when the daemon stops. */
+    stop(): void {
+        this.logins.stop();
     }
 
     /** Whether the daemon knows how to read this agent. */
@@ -73,10 +100,12 @@ export class ProvidersService {
             this.ensure(info.id);
 
             const entry = this.entries.get(info.id);
+            const signInSession = this.logins.get(info.id);
 
             return {
                 ...info,
                 canSignIn: provider.login !== undefined,
+                ...(signInSession && { signInSession }),
                 ...(entry?.signIn && { signIn: entry.signIn }),
                 ...(entry?.usage && { usage: entry.usage }),
             };

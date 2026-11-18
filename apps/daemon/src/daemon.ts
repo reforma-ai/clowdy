@@ -89,6 +89,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             wakes.stop();
             await driver.stop();
             created?.stop();
+            providers.stop();
             docs.stop();
             skills.stop();
             store.db.close();

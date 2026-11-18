@@ -1,8 +1,12 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
+import { startDaemon } from '../src/daemon';
 import { KNOWN_AGENTS } from '../src/engine/acp/catalog';
+import { ProvidersService } from '../src/providers/service';
 import { FAKE_AGENT } from './acp-helpers';
-import { cleanTempDirs, Harness, restartHarness, startHarness, waitFor } from './helpers';
+import { cleanTempDirs, Harness, restartHarness, startHarness, testAgents, testConfig, waitFor } from './helpers';
 
 import type { AgentInfo } from '@clowdy/protocol';
 
@@ -138,5 +142,69 @@ describe('agent commands', () => {
 
         expect(agents.find(agent => agent.id === 'mine')).toMatchObject({ custom: true });
         expect(agents.find(agent => agent.id === 'cursor')).toMatchObject({ status: 'disabled' });
+    });
+});
+
+describe('accounts, usage and sign-in over the API', () => {
+    /** A daemon whose agent `mine` has a reader: signed out until its login program has run, then signed in with usage. */
+    async function withReader() {
+        const config = testConfig();
+        const agents = testAgents(config);
+        const login = join(config.dataDir, 'login.ts');
+        const marker = join(config.dataDir, 'signed-in');
+
+        mkdirSync(config.dataDir, { recursive: true });
+        writeFileSync(login, `console.log('Open https://example.com/login?x=1'); await Bun.write(${ JSON.stringify(marker) }, '1');`);
+
+        const providers = new ProvidersService({
+            registry: agents,
+            announce: () => undefined,
+            cwd: config.dataDir,
+            providers: [{
+                id: 'mine',
+                login: { args: [login] },
+                read: async () => await Bun.file(marker).exists()
+                    ? { signIn: { status: 'signed-in', account: { email: 'ada@example.com', plan: 'Max', method: 'subscription' } }, usage: { state: 'ok', windows: [{ id: 'session', label: '5h', usedPercent: 8 }], fetchedAt: 1 } }
+                    : { signIn: { status: 'signed-out' }, usage: { state: 'unavailable', windows: [] } },
+            }],
+        });
+        const h = new Harness(await startDaemon(config, { agents, providers }), config);
+
+        harnesses.push(h);
+        h.ok('agent.add', { id: 'mine', name: 'My agent', command: process.execPath, args: [FAKE_AGENT] });
+
+        return { h, list: async (): Promise<AgentInfo[]> => (await (await h.fetch('/v1/agents')).json() as AgentInfo[]).filter(agent => agent.id === 'mine') };
+    }
+
+    /** Asks again until the answer is what the test waits for: the reads happen in the background. */
+    async function until(check: () => Promise<boolean>) {
+        for (let i = 0; i < 150 && !await check(); i++) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+        }
+    }
+
+    test('lists the account and usage of an agent that has a reader, and runs its login on request', async () => {
+        const { h, list } = await withReader();
+
+        expect((await list())[0]).toMatchObject({ canSignIn: true });
+        await until(async () => (await list())[0]?.signIn?.status === 'signed-out');
+
+        expect(h.ok('agent.signIn', { id: 'mine' })).toEqual({ id: 'mine' });
+        await until(async () => (await list())[0]?.signInSession?.step === 'done');
+        await until(async () => (await list())[0]?.signIn?.status === 'signed-in');
+
+        expect((await list())[0]).toMatchObject({
+            signInSession: { step: 'done', url: 'https://example.com/login?x=1' },
+            signIn: { status: 'signed-in', account: { email: 'ada@example.com', plan: 'Max' } },
+            usage: { state: 'ok', windows: [{ id: 'session', label: '5h', usedPercent: 8 }] },
+        });
+    });
+
+    test('refuses a sign-in to an agent without a login to run, and answers a cancel with nothing to cancel', async () => {
+        const { h } = await withReader();
+        const refused = h.send('agent.signIn', { id: 'claude' });
+
+        expect(refused).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(h.ok('agent.cancelSignIn', { id: 'mine' })).toEqual({ id: 'mine' });
     });
 });

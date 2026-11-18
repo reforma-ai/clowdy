@@ -1,6 +1,7 @@
 import { listProjects } from '../db/projects';
 import { AgentRegistryError } from '../engine/acp/registry';
 import { conflict, invalid, notFound } from '../errors';
+import { SignInError } from '../providers/login';
 
 import type { Handlers, Services } from './context';
 
@@ -42,10 +43,25 @@ export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agen
 
         return { id };
     }),
-    'agent.signIn': (_services, { id }) => {
-        throw invalid(`Signing in to ${ id } from Clowdy is not available yet`);
+    'agent.signIn': (services, { id }) => {
+        try {
+            services.providers.signIn(id);
+        }
+        catch (error) {
+            if (error instanceof SignInError) {
+                throw error.kind === 'conflict' ? conflict(error.message) : invalid(error.message);
+            }
+
+            throw error;
+        }
+
+        return { id };
     },
-    'agent.cancelSignIn': (_services, { id }) => ({ id }),
+    'agent.cancelSignIn': (services, { id }) => {
+        services.providers.cancelSignIn(id);
+
+        return { id };
+    },
     'agents.refresh': services => change(services, undefined, () => {
         services.agents.refresh();
         services.providers.refresh();
