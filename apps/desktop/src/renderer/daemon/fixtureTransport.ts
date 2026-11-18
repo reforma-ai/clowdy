@@ -14,6 +14,7 @@ import {
 import { TransportError, type CommandInput, type FeedStatus, type StreamTarget, type Transport } from './transport';
 
 import type {
+    AgentInfo,
     Attachment,
     ClowdyEvent,
     CommandResult,
@@ -49,6 +50,22 @@ interface StoredFile {
     blob: Blob;
     sent: boolean;
 }
+
+/** Where the fixture's programs are found when a path override is cleared. */
+const FIXTURE_PROGRAMS: Record<string, string> = {
+    claude: '/Users/dev/.local/bin/claude',
+    codex: '/opt/homebrew/bin/codex',
+    cursor: '/Users/dev/.local/bin/cursor-agent',
+};
+
+/** The sign-in link each fixture agent prints, and when the scripted sign-in prints it and ends. */
+const FIXTURE_SIGN_IN_LINKS: Record<string, string> = {
+    claude: 'https://claude.ai/oauth/authorize?code=true&client_id=9d1c250a&response_type=code',
+    codex: 'https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_EMoamEEZ73',
+    cursor: 'https://cursor.com/loginDeepControl?challenge=3f9c1e&mode=login',
+};
+const SIGN_IN_LINK_MS = 400;
+const SIGN_IN_DONE_MS = 4000;
 
 type Outcome = { ok: true; data: unknown } | { ok: false; error: { code: ErrorCode; message: string; details?: unknown } };
 
@@ -200,6 +217,10 @@ export class FixtureTransport implements Transport {
         return structuredClone({ entries, tokens: catalogTokens(entries), warnings: this.#data.skillWarnings });
     }
 
+    async getAgents(): Promise<AgentInfo[]> {
+        return structuredClone(this.#data.agents);
+    }
+
     /* --------------------------------- Events --------------------------------- */
 
     #emit(projectId: ProjectId, data: EventData): void {
@@ -207,6 +228,11 @@ export class FixtureTransport implements Transport {
 
         this.#log.push(event);
         this.#subscribers.forEach(deliver => deliver(event));
+    }
+
+    /** Tells every project's clients to refetch the agents, as the daemon does. */
+    #agentsChanged(): void {
+        this.#data.projects.forEach(project => this.#emit(project.id, { type: 'agents.changed' }));
     }
 
     #later(ms: number, action: () => void): void {
@@ -262,6 +288,87 @@ export class FixtureTransport implements Transport {
 
         this.#later(350, () => this.#saveItem(run, { ...item, body: { kind: 'assistant', text: cut(0.7), done: false } }));
         this.#later(700, () => this.#saveItem(run, { ...item, body: { kind: 'assistant', text, done: true } }));
+    }
+
+    #agent(id: string): AgentInfo | undefined {
+        return this.#data.agents.find(agent => agent.id === id);
+    }
+
+    #updateAgent({ id, enabled, settings, path, env }: Extract<CommandInput, { type: 'agent.update' }>): Outcome {
+        const agent = this.#agent(id);
+
+        if (!agent) return fail('not_found', `There is no agent called "${ id }"`);
+
+        if (enabled !== undefined) {
+            agent.enabled = enabled;
+            agent.status = enabled ? 'ready' : 'disabled';
+        }
+
+        for (const [settingId, value] of Object.entries(settings ?? {})) {
+            const setting = agent.settings?.find(candidate => candidate.id === settingId);
+
+            if (!setting) return fail('invalid', `${ agent.name } has no setting called "${ settingId }"`);
+
+            setting.value = value;
+        }
+
+        // Where the program is: a path the person chose, or the one found by looking.
+        if (path === null) agent.path = FIXTURE_PROGRAMS[id];
+        else if (path !== undefined) agent.path = path;
+
+        void env;
+
+        this.#agentsChanged();
+
+        return ok({ id });
+    }
+
+    /** A sign-in that starts, prints its link, and ends a few seconds later with the agent signed in. */
+    #startSignIn(id: string): Outcome {
+        const agent = this.#agent(id);
+
+        if (!agent) return fail('not_found', `There is no agent called "${ id }"`);
+
+        if (!agent.canSignIn) return fail('invalid', `${ agent.name } has to be signed in from a terminal: ${ agent.login ?? 'see its documentation' }`);
+
+        if (agent.signInSession?.step === 'starting' || agent.signInSession?.step === 'waiting') return fail('conflict', 'A sign-in is already running');
+
+        const startedAt = Date.now();
+        const session = { step: 'starting' as const, startedAt };
+
+        agent.signInSession = session;
+        this.#agentsChanged();
+
+        const running = () => agent.signInSession?.startedAt === startedAt && (agent.signInSession.step === 'starting' || agent.signInSession.step === 'waiting');
+
+        this.#later(SIGN_IN_LINK_MS, () => {
+            if (!running()) return;
+
+            agent.signInSession = { step: 'waiting', startedAt, url: FIXTURE_SIGN_IN_LINKS[id] ?? 'https://example.com/sign-in' };
+            this.#agentsChanged();
+        });
+        this.#later(SIGN_IN_DONE_MS, () => {
+            if (!running()) return;
+
+            agent.signInSession = { step: 'done', startedAt };
+            agent.signIn = { status: 'signed-in', account: { email: 'dev@example.com', method: 'subscription', plan: agent.signIn?.account?.plan ?? 'Pro' }, checkedAt: Date.now() };
+            this.#agentsChanged();
+        });
+
+        return ok({ id });
+    }
+
+    #cancelSignIn(id: string): Outcome {
+        const agent = this.#agent(id);
+
+        if (!agent) return fail('not_found', `There is no agent called "${ id }"`);
+
+        if (agent.signInSession?.step === 'starting' || agent.signInSession?.step === 'waiting') {
+            agent.signInSession = { step: 'cancelled', startedAt: agent.signInSession.startedAt, message: 'The sign-in was cancelled.' };
+            this.#agentsChanged();
+        }
+
+        return ok({ id });
     }
 
     #runTimeline(): void {
@@ -456,10 +563,27 @@ export class FixtureTransport implements Transport {
                 return ok({ name: command.name, enabled: command.enabled });
             }
             case 'agent.add':
-            case 'agent.update':
             case 'agent.remove':
-            case 'agents.refresh':
-                return fail('unavailable', 'The demo data has no agents to change');
+                return fail('unavailable', 'The demo data cannot add or remove agents');
+            case 'agent.update':
+                return this.#updateAgent(command);
+            case 'agent.signIn':
+                return this.#startSignIn(command.id);
+            case 'agent.cancelSignIn':
+                return this.#cancelSignIn(command.id);
+            case 'agents.refresh': {
+                const now = Date.now();
+
+                for (const agent of data.agents) {
+                    if (agent.signIn) agent.signIn.checkedAt = now;
+
+                    if (agent.usage?.state === 'ok') agent.usage.fetchedAt = now;
+                }
+
+                this.#agentsChanged();
+
+                return ok();
+            }
             case 'docs.write': {
                 const files = data.docs[command.projectId] ??= {};
                 const existing = files[command.path];

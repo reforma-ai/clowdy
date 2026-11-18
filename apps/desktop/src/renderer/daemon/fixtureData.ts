@@ -1,4 +1,5 @@
 import type {
+    AgentInfo,
     Artifact,
     Attachment,
     Chat,
@@ -36,6 +37,8 @@ export interface FixtureData {
     /** What the skills catalog lists; `projectId` marks a project's own skill. */
     skills: FixtureSkill[];
     skillWarnings: string[];
+    /** The agents the daemon knows, as `GET /v1/agents` lists them. */
+    agents: AgentInfo[];
 }
 
 /** A file a message already carries: the metadata the stream shows and the content the fixture serves. */
@@ -95,6 +98,86 @@ export const FIXTURE_LIVE_TOOL_ID = 'r-ex-07-8';
 export const FIXTURE_LIVE_TEXT_ID = 'r-ex-07-9';
 
 const MINUTE = 60_000;
+
+/** The three built-in agents as a daemon on a developer's machine would list them: installed, signed in, with their plan limits. */
+function fixtureAgents(now: number): AgentInfo[] {
+    const inMinutes = (minutes: number) => now + minutes * MINUTE;
+    const account = { email: 'dev@example.com', method: 'subscription' } as const;
+
+    return [
+        {
+            id: 'claude',
+            name: 'Claude Code',
+            custom: false,
+            enabled: true,
+            status: 'ready',
+            path: '/Users/dev/.local/bin/claude',
+            version: '2.1.322',
+            launch: 'bun x --bun @agentclientprotocol/claude-agent-acp@0.107.0',
+            fetches: '@agentclientprotocol/claude-agent-acp@0.107.0',
+            login: 'claude auth login',
+            canSignIn: true,
+            signIn: { status: 'signed-in', account: { ...account, plan: 'Max' }, checkedAt: now },
+            usage: {
+                state: 'ok',
+                fetchedAt: now,
+                windows: [
+                    { id: 'session', label: '5h', usedPercent: 8, resetsAt: inMinutes(28) },
+                    { id: 'weekly', label: '7d', usedPercent: 20, resetsAt: inMinutes(6 * 24 * 60) },
+                    { id: 'weekly:fable', label: '7d · Fable', usedPercent: 0, resetsAt: inMinutes(6 * 24 * 60) },
+                ],
+            },
+            settings: [
+                { id: 'memory', label: 'Memory', description: 'Let Claude Code read and write its own auto-memory in your runs.', value: false, default: false },
+                { id: 'connectors', label: 'claude.ai connectors', description: 'Load the connectors of your claude.ai account (Drive, Docs and so on) into every run.', value: false, default: false },
+                { id: 'subagents', label: 'Claude Code sub-agents', description: 'Let Claude Code start sub-agents of its own. Clowdy\'s agents are the better way to delegate work.', value: true, default: true },
+                { id: 'longContext', label: '1M context window', description: 'Use the 1M-token context window on the models that have one.', value: true, default: true },
+            ],
+        },
+        {
+            id: 'codex',
+            name: 'Codex',
+            custom: false,
+            enabled: true,
+            status: 'ready',
+            path: '/opt/homebrew/bin/codex',
+            version: '0.166.0',
+            launch: 'bun x --bun @agentclientprotocol/codex-acp@2.6.0',
+            fetches: '@agentclientprotocol/codex-acp@2.6.0',
+            login: 'codex login',
+            canSignIn: true,
+            signIn: { status: 'signed-in', account: { ...account, plan: 'Plus' }, checkedAt: now },
+            usage: {
+                state: 'ok',
+                fetchedAt: now,
+                windows: [
+                    { id: 'session', label: '5h', usedPercent: 0, resetsAt: inMinutes(4 * 60 + 59) },
+                    { id: 'weekly', label: '7d', usedPercent: 17, resetsAt: inMinutes(24 * 60) },
+                ],
+            },
+            settings: [],
+        },
+        {
+            id: 'cursor',
+            name: 'Cursor',
+            custom: false,
+            enabled: true,
+            status: 'ready',
+            path: '/Users/dev/.local/bin/cursor-agent',
+            version: '2026.11.13-eacade1',
+            launch: 'cursor-agent acp',
+            login: 'cursor-agent login',
+            canSignIn: true,
+            signIn: { status: 'signed-in', account: { ...account, plan: 'Pro+' }, checkedAt: now },
+            usage: {
+                state: 'ok',
+                fetchedAt: now,
+                windows: [{ id: 'plan', label: 'Plan usage', usedPercent: 5, resetsAt: inMinutes(26 * 24 * 60) }],
+            },
+            settings: [],
+        },
+    ];
+}
 
 export const DEFAULT_STATUSES: TaskStatus[] = [
     { id: 'backlog', name: 'Backlog', category: 'backlog' },
@@ -484,5 +567,6 @@ export function createFixtureData(now = Date.now()): FixtureData {
         attachments: structuredClone(FIXTURE_ATTACHMENTS),
         skills: fixtureSkills(projectId),
         skillWarnings: ['~/.claude/skills: Skipped "old-notes": it has no description'],
+        agents: fixtureAgents(now),
     };
 }

@@ -219,3 +219,107 @@ describe('FixtureTransport', () => {
         expect((await transport.command({ type: 'chat.setArchived', chatId: 'nope', archived: true })).ok).toBe(false);
     });
 });
+
+describe('FixtureTransport agents', () => {
+    const agentsOf = async (transport: FixtureTransport) => Object.fromEntries((await transport.getAgents()).map(agent => [agent.id, agent]));
+
+    it('lists Claude, Codex and Cursor as installed and signed in, with the usage rows each shows', async () => {
+        const agents = await agentsOf(new FixtureTransport());
+
+        expect(Object.keys(agents)).toEqual(['claude', 'codex', 'cursor']);
+        expect(agents.claude?.signIn?.account).toMatchObject({ plan: 'Max' });
+        expect(agents.claude?.usage?.windows.map(window => window.label)).toEqual(['5h', '7d', '7d · Fable']);
+        expect(agents.codex?.usage?.windows.map(window => window.label)).toEqual(['5h', '7d']);
+        expect(agents.cursor?.usage?.windows.map(window => window.label)).toEqual(['Plan usage']);
+    });
+
+    it('switches an agent off and on, and announces it once per project', async () => {
+        const { transport, events } = await connected();
+        const projects = (await transport.getRootSnapshot()).projects.length;
+        const off = await transport.command({ type: 'agent.update', id: 'codex', enabled: false });
+
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(off.ok).toBe(true);
+        expect(events.filter(event => event.data.type === 'agents.changed')).toHaveLength(projects);
+        expect(await agentsOf(transport)).toMatchObject({ codex: { enabled: false, status: 'disabled' } });
+
+        await transport.command({ type: 'agent.update', id: 'codex', enabled: true });
+
+        expect(await agentsOf(transport)).toMatchObject({ codex: { enabled: true, status: 'ready' } });
+    });
+
+    it('changes the settings of an agent by id, and refuses one it does not have', async () => {
+        const transport = new FixtureTransport();
+
+        await transport.command({ type: 'agent.update', id: 'claude', settings: { memory: true, subagents: false } });
+
+        const settings = (await agentsOf(transport)).claude?.settings;
+
+        expect(settings?.find(setting => setting.id === 'memory')?.value).toBe(true);
+        expect(settings?.find(setting => setting.id === 'subagents')?.value).toBe(false);
+        expect(settings?.find(setting => setting.id === 'longContext')?.value).toBe(true);
+        expect((await transport.command({ type: 'agent.update', id: 'claude', settings: { nope: true } })).ok).toBe(false);
+        expect((await transport.command({ type: 'agent.update', id: 'nobody', enabled: true })).ok).toBe(false);
+    });
+
+    it('takes a program path, and goes back to the one it found with null', async () => {
+        const transport = new FixtureTransport();
+
+        await transport.command({ type: 'agent.update', id: 'cursor', path: '/opt/cursor/agent' });
+
+        expect((await agentsOf(transport)).cursor?.path).toBe('/opt/cursor/agent');
+
+        await transport.command({ type: 'agent.update', id: 'cursor', path: null });
+
+        expect((await agentsOf(transport)).cursor?.path).toBe('/Users/dev/.local/bin/cursor-agent');
+    });
+
+    it('runs a sign-in: starting, then waiting with the link, then done with the agent signed in', async () => {
+        const { transport, types } = await connected();
+        const session = async () => (await agentsOf(transport)).codex?.signInSession;
+
+        expect((await transport.command({ type: 'agent.signIn', id: 'codex' })).ok).toBe(true);
+        expect(await session()).toMatchObject({ step: 'starting' });
+
+        await vi.advanceTimersByTimeAsync(500);
+
+        expect(await session()).toMatchObject({ step: 'waiting', url: expect.stringContaining('auth.openai.com') });
+        // One at a time.
+        expect((await transport.command({ type: 'agent.signIn', id: 'codex' })).ok).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(4000);
+
+        expect(await session()).toMatchObject({ step: 'done' });
+        expect((await agentsOf(transport)).codex?.signIn?.status).toBe('signed-in');
+        expect(types().filter(type => type === 'agents.changed').length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('cancels a sign-in, and then the timers do not finish it', async () => {
+        const transport = new FixtureTransport();
+
+        await transport.command({ type: 'agent.signIn', id: 'claude' });
+        await vi.advanceTimersByTimeAsync(500);
+        await transport.command({ type: 'agent.cancelSignIn', id: 'claude' });
+
+        expect((await agentsOf(transport)).claude?.signInSession).toMatchObject({ step: 'cancelled', message: expect.stringContaining('cancelled') });
+
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect((await agentsOf(transport)).claude?.signInSession?.step).toBe('cancelled');
+        // It can be started again.
+        expect((await transport.command({ type: 'agent.signIn', id: 'claude' })).ok).toBe(true);
+    });
+
+    it('reads accounts and usage again on refresh, and announces it', async () => {
+        const { transport, types } = await connected();
+        const before = (await agentsOf(transport)).claude?.usage?.fetchedAt ?? 0;
+
+        await vi.advanceTimersByTimeAsync(1000);
+        await transport.command({ type: 'agents.refresh' });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect((await agentsOf(transport)).claude?.usage?.fetchedAt).toBeGreaterThan(before);
+        expect(types()).toContain('agents.changed');
+    });
+});

@@ -31,7 +31,7 @@ const GROUPS: ReadonlyArray<{ id: string; label: string; pages: readonly PageVie
         id: 'agents',
         label: 'Agents',
         pages: [
-            { id: 'engine', label: 'Engine', icon: <Robot />, render: () => <EnginePage /> },
+            { id: 'providers', label: 'Providers', icon: <Robot />, render: () => <EnginePage /> },
             { id: 'skills', label: 'Skills', icon: <Book />, render: () => <SkillsSection /> },
         ],
     },

@@ -6,7 +6,7 @@ import { browserStorage, readStored, writeStored, type KeyValueStorage } from '.
 import { StreamStore } from './StreamStore';
 import { UiStore, type InitialProjectUi } from './UiStore';
 
-import type { ClowdyEvent, CommandResult, Project, ProjectId } from '@clowdy/protocol';
+import type { AgentInfo, ClowdyEvent, CommandResult, Project, ProjectId } from '@clowdy/protocol';
 import type { CommandInput, FeedStatus, Transport } from '../daemon/transport';
 
 /** How long the feed must stay down before the person is told. A reconnect inside this time is invisible. */
@@ -42,6 +42,11 @@ export class RootStore {
     bannerVisible = false;
     /** Counts `skills.changed` events; the Skills settings refetch the catalog when it changes. */
     skillsRevision = 0;
+    /** The agents the daemon knows, with who is signed in to each, their usage and settings. Loaded at start, and again on every `agents.changed`. */
+    agents: AgentInfo[] = [];
+    /** `loading` until the first answer; `failed` when the last fetch failed (`agents` then keeps what was known). */
+    agentsStatus: 'loading' | 'ready' | 'failed' = 'loading';
+    agentsError = '';
     readonly ui: UiStore;
     readonly streams: StreamStore;
     /** Back and forward through what the window showed. */
@@ -50,6 +55,8 @@ export class RootStore {
     readonly #storage: KeyValueStorage | undefined;
     readonly #notify: ((notice: Notice) => void) | undefined;
     #unsubscribe: (() => void) | undefined;
+    #agentsSeq = 0;
+    #agentsScheduled = false;
     #bannerTimer: ReturnType<typeof setTimeout> | undefined;
     #resyncTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -58,7 +65,7 @@ export class RootStore {
         this.#notify = notify;
         this.ui = new UiStore(storage, initialUi);
         this.streams = new StreamStore(transport);
-        makeAutoObservable<RootStore, 'transport'>(this, { transport: false, ui: false, streams: false, history: false, projects: observableRef });
+        makeAutoObservable<RootStore, 'transport'>(this, { transport: false, ui: false, streams: false, history: false, projects: observableRef, agents: observableRef });
         // After `makeAutoObservable`: the history watches `selectedProjectId`, which is not observable before it.
         this.history = new NavHistory(this);
     }
@@ -86,6 +93,7 @@ export class RootStore {
                 this.loadError = '';
             });
             this.#follow(snapshot.cursor);
+            void this.refreshAgents();
 
             const stored = readStored(this.#storage, SELECTED_PROJECT_KEY);
             const first = snapshot.projects.find(project => project.id === stored) ?? snapshot.projects[0];
@@ -114,6 +122,34 @@ export class RootStore {
 
         this.selectedProjectId = projectId;
         writeStored(this.#storage, SELECTED_PROJECT_KEY, projectId);
+    }
+
+    /**
+     * Fetches the agents again. The newest request wins, so a slow answer never replaces a newer one. Never rejects: a
+     * failure is `agentsStatus` and `agentsError`, and the list keeps what it had.
+     */
+    async refreshAgents(): Promise<void> {
+        const request = ++this.#agentsSeq;
+
+        try {
+            const agents = await this.transport.getAgents();
+
+            if (request !== this.#agentsSeq) return;
+
+            runInAction(() => {
+                this.agents = agents;
+                this.agentsStatus = 'ready';
+                this.agentsError = '';
+            });
+        }
+        catch (error) {
+            if (request !== this.#agentsSeq) return;
+
+            runInAction(() => {
+                this.agentsStatus = 'failed';
+                this.agentsError = error instanceof Error ? error.message : String(error);
+            });
+        }
     }
 
     /** Sends a command. A daemon that cannot be reached comes back as an `unavailable` result, like any refusal. */
@@ -187,8 +223,22 @@ export class RootStore {
         else if (data.type === 'skills.changed') {
             this.skillsRevision++;
         }
+        else if (data.type === 'agents.changed') {
+            // The daemon announces it once per project: one fetch answers them all.
+            this.#scheduleAgents();
+        }
 
         this.#states.get(event.projectId)?.applyEvent(event);
+    }
+
+    #scheduleAgents(): void {
+        if (this.#agentsScheduled) return;
+
+        this.#agentsScheduled = true;
+        queueMicrotask(() => {
+            this.#agentsScheduled = false;
+            void this.refreshAgents();
+        });
     }
 
     #follow(cursor: number): void {
@@ -211,6 +261,7 @@ export class RootStore {
                 this.projects = snapshot.projects;
             });
             this.#follow(snapshot.cursor);
+            void this.refreshAgents();
         }
         catch {
             this.#resyncTimer = setTimeout(() => void this.#resync(), RESYNC_RETRY_MS);

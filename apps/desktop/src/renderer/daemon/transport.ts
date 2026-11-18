@@ -1,4 +1,5 @@
 import type {
+    AgentInfo,
     Attachment,
     ChatId,
     ClowdyEvent,
@@ -58,6 +59,8 @@ export interface Transport {
     deleteAttachment: (projectId: ProjectId, attachmentId: string) => Promise<void>;
     /** The skills agents get: system and user ones, and with a project also that project's. */
     getSkills: (projectId?: ProjectId) => Promise<SkillCatalog>;
+    /** Every agent the daemon knows, with who is signed in to it, its usage and its settings. */
+    getAgents: () => Promise<AgentInfo[]>;
 }
 
 /** The daemon could not be reached, or answered something other than the contract. */

@@ -1,6 +1,6 @@
 import { createContext, use, useEffect } from 'react';
 
-import type { Chat, RunId } from '@clowdy/protocol';
+import type { AgentInfo, Chat, RunId } from '@clowdy/protocol';
 import type { ProjectState } from './ProjectState';
 import type { RootStore } from './RootStore';
 import type { RunStream } from './StreamStore';
@@ -51,4 +51,11 @@ export function useRunStream(runId: RunId | undefined): RunStream | undefined {
 /** A chat's stream: the stream of its orchestrator run. Nothing until the first message starts the run. */
 export function useChatStream(chat: Chat | undefined): RunStream | undefined {
     return useRunStream(chat?.orchestratorRunId);
+}
+
+/** The agents the daemon knows, kept current by the event feed. `status` is `loading` until the first answer and `failed` when the last fetch failed. */
+export function useAgents(): { agents: AgentInfo[]; status: RootStore['agentsStatus']; error: string; refresh: () => Promise<void> } {
+    const root = useRootStore();
+
+    return { agents: root.agents, status: root.agentsStatus, error: root.agentsError, refresh: () => root.refreshAgents() };
 }

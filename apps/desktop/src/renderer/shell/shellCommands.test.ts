@@ -89,7 +89,7 @@ describe('section chords', () => {
     });
 
     it('also leaves Settings', () => {
-        ui.openSettings('engine');
+        ui.openSettings('providers');
 
         press({ key: 'g' });
         press({ key: 'd' });

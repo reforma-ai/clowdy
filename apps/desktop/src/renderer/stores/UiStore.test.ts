@@ -116,8 +116,8 @@ describe('UiStore', () => {
         store.showSettingsPage('skills');
         store.openSettings();
         expect(store.settingsPage).toBe('skills');
-        store.openSettings('engine');
-        expect([store.settingsOpen, store.settingsPage]).toEqual([true, 'engine']);
+        store.openSettings('providers');
+        expect([store.settingsOpen, store.settingsPage]).toEqual([true, 'providers']);
     });
 
     it('shows the Agents section for a section an older version stored under the name Chats', () => {

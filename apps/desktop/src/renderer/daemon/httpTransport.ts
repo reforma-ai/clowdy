@@ -4,6 +4,7 @@ import { SseParser } from './sse';
 import { TransportError, type CommandInput, type FeedStatus, type StreamTarget, type Transport } from './transport';
 
 import type {
+    AgentInfo,
     Attachment,
     ClowdyEvent,
     CommandResult,
@@ -133,6 +134,10 @@ export class HttpTransport implements Transport {
 
     getSkills(projectId?: ProjectId): Promise<SkillCatalog> {
         return this.#get(projectId === undefined ? ROUTES.skills : `${ ROUTES.skills }?projectId=${ encodeURIComponent(projectId) }`);
+    }
+
+    getAgents(): Promise<AgentInfo[]> {
+        return this.#get(ROUTES.agents);
     }
 
     async command(command: CommandInput): Promise<CommandResult> {

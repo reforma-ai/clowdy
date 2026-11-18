@@ -119,7 +119,7 @@ describe('NavHistory recording', () => {
     });
 
     it('records Settings and its pages', () => {
-        root.ui.openSettings('engine');
+        root.ui.openSettings('providers');
         root.ui.showSettingsPage('skills');
         root.ui.showSection(ui(), 'tasks');
 
@@ -128,7 +128,7 @@ describe('NavHistory recording', () => {
         root.history.back();
         expect(place()).toBe('p-car/settings:skills');
         root.history.back();
-        expect(place()).toBe('p-car/settings:engine');
+        expect(place()).toBe('p-car/settings:providers');
         root.history.back();
         expect(place()).toBe('p-car/agents:null');
         expect(root.history.canGoBack).toBe(false);
