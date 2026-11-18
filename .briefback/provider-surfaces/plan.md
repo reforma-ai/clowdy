@@ -60,14 +60,14 @@ Cursor
 
 **This stage:** A chat has no provider today: only its orchestrator run has an `engine` and a `model`, effort exists nowhere, and every turn starts a new agent process that resumes the vendor session. The stage stores the choice on the chat, carries it to the run, and applies model then effort in `AcpSession` at the start of every turn, so a change made between turns takes effect. It also refuses a message early to a switched-off provider and lets a chat's executors inherit the choice. It fixes the protocol contract the desktop stages build on.
 
-- [ ] Complete
-  - [ ] `Chat` and `Run` carry `engine`/`model`/`effort` (chat) and `effort` (run); migration v5 adds the columns and fills the chats' `engine` and `model` from their orchestrator runs.
-  - [ ] `chat.create` accepts `engine`, `model`, `effort`; the first `chat.send` creates the orchestrator run with the chat's choice and writes what the run really got (project defaults included) back to the chat; every other path that creates an orchestrator run (`task.start`) does the same.
-  - [ ] `chat.setModel` changes the chat's `model` and `effort` (`null` clears), updates the orchestrator run's row so the next turn reads it, and changes `engine` only while no orchestrator run exists; unknown engines are refused.
-  - [ ] `chat.send` answers `unavailable` with "`<Agent>` is switched off in Clowdy" before anything is written, for a chat whose resolved engine is switched off.
-  - [ ] `RunDriver` passes the run's `effort` in `EngineStartOptions`; `AcpSession` applies the model, then the effort on the matching `thought_level` option, skipping no-op sets and warning on unknown values.
-  - [ ] Spawned runs inherit `model` and `effort` from the parent on the same engine; native sub-agents copy `effort` too.
-  - [ ] Codex's warning on resuming a session recorded with another model ("This session was recorded with model ... but is resuming with ...") is not shown as an assistant message: the turn changes the model right after it.
+- [x] Complete
+  - [x] `Chat` and `Run` carry `engine`/`model`/`effort` (chat) and `effort` (run); migration v5 adds the columns and fills the chats' `engine` and `model` from their orchestrator runs.
+  - [x] `chat.create` accepts `engine`, `model`, `effort`; the first `chat.send` creates the orchestrator run with the chat's choice and writes what the run really got (project defaults included) back to the chat; every other path that creates an orchestrator run (`task.start`) does the same.
+  - [x] `chat.setModel` changes the chat's `model` and `effort` (`null` clears), updates the orchestrator run's row so the next turn reads it, and changes `engine` only while no orchestrator run exists; unknown engines are refused.
+  - [x] `chat.send` answers `unavailable` with "`<Agent>` is switched off in Clowdy" before anything is written, for a chat whose resolved engine is switched off.
+  - [x] `RunDriver` passes the run's `effort` in `EngineStartOptions`; `AcpSession` applies the model, then the effort on the matching `thought_level` option, skipping no-op sets and warning on unknown values.
+  - [x] Spawned runs inherit `model` and `effort` from the parent on the same engine; native sub-agents copy `effort` too.
+  - [x] Codex's warning on resuming a session recorded with another model ("This session was recorded with model ... but is resuming with ...") is not shown as an assistant message: the turn changes the model right after it.
 
 **Files**
 
@@ -89,7 +89,9 @@ Cursor
 
 **Done when:** a chat created with an engine, model and effort starts its orchestrator on them, a `chat.setModel` between turns changes what the next turn runs on, and a message to a switched-off provider is refused with its name in the message.
 **Verify:** `cd apps/daemon && bun test && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Commits:**
+
+- `3e45711` feat(daemon): bind a chat to a provider, a model and a reasoning level (the review also changed: `task.start` is refused for a switched-off agent, the project's model applies only on the project's own agent, `chat.setModel` is not activity)
 
 ## Stage 2 — Usage status in the window header
 
