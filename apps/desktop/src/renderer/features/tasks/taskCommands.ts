@@ -343,7 +343,17 @@ function deleteDialog(tasks: readonly Task[]): Pick<OpenConfirmModalOptions, 'ti
     return { title: `Delete ${ tasks.length } tasks?`, message: `The ${ tasks.length } selected tasks will be deleted. This cannot be undone.` };
 }
 
-/** Rename, start and delete. Start and rename are for the cursor task only. Delete takes the selection, after one question. */
+/** Whether the detail panel shows a task that still exists. */
+function isPanelOpen({ ui, hasTask }: TaskCommandDeps): boolean {
+    return ui.taskId !== null && hasTask(ui.taskId);
+}
+
+/** The task a start is for: the one in the open panel, else the cursor task. */
+function startTarget(deps: TaskCommandDeps): TaskId | null {
+    return isPanelOpen(deps) ? deps.ui.taskId : deps.cursor.cursorId;
+}
+
+/** Rename, start and delete. Rename is for the cursor task only, start for the open task or else the cursor task. Delete takes the selection, after one question. */
 function actionCommands(deps: TaskCommandDeps): Command[] {
     const { cursor, ui, hasTask, send, start, confirm, focusTitle, startBlocked } = deps;
 
@@ -368,16 +378,25 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
             group: GROUP,
             keys: '$mod+Enter',
             scope: TASKS_SCOPE,
-            // Starting spends subscription quota, so it takes the cursor task only, never the selection, and is not offered while an agent is on the task.
+            // Starting spends subscription quota, so it takes one task, never the selection, and is not offered while an agent is on the task.
             when: () => {
-                const { cursorId } = cursor;
+                const taskId = startTarget(deps);
 
-                return cursorId !== null && hasTask(cursorId) && startBlocked(cursorId) === null;
+                return taskId !== null && hasTask(taskId) && startBlocked(taskId) === null;
             },
             focus: () => inList(deps),
-            handler: () => onCursor(deps, () => {
-                if (cursor.cursorId !== null) void start(cursor.cursorId);
-            }),
+            handler: () => {
+                // The panel is what the person is looking at: hovering another card moves the cursor but must not move a start to it.
+                if (isPanelOpen(deps)) {
+                    void start(ui.taskId as TaskId);
+
+                    return;
+                }
+
+                onCursor(deps, () => {
+                    if (cursor.cursorId !== null) void start(cursor.cursorId);
+                });
+            },
         },
         {
             id: 'tasks.delete',

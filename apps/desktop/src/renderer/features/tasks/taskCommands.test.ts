@@ -985,6 +985,35 @@ describe('Start', () => {
         expect(harness.started).toEqual(['a1']);
     });
 
+    it('starts the task the panel shows, not the one the pointer moved the cursor to', () => {
+        const harness = setup(list, 'list');
+
+        harness.ui.taskId = 'a1';
+        harness.deps.cursor.setCursor('a2');
+
+        expect(press('Enter', { metaKey: true })).toBe(true);
+        expect(harness.started).toEqual(['a1']);
+    });
+
+    it('asks about the open task, not the cursor task, while the panel is open', () => {
+        const registry = createRegistry('darwin');
+        const harness = setup(list, 'list');
+
+        registry.pushScope(TASKS_SCOPE);
+
+        for (const command of taskCommands(harness.deps)) registry.defineCommand(command);
+
+        harness.ui.taskId = 'a1';
+        harness.deps.cursor.setCursor('a2');
+        harness.state.blocked.set('a2', 'Busy');
+
+        expect(commandHint('tasks.start', registry)).toEqual([['meta', 'enter']]);
+
+        harness.state.blocked.set('a1', 'Busy');
+
+        expect(commandHint('tasks.start', registry)).toBeUndefined();
+    });
+
     it('is off while an agent is working on the task, and does not take the key', () => {
         const harness = setup(list, 'list');
 
