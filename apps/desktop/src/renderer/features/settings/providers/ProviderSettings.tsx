@@ -10,7 +10,7 @@ import { cn } from '@clowdy/lib';
 import { useState } from 'react';
 
 import styles from './ProviderSettings.module.css';
-import { parseEnv } from './providerView';
+import { formatEnv, parseEnv } from './providerView';
 
 import type { AgentInfo, AgentSetting } from '@clowdy/protocol';
 import type { useAgentCommands } from './useAgentCommands';
@@ -57,8 +57,9 @@ function AdvancedPanel({ children }: { children: React.ReactNode }) {
 
 /** Where the program is, and the environment it starts with. Both are what the daemon keeps for the agent. */
 function Advanced({ agent, commands }: SettingsProps) {
-    const [path, setPath] = useState('');
-    const [env, setEnv] = useState('');
+    // What the person saved before is in the boxes, so a change starts from it.
+    const [path, setPath] = useState(agent.overrides?.path ?? '');
+    const [env, setEnv] = useState(agent.overrides?.env ? formatEnv(agent.overrides.env) : '');
     const parsed = parseEnv(env);
     const envError = env.trim() && !parsed.ok ? parsed.message : undefined;
 
@@ -69,7 +70,7 @@ function Advanced({ agent, commands }: SettingsProps) {
                 <div className={ styles.field }>
                     <Text variant="sm" bold>Program</Text>
                     <Text variant="sm" color="secondary" truncate title={ agent.path }>
-                        { agent.path ? `Found at ${ agent.path }` : 'Not found on this computer.' }
+                        { agent.overrides?.path ? `Using ${ agent.overrides.path }` : agent.path ? `Found at ${ agent.path }` : 'Not found on this computer.' }
                     </Text>
                     <div className={ styles.inputs }>
                         <Input
@@ -96,7 +97,7 @@ function Advanced({ agent, commands }: SettingsProps) {
 
                 <div className={ styles.field }>
                     <Text variant="sm" bold>Environment</Text>
-                    <Text variant="sm" color="secondary">Variables the program starts with, one KEY=VALUE per line. Saving replaces the ones saved before, and an empty box clears them.</Text>
+                    <Text variant="sm" color="secondary">Variables the program starts with, one KEY=VALUE per line. An empty box clears them. They apply to the next run.</Text>
                     <Textarea
                         variant="bordered"
                         size="sm"

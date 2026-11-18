@@ -298,6 +298,18 @@ describe('before and without the agents', () => {
 });
 
 describe('the advanced settings', () => {
+    it('starts from the program and the environment the person saved', async () => {
+        await start(withAgent('claude', (agent) => {
+            agent.overrides = { path: '/opt/claude/bin/claude', env: { HTTPS_PROXY: 'http://proxy:3128', TZ: 'UTC' } };
+        }));
+        await press(button(card('Claude Code'), 'Advanced'));
+        await vi.waitFor(() => expect(card('Claude Code').querySelector('textarea')).not.toBeNull());
+
+        expect(card('Claude Code').querySelector('textarea')!.value).toBe('HTTPS_PROXY=http://proxy:3128\nTZ=UTC');
+        expect(card('Claude Code').querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe('/opt/claude/bin/claude');
+        expect(card('Claude Code').textContent).toContain('Using /opt/claude/bin/claude');
+    });
+
     it('keeps the program path and the environment out of sight until asked, and checks the environment before it sends it', async () => {
         await start();
 
