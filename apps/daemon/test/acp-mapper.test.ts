@@ -219,6 +219,23 @@ describe('sub-agents, as Claude\'s adapter reports them without child sessions',
         expect(subagents(events).map(event => event.type === 'subagent' && [event.agentId, event.state])).toEqual([['agent-1', 'running'], ['agent-1', 'done']]);
     });
 
+    test('a call a sub-agent makes after its own call ended is dropped with its later updates, even those that lost the stamp', () => {
+        const { events } = run([
+            agentCall('agent-1'),
+            childChunk('agent-1', 'Working'),
+            { sessionUpdate: 'tool_call_update', toolCallId: 'agent-1', status: 'completed', rawOutput: 'Done' },
+            { sessionUpdate: 'tool_call', toolCallId: 'late-read', title: 'Read', kind: 'read', _meta: stamp('agent-1', 'Read') },
+            { sessionUpdate: 'tool_call_update', toolCallId: 'late-read', status: 'completed', rawOutput: 'text' },
+            // One first heard of after its call ended (a background sub-agent): its calls stay out of the session's stream too.
+            agentCall('agent-2'),
+            { sessionUpdate: 'tool_call_update', toolCallId: 'agent-2', status: 'completed', rawOutput: 'Launched' },
+            { sessionUpdate: 'tool_call', toolCallId: 'bg-grep', title: 'Grep', kind: 'search', _meta: stamp('agent-2', 'Grep') },
+            { sessionUpdate: 'tool_call_update', toolCallId: 'bg-grep', status: 'completed', rawOutput: 'match' },
+        ]);
+
+        expect(tools(events).map(event => event.type === 'tool' && event.toolCallId)).toEqual(['agent-1', 'agent-1', 'agent-2', 'agent-2']);
+    });
+
     test('a sub-agent heard of before its call is named by default; the brief falls back to the first line of the prompt', () => {
         const long = 'word '.repeat(40).trim();
         const { events } = run([childChunk('ghost', 'Boo'), agentCall('agent-2', { prompt: `${ long }\nMore detail` }), childChunk('agent-2', 'Hi')]);

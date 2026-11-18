@@ -235,7 +235,7 @@ export class UpdateMapper {
 
             // A sub-agent first heard of after the call that started it ended has nothing left to show.
             if (call && call.state !== 'running') {
-                return [];
+                return this.drop(agentId, update);
             }
 
             const { name, description } = identityOf(call?.input);
@@ -246,7 +246,7 @@ export class UpdateMapper {
         }
 
         if (child.ended) {
-            return [];
+            return this.drop(agentId, update);
         }
 
         switch (update.sessionUpdate) {
@@ -268,6 +268,18 @@ export class UpdateMapper {
         }
 
         return events;
+    }
+
+    /**
+     * Drops an update of a sub-agent whose call already ended. A call it makes then stays known as its, so a later update of that call without
+     * the stamp is dropped too instead of landing in the session's stream.
+     */
+    private drop(agentId: string, update: SessionUpdate): EngineEvent[] {
+        if ((update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') && !this.tools.has(update.toolCallId)) {
+            this.tools.set(update.toolCallId, { name: '', input: undefined, state: 'running', agentId });
+        }
+
+        return [];
     }
 
     private messageOf(agentId: string | undefined): Message {
