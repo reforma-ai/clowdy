@@ -367,7 +367,7 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 **Follow-ups**
 
 - Undo restores fields, not daemon side effects: a task moved to Done can unblock a waiting run that then starts, and undoing the move does not stop it. A fix would leave moves into the done category out of undo, or add a warning to the toast.
-- The undo stack spans projects, as Linear's does: Cmd+Z in project B's Tasks screen can revert a change in project A, with a toast that names the task. Filtering entries by the visible project is the alternative.
+- Fixed by the parent after the stage, on the owner's call that a shared stack is wrong: an undo entry carries a `scope` (the project it was made in), `canUndo(scope)` and `undoLatest(scope)` look only at that scope, the cap of 50 is per scope, and the Tasks screen asks about its own project. Cmd+Z in project B never touches project A. The toast's Undo button still undoes its own change, whichever project is open.
 - The stale check reads project state, which changes through the event feed. If the feed ever lags, two undos within one round trip could say "changed since" falsely.
 - The panel Select recording uses the shared helper but has no test of its own.
 

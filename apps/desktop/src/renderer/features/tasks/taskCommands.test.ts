@@ -15,6 +15,9 @@ import type { CommandInput } from '../../daemon/transport';
 import type { PickerRequest } from '../../shared/PickerPopover';
 import type { TasksView } from '../../stores';
 
+/** The project the harness's undo entries belong to. */
+const UNDO_SCOPE = 'p';
+
 const board: Grid = [['a1', 'a2', 'a3'], ['b1'], [], ['c1', 'c2']];
 const list: Grid = [['a1', 'a2', 'a3', 'b1', 'c1', 'c2']];
 
@@ -146,7 +149,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
                 ? { ok: false, requestId: 'r', error: { code: 'invalid', message: 'No' } }
                 : { ok: true, requestId: 'r', data: {} }));
         },
-        undo,
+        undo: { canUndo: () => undo.canUndo(UNDO_SCOPE), undoLatest: () => undo.undoLatest(UNDO_SCOPE) },
         start: async (id) => {
             started.push(id);
         },
@@ -1535,7 +1538,20 @@ describe('Open the linked chat and document', () => {
 
 describe('Undo', () => {
     /** An entry that counts its runs, and resolves to `worked`. */
-    const entryOf = (label: string, worked = true) => ({ label, undo: vi.fn<() => Promise<boolean>>(async () => worked) });
+    const entryOf = (label: string, worked = true) => ({ scope: UNDO_SCOPE, label, undo: vi.fn<() => Promise<boolean>>(async () => worked) });
+
+    it('leaves the changes of another project alone: no key, no hint, nothing taken back', async () => {
+        const harness = setup(list, 'list');
+        const elsewhere = { ...entryOf('in another project'), scope: 'another-project' };
+
+        harness.undo.push(elsewhere);
+
+        expect(press('z', { metaKey: true })).toBe(false);
+        await Promise.resolve();
+
+        expect(elsewhere.undo).not.toHaveBeenCalled();
+        expect(harness.undo.canUndo('another-project')).toBe(true);
+    });
 
     it('takes back the latest change with Cmd+Z, and claims the key', async () => {
         const harness = setup(list, 'list');
@@ -1591,7 +1607,7 @@ describe('Undo', () => {
         expect(isLive()).toBe(true);
         expect(commandHint('tasks.undo', harness.registry)).toEqual([['meta', 'z']]);
 
-        await harness.undo.undoLatest();
+        await harness.undo.undoLatest(UNDO_SCOPE);
 
         expect(isLive()).toBe(false);
         expect(commandHint('tasks.undo', harness.registry)).toBeUndefined();
@@ -1623,7 +1639,7 @@ describe('Undo', () => {
         expect(press('z', { metaKey: true }, input)).toBe(false);
         expect(press('z', { metaKey: true }, area)).toBe(false);
         expect(entry.undo).not.toHaveBeenCalled();
-        expect(harness.undo.canUndo).toBe(true);
+        expect(harness.undo.canUndo(UNDO_SCOPE)).toBe(true);
     });
 
     it('leaves Cmd+Z alone while a picker, a popover or a dialog is open', () => {
@@ -1647,7 +1663,7 @@ describe('Undo', () => {
 
         expect(press('z', { metaKey: true })).toBe(false);
         expect(entry.undo).not.toHaveBeenCalled();
-        expect(harness.undo.canUndo).toBe(true);
+        expect(harness.undo.canUndo(UNDO_SCOPE)).toBe(true);
     });
 
     it('does not take Cmd+Shift+Z, which is redo to the menu', () => {

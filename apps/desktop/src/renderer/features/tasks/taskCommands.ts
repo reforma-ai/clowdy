@@ -7,7 +7,6 @@ import type { Chat, CommandResult, Task, TaskId, TaskStatus } from '@clowdy/prot
 import type { CommandInput } from '../../daemon/transport';
 import type { Command } from '../../hotkeys';
 import type { Direction, ListCursor } from '../../hotkeys/listCursor';
-import type { UndoStack } from '../../hotkeys/undo';
 import type { PickerRequest } from '../../shared/PickerPopover';
 import type { ProjectUi, TasksView } from '../../stores';
 
@@ -62,8 +61,8 @@ export interface TaskCommandDeps {
      * The `task.update`s it sends are recorded in `undo` by whoever builds it (`sendWithUndo`), so a command does not know about undoing.
      */
     send: (inputs: readonly CommandInput[]) => Promise<CommandResult[]>;
-    /** What `Cmd/Ctrl+Z` takes back: the changes `send` recorded. The window's stack, not the screen's. */
-    undo: Pick<UndoStack, 'canUndo' | 'undoLatest'>;
+    /** What `Cmd/Ctrl+Z` takes back: the changes `send` recorded in this project, never those of another project. */
+    undo: { canUndo: () => boolean; undoLatest: () => Promise<boolean> };
     /** Starts the task with an agent, as the panel's Start button does. */
     start: (taskId: TaskId) => Promise<unknown>;
     /** Opens a picker beside the cursor task. */
@@ -548,7 +547,7 @@ function linkedCommands(deps: TaskCommandDeps): Command[] {
  */
 function undoCommands({ undo }: TaskCommandDeps): Command[] {
     return [
-        { id: 'tasks.undo', title: 'Undo', group: GROUP, keys: '$mod+z', scope: TASKS_SCOPE, when: () => undo.canUndo, handler: () => void undo.undoLatest() },
+        { id: 'tasks.undo', title: 'Undo', group: GROUP, keys: '$mod+z', scope: TASKS_SCOPE, when: () => undo.canUndo(), handler: () => void undo.undoLatest() },
     ];
 }
 

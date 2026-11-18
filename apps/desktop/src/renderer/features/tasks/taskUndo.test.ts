@@ -99,11 +99,24 @@ describe('what is recorded', () => {
         expect(stack.entries.map(entry => entry.label)).toEqual(['Renamed CAR-24']);
         expect(toasts.show).toHaveBeenCalledWith({ message: 'Renamed CAR-24', timeout: 5000, action: { label: 'Undo', onPress: expect.any(Function) } });
 
-        await stack.undoLatest();
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
         await settle();
 
         expect(task('t-24').title).toBe(was);
         expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-24', title: was });
+    });
+
+    it('records the change in the project it was made in, and no other project can take it back', async () => {
+        await edit(update('t-24', { title: 'Booking form v2' }));
+
+        expect(stack.entries.map(entry => entry.scope)).toEqual([FIXTURE_PROJECT_ID]);
+        expect(stack.canUndo('another-project')).toBe(false);
+
+        const sentBefore = sent.length;
+
+        expect(await stack.undoLatest('another-project')).toBe(false);
+        expect(sent).toHaveLength(sentBefore);
+        expect(task('t-24').title).toBe('Booking form v2');
     });
 
     it('records a description edit, an empty previous description included', async () => {
@@ -113,7 +126,7 @@ describe('what is recorded', () => {
 
         expect(stack.entries.map(entry => entry.label)).toEqual(['Description of CAR-27 changed']);
 
-        await stack.undoLatest();
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
         await settle();
 
         expect(task('t-27').description).toBe('');
@@ -128,7 +141,7 @@ describe('what is recorded', () => {
         expect(task('t-26').dependsOn).toEqual(['t-24']);
         expect(stack.entries.map(entry => entry.label)).toEqual(['Dependencies of CAR-26 changed']);
 
-        await stack.undoLatest();
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
         await settle();
 
         expect(task('t-26').dependsOn).toEqual(was);
@@ -139,7 +152,7 @@ describe('what is recorded', () => {
         const { title } = task('t-24');
 
         await edit(update('t-24', { title, statusId: 'review' }));
-        await stack.undoLatest();
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
         await settle();
 
         expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-24', statusId: 'active' });
@@ -163,7 +176,7 @@ describe('what is recorded', () => {
         await edit(update('t-24', { title, statusId }));
 
         expect(sent).toHaveLength(1);
-        expect(stack.canUndo).toBe(false);
+        expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
         expect(toasts.show).not.toHaveBeenCalled();
     });
 
@@ -171,7 +184,7 @@ describe('what is recorded', () => {
         const results = await edit({ type: 'task.delete', taskId: 't-30' });
 
         expect(results.map(result => result.ok)).toEqual([true]);
-        expect(stack.canUndo).toBe(false);
+        expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
         expect(toasts.show).not.toHaveBeenCalled();
     });
 
@@ -179,7 +192,7 @@ describe('what is recorded', () => {
         const results = await edit(update('t-nope', { title: 'Ghost' }));
 
         expect(results[0].ok).toBe(false);
-        expect(stack.canUndo).toBe(false);
+        expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
     });
 
     it('records nothing and shows only the daemon\'s message when it refuses', async () => {
@@ -189,7 +202,7 @@ describe('what is recorded', () => {
 
         expect(results[0].ok).toBe(false);
         expect(toasts.error).toHaveBeenCalledWith({ message: 'The title is too long' });
-        expect(stack.canUndo).toBe(false);
+        expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
         expect(toasts.show).not.toHaveBeenCalled();
         expect(task('t-24').title).not.toBe('x'.repeat(10));
     });
@@ -202,7 +215,7 @@ describe('what an undo checks', () => {
         await settle();
 
         expect(task('t-26').dependsOn).toEqual(['t-27', 't-25', 't-24']);
-        expect(await stack.undoLatest()).toBe(true);
+        expect(await stack.undoLatest(FIXTURE_PROJECT_ID)).toBe(true);
         expect(task('t-26').dependsOn).toEqual(['t-24', 't-25']);
     });
 
@@ -212,7 +225,7 @@ describe('what an undo checks', () => {
         await settle();
         sent.length = 0;
 
-        expect(await stack.undoLatest()).toBe(false);
+        expect(await stack.undoLatest(FIXTURE_PROJECT_ID)).toBe(false);
         expect(sent).toEqual([]);
         expect(task('t-24').title).toBe('Booking form v3');
         expect(toasts.error).toHaveBeenCalledWith({ message: 'CAR-24 changed since, so this cannot be undone' });
@@ -224,7 +237,7 @@ describe('what an undo checks', () => {
         await settle();
         sent.length = 0;
 
-        expect(await stack.undoLatest()).toBe(false);
+        expect(await stack.undoLatest(FIXTURE_PROJECT_ID)).toBe(false);
         expect(sent).toEqual([]);
         expect(task('t-26').dependsOn).toEqual(['t-24', 't-27']);
     });
@@ -240,7 +253,7 @@ describe('what an undo checks', () => {
 
         const second = toasts.show.mock.results[1].value;
 
-        await stack.undoLatest();
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
 
         expect(toasts.queue.close).toHaveBeenCalledWith(second);
         expect(toasts.success).toHaveBeenCalledWith({ message: 'Undone: Renamed CAR-24' });

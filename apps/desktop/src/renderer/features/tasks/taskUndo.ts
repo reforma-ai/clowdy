@@ -131,6 +131,7 @@ function record(root: RootStore, project: ProjectState, stack: UndoStack, change
     const label = describeChanges(project, changes);
     let offer: string | undefined;
     const entry: UndoEntry = {
+        scope: project.id,
         label,
         undo: async () => {
             // Out of the way before anything it says about the undo.

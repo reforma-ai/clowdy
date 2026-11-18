@@ -386,14 +386,14 @@ describe('undo', () => {
         await draw();
 
         expect(columnOf('t-26')).toBe('To do');
-        expect(undoStack.canUndo).toBe(false);
+        expect(undoStack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
     });
 
     it('records a drop on the column the card is in as nothing', async () => {
         await mountWithHints();
         await drop('t-26', 'To do');
 
-        expect(undoStack.canUndo).toBe(false);
+        expect(undoStack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
     });
 
     it('takes back a title edited in the panel with Cmd+Z once the field is left, and leaves the key to the field while it is typed in', async () => {
@@ -431,7 +431,7 @@ describe('undo', () => {
         await wait();
 
         expect(task('t-26').title).not.toBe('Cancel a booking, with a refund');
-        expect(undoStack.canUndo).toBe(false);
+        expect(undoStack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
     });
 
     it('takes back a dependency removed in the panel', async () => {

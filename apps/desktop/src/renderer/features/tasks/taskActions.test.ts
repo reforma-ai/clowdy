@@ -115,7 +115,7 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         statuses: () => project().statuses,
         startBlocked: id => startBlockedReason(runsByTask(project().runTaskLinks.values(), project().runs).get(id)),
         send: inputs => sendWithUndo(root, project(), inputs, stack),
-        undo: stack,
+        undo: { canUndo: () => stack.canUndo(FIXTURE_PROJECT_ID), undoLatest: () => stack.undoLatest(FIXTURE_PROJECT_ID) },
         start: id => startTask(root, id),
         openPicker: request => pickers.push(request),
         confirm: options => confirms.push(options),
@@ -670,7 +670,7 @@ describe('Undo', () => {
             await settle();
 
             expect(status('t-24')).toBe('active');
-            expect(stack.canUndo).toBe(false);
+            expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
             expect(undoKey()).toBe(false);
             expect(sent).toHaveLength(2);
         });
@@ -694,7 +694,7 @@ describe('Undo', () => {
             await settle();
 
             expect(status('t-24')).toBe('active');
-            expect(stack.canUndo).toBe(false);
+            expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
         });
 
         it('takes a quick second change\'s toast in place of the first one\'s instead of stacking them', async () => {
@@ -777,7 +777,7 @@ describe('Undo', () => {
             expect(status('t-28')).toBe('backlog');
             expect(toasts.error).toHaveBeenCalledWith({ message: 'No' });
             expect(toasts.show).not.toHaveBeenCalled();
-            expect(stack.canUndo).toBe(false);
+            expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
             expect(undoKey()).toBe(false);
         });
 
@@ -788,7 +788,7 @@ describe('Undo', () => {
             await settle();
 
             expect(sent).toEqual([]);
-            expect(stack.canUndo).toBe(false);
+            expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
         });
 
         it('records nothing for a delete, which has no way back, and nothing for a start', async () => {
@@ -805,7 +805,7 @@ describe('Undo', () => {
             await settle();
 
             expect(sent.map(input => input.type)).toEqual(['task.delete', 'task.start']);
-            expect(stack.canUndo).toBe(false);
+            expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
             expect(toasts.show).not.toHaveBeenCalled();
         });
     });
@@ -881,7 +881,7 @@ describe('Undo', () => {
             expect(sent).toEqual([]);
             expect(toasts.error).toHaveBeenCalledWith({ message: 'CAR-28 changed since, so this cannot be undone' });
             expect(toasts.success).not.toHaveBeenCalled();
-            expect(stack.canUndo).toBe(false);
+            expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
             // No "Undone" toast closes it on this path, and a button whose entry is gone must not stay on the screen.
             expect(toasts.queue.close).toHaveBeenCalledWith(offered);
         });
@@ -988,7 +988,7 @@ describe('Undo', () => {
             expect(toasts.error).toHaveBeenCalledTimes(1);
             expect(toasts.error).toHaveBeenCalledWith({ message: 'CAR-28 cannot go back to Backlog.' });
             expect(toasts.success).not.toHaveBeenCalled();
-            expect(stack.canUndo).toBe(false);
+            expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
         });
     });
 
@@ -1002,7 +1002,7 @@ describe('Undo', () => {
             undoKey();
             await settle();
 
-            expect(stack.canUndo).toBe(false);
+            expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
             expect(toasts.show).toHaveBeenCalledTimes(1);
             expect(undoKey()).toBe(false);
         });

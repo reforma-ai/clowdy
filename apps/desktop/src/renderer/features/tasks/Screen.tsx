@@ -170,7 +170,8 @@ export function Screen() {
         statuses: () => project.statuses,
         startBlocked: taskId => startBlockedReason(runsByTask(project.runTaskLinks.values(), project.runs).get(taskId)),
         send: inputs => sendWithUndo(root, project, inputs),
-        undo: undoStack,
+        // Only this project's changes: the stack is the window's, an entry belongs to the project it was made in.
+        undo: { canUndo: () => undoStack.canUndo(project.id), undoLatest: () => undoStack.undoLatest(project.id) },
         start: taskId => startTask(root, taskId),
         openPicker: request => setPicker({ request, anchor: (cursor.cursorId === null ? null : itemOf(region.current, cursor.cursorId)) ?? screen.current?.querySelector('aside') ?? null }),
         // The dialog hands focus back to what had it, which is gone when the daemon's event came in while it was open. That happens after `onClose`.

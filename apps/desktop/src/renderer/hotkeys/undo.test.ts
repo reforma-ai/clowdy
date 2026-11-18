@@ -1,11 +1,15 @@
-import { autorun } from 'mobx';
+import { reaction } from 'mobx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createUndoStack, UNDO_LIMIT, undoStack, type UndoEntry } from './undo';
 
+/** The scope the tests record in: a project. */
+const SCOPE = 'p1';
+
 /** An entry that records when it ran, and resolves to `outcome` once `release` is called (at once without a gate). */
-function entry(label: string, ran: string[], outcome = true, gate?: Promise<void>): UndoEntry {
+function entry(label: string, ran: string[], outcome = true, gate?: Promise<void>, scope = SCOPE): UndoEntry {
     return {
+        scope,
         label,
         undo: async () => {
             ran.push(`start ${ label }`);
@@ -25,8 +29,8 @@ describe('UndoStack', () => {
     it('starts empty, and has nothing to undo', async () => {
         const stack = createUndoStack();
 
-        expect(stack.canUndo).toBe(false);
-        expect(await stack.undoLatest()).toBe(false);
+        expect(stack.canUndo(SCOPE)).toBe(false);
+        expect(await stack.undoLatest(SCOPE)).toBe(false);
     });
 
     it('undoes the latest entry first, one entry per call, and says whether it worked', async () => {
@@ -36,9 +40,9 @@ describe('UndoStack', () => {
         stack.push(entry('a', ran));
         stack.push(entry('b', ran, false));
 
-        expect(await stack.undoLatest()).toBe(false);
-        expect(await stack.undoLatest()).toBe(true);
-        expect(await stack.undoLatest()).toBe(false);
+        expect(await stack.undoLatest(SCOPE)).toBe(false);
+        expect(await stack.undoLatest(SCOPE)).toBe(true);
+        expect(await stack.undoLatest(SCOPE)).toBe(false);
         expect(ran).toEqual(['start b', 'end b', 'start a', 'end a']);
     });
 
@@ -47,9 +51,9 @@ describe('UndoStack', () => {
 
         stack.push(entry('a', [], false));
 
-        const pending = stack.undoLatest();
+        const pending = stack.undoLatest(SCOPE);
 
-        expect(stack.canUndo).toBe(false);
+        expect(stack.canUndo(SCOPE)).toBe(false);
 
         await pending;
 
@@ -63,7 +67,7 @@ describe('UndoStack', () => {
 
         stack.push(a);
 
-        expect(await stack.undoLatest()).toBe(true);
+        expect(await stack.undoLatest(SCOPE)).toBe(true);
         expect(await stack.undoEntry(a)).toBe(false);
         expect(ran).toEqual(['start a', 'end a']);
     });
@@ -77,7 +81,7 @@ describe('UndoStack', () => {
 
         expect(await stack.undoEntry(b)).toBe(true);
         expect(stack.entries).toEqual([a, c]);
-        expect(await stack.undoLatest()).toBe(true);
+        expect(await stack.undoLatest(SCOPE)).toBe(true);
         expect(ran).toEqual(['start b', 'end b', 'start c', 'end c']);
     });
 
@@ -108,8 +112,8 @@ describe('UndoStack', () => {
         stack.push(entry('b', []));
         stack.clear();
 
-        expect(stack.canUndo).toBe(false);
-        expect(await stack.undoLatest()).toBe(false);
+        expect(stack.canUndo(SCOPE)).toBe(false);
+        expect(await stack.undoLatest(SCOPE)).toBe(false);
     });
 
     it('lets one undo finish before the next starts, so two quick presses do not interleave', async () => {
@@ -123,8 +127,8 @@ describe('UndoStack', () => {
         stack.push(entry('a', ran));
         stack.push(entry('b', ran, true, gate));
 
-        const first = stack.undoLatest();
-        const second = stack.undoLatest();
+        const first = stack.undoLatest(SCOPE);
+        const second = stack.undoLatest(SCOPE);
 
         await Promise.resolve();
         await Promise.resolve();
@@ -144,13 +148,14 @@ describe('UndoStack', () => {
 
         stack.push(entry('a', ran));
         stack.push({
+            scope: SCOPE,
             label: 'broken',
             undo: async () => {
                 throw new Error('boom');
             },
         });
 
-        const results = await Promise.all([stack.undoLatest(), stack.undoLatest()]);
+        const results = await Promise.all([stack.undoLatest(SCOPE), stack.undoLatest(SCOPE)]);
 
         expect(results).toEqual([false, true]);
         expect(ran).toEqual(['start a', 'end a']);
@@ -160,12 +165,60 @@ describe('UndoStack', () => {
     it('tells an observer when there starts to be something to undo and when there stops', async () => {
         const stack = createUndoStack();
         const seen: boolean[] = [];
-        const stop = autorun(() => seen.push(stack.canUndo));
+        const stop = reaction(() => stack.canUndo(SCOPE), value => seen.push(value), { fireImmediately: true });
 
         stack.push(entry('a', []));
         stack.push(entry('b', []));
-        await stack.undoLatest();
-        await stack.undoLatest();
+        await stack.undoLatest(SCOPE);
+        await stack.undoLatest(SCOPE);
+        stop();
+
+        expect(seen).toEqual([false, true, false]);
+    });
+
+    it('keeps the history of each scope apart, so Cmd+Z never takes back another project\'s change', async () => {
+        const stack = createUndoStack();
+        const ran: string[] = [];
+
+        stack.push(entry('in a', ran, true, undefined, 'a'));
+        stack.push(entry('in b', ran, true, undefined, 'b'));
+        stack.push(entry('later in a', ran, true, undefined, 'a'));
+
+        expect(stack.canUndo('a')).toBe(true);
+        expect(stack.canUndo('b')).toBe(true);
+        expect(stack.canUndo('c')).toBe(false);
+        expect(await stack.undoLatest('c')).toBe(false);
+        expect(ran).toEqual([]);
+
+        expect(await stack.undoLatest('b')).toBe(true);
+        expect(ran).toEqual(['start in b', 'end in b']);
+        expect(stack.canUndo('b')).toBe(false);
+        expect(stack.canUndo('a')).toBe(true);
+
+        expect(await stack.undoLatest('a')).toBe(true);
+        expect(ran.slice(2)).toEqual(['start later in a', 'end later in a']);
+    });
+
+    it('caps each scope on its own, so a busy project does not push out another\'s history', () => {
+        const stack = createUndoStack(2);
+        const ran: string[] = [];
+
+        stack.push(entry('b1', ran, true, undefined, 'b'));
+        stack.push(entry('a1', ran, true, undefined, 'a'));
+        stack.push(entry('a2', ran, true, undefined, 'a'));
+        stack.push(entry('a3', ran, true, undefined, 'a'));
+
+        expect(stack.entries.map(item => item.label)).toEqual(['b1', 'a2', 'a3']);
+    });
+
+    it('tells a reaction when the scope it asked about gains or loses an entry, and only then', async () => {
+        const stack = createUndoStack();
+        const seen: boolean[] = [];
+        const stop = reaction(() => stack.canUndo('a'), value => seen.push(value), { fireImmediately: true });
+
+        stack.push(entry('in b', [], true, undefined, 'b'));
+        stack.push(entry('in a', [], true, undefined, 'a'));
+        await stack.undoLatest('a');
         stop();
 
         expect(seen).toEqual([false, true, false]);
@@ -179,13 +232,13 @@ describe('undoStack', () => {
 
         isolated.push(entry('isolated', ran));
 
-        expect(undoStack.canUndo).toBe(false);
+        expect(undoStack.canUndo(SCOPE)).toBe(false);
 
         undoStack.push(entry('window', ran));
 
         expect(isolated.entries.map(item => item.label)).toEqual(['isolated']);
-        expect(await undoStack.undoLatest()).toBe(true);
+        expect(await undoStack.undoLatest(SCOPE)).toBe(true);
         expect(ran).toEqual(['start window', 'end window']);
-        expect(undoStack.canUndo).toBe(false);
+        expect(undoStack.canUndo(SCOPE)).toBe(false);
     });
 });
