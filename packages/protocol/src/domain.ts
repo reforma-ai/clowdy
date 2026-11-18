@@ -40,8 +40,6 @@ export interface ProjectInfo {
     folderExists: boolean;
     /** The `origin` remote as git prints it (`git@github.com:acme/app.git`); absent without a remote, or when the folder is not a repository. */
     remoteUrl?: string;
-    /** The branch checked out in the folder; absent when it is detached or the folder is not a repository. */
-    branch?: string;
     chats: number;
     tasks: number;
     /** Runs that are not finished. Removing the project or choosing another folder waits until there are none. */

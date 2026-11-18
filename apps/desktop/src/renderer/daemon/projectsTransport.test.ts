@@ -45,7 +45,7 @@ describe('FixtureTransport projects', () => {
         expect(info.map(entry => entry.projectId)).toEqual([FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID]);
         expect(info[0]).toMatchObject({ folderExists: true, chats: 0, tasks: 0, activeRuns: 0 });
         expect(info[0].remoteUrl).toBeUndefined();
-        expect(info[1]).toMatchObject({ remoteUrl: 'git@github.com:acme/car-rental.git', branch: 'main' });
+        expect(info[1]).toMatchObject({ remoteUrl: 'git@github.com:acme/car-rental.git' });
         expect(info[1].chats).toBeGreaterThan(0);
         expect(info[1].activeRuns).toBeGreaterThan(0);
     });

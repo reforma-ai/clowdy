@@ -572,15 +572,13 @@ describe('GET /v1/projects/info', () => {
         expect((await h.fetch(`/v1/projects/${ project.id }/snapshot`)).status).toBe(200);
     });
 
-    test('lists every project in list order with its folder, remote, branch and counts', async () => {
+    test('lists every project in list order with its folder, remote and counts', async () => {
         const h = await setup();
         const repo = h.openRepo('repo');
         const bare = h.openRepo('bare');
-        const detached = h.openRepo('detached');
         const gone = h.openRepo('gone');
 
         git(repo.path, 'remote', 'add', 'origin', 'git@github.com:acme/app.git');
-        git(detached.path, 'checkout', '-q', '--detach');
         rmSync(gone.path, { recursive: true, force: true });
         h.ok('chat.create', { projectId: repo.id });
         h.ok('chat.create', { projectId: repo.id });
@@ -589,11 +587,10 @@ describe('GET /v1/projects/info', () => {
         const projects = await info(h);
 
         expect(projects.map(entry => entry.projectId)).toEqual(rootSnapshot(h.store).projects.map(project => project.id));
-        expect(projects[0]).toEqual({ projectId: h.personal.id, folderExists: true, branch: 'main', chats: 0, tasks: 0, activeRuns: 0 });
-        expect(projects[1]).toEqual({ projectId: repo.id, folderExists: true, remoteUrl: 'git@github.com:acme/app.git', branch: 'main', chats: 2, tasks: 1, activeRuns: 0 });
-        expect(projects[2]).toEqual({ projectId: bare.id, folderExists: true, branch: 'main', chats: 0, tasks: 0, activeRuns: 0 });
-        expect(projects[3]).toEqual({ projectId: detached.id, folderExists: true, chats: 0, tasks: 0, activeRuns: 0 });
-        expect(projects[4]).toEqual({ projectId: gone.id, folderExists: false, chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects[0]).toEqual({ projectId: h.personal.id, folderExists: true, chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects[1]).toEqual({ projectId: repo.id, folderExists: true, remoteUrl: 'git@github.com:acme/app.git', chats: 2, tasks: 1, activeRuns: 0 });
+        expect(projects[2]).toEqual({ projectId: bare.id, folderExists: true, chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects[3]).toEqual({ projectId: gone.id, folderExists: false, chats: 0, tasks: 0, activeRuns: 0 });
     });
 
     test('a path that is a file and not a folder does not count as one', async () => {

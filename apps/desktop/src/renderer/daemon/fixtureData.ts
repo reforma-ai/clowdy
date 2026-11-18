@@ -21,8 +21,8 @@ import type {
 /** Everything the fixture daemon holds. Plain data: the transport mutates it and announces the changes. */
 export interface FixtureData {
     projects: Project[];
-    /** What `git` says in each project's folder: the `origin` address and the branch; a project without an entry has no remote. */
-    git: Record<ProjectId, { remoteUrl?: string; branch?: string }>;
+    /** What `git` says in each project's folder: the `origin` address; a project without an entry has no remote. */
+    git: Record<ProjectId, { remoteUrl?: string }>;
     statuses: Record<string, TaskStatus[]>;
     chats: Chat[];
     tasks: Task[];
@@ -688,8 +688,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
     return {
         projects,
         git: {
-            [projectId]: { remoteUrl: 'git@github.com:acme/car-rental.git', branch: 'main' },
-            [FIXTURE_EMPTY_PROJECT_ID]: { remoteUrl: 'https://github.com/acme/clowdy.git', branch: 'main' },
+            [projectId]: { remoteUrl: 'git@github.com:acme/car-rental.git' },
+            [FIXTURE_EMPTY_PROJECT_ID]: { remoteUrl: 'https://github.com/acme/clowdy.git' },
         },
         statuses: { [projectId]: DEFAULT_STATUSES, [FIXTURE_EMPTY_PROJECT_ID]: DEFAULT_STATUSES, [FIXTURE_PERSONAL_PROJECT_ID]: DEFAULT_STATUSES },
         // As the daemon's migration leaves them: a chat that has an orchestrator records the engine and model it runs on.

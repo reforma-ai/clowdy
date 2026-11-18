@@ -406,9 +406,9 @@ async function isFolder(path: string): Promise<boolean> {
 }
 
 /**
- * What the page that manages projects shows besides the snapshot: whether each folder is there, its remote and branch, and what it holds.
+ * What the page that manages projects shows besides the snapshot: whether each folder is there, its remote, and what it holds.
  * The page asks again every few seconds, so nothing here may stop the daemon: the folders are read asynchronously, one project after
- * another (the two git reads of a folder run together), so a long list never starts a crowd of processes.
+ * another, so a long list never starts a crowd of processes.
  */
 export async function projectsInfo(store: Store): Promise<ProjectInfo[]> {
     const { projects, counts } = store.read(() => ({ projects: listProjects(store.db), counts: projectCounts(store.db) }));
@@ -416,15 +416,12 @@ export async function projectsInfo(store: Store): Promise<ProjectInfo[]> {
 
     for (const project of projects) {
         const folderExists = await isFolder(project.path);
-        const [remoteUrl, branch] = folderExists
-            ? await Promise.all([gitLine(project.path, ['remote', 'get-url', 'origin']), gitLine(project.path, ['branch', '--show-current'])])
-            : [];
+        const remoteUrl = folderExists ? await gitLine(project.path, ['remote', 'get-url', 'origin']) : undefined;
 
         info.push({
             projectId: project.id,
             folderExists,
             ...(remoteUrl && { remoteUrl }),
-            ...(branch && { branch }),
             ...(counts.get(project.id) ?? { chats: 0, tasks: 0, activeRuns: 0 }),
         });
     }

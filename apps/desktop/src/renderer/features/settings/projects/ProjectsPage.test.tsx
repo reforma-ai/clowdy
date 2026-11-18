@@ -163,12 +163,12 @@ describe('ProjectsPage list', () => {
 });
 
 describe('ProjectsPage project', () => {
-    it('shows where the project is, its git remote as a link, and its branch', async () => {
+    it('shows where the project is, its git remote as a link', async () => {
         await open(FIXTURE_PROJECT_ID);
 
         expect(container.textContent).toContain('/Users/dev/car-rental');
         expect(container.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental"]')?.textContent).toContain('github.com/acme/car-rental');
-        expect(container.textContent).toContain('main');
+        expect(container.textContent).not.toContain('Branch');
     });
 
     it('renames on blur, and puts the name back on Escape', async () => {

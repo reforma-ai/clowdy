@@ -106,13 +106,8 @@ function GitSection({ info, failed }: { info: ProjectInfo | undefined; failed: b
                 { remote && (
                     <SettingsRow title="Remote">
                         { remote.href
-                            ? <Button variant="inline" size="sm" href={ remote.href } target="_blank" rel="noreferrer" className={ styles.value }>{ remote.text }<ArrowUpRight /></Button>
+                            ? <Button variant="filled" color="secondary" size="sm" href={ remote.href } target="_blank" rel="noreferrer" className={ styles.value }>{ remote.text }<ArrowUpRight /></Button>
                             : <Text className={ styles.value }>{ remote.text }</Text> }
-                    </SettingsRow>
-                ) }
-                { info?.branch && (
-                    <SettingsRow title="Branch">
-                        <Text>{ info.branch }</Text>
                     </SettingsRow>
                 ) }
             </SettingsCard>
