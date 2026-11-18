@@ -1,3 +1,4 @@
+import { SidebarLayout } from '../../shared';
 import { useProjectState, useProjectUi } from '../../stores';
 import { ChatView } from '../chats/ChatView';
 import { AgentList } from './AgentList';
@@ -18,8 +19,7 @@ export function Screen() {
     const { chat, run } = selection;
 
     return (
-        <div className={ styles.screen }>
-            <AgentList selection={ selection } chats={ visibleChats(project.chatList, ui.showArchived, chat?.id) } />
+        <SidebarLayout screen="agents" defaultWidth={ 270 } sidebar={ <AgentList selection={ selection } chats={ visibleChats(project.chatList, ui.showArchived, chat?.id) } /> }>
             <section className={ styles.main } aria-label={ run ? 'Subthread' : 'Chat' }>
                 { run
                     ? <RunDetail key={ run.id } run={ run } />
@@ -27,6 +27,6 @@ export function Screen() {
                         ? <ChatView key={ chat.id } chat={ chat } />
                         : <DraftChat /> }
             </section>
-        </div>
+        </SidebarLayout>
     );
 }

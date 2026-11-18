@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildRunTree } from '../../stores/runTree';
-import { agentRows, ancestorIds, countActiveChildren, describeRun, resolveSelection, visibleChats } from './agentTree';
+import { agentRows, ancestorIds, chatDotTone, countActiveChildren, describeRun, resolveSelection, visibleChats } from './agentTree';
 
 import type { Chat, Run, RunStatus } from '@clowdy/protocol';
 
@@ -183,5 +183,28 @@ describe('describeRun', () => {
     it('says nothing about a run that is working or done', () => {
         expect(describeRun(run('r', 'running'), 0)).toBeUndefined();
         expect(describeRun(run('r', 'succeeded', { result: 'Done.' }), 0)).toBeUndefined();
+    });
+});
+
+describe('chatDotTone', () => {
+    it('is green while the orchestrator works or waits for its executors', () => {
+        expect(chatDotTone(run('r', 'running'))).toBe('success');
+        expect(chatDotTone(run('r', 'waiting_children'))).toBe('success');
+    });
+
+    it('is blue once it has asked the person something, and red when it failed', () => {
+        expect(chatDotTone(run('r', 'waiting_user'))).toBe('accent');
+        expect(chatDotTone(run('r', 'failed'))).toBe('danger');
+    });
+
+    it('keeps the usual tone of a run that is blocked or queued', () => {
+        expect(chatDotTone(run('r', 'blocked'))).toBe('warning');
+        expect(chatDotTone(run('r', 'queued'))).toBe('neutral');
+    });
+
+    it('is nothing for a chat that has not started or whose run is over', () => {
+        expect(chatDotTone(undefined)).toBeUndefined();
+
+        for (const status of ['succeeded', 'cancelled', 'interrupted'] as const) expect(chatDotTone(run('r', status))).toBeUndefined();
     });
 });

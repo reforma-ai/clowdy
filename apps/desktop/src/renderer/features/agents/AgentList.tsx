@@ -1,15 +1,16 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
 import { GridList, GridListHeader, GridListItem, GridListSection, listBoxItemDataShow, Menu, MenuItem, useCellEditMode } from '@clowdy/components/List';
-import { Panel, PanelContent, PanelHeader } from '@clowdy/components/Panel';
+import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { Check, Message, More, Plus } from '@clowdy/icons/14';
 import { ChevronDown, ChevronRight } from '@clowdy/icons/8';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 
-import { useCommands, useHotkeyScope } from '../../hotkeys';
-import { StatusDot } from '../../shared';
+import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
+import { RUN_STATUS_VIEW, SidebarHeading, StatusDot } from '../../shared';
+import { NEW_CHAT_COMMAND } from '../../shell/shellCommands';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { archiveChat } from '../chats/archiveChat';
 import { ChatMenu } from '../chats/ChatMenu';
@@ -20,18 +21,32 @@ import { ProviderIcon } from '../settings/providers/ProviderIcon';
 import { PROVIDER_IDS } from '../settings/providers/providerView';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
-import { agentRows, ancestorIds, countActiveChildren, describeRun, type AgentRow, type AgentSelection } from './agentTree';
+import { agentRows, ancestorIds, chatDotTone, countActiveChildren, describeRun, type AgentRow, type AgentSelection } from './agentTree';
 
 import type { Chat, ChatId, Run } from '@clowdy/protocol';
 
 /** The id of the first row, the one that starts a chat. Chat and run ids never look like it. */
 export const NEW_CHAT_ROW = '@new-chat';
 
-/** The icon of a chat's row: the mark of the provider it runs on once it has started (the chat's own, else its orchestrator's), a speech bubble before and for an agent that has no mark. */
+/**
+ * The icon of a chat's row: the mark of the provider it runs on once it has started (the chat's own, else its orchestrator's), a speech bubble before and for an agent that has no mark.
+ * What the orchestrator is doing is a dot on the icon's top right corner (`chatDotTone`), so the row needs no room of its own for it.
+ */
 function chatIcon(chat: Chat, run: Run | undefined) {
     const engine = chat.engine ?? run?.engine;
+    const icon = chat.orchestratorRunId && engine && (PROVIDER_IDS as readonly string[]).includes(engine) ? <ProviderIcon agentId={ engine } size={ 14 } data-provider={ engine } /> : <Message />;
+    const tone = chatDotTone(run);
 
-    return chat.orchestratorRunId && engine && (PROVIDER_IDS as readonly string[]).includes(engine) ? <ProviderIcon agentId={ engine } size={ 14 } data-provider={ engine } /> : <Message />;
+    if (!run || !tone) return icon;
+
+    return (
+        <span className={ styles.icon }>
+            { icon }
+            <span className={ styles.dot } role="img" aria-label={ RUN_STATUS_VIEW[run.status].label }>
+                <StatusDot status={ run.status } tone={ tone } className={ styles.dotMark } />
+            </span>
+        </span>
+    );
 }
 
 /** A row's `⋯` button and the right-click menu are the same actions; a rename is a rename of the row it started on. */
@@ -67,6 +82,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     const forest = ui.showSubthreads ? project.runTree(ui.showFinished) : [];
     const rows = agentRows(chats.filter(chat => chat.archivedAt === undefined), forest, collapsed);
     const archivedRows = agentRows(chats.filter(chat => chat.archivedAt !== undefined), forest, collapsed);
+    const isGrouped = archivedRows.length > 0;
     const activeChildren = countActiveChildren(project.runs.values());
     const selectedId = selection.draft ? NEW_CHAT_ROW : (selection.run?.id ?? selection.chat?.id);
 
@@ -170,13 +186,10 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     };
 
     return (
-        <Panel side="left" className={ styles.panel }>
-            <PanelHeader>
-                <span>Agents</span>
-                <PanelHeader.Actions>
-                    <FilterMenu />
-                </PanelHeader.Actions>
-            </PanelHeader>
+        <Panel side="left">
+            <SidebarHeading title="Agents" className={ styles.heading }>
+                <FilterMenu />
+            </SidebarHeading>
 
             <PanelContent contentClass={ styles.content }>
                 <div ref={ list } onContextMenu={ openContextMenu } onKeyDown={ onKeyDown }>
@@ -192,13 +205,20 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                             if (id !== undefined) select(String(id));
                         } }
                     >
-                        <GridListSection aria-label="Chats">
-                            <GridListItem id={ NEW_CHAT_ROW } text="New chat" icon={ <Plus /> }>
+                        <GridListSection aria-label={ isGrouped ? 'New chat' : 'Chats' }>
+                            <GridListItem id={ NEW_CHAT_ROW } text="New chat" icon={ <Plus /> } endAffix={ <CommandHotkey id={ NEW_CHAT_COMMAND } size="xs" /> }>
                                 <span className={ styles.title }>New chat</span>
                             </GridListItem>
-                            { rows.map(renderRow) }
+                            { !isGrouped && rows.map(renderRow) }
                         </GridListSection>
-                        { archivedRows.length > 0 && (
+                        {/* Once there is an Archived group the others need a name too, or the first reads as the list and the second as an afterthought. */}
+                        { isGrouped && rows.length > 0 && (
+                            <GridListSection>
+                                <GridListHeader>Active</GridListHeader>
+                                { rows.map(renderRow) }
+                            </GridListSection>
+                        ) }
+                        { isGrouped && (
                             <GridListSection>
                                 <GridListHeader>Archived</GridListHeader>
                                 { archivedRows.map(renderRow) }
@@ -234,7 +254,7 @@ function FilterMenu() {
 
     return (
         <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
-            <Button variant="filling" color="secondary" size="xs" iconOnly aria-label="Filters" tooltip="Filters">
+            <Button variant="ghost" size="sm" iconOnly aria-label="Filters" tooltip="Filters">
                 <More />
             </Button>
             <Popover placement="bottom end" spacing="xs" width={ 240 }>
@@ -292,7 +312,7 @@ function Fold({ row, onToggle }: { row: AgentRow; onToggle: () => void }) {
     );
 }
 
-/** A dot while the chat's orchestrator is busy, and the `⋯` menu button on hover. */
+/** The `⋯` menu button, on hover. */
 function RowEnd({ chat, actions }: { chat: Chat; actions: ChatActions }) {
     const project = useProjectState();
     const [isOpen, setIsOpen] = useState(false);
@@ -301,7 +321,6 @@ function RowEnd({ chat, actions }: { chat: Chat; actions: ChatActions }) {
 
     return (
         <span className={ styles.end }>
-            { isRunActive(run) && <StatusDot status={ run.status } /> }
             {/* The popover is a React child of the row, so its clicks and keys would reach the row through the tree. */}
             <span
                 onClick={ event => event.stopPropagation() }

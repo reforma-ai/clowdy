@@ -6,7 +6,7 @@ import { installDispatcher } from '../hotkeys/dispatcher';
 import { commandHint } from '../hotkeys/react';
 import { createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
 import { UiStore } from '../stores';
-import { navCommandId, shellCommands, type ShellCommandsRoot } from './shellCommands';
+import { navCommandId, NEW_CHAT_COMMAND, shellCommands, type ShellCommandsRoot } from './shellCommands';
 
 let registry: HotkeyRegistry;
 let uninstall: () => void;
@@ -291,7 +291,87 @@ describe('the keymap', () => {
         for (const command of shellCommands(root, openHelp)) probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'nav.back', 'nav.forward']);
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'nav.back', 'nav.forward']);
         expect(navCommandId('tasks')).toBe('nav.tasks');
+    });
+});
+
+describe('new chat', () => {
+    it('shows the new-chat page of the Agents section on Cmd+N, from any section', () => {
+        ui.forProject('p').section = 'tasks';
+
+        const event = press({ key: 'n', code: 'KeyN', metaKey: true });
+
+        expect(sectionOf()).toBe('agents');
+        expect(ui.forProject('p').draft).toBe(true);
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('leaves a chat that is open, and Settings', () => {
+        ui.forProject('p').openChat('c-1');
+        ui.openSettings('providers');
+
+        press({ key: 'n', code: 'KeyN', metaKey: true });
+
+        expect(ui.settingsOpen).toBe(false);
+        expect(ui.forProject('p').draft).toBe(true);
+        expect(ui.forProject('p').chatId).toBe('c-1');
+    });
+
+    it('works on the Russian layout, where the key at N types "т"', () => {
+        press({ key: 'т', code: 'KeyN', metaKey: true });
+
+        expect(ui.forProject('p').draft).toBe(true);
+    });
+
+    it('works from a text field, such as the message box, where a bare N is text', () => {
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        try {
+            press({ key: 'n', code: 'KeyN', metaKey: true }, input);
+
+            expect(ui.forProject('p').draft).toBe(true);
+
+            ui.forProject('p').openChat(null);
+            press({ key: 'n', code: 'KeyN' }, input);
+
+            expect(ui.forProject('p').draft).toBe(false);
+        }
+        finally {
+            input.remove();
+        }
+    });
+
+    it('stays off while a dialog is open', () => {
+        const overlay = document.createElement('div');
+
+        overlay.dataset.modalOverlay = '';
+        document.body.append(overlay);
+
+        try {
+            press({ key: 'n', code: 'KeyN', metaKey: true });
+
+            expect(ui.forProject('p').draft).toBe(false);
+        }
+        finally {
+            overlay.remove();
+        }
+    });
+
+    it('needs a selected project, and leaves the key to the page without one', () => {
+        runInAction(() => {
+            root.selectedProjectId = null;
+        });
+
+        const event = press({ key: 'n', code: 'KeyN', metaKey: true });
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(commandHint(NEW_CHAT_COMMAND, registry)).toBeUndefined();
+    });
+
+    it('shows its keys as the hint of the New chat row', () => {
+        expect(commandHint(NEW_CHAT_COMMAND, registry)).toEqual([['meta', 'n']]);
     });
 });

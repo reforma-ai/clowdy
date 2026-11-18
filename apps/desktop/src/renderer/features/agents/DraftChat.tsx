@@ -1,4 +1,3 @@
-import { PanelHeader } from '@clowdy/components/Panel';
 import { Text } from '@clowdy/components/Text';
 import { useEffect, useRef } from 'react';
 
@@ -31,10 +30,6 @@ export function DraftChat() {
     return (
         <ChatDropZone onFiles={ files => composer.current?.addFiles(files) }>
             <div className={ styles.draft }>
-                <PanelHeader>
-                    <span>New chat</span>
-                </PanelHeader>
-
                 <div className={ styles.center }>
                     <Text variant="heading-3">What should we work on?</Text>
 

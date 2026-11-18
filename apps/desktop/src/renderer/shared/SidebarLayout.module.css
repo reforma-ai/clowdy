@@ -1,0 +1,21 @@
+/* Fills the window's content plate, as the screens' own wrapper did. */
+.layout {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* The panel library puts these on the element inside its panel, which is a block that scrolls: make it a column that the screen's parts fill. */
+.sidebar,
+.main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* The column is as wide as its panel, not as wide as its own default. */
+.sidebar {
+    --panel-width: 100%;
+}

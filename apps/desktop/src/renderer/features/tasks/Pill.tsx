@@ -5,7 +5,7 @@ import styles from './Pill.module.css';
 import type { ReactNode } from 'react';
 import type { StatusTone } from '../../shared';
 
-export type PillTone = StatusTone | 'accent';
+export type PillTone = StatusTone;
 
 export interface PillProps {
     tone?: PillTone;

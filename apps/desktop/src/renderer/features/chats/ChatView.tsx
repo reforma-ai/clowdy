@@ -8,7 +8,6 @@ import { useMemo, useRef } from 'react';
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { StreamView } from '../../stream';
 import { ChatDropZone } from './ChatDropZone';
-import { ChatHeader } from './ChatHeader';
 import { chatWritability } from './chatProvider';
 import { isRunActive, liveLine } from './chatRun';
 import styles from './ChatView.module.css';
@@ -21,7 +20,7 @@ import { ReadOnlyNotice } from './ReadOnlyNotice';
 import type { Attachment, Chat } from '@clowdy/protocol';
 
 /**
- * One chat: the header, the orchestrator's stream with the progress card in it, and the composer. When the chat's provider cannot run
+ * One chat: the orchestrator's stream with the progress card in it, and the composer. When the chat's provider cannot run
  * (switched off, not installed, signed out) the stream stays as it is and a notice stands in place of the composer.
  */
 export function ChatView({ chat }: { chat: Chat }) {
@@ -46,8 +45,6 @@ export function ChatView({ chat }: { chat: Chat }) {
 
     return (
         <ChatDropZone disabled={ !writability.writable } onFiles={ files => composer.current?.addFiles(files) }>
-            <ChatHeader chat={ chat } run={ run } />
-
             { stream?.status === 'failed' && (
                 <div className={ styles.center }>
                     <Alert color="danger" className={ styles.alert }>

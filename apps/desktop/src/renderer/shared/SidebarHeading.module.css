@@ -1,0 +1,22 @@
+/* The row is as tall as the title and no taller, so the title sits where Tasks' title does, with or without buttons. */
+.heading {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+}
+
+/*
+ * A button is taller than the title's line: it overhangs the row by half the difference instead of stretching it. The same overhang
+ * goes to the right edge, so the button is as far from the top of the column as it is from its right edge.
+ */
+.actions {
+    --overhang: calc((var(--leading-xl) - var(--spacing-30)) / 2);
+
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-block: var(--overhang);
+    margin-inline-end: var(--overhang);
+}

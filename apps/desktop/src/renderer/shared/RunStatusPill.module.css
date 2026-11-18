@@ -24,6 +24,11 @@
     --clowdy-pill-color: var(--color-success-text);
 }
 
+.pill[data-tone='accent'] {
+    --clowdy-pill-bg: var(--color-accent-muted-light);
+    --clowdy-pill-color: var(--color-accent-text);
+}
+
 .pill[data-tone='warning'] {
     --clowdy-pill-bg: var(--color-warning-muted-light);
     --clowdy-pill-color: var(--color-warning-text);

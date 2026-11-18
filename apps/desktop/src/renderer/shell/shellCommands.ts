@@ -4,6 +4,9 @@ import type { NavHistory, RootStore, Section } from '../stores';
 /** The id of the command that switches to the section, which the Rail asks for the hint of its button. */
 export const navCommandId = (section: Section) => `nav.${ section }`;
 
+/** The id of the command that starts a chat, which the New chat row asks for its hint. */
+export const NEW_CHAT_COMMAND = 'chats.new';
+
 /** `G` then a letter, the way Linear goes places: A for Agents (the chats and the runs below them), T for Tasks, D for Docs. */
 const SECTION_CHORDS: Record<Section, { title: string; keys: string }> = {
     agents: { title: 'Go to Agents', keys: 'g a' },
@@ -21,8 +24,9 @@ export interface ShellCommandsRoot extends Pick<RootStore, 'selectedProjectId' |
 }
 
 /**
- * The commands that work in every section, for `useCommands('app', …)`: the help overlay, the `G` chords that switch sections, and back and forward.
- * A section chord needs a selected project, as the Rail's buttons do, and also leaves Settings.
+ * The commands that work in every section, for `useCommands('app', …)`: the help overlay, the `G` chords that switch sections, `Cmd+N` for a new chat, and back and forward.
+ * A section chord and a new chat need a selected project, as the Rail's buttons do, and also leave Settings.
+ * `Cmd+N` shows the new-chat page of the Agents section whichever section is open, and works from a text field too: the message box is the place it is most wanted.
  * Back and forward are off while there is nowhere to go, so the key reaches the page and the hint is not shown. Text fields keep `Cmd+[` for outdenting.
  */
 export function shellCommands(root: ShellCommandsRoot, openHelp: () => void): ScopedCommand[] {
@@ -40,6 +44,22 @@ export function shellCommands(root: ShellCommandsRoot, openHelp: () => void): Sc
     return [
         { id: 'help.open', title: 'Show keyboard shortcuts', group: 'General', keys: ['?', '$mod+/', '$mod+?'], handler: () => openHelp() },
         ...sections,
+        {
+            id: NEW_CHAT_COMMAND,
+            title: 'New chat',
+            group: 'Agents',
+            keys: '$mod+n',
+            inInputs: true,
+            when: () => root.selectedProjectId !== null,
+            handler: () => {
+                if (!root.selectedProjectId) return;
+
+                const projectUi = root.ui.forProject(root.selectedProjectId);
+
+                root.ui.showSection(projectUi, 'agents');
+                projectUi.openDraft();
+            },
+        },
         { id: 'nav.back', title: 'Go back', group: 'Navigation', keys: BACK_KEYS, when: () => root.history.canGoBack, handler: () => root.history.back() },
         { id: 'nav.forward', title: 'Go forward', group: 'Navigation', keys: FORWARD_KEYS, when: () => root.history.canGoForward, handler: () => root.history.forward() },
     ];

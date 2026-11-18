@@ -1,10 +1,30 @@
-/* 270px, as drawn in the wireframe. */
-.panel {
-    --panel-width: 16.875rem;
+/* The same inset as the heading of Documents; the list below has its own 8px, and the rows their own padding. */
+.heading {
+    padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-lg);
 }
 
 .content {
     padding: var(--spacing-md);
+}
+
+/* The icon of a chat's row, with the status dot on its top right corner. */
+.icon {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.dot {
+    position: absolute;
+    top: calc(var(--spacing-xxs) * -1);
+    right: calc(var(--spacing-xs) * -1);
+    display: flex;
+}
+
+/* Doubled so it outranks the dot's own size. */
+.dotMark.dotMark {
+    width: var(--spacing-sm);
+    height: var(--spacing-sm);
 }
 
 .title {

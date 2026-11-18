@@ -1,8 +1,9 @@
 import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
-import { Panel, PanelContent, PanelHeader } from '@clowdy/components/Panel';
+import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Book, PaintBucket, Robot } from '@clowdy/icons/14';
 
+import { SidebarHeading, SidebarLayout } from '../../shared';
 import { useRootStore, type SettingsPage } from '../../stores';
 import { AppearancePage } from './AppearancePage';
 import { ProvidersPage } from './providers';
@@ -45,45 +46,51 @@ export function Screen() {
     const page = PAGES.find(candidate => candidate.id === ui.settingsPage) ?? PAGES[0]!;
 
     return (
-        <div className={ styles.screen }>
-            <Panel side="left" className={ styles.panel }>
-                <PanelHeader>Settings</PanelHeader>
-
-                <PanelContent contentClass={ styles.list }>
-                    <ListBox
-                        aria-label="Settings pages"
-                        size="md"
-                        selectionMode="single"
-                        disallowEmptySelection
-                        selectedKeys={ page.id }
-                        onSelectionChange={ (keys) => {
-                            const [id] = keys === 'all' ? [] : keys;
-                            const next = PAGES.find(candidate => candidate.id === id);
-
-                            if (next) ui.showSettingsPage(next.id);
-                        } }
-                    >
-                        { GROUPS.map(group => (
-                            <ListBoxSection key={ group.id }>
-                                <ListBoxHeader>{ group.label }</ListBoxHeader>
-                                { group.pages.map(item => (
-                                    <ListBoxItem key={ item.id } id={ item.id } icon={ item.icon } textValue={ item.label }>
-                                        { item.label }
-                                    </ListBoxItem>
-                                )) }
-                            </ListBoxSection>
-                        )) }
-                    </ListBox>
-                </PanelContent>
-            </Panel>
-
+        <SidebarLayout screen="settings" defaultWidth={ 270 } sidebar={ <PagesSidebar page={ page } /> }>
             <section className={ styles.main } aria-label={ page.label }>
-                <PanelHeader>{ page.label }</PanelHeader>
                 {/* The key restarts the scroll position when another page is chosen. */}
                 <Scrollable key={ page.id } className={ styles.scroll } contentClass={ styles.page }>
                     { page.render() }
                 </Scrollable>
             </section>
-        </div>
+        </SidebarLayout>
+    );
+}
+
+/** The heading, and the pages in their groups. */
+function PagesSidebar({ page }: { page: PageView }) {
+    const { ui } = useRootStore();
+
+    return (
+        <Panel side="left">
+            <SidebarHeading title="Settings" className={ styles.heading } />
+
+            <PanelContent contentClass={ styles.list }>
+                <ListBox
+                    aria-label="Settings pages"
+                    size="md"
+                    selectionMode="single"
+                    disallowEmptySelection
+                    selectedKeys={ page.id }
+                    onSelectionChange={ (keys) => {
+                        const [id] = keys === 'all' ? [] : keys;
+                        const next = PAGES.find(candidate => candidate.id === id);
+
+                        if (next) ui.showSettingsPage(next.id);
+                    } }
+                >
+                    { GROUPS.map(group => (
+                        <ListBoxSection key={ group.id }>
+                            <ListBoxHeader>{ group.label }</ListBoxHeader>
+                            { group.pages.map(item => (
+                                <ListBoxItem key={ item.id } id={ item.id } icon={ item.icon } textValue={ item.label }>
+                                    { item.label }
+                                </ListBoxItem>
+                            )) }
+                        </ListBoxSection>
+                    )) }
+                </ListBox>
+            </PanelContent>
+        </Panel>
     );
 }

@@ -286,6 +286,22 @@ describe('archived chats', () => {
         expect(rowOf('c-2').closest('[role="rowgroup"]')?.textContent).not.toContain('Archived');
     });
 
+    it('give the other chats a header of their own, Active, once the Archived group is there, below the new-chat row', async () => {
+        const headers = () => [...container.querySelectorAll('[role="rowgroup"]')].map(group => group.textContent?.startsWith('Active') ? 'Active' : group.textContent?.startsWith('Archived') ? 'Archived' : 'none');
+
+        await draw(() => ui().setShowArchived(true));
+
+        expect(container.textContent).not.toContain('Active');
+        expect(headers()).toEqual(['none']);
+
+        await archive('c-4', true);
+        await draw(() => ui().setShowArchived(true));
+
+        expect(headers()).toEqual(['none', 'Active', 'Archived']);
+        expect(rowOf('c-2').closest('[role="rowgroup"]')?.textContent).toContain('Active');
+        expect(rowOf('c-2').closest('[role="rowgroup"]')).not.toBe(rowOf('@new-chat').closest('[role="rowgroup"]'));
+    });
+
     it('keep their subthreads below them, inside the group', async () => {
         await archive('c-2', true);
         await draw(() => ui().setShowArchived(true));

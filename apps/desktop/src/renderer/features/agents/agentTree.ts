@@ -1,5 +1,6 @@
 import { ACTIVE_RUN_STATUSES, type Chat, type ChatId, type Run, type RunId } from '@clowdy/protocol';
 
+import type { StatusTone } from '../../shared';
 import type { RunNode } from '../../stores/runTree';
 
 /** One line of the Agents list: a chat, or a run nested under the chat that started it. */
@@ -134,6 +135,29 @@ export function describeRun(run: Run, activeChildCount: number): RowNote | undef
         }
         case 'running':
         case 'succeeded':
+            return undefined;
+    }
+}
+
+/**
+ * The dot on the icon of a chat's row, from what its orchestrator is doing: green while it works (or waits for its executors),
+ * blue when it has asked the person something, red when it failed. A run that is blocked or queued shows its usual tone.
+ * Nothing for a chat that has not started or whose run is over (done, stopped, interrupted): no news is no dot.
+ */
+export function chatDotTone(run: Run | undefined): StatusTone | undefined {
+    switch (run?.status) {
+        case 'running':
+        case 'waiting_children':
+            return 'success';
+        case 'waiting_user':
+            return 'accent';
+        case 'failed':
+            return 'danger';
+        case 'blocked':
+            return 'warning';
+        case 'queued':
+            return 'neutral';
+        default:
             return undefined;
     }
 }

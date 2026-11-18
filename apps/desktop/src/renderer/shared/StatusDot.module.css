@@ -13,6 +13,10 @@
     --clowdy-dot-color: var(--color-success);
 }
 
+.dot[data-tone='accent'] {
+    --clowdy-dot-color: var(--color-accent);
+}
+
 .dot[data-tone='warning'] {
     --clowdy-dot-color: var(--color-warning);
 }

@@ -4,6 +4,7 @@ import { PanelEmptyRow, PanelLoadingState } from '@clowdy/components/Panel';
 import { Text } from '@clowdy/components/Text';
 import { Plus } from '@clowdy/icons/14';
 
+import { SidebarHeading } from '../../shared';
 import styles from './DocsSidebar.module.css';
 import { DocsTree } from './DocsTree';
 import { openNewDocument } from './NewDocumentDialog';
@@ -14,12 +15,11 @@ import type { DocsStore } from './DocsStore';
 export function DocsSidebar({ store }: { store: DocsStore }) {
     return (
         <aside className={ styles.sidebar } aria-label="Documents">
-            <div className={ styles.heading }>
-                <Text variant="heading-3">Documents</Text>
+            <SidebarHeading title="Documents">
                 <Button variant="ghost" size="sm" iconOnly aria-label="New document" tooltip="New document" onPress={ () => openNewDocument(store) }>
                     <Plus />
                 </Button>
-            </div>
+            </SidebarHeading>
 
             <SearchInput
                 size="sm"
