@@ -24,6 +24,7 @@
 - Native sub-agent events over ACP (unstable) are not requested: there a sub-agent is an ordinary tool call in the parent's stream. `NativeAgents` serves the Claude and fake engines.
 - ACP usage: tokens from `PromptResponse.usage` when present; cost from the cumulative `usage_update.cost` (USD) minus the baseline kept per session in memory, none on the first turn of a resumed session. ACP limits: Claude's `_meta["_claude/rateLimit"]` on `usage_update` is read if an adapter sends it; every other ACP agent only has the reactive path through errors. The Claude engine keeps its own usage and rate limit events.
 - An ACP agent's environment is the daemon's minus `CLOWDY_*` (the daemon token and old secrets), `ELECTRON_*`, `NODE_OPTIONS`, `CLAUDECODE`-style markers, plus the resolved login-shell `PATH`. The Codex entry also scrubs its provider keys (`OPENAI_API_KEY`, `CODEX_API_KEY`) so billing never silently leaves the login; a key the owner wants goes in that agent's own `env` setting. The Claude engine keeps its strict allowlist (`buildClaudeEnv`).
+- Nested work has two kinds, and the UI draws one tree from `Run.parentRunId` and `Run.origin`. `spawned` is Clowdy's own `run_spawn`: a real run with its own session, process and slot, for any agent, and the child may be another agent. It is the delegation mechanism for every agent. `native` is an agent's own `Agent` or `Task` tool, with no process or slot of its own; it exists only where the engine reports it: Claude (SDK events) today, Codex in Stage 6. The generic ACP engine does not opt in to the unstable `subagents` capability, because only the Claude and Codex adapters implement it and neither is used; for the other ACP agents a sub-agent stays a tool call in the parent's stream (Cursor's `cursor/task`, Grok's `spawn_subagent` and OpenCode's child sessions can get a per-agent mapping later).
 - Process control is the old ladder: leader of its own group, `session/cancel`, stdin close, SIGTERM, SIGKILL; the `process` event is synthesized from the spawn.
 - Resume: `session/resume` when advertised, else `session/load` with replayed updates swallowed, else a fresh session. A failed resume also falls back to a fresh session with a warning.
 
@@ -168,4 +169,21 @@
 
 **Done when:** a run on Codex streams text and tools, calls the daemon's tools, resumes, reports usage and limits, and is cancelled with its process group gone, without `npx`.
 **Verify:** `bun test` in `apps/daemon`; a live handshake against the installed `codex` (no model call)
+**Commits:** None yet.
+
+## Stage 7 — Steer or queue a message
+
+**Depends on:** Stage 5. It can land before Stage 6.
+
+**This stage:** a message typed while an agent works can steer the running turn or wait for the next one. Today the Claude engine always steers and the ACP engine always queues. The engine session takes the choice, says which it supports, and the chat command carries it.
+
+- [ ] Complete
+  - [ ] `EngineSession.send(text, mode)` with `'steer' | 'queue'`, and a way for an engine to say which it can do
+  - [ ] Claude engine: steer pushes into the streaming input as now; queue holds the message until the turn ends
+  - [ ] ACP engine: steer through `_session/steering` when `initialize` advertises `_meta.steering.supported`; queue as the next prompt; a steer an agent cannot do falls back to queue with a note in the run
+  - [ ] The chat command takes an optional `mode`; the default is steer where supported
+  - [ ] Tests on the fake engines (the fake ACP agent learns steering)
+
+**Done when:** a message sent mid-turn reaches the Claude agent before its turn ends in steer mode and after it in queue mode, and the same for an ACP agent that advertises steering.
+**Verify:** `bun test` in `apps/daemon`; `bun run typecheck` in `packages/protocol` and `apps/desktop`
 **Commits:** None yet.
