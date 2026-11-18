@@ -17,14 +17,16 @@ export interface BoardColumn {
 export interface BoardProps {
     columns: BoardColumn[];
     runsOfTask: ReadonlyMap<TaskId, readonly TaskRun[]>;
-    selectedId: TaskId | null;
-    onSelect: (taskId: TaskId) => void;
+    /** The task the detail panel shows. */
+    openId: TaskId | null;
+    /** The tasks the keyboard selected, for a bulk action. */
+    selectedIds: ReadonlySet<TaskId>;
     /** A card was dropped on a column. Called also when the card is already there. */
     onMove: (taskId: TaskId, statusId: string) => void;
 }
 
-/** The board: a column per status, cards in them. A card dropped on another column changes the task's status. */
-export function Board({ columns, runsOfTask, selectedId, onSelect, onMove }: BoardProps) {
+/** The board: a column per status, cards in them. A card dropped on another column changes the task's status. The screen handles clicks and keys. */
+export function Board({ columns, runsOfTask, openId, selectedIds, onMove }: BoardProps) {
     const [dragging, setDragging] = useState<TaskId | null>(null);
     const [over, setOver] = useState<string | null>(null);
 
@@ -73,9 +75,9 @@ export function Board({ columns, runsOfTask, selectedId, onSelect, onMove }: Boa
                                 key={ task.id }
                                 task={ task }
                                 executors={ activeExecutors(runsOfTask.get(task.id)) }
-                                isSelected={ task.id === selectedId }
+                                isSelected={ selectedIds.has(task.id) }
+                                isOpen={ task.id === openId }
                                 isDragging={ task.id === dragging }
-                                onSelect={ () => onSelect(task.id) }
                                 onDragStart={ (event) => {
                                     event.dataTransfer.setData(DRAG_TYPE, task.id);
                                     event.dataTransfer.effectAllowed = 'move';

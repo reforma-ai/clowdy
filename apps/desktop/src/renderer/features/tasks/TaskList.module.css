@@ -39,3 +39,48 @@
     gap: var(--spacing-xs);
     overflow: hidden;
 }
+
+/* The open task: a primary border, drawn as an outline because a row has no box of its own to put a border on. */
+.row[data-open] {
+    outline: 1px solid var(--color-primary);
+    outline-offset: -1px;
+}
+
+.row[data-open] > td {
+    background: var(--color-secondary-muted-light);
+}
+
+/* Selected, for a bulk action: the same Tool Blue tint as a board card. After the open rule, so a row that is both shows the tint. */
+.row[data-selected] > td {
+    background: var(--color-interactive-muted);
+}
+
+/*
+ * The keyboard cursor is where focus is, and shows as the focus ring: Terracotta-muted, just inside the row's edge.
+ * A row cannot hold a shadow, so each cell draws its part; the open row's outline stays on top of it.
+ */
+.row:focus-visible:not([data-open]) {
+    outline: none;
+}
+
+.row:focus-visible > td {
+    --ring: var(--color-primary-muted-border);
+
+    box-shadow:
+        inset 0 var(--spacing-xs) 0 0 var(--ring),
+        inset 0 calc(-1 * var(--spacing-xs)) 0 0 var(--ring);
+}
+
+.row:focus-visible > td:first-child {
+    box-shadow:
+        inset 0 var(--spacing-xs) 0 0 var(--ring),
+        inset 0 calc(-1 * var(--spacing-xs)) 0 0 var(--ring),
+        inset var(--spacing-xs) 0 0 0 var(--ring);
+}
+
+.row:focus-visible > td:last-child {
+    box-shadow:
+        inset 0 var(--spacing-xs) 0 0 var(--ring),
+        inset 0 calc(-1 * var(--spacing-xs)) 0 0 var(--ring),
+        inset calc(-1 * var(--spacing-xs)) 0 0 0 var(--ring);
+}

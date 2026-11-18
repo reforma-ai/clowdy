@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
     activeExecutors,
     agentOptions,
+    boardColumns,
     createdTaskId,
     dependencyCandidates,
     externalLink,
@@ -16,11 +17,12 @@ import {
     runsByTask,
     startBlockedReason,
     taskActivity,
+    taskGrid,
     tasksSource,
     type TaskRun,
 } from './taskView';
 
-import type { Artifact, Run, RunTaskLink, Task } from '@clowdy/protocol';
+import type { Artifact, Run, RunTaskLink, Task, TaskStatus } from '@clowdy/protocol';
 
 const MINUTE = 60_000;
 
@@ -283,5 +285,46 @@ describe('createdTaskId', () => {
         expect(createdTaskId({ id: 't-9' })).toBe('t-9');
         expect(createdTaskId(undefined)).toBeUndefined();
         expect(createdTaskId({ task: {} })).toBeUndefined();
+    });
+});
+
+describe('task grid', () => {
+    const statuses: TaskStatus[] = [
+        { id: 'todo', name: 'To do', category: 'todo' },
+        { id: 'active', name: 'In progress', category: 'active' },
+        { id: 'done', name: 'Done', category: 'done' },
+    ];
+    const tasks = [
+        task(1, { statusId: 'done' }),
+        task(2, { statusId: 'todo' }),
+        task(3, { statusId: 'active' }),
+        task(4, { statusId: 'todo' }),
+        task(5, { statusId: 'removed' }),
+    ];
+
+    it('lists the board column by column in workflow order, empty columns included, tasks in task order', () => {
+        expect(taskGrid('board', tasks, statuses)).toEqual([['t-2', 't-4'], ['t-3'], ['t-1']]);
+        expect(taskGrid('board', [task(2, { statusId: 'done' })], statuses)).toEqual([[], [], ['t-2']]);
+    });
+
+    it('leaves out a task whose status is gone, as the board does', () => {
+        expect(taskGrid('board', tasks, statuses).flat()).not.toContain('t-5');
+        expect(boardColumns(statuses, tasks).flatMap(column => column.tasks).map(item => item.id)).not.toContain('t-5');
+    });
+
+    it('lists the list as one column in the order the list draws it', () => {
+        expect(taskGrid('list', [tasks[0], tasks[2], tasks[3]], statuses)).toEqual([['t-1', 't-3', 't-4']]);
+    });
+
+    it('has one empty column for an empty list and one per status for an empty board', () => {
+        expect(taskGrid('list', [], statuses)).toEqual([[]]);
+        expect(taskGrid('board', [], statuses)).toEqual([[], [], []]);
+    });
+
+    it('matches the columns the board draws', () => {
+        const columns = boardColumns(statuses, tasks);
+
+        expect(columns.map(column => column.status.id)).toEqual(['todo', 'active', 'done']);
+        expect(taskGrid('board', tasks, statuses)).toEqual(columns.map(column => column.tasks.map(item => item.id)));
     });
 });

@@ -185,7 +185,9 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 - Cmd/Ctrl+/ is dead inside text fields and the composer because it shares the `help.open` command with `?`. A second command with `inInputs: true` would fix it.
 - The chord HUD is centered on the window and covers the composer; the sync banner has a higher z-index.
 
-**Commits:** None yet.
+**Commits:**
+
+- `6ef40d5` feat(desktop): help overlay, chord HUD, key hints and section chords
 
 ## Stage 4 — Task cursor, selection and navigation
 
@@ -193,15 +195,15 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **This stage:** Today "selected", "open" and "focused" are one field. Build a generic `ListCursor` (a cursor, an anchor and a selection set over columns of ids, with its own move, range and select-all logic) that Tasks uses on the board (one column per status) and in the list (one column). It is generic so Stage 8 can reuse it. Wire it into the Tasks screen. Opening a task moves the panel, and an open panel follows the cursor. Hover moves the cursor on real pointer movement. The keys come from the keymap table. The commands live in a builder, `taskCommands`, so they can be tested without the screen.
 
-- [ ] Complete
-  - [ ] `ListCursor` with movement across columns, `Home` and `End`, toggle, range extend, select all, clear, and reconciliation when ids disappear (a filter or a delete)
-  - [ ] Tasks `Screen` owns one `ListCursor` and builds its grid from the visible tasks
-  - [ ] Board cards and list rows show three distinct states: cursor (the existing focus ring), selected (a tonal fill), open (the existing primary border)
-  - [ ] List rows and cards carry `data-task-id`, and the cursor moves real DOM focus to the matching element
-  - [ ] Our commands claim their keys before the React Aria `Table` type-ahead and arrow handling, and keys no command claims still reach React Aria
-  - [ ] `Enter`, the panel following the cursor, the two-step `Esc`, and hover-moves-cursor behave as in Decisions
-  - [ ] Row and card click, Cmd/Ctrl-click and Shift-click act on the cursor, selection and open task consistently with the keys
-  - [ ] `tasks.cursor.*`, `tasks.open`, `tasks.escape` and `tasks.select.*` registered in the `tasks` scope, which `Screen` pushes while mounted
+- [x] Complete
+  - [x] `ListCursor` with movement across columns, `Home` and `End`, toggle, range extend, select all, clear, and reconciliation when ids disappear (a filter or a delete)
+  - [x] Tasks `Screen` owns one `ListCursor` and builds its grid from the visible tasks
+  - [x] Board cards and list rows show three distinct states: cursor (the existing focus ring), selected (a tonal fill), open (the existing primary border)
+  - [x] List rows and cards carry `data-task-id`, and the cursor moves real DOM focus to the matching element
+  - [x] Our commands claim their keys before the React Aria `Table` type-ahead and arrow handling, and keys no command claims still reach React Aria
+  - [x] `Enter`, the panel following the cursor, the two-step `Esc`, and hover-moves-cursor behave as in Decisions
+  - [x] Row and card click, Cmd/Ctrl-click and Shift-click act on the cursor, selection and open task consistently with the keys
+  - [x] `tasks.cursor.*`, `tasks.open`, `tasks.escape` and `tasks.select.*` registered in the `tasks` scope, which `Screen` pushes while mounted
 
 **Files**
 
@@ -214,6 +216,21 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **Done when:** on `?fixtures=static&section=tasks`, `J` and `K` move a visible cursor in both views, `X` and `Shift+↓` select, `Enter` opens the panel, moving with the panel open changes the panel, and `Esc` closes then clears.
 **Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/desktop`, then screenshots of both views with `--eval` key dispatch, and a manual check with real keys of the Table type-ahead case (typing `c` on a list row must not jump rows)
+**Landed in the stage**
+
+- `ListCursor` (`hotkeys/listCursor.ts`): `columns`, `cursorId`, `anchorId`, observable `selected`; `setGrid(columns, prefer?)`, `setCursor`, `move`, `toggle`, `anchorAt`, `extend`, `extendTo`, `selectAll`, `clearSelection`, `targets`, and the pure `stepTo`, `rangeBetween`, `survivingCursor`, `locate`, `sameGrid`. Nothing in it mentions tasks, so Stage 8 reuses it.
+- `taskCommands(deps)` takes a `focusZone()` (`list` | `nav` | `other`, from `focusZoneOf`) so arrows, `Enter` and `X` never take a key from the header toggle, a panel control, an agent chip or the Rail. `tasks.select.extend` is two commands, `.down` and `.up`.
+- A key that acts on an unfocused cursor first reveals it. Cursor moves are pure DOM focus (`data-task-id`), so a `J` does not re-render the table.
+- Hover moves the cursor and focus, never the open panel. `J` and `K` stay off inside the detail panel, where `Esc` returns to the list. Both settled in the stage review.
+- `aria-pressed` (selected) and `aria-current` (open) on board cards. The open list row is not exposed, because React Aria strips `aria-current` there.
+- The RAC `Table` type-ahead survives: real keys `c a r - 2 6` on a row still reach CAR-26. The Risk fallback was not needed. The `Table` passes `data-*` through, so nothing in `packages/components/src/Table` changed.
+
+**Follow-ups**
+
+- Holding `J` with the panel open remounts `DetailPanel` and refetches `getTaskDetail` about 30 times a second. Fixed in Stage 5 by debouncing the fetch in `useTaskArtifacts`.
+- `Space` does nothing in the list and opens the task on the board. It is the out-of-scope peek key.
+- With the panel open every move still rebuilds the rows (300 rows took about 250 ms in happy-dom). Revisit only if lists reach hundreds.
+
 **Commits:** None yet.
 
 **Risk:** The React Aria `Table` may not allow the cursor to drive its row focus and multi-selection this way. If it does not, replace `TaskList`'s `Table` with rows built from the same cell components. The cursor model does not change. Record that as a scope change before leaving the stage.

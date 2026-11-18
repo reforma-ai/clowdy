@@ -21,7 +21,14 @@
     border-color: var(--color-secondary-muted-border-hover);
 }
 
+/* Selected, for a bulk action: a Tool Blue tint over the card's own plate, so the plate underneath still reads. */
 .card[data-selected] {
+    border-color: var(--color-interactive-muted-border);
+    background-image: linear-gradient(var(--color-interactive-muted), var(--color-interactive-muted));
+}
+
+/* Open in the detail panel. After the selected rule, so a card that is both keeps the primary border. */
+.card[data-open] {
     border-color: var(--color-primary);
 }
 
@@ -39,7 +46,7 @@
     font-weight: 500;
 }
 
-/* The title is the card's button: its hit area covers the whole card, and the agent chips sit above it. */
+/* The title is the card's button: its hit area covers the whole card, and the agent chips sit above it. The cursor is where focus is, and its ring is the focus ring below. */
 .title {
     @ruleset typography-text-md;
 

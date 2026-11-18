@@ -1,7 +1,8 @@
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
-import type { Actor, Artifact, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId } from '@clowdy/protocol';
+import type { Actor, Artifact, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId, TaskStatus } from '@clowdy/protocol';
 import type { StatusTone } from '../../shared';
+import type { TasksView } from '../../stores';
 
 /* ---------------------------------- Runs ---------------------------------- */
 
@@ -96,6 +97,23 @@ export function groupByStatus(tasks: readonly Task[]): Map<string, Task[]> {
     for (const task of tasks) groups.set(task.statusId, [...groups.get(task.statusId) ?? [], task]);
 
     return groups;
+}
+
+/** The board's columns: a column per status in workflow order, with the tasks of that status. A task whose status is gone sits in none. */
+export function boardColumns(statuses: readonly TaskStatus[], tasks: readonly Task[]): { status: TaskStatus; tasks: Task[] }[] {
+    const byStatus = groupByStatus(tasks);
+
+    return statuses.map(status => ({ status, tasks: byStatus.get(status.id) ?? [] }));
+}
+
+/**
+ * The ids the cursor walks, in the order the view draws them: the board's columns in workflow order, or the list's one column in the order it is given.
+ * `tasks` is what the view shows, in task order.
+ */
+export function taskGrid(view: TasksView, tasks: readonly Task[], statuses: readonly TaskStatus[]): TaskId[][] {
+    if (view === 'board') return boardColumns(statuses, tasks).map(column => column.tasks.map(task => task.id));
+
+    return [tasks.map(task => task.id)];
 }
 
 /* ------------------------------- Dependencies ------------------------------ */
