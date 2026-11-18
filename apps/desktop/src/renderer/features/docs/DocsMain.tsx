@@ -6,6 +6,7 @@ import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { AttentionTriangle, Page, Save } from '@clowdy/icons/14';
 
+import { commandTooltip } from '../../hotkeys';
 import { ConflictView } from './ConflictView';
 import { DocBody } from './DocBody';
 import styles from './DocsMain.module.css';
@@ -20,8 +21,6 @@ const TABS: ReadonlyArray<{ value: DocsTab; label: string }> = [
     { value: 'markdown', label: 'Markdown' },
     { value: 'preview', label: 'Preview' },
 ];
-
-const SAVE_SHORTCUT = navigator.userAgent.includes('Mac') ? '⌘S' : 'Ctrl+S';
 
 /** The right side: the open document, or why there is none. */
 export function DocsMain({ store }: { store: DocsStore }) {
@@ -73,7 +72,7 @@ function OpenDocument({ store, buffer }: { store: DocsStore; buffer: DocBuffer }
                     variant="bordered"
                     isDisabled={ !buffer.dirty || conflict !== null }
                     isPending={ buffer.saving }
-                    tooltip={ `Save (${ SAVE_SHORTCUT })` }
+                    tooltip={ commandTooltip('Save', 'docs.save') ?? 'Save' }
                     onPress={ () => void store.save(buffer) }
                 >
                     <Save />

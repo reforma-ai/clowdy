@@ -5,10 +5,12 @@ import { Panel, PanelContent, PanelEmptyRow, PanelHeader } from '@clowdy/compone
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { Message, More, Plus } from '@clowdy/icons/14';
-import { useState, type MouseEvent } from 'react';
+import { useRef, useState, type MouseEvent } from 'react';
 
+import { useCommands, useHotkeyScope } from '../../hotkeys';
 import { StatusDot } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
+import { chatCommands, CHATS_SCOPE } from './chatCommands';
 import styles from './ChatList.module.css';
 import { ChatMenu } from './ChatMenu';
 import { isRunActive } from './chatRun';
@@ -32,6 +34,7 @@ export function ChatList({ selectedId }: { selectedId: ChatId | undefined }) {
     const { start, isCreating } = useStartChat();
     const [renamingId, setRenamingId] = useState<ChatId | null>(null);
     const [menuChat, setMenuChat] = useState<Chat | null>(null);
+    const list = useRef<HTMLDivElement>(null);
     const contextMenu = useContextMenu();
     const runOf = (chat: Chat) => (chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined);
     const actions: ChatActions = {
@@ -39,6 +42,13 @@ export function ChatList({ selectedId }: { selectedId: ChatId | undefined }) {
         rename: chat => void setTimeout(() => setRenamingId(chat.id), 150),
         remove: chat => deleteChat(root, chat, runOf(chat) !== undefined),
     };
+
+    useHotkeyScope(CHATS_SCOPE);
+    useCommands(CHATS_SCOPE, chatCommands({
+        list: () => list.current,
+        ids: () => project.chatList.map(chat => chat.id),
+        openId: () => selectedId,
+    }));
 
     // Right-click anywhere on a row: the rows are the list's own elements, so the click is found by its row's key.
     const openContextMenu = (event: MouseEvent) => {
@@ -67,7 +77,7 @@ export function ChatList({ selectedId }: { selectedId: ChatId | undefined }) {
                 { project.chatList.length === 0
                     ? <PanelEmptyRow>No chats yet</PanelEmptyRow>
                     : (
-                        <div onContextMenu={ openContextMenu }>
+                        <div ref={ list } onContextMenu={ openContextMenu }>
                             <GridList
                                 aria-label="Chats"
                                 size="md"

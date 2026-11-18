@@ -213,6 +213,21 @@ export function useListHoverHighlight(
             });
         };
 
+        // Focus the list's keys did not move: a command that owns a key (`J` and `K`) stops its keydown before it reaches the list and moves the focus itself.
+        // Pointer focus has no `data-focus-visible`, so it leaves the plate where the pointer put it.
+        const onFocusIn = () => {
+            requestAnimationFrame(() => {
+                const row = keyboardRow();
+
+                if (!row) {
+                    return;
+                }
+
+                followKeyboard = true;
+                show(row);
+            });
+        };
+
         const finishScroll = () => {
             scrolling = false;
 
@@ -253,6 +268,7 @@ export function useListHoverHighlight(
         root.addEventListener('pointermove', onPointerMove);
         root.addEventListener('pointerleave', onPointerLeave);
         root.addEventListener('keydown', onKeyDown);
+        root.addEventListener('focusin', onFocusIn);
         root.addEventListener('scroll', onScroll, { passive: true });
 
         if (port !== root) {
@@ -268,6 +284,7 @@ export function useListHoverHighlight(
             root.removeEventListener('pointermove', onPointerMove);
             root.removeEventListener('pointerleave', onPointerLeave);
             root.removeEventListener('keydown', onKeyDown);
+            root.removeEventListener('focusin', onFocusIn);
             root.removeEventListener('scroll', onScroll);
             port.removeEventListener('scroll', onScroll);
             hide();

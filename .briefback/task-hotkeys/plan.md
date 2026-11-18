@@ -231,7 +231,9 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 - `Space` does nothing in the list and opens the task on the board. It is the out-of-scope peek key.
 - With the panel open every move still rebuilds the rows (300 rows took about 250 ms in happy-dom). Revisit only if lists reach hundreds.
 
-**Commits:** None yet.
+**Commits:**
+
+- `4dcd6de` feat(desktop): keyboard cursor and multi-select for tasks
 
 **Risk:** The React Aria `Table` may not allow the cursor to drive its row focus and multi-selection this way. If it does not, replace `TaskList`'s `Table` with rows built from the same cell components. The cursor model does not change. Record that as a scope change before leaving the stage.
 
@@ -318,10 +320,10 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **This stage:** It tests the architecture against more than one section. Each section pushes its own scope, registers `J` and `K` as aliases of the arrows, `Enter` and `Esc`, and shows hints, built on `ListCursor` where the list is ours and on the existing keys where the list is an ARIA tree. Re-read each file's current key handling when the stage starts.
 
-- [ ] Complete
-  - [ ] Chats list, Agents run tree and Docs tree each register a scope with their movement, open and close commands
-  - [ ] Existing local keys (the tree keys, `Mod+S` in Docs, the composer's Enter) keep working and do not collide with the registry
-  - [ ] Hints and the help overlay show the new commands
+- [x] Complete
+  - [x] Chats list, Agents run tree and Docs tree each register a scope with their movement, open and close commands
+  - [x] Existing local keys (the tree keys, `Mod+S` in Docs, the composer's Enter) keep working and do not collide with the registry
+  - [x] Hints and the help overlay show the new commands
 
 **Files**
 
@@ -331,4 +333,17 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **Done when:** `J`, `K`, `Enter` and `Esc` work in the three lists as in Tasks.
 **Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/desktop`
+**Landed in the stage**
+
+- `J` and `K` (`chats.cursor.*`, `agents.cursor.*`, `docs.cursor.*`) in the list that has focus, built by `listMoveCommands` in `hotkeys/listNavigation.ts` (`listFocusOf` decides the zone: a row's own controls, search inputs, the composer, the editor and dialogs never lose their keys). Each section pushes its scope and registers its commands in `chatCommands`, `runCommands`, `docCommands`.
+- `Home`, `End`, `Enter` and `Space` already work natively in all three lists (React Aria `GridList`, the two ARIA trees), and no section has a panel or selection that `Esc` would close, so none of them got a command.
+- The Docs `Mod+S` window listener moved into `docs.save` (`$mod+s`, `inInputs: true`, live only while the document is dirty with no conflict). The Save tooltip shows its key through `commandTooltip`.
+- `useListHoverHighlight` follows keyboard focus with a `focusin` handler, so the Chats highlight no longer depends on a `keydown` the dispatcher claims.
+- `keymap.test.ts` registers the app, tasks, chats, agents and docs commands together and asserts no conflicts on both platforms.
+
+**Follow-ups**
+
+- The help overlay dims every focus-gated command, because `when()` reads `document.activeElement` and the overlay's search field has focus. Fixed in Stage 6 with a separate `focus` gate that the dispatcher checks and the overlay ignores.
+- `focusZoneOf` in `taskCommands.ts` can delegate to `listFocusOf`. One behavior change: focusable elements in the region but outside a task (column header buttons) become `other`.
+
 **Commits:** None yet.
