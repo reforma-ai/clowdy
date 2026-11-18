@@ -1,14 +1,18 @@
+import { Button } from '@clowdy/components/Button';
 import { useStickToBottom } from '@clowdy/components/hooks';
-import { Fragment } from 'react';
+import { ArrowDown } from '@clowdy/icons/14';
+import { Fragment, useMemo, useState } from 'react';
 
-import { AgentAvatar } from './AgentAvatar';
 import { AssistantMessage } from './AssistantMessage';
 import { ErrorLine } from './ErrorLine';
 import { NoteLine } from './NoteLine';
 import { QuestionCard } from './QuestionCard';
+import { NO_LINKS, StreamLinksContext, type StreamLinks } from './StreamLinks';
 import styles from './StreamView.module.css';
 import { ToolCard } from './ToolCard';
+import { foldFinishedWork } from './turns';
 import { UserBubble } from './UserBubble';
+import { Worked } from './Worked';
 import { WorkingLine } from './WorkingLine';
 
 import type { StreamItem } from '@clowdy/protocol';
@@ -16,15 +20,8 @@ import type { ReactNode } from 'react';
 
 export interface StreamViewProps {
     items: StreamItem[];
-    /** The name over the agent's messages: `Orchestrator`, `Executor 07`. */
-    agentName: string;
-    /** Beside the agent's messages. Defaults to the orchestrator's avatar. */
-    avatar?: ReactNode;
-    /**
-     * Who the `user` items come from when they are not the person: the run that handed this one its assignment.
-     * Without it they are the person's own messages, as bubbles on the right.
-     */
-    sender?: { name: string; avatar?: ReactNode };
+    /** The run is going, or waits for the person: its latest turn stays open. Once it is over, that turn folds its work too. */
+    active?: boolean;
     /** The run is going: ends the stream with a live line. A string replaces the default "Working…". */
     working?: boolean | string;
     /** The person answered a `question` item. */
@@ -33,35 +30,32 @@ export interface StreamViewProps {
     emptyState?: ReactNode;
     /** Rendered right after an item, in the stream's own flow: the progress card of a chat sits after a message. */
     decorate?: (item: StreamItem) => ReactNode;
+    /** What the text may point at in the app: a task key becomes a chip that opens the task. */
+    links?: StreamLinks;
 }
 
-/** A run's stream: messages, tool calls, notes, questions and errors, kept scrolled to the end while it is there. */
-export function StreamView({ items, agentName, avatar = <AgentAvatar />, sender, working, onAnswer, emptyState, decorate }: StreamViewProps) {
-    const { scrollRef, contentRef } = useStickToBottom();
+/**
+ * A run's stream: the person's messages, the agent's, tool calls, notes, questions and errors, kept scrolled to the end
+ * while it is there. A turn that is over shows what was asked and the answer, and the work between them under one
+ * "Worked for" line.
+ */
+export function StreamView({ items, active = false, working, onAnswer, emptyState, decorate, links = NO_LINKS }: StreamViewProps) {
+    const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
+    // What was there when the stream first showed is not news: only a message that comes later rises into place.
+    const [shown] = useState(() => new Set(items.map(item => item.id)));
+    const blocks = useMemo(() => foldFinishedWork(items, active), [items, active]);
     const last = items.at(-1)?.body;
     // A message that is still arriving carries its own marker.
     const showWorking = Boolean(working) && !(last?.kind === 'assistant' && !last.done);
 
-    const renderItem = (item: StreamItem, index: number): ReactNode => {
+    const renderItem = (item: StreamItem): ReactNode => {
         const { body } = item;
 
         switch (body.kind) {
             case 'user':
-                return sender
-                    ? <AssistantMessage name={ sender.name } avatar={ sender.avatar } at={ item.at } text={ body.text } />
-                    : <UserBubble text={ body.text } at={ item.at } />;
+                return <UserBubble text={ body.text } at={ item.at } animate={ !shown.has(item.id) } />;
             case 'assistant':
-                return (
-                    <AssistantMessage
-                        name={ agentName }
-                        avatar={ avatar }
-                        at={ item.at }
-                        text={ body.text }
-                        streaming={ !body.done }
-                        // The next message of a run in a row leaves the header out.
-                        showHeader={ items[index - 1]?.body.kind === undefined || items[index - 1].body.kind === 'user' }
-                    />
-                );
+                return <AssistantMessage text={ body.text } streaming={ !body.done } />;
             case 'tool':
                 return <ToolCard call={ body } />;
             case 'note':
@@ -74,17 +68,42 @@ export function StreamView({ items, agentName, avatar = <AgentAvatar />, sender,
     };
 
     return (
-        <div ref={ scrollRef } className={ styles.scroll }>
-            <div ref={ contentRef } className={ styles.content }>
-                { items.length === 0 && emptyState }
-                { items.map((item, index) => (
-                    <Fragment key={ item.id }>
-                        { renderItem(item, index) }
-                        { decorate?.(item) }
-                    </Fragment>
-                )) }
-                { showWorking && <WorkingLine text={ typeof working === 'string' ? working : undefined } /> }
+        <StreamLinksContext value={ links }>
+            <div className={ styles.root }>
+                <div ref={ scrollRef } className={ styles.scroll }>
+                    <div ref={ contentRef } className={ styles.content }>
+                        { items.length === 0 && emptyState }
+                        { blocks.map(block => (block.kind === 'worked'
+                            ? (
+                                <Worked key={ block.key } label={ block.label }>
+                                    { block.items.map(item => <Fragment key={ item.id }>{ renderItem(item) }</Fragment>) }
+                                </Worked>
+                            )
+                            : (
+                                <Fragment key={ block.item.id }>
+                                    { renderItem(block.item) }
+                                    { decorate?.(block.item) }
+                                </Fragment>
+                            ))) }
+                        { showWorking && <WorkingLine text={ typeof working === 'string' ? working : undefined } /> }
+                    </div>
+                </div>
+
+                <Button
+                    variant="bordered"
+                    color="secondary"
+                    size="sm"
+                    iconOnly
+                    rounded
+                    className={ styles.toLatest }
+                    data-hidden={ isAtBottom || undefined }
+                    tooltip="Scroll to latest messages"
+                    aria-label="Scroll to latest messages"
+                    onPress={ () => scrollToBottom() }
+                >
+                    <ArrowDown />
+                </Button>
             </div>
-        </div>
+        </StreamLinksContext>
     );
 }

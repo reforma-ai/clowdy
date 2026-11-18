@@ -1,5 +1,5 @@
 .note {
-    padding-left: calc(var(--spacing-28) + var(--spacing-lg));
+    padding-inline: var(--spacing-sm);
 }
 
 .time {

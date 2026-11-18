@@ -356,7 +356,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         [92, { kind: 'tool', toolCallId: 'tc-2', name: 'Read', state: 'done', input: { file_path: 'src/booking/index.tsx' }, output: 'export function Booking() {\n    return <Steps />;\n}' }],
         [90, { kind: 'tool', toolCallId: 'tc-3', name: 'create_task', state: 'done', input: { title: 'Update the booking form', dependsOn: ['CAR-22'] }, output: { key: 'CAR-24' } }],
         [89, { kind: 'note', text: '2 executors started' }],
-        [60, { kind: 'assistant', done: true, text: 'Executor 09 finished the schema. Executor 10 failed on the pricing rules; I will look at its report before I retry.' }],
+        [60, { kind: 'assistant', done: true, text: 'Executor 09 finished the schema in `src/db/schema.ts`. Executor 10 failed on the pricing rules; I will look at its report before I retry.\n\n### What changed\n\n| File | Change |\n| --- | --- |\n| `src/db/schema.ts` | adds the `bookings` table |\n| `src/booking/price.ts` | weekend surcharge |\n\n```src/booking/price.ts\nexport const weekendRate = 1.15;\n```\n\n> The price must be visible before the person commits.\n\nSee [the decision](https://example.com/decision) and `CAR-23`.' }],
         [41, { kind: 'error', text: 'Executor 10 failed: Typecheck failed in 3 files and the run could not repair them.' }],
         [21, { kind: 'note', text: '2 executors started' }],
         [20, { kind: 'assistant', done: true, text: 'Executor 07 is on the form, and Executor 08 asked which mail provider to use. I am waiting on you for that one.' }],
@@ -431,7 +431,11 @@ export function createFixtureData(now = Date.now()): FixtureData {
 
     stream('r-orch-2', [
         [60 * 24 * 5, { kind: 'user', text: 'Build the first version: fleet list, booking page, price calculation.' }],
-        [60 * 24 * 4, { kind: 'assistant', done: true, text: 'The booking page, the fleet list and the price calculation are in.' }],
+        [60 * 24 * 5 - 1, { kind: 'assistant', done: true, text: 'I will start with the fleet list, then the booking page.' }],
+        [60 * 24 * 5 - 2, { kind: 'tool', toolCallId: 'tc-o2-1', name: 'Read', state: 'done', input: { file_path: 'src/fleet/index.tsx' }, output: 'export function Fleet() {}' }],
+        [60 * 24 * 5 - 9, { kind: 'tool', toolCallId: 'tc-o2-2', name: 'create_task', state: 'done', input: { title: 'Fleet list' }, output: { key: 'CAR-15' } }],
+        [60 * 24 * 5 - 12, { kind: 'note', text: '1 executor started' }],
+        [60 * 24 * 5 - 14, { kind: 'assistant', done: true, text: 'The booking page, the fleet list and the price calculation are in.' }],
     ]);
 
     const docs: Record<string, string> = {

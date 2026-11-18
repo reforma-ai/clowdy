@@ -3,8 +3,9 @@ import { Button } from '@clowdy/components/Button';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle } from '@clowdy/icons/14';
+import { useMemo } from 'react';
 
-import { useChatStream, useProjectState, useRootStore } from '../../stores';
+import { useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { StreamView } from '../../stream';
 import { ChatHeader } from './ChatHeader';
 import { isRunActive, liveLine } from './chatRun';
@@ -20,6 +21,12 @@ import type { Chat } from '@clowdy/protocol';
 export function ChatView({ chat }: { chat: Chat }) {
     const root = useRootStore();
     const project = useProjectState();
+    const ui = useProjectUi();
+    // A task key in a message is a chip that opens the task.
+    const links = useMemo(() => ({
+        taskOfKey: (key: string) => project.taskList.find(task => task.key === key),
+        onOpenTask: (taskId: string) => ui.openTask(taskId),
+    }), [project, ui]);
     const stream = useChatStream(chat);
     const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
     const progress = chatProgress(project.tasksOfChat(chat.id), project.statuses);
@@ -53,8 +60,9 @@ export function ChatView({ chat }: { chat: Chat }) {
             { (!stream || stream.status === 'ready') && (
                 <StreamView
                     items={ items }
-                    agentName="Orchestrator"
+                    active={ isRunActive(run) }
                     working={ isRunActive(run) && liveLine(run.status) }
+                    links={ links }
                     emptyState={ <EmptyChat /> }
                     decorate={ item => (progress && item.id === cardAfter ? <ProgressCard progress={ progress } /> : null) }
                     // A question the orchestrator no longer waits on (stopped, interrupted) is shown but cannot be answered.

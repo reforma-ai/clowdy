@@ -27,7 +27,7 @@ export function RunDetail({ run }: { run: Run }) {
     return (
         <section className={ styles.detail } aria-label={ run.name }>
             <RunHeader run={ run } parent={ parent } />
-            <RunStream run={ run } parent={ parent } />
+            <RunStream run={ run } />
             <footer className={ styles.footer }>
                 <Text variant="sm" color="secondary">Viewing agent work</Text>
             </footer>
@@ -97,7 +97,7 @@ function RunHeader({ run, parent }: { run: Run; parent: Run | undefined }) {
     );
 }
 
-function RunStream({ run, parent }: { run: Run; parent: Run | undefined }) {
+function RunStream({ run }: { run: Run }) {
     const root = useRootStore();
     const stream = useRunStream(run.id);
 
@@ -131,10 +131,7 @@ function RunStream({ run, parent }: { run: Run; parent: Run | undefined }) {
     return (
         <StreamView
             items={ stream.items }
-            agentName={ run.name }
-            avatar={ <AgentAvatar role={ run.role } /> }
-            // A sub-agent's first message is its assignment, from the run that started it.
-            sender={ run.parentRunId ? { name: parent?.name ?? 'Parent run', avatar: <AgentAvatar role={parent?.role ?? 'orchestrator'} /> } : undefined }
+            active={ !isTerminalRunStatus(run.status) }
             working={ run.status === 'running' || (run.status === 'waiting_children' && 'Waiting for sub-agents…') }
             onAnswer={ run.status === 'waiting_user' ? answer : undefined }
             emptyState={ <Text color="secondary">This run has not written anything yet.</Text> }

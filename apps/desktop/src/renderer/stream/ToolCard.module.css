@@ -1,43 +1,83 @@
 @reference '@clowdy/styles/rulesets';
 
-.card {
-    border: 1px solid var(--color-secondary-muted-border);
-    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-    min-width: 0;
-    overflow: hidden;
-}
-
-.head {
+/* A tool call is a line of the turn, not a card: the icon, what it does, and a thin rule down to the next call. */
+.root {
     @ruleset typography-text-md;
 
+    position: relative;
     display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
+    flex-direction: column;
+    gap: var(--spacing-sm);
     width: 100%;
-    min-height: var(--spacing-32);
-    padding: var(--spacing-xs) var(--spacing-lg);
-    border: 0;
-    background-color: transparent;
-    color: var(--color-text);
-    font-family: inherit;
-    text-align: left;
-    cursor: pointer;
-    transition: background-color 150ms ease-out;
+    max-width: 100%;
+    padding-inline: var(--spacing-sm);
 }
 
-.head:hover {
-    background-color: var(--color-secondary-muted-light);
+/* Calls in a row sit close together; the stream's own gap is for messages. */
+.root + .root {
+    margin-top: calc(var(--spacing-xs) - var(--spacing-lg));
+}
+
+.header {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--spacing-sm);
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    line-height: var(--spacing-20);
+    text-align: start;
+    cursor: pointer;
+    user-select: none;
+    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    transition: color 0.15s ease;
+}
+
+/* The rule that joins this line to the next one. */
+.header::before {
+    content: '';
+    position: absolute;
+    z-index: 1;
+    left: calc(var(--spacing-sm) + var(--spacing-sm));
+    top: 26px;
+    bottom: 0;
+    width: 1px;
+    background: var(--color-secondary-border);
+    pointer-events: none;
+}
+
+.root:has(+ .root) .header::before {
+    bottom: -10px;
+}
+
+.header:hover,
+.header:focus-visible {
+    color: var(--color-secondary-content);
 }
 
 .icon {
     display: inline-flex;
     flex-shrink: 0;
+    align-self: flex-start;
+    align-items: center;
+    height: var(--spacing-20);
     color: var(--color-secondary-muted-text);
 }
 
-.verb {
+.failedIcon {
+    opacity: 0.4;
+}
+
+.label {
     flex-shrink: 0;
+    align-self: flex-start;
+    white-space: nowrap;
 }
 
 .chip {
@@ -68,37 +108,34 @@
     color: var(--color-danger-text);
 }
 
-.state {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    margin-left: auto;
-}
-
-.done {
-    color: var(--color-success-text);
-}
-
-.failed {
-    color: var(--color-danger-text);
-}
-
+/* Shows on hover, or while the call is open. */
 .chevron {
     flex-shrink: 0;
-    color: var(--color-secondary-muted-text);
-    transition: rotate 150ms ease-out;
+    color: currentcolor;
+    opacity: 0;
+    transition: opacity 0.15s ease;
 }
 
-.card[data-open] .chevron {
-    rotate: 180deg;
+.header:hover .chevron,
+.header:focus-visible .chevron,
+.chevron[aria-expanded='true'] {
+    opacity: 1;
 }
 
-.body {
+/* Pulls the root's gap into this box, so closing it does not snap the leftover space. */
+.collapse {
+    margin-top: calc(-1 * var(--spacing-sm));
+}
+
+.content {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-md);
-    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
-    border-top: 1px solid var(--color-secondary-muted-border);
+    gap: var(--spacing-sm);
+    min-width: 0;
+    max-width: 100%;
+    margin-left: var(--spacing-sm);
+    padding-top: var(--spacing-sm);
+    padding-left: var(--spacing-14);
 }
 
 .section {

@@ -1,14 +1,16 @@
-import { Marker, MarkerContent, MarkerIcon } from '@clowdy/components/Marker';
+import { Shimmer } from '@clowdy/components/Shimmer';
 import { Spinner } from '@clowdy/components/Spinner';
 
-import styles from './NoteLine.module.css';
+import styles from './ToolCard.module.css';
 
-/** The live line at the end of a stream whose run is still going. */
+/** The live line at the end of a stream whose run is still going: the same line a tool call is, with the wait shimmering. */
 export function WorkingLine({ text = 'Working…' }: { text?: string }) {
     return (
-        <Marker className={ styles.note } role="status">
-            <MarkerIcon><Spinner size="xs" /></MarkerIcon>
-            <MarkerContent shimmer>{ text }</MarkerContent>
-        </Marker>
+        <div className={ styles.root } role="status" aria-label={ text }>
+            <div className={ styles.header } style={ { cursor: 'default' } }>
+                <span className={ styles.icon }><Spinner size="xs" /></span>
+                <Shimmer as="span" className={ styles.label } duration={ 1 }>{ text }</Shimmer>
+            </div>
+        </div>
     );
 }
