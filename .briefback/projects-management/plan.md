@@ -24,7 +24,7 @@
 - `GET /v1/projects/info` answers, for every project, whether its folder exists, its git remote and branch, and its chat, task and unfinished-run counts. The Projects page reads it when it opens; nothing announces it.
 - `project.update` settings fields take `null` to clear.
 - The personal space's system prompt says it has no repository, instead of "repository at …".
-- The new migration is version 5 here; the unmerged chat-model work on the main checkout also adds a version 5, so whichever merges second renumbers its migration.
+- The migration is version 7: the chat-model (5) and context (6) migrations landed on `main` first, so this branch renumbered its own when it was rebased.
 
 **Reuse:** `createProject`/`openProject`/`updateProject` and `requireProject` (`apps/daemon/src/domain/projects.ts`), `git()` (`apps/daemon/src/domain/git.ts`), `deleteChat` and `AttachmentsService.removeOfChat` as the model for cleanup, `FolderWatchers` and `DocsService` watchers, `perform` (`features/chats/commands.ts`), `openConfirmModal` (`@clowdy/components/modals`), `SortableList`, `SettingsField`, `isUsableProvider` and the provider names (`features/settings/providers/providerView.ts`), `openCreateProject`/`openExistingProject` (`shell/projectDialogs.tsx`).
 
@@ -74,7 +74,8 @@
 **Verify:** `bun run --cwd apps/daemon test`, `bun run typecheck`, `bun run lint`
 **Commits:**
 
-- `bb631bb` feat(daemon): add the personal space and let projects be removed, moved and reordered (protocol and daemon; the renderer's compile fixes for the new `Project` shape landed in Stage 2's commit, since they share `fixtureData.ts`, so the desktop typecheck passes from `9a6f14a` on)
+- `03ba940` feat(daemon): add the personal space and let projects be removed, moved and reordered (protocol and daemon; the renderer's compile fixes for the new `Project` shape landed in Stage 2's commit, since they share `fixtureData.ts`, so the desktop typecheck passes from `e9a72be` on)
+- test(daemon): start the reset clock of the race test after the daemon is up (the daemon now makes the personal space at start, which made a clock taken before it too early)
 
 ## Stage 2 — Renderer state, transport and fixtures
 
@@ -103,7 +104,7 @@
 **Verify:** `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`
 **Commits:**
 
-- `9a6f14a` feat(desktop): keep the personal space first and drop removed projects in the stores and fixtures
+- `e9a72be` feat(desktop): keep the personal space first and drop removed projects in the stores and fixtures
 
 ## Stage 3 — Project select
 
@@ -125,7 +126,7 @@
 **Verify:** `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`, a screenshot in fixtures mode
 **Commits:**
 
-- `2fbe284` feat(desktop): show the personal space and Manage projects in the project select
+- `e34747c` feat(desktop): show the personal space and Manage projects in the project select
 
 ## Stage 4 — Settings > Projects
 
@@ -150,7 +151,7 @@
 **Verify:** `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`, screenshots in fixtures mode of the list and a project page
 **Commits:**
 
-- `6313ea0` feat(desktop): add the Projects page to Settings
+- `9d8d6ff` feat(desktop): add the Projects page to Settings
 
 ## Stage 5 — Docs and the checklist
 
