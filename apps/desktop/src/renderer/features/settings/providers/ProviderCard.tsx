@@ -3,18 +3,20 @@ import { Text } from '@clowdy/components/Text';
 
 import { SettingsBlock } from '../ui/SettingsBlock';
 import { SettingsCard } from '../ui/SettingsCard';
-import { AccountRow } from './AccountRow';
+import { AccountLine, SignInAction, SignInStatus } from './Account';
 import styles from './ProviderCard.module.css';
 import { ProviderIcon } from './ProviderIcon';
 import { ProviderSettings } from './ProviderSettings';
 import { UsageBlock } from './UsageBlock';
+import { RefreshUsageButton } from './UsageRows';
 import { useAgentCommands } from './useAgentCommands';
 
 import type { AgentInfo } from '@clowdy/protocol';
 
 /**
- * One provider: its mark, name and switch; who is signed in with the button to sign in; what is left of its plan; and its
- * settings. A provider that is off or not installed shows less, because there is nothing to sign in to or to read.
+ * One provider. Its first block is one row: the mark; the name over who is signed in; and at the end the button that reads the usage
+ * again, the sign-in button and the switch. A running sign-in, or how it ended, goes under the name. Then what is left of its plan, and
+ * its settings. A provider that is off or not installed shows less, because there is nothing to sign in to or to read.
  */
 export function ProviderCard({ agent }: { agent: AgentInfo }) {
     const commands = useAgentCommands(agent.id);
@@ -25,28 +27,36 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
     return (
         <SettingsCard as="section" divided aria-label={ agent.name }>
             <SettingsBlock className={ styles.identity }>
-                <header className={ styles.header }>
-                    <span className={ styles.icon }><ProviderIcon agentId={ agent.id } size={ 22 } /></span>
-                    <div className={ styles.title }>
-                        <Text weight="medium">{ agent.name }</Text>
+                <span className={ styles.icon }><ProviderIcon agentId={ agent.id } size={ 24 } /></span>
+
+                <div className={ styles.who }>
+                    <header className={ styles.title }>
+                        <Text weight="medium" truncate title={ agent.name }>{ agent.name }</Text>
                         { agent.version && <Text variant="xs" color="secondary" className={ styles.version }>{ `v${ agent.version }` }</Text> }
-                    </div>
+                    </header>
+                    <AccountLine agent={ agent } />
+                </div>
+
+                <div className={ styles.actions }>
+                    { usage && <RefreshUsageButton variant="transparent" size="sm" isRefreshing={ commands.pending.has('refresh') } onRefresh={ () => void commands.refresh() } /> }
+                    <SignInAction agent={ agent } commands={ commands } />
                     <Switch
                         size="sm"
+                        className={ styles.switch }
                         isSelected={ isOn }
                         isDisabled={ !installed }
                         isPending={ commands.pending.has('enabled') }
                         aria-label={ `Use ${ agent.name } in Clowdy` }
                         onChange={ enabled => void commands.setEnabled(enabled) }
                     />
-                </header>
+                </div>
 
-                <AccountRow agent={ agent } commands={ commands } />
+                <SignInStatus agent={ agent } commands={ commands } className={ styles.status } />
             </SettingsBlock>
 
             { usage && (
                 <SettingsBlock>
-                    <UsageBlock usage={ usage } isRefreshing={ commands.pending.has('refresh') } onRefresh={ () => void commands.refresh() } />
+                    <UsageBlock usage={ usage } />
                 </SettingsBlock>
             ) }
 

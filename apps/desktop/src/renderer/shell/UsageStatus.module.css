@@ -12,7 +12,7 @@
 }
 
 /*
- * The popover is wider than the menus: a bar needs room, and under it the percent used and the time to reset side by side. It opens under the badge that was
+ * The popover is wider than the menus: a bar needs room, and over it the label, the percent used and the time to reset on one line. It opens under the badge that was
  * pressed, so its top edge reaches into the band's window-drag area; the popover takes no part in dragging.
  */
 .popover {

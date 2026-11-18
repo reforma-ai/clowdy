@@ -1,23 +1,13 @@
-.account {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-}
-
-.line {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-lg);
-    min-height: var(--spacing-32);
-}
-
 .who {
     display: flex;
-    flex: 1;
     align-items: center;
     gap: var(--spacing-md);
     min-width: 0;
+}
+
+/* The plan is short and says what the account is: a long e-mail gives way to it, not the other way round. */
+.plan {
+    flex-shrink: 0;
 }
 
 .session {
@@ -46,11 +36,6 @@
     align-items: center;
     gap: var(--spacing-md);
     max-width: 100%;
-}
-
-/* The plan is short and says what the account is: a long e-mail gives way to it, not the other way round. */
-.plan {
-    flex-shrink: 0;
 }
 
 /* The address is long and only there to be copied: it gives way to the buttons. */

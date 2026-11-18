@@ -1,37 +1,54 @@
-@reference '@clowdy/styles/rulesets';
-
-/* The mark, the name and the switch, and the account line under them, are one block. */
+/*
+ * The first block of a card is a row of three columns: the mark, the name over the account, and the buttons with the switch. The mark
+ * and the buttons are centred on the two lines of text. What goes under the row (a running sign-in) starts where the name does.
+ */
 .identity {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-}
-
-.header {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--spacing-lg);
 }
 
 .icon {
     display: inline-flex;
-    flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    width: var(--spacing-24);
-    height: var(--spacing-24);
+    width: var(--spacing-28);
+    height: var(--spacing-28);
+}
+
+.who {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    min-width: 0;
 }
 
 .title {
     display: flex;
-    flex: 1;
     align-items: baseline;
     gap: var(--spacing-md);
     min-width: 0;
 }
 
 .version {
+    flex-shrink: 0;
     font-variant-numeric: tabular-nums;
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+/* The switch is a setting, not an action: it keeps a little more room from the buttons. */
+.switch {
+    margin-inline-start: var(--spacing-md);
+}
+
+.status {
+    grid-column: 2 / -1;
 }
 
 /* A provider that is off keeps its settings readable, so the person sees what they would be turning back on. */

@@ -1,6 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
 import { Refresh } from '@clowdy/icons/14';
+import { cn } from '@clowdy/lib';
 
 import { formatRemaining } from '../../../shared';
 import { InlineCode } from './InlineCode';
@@ -18,7 +19,10 @@ function resetText(window: AgentUsageWindow, now: number): string | undefined {
     return remaining === 'now' ? 'Resets now' : `Resets in ${ remaining }`;
 }
 
-/** One window: its label, the bar under it, and under that how much is used and when it resets. The bar turns warning at 80% and danger at 90% (`usageTone`). */
+/**
+ * One window: its label with how much is used, when it resets at the far end, and the bar under them. The bar turns warning at 80% and
+ * danger at 90% (`usageTone`).
+ */
 function UsageRow({ window, now }: { window: AgentUsageWindow; now: number }) {
     const percent = windowPercent(window);
     const tone = usageTone(percent);
@@ -26,13 +30,13 @@ function UsageRow({ window, now }: { window: AgentUsageWindow; now: number }) {
 
     return (
         <li className={ styles.row }>
-            <Text variant="sm" weight="medium" truncate className={ styles.label } title={ window.label }>{ window.label }</Text>
+            <div className={ styles.details }>
+                <Text variant="sm" weight="medium" truncate className={ styles.label } title={ window.label }>{ window.label }</Text>
+                <Text variant="sm" color="secondary" className={ styles.figure }>{ `${ percent }% used` }</Text>
+                { reset && <Text variant="sm" color="secondary" className={ cn(styles.figure, styles.reset) } title="Time until the window resets">{ reset }</Text> }
+            </div>
             <div className={ styles.track } role="progressbar" aria-label={ `${ window.label } used` } aria-valuemin={ 0 } aria-valuemax={ 100 } aria-valuenow={ percent } aria-valuetext={ `${ percent }%` }>
                 <div className={ styles.fill } data-tone={ tone === 'normal' ? undefined : tone } style={ { width: `${ percent }%` } } />
-            </div>
-            <div className={ styles.details }>
-                <Text variant="sm" color="secondary" className={ styles.figure }>{ `${ percent }% used` }</Text>
-                { reset && <Text variant="sm" color="secondary" className={ styles.figure } title="Time until the window resets">{ reset }</Text> }
             </div>
         </li>
     );
@@ -42,27 +46,18 @@ export interface RefreshUsageButtonProps {
     /** A read is on its way. */
     isRefreshing: boolean;
     onRefresh: () => void;
+    /** `inline` (the default) is the bare icon at the end of a line of text; `transparent` is a button of its own beside other buttons. */
+    variant?: 'inline' | 'transparent';
+    size?: 'xs' | 'sm';
     className?: string;
 }
 
 /** The button that reads the usage again. Its icon turns while a read is on its way. */
-export function RefreshUsageButton({ isRefreshing, onRefresh, className }: RefreshUsageButtonProps) {
+export function RefreshUsageButton({ isRefreshing, onRefresh, variant = 'inline', size = 'xs', className }: RefreshUsageButtonProps) {
     return (
-        <Button variant="inline" color="secondary" size="xs" iconOnly aria-label="Refresh usage" tooltip="Refresh usage" isPending={ isRefreshing } spinnerPlacement="none" className={ className } onPress={ onRefresh }>
+        <Button variant={ variant } color="secondary" size={ size } iconOnly aria-label="Refresh usage" tooltip="Refresh usage" isPending={ isRefreshing } spinnerPlacement="none" className={ className } onPress={ onRefresh }>
             <Refresh className={ isRefreshing ? styles.spin : undefined } />
         </Button>
-    );
-}
-
-export type UsageHeaderProps = Omit<RefreshUsageButtonProps, 'className'>;
-
-/** The title of a provider's usage block on the Providers page, and the button that reads again at the far end. The window header's popover has no title and puts the button beside the account. */
-export function UsageHeader({ isRefreshing, onRefresh }: UsageHeaderProps) {
-    return (
-        <div className={ styles.header }>
-            <Text variant="sm" weight="medium">Usage</Text>
-            <RefreshUsageButton isRefreshing={ isRefreshing } onRefresh={ onRefresh } />
-        </div>
     );
 }
 

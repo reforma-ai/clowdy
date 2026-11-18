@@ -1,7 +1,10 @@
+@reference '@clowdy/styles/rulesets';
+
+/* Advanced is as far from the last setting as the settings are from each other. */
 .block {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-md);
+    gap: var(--spacing-lg);
 }
 
 .list {
@@ -13,9 +16,10 @@
     list-style: none;
 }
 
+/* The switch is centred on the title and its line, as in a SettingsRow. */
 .setting {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: var(--spacing-xl);
 }
@@ -27,7 +31,10 @@
     min-width: 0;
 }
 
+/* An inline button takes the size of the text around it; Advanced is in the size of the settings above it. */
 .trigger {
+    @ruleset typography-text-sm;
+
     align-self: flex-start;
 }
 

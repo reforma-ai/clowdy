@@ -1,24 +1,19 @@
 import styles from './UsageBlock.module.css';
-import { UsageHeader, UsageReading } from './UsageRows';
+import { UsageReading } from './UsageRows';
 import { useNow } from './useNow';
 
 import type { AgentUsage } from '@clowdy/protocol';
 
-export interface UsageBlockProps {
-    usage: AgentUsage;
-    /** A read is on its way. */
-    isRefreshing: boolean;
-    onRefresh: () => void;
-}
-
-/** What is left of a plan, a bar per window, with a button that reads it again. Says why there is nothing when there is nothing. */
-export function UsageBlock({ usage, isRefreshing, onRefresh }: UsageBlockProps) {
+/**
+ * What is left of a plan, a bar per window, or why there is nothing. It has no title: the bars say what they are. The button that reads
+ * the usage again is in the card's first row, beside the sign-in button.
+ */
+export function UsageBlock({ usage }: { usage: AgentUsage }) {
     // Only a card that shows usage keeps a clock.
     const now = useNow();
 
     return (
         <section className={ styles.block } aria-label="Usage">
-            <UsageHeader isRefreshing={ isRefreshing } onRefresh={ onRefresh } />
             <UsageReading usage={ usage } now={ now } />
         </section>
     );

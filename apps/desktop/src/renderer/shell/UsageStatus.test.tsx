@@ -349,7 +349,7 @@ describe('the popover', () => {
         expect(section('Cursor').textContent).toContain('Plan usage');
     });
 
-    it('puts the figures under the bar, how much is used and when it resets, and says so when the time has come or is not known', async () => {
+    it('puts the label, how much is used and when it resets on one line over the bar, and says so when the time has come or is not known', async () => {
         await start(agentsWith((providers) => {
             providers.claude.usage!.windows = [meter('session', 35, 11), { ...meter('weekly', 10), resetsAt: Date.now() - 1_000 }, meter('weekly:fable', 0)];
         }));
@@ -357,11 +357,11 @@ describe('the popover', () => {
 
         const rows = [...section('Claude Code').querySelectorAll('li')];
 
-        // The figures are in a block of their own, after the label and the bar.
+        // The label and the figures share the line before the bar.
         expect(rows.map(row => [...row.children].map(child => child.textContent))).toEqual([
-            ['Session', '', '35% usedResets in 11m'],
-            ['Week', '', '10% usedResets now'],
-            ['Fable', '', '0% used'],
+            ['Session35% usedResets in 11m', ''],
+            ['Week10% usedResets now', ''],
+            ['Fable0% used', ''],
         ]);
     });
 

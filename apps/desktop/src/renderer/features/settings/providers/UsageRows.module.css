@@ -1,15 +1,8 @@
-/* The title row of a usage block: the label, and the button that reads again at the far end. */
-.header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-md);
-}
-
+/* Each window is two lines, so the windows sit further apart than a line from its bar. */
 .rows {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    gap: var(--spacing-xl);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -27,6 +20,7 @@
 }
 
 .label {
+    flex: 0 1 auto;
     min-width: 0;
 }
 
@@ -53,15 +47,21 @@
     background-color: var(--color-danger);
 }
 
-/* How much is used at the left, when it resets at the right. */
+/* The label and how much is used at the left, when it resets at the right. */
 .details {
     display: flex;
-    justify-content: space-between;
+    align-items: baseline;
     gap: var(--spacing-md);
+    min-width: 0;
 }
 
 .figure {
+    flex-shrink: 0;
     white-space: nowrap;
+}
+
+.reset {
+    margin-inline-start: auto;
 }
 
 /* The refresh icon turns while a read is on its way. */
