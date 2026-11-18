@@ -30,9 +30,10 @@ function holding(hold = latch()): { script: Script; hold: ReturnType<typeof latc
     };
 }
 
-async function setup(script: Script = holding().script, overrides: Parameters<typeof startHarness>[0] = {}, mode?: 'semi') {
+async function setup(script: Script = holding().script, overrides: Parameters<typeof startHarness>[0] = {}, mode?: 'semi', otherAgents: string[] = []) {
     const engine = new ScriptEngine(script);
-    const h = await startHarness(overrides, { engines: scriptEngines(engine) });
+    const engines = new Map([...scriptEngines(engine), ...otherAgents.map(id => [id, new ScriptEngine(script)] as const)]);
+    const h = await startHarness(overrides, { engines });
 
     harnesses.push(h);
 
@@ -235,6 +236,33 @@ describe('run_spawn', () => {
 
         await expect(exec(orchestrator, 'run_spawn', { taskIds: [a.key], prompt: 'go', idempotencyKey: 'k', engine: 'fake' })).rejects.toThrow(/Invalid input for run_spawn/);
         expect(h.store.db.query('SELECT COUNT(*) AS n FROM runs WHERE parent_run_id = ?').get(orchestrator.id)).toEqual({ n: 0 });
+    });
+
+    test('a child on the parent\'s engine goes on running the model and level the chat chose, unless it names its own model', async () => {
+        const { exec, h, orchestrator, project, task } = await setup(undefined, {}, undefined, ['other']);
+        const { runs } = h.daemon.services;
+        const a = await task('A');
+        const b = await task('B');
+        const c = await task('C');
+
+        h.ok('project.update', { projectId: project.id, settings: { model: 'plain' } });
+        runs.setChoice(orchestrator.id, { model: 'smart', effort: 'high' });
+
+        const parent = runs.require(orchestrator.id);
+        const inherits = await exec(parent, 'run_spawn', { taskIds: [a.key], prompt: 'go', idempotencyKey: 'k-inherit' });
+        const names = await exec(parent, 'run_spawn', { taskIds: [b.key], prompt: 'go', idempotencyKey: 'k-names', model: 'fast' });
+        const elsewhere = await exec(parent, 'run_spawn', { taskIds: [c.key], prompt: 'go', idempotencyKey: 'k-other', engine: 'other' });
+
+        expect(h.run(inherits.runId)).toMatchObject({ engine: 'fake', model: 'smart', effort: 'high' });
+        // Another model has other levels, so the parent's level does not follow it.
+        expect(h.run(names.runId)).toMatchObject({ model: 'fast' });
+        expect(h.run(names.runId).effort).toBeUndefined();
+        // Another agent has other models: its child takes neither the parent's model and level nor the project's (that is the project's agent's).
+        expect(h.run(elsewhere.runId)).toMatchObject({ engine: 'other' });
+        expect(h.run(elsewhere.runId).model).toBeUndefined();
+        expect(h.run(elsewhere.runId).effort).toBeUndefined();
+        // On the project's own agent the project's model still applies.
+        expect(h.run(h.ok('chat.send', { chatId: h.ok('chat.create', { projectId: project.id }).chat.id, text: 'hi' }).runId).model).toBe('plain');
     });
 
     test('a verifier starts with the verify skill, is bound to the tasks it checks, and waits for no dependency', async () => {

@@ -10,6 +10,8 @@ const base = { requestId: z.string().min(8).max(100) };
 
 const chatMode = z.enum(['autopilot', 'semi']);
 const engine = z.string().min(1).max(64);
+const model = z.string().min(1).max(200);
+const effort = z.string().min(1).max(64);
 const actor = z.object({ kind: z.literal('user') });
 
 export const commandSchema = z.discriminatedUnion('type', [
@@ -31,9 +33,15 @@ export const commandSchema = z.discriminatedUnion('type', [
     }),
 
     /* Chats */
-    z.object({ ...base, type: z.literal('chat.create'), projectId: z.string(), title: z.string().optional(), mode: chatMode.optional() }),
+    /** `engine`, `model` and `effort` bind the chat to an agent, a model and a reasoning level (see `Chat`); left out, the first message takes the project's or the daemon's. */
+    z.object({ ...base, type: z.literal('chat.create'), projectId: z.string(), title: z.string().optional(), mode: chatMode.optional(), engine: engine.optional(), model: model.optional(), effort: effort.optional() }),
     z.object({ ...base, type: z.literal('chat.rename'), chatId: z.string(), title: z.string().min(1) }),
     z.object({ ...base, type: z.literal('chat.setMode'), chatId: z.string(), mode: chatMode }),
+    /**
+     * Changes what a chat runs on, from its next turn. `model` and `effort` change at any time (`null` clears one, leaving the agent's own
+     * choice); `engine` only while the chat has no orchestrator yet, and a new `engine` without a `model` clears both.
+     */
+    z.object({ ...base, type: z.literal('chat.setModel'), chatId: z.string(), engine: engine.optional(), model: model.nullable().optional(), effort: effort.nullable().optional() }),
     /** Hides the chat from the lists without deleting anything (refused while any of its runs is active), or brings it back. */
     z.object({ ...base, type: z.literal('chat.setArchived'), chatId: z.string(), archived: z.boolean() }),
     /** Removes the chat with its orchestrator's conversation and every run below it; the tasks stay. Refused while any of its runs is active. */

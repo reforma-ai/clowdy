@@ -93,6 +93,26 @@ describe('migrations', () => {
         upgraded.close();
     });
 
+    test('the chat migration gives a chat that has an orchestrator the agent and model it runs on', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const old = openDatabase(path, MIGRATIONS.slice(0, 4));
+
+        old.query('INSERT INTO projects (id, name, path, task_prefix, created_at) VALUES (?, ?, ?, ?, ?)').run('prj_1', 'Old', '/old', 'OLD', 1);
+        old.query('INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, model, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', 'succeeded', 'claude', 'opus', 1);
+        old.query('INSERT INTO chats (id, project_id, title, mode, orchestrator_run_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('cht_started', 'prj_1', 'Started', 'autopilot', 'run_1', 1, 1);
+        old.query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('cht_empty', 'prj_1', 'Empty', 'autopilot', 1, 1);
+        old.close();
+
+        const upgraded = openDatabase(path);
+
+        expect(upgraded.query('SELECT id, engine, model, effort FROM chats ORDER BY id').all()).toEqual([
+            { id: 'cht_empty', engine: null, model: null, effort: null },
+            { id: 'cht_started', engine: 'claude', model: 'opus', effort: null },
+        ]);
+        expect(upgraded.query('SELECT effort FROM runs').all()).toEqual([{ effort: null }]);
+        upgraded.close();
+    });
+
     test('a database newer than the daemon is refused', () => {
         const path = join(tempDir(), 'clowdy.db');
         const db = openDatabase(path);

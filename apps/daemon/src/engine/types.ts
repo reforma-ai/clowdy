@@ -31,6 +31,8 @@ export interface EngineStartOptions {
     /** A session id the engine reported earlier; continue that conversation. */
     resumeSessionId?: string;
     model?: string;
+    /** The reasoning level, in the agent's own spelling; applied after `model`, since a model decides which levels exist. */
+    effort?: string;
     /** Tools the runtime executes itself. The engine exposes them to the model and calls `execute`. */
     tools: ToolDefinition[];
     /** Aborted when the run is cancelled or the daemon stops. The session must end promptly. */

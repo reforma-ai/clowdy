@@ -87,6 +87,11 @@ export class AgentRegistry {
         return this.spec(id) !== undefined || this.stored.agents.some(agent => agent.id === id);
     }
 
+    /** Whether the person left `id` switched on in Clowdy (an agent that is not known counts as on). Synchronous, for refusing a message before a run exists. */
+    isEnabled(id: string): boolean {
+        return this.stored.overrides[id]?.enabled !== false;
+    }
+
     nameOf(id: string): string {
         return this.spec(id)?.name ?? this.stored.agents.find(agent => agent.id === id)?.name ?? id;
     }
@@ -237,7 +242,7 @@ export class AgentRegistry {
     private async build(entry: Entry): Promise<Resolution> {
         const override = this.stored.overrides[entry.id] ?? {};
 
-        if (override.enabled === false) {
+        if (!this.isEnabled(entry.id)) {
             return { ok: false, message: `${ entry.name } is switched off in Clowdy` };
         }
 
@@ -278,7 +283,7 @@ export class AgentRegistry {
         const spec = entry.custom ? undefined : entry.spec;
         const fetches = spec?.launch.kind === 'package' ? spec.launch.package : undefined;
         const launch = entry.custom ? [entry.agent.command, ...entry.agent.args].join(' ') : launchLine(entry.spec);
-        const enabled = override.enabled !== false;
+        const enabled = this.isEnabled(entry.id);
         const missingRunner = program !== undefined && !resolution.ok && enabled;
 
         return {

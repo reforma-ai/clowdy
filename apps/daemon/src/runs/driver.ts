@@ -136,14 +136,19 @@ export class RunDriver {
             }
 
             const [first] = tasks;
+            const engine = input.engine ?? parent.engine;
+            // A child on the parent's own engine goes on running what the chat chose. On another engine the parent's model means nothing,
+            // and a model the child names has levels of its own; those children get what they name, else the project's model (`createRun`).
+            const inherits = engine === parent.engine && input.model === undefined;
             const run = runs.createRun({
                 project: runs.projectOf(parent),
                 role: input.role,
                 origin: 'spawned',
                 summary: tasks.length > 1 ? `${ first.title } (+${ tasks.length - 1 } more)` : first.title,
                 parent,
-                engine: input.engine ?? parent.engine,
-                model: input.model,
+                engine,
+                model: inherits ? parent.model : input.model,
+                effort: inherits ? parent.effort : undefined,
                 cwd: input.cwd,
                 idempotencyKey: input.idempotencyKey,
                 nextPrompt: firstMessage(input.role, runs.modeOf(parent), input.prompt),
@@ -330,6 +335,7 @@ export class RunDriver {
             systemPrompt: [systemPrompt(run.role, mode, project), skillPrompt(run.role, config.systemSkillsDir)].filter(Boolean).join('\n\n'),
             resumeSessionId: run.sessionId,
             model: run.model,
+            effort: run.effort,
             tools: this.deps.tools(run, mode),
             signal: AbortSignal.any([signal, turnAbort.signal]),
         });

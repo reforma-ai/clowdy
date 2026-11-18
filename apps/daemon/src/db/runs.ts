@@ -19,6 +19,7 @@ interface RunRow {
     status_reason: string | null;
     engine: Run['engine'];
     model: string | null;
+    effort: string | null;
     session_id: string | null;
     worktree: string | null;
     result: string | null;
@@ -43,6 +44,7 @@ const toRun = (row: RunRow): Run => clean({
     statusReason: row.status_reason,
     engine: row.engine,
     model: row.model,
+    effort: row.effort,
     sessionId: row.session_id,
     worktree: parseJson(row.worktree),
     result: row.result,
@@ -67,15 +69,15 @@ export function listRuns(db: Database, projectId: string): Run[] {
 
 export function upsertRun(db: Database, run: Run): void {
     db.query(`
-        INSERT INTO runs (id, project_id, parent_run_id, root_run_id, chat_id, role, origin, name, summary, status, status_reason, engine, model,
+        INSERT INTO runs (id, project_id, parent_run_id, root_run_id, chat_id, role, origin, name, summary, status, status_reason, engine, model, effort,
             session_id, worktree, result, error, usage, created_at, started_at, finished_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, status = excluded.status, status_reason = excluded.status_reason,
-            model = excluded.model, session_id = excluded.session_id, worktree = excluded.worktree, result = excluded.result,
+            model = excluded.model, effort = excluded.effort, session_id = excluded.session_id, worktree = excluded.worktree, result = excluded.result,
             error = excluded.error, usage = excluded.usage, started_at = excluded.started_at, finished_at = excluded.finished_at
     `).run(
         run.id, run.projectId, run.parentRunId ?? null, run.rootRunId, run.chatId ?? null, run.role, run.origin ?? null, run.name, run.summary, run.status,
-        run.statusReason ?? null, run.engine, run.model ?? null, run.sessionId ?? null, toJson(run.worktree), run.result ?? null,
+        run.statusReason ?? null, run.engine, run.model ?? null, run.effort ?? null, run.sessionId ?? null, toJson(run.worktree), run.result ?? null,
         run.error ?? null, toJson(run.usage), run.createdAt, run.startedAt ?? null, run.finishedAt ?? null
     );
 }

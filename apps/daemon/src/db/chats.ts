@@ -8,6 +8,9 @@ interface ChatRow {
     project_id: string;
     title: string;
     mode: Chat['mode'];
+    engine: string | null;
+    model: string | null;
+    effort: string | null;
     orchestrator_run_id: string | null;
     archived_at: number | null;
     created_at: number;
@@ -19,6 +22,9 @@ const toChat = (row: ChatRow): Chat => clean({
     projectId: row.project_id,
     title: row.title,
     mode: row.mode,
+    engine: row.engine,
+    model: row.model,
+    effort: row.effort,
     orchestratorRunId: row.orchestrator_run_id,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
@@ -37,10 +43,13 @@ export function listChats(db: Database, projectId: string): Chat[] {
 
 export function upsertChat(db: Database, chat: Chat): void {
     db.query(`
-        INSERT INTO chats (id, project_id, title, mode, orchestrator_run_id, archived_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET title = excluded.title, mode = excluded.mode,
+        INSERT INTO chats (id, project_id, title, mode, engine, model, effort, orchestrator_run_id, archived_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET title = excluded.title, mode = excluded.mode, engine = excluded.engine, model = excluded.model, effort = excluded.effort,
             orchestrator_run_id = excluded.orchestrator_run_id, archived_at = excluded.archived_at, updated_at = excluded.updated_at
-    `).run(chat.id, chat.projectId, chat.title, chat.mode, chat.orchestratorRunId ?? null, chat.archivedAt ?? null, chat.createdAt, chat.updatedAt);
+    `).run(
+        chat.id, chat.projectId, chat.title, chat.mode, chat.engine ?? null, chat.model ?? null, chat.effort ?? null,
+        chat.orchestratorRunId ?? null, chat.archivedAt ?? null, chat.createdAt, chat.updatedAt
+    );
 }
 
 export function listChatTaskLinks(db: Database, projectId: string): ChatTaskLink[] {

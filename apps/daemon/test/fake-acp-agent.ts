@@ -9,6 +9,7 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
  *   usage <in> <out> <cost>     token usage for the prompt and a cumulative cost update
  *   limit <status> <resetsAt>   a rate limit signal in Claude's adapter format
  *   info                        says what the session was created with, as JSON
+ *   choice                      says the model and reasoning level the session ended up on and how many options it was asked to set, as JSON
  *   prompt                      says the whole text of the prompt, as JSON
  *   env <NAME>                  says the value of an environment variable
  *   fail <code> <message>       fails the prompt with a JSON-RPC error
@@ -17,7 +18,8 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
  *
  * FAKE_ACP_LOG is a file that gets a line for every `session/cancel` the agent receives.
  * FAKE_ACP_RESUME is `resume` (default), `load` (replays two messages first) or `none`; FAKE_ACP_SYSTEM_PROMPT=0 drops
- * the system prompt capability; FAKE_ACP_AUTH=1 makes `session/new` ask for authentication.
+ * the system prompt capability; FAKE_ACP_AUTH=1 makes `session/new` ask for authentication; FAKE_ACP_EFFORT is `1` (a reasoning
+ * option that follows the model) or `thinking` (the same, behind an option of another kind).
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -32,6 +34,10 @@ interface FakeSession {
     systemPrompt?: string;
     meta?: unknown;
     model: string;
+    /** The reasoning level, when `FAKE_ACP_EFFORT` gives the agent a reasoning option. */
+    effort: string;
+    /** How many `session/set_config_option` requests the session took. */
+    sets: number;
     cancel: AbortController;
     count: number;
     cost: number;
@@ -46,21 +52,53 @@ function systemText(content: unknown): string | undefined {
 }
 
 function open(id: string, params: { cwd: string; mcpServers?: McpServer[]; systemPrompt?: { content?: unknown } | null; _meta?: unknown }): FakeSession {
-    const session: FakeSession = { cwd: params.cwd, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, model: 'fast', cancel: new AbortController(), count: 0, cost: 0 };
+    const session: FakeSession = { cwd: params.cwd, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0 };
 
     sessions.set(id, session);
 
     return session;
 }
 
-const modelOptions = (current: string) => [{
-    id: 'model',
-    name: 'Model',
-    category: 'model',
-    type: 'select' as const,
-    currentValue: current,
-    options: [{ value: 'fast', name: 'Fast' }, { value: 'smart', name: 'Smart' }],
-}];
+/** The levels a model offers: `smart` has more than `fast`, so a level that is valid for one is not for the other. */
+const LEVELS: Record<string, string[]> = { fast: ['low', 'high'], smart: ['low', 'medium', 'high', 'xhigh', 'max'] };
+
+/** A level the agent shows under another name than its value (Claude's `xhigh` is "Extra high"). */
+const LEVEL_NAMES: Record<string, string> = { xhigh: 'Extra high' };
+
+/**
+ * The options an agent reports: the model, and with `FAKE_ACP_EFFORT=1` a reasoning level that follows the model (as Claude's and Codex's do).
+ * `FAKE_ACP_EFFORT=thinking` puts another `thought_level` option, with values of its own, in front of it (as Cursor's `thinking` is).
+ */
+const modelOptions = (model: string, effort = 'high') => [
+    {
+        id: 'model',
+        name: 'Model',
+        category: 'model',
+        type: 'select' as const,
+        currentValue: model,
+        options: [{ value: 'fast', name: 'Fast' }, { value: 'smart', name: 'Smart' }],
+    },
+    ...(process.env.FAKE_ACP_EFFORT === 'thinking'
+        ? [{
+            id: 'thinking',
+            name: 'Thinking',
+            category: 'thought_level',
+            type: 'select' as const,
+            currentValue: 'on',
+            options: [{ value: 'on', name: 'On' }, { value: 'off', name: 'Off' }],
+        }]
+        : []),
+    ...(process.env.FAKE_ACP_EFFORT === '1' || process.env.FAKE_ACP_EFFORT === 'thinking'
+        ? [{
+            id: 'effort',
+            name: 'Effort',
+            category: 'thought_level',
+            type: 'select' as const,
+            currentValue: effort,
+            options: (LEVELS[model] ?? LEVELS.fast).map(value => ({ value, name: LEVEL_NAMES[value] ?? value })),
+        }]
+        : []),
+];
 
 const app = agent({ name: 'fake-acp-agent' })
     .onRequest(methods.agent.initialize, () => ({
@@ -85,8 +123,13 @@ const app = agent({ name: 'fake-acp-agent' })
 
         return { sessionId: id, configOptions: modelOptions('fast') };
     })
-    .onRequest(methods.agent.session.resume, ({ params }) => {
+    .onRequest(methods.agent.session.resume, ({ params, client }) => {
         open(params.sessionId, params);
+
+        // Codex's adapter warns right after the response when the session was recorded with another model.
+        if (process.env.FAKE_ACP_RESUME_WARNING === '1') {
+            setImmediate(() => void client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Warning: This session was recorded with model `gpt-5.6-luna` but is resuming with `gpt-6-sol`.\n\n' } } }));
+        }
 
         return { configOptions: modelOptions('fast') };
     })
@@ -103,10 +146,19 @@ const app = agent({ name: 'fake-acp-agent' })
         const session = sessions.get(params.sessionId);
 
         if (session && 'value' in params && typeof params.value === 'string') {
-            session.model = params.value;
+            session.sets++;
+
+            if (params.configId === 'effort') {
+                session.effort = params.value;
+            }
+            else if (params.configId === 'model') {
+                session.model = params.value;
+                // A model keeps the level when it has it, and goes back to its own default when it has not.
+                session.effort = (LEVELS[session.model] ?? LEVELS.fast).includes(session.effort) ? session.effort : 'high';
+            }
         }
 
-        return { configOptions: modelOptions(session?.model ?? 'fast') };
+        return { configOptions: modelOptions(session?.model ?? 'fast', session?.effort) };
     })
     .onNotification(methods.agent.session.cancel, ({ params }) => {
         if (process.env.FAKE_ACP_LOG) {
@@ -212,6 +264,9 @@ const app = agent({ name: 'fake-acp-agent' })
                 }
                 case 'info':
                     await say(JSON.stringify({ cwd: session.cwd, servers: session.mcpServers.map(server => server.name), systemPrompt: session.systemPrompt, meta: session.meta, model: session.model, prompts: session.count }));
+                    break;
+                case 'choice':
+                    await say(JSON.stringify({ model: session.model, effort: session.effort, sets: session.sets }));
                     break;
                 case 'prompt':
                     await say(JSON.stringify(text));

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -123,6 +123,64 @@ describe('a turn on an ACP agent', () => {
         await session.close();
 
         expect(JSON.parse(textOf(events))).toEqual({ cwd: '/tmp', servers: [], systemPrompt: 'be brief', model: 'smart', prompts: 1 });
+    });
+
+    describe('the reasoning level', () => {
+        const choice = async (options: Parameters<Rig['start']>[1], agentEnv = { FAKE_ACP_EFFORT: '1' }) => {
+            const { session } = use({ agentEnv }).start('choice', options);
+            const events = await collect(session);
+
+            await session.close();
+
+            return JSON.parse(textOf(events)) as { model: string; effort: string; sets: number };
+        };
+
+        test('is set after the model, on the level the new model offers', async () => {
+            // `max` exists on `smart` only: set before the model it would be refused, so the order is the point.
+            expect(await choice({ model: 'smart', effort: 'max' })).toEqual({ model: 'smart', effort: 'max', sets: 2 });
+        });
+
+        test('is found by its value in any case, or by the name the agent shows for it', async () => {
+            expect(await choice({ model: 'smart', effort: 'MEDIUM' })).toEqual({ model: 'smart', effort: 'medium', sets: 2 });
+            expect(await choice({ model: 'smart', effort: 'extra high' })).toEqual({ model: 'smart', effort: 'xhigh', sets: 2 });
+        });
+
+        test('is looked for in every reasoning option, so an option of another kind in front of it does not hide it', async () => {
+            expect(await choice({ model: 'smart', effort: 'max' }, { FAKE_ACP_EFFORT: 'thinking' })).toEqual({ model: 'smart', effort: 'max', sets: 2 });
+        });
+
+        test('is left to the agent, with a note in the log, when the model has no such level', async () => {
+            const warn = spyOn(console, 'warn').mockImplementation(() => undefined);
+
+            try {
+                expect(await choice({ model: 'fast', effort: 'max' })).toEqual({ model: 'fast', effort: 'high', sets: 0 });
+                expect(warn).toHaveBeenCalledWith(expect.stringContaining('offers no reasoning level called "max" for fast'));
+            }
+            finally {
+                warn.mockRestore();
+            }
+        });
+
+        test('is not sent again when the agent is on it already, and neither is the model', async () => {
+            expect(await choice({ model: 'fast', effort: 'high' })).toEqual({ model: 'fast', effort: 'high', sets: 0 });
+        });
+
+        test('can be set without a model', async () => {
+            expect(await choice({ effort: 'low' })).toEqual({ model: 'fast', effort: 'low', sets: 1 });
+        });
+
+        test('is set again on a session that resumes, since each turn is a new agent process', async () => {
+            expect(await choice({ model: 'smart', effort: 'max', resumeSessionId: 'earlier-7' })).toEqual({ model: 'smart', effort: 'max', sets: 2 });
+        });
+    });
+
+    test('the warning of Codex about resuming a session recorded with another model is not shown as a message', async () => {
+        const { session } = use({ agentEnv: { FAKE_ACP_RESUME_WARNING: '1' } }).start('say fresh', { resumeSessionId: 'earlier-7' });
+        const events = await collect(session);
+
+        await session.close();
+
+        expect(textOf(events)).toBe('fresh');
     });
 
     test('the options an adapter reads reach it as the _meta of the session', async () => {

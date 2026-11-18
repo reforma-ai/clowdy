@@ -1,10 +1,10 @@
-import { createChat, saveChat } from '../domain/chats';
+import { choiceOf, createChat, saveChat } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
 import { createTask, deleteTask, linkChatTask, requireTask, updateTask } from '../domain/tasks';
 import { CommandError } from '../errors';
 import { firstMessage, taskMessage } from '../runs/prompts';
-import { titleFrom } from './chat';
+import { requireEnabled, titleFrom } from './chat';
 
 import type { Handlers } from './context';
 
@@ -23,7 +23,7 @@ export const taskHandlers: Pick<Handlers, 'task.create' | 'task.update' | 'task.
      * Opens a new chat named after the task, linked to it, with an orchestrator bound to the task whose first message
      * is the task itself. One active run per task unless `force`.
      */
-    'task.start': ({ store, runs, driver }, command) => {
+    'task.start': ({ store, runs, driver, agents }, command) => {
         const task = requireTask(store, command.taskId);
         const project = requireProject(store, task.projectId);
         const [active] = runs.activeRunsOfTask(task.id);
@@ -31,6 +31,8 @@ export const taskHandlers: Pick<Handlers, 'task.create' | 'task.update' | 'task.
         if (active && !command.force) {
             throw new CommandError('already_running', `Task ${ task.key } already has an active run (${ active.name })`);
         }
+
+        requireEnabled(agents, runs.resolveEngine(project, command.engine));
 
         const title = titleFrom(task.title);
         const chat = createChat(store, { projectId: project.id, title, mode: project.settings.chatMode });
@@ -47,7 +49,7 @@ export const taskHandlers: Pick<Handlers, 'task.create' | 'task.update' | 'task.
 
         linkChatTask(store, project.id, { chatId: chat.id, taskId: task.id });
         appendItem(store, run.id, { kind: 'user', text });
-        saveChat(store, { ...chat, orchestratorRunId: run.id });
+        saveChat(store, { ...chat, ...choiceOf(run), orchestratorRunId: run.id });
         driver.launch(run.id);
 
         return { runId: run.id, chatId: chat.id };

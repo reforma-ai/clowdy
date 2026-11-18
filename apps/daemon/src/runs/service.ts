@@ -35,6 +35,8 @@ export interface NewRun {
     chatId?: string;
     engine?: EngineId;
     model?: string;
+    /** The reasoning level, in the engine's own spelling. */
+    effort?: string;
     /** Where the engine works; the project's folder when absent. */
     cwd?: string;
     /** The same key under the same parent never creates a second run. */
@@ -115,7 +117,9 @@ export class RunService {
             const blockers = this.unfinishedDependencies(assigned);
             const id = newId('run');
             const number = countRunsWithRole(this.store.db, project.id, input.role) + 1;
-            const model = input.model ?? project.settings.model;
+            const engine = this.resolveEngine(project, input.engine);
+            // The project's model belongs to the project's agent: another agent has other models.
+            const model = input.model ?? (engine === this.resolveEngine(project) ? project.settings.model : undefined);
             const run: Run = {
                 id,
                 projectId: project.id,
@@ -128,8 +132,9 @@ export class RunService {
                 summary: input.summary,
                 status: blockers.length > 0 ? 'blocked' : 'queued',
                 statusReason: blockers.length > 0 ? blockedReason(blockers) : QUEUE_REASON,
-                engine: this.resolveEngine(project, input.engine),
+                engine,
                 ...(model && { model }),
+                ...(input.effort && { effort: input.effort }),
                 createdAt: Date.now(),
             };
 
@@ -168,6 +173,7 @@ export class RunService {
                 status: 'running',
                 engine: parent.engine,
                 ...(parent.model && { model: parent.model }),
+                ...(parent.effort && { effort: parent.effort }),
                 createdAt: Date.now(),
                 startedAt: Date.now(),
             };
@@ -615,6 +621,21 @@ export class RunService {
             }
 
             return { ...run, usage: total };
+        });
+    }
+
+    /** Sets the model and level the run's next turn applies (the run's chat changed its choice); `undefined` leaves the engine's own. */
+    setChoice(runId: string, choice: { model?: string; effort?: string }): void {
+        const current = this.require(runId);
+
+        if (current.model === choice.model && current.effort === choice.effort) {
+            return;
+        }
+
+        this.update(runId, (run) => {
+            const { model: _model, effort: _effort, ...rest } = run;
+
+            return { ...rest, ...(choice.model && { model: choice.model }), ...(choice.effort && { effort: choice.effort }) };
         });
     }
 

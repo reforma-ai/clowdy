@@ -6,7 +6,7 @@ import { conflict, invalid, notFound } from '../errors';
 import { newId } from '../ids';
 import { requireProject } from './projects';
 
-import type { Chat, ChatMode } from '@clowdy/protocol';
+import type { Chat, ChatMode, EngineId, Run } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { Store } from '../store';
 
@@ -30,7 +30,18 @@ export function saveChat(store: Store, chat: Chat): Chat {
     return chat;
 }
 
-export function createChat(store: Store, input: { projectId: string; title?: string; mode?: ChatMode }): Chat {
+export interface ChatChoice {
+    engine?: EngineId;
+    model?: string;
+    effort?: string;
+}
+
+/** What a run runs on, as the chat that started it records it, so the chat shows what really ran (the project's defaults included). */
+export function choiceOf(run: Run): ChatChoice {
+    return { engine: run.engine, ...(run.model && { model: run.model }), ...(run.effort && { effort: run.effort }) };
+}
+
+export function createChat(store: Store, input: { projectId: string; title?: string; mode?: ChatMode } & ChatChoice): Chat {
     return store.tx(() => {
         requireProject(store, input.projectId);
 
@@ -41,6 +52,9 @@ export function createChat(store: Store, input: { projectId: string; title?: str
             projectId: input.projectId,
             title: input.title?.trim() || DEFAULT_CHAT_TITLE,
             mode: input.mode ?? 'autopilot',
+            ...(input.engine && { engine: input.engine }),
+            ...(input.model && { model: input.model }),
+            ...(input.effort && { effort: input.effort }),
             createdAt: now,
             updatedAt: now,
         });
@@ -121,5 +135,41 @@ export function setChatMode(store: Store, chatId: string, mode: ChatMode): Chat 
         }
 
         return saveChat(store, { ...chat, mode, updatedAt: Date.now() });
+    });
+}
+
+/** What a field becomes when a call may name it: the value it names, nothing for `null`, and `kept` when the call leaves it out. */
+const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefined => change === undefined ? kept : change ?? undefined;
+
+/**
+ * Changes what the chat runs on. Like archiving, it is not activity: the chat keeps its place in the order. `model` and `effort` may change at any time (`null` clears one); the agent only while no orchestrator exists.
+ * A field the call leaves out is kept, unless it can no longer hold: a different agent has other models, and a different model has other
+ * levels, so what the same call does not name again is dropped. The chat alone changes here: the caller carries the choice to the
+ * orchestrator run, which is what the next turn reads.
+ */
+export function setChatModel(store: Store, chatId: string, change: { engine?: EngineId; model?: string | null; effort?: string | null }): Chat {
+    return store.tx(() => {
+        const chat = requireChat(store, chatId);
+        const { engine: currentEngine, model: currentModel, effort: currentEffort, ...rest } = chat;
+        const engine = change.engine ?? currentEngine;
+        const switched = engine !== currentEngine;
+
+        if (switched && chat.orchestratorRunId) {
+            throw conflict('The provider of a chat is fixed once its first message was sent');
+        }
+
+        const model = named(change.model, switched ? undefined : currentModel);
+        const effort = named(change.effort, switched || model !== currentModel ? undefined : currentEffort);
+
+        if (!switched && model === currentModel && effort === currentEffort) {
+            return chat;
+        }
+
+        return saveChat(store, {
+            ...rest,
+            ...(engine && { engine }),
+            ...(model && { model }),
+            ...(effort && { effort }),
+        });
     });
 }

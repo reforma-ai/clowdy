@@ -42,6 +42,14 @@ export interface Chat {
     projectId: ProjectId;
     title: string;
     mode: ChatMode;
+    /**
+     * The agent that answers this chat, with the model and reasoning level it runs on, in the agent's own spelling.
+     * Chosen with the chat, fixed once the first message started the orchestrator; `model` and `effort` may change at any time and
+     * apply from the next turn. Absent on a chat that has not been given one: the first message then takes the project's or the daemon's.
+     */
+    engine?: EngineId;
+    model?: string;
+    effort?: string;
     /** The orchestrator run that answers this chat, once the first message started one. */
     orchestratorRunId?: RunId;
     /** When the person archived the chat; absent for a chat in use. An archived chat keeps its runs, tasks and stream, and a message to it brings it back. */
@@ -142,6 +150,8 @@ export interface Run {
     statusReason?: string;
     engine: EngineId;
     model?: string;
+    /** The reasoning level, in the engine's own spelling; absent leaves the engine's own choice. */
+    effort?: string;
     /** The engine's own session id, for resuming. */
     sessionId?: string;
     /** Not filled in: the daemon has no git machinery, agents manage their own worktrees. */

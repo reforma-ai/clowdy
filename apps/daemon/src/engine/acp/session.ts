@@ -86,19 +86,62 @@ const wait = (ms: number) => new Promise<void>((resolve) => {
     setTimeout(resolve, ms).unref();
 });
 
-/** The id of the option that picks the model, and the value of `model` among its choices (by value or by name). */
-function modelChoice(options: SessionConfigOption[] | null | undefined, model: string): { configId: string; value: string } | undefined {
-    const option = (options ?? []).find(candidate => candidate.category === 'model' && candidate.type === 'select');
+type SelectOption = Extract<SessionConfigOption, { type: 'select' }>;
 
-    if (option?.type !== 'select') {
-        return undefined;
+/** The select options of one category: `model` picks the model, `thought_level` the reasoning level. */
+function selectsOf(options: SessionConfigOption[] | null | undefined, category: string): SelectOption[] {
+    return (options ?? []).filter((option): option is SelectOption => option.category === category && option.type === 'select');
+}
+
+/** What to send to set an option: its id and the value, or nothing when the option is already on it. */
+interface ConfigChange {
+    configId: string;
+    value: string;
+    /** The option is on this value already, so there is nothing to send. */
+    unchanged: boolean;
+}
+
+/** The choice of `option` called `wanted`, by value or by name, case-insensitive; groups are flattened. */
+function changeTo(option: SelectOption, wanted: string): ConfigChange | undefined {
+    const lower = wanted.toLowerCase();
+    const choices = option.options.flatMap(choice => 'group' in choice ? choice.options : [choice]);
+    const match = choices.find(choice => choice.value.toLowerCase() === lower) ?? choices.find(choice => choice.name.toLowerCase() === lower);
+
+    return match && { configId: option.id, value: match.value, unchanged: option.currentValue === match.value };
+}
+
+/** The id of the option that picks the model, and the value of `model` among its choices (by value or by name). */
+function modelChoice(options: SessionConfigOption[] | null | undefined, model: string): ConfigChange | undefined {
+    const [option] = selectsOf(options, 'model');
+
+    return option && changeTo(option, model);
+}
+
+/**
+ * The reasoning option that has a choice called `effort`. An agent names it as it likes (Claude `effort`, Codex `reasoning_effort`, one of
+ * Cursor's several per model), and a model may carry other `thought_level` options with other values (Cursor's `thinking`), so the option is
+ * found by the value it offers. Call it on the options the agent reported after the model was set: a model decides which levels exist.
+ */
+function effortChoice(options: SessionConfigOption[] | null | undefined, effort: string): ConfigChange | undefined {
+    for (const option of selectsOf(options, 'thought_level')) {
+        const change = changeTo(option, effort);
+
+        if (change) {
+            return change;
+        }
     }
 
-    const wanted = model.toLowerCase();
-    const choices = option.options.flatMap(choice => 'group' in choice ? choice.options : [choice]);
-    const match = choices.find(choice => choice.value.toLowerCase() === wanted) ?? choices.find(choice => choice.name.toLowerCase() === wanted);
+    return undefined;
+}
 
-    return match ? { configId: option.id, value: match.value } : undefined;
+/**
+ * Codex warns, as an assistant message right after it resumes a session, that the session was recorded with another model than the one
+ * it resumes with. Clowdy resumes on the person's own settings and changes the model to the chat's before the prompt, so the warning is noise.
+ */
+const RESUME_WARNING = /^Warning: This session was recorded with model /;
+
+function isResumeWarning(update: SessionUpdate): boolean {
+    return update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text' && RESUME_WARNING.test(update.content.text);
 }
 
 /**
@@ -241,7 +284,7 @@ export class AcpSession implements EngineSession {
 
         const app = client({ name: 'clowdy' })
             .onNotification(methods.client.session.update, ({ params }) => {
-                if (!replaying && params.sessionId === current) {
+                if (!replaying && params.sessionId === current && !isResumeWarning(params.update)) {
                     channel.push({ kind: 'update', update: params.update });
                 }
             })
@@ -363,14 +406,28 @@ export class AcpSession implements EngineSession {
             this.sessionId = id;
             yield { type: 'session', sessionId: id };
 
+            // The model first: it decides which levels the agent offers, and the answer to a change lists the options as they are now.
             if (options.model) {
                 const choice = modelChoice(configOptions, options.model);
 
-                if (choice) {
-                    await request(connection.agent.request(methods.agent.session.setConfigOption, { sessionId: id, ...choice }));
-                }
-                else {
+                if (!choice) {
                     console.warn(`[clowdy] ${ agent.name } offers no model called "${ options.model }"; it keeps its own choice`);
+                }
+                else if (!choice.unchanged) {
+                    const answer = await request(connection.agent.request(methods.agent.session.setConfigOption, { sessionId: id, configId: choice.configId, value: choice.value }));
+
+                    configOptions = answer.configOptions ?? configOptions;
+                }
+            }
+
+            if (options.effort) {
+                const choice = effortChoice(configOptions, options.effort);
+
+                if (!choice) {
+                    console.warn(`[clowdy] ${ agent.name } offers no reasoning level called "${ options.effort }"${ options.model ? ` for ${ options.model }` : '' }; it keeps its own choice`);
+                }
+                else if (!choice.unchanged) {
+                    await request(connection.agent.request(methods.agent.session.setConfigOption, { sessionId: id, configId: choice.configId, value: choice.value }));
                 }
             }
 

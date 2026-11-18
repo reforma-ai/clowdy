@@ -200,4 +200,21 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 5,
+        up(db) {
+            // A chat is bound to an agent, a model and a reasoning level (see `Chat`); the run carries the level its next turn applies.
+            // A chat that already has an orchestrator takes the agent and model that orchestrator runs on.
+            db.run(`
+                ALTER TABLE chats ADD COLUMN engine TEXT;
+                ALTER TABLE chats ADD COLUMN model TEXT;
+                ALTER TABLE chats ADD COLUMN effort TEXT;
+                ALTER TABLE runs ADD COLUMN effort TEXT;
+                UPDATE chats SET
+                    engine = (SELECT engine FROM runs WHERE runs.id = chats.orchestrator_run_id),
+                    model = (SELECT model FROM runs WHERE runs.id = chats.orchestrator_run_id)
+                WHERE orchestrator_run_id IS NOT NULL;
+            `);
+        },
+    },
 ];
