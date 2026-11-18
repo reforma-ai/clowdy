@@ -26,6 +26,9 @@ const MODES: ReadonlyArray<{ id: ChatMode; name: string }> = [
 /** What a press on the card's empty parts must leave alone: the controls, which take the press themselves. */
 const CONTROLS = 'button, [role="button"], [role="combobox"], [contenteditable="true"], a, input';
 
+/** The height of one line of the field in px, as the card sets it (`--spacing-20`): the field's own minimum is counted in px. */
+const LINE_HEIGHT = 20;
+
 /** Where the words typed on the new-chat page are kept: there is no chat id to keep them under yet. */
 const NEW_CHAT_DRAFT = '@new-chat';
 
@@ -36,6 +39,8 @@ export interface ComposerProps {
     run: Run | undefined;
     /** For the new-chat page: the project the chat is made in, and what to do once its first message is sent. */
     start?: { projectId: ProjectId; onStarted: (chatId: ChatId) => void };
+    /** How many lines the empty field is tall (it still grows with the text). One by default. */
+    minLines?: number;
 }
 
 /**
@@ -44,7 +49,7 @@ export interface ComposerProps {
  * nothing is typed, the send button stops it. Without a chat the first message makes one, so opening the new-chat page
  * again and again leaves no empty chats behind; if the message then fails the chat stays, and the retry goes to it.
  */
-export function Composer({ chat, run, start }: ComposerProps) {
+export function Composer({ chat, run, start, minLines }: ComposerProps) {
     const root = useRootStore();
     const field = useRef<RichInputHandle>(null);
     const box = useRef<HTMLDivElement>(null);
@@ -134,6 +139,7 @@ export function Composer({ chat, run, start }: ComposerProps) {
                     serializeMention={ serializeMention }
                     autoFocus={ !chat?.orchestratorRunId }
                     className={ styles.field }
+                    minHeight={ minLines ? minLines * LINE_HEIGHT : undefined }
                     aria-label="Message"
                     placeholder="Write a message…"
                     submitOnEnter

@@ -32,7 +32,7 @@ let sent: CommandInput[];
 let started: string[];
 
 /** `answer` says what the daemon answers to each command, in the order they are sent. */
-async function mount(answer: (input: CommandInput) => CommandResult) {
+async function mount(answer: (input: CommandInput) => CommandResult, minLines?: number) {
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
 
@@ -43,7 +43,7 @@ async function mount(answer: (input: CommandInput) => CommandResult) {
     await act(async () => {
         root.render(
             <RootStoreProvider value={ store as unknown as RootStore }>
-                <Composer chat={ undefined } run={ undefined } start={ { projectId: 'p', onStarted: chatId => started.push(chatId) } } />
+                <Composer chat={ undefined } run={ undefined } minLines={ minLines } start={ { projectId: 'p', onStarted: chatId => started.push(chatId) } } />
             </RootStoreProvider>
         );
     });
@@ -137,5 +137,17 @@ describe('Composer without a chat', () => {
         await mount(input => (input.type === 'chat.create' ? accepted({ chat: made }) : accepted()));
 
         expect(container.textContent).toContain('Autopilot');
+    });
+
+    it('is as tall as the page asks while empty, and one line otherwise', async () => {
+        await mount(() => accepted(), 3);
+
+        expect(field().style.minHeight).toBe('60px');
+
+        await act(async () => root.unmount());
+        root = createRoot(container);
+        await mount(() => accepted());
+
+        expect(field().style.minHeight).toBe('24px');
     });
 });

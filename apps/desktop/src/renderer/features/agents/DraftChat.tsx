@@ -23,7 +23,7 @@ export function DraftChat() {
                 <Text variant="heading-3">What should we work on?</Text>
 
                 <div className={ styles.composerSlot }>
-                    <Composer chat={ undefined } run={ undefined } start={ { projectId: project.id, onStarted: chatId => ui.openChat(chatId) } } />
+                    <Composer chat={ undefined } run={ undefined } minLines={ 3 } start={ { projectId: project.id, onStarted: chatId => ui.openChat(chatId) } } />
                 </div>
             </div>
         </div>
