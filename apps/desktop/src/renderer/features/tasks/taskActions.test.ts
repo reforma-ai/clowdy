@@ -8,18 +8,30 @@ import { overrideTransport } from '../../daemon/testing';
 import { installDispatcher } from '../../hotkeys/dispatcher';
 import { ListCursor } from '../../hotkeys/listCursor';
 import { createRegistry } from '../../hotkeys/registry';
+import { createUndoStack, type UndoStack } from '../../hotkeys/undo';
 import { RootStore } from '../../stores';
-import { sendEach, startTask } from './commands';
+import { startTask } from './commands';
 import { taskCommands, TASKS_SCOPE, type TaskCommandDeps } from './taskCommands';
+import { sendWithUndo } from './taskUndo';
 import { newestDocPath, runsByTask, startBlockedReason, taskGrid } from './taskView';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
-import type { Artifact, CommandResult, TaskDetail } from '@clowdy/protocol';
+import type { Artifact, CommandResult, Task, TaskDetail } from '@clowdy/protocol';
 import type { CommandInput, Transport } from '../../daemon/transport';
 import type { PickerRequest } from '../../shared/PickerPopover';
 import type { KeyValueStorage } from '../../stores/storage';
 
-const toasts = vi.hoisted(() => ({ error: vi.fn<(options: { message: string }) => void>() }));
+const toasts = vi.hoisted(() => {
+    let count = 0;
+    const next = () => `toast-${ ++count }`;
+
+    return {
+        error: vi.fn<(options: { message: string }) => void>(),
+        show: vi.fn<(options: { message: string; action?: { label: string; onPress: () => void } }) => string>(next),
+        success: vi.fn<(options: { message: string }) => string>(next),
+        queue: { close: vi.fn<(key: string) => void>() },
+    };
+});
 
 vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
 
@@ -40,6 +52,9 @@ let root: RootStore;
 let cursor: ListCursor;
 let uninstall: () => void;
 let stopFollowing: () => void;
+let stack: UndoStack;
+/** The daemon behind the store, for a change that does not come from the commands under test: an agent, another window. */
+let daemon: FixtureTransport;
 let pickers: PickerRequest[];
 let confirms: OpenConfirmModalOptions[];
 let titles: string[];
@@ -59,6 +74,9 @@ const status = (taskId: string) => project().tasks.get(taskId)?.statusId;
 /** Opens the Tasks screen's commands on a store whose transport records what it is asked to do and may refuse some of it. */
 async function mount(refuse: (input: CommandInput) => string | undefined = () => undefined) {
     const base = new FixtureTransport();
+
+    daemon = base;
+
     const transport: Transport = overrideTransport(base, {
         command: async (input) => {
             sent.push(input);
@@ -74,6 +92,7 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         },
     });
 
+    stack = createUndoStack();
     root = new RootStore(transport, { storage: memoryStorage() });
     await root.load();
     await settle();
@@ -95,7 +114,8 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         tasks: () => project().taskList,
         statuses: () => project().statuses,
         startBlocked: id => startBlockedReason(runsByTask(project().runTaskLinks.values(), project().runs).get(id)),
-        send: inputs => sendEach(root, inputs),
+        send: inputs => sendWithUndo(root, project(), inputs, stack),
+        undo: stack,
         start: id => startTask(root, id),
         openPicker: request => pickers.push(request),
         confirm: options => confirms.push(options),
@@ -134,6 +154,9 @@ beforeEach(() => {
     artifactsOf = {};
     resultsFail = false;
     toasts.error.mockClear();
+    toasts.show.mockClear();
+    toasts.success.mockClear();
+    toasts.queue.close.mockClear();
     document.body.innerHTML = '';
 });
 
@@ -585,5 +608,418 @@ describe('Back and forward', () => {
 
         expect(ui().section).toBe('tasks');
         expect(ui().taskId).toBeNull();
+    });
+});
+
+describe('Undo', () => {
+    /** Cmd+Z, and whether a command took the key. */
+    function undoKey(): boolean {
+        const event = new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true });
+
+        document.body.dispatchEvent(event);
+
+        return event.defaultPrevented;
+    }
+
+    /** The toast that offers the undo of the latest change. */
+    const offer = () => toasts.show.mock.calls.at(-1)![0];
+
+    /** An agent or another window changes a task through the daemon, and the project shows it once the event comes in. */
+    async function changedElsewhere(taskId: string, changes: Partial<Pick<Task, 'title' | 'description' | 'statusId' | 'dependsOn'>>) {
+        await daemon.command({ type: 'task.update', taskId, ...changes });
+        await settle();
+    }
+
+    /** Selects the tasks, which the keys then act on together. */
+    function select(...taskIds: string[]) {
+        for (const taskId of taskIds) {
+            goTo(taskId);
+            press('x');
+        }
+    }
+
+    describe('a status change', () => {
+        it('goes back with Cmd+Z after a pick, and the toast named it and offered the undo', async () => {
+            await mount();
+            goTo('t-28');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+
+            expect(status('t-28')).toBe('review');
+            expect(toasts.show).toHaveBeenCalledTimes(1);
+            expect(offer()).toEqual({ message: 'CAR-28 moved to Review', timeout: 5000, action: { label: 'Undo', onPress: expect.any(Function) } });
+
+            expect(undoKey()).toBe(true);
+            await settle();
+
+            expect(status('t-28')).toBe('backlog');
+            expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-28', statusId: 'backlog' });
+            expect(toasts.success).toHaveBeenCalledWith({ message: 'Undone: CAR-28 moved to Review' });
+        });
+
+        it('goes back when the toast\'s Undo is pressed, and then there is nothing left for the key', async () => {
+            await mount();
+            goTo('t-24');
+            press('ArrowRight', { altKey: true });
+            await settle();
+
+            expect(status('t-24')).toBe('review');
+
+            offer().action!.onPress();
+            await settle();
+
+            expect(status('t-24')).toBe('active');
+            expect(stack.canUndo).toBe(false);
+            expect(undoKey()).toBe(false);
+            expect(sent).toHaveLength(2);
+        });
+
+        it('takes one undo per Alt+Arrow, latest first, and each one finds the task as the one before left it', async () => {
+            await mount();
+            goTo('t-24');
+            press('ArrowRight', { altKey: true });
+            await settle();
+            press('ArrowRight', { altKey: true });
+            await settle();
+
+            expect(status('t-24')).toBe('done');
+
+            undoKey();
+            await settle();
+
+            expect(status('t-24')).toBe('review');
+
+            undoKey();
+            await settle();
+
+            expect(status('t-24')).toBe('active');
+            expect(stack.canUndo).toBe(false);
+        });
+
+        it('takes a quick second change\'s toast in place of the first one\'s instead of stacking them', async () => {
+            await mount();
+            goTo('t-24');
+            press('ArrowRight', { altKey: true });
+            await settle();
+
+            const first = toasts.show.mock.results[0].value;
+
+            press('ArrowRight', { altKey: true });
+            await settle();
+
+            expect(toasts.show).toHaveBeenCalledTimes(2);
+            expect(toasts.queue.close).toHaveBeenCalledWith(first);
+            expect(offer().message).toBe('CAR-24 moved to Done');
+        });
+
+        it('is one entry and one toast for a whole selection, which Cmd+Z puts back task by task', async () => {
+            await mount();
+            select('t-26', 't-27', 't-28');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+
+            expect(['t-26', 't-27', 't-28'].map(status)).toEqual(['review', 'review', 'review']);
+            expect(stack.entries).toHaveLength(1);
+            expect(toasts.show).toHaveBeenCalledTimes(1);
+            expect(offer().message).toBe('3 tasks moved to Review');
+
+            undoKey();
+            await settle();
+
+            expect(['t-26', 't-27', 't-28'].map(status)).toEqual(['todo', 'todo', 'backlog']);
+            expect(sent.slice(3)).toEqual([
+                { type: 'task.update', taskId: 't-26', statusId: 'todo' },
+                { type: 'task.update', taskId: 't-27', statusId: 'todo' },
+                { type: 'task.update', taskId: 't-28', statusId: 'backlog' },
+            ]);
+            expect(toasts.success).toHaveBeenCalledWith({ message: 'Undone: 3 tasks moved to Review' });
+        });
+
+        it('does not name a status when a selection stepped to several', async () => {
+            await mount();
+            select('t-26', 't-28');
+            press('ArrowRight', { altKey: true });
+            await settle();
+
+            // CAR-26 To do to In progress, CAR-28 Backlog to To do.
+            expect(['t-26', 't-28'].map(status)).toEqual(['active', 'todo']);
+            expect(offer().message).toBe('2 tasks moved');
+        });
+
+        it('records the tasks the daemon took, and puts back only those', async () => {
+            await mount(input => (input.type === 'task.update' && input.taskId === 't-27' && input.statusId === 'done' ? 'CAR-27 cannot move to Done while CAR-24 is open.' : undefined));
+            select('t-26', 't-27', 't-28');
+            press('s');
+            pickers[0].onPick('done');
+            await settle();
+
+            expect(['t-26', 't-27', 't-28'].map(status)).toEqual(['done', 'todo', 'done']);
+            expect(offer().message).toBe('2 tasks moved to Done');
+
+            undoKey();
+            await settle();
+
+            expect(['t-26', 't-27', 't-28'].map(status)).toEqual(['todo', 'todo', 'backlog']);
+            expect(sent.slice(3).map(input => 'taskId' in input && input.taskId)).toEqual(['t-26', 't-28']);
+        });
+    });
+
+    describe('a change that was not made', () => {
+        it('records nothing and offers nothing when the daemon refuses it, and Cmd+Z is left alone', async () => {
+            await mount(() => 'No');
+            goTo('t-28');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+
+            expect(status('t-28')).toBe('backlog');
+            expect(toasts.error).toHaveBeenCalledWith({ message: 'No' });
+            expect(toasts.show).not.toHaveBeenCalled();
+            expect(stack.canUndo).toBe(false);
+            expect(undoKey()).toBe(false);
+        });
+
+        it('records nothing at the end of the workflow, where Alt+Arrow does nothing', async () => {
+            await mount();
+            goTo('t-29');
+            press('ArrowRight', { altKey: true });
+            await settle();
+
+            expect(sent).toEqual([]);
+            expect(stack.canUndo).toBe(false);
+        });
+
+        it('records nothing for a delete, which has no way back, and nothing for a start', async () => {
+            await mount();
+            goTo('t-30');
+            press('Backspace', { metaKey: true });
+            await confirms[0].onConfirm();
+            await settle();
+
+            expect(project().tasks.has('t-30')).toBe(false);
+
+            goTo('t-22');
+            press('Enter', { metaKey: true });
+            await settle();
+
+            expect(sent.map(input => input.type)).toEqual(['task.delete', 'task.start']);
+            expect(stack.canUndo).toBe(false);
+            expect(toasts.show).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('dependencies', () => {
+        it('puts back the whole previous list after "blocked by", whether it added or removed', async () => {
+            await mount();
+            goTo('t-27');
+            press('m');
+            press('b');
+            pickers[0].onPick('t-25');
+            await settle();
+
+            expect(project().tasks.get('t-27')?.dependsOn).toEqual(['t-24', 't-25']);
+            expect(offer().message).toBe('Dependencies of CAR-27 changed');
+
+            undoKey();
+            await settle();
+
+            expect(project().tasks.get('t-27')?.dependsOn).toEqual(['t-24']);
+            expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-27', dependsOn: ['t-24'] });
+
+            goTo('t-26');
+            press('m');
+            press('b');
+            pickers[1].onPick('t-24');
+            await settle();
+
+            expect(project().tasks.get('t-26')?.dependsOn).toEqual(['t-25']);
+
+            undoKey();
+            await settle();
+
+            expect(project().tasks.get('t-26')?.dependsOn).toEqual(['t-24', 't-25']);
+        });
+
+        it('puts back the list of the task that got the link after "blocking", which is not the cursor task', async () => {
+            await mount();
+            goTo('t-28');
+            press('m');
+            press('x');
+            pickers[0].onPick('t-27');
+            await settle();
+
+            expect(project().tasks.get('t-27')?.dependsOn).toEqual(['t-24', 't-28']);
+            expect(offer().message).toBe('Dependencies of CAR-27 changed');
+
+            undoKey();
+            await settle();
+
+            expect(project().tasks.get('t-27')?.dependsOn).toEqual(['t-24']);
+            expect(project().tasks.get('t-28')?.dependsOn).toEqual([]);
+        });
+    });
+
+    describe('a task that changed since', () => {
+        it('is not overwritten: the person is told, nothing is sent, and the entry and its offer are gone', async () => {
+            await mount();
+            goTo('t-28');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+
+            const offered = toasts.show.mock.results[0].value;
+
+            await changedElsewhere('t-28', { statusId: 'done' });
+            sent.length = 0;
+
+            undoKey();
+            await settle();
+
+            expect(status('t-28')).toBe('done');
+            expect(sent).toEqual([]);
+            expect(toasts.error).toHaveBeenCalledWith({ message: 'CAR-28 changed since, so this cannot be undone' });
+            expect(toasts.success).not.toHaveBeenCalled();
+            expect(stack.canUndo).toBe(false);
+            // No "Undone" toast closes it on this path, and a button whose entry is gone must not stay on the screen.
+            expect(toasts.queue.close).toHaveBeenCalledWith(offered);
+        });
+
+        it('leaves a field that changed since but was not part of the change, and still puts back the one the change set', async () => {
+            await mount();
+            goTo('t-28');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+            await changedElsewhere('t-28', { dependsOn: ['t-20'] });
+
+            offer().action!.onPress();
+            await settle();
+
+            expect(status('t-28')).toBe('backlog');
+            expect(project().tasks.get('t-28')?.dependsOn).toEqual(['t-20']);
+            expect(toasts.error).not.toHaveBeenCalled();
+        });
+
+        it('is not overwritten when the undo comes from the toast\'s button either', async () => {
+            await mount();
+            goTo('t-28');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+            await changedElsewhere('t-28', { statusId: 'active' });
+            sent.length = 0;
+            offer().action!.onPress();
+            await settle();
+
+            expect(sent).toEqual([]);
+            expect(status('t-28')).toBe('active');
+            expect(toasts.error).toHaveBeenCalledTimes(1);
+        });
+
+        it('is told about when the task is gone', async () => {
+            await mount();
+            goTo('t-28');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+            await daemon.command({ type: 'task.delete', taskId: 't-28' });
+            await settle();
+            sent.length = 0;
+            undoKey();
+            await settle();
+
+            expect(sent).toEqual([]);
+            expect(toasts.error).toHaveBeenCalledWith({ message: 'CAR-28 changed since, so this cannot be undone' });
+        });
+
+        it('puts back the tasks of a selection that are as the change left them, and says which were not', async () => {
+            await mount();
+            select('t-26', 't-27', 't-28');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+            await changedElsewhere('t-27', { statusId: 'done' });
+            sent.length = 0;
+
+            undoKey();
+            await settle();
+
+            expect(['t-26', 't-27', 't-28'].map(status)).toEqual(['todo', 'done', 'backlog']);
+            expect(sent.map(input => 'taskId' in input && input.taskId)).toEqual(['t-26', 't-28']);
+            expect(toasts.error).toHaveBeenCalledWith({ message: 'CAR-27 changed since and was left as it is' });
+            // Not all of it is undone, so there is no "Undone" to claim.
+            expect(toasts.success).not.toHaveBeenCalled();
+        });
+
+        it('says how many when a whole selection changed', async () => {
+            await mount();
+            select('t-26', 't-27');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+            await changedElsewhere('t-26', { statusId: 'done' });
+            await changedElsewhere('t-27', { statusId: 'done' });
+            sent.length = 0;
+
+            undoKey();
+            await settle();
+
+            expect(sent).toEqual([]);
+            expect(toasts.error).toHaveBeenCalledWith({ message: '2 tasks changed since, so this cannot be undone' });
+        });
+    });
+
+    describe('a refused undo', () => {
+        it('shows the daemon\'s own message, leaves the task as it is, and drops the entry', async () => {
+            let refusing = false;
+
+            await mount(() => (refusing ? 'CAR-28 cannot go back to Backlog.' : undefined));
+            goTo('t-28');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+            refusing = true;
+            undoKey();
+            await settle();
+
+            expect(status('t-28')).toBe('review');
+            expect(toasts.error).toHaveBeenCalledTimes(1);
+            expect(toasts.error).toHaveBeenCalledWith({ message: 'CAR-28 cannot go back to Backlog.' });
+            expect(toasts.success).not.toHaveBeenCalled();
+            expect(stack.canUndo).toBe(false);
+        });
+    });
+
+    describe('what an undo is not', () => {
+        it('is not a change of its own: it records nothing, so there is no redo and no second toast offer', async () => {
+            await mount();
+            goTo('t-28');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+            undoKey();
+            await settle();
+
+            expect(stack.canUndo).toBe(false);
+            expect(toasts.show).toHaveBeenCalledTimes(1);
+            expect(undoKey()).toBe(false);
+        });
+
+        it('closes the offer of the change it took back, so the toast does not outlive its entry', async () => {
+            await mount();
+            goTo('t-28');
+            press('s');
+            pickers[0].onPick('review');
+            await settle();
+
+            const offered = toasts.show.mock.results[0].value;
+
+            undoKey();
+            await settle();
+
+            expect(toasts.queue.close).toHaveBeenCalledWith(offered);
+        });
     });
 });

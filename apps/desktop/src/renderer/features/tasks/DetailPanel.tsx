@@ -14,6 +14,7 @@ import styles from './DetailPanel.module.css';
 import { Executors, LatestActivity, RelatedChats, Results, Section } from './DetailSections';
 import { EditableText } from './EditableText';
 import { StatusIcon } from './status';
+import { sendWithUndo } from './taskUndo';
 import { activeExecutors, dependencyCandidates, externalLink, startBlockedReason, taskActivity, type TaskRun } from './taskView';
 
 import type { Task } from '@clowdy/protocol';
@@ -40,7 +41,8 @@ export function DetailPanel({ task, taskRuns, titleRef }: DetailPanelProps) {
     const blocked = startBlockedReason(taskRuns);
     const link = externalLink(task.external);
 
-    const update = async (changes: TaskChanges) => (await sendCommand(root, { type: 'task.update', taskId: task.id, ...changes })).ok;
+    // The panel's edits (title, description, status, dependencies) are the ones the person can take back.
+    const update = async (changes: TaskChanges) => (await sendWithUndo(root, project, [{ type: 'task.update', taskId: task.id, ...changes }]))[0].ok;
 
     const start = async () => {
         setIsStarting(true);

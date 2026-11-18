@@ -6,16 +6,18 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { useCommands, useHotkeyScope } from '../../hotkeys';
 import { ListCursor } from '../../hotkeys/listCursor';
+import { undoStack } from '../../hotkeys/undo';
 import { PickerPopover, type PickerRequest } from '../../shared/PickerPopover';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { Board } from './Board';
-import { copyWithToast, sendCommand, sendEach, startTask } from './commands';
+import { copyWithToast, startTask } from './commands';
 import { openCreateTask } from './CreateTaskDialog';
 import { DetailPanel } from './DetailPanel';
 import styles from './Screen.module.css';
 import { focusZoneOf, TASK_CONTROL, taskCommands, TASKS_SCOPE } from './taskCommands';
 import { TaskList } from './TaskList';
 import { TasksHeader } from './TasksHeader';
+import { sendWithUndo } from './taskUndo';
 import { agentOptions, boardColumns, filterTasks, isFiltering, newestDocPath, NO_FILTER, runsByTask, startBlockedReason, taskGrid, tasksSource } from './taskView';
 
 import type { TaskId } from '@clowdy/protocol';
@@ -78,7 +80,7 @@ export function Screen() {
     const selected = ui.taskId ? project.tasks.get(ui.taskId) : undefined;
 
     const move = (taskId: string, statusId: string) => {
-        if (project.tasks.get(taskId)?.statusId !== statusId) void sendCommand(root, { type: 'task.update', taskId, statusId });
+        if (project.tasks.get(taskId)?.statusId !== statusId) void sendWithUndo(root, project, [{ type: 'task.update', taskId, statusId }]);
     };
 
     // The cursor walks what the view draws. It follows the open task when that changes from elsewhere (a dependency link, a chip in Chats).
@@ -167,7 +169,8 @@ export function Screen() {
         tasks: () => project.taskList,
         statuses: () => project.statuses,
         startBlocked: taskId => startBlockedReason(runsByTask(project.runTaskLinks.values(), project.runs).get(taskId)),
-        send: inputs => sendEach(root, inputs),
+        send: inputs => sendWithUndo(root, project, inputs),
+        undo: undoStack,
         start: taskId => startTask(root, taskId),
         openPicker: request => setPicker({ request, anchor: (cursor.cursorId === null ? null : itemOf(region.current, cursor.cursorId)) ?? screen.current?.querySelector('aside') ?? null }),
         // The dialog hands focus back to what had it, which is gone when the daemon's event came in while it was open. That happens after `onClose`.

@@ -27,18 +27,19 @@
    TOAST BASE
    ============================================ */
 
+    /*
+     * Two rows: the message and the close button, then the action across the full width. Everything keeps the close button's own 6px inset,
+     * so the action never meets it; the message adds the rest of the 8px it had (see `.body`). A toast with no action is the first row alone.
+     */
     .toast {
-        position: relative;
         width: 240px;
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        gap: var(--spacing-lg);
-        /* Close is centered and out of flow. Same 6px inset as `right`, inside the border. */
-        min-height: calc(var(--spacing-30) + (var(--spacing-sm) * 2) + 2px);
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: var(--spacing-sm);
         border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
         corner-shape: superellipse(var(--squircle-value));
-        padding: var(--spacing-md);
+        padding: var(--spacing-sm);
         /* Inverted against the page, same idea as the desktop-app offer. */
         background: var(--color-contrast);
         border: 1px solid color-mix(in srgb, var(--color-contrast-content) 16%, transparent);
@@ -57,7 +58,8 @@
         color: var(--color-text);
     }
 
-    .close[data-variant] {
+    /* `:not(...)` keeps these above the Button's own `.button[data-variant][data-color]` colors, which a bare `.close[data-variant]` lost to. */
+    .toast:not([data-contrast='false']) .close[data-variant] {
         --clowdy-button-color: var(--color-contrast-content);
         --clowdy-button-color--hover: var(--color-contrast-content);
         --clowdy-button-bg--hover: color-mix(in srgb, var(--color-contrast-content) 12%, transparent);
@@ -76,7 +78,7 @@
         --clowdy-button-color--hover: var(--color-primary-content);
     }
 
-    .action[data-color] {
+    .toast:not([data-contrast='false']) .action[data-color] {
         --clowdy-button-bg: var(--color-contrast-content);
         --clowdy-button-color: var(--color-contrast);
         --clowdy-button-bg--hover: color-mix(in srgb, var(--color-contrast-content) 88%, var(--color-contrast));
@@ -84,11 +86,12 @@
     }
 
     .body {
+        grid-area: 1 / 1;
         display: flex;
         align-items: center;
         gap: var(--spacing-md);
         min-width: 0;
-        margin-block: auto;
+        padding: var(--spacing-xxs);
     }
 
     .line {
@@ -117,7 +120,7 @@
         flex-direction: column;
         min-width: 0;
         flex: 1 1 auto;
-        padding-right: calc(var(--spacing-30) + var(--spacing-sm));
+        overflow-wrap: anywhere;
     }
 
     .content > * {
@@ -128,11 +131,11 @@
     }
 
     .close {
-        position: absolute;
-        top: 50%;
-        right: var(--spacing-sm);
-        z-index: 1;
-        transform: translateY(-50%);
+        grid-area: 1 / 2;
+    }
+
+    .action {
+        grid-area: 2 / 1 / 3 / -1;
     }
 
     .content [slot='title'] {

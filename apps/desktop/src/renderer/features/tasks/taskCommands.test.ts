@@ -6,6 +6,7 @@ import { installDispatcher } from '../../hotkeys/dispatcher';
 import { groupHelpEntries, helpEntries } from '../../hotkeys/helpEntries';
 import { ListCursor, type Grid } from '../../hotkeys/listCursor';
 import { createRegistry, type HotkeyRegistry } from '../../hotkeys/registry';
+import { createUndoStack, type UndoStack } from '../../hotkeys/undo';
 import { focusZoneOf, taskCommands, TASKS_SCOPE, type FocusZone, type TaskCommandDeps } from './taskCommands';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
@@ -77,6 +78,8 @@ interface Harness {
     started: string[];
     titles: string[];
     registry: HotkeyRegistry;
+    /** The history `Cmd/Ctrl+Z` takes back from. */
+    undo: UndoStack;
     /** What the commands asked the screen to do. */
     asked: { created: number; filter: number; search: number };
     copied: { text: string; message: string }[];
@@ -124,6 +127,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
     const asked = { created: 0, filter: 0, search: 0 };
     const copied: Harness['copied'] = [];
     const notices: Harness['notices'] = [];
+    const undo = createUndoStack();
     const deps: TaskCommandDeps = {
         cursor,
         ui,
@@ -142,6 +146,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
                 ? { ok: false, requestId: 'r', error: { code: 'invalid', message: 'No' } }
                 : { ok: true, requestId: 'r', data: {} }));
         },
+        undo,
         start: async (id) => {
             started.push(id);
         },
@@ -178,7 +183,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
 
     uninstall = installDispatcher(registry);
 
-    return { cursor, ui, reveal, known, state, sent, pickers, confirms, started, titles, registry, asked, copied, notices, replaced, deps };
+    return { cursor, ui, reveal, known, state, sent, pickers, confirms, started, titles, registry, undo, asked, copied, notices, replaced, deps };
 }
 
 /** Returns whether a command took the key (the dispatcher calls `preventDefault`). */
@@ -1528,6 +1533,132 @@ describe('Open the linked chat and document', () => {
     });
 });
 
+describe('Undo', () => {
+    /** An entry that counts its runs, and resolves to `worked`. */
+    const entryOf = (label: string, worked = true) => ({ label, undo: vi.fn<() => Promise<boolean>>(async () => worked) });
+
+    it('takes back the latest change with Cmd+Z, and claims the key', async () => {
+        const harness = setup(list, 'list');
+        const first = entryOf('first');
+        const second = entryOf('second');
+
+        harness.undo.push(first);
+        harness.undo.push(second);
+
+        expect(press('z', { metaKey: true })).toBe(true);
+        await Promise.resolve();
+
+        expect(second.undo).toHaveBeenCalledTimes(1);
+        expect(first.undo).not.toHaveBeenCalled();
+        expect(harness.undo.entries).toEqual([first]);
+    });
+
+    it('is Ctrl+Z on Windows', async () => {
+        const registry = createRegistry('win32');
+        const harness = setup(list, 'list');
+        const entry = entryOf('change');
+
+        // The harness registry is the Mac one; the command's keys are the same string, which the Windows registry reads as Ctrl.
+        registry.pushScope(TASKS_SCOPE);
+        taskCommands(harness.deps).forEach(command => registry.defineCommand(command));
+        uninstall?.();
+        uninstall = installDispatcher(registry);
+        harness.undo.push(entry);
+
+        expect(press('z', { metaKey: true })).toBe(false);
+        expect(press('z', { ctrlKey: true })).toBe(true);
+        await Promise.resolve();
+
+        expect(entry.undo).toHaveBeenCalledTimes(1);
+    });
+
+    it('is off, and leaves the key to the page, while there is nothing to take back', () => {
+        const harness = setup(list, 'list');
+
+        expect(press('z', { metaKey: true })).toBe(false);
+        expect(harness.registry.listCommands().live.map(command => command.id)).not.toContain('tasks.undo');
+        expect(commandHint('tasks.undo', harness.registry)).toBeUndefined();
+    });
+
+    it('turns on with the first change and off again when the history is empty, for the hint and for what the overlay marks as available', async () => {
+        const harness = setup(list, 'list');
+        const isLive = () => harness.registry.listCommands().live.some(command => command.id === 'tasks.undo');
+
+        expect(isLive()).toBe(false);
+
+        harness.undo.push(entryOf('change'));
+
+        expect(isLive()).toBe(true);
+        expect(commandHint('tasks.undo', harness.registry)).toEqual([['meta', 'z']]);
+
+        await harness.undo.undoLatest();
+
+        expect(isLive()).toBe(false);
+        expect(commandHint('tasks.undo', harness.registry)).toBeUndefined();
+        expect(press('z', { metaKey: true })).toBe(false);
+    });
+
+    it('does not need the list to have the focus: the history is the window\'s', async () => {
+        const harness = setup(list, 'list');
+        const entry = entryOf('change');
+
+        harness.state.zone = 'other';
+        harness.undo.push(entry);
+
+        expect(press('z', { metaKey: true })).toBe(true);
+        await Promise.resolve();
+
+        expect(entry.undo).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves Cmd+Z to a text field, which undoes its own typing', () => {
+        const harness = setup(list, 'list');
+        const entry = entryOf('change');
+        const input = document.createElement('input');
+        const area = document.createElement('textarea');
+
+        document.body.append(input, area);
+        harness.undo.push(entry);
+
+        expect(press('z', { metaKey: true }, input)).toBe(false);
+        expect(press('z', { metaKey: true }, area)).toBe(false);
+        expect(entry.undo).not.toHaveBeenCalled();
+        expect(harness.undo.canUndo).toBe(true);
+    });
+
+    it('leaves Cmd+Z alone while a picker, a popover or a dialog is open', () => {
+        const harness = setup(list, 'list');
+        const entry = entryOf('change');
+        const popover = document.createElement('div');
+
+        popover.setAttribute('data-modal-clickout-layer', '');
+        popover.innerHTML = '<input />';
+        document.body.append(popover);
+        harness.undo.push(entry);
+
+        expect(press('z', { metaKey: true }, popover.querySelector('input')!)).toBe(false);
+
+        popover.remove();
+
+        const dialog = document.createElement('div');
+
+        dialog.setAttribute('data-modal-overlay', '');
+        document.body.append(dialog);
+
+        expect(press('z', { metaKey: true })).toBe(false);
+        expect(entry.undo).not.toHaveBeenCalled();
+        expect(harness.undo.canUndo).toBe(true);
+    });
+
+    it('does not take Cmd+Shift+Z, which is redo to the menu', () => {
+        const harness = setup(list, 'list');
+
+        harness.undo.push(entryOf('change'));
+
+        expect(press('z', { metaKey: true, shiftKey: true })).toBe(false);
+    });
+});
+
 describe('where the focus is, and the help overlay and the key hints', () => {
     it('keeps a key off while a widget has the focus, but the command is still listed and still has its hint', () => {
         const harness = setup(list, 'list');
@@ -1548,8 +1679,8 @@ describe('where the focus is, and the help overlay and the key hints', () => {
 
         const dead = harness.registry.listCommands().all.filter(command => !harness.registry.listCommands().live.includes(command)).map(command => command.id);
 
-        // Only what has nothing to act on: the board's column keys in a list, and Escape with nothing open or selected.
-        expect(dead.sort()).toEqual(['tasks.cursor.left', 'tasks.cursor.right', 'tasks.escape'].sort());
+        // Only what has nothing to act on: the board's column keys in a list, Escape with nothing open or selected, and Undo with nothing to take back.
+        expect(dead.sort()).toEqual(['tasks.cursor.left', 'tasks.cursor.right', 'tasks.escape', 'tasks.undo'].sort());
     });
 });
 
@@ -1620,6 +1751,7 @@ describe('the keymap', () => {
             'tasks.copy.title',
             'tasks.chat.open',
             'tasks.doc.open',
+            'tasks.undo',
         ]);
         expect(new Set(commands.map(command => command.group))).toEqual(new Set(['Tasks']));
         expect(new Set(commands.map(command => command.scope))).toEqual(new Set([TASKS_SCOPE]));

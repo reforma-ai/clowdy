@@ -63,6 +63,18 @@ export function ToastRegion() {
                         </div>
                     </div>
 
+                    <Button
+                        iconOnly
+                        slot="close"
+                        aria-label="Close"
+                        variant="filling"
+                        color="secondary"
+                        size="sm"
+                        className={ styles.close }
+                    >
+                        <CloseIcon />
+                    </Button>
+
                     <Show when={ t.content.action != null }>
                         <Button
                             color="primary"
@@ -76,18 +88,6 @@ export function ToastRegion() {
                             { t.content.action?.label }
                         </Button>
                     </Show>
-
-                    <Button
-                        iconOnly
-                        slot="close"
-                        aria-label="Close"
-                        variant="filling"
-                        color="secondary"
-                        size="sm"
-                        className={ styles.close }
-                    >
-                        <CloseIcon />
-                    </Button>
                 </Toast>
             )}
         </AriaToastRegion>

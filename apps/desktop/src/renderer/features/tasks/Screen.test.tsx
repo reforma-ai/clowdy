@@ -7,6 +7,7 @@ import { FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys } from '../../hotkeys';
 import { installDispatcher } from '../../hotkeys/dispatcher';
+import { undoStack } from '../../hotkeys/undo';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { openCreateTask } from './CreateTaskDialog';
 import { Screen } from './Screen';
@@ -73,6 +74,8 @@ beforeEach(() => {
 
 afterEach(() => {
     uninstall();
+    // The window's history outlives a screen; a change one test made is not another test's to take back.
+    undoStack.clear();
     act(() => reactRoot.unmount());
     store.dispose();
     container.remove();
@@ -343,5 +346,107 @@ describe('key hints', () => {
         });
 
         expect(container.querySelector('header [slot="suffix"] kbd')).toBeNull();
+    });
+});
+
+describe('undo', () => {
+    const title = () => container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Title"]')!;
+    const task = (taskId: string) => store.selectedProject!.tasks.get(taskId)!;
+
+    /** Types into a field the way a person does: the value, then the input event React listens to. */
+    async function type(field: HTMLTextAreaElement, text: string) {
+        await act(async () => {
+            const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+
+            setValue.call(field, text);
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
+    /** What the board's column sees when a card is dropped on it. */
+    async function drop(taskId: string, column: string) {
+        const event = new Event('drop', { bubbles: true, cancelable: true });
+
+        Object.defineProperty(event, 'dataTransfer', { value: { types: ['application/x-clowdy-task'], getData: () => taskId } });
+        await act(async () => void container.querySelector(`section[aria-label="${ column }"]`)!.dispatchEvent(event));
+        await draw();
+    }
+
+    it('takes back a card dropped on another column, and the key is for the Tasks screen only while there is something to take back', async () => {
+        await mountWithHints();
+
+        expect(press('z', { mod: true }).defaultPrevented).toBe(false);
+
+        await drop('t-26', 'Review');
+
+        expect(columnOf('t-26')).toBe('Review');
+        expect(undoStack.entries.map(entry => entry.label)).toEqual(['CAR-26 moved to Review']);
+
+        await act(async () => void press('z', { mod: true }));
+        await draw();
+
+        expect(columnOf('t-26')).toBe('To do');
+        expect(undoStack.canUndo).toBe(false);
+    });
+
+    it('records a drop on the column the card is in as nothing', async () => {
+        await mountWithHints();
+        await drop('t-26', 'To do');
+
+        expect(undoStack.canUndo).toBe(false);
+    });
+
+    it('takes back a title edited in the panel with Cmd+Z once the field is left, and leaves the key to the field while it is typed in', async () => {
+        await mountWithHints();
+
+        const was = task('t-26').title;
+
+        await act(async () => titleOf('t-26').click());
+        await draw();
+        await act(async () => title().focus());
+        await type(title(), 'Cancel a booking, with a refund');
+
+        // Mid-edit the key is the field's own undo: nothing is recorded yet and nothing is taken.
+        expect(press('z', { mod: true }, title()).defaultPrevented).toBe(false);
+
+        await act(async () => press('Enter', {}, title()));
+        await wait();
+
+        expect(task('t-26').title).toBe('Cancel a booking, with a refund');
+        expect(undoStack.entries.map(entry => entry.label)).toEqual(['Renamed CAR-26']);
+
+        await act(async () => void press('z', { mod: true }));
+        await draw();
+
+        expect(task('t-26').title).toBe(was);
+    });
+
+    it('records nothing for a title whose edit is dropped with Esc', async () => {
+        await mountWithHints();
+        await act(async () => titleOf('t-26').click());
+        await draw();
+        await act(async () => title().focus());
+        await type(title(), 'Cancel a booking, with a refund');
+        await act(async () => press('Escape', {}, title()));
+        await wait();
+
+        expect(task('t-26').title).not.toBe('Cancel a booking, with a refund');
+        expect(undoStack.canUndo).toBe(false);
+    });
+
+    it('takes back a dependency removed in the panel', async () => {
+        await mountWithHints();
+        await act(async () => titleOf('t-26').click());
+        await draw();
+        await act(async () => container.querySelector<HTMLElement>('button[aria-label="Remove dependency CAR-24"]')!.click());
+        await draw();
+
+        expect(task('t-26').dependsOn).toEqual(['t-25']);
+        expect(undoStack.entries.map(entry => entry.label)).toEqual(['Dependencies of CAR-26 changed']);
+
+        await act(async () => void press('z', { mod: true }));
+        await draw();
+
+        expect(task('t-26').dependsOn).toEqual(['t-24', 't-25']);
     });
 });

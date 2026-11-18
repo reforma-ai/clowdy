@@ -7,6 +7,7 @@ import type { Chat, CommandResult, Task, TaskId, TaskStatus } from '@clowdy/prot
 import type { CommandInput } from '../../daemon/transport';
 import type { Command } from '../../hotkeys';
 import type { Direction, ListCursor } from '../../hotkeys/listCursor';
+import type { UndoStack } from '../../hotkeys/undo';
 import type { PickerRequest } from '../../shared/PickerPopover';
 import type { ProjectUi, TasksView } from '../../stores';
 
@@ -56,8 +57,13 @@ export interface TaskCommandDeps {
     statuses: () => readonly TaskStatus[];
     /** Why the task cannot be started now (an agent is already on it), or null. */
     startBlocked: (taskId: TaskId) => string | null;
-    /** Sends one command per input, in order, and says what the daemon refused in one toast. See `sendEach`. */
+    /**
+     * Sends one command per input, in order, and says what the daemon refused in one toast. See `sendEach`.
+     * The `task.update`s it sends are recorded in `undo` by whoever builds it (`sendWithUndo`), so a command does not know about undoing.
+     */
     send: (inputs: readonly CommandInput[]) => Promise<CommandResult[]>;
+    /** What `Cmd/Ctrl+Z` takes back: the changes `send` recorded. The window's stack, not the screen's. */
+    undo: Pick<UndoStack, 'canUndo' | 'undoLatest'>;
     /** Starts the task with an agent, as the panel's Start button does. */
     start: (taskId: TaskId) => Promise<unknown>;
     /** Opens a picker beside the cursor task. */
@@ -536,6 +542,16 @@ function linkedCommands(deps: TaskCommandDeps): Command[] {
     ];
 }
 
+/**
+ * `Cmd/Ctrl+Z` takes back the latest status, title, description or dependency change. The history is the window's, so it needs neither the list's focus nor a cursor;
+ * a text field keeps its own undo and a dialog or picker keeps the key, as with every command. It exists only while there is something to take back.
+ */
+function undoCommands({ undo }: TaskCommandDeps): Command[] {
+    return [
+        { id: 'tasks.undo', title: 'Undo', group: GROUP, keys: '$mod+z', scope: TASKS_SCOPE, when: () => undo.canUndo, handler: () => void undo.undoLatest() },
+    ];
+}
+
 /** The commands of the Tasks screen, for the `tasks` scope. */
 export function taskCommands(deps: TaskCommandDeps): Command[] {
     return [
@@ -547,5 +563,6 @@ export function taskCommands(deps: TaskCommandDeps): Command[] {
         ...screenCommands(deps),
         ...copyCommands(deps),
         ...linkedCommands(deps),
+        ...undoCommands(deps),
     ];
 }
