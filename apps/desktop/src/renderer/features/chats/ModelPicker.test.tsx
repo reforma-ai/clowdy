@@ -11,6 +11,12 @@ import type { AgentModel, AgentModels } from '@clowdy/protocol';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+// The app is used on a Mac, where React Aria leaves the action of Enter alone (it would block the context-menu shortcut). It reads the platform
+// once, so this runs before it can.
+vi.hoisted(() => {
+    Object.defineProperty(globalThis.navigator, 'platform', { value: 'MacIntel', configurable: true });
+});
+
 /*
  * The model and reasoning picker on the fixture daemon's models. The test build has no MobX observer, so the picker is drawn again by
  * hand after a list changes, as the observer does in the app.
@@ -39,9 +45,9 @@ const draw = () => act(async () => {
     root.render(<ModelPicker { ...props } />);
 });
 
-/** Lets a popover place itself and its transitions end. */
+/** Lets what a popover does as it opens or closes run its course. Nothing in the test build waits on a timer, so no time needs to pass. */
 const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await Promise.resolve();
 });
 
 const pointer = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, width: 1, height: 1, pressure: 0.5, detail: 1 };
@@ -93,6 +99,17 @@ const tap = async (target: Element, name: string) => {
         target.dispatchEvent(new KeyboardEvent('keyup', { key: name, bubbles: true, cancelable: true }));
     });
 };
+
+/** Presses Enter on `target` and says whether the key's own action was left to run: that action is a click on whatever holds the focus once the pick has moved it. */
+async function enterIsCancelled(target: Element) {
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+    await act(async () => {
+        target.dispatchEvent(enter);
+    });
+
+    return enter.defaultPrevented;
+}
 
 /** Opens the flyout of "More models" with a press, and lets it place itself. */
 async function openFlyout() {
@@ -470,6 +487,15 @@ describe('the list', () => {
             document.activeElement!.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true }));
         });
 
+        expect(picks).toEqual([{ engine: 'claude', model: 'fable', effort: 'high' }]);
+        expect(onFace()).toBe(true);
+    });
+
+    it('cancels what Enter would do on its own on a row, since the pick moves the focus to the model button and a Mac would click it', async () => {
+        await setup(opus);
+        await openList();
+
+        expect(await enterIsCancelled(optionNamed('Fable 5.2'))).toBe(true);
         expect(picks).toEqual([{ engine: 'claude', model: 'fable', effort: 'high' }]);
         expect(onFace()).toBe(true);
     });
@@ -939,6 +965,17 @@ describe('the provider strip', () => {
         expect(onList()).toBe(true);
     });
 
+    it('has the list of the provider it turned to take the focus on its first row, as when it was opened', async () => {
+        await setup(opus);
+        await openList();
+        await press(tabNamed('Codex'));
+
+        // Where Tab goes from the strip: the one stop of the list.
+        listLayer().querySelector<HTMLElement>('[role="listbox"], [role="option"][tabindex="0"]')!.focus();
+
+        expect(document.activeElement).toBe(optionNamed('GPT-6.2 Sol'));
+    });
+
     it('starts on the provider in force every time the list opens', async () => {
         await setup(opus);
         await openList();
@@ -1192,6 +1229,15 @@ describe('the flyout of "More models"', () => {
         expect(onFace()).toBe(true);
     });
 
+    it('cancels what Enter would do on its own on a row of the flyout too', async () => {
+        await setup(opus);
+        await openFlyout();
+
+        expect(await enterIsCancelled(flyoutOptionNamed('Opus 4.6'))).toBe(true);
+        expect(picks).toEqual([{ engine: 'claude', model: 'claude-opus-4-6', effort: 'high' }]);
+        expect(onFace()).toBe(true);
+    });
+
     it('lists the rest of the provider the strip shows, and the level a model was last used at', async () => {
         writeRemembered({ models: {}, efforts: { 'codex/gpt-5.5': 'xhigh' } });
         await setup(opus);
@@ -1267,7 +1313,7 @@ describe('the flyout of "More models"', () => {
         expect(stage.contains(flyout())).toBe(false);
     });
 
-    it('is let go when the list goes back to the face, and when the popover closes', async () => {
+    it('is let go when the list goes back to the face, and does not come back with the list', async () => {
         await setup(opus);
         await openFlyout();
         await press(listLayer().querySelector('button[aria-label="Back"]'));

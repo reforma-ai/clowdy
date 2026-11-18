@@ -93,7 +93,7 @@ export function pickableModels(models: readonly AgentModel[]): AgentModel[] {
 }
 
 /** How many models a list shows before "More models" (the agent's `featured` rows are shown whatever their number). */
-export const MAIN_MODEL_COUNT = 5;
+const MAIN_MODEL_COUNT = 5;
 
 /**
  * The main models of a list, for a picker that shows few: the agent's `featured` rows when it marks any (however many), else the first five

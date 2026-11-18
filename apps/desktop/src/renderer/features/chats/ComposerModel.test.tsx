@@ -123,7 +123,7 @@ const press = (element: Element | null | undefined) => act(async () => {
 });
 
 const settle = () => act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await Promise.resolve();
 });
 
 const key = (target: Element, name: string) => act(async () => {
@@ -551,6 +551,18 @@ describe('in a chat', () => {
         await update({ chat: { ...chat, model: 'sonnet', effort: 'low' } });
 
         expect(trigger()!.getAttribute('aria-label')).toBe('Model: Sonnet 5.5 · Low');
+    });
+
+    it('does not bring a pick back when the chat\'s record, which has moved past it, returns to what it was before the pick', async () => {
+        const chat = chatOn();
+        const { update } = await mount({ chat, run: runOf() });
+
+        await openPicker();
+        await pickModel('Fable 5.2');
+        await update({ chat: { ...chat, model: 'fable' } });
+        await update({ chat });
+
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
     });
 
     it('keeps the old model on the pill when the daemon refused the pick', async () => {

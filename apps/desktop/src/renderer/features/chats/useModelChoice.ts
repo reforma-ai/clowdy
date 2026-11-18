@@ -58,7 +58,12 @@ export function useModelChoice({ chat, made, run }: ModelChoiceArgs): ModelChoic
     const usable = providerAgents(agents).filter(isUsableProvider);
     // A chat holds its own choice; the new-chat page holds the pick, else the one it starts from.
     const stored = chat ? (choiceOf(chat) ?? choiceOf(run)) : undefined;
-    const waiting = chat && pending?.chatId === chat.id && pending.from === choiceKey(stored) ? pending.choice : undefined;
+    const heldPick = chat && pending?.chatId === chat.id ? pending : undefined;
+
+    // Once the record has moved the pick is let go for good: the record changing back to what it was must not bring the pick back.
+    if (heldPick && heldPick.from !== choiceKey(stored)) setPending(undefined);
+
+    const waiting = heldPick && heldPick.from === choiceKey(stored) ? heldPick.choice : undefined;
     const fixed = chat ? (waiting ?? stored) : (picked ?? choiceOf(made));
     const starting = !chat && !fixed;
     const engine = starting ? startingEngine(usable.map(agent => agent.id), remembered) : fixed?.engine;
