@@ -326,7 +326,12 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 - `c`, `f` and `/` still work with a panel control focused, such as a closed Select. That is deliberate and tested.
 - Chord abort: a second key that matches no continuation still starts a fresh command. Swallowing it would either break `Tab` and `Cmd+C` or let a row's type-ahead take it, and the `o c` case that exposed it is gone.
 
-**Commits:** None yet.
+**Commits:**
+
+- `1d48e83` feat(desktop): create, view, copy and open keys for tasks, with hints
+- `5c092d7` fix(desktop): smaller chord HUD, square hotkey capsules, wider gap before tooltip hints (owner feedback on the Stage 3 HUD and tooltips)
+- `fb5708e` fix(desktop): list every shortcut in the help overlay without dimming (owner feedback: the dimming and its footnote were never asked for)
+- `0ea0270` fix(desktop): start the task the panel shows, not the one under the pointer
 
 ## Stage 7 — Undo for reversible task edits (optional)
 
@@ -334,11 +339,11 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **This stage:** Scope change: the runtime probe is left to the user, so the stage ships on two paths. The toast Undo action always works. The Cmd/Ctrl+Z key is registered as well and works wherever the page `keydown` arrives before the native Edit-menu Undo, which the user's manual probe settles. If the probe says the menu wins on macOS, the fix is in `menu.ts` and is recorded as a follow-up, not guessed here. Every status, title, description and dependency change made by the hotkeys or the panel records the previous values in a renderer undo stack and shows a toast with an Undo action. Cmd/Ctrl+Z reverses the latest entry by sending the inverse `task.update`. Delete is not undoable until a trash exists, and its confirm dialog stays.
 
-- [ ] Complete
-  - [ ] The probe outcome for Cmd/Ctrl+Z is noted here when the user reports it
-  - [ ] An undo stack of `{ label, undo }` entries, capped in length
-  - [ ] Status, title, description and dependency edits record an entry and show a toast with an Undo action
-  - [ ] `Cmd+Z` in the `tasks` scope undoes the latest entry and is off in text fields
+- [x] Complete
+  - [x] The probe outcome for Cmd/Ctrl+Z is noted here when the user reports it
+  - [x] An undo stack of `{ label, undo }` entries, capped in length
+  - [x] Status, title, description and dependency edits record an entry and show a toast with an Undo action
+  - [x] `Cmd+Z` in the `tasks` scope undoes the latest entry and is off in text fields
 
 **Files**
 
@@ -349,7 +354,26 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **Done when:** changing a status and pressing the toast's Undo restores it in the fixture daemon, and a dispatched Cmd/Ctrl+Z does the same in a test.
 **Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/desktop`
-**Commits:** None yet.
+**Landed in the stage**
+
+- `UndoStack` (`hotkeys/undo.ts`): `push`, `undoLatest()`, `undoEntry(entry)`, observable `canUndo`, `clear()`, capped at 50, undos run one at a time; the `undoStack` singleton and `createUndoStack(limit?)` for tests.
+- `sendWithUndo(root, project, inputs)` (`features/tasks/taskUndo.ts`) is the one place that records. The `s` picker, `Alt+←/→`, the dependency pickers, drag and drop (`Screen.move`) and the panel's `update` (title, description, status, dependencies) all go through it. It records only a `task.update` the daemon accepted, with the previous values read before sending; a bulk change is one entry and one toast. Delete, start, create, refused changes and no-op changes record nothing, and an undo is not recorded, so there is no redo.
+- Stale and refused undo: a task that no longer holds what the change set shows "CAR-12 changed since, so this cannot be undone", nothing is sent and the offer toast closes. In a bulk change the tasks that still match are restored and the stale ones are named. A refused inverse shows the daemon's own toast.
+- Toasts: "CAR-12 moved to In progress" with an Undo action for 5 s; the next change closes the previous offer; "Undone: …" follows a successful undo.
+- `tasks.undo` (`$mod+z`, scope `tasks`, `when: canUndo`) is not claimed in text fields, pickers or dialogs, and `Cmd+Shift+Z` is left alone. It does nothing in Chats or Docs, which matches Tasks-only scope.
+- The toast is a two-row grid, so its Close button no longer covers the Undo button, and the Close button is visible in light mode (the `.close[data-variant]` override lost on specificity).
+- `menu.ts` is untouched. The page should see Cmd+Z before the native Edit menu, which is source-derived and not run: the manual probe in `research/menu-accelerator-probe.md` settles it. The toast's Undo button works regardless.
+
+**Follow-ups**
+
+- Undo restores fields, not daemon side effects: a task moved to Done can unblock a waiting run that then starts, and undoing the move does not stop it. A fix would leave moves into the done category out of undo, or add a warning to the toast.
+- The undo stack spans projects, as Linear's does: Cmd+Z in project B's Tasks screen can revert a change in project A, with a toast that names the task. Filtering entries by the visible project is the alternative.
+- The stale check reads project state, which changes through the event feed. If the feed ever lags, two undos within one round trip could say "changed since" falsely.
+- The panel Select recording uses the shared helper but has no test of its own.
+
+**Commits:**
+
+- `6631313` feat(desktop): undo for status, title, description and dependency edits
 
 ## Stage 8 — List navigation in Chats, Agents and Docs
 
