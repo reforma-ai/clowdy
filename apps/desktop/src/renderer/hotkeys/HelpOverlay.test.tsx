@@ -64,7 +64,7 @@ const press = (key: string) => {
 };
 
 describe('HelpOverlay', () => {
-    it('lists every command under its group, live or not', () => {
+    it('lists every command under its group', () => {
         render();
 
         expect(headings()).toEqual(['General', 'Navigation', 'Tasks']);
@@ -88,24 +88,7 @@ describe('HelpOverlay', () => {
         expect(move.textContent).toContain('or');
     });
 
-    it('marks the commands that cannot run now, and lights them up when their scope opens', () => {
-        render();
 
-        expect(rows().map(row => row.getAttribute('data-live'))).toEqual(['true', 'true', 'true', 'false']);
-
-        act(() => {
-            registry.pushScope('tasks');
-        });
-
-        expect(rows().map(row => row.getAttribute('data-live'))).toEqual(['true', 'true', 'true', 'true']);
-        expect(container.textContent).not.toContain('Dimmed');
-    });
-
-    it('explains the dimmed rows only while there are some', () => {
-        render();
-
-        expect(container.textContent).toContain('Dimmed shortcuts');
-    });
 
     it('filters as the person types, by title and by keys', () => {
         render();

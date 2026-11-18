@@ -12,14 +12,13 @@ import { hotkeys, type HotkeyRegistry } from './registry';
 const SCROLL_STEPS = new Map([['ArrowDown', 0.12], ['ArrowUp', -0.12], ['PageDown', 0.9], ['PageUp', -0.9]]);
 
 /**
- * Every command of the registry, in groups, with its keys and a search over titles and keys. The ones that cannot run now are quieter.
+ * Every command of the registry, in groups, with its keys and a search over titles and keys.
  * It lives in a `Modal` (see `openHelp`), a separate React root with no context, so it reads the registry directly.
  */
 export function HelpOverlay({ registry = hotkeys }: { registry?: HotkeyRegistry }) {
     const [query, setQuery] = useState('');
     const list = useRef<HTMLDivElement | null>(null);
-    const entries = helpEntries(registry);
-    const groups = groupHelpEntries(filterHelpEntries(entries, query));
+    const groups = groupHelpEntries(filterHelpEntries(helpEntries(registry), query));
 
     // The field keeps focus and a one-line field has no use for these keys, so they scroll the list for a person without a pointer.
     const scrollList = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -49,15 +48,13 @@ export function HelpOverlay({ registry = hotkeys }: { registry?: HotkeyRegistry 
 
                 { groups.length === 0 && <Text variant="md" color="secondary" className={ styles.empty }>No shortcut matches “{ query.trim() }”</Text> }
             </Scrollable>
-
-            { entries.some(entry => !entry.live) && <Text variant="label" color="secondary">Dimmed shortcuts are not available right now.</Text> }
         </div>
     );
 }
 
-function Row({ entry: { command, live, sequences } }: { entry: HelpEntry }) {
+function Row({ entry: { command, sequences } }: { entry: HelpEntry }) {
     return (
-        <li className={ styles.row } data-live={ live }>
+        <li className={ styles.row }>
             <Text variant="md" className={ styles.title }>{ command.title }</Text>
             <span className={ styles.keys }>
                 { sequences.map((presses, index) => (

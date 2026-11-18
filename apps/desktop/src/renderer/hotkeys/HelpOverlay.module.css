@@ -57,17 +57,6 @@
     gap: var(--spacing-md);
 }
 
-/* Not available in this view: still listed, so the overlay teaches the whole keymap, but quieter. */
-.row[data-live='false'] {
-    .title {
-        color: var(--color-secondary-muted-text);
-    }
-
-    .keys {
-        opacity: 0.6;
-    }
-}
-
 .empty {
     padding: var(--spacing-xl) var(--spacing-md);
 }

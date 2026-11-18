@@ -21,7 +21,7 @@ function setup() {
 const ids = (entries: { command: { id: string } }[]) => entries.map(({ command }) => command.id);
 
 describe('helpEntries', () => {
-    it('lists every defined command, live or not, with every way to type it', () => {
+    it('lists every defined command, whether or not it can run now, with every way to type it', () => {
         const { entries } = setup();
 
         expect(ids(entries)).toEqual(['tasks.cursor.down', 'nav.tasks', 'nav.chats', 'help.open', 'tasks.delete']);
@@ -30,28 +30,8 @@ describe('helpEntries', () => {
         expect(entries[4].sequences).toEqual([[['meta', 'backspace']]]);
     });
 
-    it('marks the commands that cannot run now', () => {
-        const { registry } = setup();
-
-        expect(helpEntries(registry).map(entry => entry.live)).toEqual([false, true, true, true, false]);
-
-        registry.pushScope('tasks');
-
-        expect(helpEntries(registry).map(entry => entry.live)).toEqual([true, true, true, true, true]);
-    });
 });
 
-describe('helpEntries and the focus', () => {
-    it('lists a command as live whatever the focus says, because the overlay\'s own search field has the focus while it is open', () => {
-        const registry = createRegistry('darwin');
-
-        registry.pushScope('tasks');
-        registry.defineCommand({ id: 'tasks.cursor.down', title: 'Move down', group: 'Tasks', keys: 'j', scope: 'tasks', when: () => true, focus: () => false, handler: noop });
-        registry.defineCommand({ id: 'tasks.chat.open', title: 'Open linked chat', group: 'Tasks', keys: 'o c', scope: 'tasks', when: () => false, handler: noop });
-
-        expect(helpEntries(registry).map(entry => entry.live)).toEqual([true, false]);
-    });
-});
 
 describe('filterHelpEntries', () => {
     it('keeps everything for an empty query', () => {

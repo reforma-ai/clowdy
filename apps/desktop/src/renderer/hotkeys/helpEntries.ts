@@ -5,8 +5,6 @@ import type { Command, HotkeyRegistry } from './registry';
 /** A command as the help overlay lists it. */
 export interface HelpEntry {
     command: Command;
-    /** Whether the command can run right now. The overlay lists the others too, quieter, so it teaches the whole keymap. */
-    live: boolean;
     /** Every way to type the command, each as presses of key names for `Hotkey`. */
     sequences: string[][][];
 }
@@ -33,11 +31,10 @@ const KEY_WORDS: Record<string, string> = {
     delete: 'delete del',
 };
 
-/** Every defined command with whether it is live now. Reads the registry's observables, so call it while rendering. */
+/** Every defined command, which the overlay lists as it is whether or not it can run right now. Reads the registry's observables, so call it while rendering. */
 export function helpEntries(registry: HotkeyRegistry): HelpEntry[] {
     return registry.entries.map(entry => ({
         command: entry.command,
-        live: registry.isEntryLive(entry),
         sequences: entry.sequences[registry.family].map(sequence => sequence.display),
     }));
 }
