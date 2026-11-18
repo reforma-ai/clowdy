@@ -40,7 +40,7 @@
 
 **This stage:** `claude | codex | fake` is hard-coded in seven places, which cannot hold "any agent". This stage turns the engine id into a string and the caps and display names into data with defaults, keeping the Claude engine working so every test still passes.
 
-- [ ] Complete
+- [x] Complete
   - [x] `EngineId` is `string` in the protocol; commands, `run_spawn` and settings accept any id
   - [x] `engineCaps` has a default for engines without an entry; limits and names work for unknown ids
   - [x] `SkillEngine` stops being derived from `EngineId`
@@ -58,7 +58,7 @@
 
 **Done when:** an unknown engine id is accepted end to end and the existing suite passes.
 **Verify:** `bun run typecheck` and `bun run test` in `apps/daemon`, `bun run typecheck` in `apps/desktop`
-**Commits:** None yet. Implemented, verified and staged in the working tree; the commit is blocked because the SSH signing agent (Secretive) refuses without the owner. Planned split: this stage alone.
+**Commits:** `6fc8b66` feat(protocol): open the engine id to any agent and add the agents API (with the desktop fallbacks). The runtime side of this stage is in `88aa3b1`. The stages share files, so they landed as three commits (docs, protocol, daemon) instead of one per stage.
 
 ## Stage 2 — ACP engine
 
@@ -66,7 +66,7 @@
 
 **This stage:** the ACP engine under `apps/daemon/src/engine/acp/` (it also gained `probe.ts` and `bun run probe`, a no-prompt check of an agent): the process-group spawn, the agent catalog with discovery, the ACP client session and its event mapper, the failure classifier, the permission policy and the stdio tool bridge. A scripted fake ACP agent (a separate Bun script using the SDK's agent side, which also acts as an MCP client against the bridge) drives the tests, so the whole chain runs without a real agent or network.
 
-- [ ] Complete
+- [x] Complete
   - [x] Process spawn in its own group, environment build, login-shell `PATH`, command resolution with version probe
   - [x] Catalog of known agents plus custom agents file; `AgentRegistry.list()` with detection
   - [x] `AcpEngine` / `AcpSession`: initialize, new/resume/load, model, prompt queue, cancel, close
@@ -84,7 +84,7 @@
 
 **Done when:** a run of the real run runtime on the fake ACP agent streams text and tool calls, calls the daemon's tools through the bridge, resumes a session, and is cancelled with its process group gone.
 **Verify:** `bun test` in `apps/daemon`
-**Commits:** None yet. Implemented, verified and staged in the working tree; the commit is blocked because the SSH signing agent (Secretive) refuses without the owner. Planned split: this stage alone.
+**Commits:** `88aa3b1` feat(daemon): run any installed agent over ACP next to the Claude engine (Stages 2 to 4 together; they share `engine/index.ts`, `registry.ts`, the docs and the tests).
 
 ## Stage 3 — Wire in the engines
 
@@ -92,7 +92,7 @@
 
 **This stage:** `createEngines` returns the engines (lazily, one per agent id the registry knows: the Claude engine for `claude`, an ACP engine for the rest, programs found at run start), the Claude engine starts the user's own `claude`, prompts inline the entry skill, and the docs describe the new engines.
 
-- [ ] Complete
+- [x] Complete
   - [x] `createEngines` and `CLOWDY_ENGINE` select any agent id; the fake engine stays registered
   - [x] `prompts.ts` builds the system prompt with the inlined entry skill; first message loses `/clowdy:`
   - [x] The Claude engine finds the user's `claude` (`locate`) and still passes its tests
@@ -108,7 +108,7 @@
 
 **Done when:** `CLOWDY_ENGINE=claude` starts a daemon whose Claude engine starts the owner's installed `claude`, and `CLOWDY_ENGINE=cursor` one that runs `cursor-agent acp`.
 **Verify:** `bun test` in `apps/daemon`; a live handshake (no model call) against each agent installed here
-**Commits:** None yet. Implemented, verified and staged in the working tree; the commit is blocked because the SSH signing agent (Secretive) refuses without the owner. Planned split: this stage alone.
+**Commits:** in `88aa3b1`, see Stage 2.
 
 ## Stage 4 — Agents API
 
@@ -116,7 +116,7 @@
 
 **This stage:** the surface the owner's UI will use: `GET /v1/agents` returning each agent with its state, and commands to add a custom agent, set a path or arguments, enable or disable and refresh, with an `agents.changed` event.
 
-- [ ] Complete
+- [x] Complete
   - [x] Protocol types `AgentInfo`, route and commands
   - [x] Daemon route and handlers over `AgentRegistry`
   - [x] `agents.changed` event
@@ -129,7 +129,7 @@
 
 **Done when:** a client lists the agents installed on this machine and adds a custom one that then runs.
 **Verify:** `bun test` in `apps/daemon`
-**Commits:** None yet. Implemented, verified and staged in the working tree; the commit is blocked because the SSH signing agent (Secretive) refuses without the owner. Planned split: this stage alone.
+**Commits:** the protocol part is in `6fc8b66`, the daemon part in `88aa3b1`.
 
 ## Stage 5 — Review and live check
 
@@ -137,7 +137,7 @@
 
 **This stage:** a subagent review of the whole branch, fixes, and a live check of the real adapters on this machine (initialize and session setup without a model call; one trivial prompt only if the setup passes).
 
-- [ ] Complete
+- [x] Complete
   - [x] Review findings fixed or reported (below)
   - [x] Live probe notes recorded in the research folder (`research/live-probe.md`)
 
@@ -151,8 +151,8 @@
 - `apps/daemon/src/probe.ts`, `engine/acp/probe.ts` — create: `bun run probe`, so the owner can repeat the check on any agent
 
 **Done when:** every unfixed finding is in front of the owner and the probe results are written down.
-**Verify:** `bunx turbo run lint typecheck test --affected`
-**Commits:** None yet.
+**Verify:** `bun run typecheck`, `bun run lint` and `bun test` in `apps/daemon` (502 pass), typecheck in `packages/protocol` and `apps/desktop`
+**Commits:** the review fixes are in `88aa3b1`; the plan and research are in `7bc41d0`.
 
 ## Stage 6 — Native Codex engine
 
