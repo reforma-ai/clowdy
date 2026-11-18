@@ -44,6 +44,8 @@ export interface Chat {
     mode: ChatMode;
     /** The orchestrator run that answers this chat, once the first message started one. */
     orchestratorRunId?: RunId;
+    /** When the person archived the chat; absent for a chat in use. An archived chat keeps its runs, tasks and stream, and a message to it brings it back. */
+    archivedAt?: number;
     createdAt: number;
     updatedAt: number;
 }

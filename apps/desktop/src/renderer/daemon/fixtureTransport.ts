@@ -289,6 +289,26 @@ export class FixtureTransport implements Transport {
 
                 return ok();
             }
+            case 'chat.setArchived': {
+                const chat = data.chats.find(candidate => candidate.id === command.chatId);
+
+                if (!chat) return fail('not_found', 'No such chat');
+
+                if (command.archived && chat.archivedAt === undefined) {
+                    const busy = data.runs.some(run => (run.chatId === chat.id || (chat.orchestratorRunId !== undefined && run.rootRunId === chat.orchestratorRunId)) && !isTerminalRunStatus(run.status));
+
+                    if (busy) return fail('conflict', 'The agents of this chat are still working. Stop the chat first.');
+
+                    chat.archivedAt = Date.now();
+                    this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+                }
+                else if (!command.archived && chat.archivedAt !== undefined) {
+                    delete chat.archivedAt;
+                    this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+                }
+
+                return ok({ chat: structuredClone(chat) });
+            }
             case 'chat.delete': {
                 const chat = data.chats.find(candidate => candidate.id === command.chatId);
 

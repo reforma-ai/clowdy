@@ -187,4 +187,35 @@ describe('FixtureTransport', () => {
         expect(deleted).toMatchObject({ type: 'chat.deleted', chatId: finished.id });
         expect(after.runs.length).toBe(before.runs.length - (deleted as { runIds: string[] }).runIds.length);
     });
+
+    it('archives a chat and brings it back, keeping its runs, and refuses one whose agents are working', async () => {
+        const { transport, events } = await connected();
+        const before = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        const refused = await transport.command({ type: 'chat.setArchived', chatId: 'c-1', archived: true });
+
+        expect(refused.ok ? '' : refused.error.code).toBe('conflict');
+
+        const archived = await transport.command({ type: 'chat.setArchived', chatId: 'c-4', archived: true });
+
+        await vi.advanceTimersByTimeAsync(0);
+
+        const during = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+
+        expect(archived.ok).toBe(true);
+        expect(during.chats.find(chat => chat.id === 'c-4')?.archivedAt).toBeGreaterThan(0);
+        expect(during.runs.length).toBe(before.runs.length);
+        expect(events.filter(event => event.data.type === 'chat.upserted')).toHaveLength(1);
+
+        // What is set already is not announced again.
+        await transport.command({ type: 'chat.setArchived', chatId: 'c-4', archived: true });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(events.filter(event => event.data.type === 'chat.upserted')).toHaveLength(1);
+
+        await transport.command({ type: 'chat.setArchived', chatId: 'c-4', archived: false });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect((await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(chat => chat.id === 'c-4')).not.toHaveProperty('archivedAt');
+        expect((await transport.command({ type: 'chat.setArchived', chatId: 'nope', archived: true })).ok).toBe(false);
+    });
 });

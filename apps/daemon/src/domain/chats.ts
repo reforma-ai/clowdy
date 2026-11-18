@@ -65,6 +65,29 @@ export function deleteChat(store: Store, chatId: string): string[] {
     });
 }
 
+/**
+ * Archives the chat, or brings it back. Only the flag changes: the runs, tasks and stream stay, and the chat keeps its place in
+ * the order of activity. A chat whose agents are working cannot be archived, as it cannot be deleted: it would drop out of sight
+ * while still busy. Setting what is set already changes nothing.
+ */
+export function setChatArchived(store: Store, chatId: string, archived: boolean): Chat {
+    return store.tx(() => {
+        const chat = requireChat(store, chatId);
+
+        if ((chat.archivedAt !== undefined) === archived) {
+            return chat;
+        }
+
+        if (archived && runsOfChat(store.db, chatId).some(run => !isTerminalRunStatus(run.status))) {
+            throw conflict('The agents of this chat are still working. Stop the chat first.');
+        }
+
+        const { archivedAt: _, ...rest } = chat;
+
+        return saveChat(store, archived ? { ...rest, archivedAt: Date.now() } : rest);
+    });
+}
+
 export function renameChat(store: Store, chatId: string, title: string): Chat {
     return store.tx(() => {
         const chat = requireChat(store, chatId);

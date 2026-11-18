@@ -172,4 +172,10 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 3,
+        up(db) {
+            db.run('ALTER TABLE chats ADD COLUMN archived_at INTEGER');
+        },
+    },
 ];

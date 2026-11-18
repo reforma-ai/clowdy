@@ -1,6 +1,6 @@
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
-import { createChat, DEFAULT_CHAT_TITLE, deleteChat, renameChat, requireChat, saveChat, setChatMode } from '../domain/chats';
+import { createChat, DEFAULT_CHAT_TITLE, deleteChat, renameChat, requireChat, saveChat, setChatArchived, setChatMode } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
 import { invalid } from '../errors';
@@ -28,7 +28,8 @@ function send({ store, runs, driver }: Services, chatId: string, rawText: string
         throw invalid('The message is empty');
     }
 
-    const chat = requireChat(store, chatId);
+    // A message to an archived chat brings it back: nobody writes to a chat they have put away.
+    const { archivedAt: _, ...chat } = requireChat(store, chatId);
     const now = Date.now();
 
     if (!chat.orchestratorRunId) {
@@ -58,12 +59,14 @@ function send({ store, runs, driver }: Services, chatId: string, rawText: string
     return { chatId, runId: run.id };
 }
 
-export const chatHandlers: Pick<Handlers, 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.delete' | 'chat.send'> = {
+export const chatHandlers: Pick<Handlers, 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.setArchived' | 'chat.delete' | 'chat.send'> = {
     'chat.create': ({ store }, command) => ({ chat: createChat(store, { ...command, mode: command.mode ?? requireProject(store, command.projectId).settings.chatMode }) }),
 
     'chat.rename': ({ store }, command) => ({ chat: renameChat(store, command.chatId, command.title) }),
 
     'chat.setMode': ({ store }, command) => ({ chat: setChatMode(store, command.chatId, command.mode) }),
+
+    'chat.setArchived': ({ store }, command) => ({ chat: setChatArchived(store, command.chatId, command.archived) }),
 
     'chat.delete': ({ store }, command) => {
         deleteChat(store, command.chatId);
