@@ -37,6 +37,10 @@ Read-only and hand-off
 - A chat whose provider is switched off, not installed or signed out shows a notice in place of the composer, with "Hand off to a new chat" and "Open Providers". The chat's stream stays readable.
 - Hand-off v1 is client-side: it opens the new-chat page with the old chat's messages (the person's and the assistant's text, no tool output) attached as a Markdown file and a draft that says to continue the work. The person picks the provider and presses Send. Nothing changes in the daemon for it.
 
+Context usage
+- The composer shows how full the chat's context window is, like Reforma's context ring: a small ring beside the model pill; its popover says "Context usage", the percent full with `~92K / 200K` and a bar, and a Compact button. One total only (no split into instructions, tools and conversation). The numbers come from the agent's own `usage_update { used, size }`, which the Claude and Codex adapters send; the daemon keeps the latest reading on the orchestrator's run, so a finished chat still shows it. A chat with no reading shows no ring.
+- Compact sends the agent's own `/compact` command to the orchestrator as a turn (both adapters implement it); it is offered while the orchestrator is idle and refused while it works. The stream shows what the agent reports for it.
+
 Cursor
 - Cursor joins by its own stage after its behaviour was verified with real prompts (`research/session-verification.md`): its catalog comes from `cursor/list_available_models` and the client advertises `_meta.parameterizedModelPicker`.
 
@@ -48,6 +52,7 @@ Cursor
 - A daemon-side hand-off (a chat that links to its predecessor) and a hand-off summary written by an agent.
 - Choosing the executors' provider in the UI; the project settings' `engine` and `model` get no UI.
 - A Detailed/Compact switch in the usage popover; a usage status in a bottom status bar.
+- A breakdown of the context into instructions, tools and conversation; automatic compaction by Clowdy.
 
 ## Stage 1 — A chat's provider, model and effort in the daemon
 
@@ -189,5 +194,54 @@ Cursor
 - `apps/desktop/AGENTS.md` — read-only chats and hand-off.
 
 **Done when:** with Claude switched off in the fixtures, a chat that ran on Claude shows the notice, and "Hand off to a new chat" opens the new-chat page with a `.md` file attached and the draft filled.
+**Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`
+**Commits:** None yet.
+
+## Stage 6 — The context reading and Compact in the daemon
+
+**Depends on:** Stage 1.
+
+**This stage:** The agents already tell Clowdy how full the context is (`usage_update { used, size }`), and the mapper receives it and ignores it. The stage turns it into a reading on the orchestrator's run, so clients can show it, and adds a command that asks the agent to compact. Readings arrive with every message, so they are written when they move by a percent or when the turn ends, not each time.
+
+- [ ] Complete
+  - [ ] `Run.context { used, size }` (migration 6) written from the engine's `context` event, throttled; published with `run.upserted`.
+  - [ ] `UpdateMapper` turns `usage_update` into a `context` event beside the cost it already reads.
+  - [ ] `chat.compact { chatId }` starts a turn of the orchestrator with `/compact` as its message and without a user item in the stream; refused (`conflict`) while the orchestrator works and (`invalid`) for a chat that has no orchestrator.
+  - [ ] Tests with the fake ACP agent (`usage_update`, `/compact`) and the script engine.
+
+**Files**
+
+- `packages/protocol/src/domain.ts` — `Run.context`; `packages/protocol/src/commands.ts` — `chat.compact`.
+- `apps/daemon/src/db/migrations.ts` — version 6; `db/runs.ts` — the two columns.
+- `apps/daemon/src/engine/types.ts` — `EngineEvent` `context`; `engine/acp/mapper.ts` — `usage`.
+- `apps/daemon/src/runs/driver.ts` — `consume` handles `context` (throttled); `runs/service.ts` — `setContext`.
+- `apps/daemon/src/commands/chat.ts` — `chat.compact`; `domain/chats.ts` if the check belongs there.
+- `apps/daemon/test/` — mapper, session (fake agent `usage_update` and `/compact`), commands.
+- `apps/daemon/AGENTS.md`.
+
+**Done when:** a turn of the fake agent leaves its `used` and `size` on the orchestrator's run, and `chat.compact` on an idle chat starts a turn whose prompt is `/compact`.
+**Verify:** `cd apps/daemon && bun test && bun run typecheck && bun run lint`
+**Commits:** None yet.
+
+## Stage 7 — The context ring in the composer
+
+**Depends on:** Stage 4, Stage 6.
+
+**This stage:** The visible part: a ring beside the model pill that fills with the context and opens a small popover with the total and a Compact button. It uses the run's `context` and sends `chat.compact`.
+
+- [ ] Complete
+  - [ ] A ring (percent drawn as an arc, tone at 80 and 90) shown only in a chat whose orchestrator has a reading; the popover with "Context usage", the percent, `~used / size` in K and a bar.
+  - [ ] Compact sends `chat.compact`, shows pending while the orchestrator works, and is disabled with a reason while it works.
+  - [ ] Tests for the arithmetic and formatting, the hidden state and the command.
+
+**Files**
+
+- `apps/desktop/src/renderer/features/chats/ContextRing.tsx` and `ContextRing.module.css` — create: its own popover, state and arithmetic; the composer only mounts it.
+- `apps/desktop/src/renderer/features/chats/Composer.tsx` — mount it in `.end` before the picker.
+- `apps/desktop/src/renderer/features/chats/ContextRing.test.tsx` — create.
+- `apps/desktop/src/renderer/daemon/fixtureData.ts` — a run with a reading.
+- `apps/desktop/AGENTS.md`.
+
+**Done when:** a chat whose orchestrator has `context { used: 53000, size: 250000 }` shows a ring, the popover reads "21% full ~53K / 250K", and Compact sends `chat.compact`.
 **Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`
 **Commits:** None yet.
