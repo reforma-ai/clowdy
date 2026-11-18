@@ -31,12 +31,24 @@ export interface RigOptions {
     command?: string;
     args?: string[];
     initializeTimeoutMs?: number;
+    /** The options an adapter reads, as the built-in catalog gives them to Claude Code. */
+    sessionMeta?: Record<string, unknown>;
 }
 
 export function rig(options: RigOptions = {}): Rig {
     const env = options.env ?? process.env;
     const registry = new AgentRegistry({ discovery: quietDiscovery(env) });
     const bridge = new ToolBridge();
+
+    if (options.sessionMeta) {
+        const resolve = registry.resolve.bind(registry);
+
+        registry.resolve = async (id) => {
+            const found = await resolve(id);
+
+            return found.ok ? { ok: true, agent: { ...found.agent, sessionMeta: options.sessionMeta } } : found;
+        };
+    }
 
     registry.add({ id: 'fake-acp', name: 'Fake ACP', command: options.command ?? process.execPath, args: options.args ?? [FAKE_AGENT], env: options.agentEnv });
 

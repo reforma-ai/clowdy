@@ -45,7 +45,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
     try {
         const startedAt = Date.now();
         const store = new Store(openDatabase(join(config.dataDir, 'clowdy.db')));
-        // Before the engines: they read `config.systemSkillsDir` and `config.extraPluginDirs` when a run starts.
+        // Before the engines: runs read `config.systemSkillsDir` when they start.
         const skills = new SkillsService(store, config);
         const agents = options.agents ?? new AgentRegistry({ dataDir: config.dataDir });
         const created = options.engines ? undefined : createEngines(config, agents);

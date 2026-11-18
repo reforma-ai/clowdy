@@ -125,6 +125,16 @@ describe('a turn on an ACP agent', () => {
         expect(JSON.parse(textOf(events))).toEqual({ cwd: '/tmp', servers: [], systemPrompt: 'be brief', model: 'smart', prompts: 1 });
     });
 
+    test('the options an adapter reads reach it as the _meta of the session', async () => {
+        const meta = { claudeCode: { options: { disallowedTools: ['AskUserQuestion'] } } };
+        const { session } = use({ sessionMeta: meta }).start('info');
+        const events = await collect(session);
+
+        await session.close();
+
+        expect(JSON.parse(textOf(events))).toMatchObject({ meta });
+    });
+
     test('an agent without the system prompt capability gets it in front of the first message', async () => {
         const { session } = use({ agentEnv: { FAKE_ACP_SYSTEM_PROMPT: '0' } }).start('prompt', { systemPrompt: 'be brief' });
         const events = await collect(session);
@@ -142,7 +152,8 @@ describe('a turn on an ACP agent', () => {
         await session.close();
 
         expect(textOf(events)).toBe('HOME=/home/someoneCLOWDY_TOKEN=ELECTRON_RUN_AS_NODE=');
-    });
+        // Bun starts the fake agent with a home folder that does not exist, which can take a while on a busy machine.
+    }, 20_000);
 });
 
 describe('resuming', () => {

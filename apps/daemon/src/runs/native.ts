@@ -24,7 +24,7 @@ interface Agent {
 }
 
 /**
- * The sub-agents inside one turn of a run's engine session (Claude's `Agent` and workflow tasks), shown as child runs
+ * The sub-agents inside one turn of a run's engine session (an agent's own `Agent` or `Task`, where the engine reports them), shown as child runs
  * with `origin: 'native'`. They have no process and take no slot; their stream is the text and tool events that carry
  * their `agentId`. Events arrive in bursts, so they are queued and written in one transaction per batch.
  */

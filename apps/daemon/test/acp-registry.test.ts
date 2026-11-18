@@ -123,12 +123,18 @@ describe('AgentRegistry', () => {
         expect(await byId(reg, 'opencode')).toMatchObject({ status: 'missing', detail: expect.stringContaining('no `opencode` command was found'), launch: 'opencode acp' });
     });
 
-    test('Claude Code is found like a native agent: its own engine runs it, so no package runner is needed', async () => {
+    test('Claude Code starts through its official adapter on the user\'s own claude, with the cautions of its profile', async () => {
         const claude = program('claude', '2.1.325 (Claude Code)');
         const reg = registry();
 
-        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: 'claude (Claude Agent SDK)', login: 'claude auth login' });
-        expect(await reg.resolve('claude')).toMatchObject({ ok: true, agent: { command: claude, args: [], acp: false } });
+        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: 'bun x --bun @agentclientprotocol/claude-agent-acp@0.108.0', fetches: '@agentclientprotocol/claude-agent-acp@0.108.0', login: 'claude auth login' });
+
+        const resolved = await reg.resolve('claude');
+
+        expect(resolved).toMatchObject({ ok: true, agent: { command: process.execPath, args: ['x', '--bun', '@agentclientprotocol/claude-agent-acp@0.108.0'] } });
+        expect(resolved.ok && resolved.agent.env).toMatchObject({ CLAUDE_CODE_EXECUTABLE: claude, ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' });
+        expect(resolved.ok && resolved.agent.scrub.some(pattern => pattern.test('ANTHROPIC_API_KEY'))).toBe(true);
+        expect(resolved.ok && resolved.agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
     });
 
     test('an adapter agent needs its program and a Bun to fetch the adapter; both are named when one is missing', async () => {
@@ -253,13 +259,16 @@ describe('AgentRegistry', () => {
         expect(reg.has('rel')).toBe(false);
     });
 
-    test('Claude Code takes a path but no variables: it runs with an environment of its own', () => {
+    test('a variable set for Claude Code replaces its default, and is how an API key reaches it', async () => {
+        program('claude', 'x');
+
         const reg = registry();
 
-        expect(() => reg.update('claude', { env: { KEY: 'v' } })).toThrow(/only its path can be set/);
-        // An empty set is what a form sends when nothing was typed.
-        expect(() => reg.update('claude', { env: {}, enabled: true })).not.toThrow();
-        expect(() => reg.update('claude', { path: '/opt/claude' })).not.toThrow();
+        reg.update('claude', { env: { ENABLE_CLAUDEAI_MCP_SERVERS: 'true', ANTHROPIC_API_KEY: 'k' } });
+
+        const resolved = await reg.resolve('claude');
+
+        expect(resolved.ok && resolved.agent.env).toMatchObject({ ENABLE_CLAUDEAI_MCP_SERVERS: 'true', ANTHROPIC_API_KEY: 'k', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' });
     });
 
     test('agents.json keeps what is usable of a damaged file, and what is written is private to the user', () => {

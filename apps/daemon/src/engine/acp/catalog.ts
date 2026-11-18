@@ -1,10 +1,5 @@
 /** How an agent is started over ACP. */
 export type Launch =
-    /**
-     * Not ACP: the agent has an engine of its own that drives it directly (Claude Code through the Claude Agent SDK, which
-     * exposes sub-agents, quota signals and mid-turn messages that no ACP agent reports). The registry only finds the program.
-     */
-    | { kind: 'native' }
     /** The agent's own program speaks ACP when given these arguments (`cursor-agent acp`). */
     | { kind: 'binary'; args: string[] }
     /**
@@ -26,19 +21,28 @@ export interface AgentSpec {
     scrub?: RegExp[];
     /** What a person runs in a terminal to sign in. */
     login?: string;
+    /** Sent as the `_meta` of `session/new`: options the agent's adapter reads (Claude's adapter takes SDK options under `claudeCode.options`). */
+    sessionMeta?: Record<string, unknown>;
 }
 
 /**
- * The agents Clowdy knows how to start. ACP agents run their own program; Codex has no ACP mode of its own and runs
- * through the official adapter, pinned here (read its changelog before bumping it). Claude Code has its own engine.
+ * The agents Clowdy knows how to start. Most run their own program in ACP mode; Claude Code and Codex have no ACP mode of
+ * their own and run through the official adapters, pinned here (read the adapter's changelog before bumping it).
  */
 export const KNOWN_AGENTS: readonly AgentSpec[] = [
     {
         id: 'claude',
         name: 'Claude Code',
         programs: ['claude'],
-        launch: { kind: 'native' },
+        launch: { kind: 'package', package: '@agentclientprotocol/claude-agent-acp@0.108.0', pathEnv: 'CLAUDE_CODE_EXECUTABLE' },
+        // The user's claude.ai connectors (Drive, Docs) would load into every run, and an orchestrated run must not write the
+        // user's memory; sub-agents are a feature, this only caps hidden fan-out. All of it can be undone with the agent's `env`.
+        env: { ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '20' },
+        // A stray key in the daemon's environment would move billing off the user's subscription; a key the user wants goes in the agent's `env`.
+        scrub: [/^ANTHROPIC_API_KEY$/, /^ANTHROPIC_AUTH_TOKEN$/, /^CLAUDE_CODE_OAUTH_TOKEN$/],
         login: 'claude auth login',
+        // Tools that wait for a terminal and would hang a run nobody is watching.
+        sessionMeta: { claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } },
     },
     {
         id: 'codex',

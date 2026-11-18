@@ -33,13 +33,13 @@ export interface Config {
     /** The user's skill folders, weakest first (a skill in a later one hides the same name in an earlier one). Absent means none. */
     userSkillRoots?: string[];
     /**
-     * Set by the daemon at start: the materialized system skills plugin, `<dataDir>/system-skills/<hash>`.
-     * Engines load it as a plugin (`clowdy:<skill>`) in every run, so they must read this key when a run starts.
+     * Set by the daemon at start: the materialized system skills folder, `<dataDir>/system-skills/<hash>`.
+     * Every run's system prompt inlines the entry skill from it and names it for the rest, so it is read when a run starts.
      */
     systemSkillsDir?: string;
     /**
-     * Set by the daemon and replaced when the user's skills change: plugin folders every run loads besides the system
-     * one. Today it holds the `user` plugin that links the enabled user skills, or nothing. Read it when a run starts.
+     * Set by the daemon and replaced when the user's skills change: the `user` plugin folder that links the enabled user
+     * skills, or nothing. No engine reads it since Claude Code runs through its ACP adapter, which loads the user's own skills.
      */
     extraPluginDirs?: string[];
 }

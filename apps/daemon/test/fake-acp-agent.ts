@@ -30,6 +30,7 @@ interface FakeSession {
     cwd: string;
     mcpServers: McpServer[];
     systemPrompt?: string;
+    meta?: unknown;
     model: string;
     cancel: AbortController;
     count: number;
@@ -44,8 +45,8 @@ function systemText(content: unknown): string | undefined {
     return Array.isArray(content) ? content.map(block => (block as { text?: string }).text ?? '').join('') : undefined;
 }
 
-function open(id: string, params: { cwd: string; mcpServers?: McpServer[]; systemPrompt?: { content?: unknown } | null }): FakeSession {
-    const session: FakeSession = { cwd: params.cwd, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), model: 'fast', cancel: new AbortController(), count: 0, cost: 0 };
+function open(id: string, params: { cwd: string; mcpServers?: McpServer[]; systemPrompt?: { content?: unknown } | null; _meta?: unknown }): FakeSession {
+    const session: FakeSession = { cwd: params.cwd, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, model: 'fast', cancel: new AbortController(), count: 0, cost: 0 };
 
     sessions.set(id, session);
 
@@ -210,7 +211,7 @@ const app = agent({ name: 'fake-acp-agent' })
                     break;
                 }
                 case 'info':
-                    await say(JSON.stringify({ cwd: session.cwd, servers: session.mcpServers.map(server => server.name), systemPrompt: session.systemPrompt, model: session.model, prompts: session.count }));
+                    await say(JSON.stringify({ cwd: session.cwd, servers: session.mcpServers.map(server => server.name), systemPrompt: session.systemPrompt, meta: session.meta, model: session.model, prompts: session.count }));
                     break;
                 case 'prompt':
                     await say(JSON.stringify(text));

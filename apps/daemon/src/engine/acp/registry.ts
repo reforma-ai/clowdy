@@ -25,8 +25,8 @@ export interface ResolvedAgent {
     /** Variables it must not inherit. */
     scrub: RegExp[];
     login?: string;
-    /** Whether it is started to speak ACP on stdio. Claude Code is not: its own engine drives it, and `command` is just where it is. */
-    acp: boolean;
+    /** The `_meta` of `session/new`, for the options its adapter reads. */
+    sessionMeta?: Record<string, unknown>;
 }
 
 export type Resolution = { ok: true; agent: ResolvedAgent } | { ok: false; message: string };
@@ -142,11 +142,6 @@ export class AgentRegistry {
             checkProgram(path, true);
         }
 
-        // Claude Code runs on the Claude Agent SDK with an environment of its own, so a variable set here would be dropped silently.
-        if (env && Object.keys(env).length > 0 && this.spec(id)?.launch.kind === 'native') {
-            throw new AgentRegistryError('invalid', `${ this.nameOf(id) } runs with its own environment; only its path can be set`);
-        }
-
         if (command?.trim() && custom) {
             checkProgram(command.trim());
         }
@@ -223,15 +218,11 @@ export class AgentRegistry {
         }
 
         if (entry.custom) {
-            return { ok: true, agent: { id: entry.id, name: entry.name, command: program, args: entry.agent.args, env: { ...entry.agent.env, ...override.env }, scrub: [], acp: true } };
+            return { ok: true, agent: { id: entry.id, name: entry.name, command: program, args: entry.agent.args, env: { ...entry.agent.env, ...override.env }, scrub: [] } };
         }
 
         const { spec } = entry;
-        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, acp: spec.launch.kind !== 'native' };
-
-        if (spec.launch.kind === 'native') {
-            return { ok: true, agent: { ...base, command: program, args: [], env: { ...override.env } } };
-        }
+        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, sessionMeta: spec.sessionMeta };
 
         if (spec.launch.kind === 'binary') {
             return { ok: true, agent: { ...base, command: program, args: spec.launch.args, env: { ...spec.env, ...override.env } } };
@@ -374,8 +365,6 @@ function parseStored(data: unknown): Stored {
 /** How an agent starts, as a person would type it. */
 function launchLine({ launch, programs }: AgentSpec): string {
     switch (launch.kind) {
-        case 'native':
-            return `${ programs[0] } (Claude Agent SDK)`;
         case 'package':
             return `bun x --bun ${ launch.package }`;
         case 'binary':

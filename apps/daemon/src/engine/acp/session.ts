@@ -307,6 +307,7 @@ export class AcpSession implements EngineSession {
             const shared: NewSessionRequest = {
                 cwd: options.cwd,
                 mcpServers: access ? [access.server] : [],
+                ...(agent.sessionMeta && { _meta: agent.sessionMeta }),
                 ...(supportsSystemPrompt && options.systemPrompt && { systemPrompt: { mode: 'append', content: [{ type: 'text', text: options.systemPrompt }] } }),
             };
 

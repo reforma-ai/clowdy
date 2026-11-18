@@ -2,7 +2,7 @@ import type { EngineId, ToolState } from '@clowdy/protocol';
 import type { z } from 'zod';
 
 /**
- * The seam between the run runtime and an agent engine (the Claude Agent SDK, Codex, or the scripted fake).
+ * The seam between the run runtime and an agent engine (an ACP agent, or the scripted fake).
  *
  * The runtime owns everything durable: stream items, run status, task links, scheduling. An engine only turns a
  * prompt into a sequence of events and calls the tools it is given. It never writes to the database.
@@ -54,7 +54,7 @@ export type EngineEvent =
     | { type: 'text'; delta: string; done: boolean; agentId?: string }
     | { type: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string; agentId?: string }
     /**
-     * A sub-agent that lives inside the session (a Claude `Agent` or workflow task). The runtime shows it as a child run;
+     * A sub-agent that lives inside the session (an agent's own `Agent` or `Task`, when the engine can tell). The runtime shows it as a child run;
      * `text` and `tool` events with the same `agentId` belong to its stream.
      */
     | { type: 'subagent'; agentId: string; parentToolCallId?: string; name: string; description?: string; state: SubagentState; summary?: string }
@@ -75,7 +75,7 @@ export interface ToolDefinition {
     description: string;
     /** JSON Schema of the input object. */
     inputSchema: Record<string, unknown>;
-    /** The same schema as zod, for engines that register tools through zod (the Claude Agent SDK). */
+    /** The same schema as zod, for validating the input. */
     schema: z.ZodType;
     /** Validates `input` and runs the tool. Rejects with an Error whose message the model may read. */
     execute(input: unknown, signal: AbortSignal): Promise<unknown>;

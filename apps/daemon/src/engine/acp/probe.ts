@@ -45,10 +45,6 @@ export async function probeAgent(registry: AgentRegistry, bridge: ToolBridge, id
 
     const { agent } = resolution;
 
-    if (!agent.acp) {
-        throw new Error(`${ agent.name } runs on its own engine, not over ACP, so there is nothing to probe`);
-    }
-
     const started = Date.now();
     const proc = await spawnInOwnGroup({ command: agent.command, args: agent.args, cwd, env: buildAgentEnv({ daemonEnv: env, path: await registry.path(), scrub: agent.scrub, set: agent.env }) });
     const connection = client({ name: 'clowdy-probe' }).connect(ndJsonStream(Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>, Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>));

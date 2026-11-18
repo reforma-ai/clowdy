@@ -1,7 +1,6 @@
 import pkg from '../../package.json';
 import { ToolBridge } from './acp/bridge';
 import { AcpEngine } from './acp/engine';
-import { ClaudeEngine, loadClaudeConfig } from './claude';
 import { FakeEngine } from './fake';
 
 import type { Config } from '../config';
@@ -14,8 +13,7 @@ export interface Engines extends EngineRegistry {
 }
 
 /**
- * The engines this daemon can run: the scripted fake, Claude Code on its own engine, and every other agent the registry
- * knows, each an ACP engine. Programs are found when a run starts, not here, so a daemon starts on a machine with no
+ * The engines this daemon can run: the scripted fake, and every agent the registry knows, each an ACP engine. Programs are found when a run starts, not here, so a daemon starts on a machine with no
  * agent installed and an agent installed later works without a restart.
  */
 export function createEngines(config: Config, agents: AgentRegistry, env: Record<string, string | undefined> = process.env): Engines {
@@ -23,28 +21,14 @@ export function createEngines(config: Config, agents: AgentRegistry, env: Record
     const bridge = new ToolBridge();
     const engines = new Map<string, AgentEngine>();
 
-    const create = (id: string): AgentEngine => {
-        if (id === 'claude') {
-            return new ClaudeEngine(loadClaudeConfig(env), config, {
-                env,
-                // The user's own Claude Code, found like their terminal would; the SDK's bundled copy is the fallback of nobody.
-                locate: async () => {
-                    const found = await agents.resolve('claude');
-
-                    return found.ok ? { executable: found.agent.command, path: await agents.path() } : { error: found.message };
-                },
-            });
-        }
-
-        return new AcpEngine(id, {
-            registry: agents,
-            bridge,
-            env,
-            permissions: config.agentPermissions,
-            clientVersion: pkg.version,
-            debug: Boolean(env.CLOWDY_DEBUG),
-        });
-    };
+    const create = (id: string): AgentEngine => new AcpEngine(id, {
+        registry: agents,
+        bridge,
+        env,
+        permissions: config.agentPermissions,
+        clientVersion: pkg.version,
+        debug: Boolean(env.CLOWDY_DEBUG),
+    });
 
     const engineFor = (id: string): AgentEngine => {
         let engine = engines.get(id);
