@@ -1,5 +1,5 @@
 import { cn } from '@clowdy/lib';
-import { lazy, Suspense, type HTMLAttributes } from 'react';
+import { lazy, Suspense, type ComponentType, type HTMLAttributes } from 'react';
 
 import styles from './Loader.module.css';
 
@@ -13,15 +13,21 @@ export type LoaderProps = {
 } & Omit<HTMLAttributes<HTMLDivElement>, 'children'>;
 
 // The animation and the Lottie player load on first use, so a screen that never waits does not carry them.
-const LottieMark = lazy(async () => {
-    const [{ Lottie }, animation] = await Promise.all([import('../Lottie'), import('./reforma-loader.json')]);
-    const animationData = (animation as { default?: unknown }).default ?? animation;
+// A player that cannot start (no canvas, as in a test environment) leaves the loader empty: a loader must never be what breaks a screen.
+const LottieMark = lazy<ComponentType>(async () => {
+    try {
+        const [{ Lottie }, animation] = await Promise.all([import('../Lottie'), import('./reforma-loader.json')]);
+        const animationData = (animation as { default?: unknown }).default ?? animation;
 
-    function Mark() {
-        return <Lottie animationData={ animationData } loop autoplay aria-hidden />;
+        function Mark() {
+            return <Lottie animationData={ animationData } loop autoplay aria-hidden />;
+        }
+
+        return { default: Mark };
     }
-
-    return { default: Mark };
+    catch {
+        return { default: () => null };
+    }
 });
 
 /**
