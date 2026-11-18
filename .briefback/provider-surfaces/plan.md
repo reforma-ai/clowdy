@@ -158,12 +158,12 @@ Cursor
 
 **This stage:** The visible part of the choice. A pill in the composer opens Reforma's popover: a model button over the reasoning slider, and a list pane that replaces it. On the new-chat page picking a model chooses the provider too (sections), the first message creates the chat with the choice, and the choice is remembered; in an existing chat the picker changes the model and effort for the next turn with `chat.setModel` and lists only the chat's provider. The reasoning slider shows every level the model reports.
 
-- [ ] Complete
-  - [ ] Trigger pill, popover shell, face with model button and slider (pointer and keyboard, any number of levels, no NaN for one level), list pane in provider sections, CSS-only pane and height transitions, `inert` hidden pane.
-  - [ ] The new-chat page creates the chat with `engine`, `model` and `effort` and stores the choice; an existing chat changes it through `chat.setModel`.
-  - [ ] States: models loading (pill shows the stored choice), unavailable or error (list pane shows why, with retry), a stored model missing from the list (shown by its id), no usable provider (composer asks to turn one on in Providers).
-  - [ ] Tests: opens and closes, picks a model and returns to the face, slider keyboard and drag, sections on the new-chat page and one provider in a chat, `chat.create` and `chat.setModel` payloads.
-  - [ ] `apps/desktop/AGENTS.md` describes the picker.
+- [x] Complete
+  - [x] Trigger pill, popover shell, face with model button and slider (pointer and keyboard, any number of levels, no NaN for one level), list pane in provider sections, CSS-only pane and height transitions, `inert` hidden pane.
+  - [x] The new-chat page creates the chat with `engine`, `model` and `effort` and stores the choice; an existing chat changes it through `chat.setModel`.
+  - [x] States: models loading (pill shows the stored choice), unavailable or error (list pane shows why, with retry), a stored model missing from the list (shown by its id), no usable provider (composer asks to turn one on in Providers).
+  - [x] Tests: opens and closes, picks a model and returns to the face, slider keyboard and drag, sections on the new-chat page and one provider in a chat, `chat.create` and `chat.setModel` payloads.
+  - [x] `apps/desktop/AGENTS.md` describes the picker.
 
 **Files**
 
@@ -177,7 +177,9 @@ Cursor
 
 **Done when:** on the new-chat page the person picks Claude, a model and its highest level, sends, and the fixture transport receives `chat.create` with that engine, model and effort; the next new chat starts on that choice.
 **Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`, then look at it in `./clowdy dev`.
-**Commits:** None yet.
+**Commits:**
+
+- `036ad1a` feat(desktop): pick the provider, model and reasoning level in the composer
 
 ## Stage 4b — Picker: provider strip, More models, chats with no model
 
@@ -209,11 +211,11 @@ Cursor
 
 **This stage:** A chat whose provider was switched off, is not installed or is signed out cannot run, and today it only fails when the person sends. The stage replaces the composer with a notice in such a chat and offers a way to continue the work elsewhere. The hand-off opens the new-chat page with the old conversation attached as Markdown.
 
-- [ ] Complete
-  - [ ] A function that says whether a chat can be written to, from its `engine` (or its orchestrator run's engine) and the agents' state, with the reason.
-  - [ ] `ChatView` shows the notice in place of the composer, with "Hand off to a new chat" and "Open Providers"; the stream stays readable.
-  - [ ] The hand-off builds a Markdown transcript (people's and assistants' text) and opens the new-chat page with it attached and a prefilled draft.
-  - [ ] Tests for the check, the notice and the hand-off payload.
+- [x] Complete
+  - [x] A function that says whether a chat can be written to, from its `engine` (or its orchestrator run's engine) and the agents' state, with the reason.
+  - [x] `ChatView` shows the notice in place of the composer, with "Hand off to a new chat" and "Open Providers"; the stream stays readable.
+  - [x] The hand-off builds a Markdown transcript (people's and assistants' text) and opens the new-chat page with it attached and a prefilled draft.
+  - [x] Tests for the check, the notice and the hand-off payload.
 
 **Files**
 
@@ -226,7 +228,9 @@ Cursor
 
 **Done when:** with Claude switched off in the fixtures, a chat that ran on Claude shows the notice, and "Hand off to a new chat" opens the new-chat page with a `.md` file attached and the draft filled.
 **Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Commits:**
+
+- `8327ecb` feat(desktop): make the chats of a provider that cannot run read-only, with a hand-off (the review added: the transcript is cut to the attachment limit, quoted so a message cannot break the file, a Stop button for a running orchestrator)
 
 ## Stage 6 — The context reading and Compact in the daemon
 
