@@ -14,7 +14,7 @@
 **Decisions**
 
 Header
-- The usage status sits at the top right of the window header, left of the shortcuts button, one badge per provider that is switched on and installed: the provider's mark, the headline percent and the time to reset of that window (`78% 1h 32m`). The headline is the highest used percent among the primary windows (window ids without `:`; scoped windows such as `7d · Fable` are left out). Tone changes at 80 (warning) and 90 (danger). A provider with no reading shows its mark alone, muted.
+- The usage status sits at the top right of the window header, left of the shortcuts button, one badge per provider that is switched on and installed: the provider's mark, the headline percent and the time to reset of that window (`78% 1h 32m`). The headline is the highest used percent among the primary windows (a window is scoped, and left out, when its id has a `:` that is not its own agent's prefix: Claude's `weekly:fable` and Codex's `spark:secondary` are scoped, `codex:primary` is not). Tone changes at 80 (warning) and 90 (danger). A provider with no reading shows its mark alone, muted.
 - One click opens one popover in bb's look: providers sorted by the headline percent, descending; per provider the mark, the account e-mail, a plan badge and a bar per window (label, percent used, time to reset); a refresh action; the states loading, signed out, unavailable and error. No Detailed/Compact switch. The usage rows are one shared component, also used by the Providers page; both use the 80/90 thresholds.
 - The header reads the agents again every five minutes and when the window gains focus; the daemon's own freshness (90 s) stays. The status is absent when no provider is usable.
 
@@ -29,7 +29,8 @@ Chat binding
 Picker
 - Reforma's look: a pill in the composer's `.end` group beside Mode (mark, model title, muted level, chevron); a 320px popover with a face (model button, "Reasoning effort" slider) and a list pane that swaps in with an animated height. All levels the model reports are slider stops: two or more make a slider, one is shown as text, none shows the model's description. No Auto mode of Reforma, no footer, no hover stat card, no search.
 - The pane and height animations are CSS only, with both panes mounted and the hidden one `inert`: no new `motion` dependency in `apps/desktop`.
-- On the new-chat page the list is in provider sections (Claude, Codex, Cursor) and only usable providers appear. In an existing chat only the chat's own provider is listed. Cursor's own "Auto" model stays a normal row.
+- The list (after the owner saw Stage 4 running, with bb's list as the reference): on the new-chat page a strip of provider marks (Claude, Codex, Cursor; only usable ones, none when only one is usable) switches the provider; under it only five main models of the provider and a "More models ›" row that opens a flyout with all the rest. The five are the first five in the agent's own order, except that the daemon marks Claude's alias rows (`opus`, `fable`, `sonnet`, `haiku`) as `featured`, and then those are the main ones. The selected model is always visible: if it is not among the five it is shown as a sixth row. In an existing chat the strip is absent and only the chat's own provider is listed. Cursor's own "Auto" model stays a normal row.
+- A started chat that has no model (a chat from before models were stored: the agent ran on its own default) shows "Default model" on the face's model button with a muted line that it runs on the provider's own default until a model is picked; nothing is padded where a slider or description would be.
 - The choice is remembered on this machine (`localStorage`): the last provider, the last model per provider, the last effort per model. A new chat starts from the remembered provider and model; with nothing remembered, the first usable provider's default model (the row marked `isDefault`, else the first) and its `defaultEffort`, else `high` when offered, else the middle level.
 - The composer's data comes from `GET /v1/agents/:id/models` (cached by the daemon for ten minutes), loaded when the picker or a chat that needs it first asks.
 
@@ -174,6 +175,30 @@ Cursor
 **Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`, then look at it in `./clowdy dev`.
 **Commits:** None yet.
 
+## Stage 4b — Picker: provider strip, More models, chats with no model
+
+**Depends on:** Stage 4.
+
+**This stage:** The owner ran Stage 4 and found three things: a started chat with no stored model shows a bare provider name and a face with a hole where the slider would be, the list shows every model the agent has (dozens), and bb's list shows only a few main models with a "More models" submenu and a strip of providers. The stage fixes the face's spacing and wording for a chat with no model, replaces the provider sections by the strip, and shows five main models with a flyout for the rest.
+
+- [ ] Complete
+  - [ ] A chat with no model: "Default model" on the face's model button and a muted explanation, the pill reads the provider; no empty padding when there is no slider or description.
+  - [ ] The provider strip (marks with names as tooltips and `aria` labels, arrow keys) on the new-chat page replaces the sections; one usable provider shows no strip.
+  - [ ] Five main models per provider (the agent's order; Claude's `featured` rows when the daemon marks them; the selected model is always shown) and the "More models ›" row opening a flyout with the others: opens on press, Enter, Space and ArrowRight, closes on Escape and ArrowLeft with focus back on the row, positions itself on the side that has room, scrolls when long; picking from it works like picking from the list.
+  - [ ] Tests for each, and the popover's height with a flyout open.
+
+**Files**
+
+- `packages/protocol/src/agents.ts` — `AgentModel.featured?`; `apps/daemon/src/providers/models.ts` — `parseClaudeModels` marks the alias rows; its test in `apps/daemon/test/providers-models.test.ts`.
+- `apps/desktop/src/renderer/features/chats/modelSelection.ts` — `mainModels(models, selected)` and its test.
+- `apps/desktop/src/renderer/features/chats/ModelPicker.tsx` and `ModelPicker.module.css` — the face, the strip, the list and the flyout.
+- `apps/desktop/src/renderer/features/chats/ModelPicker.test.tsx` — tests.
+- `apps/desktop/AGENTS.md`.
+
+**Done when:** on the new-chat page with the fixtures the person sees a strip of three marks, five models and "More models ›", the flyout lists the rest; a started chat with no model opens a tidy face.
+**Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`; `cd apps/daemon && bun test test/providers-models.test.ts`
+**Commits:** None yet.
+
 ## Stage 5 — Read-only chats and hand-off
 
 **Depends on:** Stage 1, Stage 3.
@@ -184,7 +209,6 @@ Cursor
   - [ ] A function that says whether a chat can be written to, from its `engine` (or its orchestrator run's engine) and the agents' state, with the reason.
   - [ ] `ChatView` shows the notice in place of the composer, with "Hand off to a new chat" and "Open Providers"; the stream stays readable.
   - [ ] The hand-off builds a Markdown transcript (people's and assistants' text) and opens the new-chat page with it attached and a prefilled draft.
-  - [ ] The new-chat page disables sending with a hint when no provider is usable.
   - [ ] Tests for the check, the notice and the hand-off payload.
 
 **Files**
@@ -193,7 +217,7 @@ Cursor
 - `apps/desktop/src/renderer/features/chats/ChatView.tsx` — the notice in place of `Composer`.
 - `apps/desktop/src/renderer/features/chats/ReadOnlyNotice.tsx` and `.module.css` — create: the notice.
 - `apps/desktop/src/renderer/features/chats/handoff.ts` — create: the transcript and the opening of the draft; uses `stores/UiStore.ts` `openDraft` and the draft and files of `composerDrafts.ts`/`composerFiles.ts`.
-- `apps/desktop/src/renderer/features/agents/DraftChat.tsx` — picks up a pending hand-off; the no-provider state.
+- `apps/desktop/src/renderer/features/agents/DraftChat.tsx` — picks up a pending hand-off (the no-provider state was done with the picker in Stage 4).
 - `apps/desktop/AGENTS.md` — read-only chats and hand-off.
 
 **Done when:** with Claude switched off in the fixtures, a chat that ran on Claude shows the notice, and "Hand off to a new chat" opens the new-chat page with a `.md` file attached and the draft filled.
@@ -247,4 +271,29 @@ Cursor
 
 **Done when:** a chat whose orchestrator has `context { used: 53000, size: 250000 }` shows a ring, the popover reads "21% full ~53K / 250K", and Compact sends `chat.compact`.
 **Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`
+**Commits:** None yet.
+
+## Stage 8 — Cursor's models, levels and launch
+
+**Depends on:** Stage 1, Stage 3.
+
+**This stage:** Cursor's catalog is the 280 flattened variants of `cursor-agent --list-models`, so its picker would list hundreds of rows and no reasoning levels; and `session/set_config_option` changes the model every new `cursor-agent` of the person starts on. The stage reads Cursor's 48 model families with their own effort options from `cursor/list_available_models` (in Cursor's own order: Auto, Grok 4.7, Grok 4.6, Composer 2.5, ...), and selects the model and level at launch with `--model '<family>[<effortKey>=<level>]'`, never through `set_config_option`. The details of the flag (Auto's spelling, whether the person's default stays alone, load, errors) are in `research/cursor-launch-flag.md`.
+
+- [ ] Complete
+  - [ ] `ModelCatalog` reads Cursor over ACP (`initialize`, `cursor/list_available_models`) and gives one `AgentModel` per family: `id` the family value (`default` is Auto), `name`, `efforts` and `defaultEffort` from the effort-like option (not `thinking`, `context` or `fast`), the option's id as `effortKey`, kept in Cursor's order.
+  - [ ] A run of Cursor passes the chat's model and level as the `--model` argument at launch (the effort key looked up in the cached catalog) and does not call `session/set_config_option` for them; a model the catalog does not know is logged and left to the agent.
+  - [ ] The person's own Cursor default is left alone (checked as in the research).
+  - [ ] Tests with a fake Cursor (`cursor/list_available_models`, the launch arguments).
+
+**Files**
+
+- `packages/protocol/src/agents.ts` — `AgentModel.effortKey?`.
+- `apps/daemon/src/providers/models.ts` — the Cursor source; `apps/daemon/test/providers-models.test.ts`.
+- `apps/daemon/src/engine/acp/catalog.ts`, `registry.ts`, `engine.ts`, `session.ts` — the launch argument and the skipped `set_config_option` for an agent that selects at launch.
+- `apps/daemon/src/engine/index.ts` — gives the engines a way to ask the catalog for a model's effort key.
+- `apps/daemon/test/` — fake agent and engine tests.
+- `apps/daemon/AGENTS.md`.
+
+**Done when:** `GET /v1/agents/cursor/models` answers about 48 families with levels, and a Cursor turn starts as `cursor-agent --model 'gemini-3.8-flash[reasoning_effort=low]' acp`.
+**Verify:** `cd apps/daemon && bun test && bun run typecheck && bun run lint`, then one real turn with a one-word prompt.
 **Commits:** None yet.
