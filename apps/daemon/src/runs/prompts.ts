@@ -20,11 +20,15 @@ const modeLabel = (mode: ChatMode) => (mode === 'semi' ? 'semi-manual' : 'autopi
 
 /** The system prompt: where the system skills are, the mode and the facts about the project. Everything else is in the skills. */
 export function systemPrompt(role: RunRole, mode: ChatMode, project: Project): string {
+    const where = project.personal
+        ? `the person's personal space, a folder at ${ project.path } that belongs to no repository`
+        : `repository at ${ project.path }`;
+
     return [
         'Clowdy is a desktop app where a person who manages software work chats with an orchestrator and watches tasks, agents and documents while agents do the engineering.',
         ROLE_INTRO[role],
         `Mode: ${ modeLabel(mode) }.`,
-        `Project: ${ project.name }, repository at ${ project.path }, task keys ${ project.taskPrefix }-<number>, project documents in .clowdy/docs/.`,
+        `Project: ${ project.name }, ${ where }, task keys ${ project.taskPrefix }-<number>, project documents in .clowdy/docs/.`,
     ].join('\n');
 }
 

@@ -136,6 +136,16 @@ export class DocsService {
         }
     }
 
+    /**
+     * Lets go of a project's docs watcher: the project was removed, or its folder was replaced. The next request for its documents
+     * watches the folder it has then; a failure to watch is announced again for that folder.
+     */
+    forget(projectId: string): void {
+        this.watchers.get(projectId)?.stop();
+        this.watchers.delete(projectId);
+        this.unwatchable.delete(projectId);
+    }
+
     stop(): void {
         for (const watcher of this.watchers.values()) {
             watcher.stop();

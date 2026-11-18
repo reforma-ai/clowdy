@@ -18,19 +18,28 @@ export const commandSchema = z.discriminatedUnion('type', [
     /* Projects */
     z.object({ ...base, type: z.literal('project.open'), path: z.string().min(1), name: z.string().min(1).optional() }),
     z.object({ ...base, type: z.literal('project.create'), name: z.string().min(1), path: z.string().min(1).optional() }),
+    /**
+     * `name` and `path` (the folder moves to another one; the same checks as `project.open`, and not while the project has unfinished runs) are
+     * refused for the personal space. A settings field set to `null` is cleared, so the project follows the daemon's own choice again.
+     */
     z.object({
         ...base,
         type: z.literal('project.update'),
         projectId: z.string(),
         name: z.string().min(1).optional(),
+        path: z.string().min(1).optional(),
         settings: z.object({
-            maxParallelRuns: z.number().int().min(1).max(1000).optional(),
-            engine: engine.optional(),
-            model: z.string().optional(),
-            chatMode: chatMode.optional(),
-            targetBranch: z.string().optional(),
+            maxParallelRuns: z.number().int().min(1).max(1000).nullable().optional(),
+            engine: engine.nullable().optional(),
+            model: z.string().nullable().optional(),
+            chatMode: chatMode.nullable().optional(),
+            targetBranch: z.string().nullable().optional(),
         }).optional(),
     }),
+    /** Removes the project with its chats, tasks, runs, streams and attachments; its folder and the files in it stay. Refused for the personal space and while any run of the project is unfinished. */
+    z.object({ ...base, type: z.literal('project.delete'), projectId: z.string() }),
+    /** Puts the projects in this order, after the personal space. A project that is not listed keeps its place below the listed ones; an unknown id is refused. */
+    z.object({ ...base, type: z.literal('project.reorder'), projectIds: z.array(z.string()).max(1000) }),
 
     /* Chats */
     /** `engine`, `model` and `effort` bind the chat to an agent, a model and a reasoning level (see `Chat`); left out, the first message takes the project's or the daemon's. */

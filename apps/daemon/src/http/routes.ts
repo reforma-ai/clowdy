@@ -5,7 +5,7 @@ import { executeCommand } from '../commands';
 import { listItems } from '../db/items';
 import { getRun } from '../db/runs';
 import { requireChat } from '../domain/chats';
-import { requireProject } from '../domain/projects';
+import { projectsInfo, requireProject } from '../domain/projects';
 import { projectSnapshot, rootSnapshot, taskDetail } from '../domain/snapshots';
 import { invalid, notFound } from '../errors';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body';
@@ -79,6 +79,8 @@ export function createRoutes(context: RouteContext): Route[] {
             },
         },
         { method: 'GET', pattern: /^\/v1\/snapshot$/, handle: () => json(rootSnapshot(store)) },
+        // `info` is not a project id (they all start with `prj_`), and the pattern is exact, so no route below can take it for one.
+        { method: 'GET', pattern: /^\/v1\/projects\/info$/, handle: async () => json(await projectsInfo(store)) },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/snapshot$/, handle: (_request, _url, [id]) => json(projectSnapshot(store, id)) },
         {
             method: 'GET',

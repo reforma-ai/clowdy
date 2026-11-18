@@ -215,7 +215,7 @@ describe('dependencies', () => {
         await new Promise(resolve => setTimeout(resolve, 30));
         expect(h.run(runB).status).toBe('blocked');
 
-        const done = (h.events()[0].data as { statuses: { id: string; category: string }[] }).statuses.find(status => status.category === 'done')!.id;
+        const done = h.statuses(a.projectId).find(status => status.category === 'done')!.id;
 
         h.ok('task.update', { taskId: a.id, statusId: done });
         await waitFor(() => gate.isStarted('REP-2'), 'B to start once A is done');

@@ -67,7 +67,7 @@ describe('projects', () => {
         expect(project).toMatchObject({ name: 'car-rental', taskPrefix: 'CAR', settings: {} });
         expect(again.project.id).toBe(project.id);
 
-        const created = h.events().filter(event => event.data.type === 'project.upserted');
+        const created = h.events().filter(event => event.data.type === 'project.upserted' && event.projectId === project.id);
 
         expect(created).toHaveLength(1);
         expect((created[0].data as { statuses: { name: string; category: string }[] }).statuses.map(status => [status.name, status.category])).toEqual([
@@ -168,7 +168,7 @@ describe('tasks', () => {
         const first = create('First');
         const second = create('Second');
         const foreign = h.ok('task.create', { projectId: other.id, title: 'Foreign' }).task;
-        const statuses = (h.events()[0].data as { statuses: { id: string; name: string }[] }).statuses;
+        const statuses = h.statuses(projectId);
 
         expect([first.key, second.key, foreign.key]).toEqual(['REP-1', 'REP-2', 'OTH-1']);
         expect(first.statusId).toBe(statuses.find(status => status.name === 'To do')?.id);
@@ -222,7 +222,7 @@ describe('tasks', () => {
     test('task.update changes fields, validates the status, and publishes only real changes', () => {
         const { projectId, create } = setup();
         const task = create('Old');
-        const done = (h.events()[0].data as { statuses: { id: string; category: string }[] }).statuses.find(status => status.category === 'done')!.id;
+        const done = h.statuses(projectId).find(status => status.category === 'done')!.id;
         const cursor = h.store.headCursor();
 
         expect(h.ok('task.update', { taskId: task.id, title: 'New', description: 'Body', statusId: done }).task).toMatchObject({ title: 'New', description: 'Body', statusId: done });

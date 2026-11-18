@@ -36,7 +36,7 @@ beforeEach(() => {
     fx = {
         store,
         docs: new DocsService(store),
-        project: { id: 'prj_docs', name: 'Docs', path, taskPrefix: 'DOC', settings: {}, createdAt: 1 },
+        project: { id: 'prj_docs', name: 'Docs', path, taskPrefix: 'DOC', settings: {}, createdAt: 1, position: 1 },
         root: join(path, '.clowdy', 'docs'),
         outside,
     };

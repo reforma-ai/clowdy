@@ -6,6 +6,7 @@ import { AttachmentsService } from './attachments/service';
 import { openDatabase } from './db/connection';
 import { listProjects } from './db/projects';
 import { DocsService } from './docs/service';
+import { ensurePersonalProject } from './domain/projects';
 import { createEngines } from './engine';
 import { AgentRegistry } from './engine/acp/registry';
 import { FilesService } from './files/service';
@@ -77,6 +78,8 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
 
         await runs.recover();
         attachments.sweep();
+        // Before the watchers, so the personal space is watched like any project.
+        ensurePersonalProject(store, config);
         docs.watchExisting(listProjects(store.db));
         skills.watchFolders(listProjects(store.db));
         driver.resumeWaiting();

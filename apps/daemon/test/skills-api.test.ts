@@ -115,13 +115,14 @@ describe('what the engines are given', () => {
 
         const catalog = await catalogOf(h);
 
+        // Announced once to each project: the personal space and the one opened here.
         expect(catalog.entries.find(entry => entry.name === 'user:deploy')?.enabled).toBe(true);
         expect(readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills'))).toEqual(['deploy']);
-        expect(skillEvents(h, before)).toHaveLength(1);
+        expect(skillEvents(h, before)).toHaveLength(2);
 
         await catalogOf(h);
 
-        expect(skillEvents(h, before)).toHaveLength(1);
+        expect(skillEvents(h, before)).toHaveLength(2);
     });
 
     test('the system skills plugin is copied to the data folder and named in the config', async () => {
@@ -276,11 +277,11 @@ describe('skills.setEnabled', () => {
         const again = await h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(toggle) });
 
         expect(await again.json()).toEqual(await sent.json());
-        expect(skillEvents(h, before).map(event => event.projectId).sort()).toEqual([first.id, second.id].sort());
+        expect(skillEvents(h, before).map(event => event.projectId).sort()).toEqual([h.personal.id, first.id, second.id].sort());
 
         h.ok('skills.setEnabled', { name: 'user:deploy', enabled: false });
 
-        expect(skillEvents(h, before)).toHaveLength(2);
+        expect(skillEvents(h, before)).toHaveLength(3);
     });
 });
 
@@ -294,16 +295,16 @@ describe('watching the skill folders', () => {
 
         writeSkill(user, 'deploy', 'First version');
 
-        const events = await waitFor(() => skillEvents(h, before).length >= 2 && skillEvents(h, before), 'skills.changed for both projects');
+        const events = await waitFor(() => skillEvents(h, before).length >= 3 && skillEvents(h, before), 'skills.changed for every project');
 
-        expect(events.map(event => event.projectId).sort()).toEqual([first.id, second.id].sort());
+        expect(events.map(event => event.projectId).sort()).toEqual([h.personal.id, first.id, second.id].sort());
         expect((await catalogOf(h)).entries.find(entry => entry.name === 'user:deploy')?.description).toBe('First version');
         expect(readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills'))).toEqual(['deploy']);
 
         const afterAdd = h.store.headCursor();
 
         writeSkill(user, 'deploy', 'Second version, a little longer');
-        await waitFor(() => skillEvents(h, afterAdd).length >= 2, 'skills.changed after an edit');
+        await waitFor(() => skillEvents(h, afterAdd).length >= 3, 'skills.changed after an edit');
 
         expect((await catalogOf(h)).entries.find(entry => entry.name === 'user:deploy')?.description).toBe('Second version, a little longer');
     });
@@ -323,7 +324,8 @@ describe('watching the skill folders', () => {
         await waitFor(() => skillEvents(h, before).length > 0, 'skills.changed');
         await Bun.sleep(500);
 
-        expect(skillEvents(h, before)).toHaveLength(1);
+        // One announcement per project: the personal space and the one opened here.
+        expect(skillEvents(h, before)).toHaveLength(2);
         expect(readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills'))).toHaveLength(5);
     });
 

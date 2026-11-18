@@ -35,6 +35,11 @@ export class FolderWatchers {
         }
     }
 
+    /** Stops watching `dir`; a later `watch` of it starts afresh. */
+    unwatch(dir: string): void {
+        this.drop(dir);
+    }
+
     stop(): void {
         for (const timer of this.timers.values()) {
             clearTimeout(timer);

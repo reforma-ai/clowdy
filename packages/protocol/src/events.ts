@@ -15,6 +15,8 @@ export type ClowdyEvent = EventBase & { data: EventData };
 
 export type EventData =
     | { type: 'project.upserted'; project: Project; statuses: TaskStatus[] }
+    /** The project (the event's `projectId`) and everything in it is gone from the daemon; its folder is untouched. */
+    | { type: 'project.deleted' }
     | { type: 'chat.upserted'; chat: Chat }
     /** The chat and `runIds` (its orchestrator and every run below it, with their streams and task links) are gone. */
     | { type: 'chat.deleted'; chatId: string; runIds: string[] }

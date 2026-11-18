@@ -7,6 +7,7 @@ import {
     allAttachmentIds,
     deleteAttachment,
     deleteAttachmentsOfChat,
+    deleteAttachmentsOfProject,
     getAttachment,
     insertAttachment,
     markAttachmentsSent,
@@ -204,6 +205,13 @@ export class AttachmentsService {
     /** Drops the files sent in a chat: the rows now, the folders once the transaction commits. Call it in the transaction that deletes the chat. */
     removeOfChat(chatId: string): void {
         const ids = deleteAttachmentsOfChat(this.store.db, chatId);
+
+        this.store.afterCommit(() => ids.forEach(id => this.removeFolder(id)));
+    }
+
+    /** Drops every file of a project, unsent ones too: the rows now, the folders once the transaction commits. Call it in the transaction that deletes the project. */
+    removeOfProject(projectId: string): void {
+        const ids = deleteAttachmentsOfProject(this.store.db, projectId);
 
         this.store.afterCommit(() => ids.forEach(id => this.removeFolder(id)));
     }

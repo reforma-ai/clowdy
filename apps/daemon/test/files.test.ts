@@ -42,7 +42,7 @@ describe('searchPaths', () => {
 
 describe('FilesService', () => {
     const service = new FilesService();
-    const project = (path: string): Project => ({ id: 'prj_files', name: 'Files', path, taskPrefix: 'FIL', settings: {}, createdAt: 1 });
+    const project = (path: string): Project => ({ id: 'prj_files', name: 'Files', path, taskPrefix: 'FIL', settings: {}, createdAt: 1, position: 1 });
 
     test('in a repository offers tracked and new files, not ignored or deleted ones, and none of .clowdy', async () => {
         const root = tempDir('repo');

@@ -66,8 +66,10 @@ describe('agent commands', () => {
 
         const changed = h.events(before).filter(event => event.data.type === 'agents.changed');
 
-        expect(changed).toHaveLength(4);
-        expect(changed.every(event => event.projectId === project.id)).toBe(true);
+        // Every project hears each change: the personal space and the one this test opened.
+        expect(changed).toHaveLength(8);
+        expect(changed.filter(event => event.projectId === project.id)).toHaveLength(4);
+        expect(changed.filter(event => event.projectId === h.personal.id)).toHaveLength(4);
     });
 
     test('a path the user chose replaces the search, and null goes back to searching', async () => {

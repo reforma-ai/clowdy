@@ -69,11 +69,12 @@ describe('auth', () => {
 
     test('an unauthorized command gets a CommandResult-shaped error and does nothing', async () => {
         const body = JSON.stringify(command('project.create', { name: 'Nope' }));
+        const before = h.store.headCursor();
         const response = await fetch(`${ h.url }/v1/commands`, { method: 'POST', body, headers: { authorization: 'Bearer wrong' } });
 
         expect(response.status).toBe(401);
         expect(await response.json()).toEqual({ ok: false, requestId: '', error: { code: 'unauthorized', message: expect.any(String) } });
-        expect(h.store.headCursor()).toBe(0);
+        expect(h.store.headCursor()).toBe(before);
     });
 
     test('the token comparison is exact', () => {
@@ -299,6 +300,7 @@ async function readFrames(response: Response, count: number, timeoutMs = 3000): 
 }
 
 describe('event stream', () => {
+    // The log is not empty at start: the daemon made the personal space, and that event has the first cursor.
     const seed = () => {
         const { id } = h.openRepo();
 
@@ -309,10 +311,12 @@ describe('event stream', () => {
     };
 
     test('replays from a cursor, then goes live; ids are cursors and the frame name is clowdy', async () => {
-        seed();
+        const start = h.store.headCursor();
+        const projectId = seed();
 
+        // After the event of opening the project: the two chats come first, the live one after them.
         const abort = new AbortController();
-        const response = await h.fetch('/v1/events?cursor=1', { signal: abort.signal });
+        const response = await h.fetch(`/v1/events?cursor=${ start + 1 }`, { signal: abort.signal });
 
         expect(response.status).toBe(200);
         expect(response.headers.get('content-type')).toContain('text/event-stream');
@@ -320,13 +324,13 @@ describe('event stream', () => {
         const pending = readFrames(response, 3);
 
         await Bun.sleep(30);
-        h.ok('chat.create', { projectId: (h.events()[0].data as { project: { id: string } }).project.id, title: 'live' });
+        h.ok('chat.create', { projectId, title: 'live' });
 
         const { frames } = await pending;
 
-        expect(frames.map(frame => frame.id)).toEqual(['2', '3', '4']);
+        expect(frames.map(frame => frame.id)).toEqual([start + 2, start + 3, start + 4].map(String));
         expect(frames.every(frame => frame.event === SSE_EVENT)).toBe(true);
-        expect(frames.map(frame => frame.data.cursor)).toEqual([2, 3, 4]);
+        expect(frames.map(frame => frame.data.cursor)).toEqual([start + 2, start + 3, start + 4]);
         expect(frames[2].data.data).toMatchObject({ type: 'chat.upserted', chat: { title: 'live' } });
     });
 
@@ -338,27 +342,30 @@ describe('event stream', () => {
     });
 
     test('Last-Event-ID resumes without gaps or repeats', async () => {
-        seed();
+        const start = h.store.headCursor();
+        const projectId = seed();
 
-        const first = await readFrames(await h.fetch('/v1/events?cursor=0'), 2);
+        const first = await readFrames(await h.fetch(`/v1/events?cursor=${ start }`), 2);
         const lastId = first.frames[1].id;
 
-        h.ok('chat.create', { projectId: (h.events()[0].data as { project: { id: string } }).project.id, title: 'after the drop' });
+        h.ok('chat.create', { projectId, title: 'after the drop' });
 
         const resumed = await readFrames(await h.fetch('/v1/events', { headers: { 'last-event-id': lastId } }), 2);
 
-        expect(resumed.frames.map(frame => frame.id)).toEqual(['3', '4']);
+        expect(lastId).toBe(String(start + 2));
+        expect(resumed.frames.map(frame => frame.id)).toEqual([start + 3, start + 4].map(String));
     });
 
     test('without a cursor only new events arrive', async () => {
-        seed();
+        const projectId = seed();
+        const head = h.store.headCursor();
 
         const pending = readFrames(await h.fetch('/v1/events'), 1);
 
         await Bun.sleep(30);
-        h.ok('chat.create', { projectId: (h.events()[0].data as { project: { id: string } }).project.id, title: 'new' });
+        h.ok('chat.create', { projectId, title: 'new' });
 
-        expect((await pending).frames.map(frame => frame.id)).toEqual(['4']);
+        expect((await pending).frames.map(frame => frame.id)).toEqual([String(head + 1)]);
     });
 
     test('a cursor ahead of the log is 410 with a JSON body; a bad one is 400', async () => {
@@ -367,7 +374,7 @@ describe('event stream', () => {
         const gone = await h.fetch('/v1/events?cursor=999');
 
         expect(gone.status).toBe(410);
-        expect(await gone.json()).toMatchObject({ ok: false, error: { code: 'invalid', details: { cursor: 999, head: 3 } } });
+        expect(await gone.json()).toMatchObject({ ok: false, error: { code: 'invalid', details: { cursor: 999, head: h.store.headCursor() } } });
         expect((await h.fetch('/v1/events', { headers: { 'last-event-id': '999' } })).status).toBe(410);
         expect((await h.fetch('/v1/events?cursor=abc')).status).toBe(400);
         expect((await h.fetch('/v1/events?cursor=-1')).status).toBe(400);

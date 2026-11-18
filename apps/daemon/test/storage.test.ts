@@ -113,6 +113,38 @@ describe('migrations', () => {
         upgraded.close();
     });
 
+    test('the personal and position migration numbers the projects of a version 4 database by creation and keeps at most one personal', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const old = openDatabase(path, MIGRATIONS.slice(0, 4));
+        const insert = old.query('INSERT INTO projects (id, name, path, task_prefix, created_at) VALUES (?, ?, ?, ?, ?)');
+
+        insert.run('prj_b', 'Second', '/second', 'SEC', 20);
+        insert.run('prj_a', 'First', '/first', 'FIR', 10);
+        // The same creation time: the id decides.
+        insert.run('prj_d', 'Fourth', '/fourth', 'FOU', 30);
+        insert.run('prj_c', 'Third', '/third', 'THI', 30);
+        old.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_1', 'prj_a', 'To do', 'todo', 0);
+        expect(version(old)).toBe(4);
+        old.close();
+
+        const upgraded = openDatabase(path);
+
+        expect(version(upgraded)).toBe(MIGRATIONS.length);
+        expect(upgraded.query('SELECT id, personal, position FROM projects ORDER BY position').all()).toEqual([
+            { id: 'prj_a', personal: 0, position: 1 },
+            { id: 'prj_b', personal: 0, position: 2 },
+            { id: 'prj_c', personal: 0, position: 3 },
+            { id: 'prj_d', personal: 0, position: 4 },
+        ]);
+        expect(upgraded.query('SELECT COUNT(*) AS n FROM task_statuses').get()).toEqual({ n: 1 });
+
+        const personal = upgraded.query('UPDATE projects SET personal = 1 WHERE id = ?');
+
+        personal.run('prj_a');
+        expect(() => personal.run('prj_b')).toThrow(/UNIQUE/);
+        upgraded.close();
+    });
+
     test('a database newer than the daemon is refused', () => {
         const path = join(tempDir(), 'clowdy.db');
         const db = openDatabase(path);

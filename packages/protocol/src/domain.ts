@@ -21,6 +21,31 @@ export interface Project {
     taskPrefix: string;
     settings: ProjectSettings;
     createdAt: number;
+    /** Where the person put the project in their own order, lower first. The personal space is always listed first, whatever its number. */
+    position: number;
+    /**
+     * The person's own space: a folder in the app's data for chats that belong to no repository. Exactly one project is, the daemon makes it
+     * at its first start, it is listed first, and it cannot be renamed, moved or removed.
+     */
+    personal?: boolean;
+}
+
+/**
+ * What the daemon reads about a project when it is asked (`GET /v1/projects/info`): things that change outside the app or that no
+ * snapshot carries, for the page that manages projects.
+ */
+export interface ProjectInfo {
+    projectId: ProjectId;
+    /** False when the folder is gone (moved or deleted): the project cannot work until its folder is chosen again. */
+    folderExists: boolean;
+    /** The `origin` remote as git prints it (`git@github.com:acme/app.git`); absent without a remote, or when the folder is not a repository. */
+    remoteUrl?: string;
+    /** The branch checked out in the folder; absent when it is detached or the folder is not a repository. */
+    branch?: string;
+    chats: number;
+    tasks: number;
+    /** Runs that are not finished. Removing the project or choosing another folder waits until there are none. */
+    activeRuns: number;
 }
 
 export interface ProjectSettings {

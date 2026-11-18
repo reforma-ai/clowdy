@@ -50,6 +50,15 @@ export class SkillsService {
         projects.forEach(project => this.watchProject(project));
     }
 
+    /**
+     * Lets go of a project's skill folders: it was removed, or its folder was replaced. The watchers and the fingerprint are
+     * rebuilt for whatever folder the project has when its catalog is asked for next.
+     */
+    forgetProject(project: Project): void {
+        PROJECT_ROOTS.forEach(({ dir }) => this.watchers.unwatch(join(project.path, dir)));
+        this.projectFingerprints.delete(project.id);
+    }
+
     stop(): void {
         this.watchers.stop();
     }

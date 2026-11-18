@@ -224,4 +224,19 @@ export const MIGRATIONS: Migration[] = [
             db.run('ALTER TABLE runs ADD COLUMN context TEXT');
         },
     },
+    {
+        version: 7,
+        up(db) {
+            // The personal space is a project flagged `personal` (at most one); `position` is the person's order of the others.
+            // Projects that exist keep the order they were made in.
+            db.run(`
+                ALTER TABLE projects ADD COLUMN personal INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE projects ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+                UPDATE projects SET position = ordered.position
+                FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY created_at, id) AS position FROM projects) AS ordered
+                WHERE projects.id = ordered.id;
+                CREATE UNIQUE INDEX projects_personal ON projects(personal) WHERE personal = 1;
+            `);
+        },
+    },
 ];

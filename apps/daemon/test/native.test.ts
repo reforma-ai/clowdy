@@ -75,7 +75,7 @@ describe('native sub-agents as child runs', () => {
 
     test('they take no slot, do not count as active work, and do not number the executors', async () => {
         const gate = latch();
-        const { h, engine, runId, natives } = await setup(async function* ({ signal }) {
+        const { h, engine, project, runId, natives } = await setup(async function* ({ signal }) {
             yield { type: 'session', sessionId: 's1' };
 
             for (const id of ['a1', 'a2', 'a3', 'a4', 'a5']) {
@@ -92,7 +92,7 @@ describe('native sub-agents as child runs', () => {
         expect(((await (await fetch(`${ h.url }/v1/health`)).json()) as { activeRuns: number }).activeRuns).toBe(1);
 
         // The cap of two runs is not used up by six rows in `running`: a second root run starts.
-        const task = h.ok('task.create', { projectId: (h.store.db.query('SELECT id FROM projects').get() as { id: string }).id, title: 'Other' }).task;
+        const task = h.ok('task.create', { projectId: project.id, title: 'Other' }).task;
         const other = h.ok('task.start', { taskId: task.id }).runId as string;
 
         await waitFor(() => h.run(other).status === 'running', 'the second run to start next to the sub-agents');

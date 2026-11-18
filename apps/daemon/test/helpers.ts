@@ -4,10 +4,11 @@ import { join } from 'node:path';
 
 import { executeCommand } from '../src/commands';
 import { startDaemon } from '../src/daemon';
+import { getPersonalProject, listStatuses } from '../src/db/projects';
 import { Discovery } from '../src/engine/acp/discovery';
 import { AgentRegistry } from '../src/engine/acp/registry';
 
-import type { ClowdyEvent, Command, CommandResult, EngineId, Run } from '@clowdy/protocol';
+import type { ClowdyEvent, Command, CommandResult, EngineId, Project, Run, TaskStatus } from '@clowdy/protocol';
 import type { Config } from '../src/config';
 import type { Daemon, DaemonOptions } from '../src/daemon';
 import type { AgentEngine, EngineEvent, EngineSession, EngineStartOptions } from '../src/engine/types';
@@ -95,6 +96,15 @@ export class Harness {
 
     get store() {
         return this.daemon.services.store;
+    }
+
+    /** The personal space every daemon makes at start: the first project, before any a test opens. */
+    get personal(): Project {
+        return getPersonalProject(this.store.db) as Project;
+    }
+
+    statuses(projectId: string): TaskStatus[] {
+        return listStatuses(this.store.db, projectId);
     }
 
     /** Executes a command directly and returns its result. */

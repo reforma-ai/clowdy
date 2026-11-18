@@ -65,6 +65,15 @@ export function deleteAttachmentsOfChat(db: Database, chatId: string): string[] 
     return ids;
 }
 
+/** Removes the rows of every file of a project and returns their ids. */
+export function deleteAttachmentsOfProject(db: Database, projectId: string): string[] {
+    const ids = (db.query('SELECT id FROM attachments WHERE project_id = ?').all(projectId) as { id: string }[]).map(row => row.id);
+
+    db.query('DELETE FROM attachments WHERE project_id = ?').run(projectId);
+
+    return ids;
+}
+
 /** Files uploaded before `before` (epoch ms) that no message claimed. */
 export function unsentAttachmentIdsBefore(db: Database, before: number): string[] {
     return (db.query('SELECT id FROM attachments WHERE chat_id IS NULL AND created_at < ?').all(before) as { id: string }[]).map(row => row.id);
