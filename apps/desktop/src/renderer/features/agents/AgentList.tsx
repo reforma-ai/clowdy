@@ -16,14 +16,23 @@ import { ChatMenu } from '../chats/ChatMenu';
 import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
 import { deleteChat } from '../chats/deleteChat';
+import { ProviderIcon } from '../settings/providers/ProviderIcon';
+import { PROVIDER_IDS } from '../settings/providers/providerView';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
 import { agentRows, ancestorIds, countActiveChildren, describeRun, type AgentRow, type AgentSelection } from './agentTree';
 
-import type { Chat, ChatId } from '@clowdy/protocol';
+import type { Chat, ChatId, Run } from '@clowdy/protocol';
 
 /** The id of the first row, the one that starts a chat. Chat and run ids never look like it. */
 export const NEW_CHAT_ROW = '@new-chat';
+
+/** The icon of a chat's row: the mark of the provider it runs on once it has started (the chat's own, else its orchestrator's), a speech bubble before and for an agent that has no mark. */
+function chatIcon(chat: Chat, run: Run | undefined) {
+    const engine = chat.engine ?? run?.engine;
+
+    return chat.orchestratorRunId && engine && (PROVIDER_IDS as readonly string[]).includes(engine) ? <ProviderIcon agentId={ engine } size={ 14 } data-provider={ engine } /> : <Message />;
+}
 
 /** A row's `⋯` button and the right-click menu are the same actions; a rename is a rename of the row it started on. */
 interface ChatActions {
@@ -131,7 +140,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                     id={ chat.id }
                     text={ chat.title }
                     startAffix={ fold }
-                    icon={ <Message /> }
+                    icon={ chatIcon(chat, runOf(chat)) }
                     endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } /> }
                 >
                     { renamingId === chat.id

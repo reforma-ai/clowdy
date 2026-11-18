@@ -78,6 +78,26 @@ describe('the list', () => {
         expect(below.indexOf('r-ver-02')).toBe(below.indexOf('r-ex-07') + 1);
     });
 
+    it('marks a chat that started with the provider it runs on, and one that has not with the speech bubble', async () => {
+        const providerOf = (key: string) => rowOf(key).querySelector('[data-provider]')?.getAttribute('data-provider');
+
+        // c-1 has an orchestrator on Claude; c-4 never got a message.
+        expect(providerOf('c-1')).toBe('claude');
+        expect(providerOf('c-4')).toBeUndefined();
+
+        // A chat on another agent shows that agent's mark: the chat's own choice, else its orchestrator's.
+        await draw(() => {
+            project().chats.set('c-1', { ...project().chats.get('c-1')!, engine: 'codex' });
+        });
+        expect(providerOf('c-1')).toBe('codex');
+
+        // An agent with no mark of its own keeps the speech bubble.
+        await draw(() => {
+            project().chats.set('c-1', { ...project().chats.get('c-1')!, engine: 'fake' });
+        });
+        expect(providerOf('c-1')).toBeUndefined();
+    });
+
     it('selects the first chat when nothing was opened', () => {
         expect(isSelected('c-1')).toBe(true);
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
