@@ -2,7 +2,6 @@ import { Attachments, PreviewableAttachment } from '@clowdy/components/Attachmen
 import { Button } from '@clowdy/components/Button';
 import { ListBoxItem } from '@clowdy/components/List';
 import { emptyComposerDoc, RichInput, type ComposerDoc, type RichInputHandle } from '@clowdy/components/RichInput';
-import { Select } from '@clowdy/components/Select';
 import { Clip } from '@clowdy/icons/14';
 import { useImperativeHandle, useRef, useState, type MouseEvent, type Ref } from 'react';
 
@@ -17,17 +16,13 @@ import { ComposerSend } from './ComposerSend';
 import { ContextRing } from './ContextRing';
 import { MentionChip } from './MentionChip';
 import { ModelPicker, ModelPickerOff } from './ModelPicker';
+import { ModePicker } from './ModePicker';
 import { Unavailable } from './Unavailable';
 import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
 import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
 
 import type { Chat, ChatId, ChatMode, ProjectId, Run } from '@clowdy/protocol';
-
-const MODES: ReadonlyArray<{ id: ChatMode; name: string }> = [
-    { id: 'autopilot', name: 'Autopilot' },
-    { id: 'semi', name: 'Semi-manual' },
-];
 
 /** What a press on the card's empty parts must leave alone: the controls, which take the press themselves. */
 const CONTROLS = 'button, [role="button"], [role="combobox"], [contenteditable="true"], a, input';
@@ -215,9 +210,23 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
                 />
 
                 <div className={ styles.row }>
-                    <Button variant="filling" color="secondary" size="sm" iconOnly aria-label="Attach files" tooltip="Attach files" onPress={ () => picker.current?.click() }>
-                        <Clip />
-                    </Button>
+                    <div className={ styles.start }>
+                        <Button variant="filling" color="secondary" size="sm" iconOnly aria-label="Attach files" tooltip="Attach files" onPress={ () => picker.current?.click() }>
+                            <Clip />
+                        </Button>
+
+                        <Unavailable label="Mode" hint={ running ? 'The mode stays as it is while the orchestrator works' : undefined }>
+                            <ModePicker
+                                mode={ target?.mode ?? draftMode }
+                                // A chat made by a first message that failed keeps the mode it was made with.
+                                isDisabled={ running || (!chat && made !== undefined) }
+                                onPick={ (picked) => {
+                                    if (chat) void perform(root, { type: 'chat.setMode', chatId: chat.id, mode: picked });
+                                    else setDraftMode(picked);
+                                } }
+                            />
+                        </Unavailable>
+                    </div>
                     <input
                         ref={ picker }
                         type="file"
@@ -239,26 +248,6 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
                         { model.noProvider
                             ? <Unavailable label="Model" hint={ NO_PROVIDER_HINT }><ModelPickerOff /></Unavailable>
                             : <ModelPicker choice={ model.choice } providers={ model.providers } running={ running } onPick={ model.pick } /> }
-
-                        <Unavailable label="Mode" hint={ running ? 'The mode stays as it is while the orchestrator works' : undefined }>
-                            <Select
-                                aria-label="Mode"
-                                size="sm"
-                                variant="transparent"
-                                placement="top"
-                                className={ styles.mode }
-                                items={ MODES }
-                                // A chat made by a first message that failed keeps the mode it was made with.
-                                isDisabled={ running || (!chat && made !== undefined) }
-                                selectedKey={ target?.mode ?? draftMode }
-                                onSelectionChange={ (picked: unknown) => {
-                                    if (chat) void perform(root, { type: 'chat.setMode', chatId: chat.id, mode: picked as ChatMode });
-                                    else setDraftMode(picked as ChatMode);
-                                } }
-                            >
-                                { mode => <ListBoxItem id={ mode.id } text={ mode.name } /> }
-                            </Select>
-                        </Unavailable>
 
                         <Unavailable label="Send" hint={ hasMessage ? blocked : undefined }>
                             <ComposerSend

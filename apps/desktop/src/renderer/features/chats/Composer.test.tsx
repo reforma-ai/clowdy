@@ -346,7 +346,7 @@ describe('Composer', () => {
         it('leaves a press inside the open mode list to the list', async () => {
             await mount(accepted);
 
-            const trigger = container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
+            const trigger = container.querySelector<HTMLButtonElement>('button[aria-label^="Mode:"]')!;
 
             await act(async () => {
                 trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
@@ -356,7 +356,7 @@ describe('Composer', () => {
                 trigger.click();
             });
 
-            const list = document.querySelector('[role="listbox"]')!.closest('[data-trigger="Select"]')!;
+            const list = document.querySelector('[role="menu"]')!.closest('[data-trigger="MenuTrigger"]')!;
 
             expect((await mouseDown(list)).defaultPrevented).toBe(false);
         });
@@ -366,13 +366,13 @@ describe('Composer', () => {
         it('keeps the mode as it is', async () => {
             await mount(accepted, runWith('running'));
 
-            expect(container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!.disabled).toBe(true);
+            expect(container.querySelector<HTMLButtonElement>('button[aria-label^="Mode:"]')!.disabled).toBe(true);
         });
 
         it('lets the mode change when it is not working', async () => {
             await mount(accepted, runWith('succeeded'));
 
-            expect(container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!.disabled).toBe(false);
+            expect(container.querySelector<HTMLButtonElement>('button[aria-label^="Mode:"]')!.disabled).toBe(false);
         });
 
         it('turns the send button into Stop while nothing is typed, and Stop cancels the run', async () => {

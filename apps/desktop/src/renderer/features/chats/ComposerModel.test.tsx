@@ -708,7 +708,7 @@ describe('in a chat', () => {
             await mount({ chat: chatOn({ engine: undefined, model: undefined, effort: undefined, orchestratorRunId: undefined }) });
 
             expect(trigger()).toBeNull();
-            expect(container.querySelector('button[aria-haspopup="listbox"]')).not.toBeNull();
+            expect(container.querySelector('button[aria-label^="Mode:"]')).not.toBeNull();
         });
 
         it('sends a pick as it does for any chat', async () => {

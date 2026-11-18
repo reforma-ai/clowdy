@@ -92,6 +92,7 @@
     cursor: default;
 }
 
+.start,
 .end {
     display: flex;
     align-items: center;
@@ -99,7 +100,7 @@
     min-width: 0;
 }
 
-.mode {
-    width: 9.5rem;
+/* The attach button and the mode keep their size; the model's pill, on the right, is the one that shrinks. */
+.start {
     flex-shrink: 0;
 }
