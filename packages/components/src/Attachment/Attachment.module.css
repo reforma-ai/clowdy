@@ -1,0 +1,260 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .attachments {
+        --attachment-size: 60px;
+        --attachment-width: var(--spacing-224);
+        --attachment-radius: var(--radius-lg);
+        --attachment-remove-offset: 4px;
+        --attachment-remove-size: 18px;
+        --attachment-remove-icon-size: 8px;
+        --attachment-background: var(--color-background);
+        --attachment-text: var(--color-text);
+        --attachment-border: var(--color-secondary-muted-border);
+        --attachment-background-hover: color-mix(in srgb, var(--color-text) 6%, var(--attachment-background));
+        --attachment-border-hover: var(--color-secondary-muted-border-hover);
+
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-xs);
+
+        &[data-size='sm'] {
+            --attachment-size: 36px;
+            --attachment-width: var(--spacing-192);
+            --attachment-radius: var(--radius-sm);
+            --attachment-remove-offset: 2px;
+            --attachment-remove-size: 14px;
+        }
+    }
+
+    .attachment {
+        position: relative;
+        width: var(--attachment-size);
+        height: var(--attachment-size);
+        color: var(--attachment-text);
+        background-color: var(--attachment-background);
+        outline: 1px solid var(--attachment-border);
+        outline-offset: -1px;
+        border-radius: calc(var(--attachment-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-drag: none;
+        @ruleset typography-text-sm;
+    }
+
+    @media (hover: hover) {
+        .attachment.pressable {
+            transition:
+                background-color 0.15s ease,
+                outline-color 0.15s ease;
+        }
+
+        .attachment.pressable:hover {
+            background-color: var(--attachment-background-hover);
+            outline-color: var(--attachment-border-hover);
+        }
+    }
+
+    /* The hit button fills the tile and its own focus ring would be clipped by `overflow: hidden`. */
+    .attachment:has(.attachmentHit[data-focus-visible='true']) {
+        outline: var(--spacing-4) solid var(--color-primary-muted-border);
+        outline-offset: 0;
+    }
+
+    .attachmentError {
+        outline-color: var(--color-danger);
+    }
+
+    /* Primary hit target when `onPress` is set (design-system `Button`). */
+    .attachmentHit {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        margin: 0;
+        padding: 0;
+        align-self: stretch;
+        border-radius: inherit;
+        corner-shape: inherit;
+    }
+
+    .preview {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        aspect-ratio: 1/1;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    /* Behind the bitmap only: transparent pixels need a checker. Icon tiles stay flat. */
+    .previewImg {
+        width: 100%;
+        height: 100%;
+        border-radius: calc(var(--attachment-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        object-fit: cover;
+        object-position: center;
+        background:
+            linear-gradient(45deg, rgba(42, 37, 33, 0.1) 25%, transparent 25%), linear-gradient(-45deg, rgba(42, 37, 33, 0.1) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(42, 37, 33, 0.1) 75%),
+            linear-gradient(-45deg, transparent 75%, rgba(42, 37, 33, 0.1) 75%);
+        background-color: var(--color-secondary);
+        background-position:
+            0 0,
+            0 8px,
+            8px -8px,
+            -8px 0;
+        background-size: 16px 16px;
+    }
+
+    .previewIcon {
+        opacity: 0.5;
+    }
+
+    /* A Material file icon keeps its colors. */
+    .previewIcon:has(> img) {
+        opacity: 1;
+    }
+
+    /* Spinner only, in place of the image or file icon. */
+    .previewLoading {
+        flex-shrink: 0;
+    }
+
+    .previewError {
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+
+    .previewError .previewImg,
+    .previewError .previewIcon {
+        opacity: 0.45;
+    }
+
+    .retryButton {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        width: 22px;
+        height: 22px;
+        margin: auto;
+        /* `size="unset"` buttons get no radius from Button. */
+        border-radius: calc(var(--clowdy-button-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+    }
+
+    /* Name and size beside the preview, on a lone tile only. */
+    .info {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
+        text-align: left;
+    }
+
+    .infoDetail {
+        opacity: 0.5;
+    }
+
+    .tip {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .removeButton {
+        position: absolute;
+        top: var(--attachment-remove-offset);
+        right: var(--attachment-remove-offset);
+        width: var(--attachment-remove-size);
+        height: var(--attachment-remove-size);
+        /* `size="unset"` buttons get no radius from Button. */
+        --clowdy-button-radius: var(--radius-xs);
+        border-radius: calc(var(--clowdy-button-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        /* Hidden until the tile is hovered or holds focus; still reachable from the keyboard. */
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+
+        svg {
+            width: var(--attachment-remove-icon-size);
+            height: var(--attachment-remove-icon-size);
+        }
+    }
+
+    .attachment:is(:hover, :focus-within) .removeButton {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .showMore {
+        flex-shrink: 0;
+        align-self: stretch;
+        min-width: 34px;
+        height: var(--attachment-size);
+        padding: var(--spacing-4) var(--spacing-6);
+        border-radius: calc(var(--attachment-radius) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+    }
+
+    /* A lone attachment becomes a card with its name beside the preview. */
+    .attachments[data-single] .attachment {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        box-sizing: border-box;
+        width: var(--attachment-width);
+        max-width: 100%;
+        min-width: 0;
+
+        &:not(.pressable),
+        .attachmentHit {
+            padding: var(--spacing-sm);
+        }
+
+        .attachmentHit {
+            justify-content: flex-start;
+            gap: var(--spacing-md);
+        }
+
+        .preview {
+            flex-shrink: 0;
+            width: calc(var(--attachment-size) - var(--spacing-sm) * 2);
+            height: calc(var(--attachment-size) - var(--spacing-sm) * 2);
+        }
+
+        /* Remove floats at the end of the row, so the name stops short of it. */
+        &[data-removable] .info {
+            padding-inline-end: calc(var(--spacing-24) + var(--spacing-xs));
+        }
+
+        .removeButton {
+            /* Centered with margins: a `transform` would be replaced by the button's pressed scale. */
+            top: 0;
+            bottom: 0;
+            right: var(--spacing-sm);
+            width: var(--spacing-24);
+            height: var(--spacing-24);
+            margin-block: auto;
+            opacity: 1;
+            pointer-events: auto;
+            --clowdy-button-radius: var(--radius-sm);
+            --clowdy-button-bg: var(--attachment-background);
+            --clowdy-button-color: var(--color-text);
+            --clowdy-button-bg--hover: color-mix(in srgb, var(--color-text) 8%, var(--attachment-background));
+            --clowdy-button-color--hover: var(--color-text);
+
+            svg {
+                width: var(--spacing-12);
+                height: var(--spacing-12);
+            }
+        }
+    }
+}

@@ -1,6 +1,7 @@
 export * from './Alert';
 export * from './AngleControl';
 export * from './AsChild';
+export * from './Attachment';
 export * from './Autocomplete';
 export * from './Avatar';
 export * from './Box';
