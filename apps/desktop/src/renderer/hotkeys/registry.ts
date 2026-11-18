@@ -1,4 +1,4 @@
-import { makeAutoObservable, observableRef, observableShallow } from 'mobx';
+import { makeAutoObservable, observableRef, observableShallow, runInAction } from 'mobx';
 import { parseKeybinding } from 'tinykeys';
 
 import type { KeybindingPress } from 'tinykeys';
@@ -325,11 +325,12 @@ export class HotkeyRegistry {
 
         this.entries.push(entry);
 
-        return () => {
+        // The returned function runs from a React cleanup, outside any action, while a key hint may be observing `entries`.
+        return () => runInAction(() => {
             const index = this.entries.indexOf(entry);
 
             if (index >= 0) this.entries.splice(index, 1);
-        };
+        });
     }
 
     /** Puts a scope on top of the stack, so its commands win over those of outer scopes. Returns the function that removes it. */
@@ -338,11 +339,11 @@ export class HotkeyRegistry {
 
         this.scopeStack.push(token);
 
-        return () => {
+        return () => runInAction(() => {
             const index = this.scopeStack.indexOf(token);
 
             if (index >= 0) this.scopeStack.splice(index, 1);
-        };
+        });
     }
 
     /** Set by the dispatcher while a chord waits for its next key. */

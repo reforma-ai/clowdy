@@ -1,3 +1,4 @@
+import { autorun } from 'mobx';
 import { describe, expect, it, vi } from 'vitest';
 
 import { commandPresses, commandSequences, createRegistry, findKeyConflicts, type Command } from './registry';
@@ -245,5 +246,30 @@ describe('scopes', () => {
 
         expect(registry.listCommands().live).toEqual([]);
         expect(registry.listCommands().all).toEqual([gated]);
+    });
+});
+
+describe('observed by a component', () => {
+    // A key hint reads `entries` and the scope stack while it renders, and a command or scope leaves from a React cleanup, outside any action.
+    it('removes a command and a scope without MobX warning about a change outside an action', () => {
+        const registry = createRegistry('darwin');
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const runs: string[] = [];
+        const stop = autorun(() => runs.push(`${ registry.entries.length } entries, scopes ${ registry.scopes.join('+') }`));
+
+        try {
+            const remove = registry.defineCommand(command({ scope: 'app' }));
+            const leave = registry.pushScope('tasks');
+
+            remove();
+            leave();
+
+            expect(runs).toEqual(['0 entries, scopes ', '1 entries, scopes ', '1 entries, scopes tasks', '0 entries, scopes tasks', '0 entries, scopes ']);
+            expect(warn).not.toHaveBeenCalled();
+        }
+        finally {
+            stop();
+            warn.mockRestore();
+        }
     });
 });

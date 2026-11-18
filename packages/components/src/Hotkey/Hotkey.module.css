@@ -42,4 +42,21 @@
         min-height: calc(1em + var(--spacing-8));
         padding: var(--spacing-6) var(--spacing-8);
     }
+
+    .sequence {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        white-space: nowrap;
+        vertical-align: baseline;
+    }
+
+    .then {
+        opacity: 0.6;
+    }
+
+    /* A tooltip pulls its last capsule toward the edge; the ones inside a sequence keep their gap. */
+    .sequence > [data-hotkey]:not(:last-child) {
+        margin-inline-end: 0;
+    }
 }

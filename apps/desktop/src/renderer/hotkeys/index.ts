@@ -13,15 +13,21 @@
  *
  * For display: `commandPresses(command)` is the presses of the first keys as key names for `hotkeysToSymbols`,
  * `commandSequences(command)` lists every alternative, `listCommands()` the live and all commands, `hotkeys.pending` the chord waiting for its next key.
- * Tests build an isolated `createRegistry(platform)` and pass it to `installDispatcher`, `useCommands` and `useHotkeyScope`.
+ * Key hints: `commandHint(id)` is the keys to show for a command, and `undefined` while it cannot run (a hint on a dead action is noise); it is reactive,
+ * so call it while rendering. `<CommandHotkey id />` draws it (a menu item's `endAffix`), `commandTooltip(label, id)` is tooltip content (`undefined` without a hint).
+ * `<ChordHud />` shows a pending chord; the shell mounts it. `openHelp()` (`./openHelp`) opens the shortcuts overlay (`./HelpOverlay`) in a `Modal`;
+ * it is not exported here because `Modal` cannot load under the desktop's Vitest, which would break every test that imports this module.
+ * Tests build an isolated `createRegistry(platform)` and pass it to `installDispatcher`, `useCommands`, `useHotkeyScope`, `commandHint` and `<CommandHotkey registry />`.
  */
 
 import { hotkeys } from './registry';
 
 import type { Command } from './registry';
 
+export { ChordHud } from './ChordHud';
+export { CommandHotkey } from './CommandHotkey';
 export { installDispatcher } from './dispatcher';
-export { useCommands, useHotkeyScope, type ScopedCommand } from './react';
+export { commandHint, commandTooltip, useCommands, useHotkeyScope, type ScopedCommand } from './react';
 export {
     commandPresses,
     commandSequences,

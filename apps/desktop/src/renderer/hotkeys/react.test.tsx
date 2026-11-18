@@ -1,10 +1,13 @@
 // @vitest-environment happy-dom
+import { observable, runInAction } from 'mobx';
+import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { CommandHotkey } from './CommandHotkey';
 import { installDispatcher } from './dispatcher';
-import { useCommands, useHotkeyScope, type ScopedCommand } from './react';
+import { commandHint, commandTooltip, useCommands, useHotkeyScope, type ScopedCommand } from './react';
 import { createRegistry, hotkeys, type HotkeyRegistry } from './registry';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -153,5 +156,178 @@ describe('the app registry', () => {
 
         expect(hotkeys.scopes).toEqual([]);
         expect(hotkeys.listCommands().all).toEqual([]);
+    });
+});
+
+/**
+ * The app's components are observers through the babel plugin, which Vitest does not run: `observer` stands in for it here.
+ * What matters is that `commandHint` reads the registry's observables while a component renders.
+ */
+describe('commandHint', () => {
+    const hint = (id: string) => commandHint(id, registry);
+    const define = (command: Partial<ScopedCommand> & { scope?: string } = {}) => registry.defineCommand({
+        id: 'nav.tasks',
+        title: 'Go to Tasks',
+        group: 'Navigation',
+        keys: 'g t',
+        scope: 'app',
+        handler: () => undefined,
+        ...command,
+    });
+
+    const Hint = observer(({ id }: { id: string }) => <span data-hint>{ JSON.stringify(hint(id) ?? null) }</span>);
+    const shown = () => container.querySelector('[data-hint]')?.textContent;
+    const renderHint = (id = 'nav.tasks') => act(() => root.render(<Hint id={ id } />));
+
+    it('gives the first keys of a command that can run, as presses of key names', () => {
+        define();
+        define({ id: 'help.open', keys: ['?', '$mod+/'], title: 'Help' });
+
+        expect(hint('nav.tasks')).toEqual([['g'], ['t']]);
+        expect(hint('help.open')).toEqual([['?']]);
+    });
+
+    it('gives the keys of the registry\'s platform', () => {
+        const windows = createRegistry('win32');
+
+        windows.defineCommand({ id: 'help.open', title: 'Help', group: 'General', keys: '$mod+/', scope: 'app', handler: () => undefined });
+        define({ id: 'help.open', keys: '$mod+/', title: 'Help' });
+
+        expect(commandHint('help.open', windows)).toEqual([['ctrl', '/']]);
+        expect(hint('help.open')).toEqual([['meta', '/']]);
+    });
+
+    it('gives nothing for an unknown command', () => {
+        expect(hint('nav.nowhere')).toBeUndefined();
+    });
+
+    it('gives nothing while the scope of the command is not on the stack, and again when it is', () => {
+        define({ scope: 'tasks' });
+
+        expect(hint('nav.tasks')).toBeUndefined();
+
+        const leave = registry.pushScope('tasks');
+
+        expect(hint('nav.tasks')).toEqual([['g'], ['t']]);
+
+        leave();
+
+        expect(hint('nav.tasks')).toBeUndefined();
+    });
+
+    it('gives nothing while the when of the command says no', () => {
+        let enabled = false;
+
+        define({ when: () => enabled });
+
+        expect(hint('nav.tasks')).toBeUndefined();
+
+        enabled = true;
+
+        expect(hint('nav.tasks')).toEqual([['g'], ['t']]);
+    });
+
+    it('makes a component render again when the observable a when reads changes', () => {
+        const state = observable({ project: null as string | null });
+
+        define({ when: () => state.project !== null });
+        renderHint();
+
+        expect(shown()).toBe('null');
+
+        act(() => runInAction(() => {
+            state.project = 'p';
+        }));
+
+        expect(shown()).toBe('[["g"],["t"]]');
+
+        act(() => runInAction(() => {
+            state.project = null;
+        }));
+
+        expect(shown()).toBe('null');
+    });
+
+    it('makes a component render again when its scope comes and goes', () => {
+        define({ scope: 'tasks' });
+        renderHint();
+
+        expect(shown()).toBe('null');
+
+        let leave: () => void = () => undefined;
+
+        act(() => {
+            leave = registry.pushScope('tasks');
+        });
+
+        expect(shown()).toBe('[["g"],["t"]]');
+
+        act(() => leave());
+
+        expect(shown()).toBe('null');
+    });
+
+    it('makes a component render again when the command is defined and removed', () => {
+        renderHint();
+
+        expect(shown()).toBe('null');
+
+        let remove: () => void = () => undefined;
+
+        act(() => {
+            remove = define();
+        });
+
+        expect(shown()).toBe('[["g"],["t"]]');
+
+        act(() => remove());
+
+        expect(shown()).toBe('null');
+    });
+
+    describe('CommandHotkey', () => {
+        const Keyed = observer(CommandHotkey);
+        const capsules = () => Array.from(container.querySelectorAll('[data-hotkey]'), element => element.textContent);
+
+        it('draws a capsule per press of a sequence, and nothing while the command cannot run', () => {
+            const state = observable({ project: null as string | null });
+
+            define({ when: () => state.project !== null });
+            act(() => root.render(<Keyed id="nav.tasks" registry={ registry } />));
+
+            expect(container.innerHTML).toBe('');
+
+            act(() => runInAction(() => {
+                state.project = 'p';
+            }));
+
+            expect(capsules()).toEqual(['G', 'T']);
+            expect(container.textContent).toBe('GthenT');
+        });
+
+        it('draws one capsule for one press', () => {
+            define({ id: 'tasks.escape', keys: 'Escape' });
+            act(() => root.render(<Keyed id="tasks.escape" registry={ registry } />));
+
+            expect(capsules()).toEqual(['Esc']);
+            expect(container.querySelector('[data-hotkey-sequence]')).toBeNull();
+        });
+    });
+
+    describe('commandTooltip', () => {
+        it('is undefined without a hint, so the control gets no tooltip', () => {
+            expect(commandTooltip('Tasks', 'nav.tasks', registry)).toBeUndefined();
+
+            define({ scope: 'tasks' });
+
+            expect(commandTooltip('Tasks', 'nav.tasks', registry)).toBeUndefined();
+        });
+
+        it('is the label and the keys once the command can run', () => {
+            define();
+            act(() => root.render(<div>{ commandTooltip('Tasks', 'nav.tasks', registry) }</div>));
+
+            expect(container.textContent).toBe('Tasks GthenT');
+        });
     });
 });

@@ -8,11 +8,13 @@ import { Screen as ChatsScreen } from '../features/chats';
 import { Screen as DocsScreen } from '../features/docs';
 import { Screen as SettingsScreen } from '../features/settings';
 import { Screen as TasksScreen } from '../features/tasks';
-import { hotkeys, installDispatcher } from '../hotkeys';
+import { ChordHud, hotkeys, installDispatcher, useCommands } from '../hotkeys';
+import { openHelp } from '../hotkeys/openHelp';
 import { useProjectUi, useRootStore } from '../stores';
 import { NoProject } from './NoProject';
 import { Rail } from './Rail';
 import styles from './Shell.module.css';
+import { shellCommands } from './shellCommands';
 import { SyncBanner } from './SyncBanner';
 import { TitleBand } from './TitleBand';
 import { Unreachable } from './Unreachable';
@@ -32,6 +34,7 @@ export function Shell() {
     const root = useRootStore();
 
     useEffect(() => installDispatcher(hotkeys), []);
+    useCommands('app', shellCommands(root, openHelp));
 
     return (
         <div className={ styles.shell }>
@@ -43,6 +46,7 @@ export function Shell() {
                 </main>
             </div>
             <SyncBanner />
+            <ChordHud />
         </div>
     );
 }

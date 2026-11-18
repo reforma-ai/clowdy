@@ -1,9 +1,43 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { tooltipWithHotkey, tooltipWithSequence } from '@clowdy/components/Hotkey';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 
 import { hotkeys, type Command, type HotkeyRegistry } from './registry';
 
 /** A command as a component writes it: the scope comes from `useCommands`. */
 export type ScopedCommand = Omit<Command, 'scope'>;
+
+/** The presses of one key sequence as key names for `Hotkey`: `[['mod', 'k']]` is one press with a modifier, `[['g'], ['c']]` is two presses in a row. */
+export type HintPresses = readonly (readonly string[])[];
+
+/**
+ * The keys a hint shows for the command: its first keys, in the names `Hotkey` takes, or `undefined` when no hint should show.
+ * That is when no command has the id, or when the command cannot run now (its scope is not on the stack, or its `when` says no),
+ * because a key hint on something that does nothing is noise.
+ *
+ * Reactive: the registry's commands and scope stack are MobX observables, and so is whatever a command's `when` reads.
+ * Call it while rendering a component (the app's components are observers) and the component renders again when the answer changes.
+ */
+export function commandHint(id: string, registry: HotkeyRegistry = hotkeys): HintPresses | undefined {
+    const entry = registry.entries.find(candidate => candidate.command.id === id);
+
+    if (!entry || !registry.isEntryLive(entry)) return undefined;
+
+    const [first] = entry.sequences[registry.family];
+
+    return first?.display;
+}
+
+/**
+ * Tooltip content: the label and the command's keys, or `undefined` while the command has no hint (see `commandHint`).
+ * A control whose label is not visible otherwise writes `commandTooltip(label, id) ?? label`.
+ */
+export function commandTooltip(label: string, id: string, registry?: HotkeyRegistry): ReactNode {
+    const presses = commandHint(id, registry);
+
+    if (!presses) return undefined;
+
+    return presses.length === 1 ? tooltipWithHotkey(label, presses[0]) : tooltipWithSequence(label, presses);
+}
 
 /**
  * Keeps a scope on the scope stack while the component is mounted, so its commands win over those of outer scopes.

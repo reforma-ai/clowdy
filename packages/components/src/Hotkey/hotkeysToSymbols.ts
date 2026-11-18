@@ -12,6 +12,7 @@ const BACKSPACE_SYMBOL = isMac ? '⌫' : 'Backspace';
 const SHIFT_SYMBOL = isMac ? '⇧' : 'Shift';
 const RETURN_SYMBOL = 'Enter';
 const BACKSLASH_SYMBOL = '\\';
+const ESCAPE_SYMBOL = 'Esc';
 
 const HOTKEY_SYMBOLS = {
     up: '↑',
@@ -42,6 +43,25 @@ const HOTKEY_SYMBOLS = {
     ctrl: CONTROL_SYMBOL,
     enter: RETURN_SYMBOL,
     return: RETURN_SYMBOL,
+    escape: ESCAPE_SYMBOL,
+    esc: ESCAPE_SYMBOL,
+    space: 'Space',
+    spacebar: 'Space',
+    tab: 'Tab',
+    pageup: 'Page Up',
+    pagedown: 'Page Down',
+
+    // Punctuation, under the names `KeyboardEvent.code` gives it as well as the character itself
+    comma: ',',
+    period: '.',
+    slash: '/',
+    semicolon: ';',
+    quote: '\'',
+    backquote: '`',
+    equal: '=',
+    bracketleft: '[',
+    bracketright: ']',
+    question: '?',
 } as const;
 
 /** Transforms a hotkey identifier into readable key labels. */

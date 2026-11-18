@@ -1,0 +1,73 @@
+.help {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    height: min(36rem, calc(100vh - var(--spacing-80)));
+    padding: var(--spacing-20);
+}
+
+.scroll {
+    flex: 1;
+    min-height: 0;
+}
+
+.groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xl);
+}
+
+.group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.rows {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+    min-height: var(--spacing-32);
+    padding-inline: var(--spacing-md);
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+
+    &:hover {
+        background-color: var(--color-secondary-muted-light);
+    }
+}
+
+.title {
+    min-width: 0;
+}
+
+.keys {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+/* Not available in this view: still listed, so the overlay teaches the whole keymap, but quieter. */
+.row[data-live='false'] {
+    .title {
+        color: var(--color-secondary-muted-text);
+    }
+
+    .keys {
+        opacity: 0.6;
+    }
+}
+
+.empty {
+    padding: var(--spacing-xl) var(--spacing-md);
+}

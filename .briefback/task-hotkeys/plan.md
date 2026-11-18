@@ -143,7 +143,9 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 - Scope order follows mount order, so a later-mounted scope (a picker, a dialog) wins and gives the key back on unmount. A scope pushed by a child that mounts together with its parent sits below the parent's.
 - Menu accelerators: Electron's docs are silent. Electron 45.2.1 and Chromium source say the menu only receives keys the page left unhandled, so `preventDefault()` should win for Cmd+A and Cmd+Z. Not run. `research/menu-accelerator-probe.md` has the manual probe.
 
-**Commits:** None yet.
+**Commits:**
+
+- `c6f355c` feat(desktop): hotkey registry, dispatcher and scope stack
 
 ## Stage 3 — Help overlay, chord HUD, key hints and section chords
 
@@ -151,12 +153,12 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **This stage:** Make the registry visible and give it its first real commands. `Hotkey` learns to show a sequence ("G then C") and the keys it cannot show today (`Esc`, `Space`, `Tab`, punctuation). A chord HUD shows a pending chord and its completions. `?` and Cmd/Ctrl+/ open a searchable help overlay generated from the registry. The `G` chords switch sections, and the Rail shows its chord in a tooltip. This is the first thing a person can try, and it proves chords end to end before Tasks depends on them.
 
-- [ ] Complete
-  - [ ] `Hotkey` renders a `sequence` as separate capsules joined by "then", and shows Esc, Space, Tab and the punctuation keys
-  - [ ] `commandHint(id)` returns the current display keys for a command, for `tooltipWithHotkey` and `MenuItem endAffix`
-  - [ ] `ChordHud` appears while a chord is pending and disappears on completion, `Esc` or timeout
-  - [ ] `HelpOverlay` opens from `?` and Cmd/Ctrl+/ through `Modal.create`, lists commands grouped by scope and title, and filters as the person types
-  - [ ] `nav.chats`, `nav.tasks`, `nav.agents`, `nav.docs` registered in the app scope and shown as Rail tooltips
+- [x] Complete
+  - [x] `Hotkey` renders a `sequence` as separate capsules joined by "then", and shows Esc, Space, Tab and the punctuation keys
+  - [x] `commandHint(id)` returns the current display keys for a command, for `tooltipWithHotkey` and `MenuItem endAffix`
+  - [x] `ChordHud` appears while a chord is pending and disappears on completion, `Esc` or timeout
+  - [x] `HelpOverlay` opens from `?` and Cmd/Ctrl+/ through `Modal.create`, lists the commands registered for the app and the current screen, grouped, and filters as the person types (commands of an unmounted screen are not listed, which Linear's contextual help does too)
+  - [x] `nav.chats`, `nav.tasks`, `nav.agents`, `nav.docs` registered in the app scope and shown as Rail tooltips
 
 **Files**
 
@@ -170,6 +172,19 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **Done when:** pressing `G` shows the HUD, then `T` switches to Tasks and the HUD goes away, and `?` shows a help overlay listing the section chords.
 **Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/components --filter=@clowdy/desktop`, then check with `bun scripts/screenshot.ts` on `?fixtures=static`, using `--eval` to dispatch the keys, that the overlay and HUD render in light and dark
+**Landed in the stage**
+
+- `Hotkey` `sequence` prop, `tooltipWithSequence`, `commandHint`, `commandTooltip`, `CommandHotkey`, `ChordHud`, `HelpOverlay`, `openHelp` (split from the overlay because `Modal` cannot load under the desktop Vitest), `shellCommands` (`help.open`, `nav.*`).
+- Command titles read "Go to Tasks" and so on.
+- Fixed in `registry.ts`: the disposers of `defineCommand` and `pushScope` now run in `runInAction`.
+- The help overlay searches `+`-joined keys, scrolls with the arrow and page keys while the search field has focus, and cannot stack.
+
+**Follow-ups** (not done in this stage)
+
+- `Modal.focus()` in `packages/components/src/Modal/Modal.ts` does not save the previously focused element when a child autofocuses first, so focus lands on `body` after Esc. Fixed in Stage 5, where the delete confirm makes it matter.
+- Cmd/Ctrl+/ is dead inside text fields and the composer because it shares the `help.open` command with `?`. A second command with `inInputs: true` would fix it.
+- The chord HUD is centered on the window and covers the composer; the sync banner has a higher z-index.
+
 **Commits:** None yet.
 
 ## Stage 4 — Task cursor, selection and navigation
