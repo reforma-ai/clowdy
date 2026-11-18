@@ -1,70 +1,58 @@
-import { SearchInput } from '@clowdy/components/Input';
+import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
-import { Fragment, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment } from 'react';
 
 import { PressesHotkey } from './CommandHotkey';
-import { filterHelpEntries, groupHelpEntries, helpEntries, type HelpEntry } from './helpEntries';
+import { groupHelpEntries, helpEntries, type HelpEntry } from './helpEntries';
 import styles from './HelpOverlay.module.css';
 import { hotkeys, type HotkeyRegistry } from './registry';
 
-/** How far a key scrolls the list, as a share of its height. */
-const SCROLL_STEPS = new Map([['ArrowDown', 0.12], ['ArrowUp', -0.12], ['PageDown', 0.9], ['PageUp', -0.9]]);
-
 /**
- * Every command of the registry, in groups, with its keys and a search over titles and keys.
+ * Every command of the registry, in groups, with its keys. The rows only inform, so they select nothing and do nothing when pressed,
+ * but the list is a real listbox: it takes the focus on open, and the arrow, Home, End and page keys move through it.
  * It lives in a `Modal` (see `openHelp`), a separate React root with no context, so it reads the registry directly.
  */
 export function HelpOverlay({ registry = hotkeys }: { registry?: HotkeyRegistry }) {
-    const [query, setQuery] = useState('');
-    const list = useRef<HTMLDivElement | null>(null);
-    const groups = groupHelpEntries(filterHelpEntries(helpEntries(registry), query));
-
-    // The field keeps focus and a one-line field has no use for these keys, so they scroll the list for a person without a pointer.
-    const scrollList = (event: KeyboardEvent<HTMLInputElement>) => {
-        const step = SCROLL_STEPS.get(event.key);
-
-        if (step === undefined || !list.current) return;
-
-        event.preventDefault();
-        list.current.scrollBy({ top: step * list.current.clientHeight });
-    };
+    const groups = groupHelpEntries(helpEntries(registry));
 
     return (
         <div className={ styles.help }>
-            <Text variant="heading-3">Keyboard shortcuts</Text>
+            <Text variant="heading-3" className={ styles.title }>Keyboard shortcuts</Text>
 
-            <SearchInput aria-label="Search shortcuts" placeholder="Search by name or key" value={ query } onChange={ setQuery } onKeyDown={ scrollList } autoFocus />
-
-            <Scrollable className={ styles.scroll } containerRef={ list } contentClass={ styles.groups }>
-                { groups.map(group => (
-                    <div key={ group.name } className={ styles.group }>
-                        <Text as="h3" variant="label" color="secondary">{ group.name }</Text>
-                        <ul className={ styles.rows }>
-                            { group.entries.map(entry => <Row key={ entry.command.id } entry={ entry } />) }
-                        </ul>
-                    </div>
-                )) }
-
-                { groups.length === 0 && <Text variant="md" color="secondary" className={ styles.empty }>No shortcut matches “{ query.trim() }”</Text> }
+            <Scrollable className={ styles.scroll } contentClass={ styles.content } edgeFade>
+                <ListBox aria-label="Keyboard shortcuts" size="md" selectionMode="none" className={ styles.list } autoFocus>
+                    { groups.map(group => (
+                        <ListBoxSection key={ group.name } id={ group.name }>
+                            <ListBoxHeader>{ group.name }</ListBoxHeader>
+                            { group.entries.map(entry => <ShortcutRow key={ entry.command.id } entry={ entry } />) }
+                        </ListBoxSection>
+                    )) }
+                </ListBox>
             </Scrollable>
         </div>
     );
 }
 
-function Row({ entry: { command, sequences } }: { entry: HelpEntry }) {
+function ShortcutRow({ entry: { command, sequences } }: { entry: HelpEntry }) {
     return (
-        <li className={ styles.row }>
-            <Text variant="md" className={ styles.title }>{ command.title }</Text>
-            <span className={ styles.keys }>
-                { sequences.map((presses, index) => (
-                    // The alternatives of a command keep their order, so the position is their identity.
-                    <Fragment key={ index }>
-                        { index > 0 && <Text variant="label" color="secondary">or</Text> }
-                        <PressesHotkey presses={ presses } size="sm" />
-                    </Fragment>
-                )) }
-            </span>
-        </li>
+        <ListBoxItem id={ command.id } className={ styles.row } endAffix={ <Keys sequences={ sequences } /> }>
+            { command.title }
+        </ListBoxItem>
+    );
+}
+
+/** The ways to type a command, side by side. They share one box so the list's end slot treats them as a unit and the capsules keep their square size. */
+function Keys({ sequences }: { sequences: HelpEntry['sequences'] }) {
+    return (
+        <span className={ styles.keys }>
+            { sequences.map((presses, index) => (
+                // The alternatives of a command keep their order, so the position is their identity.
+                <Fragment key={ index }>
+                    { index > 0 && <Text variant="xs" color="secondary">or</Text> }
+                    <PressesHotkey presses={ presses } />
+                </Fragment>
+            )) }
+        </span>
     );
 }

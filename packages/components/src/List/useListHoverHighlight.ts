@@ -157,6 +157,12 @@ export function useListHoverHighlight(
         };
 
         const onPointerMove = (event: PointerEvent) => {
+            // A pointer that really moved while the list scrolls under it takes the plate back from the keyboard once the scroll ends.
+            // One that did not (the browser repeats its position as rows pass under it) leaves the plate with the key.
+            if (event.clientX !== pointerX || event.clientY !== pointerY) {
+                followKeyboard = false;
+            }
+
             pointerX = event.clientX;
             pointerY = event.clientY;
             hasPointer = true;
@@ -230,6 +236,13 @@ export function useListHoverHighlight(
 
         const finishScroll = () => {
             scrolling = false;
+
+            // A key that moved the focus far enough scrolled the list too: the scroll hid the plate, so give it back to the row the key chose.
+            if (followKeyboard) {
+                show(keyboardRow());
+
+                return;
+            }
 
             if (!hasPointer) {
                 return;

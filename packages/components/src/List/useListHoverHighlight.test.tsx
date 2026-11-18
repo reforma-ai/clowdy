@@ -31,6 +31,8 @@ const plate = () => ({
     top: list().style.getPropertyValue('--clowdy-listbox-highlight-top'),
 });
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+/** Longer than the 150 ms of quiet after which a scroll counts as over. */
+const idle = () => new Promise<void>(resolve => setTimeout(resolve, 220));
 
 /** React Aria marks the row that has keyboard focus `data-focus-visible`; the test marks it by hand, as it would be at the next frame. */
 function focusByKeyboard(id: string) {
@@ -98,6 +100,45 @@ describe('useListHoverHighlight', () => {
         await frame();
 
         expect(plate()).toEqual({ shown: true, top: '10px' });
+    });
+
+    it('gives the plate back to the row a key chose once the scroll that key caused is over', async () => {
+        focusByKeyboard('b');
+        list().dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+        await frame();
+
+        expect(plate()).toEqual({ shown: true, top: '50px' });
+
+        // Scrolling a row into view fires `scroll`, which hides the plate while the rows move.
+        list().dispatchEvent(new Event('scroll'));
+
+        expect(plate().shown).toBe(false);
+
+        await idle();
+
+        expect(plate()).toEqual({ shown: true, top: '50px' });
+    });
+
+    it('gives the plate to the row under a pointer that moved during the scroll, not to the key', async () => {
+        const original = document.elementFromPoint;
+
+        document.elementFromPoint = () => row('c');
+
+        try {
+            focusByKeyboard('b');
+            list().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+            await frame();
+            list().dispatchEvent(new Event('scroll'));
+            // The pointer event is ignored while the list scrolls, but it still says the pointer took over.
+            row('a').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 5, clientY: 95 }));
+
+            await idle();
+
+            expect(plate()).toEqual({ shown: true, top: '90px' });
+        }
+        finally {
+            document.elementFromPoint = original;
+        }
     });
 
     it('shows no plate for a selected row, which has its own fill', async () => {
