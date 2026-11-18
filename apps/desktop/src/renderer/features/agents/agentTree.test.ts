@@ -68,11 +68,17 @@ describe('visibleChats', () => {
 
     it('leaves archived chats out unless they are asked for', () => {
         expect(visibleChats(list, false).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
-        expect(visibleChats(list, true).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-2', 'chat-3']);
+        expect(visibleChats(list, true).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3', 'chat-2']);
+    });
+
+    it('puts the archived chats last, each group in the order it was given', () => {
+        const more = [{ ...chats[0], archivedAt: 5 }, chats[1], { ...chats[2], archivedAt: 6 }];
+
+        expect(visibleChats(more, true).map(candidate => candidate.id)).toEqual(['chat-2', 'chat-1', 'chat-3']);
     });
 
     it('keeps the open chat in the list, archived or not, so its page has a row', () => {
-        expect(visibleChats(list, false, 'chat-2').map(candidate => candidate.id)).toEqual(['chat-1', 'chat-2', 'chat-3']);
+        expect(visibleChats(list, false, 'chat-2').map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3', 'chat-2']);
         expect(visibleChats(list, false, 'chat-1').map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
     });
 });

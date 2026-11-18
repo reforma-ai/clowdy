@@ -239,12 +239,42 @@ describe('archived chats', () => {
 
         await draw(() => ui().setShowArchived(true));
 
-        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-4', 'c-3', 'c-2']);
+        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-3', 'c-2', 'c-4']);
 
         await archive('c-4', false);
         await draw(() => ui().setShowArchived(false));
 
         expect(rowKeys()).toContain('c-4');
+    });
+
+    it('are a group of their own, headed Archived, below every other chat, and with no header when there are none', async () => {
+        await draw(() => ui().setShowArchived(true));
+
+        expect(container.textContent).not.toContain('Archived');
+
+        await archive('c-4', true);
+        await draw(() => ui().setShowArchived(true));
+
+        const text = container.textContent ?? '';
+        const keys = rowKeys();
+
+        expect(text).toContain('Archived');
+        expect(keys.at(-1)).toBe('c-4');
+        expect(keys.indexOf('c-4')).toBeGreaterThan(keys.indexOf('c-2'));
+        // The header sits between the two groups, not above the new-chat row.
+        expect(container.querySelector('[role="row"][data-key="c-4"]')?.closest('[role="rowgroup"]')?.textContent).toContain('Archived');
+        expect(rowOf('c-2').closest('[role="rowgroup"]')?.textContent).not.toContain('Archived');
+    });
+
+    it('keep their subthreads below them, inside the group', async () => {
+        await archive('c-2', true);
+        await draw(() => ui().setShowArchived(true));
+
+        const keys = rowKeys();
+
+        expect(keys.indexOf('c-2')).toBeGreaterThan(keys.indexOf('c-3'));
+        expect(keys[keys.indexOf('c-2') + 1]).toBe('r-ex-15');
+        expect(rowOf('r-ex-15').closest('[role="rowgroup"]')).toBe(rowOf('c-2').closest('[role="rowgroup"]'));
     });
 
     it('still show their page, and their row, when one is opened from elsewhere', async () => {

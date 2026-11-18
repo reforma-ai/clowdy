@@ -1,6 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
-import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuItem, useCellEditMode } from '@clowdy/components/List';
+import { GridList, GridListHeader, GridListItem, GridListSection, listBoxItemDataShow, Menu, MenuItem, useCellEditMode } from '@clowdy/components/List';
 import { Panel, PanelContent, PanelHeader } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
@@ -34,7 +34,8 @@ interface ChatActions {
 
 /**
  * The project's agents as a tree: the row that starts a chat, then the chats it is given (newest activity first), each with
- * the runs its orchestrator started below it (its subthreads), and a `⋯` menu with what to show.
+ * the runs its orchestrator started below it (its subthreads), and a `⋯` menu with what to show. Archived chats, when
+ * shown, are a group of their own at the bottom, headed Archived, with their subthreads still below them.
  */
 export function AgentList({ selection, chats }: { selection: AgentSelection; chats: readonly Chat[] }) {
     const root = useRootStore();
@@ -53,7 +54,10 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
         remove: chat => deleteChat(root, chat, runOf(chat) !== undefined),
     };
 
-    const rows = agentRows(chats, ui.showSubthreads ? project.runTree(ui.showFinished) : [], collapsed);
+    // Archived chats are a group of their own below the rest; their subthreads stay below them, as everywhere.
+    const forest = ui.showSubthreads ? project.runTree(ui.showFinished) : [];
+    const rows = agentRows(chats.filter(chat => chat.archivedAt === undefined), forest, collapsed);
+    const archivedRows = agentRows(chats.filter(chat => chat.archivedAt !== undefined), forest, collapsed);
     const activeChildren = countActiveChildren(project.runs.values());
     const selectedId = selection.draft ? NEW_CHAT_ROW : (selection.run?.id ?? selection.chat?.id);
 
@@ -77,7 +81,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     useHotkeyScope(AGENTS_SCOPE);
     useCommands(AGENTS_SCOPE, agentCommands({
         list: () => list.current,
-        ids: () => [NEW_CHAT_ROW, ...rows.map(row => row.id)],
+        ids: () => [NEW_CHAT_ROW, ...rows.map(row => row.id), ...archivedRows.map(row => row.id)],
         openId: () => selectedId,
     }));
 
@@ -128,7 +132,6 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                     text={ chat.title }
                     startAffix={ fold }
                     icon={ <Message /> }
-                    className={ chat.archivedAt === undefined ? undefined : styles.archived }
                     endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } /> }
                 >
                     { renamingId === chat.id
@@ -180,10 +183,18 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                             if (id !== undefined) select(String(id));
                         } }
                     >
-                        <GridListItem id={ NEW_CHAT_ROW } text="New chat" icon={ <Plus /> }>
-                            <span className={ styles.title }>New chat</span>
-                        </GridListItem>
-                        { rows.map(renderRow) }
+                        <GridListSection aria-label="Chats">
+                            <GridListItem id={ NEW_CHAT_ROW } text="New chat" icon={ <Plus /> }>
+                                <span className={ styles.title }>New chat</span>
+                            </GridListItem>
+                            { rows.map(renderRow) }
+                        </GridListSection>
+                        { archivedRows.length > 0 && (
+                            <GridListSection>
+                                <GridListHeader>Archived</GridListHeader>
+                                { archivedRows.map(renderRow) }
+                            </GridListSection>
+                        ) }
                     </GridList>
                 </div>
             </PanelContent>
@@ -217,7 +228,7 @@ function FilterMenu() {
             <Button variant="filling" color="secondary" size="xs" iconOnly aria-label="Filters" tooltip="Filters">
                 <More />
             </Button>
-            <Popover placement="bottom end" spacing="xs">
+            <Popover placement="bottom end" spacing="xs" width={ 240 }>
                 <PopoverScroll>
                     <Menu
                         aria-label="Filters"

@@ -55,11 +55,6 @@
     color: var(--color-text);
 }
 
-/* An archived chat, shown because the person asked for archived ones: dimmed, so it is not taken for one in use. */
-.archived {
-    opacity: 0.6;
-}
-
 /* A run below a chat: one level in from the row it belongs to, per level. Doubled so it outranks the list's own padding. */
 .nested.nested {
     padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) + var(--depth) * var(--spacing-20));

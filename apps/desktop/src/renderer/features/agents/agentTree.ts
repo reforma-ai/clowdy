@@ -54,10 +54,13 @@ export function agentRows(chats: readonly Chat[], forest: readonly RunNode[], co
 
 /**
  * The chats the list shows: archived ones only when asked for, and the one that is open, so the page beside the list
- * always has its row.
+ * always has its row. The archived ones come last, in the order they are given, as the list shows them in a group of
+ * their own.
  */
 export function visibleChats(chatList: readonly Chat[], showArchived: boolean, openId?: ChatId): Chat[] {
-    return chatList.filter(chat => chat.archivedAt === undefined || showArchived || chat.id === openId);
+    const listed = chatList.filter(chat => chat.archivedAt === undefined || showArchived || chat.id === openId);
+
+    return [...listed.filter(chat => chat.archivedAt === undefined), ...listed.filter(chat => chat.archivedAt !== undefined)];
 }
 
 /** What the main pane shows: a chat, and a run of that chat when the person opened one below it, or the new-chat row. */
