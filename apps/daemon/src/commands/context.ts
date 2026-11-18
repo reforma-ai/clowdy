@@ -4,6 +4,7 @@ import type { Config } from '../config';
 import type { DocsService } from '../docs/service';
 import type { AgentRegistry } from '../engine/acp/registry';
 import type { FilesService } from '../files/service';
+import type { ModelCatalog } from '../providers/models';
 import type { ProvidersService } from '../providers/service';
 import type { RunDriver } from '../runs/driver';
 import type { RunService } from '../runs/service';
@@ -22,6 +23,7 @@ export interface Services {
     skills: SkillsService;
     agents: AgentRegistry;
     providers: ProvidersService;
+    models: ModelCatalog;
 }
 
 export type CommandOf<T extends CommandType> = Extract<Command, { type: T }>;

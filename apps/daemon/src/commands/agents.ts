@@ -36,6 +36,7 @@ export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agen
         // Another program, environment or switch can mean another account: read it again. A setting cannot.
         if (enabled !== undefined || path !== undefined || env !== undefined) {
             services.providers.forget(id);
+            services.models.forget(id);
         }
 
         return { id };
@@ -67,6 +68,7 @@ export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agen
     'agents.refresh': services => change(services, undefined, () => {
         services.agents.refresh();
         services.providers.refresh();
+        services.models.forget();
 
         return {};
     }),

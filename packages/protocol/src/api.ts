@@ -30,6 +30,7 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * POST /v1/shutdown                       -> { ok: true }; stops the daemon gracefully (live engines are aborted, their runs
  *                                            come back `interrupted` at the next start, nothing is marked cancelled)
  * GET  /v1/skills?projectId=              -> SkillCatalog (system and user skills; with `projectId` also that project's skills)
+ * GET  /v1/agents/:id/models              -> AgentModels (the models the agent offers, read from its own program on first ask and kept for ten minutes; never starts a chat)
  * GET  /v1/agents                         -> AgentInfo[] (every agent the daemon knows, with whether it can start one on this machine, who is
  *                                            signed in, its subscription usage and its settings; answers at once with what is cached and
  *                                            refreshes stale accounts and usage in the background, announcing them with `agents.changed`)
@@ -50,6 +51,7 @@ export const ROUTES = {
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
     skills: '/v1/skills',
     agents: '/v1/agents',
+    agentModels: (agentId: string) => `/v1/agents/${ encodeURIComponent(agentId) }/models`,
     shutdown: '/v1/shutdown',
 } as const;
 

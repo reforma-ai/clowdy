@@ -19,6 +19,8 @@ export interface RunOptions {
     timeoutMs: number;
     /** Output beyond this many characters per stream is dropped. */
     maxChars?: number;
+    /** Written to the program's standard input, which is then closed. Without it standard input is closed at once. */
+    input?: string;
 }
 
 const DEFAULT_MAX_CHARS = 4 * 1024 * 1024;
@@ -29,12 +31,18 @@ const DEFAULT_MAX_CHARS = 4 * 1024 * 1024;
  * its own process group so the deadline takes its children down too, and nothing is thrown: a program that cannot be
  * started is a result with `error`.
  */
-export function runProgram(command: string, args: string[], { env, cwd, timeoutMs, maxChars = DEFAULT_MAX_CHARS }: RunOptions): Promise<RunResult> {
+export function runProgram(command: string, args: string[], { env, cwd, timeoutMs, maxChars = DEFAULT_MAX_CHARS, input }: RunOptions): Promise<RunResult> {
     return new Promise((resolve) => {
         let child: ReturnType<typeof spawn>;
 
         try {
-            child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
+            child = spawn(command, args, { cwd, env, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
+
+            if (input !== undefined) {
+                // A program that exits before it reads its input must not take the daemon down with an EPIPE.
+                child.stdin?.on('error', () => undefined);
+                child.stdin?.end(input);
+            }
         }
         catch (error) {
             resolve({ code: null, stdout: '', stderr: '', timedOut: false, error: error instanceof Error ? error.message : String(error) });

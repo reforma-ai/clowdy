@@ -120,3 +120,30 @@ export interface AgentSetting {
     /** The value when the person has not chosen. */
     default: boolean;
 }
+
+/** One model an agent offers, as its own program lists it on this machine and account. */
+export interface AgentModel {
+    /** What a run's `model` takes: Claude Code's `opus`, Codex's `gpt-5.5`, a Cursor variant such as `gpt-5.3-codex-high`. */
+    id: string;
+    name: string;
+    description?: string;
+    /** The model the agent runs when none is named. */
+    isDefault?: boolean;
+    /** The versioned model an alias stands for (`opus` is `claude-opus-5-5`), when the agent says. */
+    resolvedId?: string;
+    /** The reasoning efforts the model takes, as the agent spells them (`low`, `high`, `max`). Absent when it has no effort control or the agent does not say. */
+    efforts?: string[];
+    defaultEffort?: string;
+    /** Whether the model has a faster, dearer mode. */
+    supportsFast?: boolean;
+}
+
+/** The answer of `GET /v1/agents/:id/models`. */
+export interface AgentModels {
+    /** `unavailable`: Clowdy has no way to list this agent's models (or it is not installed). `error`: the agent was asked and did not answer. */
+    state: 'ok' | 'unavailable' | 'error';
+    models: AgentModel[];
+    /** Epoch milliseconds the list was read. */
+    fetchedAt?: number;
+    detail?: string;
+}

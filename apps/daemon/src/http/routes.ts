@@ -201,6 +201,17 @@ export function createRoutes(context: RouteContext): Route[] {
         { method: 'GET', pattern: /^\/v1\/agents$/, handle: async () => json(services.providers.decorate(await services.agents.list())) },
         {
             method: 'GET',
+            pattern: /^\/v1\/agents\/([^/]+)\/models$/,
+            handle: async (_request, _url, [id]) => {
+                if (!services.agents.has(id!)) {
+                    throw notFound('Agent', id!);
+                }
+
+                return json(await services.models.get(id!));
+            },
+        },
+        {
+            method: 'GET',
             pattern: /^\/v1\/skills$/,
             handle: (_request, url) => {
                 const projectId = url.searchParams.get('projectId');

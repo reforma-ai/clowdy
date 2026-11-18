@@ -11,6 +11,7 @@ import { AgentRegistry } from './engine/acp/registry';
 import { FilesService } from './files/service';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
+import { ModelCatalog } from './providers/models';
 import { ProvidersService } from './providers/service';
 import { RunDriver } from './runs/driver';
 import { RunService } from './runs/service';
@@ -38,6 +39,8 @@ export interface DaemonOptions {
     agents?: AgentRegistry;
     /** Replaces the reader of accounts and usage; tests use it to keep the real programs out of the run. */
     providers?: ProvidersService;
+    /** Replaces the reader of model lists; tests use it to keep the real programs out of the run. */
+    models?: ModelCatalog;
     heartbeatMs?: number;
     /** Called once the daemon has stopped because a client asked (`POST /v1/shutdown`); the entry point exits the process here. */
     onShutdown?: () => void;
@@ -73,7 +76,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
                 }
             },
         });
-        const services: Services = { config, store, runs, driver, docs, files: new FilesService(), attachments, skills, agents, providers };
+        const services: Services = { config, store, runs, driver, docs, files: new FilesService(), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
 
         await runs.recover();
         attachments.sweep();
