@@ -167,6 +167,9 @@ export class RootStore {
         else if (data.type === 'stream.item') {
             this.streams.applyItem(data.item);
         }
+        else if (data.type === 'chat.deleted') {
+            this.streams.forget(data.runIds);
+        }
         else if (data.type === 'notice') {
             this.#notify?.({ level: data.level, text: data.text });
         }

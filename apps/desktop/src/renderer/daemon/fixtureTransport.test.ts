@@ -166,4 +166,25 @@ describe('FixtureTransport', () => {
 
         expect(events).toEqual([]);
     });
+
+    it('deletes a finished chat with its runs, and refuses one whose agents are working', async () => {
+        const { transport, events } = await connected();
+        const before = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        const refused = await transport.command({ type: 'chat.delete', chatId: 'c-1' });
+
+        expect(refused.ok ? '' : refused.error.code).toBe('conflict');
+
+        const finished = before.chats.find(chat => !before.runs.some(run => run.chatId === chat.id && !['succeeded', 'failed', 'cancelled', 'interrupted'].includes(run.status)))!;
+        const done = await transport.command({ type: 'chat.delete', chatId: finished.id });
+
+        await vi.advanceTimersByTimeAsync(0);
+
+        const after = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        const deleted = events.map(event => event.data).find(data => data.type === 'chat.deleted');
+
+        expect(done.ok).toBe(true);
+        expect(after.chats.map(chat => chat.id)).not.toContain(finished.id);
+        expect(deleted).toMatchObject({ type: 'chat.deleted', chatId: finished.id });
+        expect(after.runs.length).toBe(before.runs.length - (deleted as { runIds: string[] }).runIds.length);
+    });
 });

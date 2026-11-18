@@ -283,6 +283,26 @@ export class FixtureTransport implements Transport {
 
                 return ok();
             }
+            case 'chat.delete': {
+                const chat = data.chats.find(candidate => candidate.id === command.chatId);
+
+                if (!chat) return fail('not_found', 'No such chat');
+
+                const runs = data.runs.filter(run => run.chatId === chat.id || (chat.orchestratorRunId !== undefined && run.rootRunId === chat.orchestratorRunId));
+
+                if (runs.some(run => !isTerminalRunStatus(run.status))) return fail('conflict', 'The agents of this chat are still working. Stop the chat first.');
+
+                const runIds = new Set(runs.map(run => run.id));
+
+                data.chats = data.chats.filter(candidate => candidate.id !== chat.id);
+                data.runs = data.runs.filter(run => !runIds.has(run.id));
+                data.chatTaskLinks = data.chatTaskLinks.filter(link => link.chatId !== chat.id);
+                data.runTaskLinks = data.runTaskLinks.filter(link => !runIds.has(link.runId));
+                runIds.forEach(runId => delete data.items[runId]);
+                this.#emit(chat.projectId, { type: 'chat.deleted', chatId: chat.id, runIds: [...runIds] });
+
+                return ok({ chatId: chat.id });
+            }
             case 'chat.send':
                 return this.#sendMessage(command.chatId, command.text);
 

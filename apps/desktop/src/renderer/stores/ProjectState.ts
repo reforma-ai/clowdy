@@ -155,6 +155,18 @@ export class ProjectState {
             case 'chat.upserted':
                 this.chats.set(data.chat.id, data.chat);
                 break;
+            case 'chat.deleted': {
+                const gone = new Set(data.runIds);
+
+                this.chats.delete(data.chatId);
+                gone.forEach(runId => this.runs.delete(runId));
+
+                for (const [key, link] of this.chatTaskLinks) if (link.chatId === data.chatId) this.chatTaskLinks.delete(key);
+
+                for (const [key, link] of this.runTaskLinks) if (gone.has(link.runId)) this.runTaskLinks.delete(key);
+
+                break;
+            }
             case 'task.upserted':
                 this.tasks.set(data.task.id, data.task);
                 break;

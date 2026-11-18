@@ -84,6 +84,11 @@ export class StreamStore {
         this.#streams.get(item.runId)?.upsert(item);
     }
 
+    /** Drops the streams of runs that no longer exist. */
+    forget(runIds: readonly RunId[]): void {
+        runIds.forEach(runId => this.#streams.delete(runId));
+    }
+
     /** After a resync: every opened stream may have missed items. */
     async reloadAll(): Promise<void> {
         await Promise.all([...this.#streams.values()].filter(stream => stream.status !== 'idle').map(stream => stream.reload()));

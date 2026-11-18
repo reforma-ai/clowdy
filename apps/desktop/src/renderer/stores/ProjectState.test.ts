@@ -87,6 +87,24 @@ describe('ProjectState', () => {
         expect(state.tasksOfChat('c-1').map(task => task.key)).not.toContain('CAR-24');
     });
 
+    it('drops a deleted chat with its runs and their task links, and keeps the tasks', async () => {
+        const { state } = await loadedProject();
+        const chat = state.chats.get('c-1')!;
+        const runIds = [...state.runs.values()].filter(run => run.chatId === 'c-1' || run.rootRunId === chat.orchestratorRunId).map(run => run.id);
+
+        expect(runIds.length).toBeGreaterThan(1);
+        expect(state.tasksOfChat('c-1').length).toBeGreaterThan(0);
+
+        state.applyEvent(event(1001, { type: 'chat.deleted', chatId: 'c-1', runIds }));
+
+        expect(state.chats.has('c-1')).toBe(false);
+        expect(runIds.some(runId => state.runs.has(runId))).toBe(false);
+        expect(state.tasksOfChat('c-1')).toEqual([]);
+        expect(runIds.flatMap(runId => state.linksOfRun(runId))).toEqual([]);
+        expect(state.tasks.has('t-24')).toBe(true);
+        expect(state.chats.size).toBe(3);
+    });
+
     it('adds and removes links by event', async () => {
         const { state } = await loadedProject();
         const link = { chatId: 'c-4', taskId: 't-28' };
