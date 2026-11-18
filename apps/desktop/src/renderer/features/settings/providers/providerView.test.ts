@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { accountLine, formatEnv, isSignInRunning, parseEnv, providerAgents } from './providerView';
+import { accountLine, formatEnv, headlineWindow, isSignInRunning, isUsableProvider, parseEnv, providerAgents, sortByHeadline, sortWindowsByUsage, usageTone, windowPercent } from './providerView';
 
-import type { AgentInfo } from '@clowdy/protocol';
+import type { AgentInfo, AgentUsage, AgentUsageWindow } from '@clowdy/protocol';
 
 const agent = (patch: Partial<AgentInfo> = {}): AgentInfo => ({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', launch: 'x', ...patch });
 
@@ -12,6 +12,121 @@ describe('providerAgents', () => {
 
         expect(providerAgents(all).map(item => item.id)).toEqual(['claude', 'codex', 'cursor']);
         expect(providerAgents([agent({ id: 'codex' })]).map(item => item.id)).toEqual(['codex']);
+    });
+});
+
+const meter = (id: string, usedPercent: number, resetsAt?: number): AgentUsageWindow => ({ id, label: id, usedPercent, resetsAt });
+const usage = (windows: AgentUsageWindow[], state: AgentUsage['state'] = 'ok'): AgentUsage => ({ state, windows, fetchedAt: 1 });
+
+describe('isUsableProvider', () => {
+    it('is true for a provider that is switched on and installed, and false otherwise', () => {
+        expect(isUsableProvider(agent())).toBe(true);
+        expect(isUsableProvider(agent({ enabled: false, status: 'disabled' }))).toBe(false);
+        expect(isUsableProvider(agent({ status: 'missing' }))).toBe(false);
+        expect(isUsableProvider(agent({ status: 'needs-runtime' }))).toBe(false);
+    });
+});
+
+describe('usageTone', () => {
+    it('is normal below 80, warning from 80 and danger from 90', () => {
+        expect(usageTone(0)).toBe('normal');
+        expect(usageTone(79)).toBe('normal');
+        expect(usageTone(80)).toBe('warning');
+        expect(usageTone(89)).toBe('warning');
+        expect(usageTone(90)).toBe('danger');
+        expect(usageTone(100)).toBe('danger');
+    });
+});
+
+describe('windowPercent', () => {
+    it('rounds the percent and keeps it between 0 and 100', () => {
+        expect(windowPercent(meter('a', 78.4))).toBe(78);
+        expect(windowPercent(meter('a', 78.5))).toBe(79);
+        expect(windowPercent(meter('a', 130))).toBe(100);
+        expect(windowPercent(meter('a', -3))).toBe(0);
+    });
+
+    it('takes what is not a number for no usage, so a bar and a badge never show NaN', () => {
+        expect(windowPercent(meter('a', Number.NaN))).toBe(0);
+        expect(windowPercent(meter('a', Number.POSITIVE_INFINITY))).toBe(100);
+        expect(windowPercent(meter('a', Number.NEGATIVE_INFINITY))).toBe(0);
+    });
+});
+
+describe('headlineWindow', () => {
+    it('is the most used of the primary windows', () => {
+        const claude = agent({ usage: usage([meter('session', 8), meter('weekly', 78), meter('other', 20)]) });
+
+        expect(headlineWindow(claude)?.id).toBe('weekly');
+    });
+
+    it('leaves out a scoped window, whatever its percent, and takes the first of equal ones', () => {
+        expect(headlineWindow(agent({ usage: usage([meter('session', 8), meter('weekly', 20), meter('weekly:fable', 95)]) }))?.id).toBe('weekly');
+        expect(headlineWindow(agent({ usage: usage([meter('session', 30), meter('weekly', 30)]) }))?.id).toBe('session');
+        expect(headlineWindow(agent({ usage: usage([meter('weekly:fable', 95)]) }))).toBeUndefined();
+    });
+
+    it('takes the windows of Codex\'s main limit for primary ones, and leaves out the limit of a single model', () => {
+        const codex = agent({ id: 'codex', usage: usage([meter('codex:primary', 3), meter('codex:secondary', 18), meter('spark:secondary', 40)]) });
+
+        // The ids the daemon really gives Codex's windows all carry a `:`, so a rule on the colon alone would leave it without a headline.
+        expect(headlineWindow(codex)?.id).toBe('codex:secondary');
+        expect(headlineWindow(agent({ id: 'codex', usage: usage([meter('spark:secondary', 40)]) }))).toBeUndefined();
+        expect(headlineWindow(agent({ id: 'claude', usage: usage([meter('codex:primary', 90), meter('session', 5)]) }))?.id).toBe('session');
+    });
+
+    it('skips a scoped window even when it is the only one that has a number, and is not fooled by a window that is not a number', () => {
+        expect(headlineWindow(agent({ usage: usage([meter('weekly:fable', 99)]) }))).toBeUndefined();
+        // A NaN first window would otherwise stay the headline, since nothing is greater than it.
+        expect(headlineWindow(agent({ usage: usage([meter('session', Number.NaN), meter('weekly', 12)]) }))?.id).toBe('weekly');
+    });
+
+    it('compares the percents the badge shows, so 78.4 and 78.2 are equal and the first wins', () => {
+        expect(headlineWindow(agent({ usage: usage([meter('session', 78.2), meter('weekly', 78.4)]) }))?.id).toBe('session');
+    });
+
+    it('is nothing without a trusted reading: no usage, not ok, no windows or signed out', () => {
+        const windows = [meter('session', 50)];
+
+        expect(headlineWindow(agent())).toBeUndefined();
+        expect(headlineWindow(agent({ usage: usage(windows, 'unavailable') }))).toBeUndefined();
+        // The last good windows of a failed read are not news.
+        expect(headlineWindow(agent({ usage: usage(windows, 'error') }))).toBeUndefined();
+        expect(headlineWindow(agent({ usage: usage([]) }))).toBeUndefined();
+        expect(headlineWindow(agent({ usage: usage(windows), signIn: { status: 'signed-out', checkedAt: 1 } }))).toBeUndefined();
+        expect(headlineWindow(agent({ usage: usage(windows), signIn: { status: 'signed-in', checkedAt: 1 } }))?.id).toBe('session');
+    });
+});
+
+describe('sortByHeadline', () => {
+    const withUsage = (id: string, percents: number[], patch: Partial<AgentInfo> = {}) => agent({ id, usage: usage(percents.map((percent, index) => meter(`w${ index }`, percent))), ...patch });
+
+    it('puts the most used provider first, the ones without a reading last, and keeps the order of equal ones', () => {
+        const all = [
+            agent({ id: 'claude' }),
+            withUsage('codex', [10, 40]),
+            withUsage('cursor', [40]),
+            withUsage('gemini', [90]),
+            withUsage('mine', [10], { signIn: { status: 'signed-out', checkedAt: 1 } }),
+        ];
+
+        expect(sortByHeadline(all).map(item => item.id)).toEqual(['gemini', 'codex', 'cursor', 'claude', 'mine']);
+    });
+
+    it('does not change the list it is given', () => {
+        const all = [agent({ id: 'claude' }), withUsage('codex', [10])];
+
+        sortByHeadline(all);
+
+        expect(all.map(item => item.id)).toEqual(['claude', 'codex']);
+    });
+});
+
+describe('sortWindowsByUsage', () => {
+    it('lists the most used window first and keeps the order of equal ones', () => {
+        const sorted = sortWindowsByUsage([meter('a', 8), meter('b', 20), meter('c', 0), meter('d', 20)]);
+
+        expect(sorted.map(item => item.id)).toEqual(['b', 'd', 'a', 'c']);
     });
 });
 

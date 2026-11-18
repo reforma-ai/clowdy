@@ -1,0 +1,263 @@
+import { Box } from '@clowdy/components/Box';
+import { Button } from '@clowdy/components/Button';
+import { For } from '@clowdy/components/For';
+import { OverlayTriggerStateContext, Popover, PopoverScroll, PopoverTrigger } from '@clowdy/components/Popover';
+import { Show } from '@clowdy/components/Show';
+import { Spinner } from '@clowdy/components/Spinner';
+import { Badge } from '@clowdy/components/Tag';
+import { Text } from '@clowdy/components/Text';
+import { use, useEffect, useRef, useState, type RefObject } from 'react';
+
+import { perform } from '../features/chats/commands';
+import { ProviderIcon } from '../features/settings/providers/ProviderIcon';
+import { accountLine, headlineWindow, isUsableProvider, providerAgents, sortByHeadline, usageTone, windowPercent, type UsageTone } from '../features/settings/providers/providerView';
+import { UsageHeader, UsageReading } from '../features/settings/providers/UsageRows';
+import { waitForRead } from '../features/settings/providers/useAgentCommands';
+import { useNow } from '../features/settings/providers/useNow';
+import { describeRemaining, formatRemaining } from '../shared';
+import { useAgents, useRootStore } from '../stores';
+import styles from './UsageStatus.module.css';
+
+import type { AgentInfo } from '@clowdy/protocol';
+import type { RootStore } from '../stores';
+
+/**
+ * How often the header reads the agents again while the window is open. The daemon reads a provider's usage again only when its
+ * last read is older than its own freshness (90 s), so asking is cheap; a hidden window does not need the numbers.
+ */
+const POLL_MS = 5 * 60_000;
+
+/** The button colour of a tone: the badge's text takes it. */
+const TONE_COLOR = { normal: 'secondary', warning: 'warning', danger: 'danger' } as const satisfies Record<UsageTone, string>;
+
+/**
+ * A window that comes back gets a `focus` and a `visibilitychange` together, and a tick can land right after them: one read answers
+ * every trigger that arrives within this time of the one before it.
+ */
+const COALESCE_MS = 1_000;
+
+/** Reads the agents again every five minutes and when the window comes back, so the badges are not hours old. Cleans up with the component. */
+function useUsagePolling(root: RootStore) {
+    useEffect(() => {
+        let lastAt = Number.NEGATIVE_INFINITY;
+        const refetch = () => {
+            const at = Date.now();
+
+            if (document.hidden || at - lastAt < COALESCE_MS) return;
+
+            lastAt = at;
+            void root.refreshAgents();
+        };
+        const timer = setInterval(refetch, POLL_MS);
+
+        // The window gains focus (a click on it, switching back to the app) or becomes visible again (restored, another desktop).
+        window.addEventListener('focus', refetch);
+        document.addEventListener('visibilitychange', refetch);
+
+        return () => {
+            clearInterval(timer);
+            window.removeEventListener('focus', refetch);
+            document.removeEventListener('visibilitychange', refetch);
+        };
+    }, [root]);
+}
+
+/**
+ * The refresh button of the popover: asks the daemon to read again and is pending until some provider was read again, because the
+ * daemon answers before it has read. The state lives in the badges, so closing the popover does not end the wait.
+ */
+function useUsageRefresh(root: RootStore) {
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const isMounted = useRef(true);
+
+    useEffect(() => {
+        isMounted.current = true;
+
+        return () => {
+            isMounted.current = false;
+        };
+    }, []);
+
+    const refresh = async () => {
+        // Every provider counts, usable or not: a provider switched off while the wait runs must not make the last read look older, and so look like a new one.
+        const lastRead = () => Math.max(0, ...providerAgents(root.agents).map(agent => agent.signIn?.checkedAt ?? 0));
+        const before = lastRead();
+
+        setIsRefreshing(true);
+
+        const result = await perform(root, { type: 'agents.refresh' });
+
+        if (result.ok) {
+            await root.refreshAgents();
+            await waitForRead(root, lastRead, before, () => isMounted.current);
+        }
+
+        if (isMounted.current) setIsRefreshing(false);
+    };
+
+    return { isRefreshing, refresh };
+}
+
+/** What a screen reader hears for a badge: the provider, how much is used and when it resets, or why there is no number. */
+function badgeLabel(agent: AgentInfo, now: number): string {
+    const headline = headlineWindow(agent);
+
+    if (headline) {
+        const reset = headline.resetsAt === undefined ? '' : `, resets in ${ describeRemaining(headline.resetsAt - now) }`;
+
+        return `${ agent.name } usage ${ windowPercent(headline) }%${ reset }`;
+    }
+
+    if (agent.signIn?.status === 'signed-out') return `${ agent.name } usage: not signed in`;
+
+    return `${ agent.name } usage: ${ agent.usage ? 'not available' : 'being checked' }`;
+}
+
+/**
+ * One provider: its mark, the percent used of its headline window and the time to its reset. The mark alone, muted, when there is no
+ * reading. A press opens the popover of the `PopoverTrigger` it sits in, which also sets its `aria-expanded` and gives it back the focus.
+ */
+function UsageBadge({ agent, now }: { agent: AgentInfo; now: number }) {
+    const headline = headlineWindow(agent);
+    const percent = headline ? windowPercent(headline) : undefined;
+    const tone = percent === undefined ? 'normal' : usageTone(percent);
+    const label = badgeLabel(agent, now);
+
+    return (
+        <Button
+            variant="filling"
+            size="sm"
+            color={ TONE_COLOR[tone] }
+            className={ styles.badge }
+            data-muted={ percent === undefined || undefined }
+            aria-label={ label }
+            tooltip={ label }
+            tooltipPlacement="bottom"
+        >
+            <ProviderIcon agentId={ agent.id } size={ 16 } />
+            <Show when={ headline }>
+                { reading => (
+                    <>
+                        <span>{ `${ windowPercent(reading) }%` }</span>
+                        { reading.resetsAt !== undefined && <Text color={ tone === 'normal' ? 'secondary' : 'inherit' }>{ formatRemaining(reading.resetsAt - now) }</Text> }
+                    </>
+                ) }
+            </Show>
+        </Button>
+    );
+}
+
+/** One provider in the popover: who is signed in, and its windows, or why there is nothing to show. */
+function ProviderUsage({ agent, now, onOpenProviders }: { agent: AgentInfo; now: number; onOpenProviders: () => void }) {
+    const line = accountLine(agent);
+    const isSignedIn = agent.signIn?.status === 'signed-in';
+    const isSignedOut = agent.signIn?.status === 'signed-out';
+    const { usage } = agent;
+    const who = isSignedIn ? line.text : agent.name;
+
+    return (
+        <section className={ styles.provider } aria-label={ agent.name }>
+            <header className={ styles.who }>
+                <ProviderIcon agentId={ agent.id } size={ 16 } />
+                <Text variant="sm" bold truncate className={ styles.account } title={ who }>{ who }</Text>
+                <Show when={ isSignedIn ? line.plan : undefined }>
+                    { plan => <Badge size="xs" color="secondary" textValue={ plan } className={ styles.plan }>{ plan }</Badge> }
+                </Show>
+            </header>
+
+            { isSignedOut && (
+                <div className={ styles.note }>
+                    <Text variant="sm" color="secondary">Not signed in.</Text>
+                    <Button variant="bordered" size="xs" onPress={ onOpenProviders }>Open Providers</Button>
+                </div>
+            ) }
+
+            { !isSignedOut && !usage && (
+                <Box direction="row" gap="md" align="center" role="status">
+                    <Spinner size="xs" />
+                    <Text variant="sm" color="secondary">Checking…</Text>
+                </Box>
+            ) }
+
+            { !isSignedOut && usage && <UsageReading usage={ usage } now={ now } byUsage /> }
+        </section>
+    );
+}
+
+interface UsagePopoverProps {
+    providers: readonly AgentInfo[];
+    now: number;
+    /** What the popover hangs under: the badges together, so it opens in the same place from every badge. */
+    anchorRef: RefObject<HTMLElement | null>;
+    isRefreshing: boolean;
+    onRefresh: () => void;
+}
+
+/**
+ * The popover of the header: every usable provider, the most used first, with a bar per window. Every badge has one of its own
+ * (React Aria gives each trigger its own state, so only the badge that opened it is expanded), but only the open one is drawn.
+ */
+function UsagePopover({ providers, now, anchorRef, isRefreshing, onRefresh }: UsagePopoverProps) {
+    const root = useRootStore();
+    const overlay = use(OverlayTriggerStateContext);
+
+    return (
+        <Popover triggerRef={ anchorRef } placement="bottom end" spacing="none" aria-label="Plan usage" className={ styles.popover }>
+            <PopoverScroll maxHeight="min(70vh, 34rem)">
+                <div className={ styles.panel }>
+                    <UsageHeader isRefreshing={ isRefreshing } onRefresh={ onRefresh } />
+
+                    <For each={ sortByHeadline(providers) }>
+                        { agent => (
+                            <ProviderUsage
+                                key={ agent.id }
+                                agent={ agent }
+                                now={ now }
+                                onOpenProviders={ () => {
+                                    overlay?.close();
+                                    root.ui.openSettings('providers');
+                                } }
+                            />
+                        ) }
+                    </For>
+                </div>
+            </PopoverScroll>
+        </Popover>
+    );
+}
+
+/** The badges and their popovers, drawn only while some provider is usable, so the clock below ticks only then. */
+function UsageBadges({ providers }: { providers: readonly AgentInfo[] }) {
+    const root = useRootStore();
+    const now = useNow();
+    const group = useRef<HTMLDivElement>(null);
+    const { isRefreshing, refresh } = useUsageRefresh(root);
+
+    return (
+        <div ref={ group } className={ styles.group } role="group" aria-label="Plan usage of the providers">
+            <For each={ providers }>
+                { agent => (
+                    <PopoverTrigger key={ agent.id }>
+                        <UsageBadge agent={ agent } now={ now } />
+                        <UsagePopover providers={ providers } now={ now } anchorRef={ group } isRefreshing={ isRefreshing } onRefresh={ () => void refresh() } />
+                    </PopoverTrigger>
+                ) }
+            </For>
+        </div>
+    );
+}
+
+/**
+ * The window header's usage status: a badge for each provider that is switched on and installed, with the percent used of its
+ * most used primary window and the time to its reset, and one popover with every window of every provider. Nothing at all when
+ * no provider is usable. It keeps the numbers fresh by reading the agents again every five minutes and when the window gets focus.
+ */
+export function UsageStatus() {
+    const root = useRootStore();
+    const { agents } = useAgents();
+    const providers = providerAgents(agents).filter(isUsableProvider);
+
+    useUsagePolling(root);
+
+    return providers.length > 0 ? <UsageBadges providers={ providers } /> : null;
+}

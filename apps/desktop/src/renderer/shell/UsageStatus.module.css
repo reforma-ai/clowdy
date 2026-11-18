@@ -1,0 +1,76 @@
+/* The badges sit together, left of the shortcuts button. */
+.group {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.badge {
+    font-variant-numeric: tabular-nums;
+}
+
+/* A provider with no reading is its mark alone, faded; the pointer brings it back so it still reads as a button. */
+.badge[data-muted] {
+    --clowdy-button-opacity: var(--opacity-inactive);
+    --clowdy-button-opacity--hover: 1;
+}
+
+/*
+ * The popover is wider than the menus: a bar needs room beside its label, its percent and its reset. It opens eight pixels under the
+ * badges, so its top edge reaches into the band's window-drag area; the popover takes no part in dragging.
+ */
+.popover {
+    width: 22rem;
+    max-width: calc(100vw - var(--spacing-16));
+    app-region: no-drag;
+}
+
+.panel {
+    /* The columns of a usage row: label, bar, percent used, time to reset. */
+    --usage-columns: 5.5rem minmax(3rem, 1fr) 2.5rem 3.75rem;
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-xl);
+}
+
+.provider {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+/* A hairline between providers, as between the sections of a card on the Providers page. */
+.provider + .provider {
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid var(--color-secondary-muted-border);
+}
+
+.who {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.who > svg {
+    flex-shrink: 0;
+}
+
+.account {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+/* The plan is short and says what the account is: a long e-mail gives way to it. */
+.plan {
+    flex-shrink: 0;
+}
+
+.note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+}

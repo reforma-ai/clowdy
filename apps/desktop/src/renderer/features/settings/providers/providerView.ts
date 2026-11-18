@@ -1,4 +1,4 @@
-import type { AgentInfo, AgentSignInSession } from '@clowdy/protocol';
+import type { AgentInfo, AgentSignInSession, AgentUsageWindow } from '@clowdy/protocol';
 
 /** The agents the page has a card for, in this order. Others the daemon knows are not shown yet. */
 export const PROVIDER_IDS = ['claude', 'codex', 'cursor'] as const;
@@ -6,6 +6,74 @@ export const PROVIDER_IDS = ['claude', 'codex', 'cursor'] as const;
 /** The agents that have a card, in the card order. */
 export function providerAgents(agents: readonly AgentInfo[]): AgentInfo[] {
     return PROVIDER_IDS.flatMap(id => agents.find(agent => agent.id === id) ?? []);
+}
+
+/** A provider the person can use now: switched on in Clowdy and installed. The window header shows only these. */
+export function isUsableProvider(agent: AgentInfo): boolean {
+    return agent.enabled && agent.status === 'ready';
+}
+
+/** From this used percent a bar and a badge turn to the warning tone, and from the next one to the danger tone. */
+export const USAGE_WARNING_PERCENT = 80;
+export const USAGE_DANGER_PERCENT = 90;
+
+export type UsageTone = 'normal' | 'warning' | 'danger';
+
+/** How much of a window is used, as the whole percent a bar and a badge show: rounded, and kept between 0 and 100. Something that is not a number is no usage. */
+export function windowPercent(window: AgentUsageWindow): number {
+    return Number.isNaN(window.usedPercent) ? 0 : Math.min(100, Math.max(0, Math.round(window.usedPercent)));
+}
+
+/** The tone of a used percent, the same on the Providers page and in the window header. */
+export function usageTone(percent: number): UsageTone {
+    if (percent >= USAGE_DANGER_PERCENT) return 'danger';
+
+    return percent >= USAGE_WARNING_PERCENT ? 'warning' : 'normal';
+}
+
+/**
+ * Whether a window is one model's limit, not the plan's: Claude's `weekly:fable` (`7d · Fable`) and Codex's `spark:secondary`.
+ * The plan's own windows have no `:` in their id (`session`, `weekly`, `plan`), except Codex's, which are named after its main
+ * limit, `codex:primary` and `codex:secondary`: an id that starts with the agent's own id.
+ */
+function isScopedWindow(agent: AgentInfo, window: AgentUsageWindow): boolean {
+    return window.id.includes(':') && !window.id.startsWith(`${ agent.id }:`);
+}
+
+/**
+ * The window a provider is summed up by: the primary window (not a scoped one, see `isScopedWindow`) that is the most used,
+ * the first of them when several are equal. One model's limit says little about the plan, so a scoped window is left out.
+ * Nothing when there is no reading to trust: the usage is not `ok` (a failed read keeps the last windows, which are not
+ * news), nobody is signed in, or it has no primary window.
+ */
+export function headlineWindow(agent: AgentInfo): AgentUsageWindow | undefined {
+    if (agent.usage?.state !== 'ok' || agent.signIn?.status === 'signed-out') return undefined;
+
+    let headline: AgentUsageWindow | undefined;
+
+    for (const window of agent.usage.windows) {
+        if (isScopedWindow(agent, window)) continue;
+
+        if (!headline || windowPercent(window) > windowPercent(headline)) headline = window;
+    }
+
+    return headline;
+}
+
+/** `providers` by their headline percent, the most used first; those without a reading come last. Equal ones keep their order. */
+export function sortByHeadline(providers: readonly AgentInfo[]): AgentInfo[] {
+    const percent = (agent: AgentInfo) => {
+        const headline = headlineWindow(agent);
+
+        return headline ? windowPercent(headline) : -1;
+    };
+
+    return [...providers].sort((a, b) => percent(b) - percent(a));
+}
+
+/** A provider's windows, the most used first; equal ones keep their order. */
+export function sortWindowsByUsage(windows: readonly AgentUsageWindow[]): AgentUsageWindow[] {
+    return [...windows].sort((a, b) => windowPercent(b) - windowPercent(a));
 }
 
 /** What the line under a card's title says: who is signed in, or why there is nobody to show. */

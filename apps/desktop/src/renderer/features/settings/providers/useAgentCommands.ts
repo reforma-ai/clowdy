@@ -4,12 +4,27 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRootStore } from '../../../stores';
 
 import type { CommandInput } from '../../../daemon/transport';
+import type { RootStore } from '../../../stores';
 
 /** How often the agents are fetched while a read that was asked for is on its way, and when the wait is given up. */
 const READ_POLL_MS = 1_500;
 const READ_GIVE_UP_MS = 30_000;
 
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/**
+ * The daemon answers `agents.refresh` before it has read, so the new numbers are not in the answer. Fetches the agents every 1.5 s
+ * until `lastRead()` (the time of the last read, which every read moves, a failed one too) is no longer `before`, `isActive()` says
+ * the caller is gone, or 30 s have passed.
+ */
+export async function waitForRead(root: RootStore, lastRead: () => number | undefined, before: number | undefined, isActive: () => boolean): Promise<void> {
+    const giveUpAt = Date.now() + READ_GIVE_UP_MS;
+
+    while (isActive() && lastRead() === before && Date.now() < giveUpAt) {
+        await wait(READ_POLL_MS);
+        await root.refreshAgents();
+    }
+}
 
 /**
  * The commands a provider card sends for one agent. Each reports a refusal as a toast, and is `pending` from the press until
@@ -68,14 +83,8 @@ export function useAgentCommands(agentId: string) {
         refresh: () => {
             const lastRead = () => root.agents.find(agent => agent.id === agentId)?.signIn?.checkedAt;
             const before = lastRead();
-            const giveUpAt = Date.now() + READ_GIVE_UP_MS;
 
-            return send('refresh', { type: 'agents.refresh' }, async () => {
-                while (isMounted.current && lastRead() === before && Date.now() < giveUpAt) {
-                    await wait(READ_POLL_MS);
-                    await root.refreshAgents();
-                }
-            });
+            return send('refresh', { type: 'agents.refresh' }, () => waitForRead(root, lastRead, before, () => isMounted.current));
         },
     };
 }

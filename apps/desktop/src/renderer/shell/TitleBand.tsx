@@ -6,11 +6,12 @@ import { openHelp } from '../hotkeys/openHelp';
 import { useRootStore } from '../stores';
 import { ProjectSelect } from './ProjectSelect';
 import styles from './TitleBand.module.css';
+import { UsageStatus } from './UsageStatus';
 
 /**
  * The 48px band over the window's top edge. On macOS the traffic lights sit at the left, then come back and forward and the project select;
  * on Windows the caption buttons sit at the right, and the band leaves room for them. The page draws neither.
- * The shortcuts button sits at the right edge and opens the same overlay as `?`.
+ * The right edge holds the usage status (a badge for each provider that can be used) and, last, the shortcuts button, which opens the same overlay as `?`.
  */
 export function TitleBand() {
     const root = useRootStore();
@@ -47,18 +48,20 @@ export function TitleBand() {
                         </Button>
                     </div>
                     <ProjectSelect />
-                    <Button
-                        variant="filling"
-                        size="sm"
-                        iconOnly
-                        className={ styles.shortcuts }
-                        aria-label="Keyboard shortcuts"
-                        tooltip={ commandTooltip('Keyboard shortcuts', 'help.open') ?? 'Keyboard shortcuts' }
-                        tooltipPlacement="bottom"
-                        onPress={ () => openHelp() }
-                    >
-                        <Keyboard />
-                    </Button>
+                    <div className={ styles.end }>
+                        <UsageStatus />
+                        <Button
+                            variant="filling"
+                            size="sm"
+                            iconOnly
+                            aria-label="Keyboard shortcuts"
+                            tooltip={ commandTooltip('Keyboard shortcuts', 'help.open') ?? 'Keyboard shortcuts' }
+                            tooltipPlacement="bottom"
+                            onPress={ () => openHelp() }
+                        >
+                            <Keyboard />
+                        </Button>
+                    </div>
                 </>
             ) }
         </header>

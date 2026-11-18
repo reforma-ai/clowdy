@@ -14,7 +14,11 @@
     align-items: center;
 }
 
-/* The one control at the right edge. The band's own right padding keeps it clear of the Windows caption buttons. */
-.shortcuts {
+/* What sits at the right edge: the usage badges, then the shortcuts button. The band's own right padding keeps it clear of the Windows caption buttons. */
+.end {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-md);
     margin-left: auto;
 }

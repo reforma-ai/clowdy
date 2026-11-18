@@ -37,3 +37,22 @@ export function formatRemaining(milliseconds: number): string {
 
     return hours % 24 === 0 ? `${ days }d` : `${ days }d ${ hours % 24 }h`;
 }
+
+const plural = (count: number, unit: string) => `${ count } ${ unit }${ count === 1 ? '' : 's' }`;
+
+/** What `formatRemaining` says, in words for a screen reader: `less than a minute`, `28 minutes`, `1 hour 32 minutes`, `6 days 2 hours`. */
+export function describeRemaining(milliseconds: number): string {
+    const minutes = Math.floor(milliseconds / 60_000);
+
+    if (minutes < 1) return 'less than a minute';
+
+    if (minutes < 60) return plural(minutes, 'minute');
+
+    const hours = Math.floor(minutes / 60);
+
+    if (hours < 24) return minutes % 60 === 0 ? plural(hours, 'hour') : `${ plural(hours, 'hour') } ${ plural(minutes % 60, 'minute') }`;
+
+    const days = Math.floor(hours / 24);
+
+    return hours % 24 === 0 ? plural(days, 'day') : `${ plural(days, 'day') } ${ plural(hours % 24, 'hour') }`;
+}

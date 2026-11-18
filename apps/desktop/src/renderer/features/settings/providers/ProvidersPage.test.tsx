@@ -298,6 +298,21 @@ describe('the usage', () => {
         }
     });
 
+    it('turns a bar to the warning tone from 80% and to the danger tone from 90%, as the window header does', async () => {
+        await start(withAgent('claude', (agent) => {
+            agent.usage!.windows = [
+                { id: 'a', label: 'A', usedPercent: 79 },
+                { id: 'b', label: 'B', usedPercent: 80 },
+                { id: 'c', label: 'C', usedPercent: 89 },
+                { id: 'd', label: 'D', usedPercent: 90 },
+            ];
+        }));
+
+        const tones = [...card('Claude Code').querySelectorAll('[role="progressbar"]')].map(bar => bar.firstElementChild!.getAttribute('data-tone'));
+
+        expect(tones).toEqual([null, 'warning', 'warning', 'danger']);
+    });
+
     it('reads it again from the refresh button', async () => {
         await start();
 
