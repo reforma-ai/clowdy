@@ -102,6 +102,30 @@ describe('task.start', () => {
     });
 });
 
+describe('the record of a conversation for an agent that lost its session', () => {
+    test('a turn that resumes can tell what was said, without the message it is sent with', async () => {
+        const { h, engine, task } = await setup(async function* ({ number }) {
+            yield { type: 'session', sessionId: `s${ number }` };
+            yield { type: 'text', delta: `Answer ${ number }`, done: true };
+            yield { type: 'done' };
+        });
+        const { runId, chatId } = h.ok('task.start', { taskId: task('Fix the footer').id });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the first turn');
+        h.ok('chat.send', { chatId, text: 'And the header?' });
+        await waitFor(() => engine.turns.length === 2, 'the second turn');
+
+        // The first turn has no session to lose.
+        expect(engine.turns[0]!.history).toBeUndefined();
+
+        const record = engine.turns[1]!.history!()!;
+
+        expect(record).toContain('Complete task');
+        expect(record).toContain('You: Answer 1');
+        expect(record).not.toContain('And the header?');
+    });
+});
+
 describe('the prompts of a run', () => {
     const project = { id: 'prj_1', name: 'Car Rental', path: '/work/cars', taskPrefix: 'CAR', settings: {}, createdAt: 1 } as Project;
 

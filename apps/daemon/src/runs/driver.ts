@@ -2,9 +2,11 @@ import { isTerminalRunStatus } from '@clowdy/protocol';
 import { statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 
+import { listItems, nextSeq } from '../db/items';
 import { countActiveSpawnedChildren, countSpawnedChildren, depthOf, findSpawnedChild, getRun, getRunWork, listActiveRuns, listRunsWithProcess, markMailboxDelivered, pendingMailbox, setRunWork } from '../db/runs';
 import { appendItem } from '../domain/items';
 import { CommandError, conflict, EngineFailure, errorMessage, invalid } from '../errors';
+import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
 import { NativeAgents } from './native';
 import { describeProcess, killSurvivor } from './processes';
@@ -312,6 +314,8 @@ export class RunDriver {
             throw new EngineFailure(`The ${ run.engine } engine is not available in this daemon`);
         }
 
+        // The stream as it is before this turn adds its own lines (a note per child that finished): what the agent was told so far.
+        const told = nextSeq(store.db, runId) - 1;
         const work = getRunWork(store.db, runId);
         const pending = pendingMailbox(store.db, runId);
         const children = pending.flatMap(entry => getRun(store.db, entry.childRunId) ?? []);
@@ -329,11 +333,14 @@ export class RunDriver {
         live.native = new NativeAgents(store, runs, run);
         live.prompt = prompt;
 
+        // The messages this turn sends are in the stream already; the record leaves them out, as the agent gets them in the prompt.
+        const incoming = [prompt, ...live.pending];
         const session = engine.start({
             cwd: work.cwd ?? project.path,
             prompt,
             systemPrompt: [systemPrompt(run.role, mode, project), skillPrompt(run.role, config.systemSkillsDir)].filter(Boolean).join('\n\n'),
             resumeSessionId: run.sessionId,
+            ...(run.sessionId && { history: () => conversationRecord(listItems(store.db, runId, 0).filter(item => item.seq <= told), incoming) }),
             model: run.model,
             effort: run.effort,
             tools: this.deps.tools(run, mode),

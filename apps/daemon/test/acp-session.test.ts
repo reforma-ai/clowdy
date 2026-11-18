@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -278,6 +278,74 @@ describe('resuming', () => {
         await session.close();
 
         expect(events.find(event => event.type === 'session')).toEqual({ type: 'session', sessionId: 'fake-1' });
+    });
+});
+
+describe('a session that cannot be continued', () => {
+    const record = 'RECORD: the person asked for a footer.';
+    /** The fake agent answers every line it does not know with `ok` and the `prompt` directive with the whole prompt as a JSON string, last. */
+    const promptIn = (events: EngineEvent[]): string => {
+        const said = textOf(events);
+
+        return JSON.parse(said.slice(said.indexOf('"'))) as string;
+    };
+    /** What the agent was asked in its first prompt of the new session, as the fake agent's `prompt` directive reports it. */
+    const promptOf = async (agentEnv: Record<string, string>, options: Partial<Parameters<ReturnType<typeof use>['start']>[1]> & object = {}) => {
+        const { session } = use({ agentEnv }).start('prompt', { resumeSessionId: 'earlier-7', ...options });
+        const events = await collect(session);
+
+        await session.close();
+
+        return { events, prompt: promptIn(events) };
+    };
+
+    test('starts a new session that is told what the conversation was, ahead of the message', async () => {
+        const { events, prompt } = await promptOf({ FAKE_ACP_LOST: '1' }, { history: () => record });
+
+        expect(events.find(event => event.type === 'session')).toEqual({ type: 'session', sessionId: 'fake-1' });
+        expect(prompt).toBe(`${ record }\n\n---\n\nprompt`);
+    });
+
+    test('an agent that cannot resume at all is told as well', async () => {
+        const { prompt } = await promptOf({ FAKE_ACP_RESUME: 'none' }, { history: () => record });
+
+        expect(prompt).toBe(`${ record }\n\n---\n\nprompt`);
+    });
+
+    test('an agent that takes no system prompt gets it first, then the record, then the message', async () => {
+        const { prompt } = await promptOf({ FAKE_ACP_LOST: '1', FAKE_ACP_SYSTEM_PROMPT: '0' }, { history: () => record, systemPrompt: 'SYSTEM' });
+
+        expect(prompt).toBe(`SYSTEM\n\n---\n\n${ record }\n\n---\n\nprompt`);
+    });
+
+    test('a session that resumes is not told, and the record is not even made', async () => {
+        const history = mock(() => record);
+        const { prompt } = await promptOf({}, { history });
+
+        expect(prompt).toBe('prompt');
+        expect(history).not.toHaveBeenCalled();
+    });
+
+    test('a first session, which has nothing to continue, is not told either', async () => {
+        const history = mock(() => record);
+        const { session } = use().start('prompt', { history });
+        const events = await collect(session);
+
+        await session.close();
+
+        expect(promptIn(events)).toBe('prompt');
+        expect(history).not.toHaveBeenCalled();
+    });
+
+    test('a record that cannot be made, or that is empty, leaves the message as it is', async () => {
+        const failing = await promptOf({ FAKE_ACP_LOST: '1' }, { history: () => {
+            throw new Error('the stream is gone');
+        } });
+        const empty = await promptOf({ FAKE_ACP_LOST: '1' }, { history: () => undefined });
+
+        expect(failing.prompt).toBe('prompt');
+        expect(failing.events.at(-1)).toMatchObject({ type: 'done' });
+        expect(empty.prompt).toBe('prompt');
     });
 });
 

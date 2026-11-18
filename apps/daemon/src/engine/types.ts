@@ -30,6 +30,12 @@ export interface EngineStartOptions {
     systemPrompt?: string;
     /** A session id the engine reported earlier; continue that conversation. */
     resumeSessionId?: string;
+    /**
+     * What the conversation said so far, as text. An engine asks for it only when it was given `resumeSessionId` and could not continue that session
+     * (the agent lost it, or cannot resume at all), and puts it before the prompt of the session it starts instead, so the agent is not left without
+     * the story. It is a function because reading a long stream costs, and most turns resume fine.
+     */
+    history?: () => string | undefined;
     model?: string;
     /** The reasoning level, in the agent's own spelling; applied after `model`, since a model decides which levels exist. */
     effort?: string;

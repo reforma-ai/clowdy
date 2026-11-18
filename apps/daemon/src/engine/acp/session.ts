@@ -167,6 +167,18 @@ export class AcpSession implements EngineSession {
         this.inbox.push(text);
     }
 
+    /** The conversation so far, when the runtime can tell it; a record that cannot be made leaves the turn as it is. */
+    private record(): string | undefined {
+        try {
+            return this.options.history?.();
+        }
+        catch (error) {
+            console.warn(`[clowdy] could not write down the earlier conversation for a new session: ${ errorMessage(error) }`);
+
+            return undefined;
+        }
+    }
+
     /** Stops the session and waits until its process is gone. */
     async close(): Promise<void> {
         this.closing.abort();
@@ -431,8 +443,14 @@ export class AcpSession implements EngineSession {
                 }
             }
 
+            // An agent that was to continue a conversation and starts a new one has not seen it: it is told what it said, so the work is not lost.
+            const record = options.resumeSessionId && !resumed ? this.record() : undefined;
+
             // An agent that cannot take a system prompt gets it in front of the first message of a conversation it has not seen.
-            let preface = !supportsSystemPrompt && !resumed && options.systemPrompt ? `${ options.systemPrompt }\n\n---\n\n` : '';
+            let preface = [
+                !supportsSystemPrompt && !resumed && options.systemPrompt,
+                record,
+            ].filter(Boolean).map(part => `${ part }\n\n---\n\n`).join('');
 
             for (;;) {
                 const text = `${ preface }${ this.inbox.splice(0).join('\n\n') }`;

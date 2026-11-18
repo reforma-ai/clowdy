@@ -18,7 +18,7 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
  *   crash                       writes to stderr and exits with code 3
  *
  * FAKE_ACP_LOG is a file that gets a line for every `session/cancel` the agent receives.
- * FAKE_ACP_RESUME is `resume` (default), `load` (replays two messages first) or `none`; FAKE_ACP_SYSTEM_PROMPT=0 drops
+ * FAKE_ACP_RESUME is `resume` (default), `load` (replays two messages first) or `none` (FAKE_ACP_LOST=1 refuses either with "Session not found"); FAKE_ACP_SYSTEM_PROMPT=0 drops
  * the system prompt capability; FAKE_ACP_AUTH=1 makes `session/new` ask for authentication; FAKE_ACP_EFFORT is `1` (a reasoning
  * option that follows the model) or `thinking` (the same, behind an option of another kind).
  */
@@ -49,6 +49,13 @@ const sessions = new Map<string, FakeSession>();
 let clientCapabilities: unknown;
 let counter = 0;
 const resumeMode = process.env.FAKE_ACP_RESUME ?? 'resume';
+
+/** FAKE_ACP_LOST=1: the agent no longer has any session it is asked to resume or load, as Cursor does with a folder it has not seen. */
+function lose(): void {
+    if (process.env.FAKE_ACP_LOST === '1') {
+        throw new RequestError(-32002, 'Session not found');
+    }
+}
 
 function systemText(content: unknown): string | undefined {
     return Array.isArray(content) ? content.map(block => (block as { text?: string }).text ?? '').join('') : undefined;
@@ -131,6 +138,7 @@ const app = agent({ name: 'fake-acp-agent' })
         return { sessionId: id, configOptions: modelOptions('fast') };
     })
     .onRequest(methods.agent.session.resume, ({ params, client }) => {
+        lose();
         open(params.sessionId, params);
 
         // Codex's adapter warns right after the response when the session was recorded with another model.
@@ -141,6 +149,7 @@ const app = agent({ name: 'fake-acp-agent' })
         return { configOptions: modelOptions('fast') };
     })
     .onRequest(methods.agent.session.load, async ({ params, client }) => {
+        lose();
         open(params.sessionId, params);
 
         for (const text of ['replayed one', 'replayed two']) {
