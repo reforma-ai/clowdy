@@ -20,6 +20,7 @@ Tests build a real daemon on a temp data dir (`test/helpers.ts`: `startHarness`,
 | `CLOWDY_DATA_DIR` | `daemonDataDir()` from `@clowdy/protocol`, shared with the desktop app so it finds `daemon.json` (macOS `~/Library/Application Support/Clowdy/daemon`; `CLOWDY_PROFILE=dev` uses a separate folder) |
 | `CLOWDY_PORT` | `0` (random free port) |
 | `CLOWDY_TOKEN` | 32 random bytes, hex |
+| `CLOWDY_CORS_ORIGINS` | none. Comma-separated origins besides `app://clowdy` that may call the API from a browser page, for tools such as a Vite dev server (`http://127.0.0.1:5300`); matched exactly, so no loopback page is trusted by default |
 | `CLOWDY_ENGINE` | `fake`; `claude` registers the Claude engine too (settings below, see "Claude engine") |
 | `CLOWDY_MAX_RUNS` | `8`, global cap of runs in `running` |
 | `CLOWDY_MAX_RUNS_CLAUDE`, `_CODEX`, `_FAKE` | `6`, `4`, `1000`: per-engine cap of runs in `running` (subscription signals lower it at run time, see "Runtime") |

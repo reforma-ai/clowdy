@@ -63,6 +63,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
         projectsDir: join(root, 'projects'),
         port: 0,
         token: 'test-token',
+        corsOrigins: [],
         engine: 'fake',
         maxRuns: 8,
         engineCaps: { claude: 6, codex: 4, fake: 1000 },

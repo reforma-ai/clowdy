@@ -72,7 +72,7 @@ export function startServer({ services, version, startedAt, heartbeatMs, shutdow
             return forbidden('The request was not addressed to a loopback host');
         }
 
-        if (origin !== null && !isAllowedOrigin(origin)) {
+        if (origin !== null && !isAllowedOrigin(origin, config.corsOrigins)) {
             return forbidden('This origin is not allowed');
         }
 
