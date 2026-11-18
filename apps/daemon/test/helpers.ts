@@ -4,6 +4,8 @@ import { join } from 'node:path';
 
 import { executeCommand } from '../src/commands';
 import { startDaemon } from '../src/daemon';
+import { Discovery } from '../src/engine/acp/discovery';
+import { AgentRegistry } from '../src/engine/acp/registry';
 
 import type { ClowdyEvent, Command, CommandResult, EngineId, Run } from '@clowdy/protocol';
 import type { Config } from '../src/config';
@@ -66,6 +68,8 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
         engine: 'fake',
         maxRuns: 8,
         engineCaps: { claude: 6, codex: 4, fake: 1000 },
+        defaultEngineCap: 4,
+        agentPermissions: 'allow',
         maxProcesses: 24,
         maxActiveChildren: 300,
         maxChildren: 3000,
@@ -132,17 +136,25 @@ export class Harness {
     }
 }
 
+/**
+ * The agent registry of a test daemon: it finds no agent on the machine (no search path, no login shell, no version
+ * probe of a program someone installed), so a test sees only the agents it adds itself.
+ */
+export function testAgents(config: Config): AgentRegistry {
+    return new AgentRegistry({ dataDir: config.dataDir, discovery: new Discovery({ env: { PATH: '' }, loginPath: async () => undefined, installDirs: [] }) });
+}
+
 export async function startHarness(overrides: Partial<Config> = {}, options: DaemonOptions = {}): Promise<Harness> {
     const config = testConfig(overrides);
 
-    return new Harness(await startDaemon(config, options), config);
+    return new Harness(await startDaemon(config, { agents: testAgents(config), ...options }), config);
 }
 
 /** Restarts a daemon on the data directory of an earlier harness. */
 export async function restartHarness(previous: Harness, options: DaemonOptions = {}, overrides: Partial<Config> = {}): Promise<Harness> {
     const config = { ...previous.config, ...overrides };
 
-    return new Harness(await startDaemon(config, options), config);
+    return new Harness(await startDaemon(config, { agents: testAgents(config), ...options }), config);
 }
 
 export async function waitFor<T>(check: () => T | undefined | false | null, what: string, timeoutMs = 4000): Promise<T> {

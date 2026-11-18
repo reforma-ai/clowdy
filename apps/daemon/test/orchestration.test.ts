@@ -1,10 +1,10 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { infoPath, lockPath } from '../src/instance';
-import { firstMessage, systemPrompt, taskMessage } from '../src/runs/prompts';
-import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
+import { firstMessage, skillPrompt, systemPrompt, taskMessage } from '../src/runs/prompts';
+import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, tempDir, untilAborted, waitFor } from './helpers';
 
 import type { Project, Task } from '@clowdy/protocol';
 import type { Harness, Script } from './helpers';
@@ -52,7 +52,7 @@ describe('task.start', () => {
         // The first message is the task with the instruction to complete it; the chat shows it as the user's message.
         const message = ['Complete task REP-1: Fix the footer', 'Description:\nOutcome: the footer shows the year.\nCheck: the page.', 'This chat is bound to REP-1; read it with task_get, do the work, and finish with a short report.'].join('\n\n');
 
-        expect(engine.turns[0].prompt).toBe(`/clowdy:orchestrate Mode: autopilot\n\n${ message }`);
+        expect(engine.turns[0].prompt).toBe(`Follow clowdy:orchestrate. Mode: autopilot\n\n${ message }`);
         expect(h.store.db.query('SELECT body FROM stream_items WHERE run_id = ?').all(runId).map(row => JSON.parse((row as { body: string }).body))).toEqual([{ kind: 'user', text: message }]);
         expect(h.events().filter(event => event.data.type === 'chat.upserted').map(event => (event.data as { chat: { orchestratorRunId?: string } }).chat.orchestratorRunId)).toEqual([undefined, runId]);
         expect(project.id).toBeTruthy();
@@ -67,7 +67,7 @@ describe('task.start', () => {
 
         await waitFor(() => engine.turns.length === 1, 'the orchestrator to start');
         expect((h.store.db.query('SELECT mode FROM chats WHERE id = ?').get(chatId) as { mode: string }).mode).toBe('semi');
-        expect(engine.turns[0].prompt.startsWith('/clowdy:orchestrate Mode: semi-manual\n\n')).toBe(true);
+        expect(engine.turns[0].prompt.startsWith('Follow clowdy:orchestrate. Mode: semi-manual\n\n')).toBe(true);
         expect(engine.turns[0].tools.map(tool => tool.name)).toContain('ask_user');
         expect(h.ok('chat.create', { projectId: project.id }).chat.mode).toBe('semi');
         expect(h.ok('chat.create', { projectId: project.id, mode: 'autopilot' }).chat.mode).toBe('autopilot');
@@ -106,10 +106,10 @@ describe('the prompts of a run', () => {
     const project = { id: 'prj_1', name: 'Car Rental', path: '/work/cars', taskPrefix: 'CAR', settings: {}, createdAt: 1 } as Project;
 
     test('the first message names the entry skill and the mode, then the content', () => {
-        expect(firstMessage('orchestrator', 'autopilot', 'Add dark mode')).toBe('/clowdy:orchestrate Mode: autopilot\n\nAdd dark mode');
-        expect(firstMessage('orchestrator', 'semi', 'Add dark mode')).toBe('/clowdy:orchestrate Mode: semi-manual\n\nAdd dark mode');
-        expect(firstMessage('executor', 'autopilot', 'Goal: x')).toBe('/clowdy:executor Mode: autopilot\n\nGoal: x');
-        expect(firstMessage('verifier', 'semi', 'Claim: y')).toBe('/clowdy:verify Mode: semi-manual\n\nClaim: y');
+        expect(firstMessage('orchestrator', 'autopilot', 'Add dark mode')).toBe('Follow clowdy:orchestrate. Mode: autopilot\n\nAdd dark mode');
+        expect(firstMessage('orchestrator', 'semi', 'Add dark mode')).toBe('Follow clowdy:orchestrate. Mode: semi-manual\n\nAdd dark mode');
+        expect(firstMessage('executor', 'autopilot', 'Goal: x')).toBe('Follow clowdy:executor. Mode: autopilot\n\nGoal: x');
+        expect(firstMessage('verifier', 'semi', 'Claim: y')).toBe('Follow clowdy:verify. Mode: semi-manual\n\nClaim: y');
     });
 
     test('the system prompt points to the skill, states the mode and the project facts, and stays short', () => {
@@ -121,6 +121,23 @@ describe('the prompts of a run', () => {
         expect(prompt.length).toBeLessThan(900);
         expect(systemPrompt('executor', 'autopilot', project)).toContain('Follow clowdy:executor. Never ask the user; finish with report_result.');
         expect(systemPrompt('verifier', 'autopilot', project)).toContain('Follow clowdy:verify.');
+    });
+
+    test('the entry skill of the role is inlined without its front matter, with where the other skills are; no folder, no skill text', () => {
+        const dir = tempDir();
+
+        mkdirSync(join(dir, 'skills', 'executor'), { recursive: true });
+        writeFileSync(join(dir, 'skills', 'executor', 'SKILL.md'), '---\nname: executor\ndescription: Do the work\n---\n\n# Executor\n\nRead the task first.\n');
+
+        const prompt = skillPrompt('executor', dir);
+
+        expect(prompt).toContain(`${ join(dir, 'skills', '<name>', 'SKILL.md') }`);
+        expect(prompt).toContain('<skill name="clowdy:executor">\n# Executor\n\nRead the task first.\n</skill>');
+        expect(prompt).not.toContain('description: Do the work');
+        // The orchestrator's skill is not in this folder: the pointer stays, the text does not.
+        expect(skillPrompt('orchestrator', dir)).not.toContain('<skill');
+        expect(skillPrompt('orchestrator', dir)).toContain('System skills are plain files');
+        expect(skillPrompt('verifier', undefined)).toBe('');
     });
 
     test('a task becomes the first message of its chat', () => {

@@ -8,7 +8,7 @@ import { CommandError, conflict, EngineFailure, errorMessage, invalid } from '..
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
 import { NativeAgents } from './native';
 import { describeProcess, killSurvivor } from './processes';
-import { CONTINUE_MESSAGE, firstMessage, systemPrompt } from './prompts';
+import { CONTINUE_MESSAGE, firstMessage, skillPrompt, systemPrompt } from './prompts';
 import { childReport, wakeMessage } from './reports';
 import { ASK_USER } from './tools';
 import { TurnWriter } from './writer';
@@ -16,7 +16,7 @@ import { TurnWriter } from './writer';
 import type { ChatMode, EngineId, Run, RunRole, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunOutcome } from '../db/runs';
-import type { AgentEngine, EngineSession, ToolDefinition } from '../engine/types';
+import type { EngineRegistry, EngineSession, ToolDefinition } from '../engine/types';
 import type { Store } from '../store';
 import type { LimitSignal } from './limits';
 import type { RunService } from './service';
@@ -30,7 +30,7 @@ export interface DriverDeps {
     store: Store;
     config: Config;
     runs: RunService;
-    engines: ReadonlyMap<EngineId, AgentEngine>;
+    engines: EngineRegistry;
     /** The tools a run gets: an orchestrator's, or an executor's or verifier's. */
     tools(run: Run, mode: ChatMode): ToolDefinition[];
 }
@@ -327,7 +327,7 @@ export class RunDriver {
         const session = engine.start({
             cwd: work.cwd ?? project.path,
             prompt,
-            systemPrompt: systemPrompt(run.role, mode, project),
+            systemPrompt: [systemPrompt(run.role, mode, project), skillPrompt(run.role, config.systemSkillsDir)].filter(Boolean).join('\n\n'),
             resumeSessionId: run.sessionId,
             model: run.model,
             tools: this.deps.tools(run, mode),

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { classifyFailure, classifyThrown, readableMessage } from '../src/engine/claude/failure';
+import { classifyFailure, classifyThrown } from '../src/engine/claude/failure';
+import { readableMessage } from '../src/engine/error-text';
 
 describe('readable messages', () => {
     test('an API error body becomes its message, keeping the status', () => {

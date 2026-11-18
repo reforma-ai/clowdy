@@ -18,7 +18,7 @@ const MAX_WAIT_SECONDS = 60;
 const RECENT_ITEMS = 8;
 
 // The fake engine is for demos and tests: a model that picked it would report work nobody did.
-const engine = z.enum(['claude', 'codex']);
+const engine = z.string().min(1).refine(id => id !== 'fake', 'The fake engine is not available to agents');
 
 /** A stream item as one short line, for `run_inspect`. */
 function describeItem(item: StreamItem): string {
@@ -49,7 +49,7 @@ export function orchestratorRunTools({ store, runs, driver }: ToolDeps, run: Run
             taskIds: z.array(taskRef).min(1).describe('The tasks the run works on or checks'),
             prompt: z.string().min(1).describe('The assignment: mode, goal, owned paths, contracts, decisions already made, done-when. The child does not see your conversation.'),
             role: z.enum(['executor', 'verifier']).optional().describe('Default executor'),
-            engine: engine.optional().describe('Leave unset unless the manager asked or you have a reason'),
+            engine: engine.optional().describe('The id of an installed agent (claude, codex, cursor, ...). Leave unset unless the manager asked or you have a reason'),
             model: z.string().optional(),
             cwd: z.string().optional().describe('Absolute path of the folder the run works in (for example a git worktree you made); default the project folder'),
             idempotencyKey: z.string().min(1),

@@ -32,11 +32,15 @@ describe('config', () => {
         })).toMatchObject({ dataDir: '/data', port: 47831, token: 'devtoken', engine: 'claude', maxRuns: 3, fakeSpeed: 0 });
     });
 
+    test('any engine id is accepted: the daemon checks it against its agents at start', () => {
+        expect(loadConfig({ CLOWDY_ENGINE: ' cursor ' }).engine).toBe('cursor');
+    });
+
     test('invalid values name the variable', () => {
         expect(() => loadConfig({ CLOWDY_PORT: 'abc' })).toThrow(ConfigError);
         expect(() => loadConfig({ CLOWDY_PORT: '70000' })).toThrow(/CLOWDY_PORT/);
         expect(() => loadConfig({ CLOWDY_MAX_RUNS: '0' })).toThrow(/CLOWDY_MAX_RUNS/);
         expect(() => loadConfig({ CLOWDY_FAKE_SPEED: '-1' })).toThrow(/CLOWDY_FAKE_SPEED/);
-        expect(() => loadConfig({ CLOWDY_ENGINE: 'gpt' })).toThrow(/CLOWDY_ENGINE/);
+        expect(() => loadConfig({ CLOWDY_MAX_RUNS_AGENT: '0' })).toThrow(/CLOWDY_MAX_RUNS_AGENT/);
     });
 });

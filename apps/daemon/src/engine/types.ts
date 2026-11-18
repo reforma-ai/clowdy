@@ -13,6 +13,15 @@ export interface AgentEngine {
     start(options: EngineStartOptions): EngineSession;
 }
 
+/**
+ * The engines a daemon can run, by id. A `Map` is one; the ACP registry is another that finds agents when asked, so an
+ * agent installed after the daemon started works without a restart.
+ */
+export interface EngineRegistry {
+    get(id: EngineId): AgentEngine | undefined;
+    has(id: EngineId): boolean;
+}
+
 export interface EngineStartOptions {
     /** Working directory of the agent. */
     cwd: string;

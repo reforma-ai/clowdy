@@ -1,4 +1,5 @@
 import { CommandError, errorMessage } from '../errors';
+import { agentsHandlers } from './agents';
 import { chatHandlers } from './chat';
 import { docsHandlers } from './docs';
 import { projectHandlers } from './project';
@@ -11,7 +12,7 @@ import type { Handlers, Services } from './context';
 
 export type { Services } from './context';
 
-const handlers: Handlers = { ...projectHandlers, ...chatHandlers, ...taskHandlers, ...runHandlers, ...docsHandlers, ...skillsHandlers };
+const handlers: Handlers = { ...projectHandlers, ...chatHandlers, ...taskHandlers, ...runHandlers, ...docsHandlers, ...skillsHandlers, ...agentsHandlers };
 
 /**
  * Runs a command. The first result for a `requestId` (success or a caller error) is stored in the same transaction

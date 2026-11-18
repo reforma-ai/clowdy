@@ -48,9 +48,10 @@ export function backoffDelay(attempt: number, baseMs: number, random = Math.rand
     return Math.min(MAX_BACKOFF_MS, baseMs * 2 ** (attempt - 1)) * (0.5 + random() / 2);
 }
 
-const NAMES: Record<EngineId, string> = { claude: 'Claude', codex: 'Codex', fake: 'The fake engine' };
+const NAMES: Record<string, string> = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor', opencode: 'OpenCode', gemini: 'Gemini', fake: 'The fake engine' };
 
-export const engineName = (engine: EngineId) => NAMES[engine];
+/** What a person calls an engine in a message: a known name, else the id as the person typed it. */
+export const engineName = (engine: EngineId) => NAMES[engine] ?? engine;
 
 /** A moment for a person: the time today, the date and time on another day. */
 export function formatMoment(at: number, now: number): string {
@@ -81,6 +82,8 @@ export interface LimitOptions {
     random?: () => number;
     /** Engines resume up to this long after a reset, spread at random, so their runs do not all hit the limit at once. */
     jitterMs?: number;
+    /** The cap of an engine the `caps` do not name. */
+    defaultCap?: number;
 }
 
 /**
@@ -93,18 +96,23 @@ export class EngineLimits {
     private clock: () => number;
     private random: () => number;
     private jitterMs: number;
+    private defaultCap: number;
 
     constructor(private caps: Record<EngineId, number>, options: LimitOptions = {}) {
         this.store = options.store;
         this.clock = options.clock ?? Date.now;
         this.random = options.random ?? Math.random;
         this.jitterMs = options.jitterMs ?? 30_000;
+        this.defaultCap = options.defaultCap ?? 4;
 
         for (const { engine, until } of options.store?.pauses ?? []) {
-            if (engine in caps) {
-                this.state(engine as EngineId).pausedUntil = until;
-            }
+            this.state(engine).pausedUntil = until;
         }
+    }
+
+    /** The cap an engine has when nothing lowers it. */
+    private baseCap(engine: EngineId): number {
+        return this.caps[engine] ?? this.defaultCap;
     }
 
     now(): number {
@@ -114,7 +122,7 @@ export class EngineLimits {
     /** Runs of `engine` that may be `running` at once. */
     capOf(engine: EngineId): number {
         const state = this.current(engine);
-        const base = this.caps[engine];
+        const base = this.baseCap(engine);
         const halved = state.halvedUntil > this.now() ? Math.floor(base / 2) : base;
 
         return Math.max(1, Math.min(state.cap, halved));
@@ -169,10 +177,10 @@ export class EngineLimits {
     nextChange(): number | undefined {
         const times: number[] = [];
 
-        for (const engine of Object.keys(this.caps) as EngineId[]) {
+        for (const engine of [...this.states.keys()]) {
             const state = this.current(engine);
 
-            for (const at of [state.halvedUntil, state.pausedUntil, state.cap < this.caps[engine] ? state.capSince + QUIET_MS : 0]) {
+            for (const at of [state.halvedUntil, state.pausedUntil, state.cap < this.baseCap(engine) ? state.capSince + QUIET_MS : 0]) {
                 if (at > this.now()) {
                     times.push(at);
                 }
@@ -193,7 +201,7 @@ export class EngineLimits {
         let state = this.states.get(engine);
 
         if (!state) {
-            state = { cap: this.caps[engine], capSince: this.now(), halvedUntil: 0, pausedUntil: 0 };
+            state = { cap: this.baseCap(engine), capSince: this.now(), halvedUntil: 0, pausedUntil: 0 };
             this.states.set(engine, state);
         }
 
@@ -206,7 +214,7 @@ export class EngineLimits {
         const steps = Math.floor((this.now() - state.capSince) / QUIET_MS);
 
         if (steps > 0) {
-            state.cap = Math.min(this.caps[engine], state.cap + steps);
+            state.cap = Math.min(this.baseCap(engine), state.cap + steps);
             state.capSince += steps * QUIET_MS;
         }
 

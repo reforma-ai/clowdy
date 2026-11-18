@@ -16,7 +16,15 @@ export type { ClaudeDiagnostics } from './session';
 /** The skill folders the daemon keeps current in its config; they are read every time a run starts. */
 export type SkillDirs = Pick<Config, 'systemSkillsDir' | 'extraPluginDirs'>;
 
+/** Where the user's own Claude Code is, or why it cannot be used. */
+export type Located = { executable: string; path: string } | { error: string };
+
 export interface ClaudeEngineDeps {
+    /**
+     * Finds the user's installed `claude` and the search path to run it with, when a session starts. Without it, or when
+     * `CLOWDY_CLAUDE_BIN` is set, the SDK's own bundled copy is used.
+     */
+    locate?: () => Promise<Located>;
     /** The environment agents are built from; the daemon's own by default. */
     env?: Record<string, string | undefined>;
     /** The SDK's `query`; tests replace it with a script. */
@@ -40,6 +48,7 @@ export class ClaudeEngine implements AgentEngine {
             env: this.deps.env ?? process.env,
             query: this.deps.query ?? sdkQuery,
             totals: this.totals,
+            locate: this.deps.locate,
             pluginDirs: () => [this.skills.systemSkillsDir ?? DEFAULT_SYSTEM_SKILLS_DIR, ...(this.skills.extraPluginDirs ?? [])],
             onInit: init => this.noteInit(init),
         });

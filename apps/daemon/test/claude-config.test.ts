@@ -4,17 +4,19 @@ import { join } from 'node:path';
 
 import { ConfigError, loadConfig } from '../src/config';
 import { createEngines } from '../src/engine';
+import { AcpEngine } from '../src/engine/acp/engine';
+import { AgentRegistry } from '../src/engine/acp/registry';
 import { ClaudeEngine } from '../src/engine/claude';
 import { DEFAULT_SYSTEM_SKILLS_DIR, loadClaudeConfig } from '../src/engine/claude/config';
 import { buildClaudeEnv } from '../src/engine/claude/env';
 import { claudeConfig } from './claude-fakes';
 
 describe('Claude engine config', () => {
-    test('defaults: subscription login, unattended permissions, the project\'s settings only, 3 levels and 20 sub-agents', () => {
+    test('defaults: subscription login, unattended permissions, the user\'s own settings, 3 levels and 20 sub-agents', () => {
         expect(loadClaudeConfig({})).toEqual({
             auth: 'subscription',
             permissionMode: 'bypassPermissions',
-            settingSources: ['project'],
+            settingSources: ['user', 'project', 'local'],
             maxSubagentDepth: 3,
             maxConcurrentSubagents: 20,
             executable: undefined,
@@ -81,23 +83,32 @@ describe('Claude engine config', () => {
 });
 
 describe('engine registry', () => {
-    test('the scripted engine is the default and alone', () => {
-        expect([...createEngines(loadConfig({}, 'linux'), {}).keys()]).toEqual(['fake']);
+    const agents = new AgentRegistry();
+
+    test('the scripted engine is the default; an agent is an engine when it is asked for', () => {
+        const engines = createEngines(loadConfig({}, 'linux'), agents, {});
+
+        expect(engines.has('fake')).toBe(true);
+        expect(engines.has('claude')).toBe(true);
+        expect(engines.has('gpt')).toBe(false);
+        expect(engines.get('gpt')).toBeUndefined();
     });
 
-    test('CLOWDY_ENGINE=claude adds the Claude engine and keeps the fake one', () => {
-        const engines = createEngines(loadConfig({ CLOWDY_ENGINE: 'claude' }, 'linux'), {});
+    test('Claude Code has its own engine, every other agent runs through ACP', () => {
+        const engines = createEngines(loadConfig({ CLOWDY_ENGINE: 'claude' }, 'linux'), agents, {});
 
-        expect([...engines.keys()]).toEqual(['fake', 'claude']);
         expect(engines.get('claude')).toBeInstanceOf(ClaudeEngine);
         expect(engines.get('claude')?.id).toBe('claude');
+        expect(engines.get('cursor')).toBeInstanceOf(AcpEngine);
+        expect(engines.get('claude')).toBe(engines.get('claude'));
+        engines.stop();
     });
 
     test('the Claude settings are read from the environment given, and an invalid one stops the daemon from starting', () => {
         const config = loadConfig({ CLOWDY_ENGINE: 'claude' }, 'linux');
 
-        expect(() => createEngines(config, { CLOWDY_CLAUDE_AUTH: 'api-key' })).toThrow(/CLOWDY_CLAUDE_API_KEY/);
-        expect(() => createEngines(loadConfig({}, 'linux'), { CLOWDY_CLAUDE_AUTH: 'api-key' })).not.toThrow();
+        expect(() => createEngines(config, agents, { CLOWDY_CLAUDE_AUTH: 'api-key' })).toThrow(/CLOWDY_CLAUDE_API_KEY/);
+        expect(() => createEngines(loadConfig({}, 'linux'), agents, { CLOWDY_CLAUDE_AUTH: 'api-key' })).not.toThrow();
     });
 });
 

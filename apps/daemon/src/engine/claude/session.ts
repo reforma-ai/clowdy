@@ -41,6 +41,8 @@ export interface SessionDeps {
     env: Env;
     query: typeof sdkQuery;
     totals: Map<string, Totals>;
+    /** Finds the user's own `claude`; see `ClaudeEngineDeps`. */
+    locate?: () => Promise<{ executable: string; path: string } | { error: string }>;
     /** The plugin directories a run loads: the system skills first, then the mirror of the user's skills. */
     pluginDirs(): string[];
     onInit(diagnostics: ClaudeDiagnostics): void;
@@ -148,7 +150,20 @@ export class ClaudeSession implements EngineSession {
         }, { once: true });
 
         try {
-            query = this.deps.query({ prompt: this.inbox.messages(), options: this.queryOptions(controller) });
+            // The user's own Claude Code, not the copy the SDK ships: what they installed and signed in to.
+            const located = config.executable === undefined && this.deps.locate ? await this.deps.locate() : undefined;
+
+            if (this.signal.aborted) {
+                return;
+            }
+
+            if (located && 'error' in located) {
+                yield { type: 'error', message: located.error, code: 'engine_missing' };
+
+                return;
+            }
+
+            query = this.deps.query({ prompt: this.inbox.messages(), options: this.queryOptions(controller, located) });
 
             for await (const message of query) {
                 yield* this.takeOutOfBand();
@@ -210,14 +225,14 @@ export class ClaudeSession implements EngineSession {
             .then(account => this.deps.onInit({ apiKeySource, claudeCodeVersion, model, subscriptionType: account?.subscriptionType, apiProvider: account?.apiProvider }));
     }
 
-    private queryOptions(controller: AbortController): Options {
+    private queryOptions(controller: AbortController, located?: { executable: string; path: string }): Options {
         const { config, env } = this.deps;
         const { tools, systemPrompt, cwd, model, resumeSessionId } = this.options;
 
         return {
             abortController: controller,
             cwd,
-            env: buildClaudeEnv(config, env),
+            env: buildClaudeEnv(config, located ? { ...env, PATH: located.path } : env),
             model,
             resume: resumeSessionId,
             // Claude Code's own prompt is what makes the agent a capable engineer; the runtime's text is added to it.
@@ -232,7 +247,7 @@ export class ClaudeSession implements EngineSession {
             includePartialMessages: true,
             forwardSubagentText: true,
             agentProgressSummaries: true,
-            pathToClaudeCodeExecutable: config.executable,
+            pathToClaudeCodeExecutable: config.executable ?? located?.executable,
             spawnClaudeCodeProcess: spawnInOwnGroup({
                 onSpawn: (pid, exited) => {
                     this.exited = exited;

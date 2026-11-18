@@ -11,9 +11,9 @@ One Claude-format plugin named `clowdy` (`.claude-plugin/plugin.json`) with one 
 Design settled in `.briefback/mvp/research/skills-in-engines.md` and built in Stage 8 of the MVP plan:
 
 - The daemon copies the package to `<dataDir>/system-skills/<contentHash>/` (read-only, outside the app bundle) and points every engine at that copy.
-- **Claude** gets it as `plugins: [{ type: "local", path }]`; skills load without any user or project settings sources. Subagents see the same plugin.
-- **Codex** (its engine is not built yet) gets the same `skills/` directory as an extra skill root and derives the same `clowdy:<skill>` names from the manifest.
-- A skill listing is advisory, so loading is made deterministic: the system prompt of every run carries one line pointing at the entry skill, and the first message of a run starts with it: `/clowdy:orchestrate` for an orchestrator, `/clowdy:executor` for an executor, `/clowdy:verify` for a verifier, then `Mode: autopilot` or `Mode: semi-manual` and the content.
+- **Claude** also gets it as `plugins: [{ type: "local", path }]`; skills load without any user or project settings sources. Subagents see the same plugin.
+- **Every other agent** (they run over ACP) has no plugin to load, and no other agent reads our manifest, so the skill text goes in as text: see the next point. The other skills are plain files in the copy, which the agent reads with its file tool when a skill says to follow them.
+- A skill listing is advisory, so loading is made deterministic: the system prompt of every run carries the entry skill, whole, in a `<skill>` block: `orchestrate` for an orchestrator, `executor` for an executor, `verify` for a verifier. The first message of a run starts with `Follow clowdy:<skill>. Mode: autopilot` (or `semi-manual`), then the content.
 - Project and user skills work alongside these. Plugin skills are namespaced, so a project skill never shadows one of ours.
 
 ## The skills

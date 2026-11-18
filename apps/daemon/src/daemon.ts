@@ -6,6 +6,7 @@ import { openDatabase } from './db/connection';
 import { listProjects } from './db/projects';
 import { DocsService } from './docs/service';
 import { createEngines } from './engine';
+import { AgentRegistry } from './engine/acp/registry';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
 import { RunDriver } from './runs/driver';
@@ -15,10 +16,10 @@ import { Wakeups } from './runs/wake';
 import { SkillsService } from './skills/service';
 import { Store } from './store';
 
-import type { DaemonInfo, EngineId } from '@clowdy/protocol';
+import type { DaemonInfo } from '@clowdy/protocol';
 import type { Services } from './commands';
 import type { Config } from './config';
-import type { AgentEngine } from './engine/types';
+import type { EngineRegistry } from './engine/types';
 
 export interface Daemon {
     info: DaemonInfo;
@@ -29,7 +30,9 @@ export interface Daemon {
 
 export interface DaemonOptions {
     /** Replaces the engine registry; tests use it to script engines. */
-    engines?: ReadonlyMap<EngineId, AgentEngine>;
+    engines?: EngineRegistry;
+    /** Replaces the agent registry; tests use it to keep the agents installed on the machine out of the run. */
+    agents?: AgentRegistry;
     heartbeatMs?: number;
     /** Called once the daemon has stopped because a client asked (`POST /v1/shutdown`); the entry point exits the process here. */
     onShutdown?: () => void;
@@ -44,17 +47,19 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         const store = new Store(openDatabase(join(config.dataDir, 'clowdy.db')));
         // Before the engines: they read `config.systemSkillsDir` and `config.extraPluginDirs` when a run starts.
         const skills = new SkillsService(store, config);
-        const engines = options.engines ?? createEngines(config);
+        const agents = options.agents ?? new AgentRegistry({ dataDir: config.dataDir });
+        const created = options.engines ? undefined : createEngines(config, agents);
+        const engines = options.engines ?? created as EngineRegistry;
 
         if (!engines.has(config.engine)) {
-            throw new Error(`CLOWDY_ENGINE=${ config.engine } is not available in this daemon`);
+            throw new Error(`CLOWDY_ENGINE=${ config.engine } is not an agent this daemon knows: pick fake, claude, codex, cursor, opencode, gemini, copilot, grok, omp, hermes, or the id of a custom agent`);
         }
 
         const runs = new RunService(store, config, engines);
         const driver: RunDriver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, driver }, run, mode) });
         const wakes = new Wakeups(store, runs, driver, config.timings.wakeWindowMs);
         const docs = new DocsService(store);
-        const services: Services = { config, store, runs, driver, docs, skills };
+        const services: Services = { config, store, runs, driver, docs, skills, agents };
 
         await runs.recover();
         docs.watchExisting(listProjects(store.db));
@@ -68,6 +73,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             await server.stop(true);
             wakes.stop();
             await driver.stop();
+            created?.stop();
             docs.stop();
             skills.stop();
             store.db.close();

@@ -70,8 +70,9 @@ function positive(env: Env, name: string, fallback: number): number {
 function settingSources(env: Env): SettingSource[] {
     const raw = env.CLOWDY_CLAUDE_SETTING_SOURCES;
 
+    // The user's own Claude Code settings apply, as they do in a terminal: Clowdy orchestrates the work, it does not rewrite the tool.
     if (raw === undefined || raw === '') {
-        return ['project'];
+        return ['user', 'project', 'local'];
     }
 
     if (raw === 'none') {

@@ -134,6 +134,7 @@ export function createRoutes(context: RouteContext): Route[] {
             pattern: /^\/v1\/projects\/([^/]+)\/docs\/file$/,
             handle: (_request, url, [id]) => json(docs.read(requireProject(store, id), url.searchParams.get('path') ?? '')),
         },
+        { method: 'GET', pattern: /^\/v1\/agents$/, handle: async () => json(await services.agents.list()) },
         {
             method: 'GET',
             pattern: /^\/v1\/skills$/,

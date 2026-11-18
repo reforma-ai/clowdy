@@ -211,7 +211,7 @@ describe('run_spawn', () => {
 
         expect(spawned).toMatchObject({ name: 'Executor 01', role: 'executor', status: expect.stringMatching(/queued|running/), duplicate: false });
         await waitFor(() => engine.turns.length === 1, 'the child to start');
-        expect(engine.turns[0].prompt).toBe('/clowdy:executor Mode: autopilot\n\nGoal: do A');
+        expect(engine.turns[0].prompt).toBe('Follow clowdy:executor. Mode: autopilot\n\nGoal: do A');
         expect(engine.turns[0].cwd).toBe(worktree);
         expect(engine.turns[0].systemPrompt).toContain('Follow clowdy:executor');
         expect(engine.turns[0].tools.map(tool => tool.name)).toEqual(['task_get', 'task_list', 'task_update', 'report_result']);
@@ -232,21 +232,19 @@ describe('run_spawn', () => {
     test('never offers the fake engine to a model: a child on it would report work nobody did', async () => {
         const { exec, orchestrator, task, toolsOf, h } = await setup();
         const a = await task('A');
-        const schema = toolsOf(orchestrator).find(tool => tool.name === 'run_spawn')!.inputSchema as { properties: { engine: { enum: string[] } } };
 
-        expect(schema.properties.engine.enum).toEqual(['claude', 'codex']);
         await expect(exec(orchestrator, 'run_spawn', { taskIds: [a.key], prompt: 'go', idempotencyKey: 'k', engine: 'fake' })).rejects.toThrow(/Invalid input for run_spawn/);
         expect(h.store.db.query('SELECT COUNT(*) AS n FROM runs WHERE parent_run_id = ?').get(orchestrator.id)).toEqual({ n: 0 });
     });
 
-    test('a verifier starts with /clowdy:verify, is bound to the tasks it checks, and waits for no dependency', async () => {
+    test('a verifier starts with the verify skill, is bound to the tasks it checks, and waits for no dependency', async () => {
         const { engine, exec, orchestrator, task, h } = await setup();
         const a = await task('A');
         const b = await task('B', { dependsOn: [a.key] });
         const spawned = await exec(orchestrator, 'run_spawn', { taskIds: [b.key], role: 'verifier', prompt: 'Claim: B works', idempotencyKey: 'REP-2-verifier-1' });
 
         await waitFor(() => engine.turns.length === 1, 'the verifier to start');
-        expect(engine.turns[0].prompt).toBe('/clowdy:verify Mode: autopilot\n\nClaim: B works');
+        expect(engine.turns[0].prompt).toBe('Follow clowdy:verify. Mode: autopilot\n\nClaim: B works');
         expect(engine.turns[0].systemPrompt).toContain('Follow clowdy:verify');
         expect(h.run(spawned.runId)).toMatchObject({ role: 'verifier', status: 'running' });
         expect(h.store.db.query('SELECT relation FROM run_task_links WHERE run_id = ?').all(spawned.runId)).toEqual([{ relation: 'verifies' }]);

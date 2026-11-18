@@ -364,6 +364,57 @@ describe('cancelling', () => {
     });
 });
 
+describe('the user\'s own Claude Code', () => {
+    const ok = simple(init(), result());
+
+    test('runs the program the user installed, with the search path of their shell, not the copy the SDK ships', async () => {
+        const fake = simple(init(), result());
+        const engine = new ClaudeEngine(claudeConfig, {}, { env: daemonEnv, query: fake.query, locate: async () => ({ executable: '/home/user/.local/bin/claude', path: '/login/bin:/usr/bin' }) });
+        const events = await collect(engine.start(startOptions()));
+        const options = fake.calls[0].options!;
+
+        expect(types(events)).toContain('done');
+        expect(options.pathToClaudeCodeExecutable).toBe('/home/user/.local/bin/claude');
+        expect(options.env?.PATH).toBe('/login/bin:/usr/bin');
+    });
+
+    test('a program set with CLOWDY_CLAUDE_BIN wins, and nothing is looked up', async () => {
+        let looked = false;
+        const fake = simple(init(), result());
+        const engine = new ClaudeEngine({ ...claudeConfig, executable: '/opt/claude' }, {}, { env: daemonEnv, query: fake.query, locate: async () => {
+            looked = true;
+
+            return { executable: '/elsewhere/claude', path: '/x' };
+        } });
+
+        await collect(engine.start(startOptions()));
+
+        expect(fake.calls[0].options!.pathToClaudeCodeExecutable).toBe('/opt/claude');
+        expect(looked).toBe(false);
+    });
+
+    test('a run cancelled while the program is being looked for starts nothing', async () => {
+        const abort = new AbortController();
+        const engine = new ClaudeEngine(claudeConfig, {}, { env: daemonEnv, query: ok.query, locate: async () => {
+            abort.abort();
+
+            return { executable: '/home/user/.local/bin/claude', path: '/usr/bin' };
+        } });
+        const events = await collect(engine.start(startOptions({ signal: abort.signal })));
+
+        expect(events).toEqual([]);
+        expect(ok.calls).toHaveLength(0);
+    });
+
+    test('when it is not installed the run fails with engine_missing before any process starts', async () => {
+        const engine = new ClaudeEngine(claudeConfig, {}, { env: daemonEnv, query: ok.query, locate: async () => ({ error: 'Claude Code is not installed: no `claude` command was found. Install it, then try again' }) });
+        const events = await collect(engine.start(startOptions()));
+
+        expect(events).toEqual([{ type: 'error', message: 'Claude Code is not installed: no `claude` command was found. Install it, then try again', code: 'engine_missing' }]);
+        expect(ok.calls).toHaveLength(0);
+    });
+});
+
 describe('the claude process', () => {
     /** A fake `query` whose "claude" is a real shell process started the way the SDK would start it. */
     function withProcess(script: string, after: (child: { pid: number }) => AsyncGenerator<ReturnType<typeof message>>) {

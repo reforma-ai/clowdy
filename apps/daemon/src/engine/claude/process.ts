@@ -1,25 +1,11 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+
+import { killProcessGroup } from '../process';
 
 import type { SpawnedProcess, SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
 
 /** After a polite stop, the group gets this long before it is killed outright. */
 const KILL_AFTER_MS = 2000;
-
-/** Signals every process of the group `pgid`. On Windows, which has no groups, it stops the process tree of `pgid`. */
-export function killProcessGroup(pgid: number, signal: NodeJS.Signals): void {
-    if (process.platform === 'win32') {
-        spawnSync('taskkill', ['/PID', String(pgid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-
-        return;
-    }
-
-    try {
-        process.kill(-pgid, signal);
-    }
-    catch {
-        // The group is already gone.
-    }
-}
 
 export interface SpawnHooks {
     /** Called once the process exists: its pid (also its group id), and a promise that settles when it has exited. */

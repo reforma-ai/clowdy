@@ -1,5 +1,7 @@
 // Adapted from Reforma's provider-error-message.ts and payer-failure.ts (apps/sandbox/src/chat/agent/helpers): readable
 // text out of nested errors and wire bodies, and the limit / transient / access taxonomy, on Claude's own error texts.
+import { readableMessage } from '../error-text';
+
 import type { ClaudeAuth } from './config';
 
 /** Stable identifiers of why a Claude turn failed. They go out as `EngineEvent.error.code`. */
@@ -38,7 +40,6 @@ export interface FailureInput {
     subtype?: string;
 }
 
-const MAX_DEPTH = 4;
 const STDERR_CHARS = 500;
 
 const NOT_LOGGED_IN = /not logged in|please run \/login|claude auth login|oauth token (?:has )?(?:expired|been revoked)|invalid (?:api key|x-api-key)|invalid authentication credentials/i;
@@ -53,52 +54,6 @@ const MISSING_EXECUTABLE = /ENOENT|executable not found|native cli binary .* not
 const CRASH = /exited with code|terminated by signal|process exited/i;
 const API_STATUS = /\bAPI Error:?\s*(\d{3})\b/i;
 const ACCOUNT_KINDS = ['oauth_org_not_allowed', 'account_on_hold', 'verification_required', 'cloud_credential_error'];
-
-/** Replaces a JSON error body inside `text` (`API Error: 529 {"error":{"message":"Overloaded"}}`) with its message. */
-function unwrapBody(text: string, depth: number): string {
-    const start = text.indexOf('{');
-
-    if (start < 0 || depth > MAX_DEPTH) {
-        return text.trim();
-    }
-
-    try {
-        const body = JSON.parse(text.slice(start)) as { error?: { message?: unknown }; message?: unknown };
-        const inner = body.error?.message ?? body.message;
-
-        if (typeof inner === 'string' && inner.trim()) {
-            return [text.slice(0, start).trim(), unwrapBody(inner, depth + 1)].filter(Boolean).join(' ');
-        }
-    }
-    catch {
-        // Not JSON after all: keep the prose.
-    }
-
-    return text.trim();
-}
-
-/** The text a person should read from a thrown error, an API error body or a nested `cause` chain. */
-export function readableMessage(error: unknown, depth = 0): string {
-    if (depth > MAX_DEPTH || error == null) {
-        return '';
-    }
-
-    if (typeof error === 'string') {
-        return unwrapBody(error, 0);
-    }
-
-    if (typeof error !== 'object') {
-        return String(error);
-    }
-
-    const record = error as { message?: unknown; error?: unknown; cause?: unknown };
-
-    if (typeof record.message === 'string' && record.message.trim()) {
-        return unwrapBody(record.message, 0);
-    }
-
-    return readableMessage(record.error, depth + 1) || readableMessage(record.cause, depth + 1);
-}
 
 function resetPhrase(text: string): string | undefined {
     return RESET.exec(text)?.[1].trim().replace(/[\s,;:]+$/, '') || undefined;

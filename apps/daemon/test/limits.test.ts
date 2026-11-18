@@ -109,6 +109,26 @@ describe('engine limits', () => {
         expect(restarted.pausedUntil('claude')).toBe(now() + MINUTE);
     });
 
+    test('an agent with no cap of its own gets the default one, lowered and restored like any other, and its pause survives a restart', () => {
+        const { limits, advance, now } = clocked();
+
+        expect(limits.capOf('cursor')).toBe(4);
+        limits.warn('cursor');
+        expect(limits.capOf('cursor')).toBe(2);
+        limits.transientFailure('cursor');
+        expect(limits.nextChange()).toBe(now() + 5 * MINUTE);
+        advance(5 * MINUTE);
+        expect(limits.capOf('cursor')).toBe(2);
+        advance(5 * MINUTE);
+        expect(limits.capOf('cursor')).toBe(4);
+
+        const restarted = new EngineLimits({ claude: 6 }, { store: { pauses: [{ engine: 'my-agent', until: now() + MINUTE }], save: () => undefined }, clock: now, defaultCap: 3 });
+
+        expect(restarted.pausedUntil('my-agent')).toBe(now() + MINUTE);
+        expect(restarted.capOf('my-agent')).toBe(3);
+        expect(restarted.nextChange()).toBe(now() + MINUTE);
+    });
+
     test('a rejection without a reset time pauses for five minutes', () => {
         const { limits, now } = clocked();
 

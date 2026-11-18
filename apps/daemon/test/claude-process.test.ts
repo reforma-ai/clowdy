@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { killProcessGroup, spawnInOwnGroup } from '../src/engine/claude/process';
+import { spawnInOwnGroup } from '../src/engine/claude/process';
+import { killProcessGroup } from '../src/engine/process';
 import { sleep, until } from './claude-fakes';
 
 import type { ChildProcess } from 'node:child_process';

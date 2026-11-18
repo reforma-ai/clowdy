@@ -95,7 +95,7 @@ describe('status machine', () => {
         const statuses = h.events().flatMap(event => (event.data.type === 'run.upserted' && event.data.run.id === runId ? [event.data.run.status] : []));
 
         expect(statuses.filter((status, index) => status !== statuses[index - 1])).toEqual(['queued', 'running', 'succeeded']);
-        expect(h.run(runId)).toMatchObject({ result: expect.stringContaining('Complete task REP-1: A'), sessionId: expect.stringContaining('gate-/clowdy:orchestrate Mode: autopilot') });
+        expect(h.run(runId)).toMatchObject({ result: expect.stringContaining('Complete task REP-1: A'), sessionId: expect.stringContaining('gate-Follow clowdy:orchestrate. Mode: autopilot') });
     });
 
     test('a task moves with its run: in progress, review on success, back to todo when the run dies', async () => {

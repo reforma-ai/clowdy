@@ -17,7 +17,7 @@ import { canTransition, NEEDS_REASON } from './transitions';
 import type { ChatMode, EngineId, Project, QuestionOption, Run, RunRole, RunStatus, RunUsage, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunProcess } from '../db/runs';
-import type { AgentEngine } from '../engine/types';
+import type { EngineRegistry } from '../engine/types';
 import type { Store } from '../store';
 
 const CANCEL_REASON = 'Cancelled by user';
@@ -69,8 +69,9 @@ export class RunService {
     private asking = new Set<string>();
     private ladders = new Set<ReturnType<typeof setTimeout>>();
 
-    constructor(private store: Store, private config: Config, private engines: ReadonlyMap<EngineId, AgentEngine>) {
+    constructor(private store: Store, private config: Config, private engines: EngineRegistry) {
         this.limits = new EngineLimits(config.engineCaps, {
+            defaultCap: config.defaultEngineCap,
             store: { pauses: listEnginePauses(store.db), save: (engine, until) => saveEnginePause(store.db, engine, until) },
             jitterMs: config.timings.pauseJitterMs,
         });
