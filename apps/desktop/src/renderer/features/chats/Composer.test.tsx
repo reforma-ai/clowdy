@@ -6,14 +6,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RootStoreProvider, type RootStore } from '../../stores';
 import { Composer } from './Composer';
 
-import type { Chat, CommandResult } from '@clowdy/protocol';
+import type { Chat, CommandResult, DocNode, Run, SkillEntry, Task } from '@clowdy/protocol';
+import type { Editor } from '@tiptap/core';
 import type { CommandInput } from '../../daemon/transport';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const newChat = (id: string): Chat => ({ id, projectId: 'p', title: 'New chat', mode: 'autopilot', createdAt: 0, updatedAt: 0 });
+const runWith = (status: Run['status']) => ({ id: 'r-1', status }) as Run;
 const accepted: CommandResult = { ok: true, requestId: 'request-1', data: {} };
 const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'unavailable', message: 'The daemon cannot be reached' } };
+
+const tasks = [{ id: 't-24', number: 24, key: 'CAR-24', title: 'Rebuild the form as one view' }] as Task[];
+const docs: DocNode[] = [{ path: 'decisions', name: 'decisions', kind: 'dir', children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }] }];
+const skill = (name: string, source: SkillEntry['source']): SkillEntry => ({ id: `${ source }:${ name }`, name, source, description: `${ name } skill`, enabled: true, tokens: 20, engines: [] });
+const skills = [skill('clowdy:orchestrate', 'system'), skill('user:review', 'user')];
 
 let container: HTMLDivElement;
 let root: Root;
@@ -22,28 +29,39 @@ let sent: CommandInput[];
 let chat: Chat;
 let chatNumber = 0;
 
-function mount(result: CommandResult) {
+/** What the pick lists read: the project's tasks, and the daemon's documents, files and skills. */
+const findFiles = async (_projectId: string, query: string) => ['src/booking/index.tsx', 'src/booking/price.ts'].filter(path => path.includes(query));
+const transport = {
+    getDocsTree: vi.fn(async () => docs),
+    getProjectFiles: vi.fn(findFiles),
+    getSkills: vi.fn(async () => ({ entries: skills, tokens: 0, warnings: [] })),
+};
+
+async function mount(result: CommandResult | Promise<CommandResult>, run?: Run) {
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
 
         return result;
     });
+    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: tasks } };
 
-    act(() => {
+    await act(async () => {
         root.render(
-            <RootStoreProvider value={ { command } as unknown as RootStore }>
-                <Composer chat={ chat } modeLocked={ false } />
+            <RootStoreProvider value={ store as unknown as RootStore }>
+                <Composer chat={ chat } run={ run } />
             </RootStoreProvider>
         );
     });
 }
 
-const field = () => container.querySelector('textarea') as HTMLTextAreaElement;
+const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]')!;
+const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
+const text = () => editor().getText();
+const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`);
 
-function type(text: string) {
+function type(value: string) {
     act(() => {
-        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(field(), text);
-        field().dispatchEvent(new Event('input', { bubbles: true }));
+        editor().commands.insertContent(value);
     });
 }
 
@@ -54,6 +72,7 @@ async function press(key: string, shiftKey = false) {
 }
 
 beforeEach(() => {
+    transport.getProjectFiles.mockImplementation(findFiles);
     sent = [];
     chat = newChat(`c-${ ++chatNumber }`);
     container = document.createElement('div');
@@ -68,63 +87,319 @@ afterEach(() => {
 
 describe('Composer', () => {
     it('sends the trimmed text to the chat on Enter and empties the field', async () => {
-        mount(accepted);
+        await mount(accepted);
         type('  Add a cancel button  ');
         await press('Enter');
 
         expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Add a cancel button' }]);
-        expect(field().value).toBe('');
+        expect(text()).toBe('');
     });
 
     it('does not send on Shift+Enter', async () => {
-        mount(accepted);
+        await mount(accepted);
         type('first line');
         await press('Enter', true);
 
         expect(sent).toEqual([]);
-        expect(field().value).toBe('first line');
+        expect(text()).toContain('first line');
     });
 
     it('sends nothing for an empty or blank message', async () => {
-        mount(accepted);
+        await mount(accepted);
         await press('Enter');
-        type('   \n ');
+        type('   ');
         await press('Enter');
 
         expect(sent).toEqual([]);
     });
 
     it('puts the words back when the daemon refuses the message', async () => {
-        mount(refused);
+        await mount(refused);
         type('Add a cancel button');
         await press('Enter');
 
         expect(sent).toHaveLength(1);
-        expect(field().value).toBe('Add a cancel button');
+        expect(text()).toBe('Add a cancel button');
+    });
+
+    it('does not put the refused words over what was typed since', async () => {
+        let refuse!: (result: CommandResult) => void;
+        const pending = new Promise<CommandResult>((resolve) => {
+            refuse = resolve;
+        });
+
+        await mount(pending);
+        type('first try');
+        await press('Enter');
+        type('second try');
+        await act(async () => refuse(refused));
+
+        expect(text()).toBe('second try');
+    });
+
+    it('sends bold text as markdown', async () => {
+        await mount(accepted);
+        act(() => {
+            editor().commands.insertContent([
+                { type: 'text', text: 'Make the ' },
+                { type: 'text', text: 'title', marks: [{ type: 'bold' }] },
+                { type: 'text', text: ' bigger' },
+            ]);
+        });
+
+        expect(text()).toBe('Make the title bigger');
+
+        await press('Enter');
+
+        expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Make the **title** bigger' }]);
     });
 
     it('sends with the send button and keeps it off while the field is empty', async () => {
-        mount(accepted);
+        await mount(accepted);
 
-        const send = () => container.querySelector('button[aria-label="Send"]') as HTMLButtonElement;
-
-        expect(send().disabled).toBe(true);
+        expect(button('Send')!.disabled).toBe(true);
 
         type('Hello');
-        expect(send().disabled).toBe(false);
+        expect(button('Send')!.disabled).toBe(false);
 
-        await act(async () => send().click());
+        await act(async () => button('Send')!.click());
 
         expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Hello' }]);
     });
 
-    it('keeps an unsent draft for the chat when it is shown again', () => {
-        mount(accepted);
+    it('puts the caret back in the field after the send button, which is off by then', async () => {
+        const elsewhere = document.body.appendChild(document.createElement('input'));
+
+        await mount(accepted);
+        // The editor takes the caret a moment after it mounts; let that pass before moving it away.
+        await act(async () => {
+            await new Promise(requestAnimationFrame);
+        });
+        type('Hello');
+        elsewhere.focus();
+
+        expect(document.activeElement).toBe(elsewhere);
+
+        await act(async () => button('Send')!.click());
+        elsewhere.remove();
+
+        expect(document.activeElement).toBe(field());
+    });
+
+    it('keeps an unsent draft for the chat when it is shown again', async () => {
+        await mount(accepted);
         type('half a thought');
         act(() => root.unmount());
         root = createRoot(container);
-        mount(accepted);
+        await mount(accepted);
 
-        expect(field().value).toBe('half a thought');
+        expect(text()).toBe('half a thought');
+    });
+
+    describe('mentions', () => {
+        const options = () => [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+        const optionTexts = () => options().map(option => option.textContent ?? '');
+
+        /** Types into the field and waits for the pick list the text opens. */
+        const open = async (typed: string) => {
+            await act(async () => {
+                editor().commands.focus();
+                editor().commands.insertContent(typed);
+                await new Promise(requestAnimationFrame);
+            });
+        };
+
+        const choose = async (label: string) => {
+            const option = options().find(candidate => candidate.textContent?.includes(label))!;
+            const pointer = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, width: 1, height: 1, pressure: 0.5, detail: 1 };
+
+            await act(async () => {
+                option.dispatchEvent(new PointerEvent('pointerdown', pointer));
+                option.dispatchEvent(new PointerEvent('pointerup', pointer));
+                option.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
+            });
+        };
+
+        it('lists tasks, documents and files after @, and sends a chosen task as its key', async () => {
+            await mount(accepted);
+            await open('Do @');
+
+            expect(optionTexts()).toEqual([
+                expect.stringContaining('CAR-24'),
+                expect.stringContaining('pricing.md'),
+                expect.stringContaining('index.tsx'),
+                expect.stringContaining('price.ts'),
+            ]);
+
+            await choose('CAR-24');
+            await press('Enter');
+
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Do CAR-24' }]);
+        });
+
+        it('narrows the list as the person types and sends a file as @path', async () => {
+            await mount(accepted);
+            await open('Look at @price');
+
+            expect(optionTexts()).toEqual([expect.stringContaining('price.ts')]);
+
+            await choose('price.ts');
+            await press('Enter');
+
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Look at @src/booking/price.ts' }]);
+        });
+
+        it('sends a document as @path from the project folder', async () => {
+            await mount(accepted);
+            await open('Follow @decisions');
+            await choose('pricing.md');
+            await press('Enter');
+
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Follow @.clowdy/docs/decisions/pricing.md' }]);
+        });
+
+        it('still lists the rest when one source is down', async () => {
+            transport.getProjectFiles.mockRejectedValue(new Error('offline'));
+            await mount(accepted);
+            await open('Do @');
+
+            expect(optionTexts()).toEqual([expect.stringContaining('CAR-24'), expect.stringContaining('pricing.md')]);
+        });
+
+        it('lists the person\'s skills after /, not the system ones, and asks for the chosen one in words', async () => {
+            await mount(accepted);
+            await open('/');
+
+            expect(optionTexts()).toEqual([expect.stringContaining('/review')]);
+
+            await choose('/review');
+            await type('the diff');
+            await press('Enter');
+
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Use the skill "review" the diff' }]);
+        });
+
+        it('asks for the skills again after a read that failed, not once the skills change', async () => {
+            transport.getSkills.mockRejectedValueOnce(new Error('offline'));
+            await mount(accepted);
+            await open('/');
+            await open('r');
+
+            expect(optionTexts()).toEqual([expect.stringContaining('/review')]);
+        });
+
+        it('sends the message on Enter when the list found nothing, text after the @ included', async () => {
+            await mount(accepted);
+            await open('Mail me@home or @zzz');
+
+            expect(options()).toEqual([]);
+
+            await press('Enter');
+
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Mail me@home or @zzz' }]);
+        });
+
+        it('keeps a mention in the draft when the chat is shown again', async () => {
+            await mount(accepted);
+            await open('Do @');
+            await choose('CAR-24');
+            act(() => root.unmount());
+            root = createRoot(container);
+            await mount(accepted);
+            await press('Enter');
+
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Do CAR-24' }]);
+        });
+    });
+
+    describe('pressing the card', () => {
+        const mouseDown = async (target: Element) => {
+            const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+
+            await act(async () => {
+                target.dispatchEvent(event);
+            });
+
+            return event;
+        };
+        // The button row has gaps between its controls: space that is not a control.
+        const space = () => button('Send')!.parentElement!.parentElement!;
+
+        it('puts the caret in the text when the press lands on the card\'s own space', async () => {
+            await mount(accepted);
+            (document.activeElement as HTMLElement | null)?.blur();
+
+            const event = await mouseDown(space());
+
+            expect(event.defaultPrevented).toBe(true);
+            expect(document.activeElement).toBe(field());
+        });
+
+        it('leaves a press on a control to the control', async () => {
+            await mount(accepted, runWith('running'));
+
+            expect((await mouseDown(container.querySelector('[role="button"][aria-label="Mode"]')!)).defaultPrevented).toBe(false);
+            expect((await mouseDown(button('Stop')!)).defaultPrevented).toBe(false);
+        });
+
+        it('leaves a press inside the open mode list to the list', async () => {
+            await mount(accepted);
+
+            const trigger = container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
+
+            await act(async () => {
+                trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+                trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+                trigger.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+                trigger.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+                trigger.click();
+            });
+
+            const list = document.querySelector('[role="listbox"]')!.closest('[data-trigger="Select"]')!;
+
+            expect((await mouseDown(list)).defaultPrevented).toBe(false);
+        });
+    });
+
+    describe('while the orchestrator works', () => {
+        it('keeps the mode as it is', async () => {
+            await mount(accepted, runWith('running'));
+
+            expect(container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!.disabled).toBe(true);
+        });
+
+        it('lets the mode change when it is not working', async () => {
+            await mount(accepted, runWith('succeeded'));
+
+            expect(container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!.disabled).toBe(false);
+        });
+
+        it('turns the send button into Stop while nothing is typed, and Stop cancels the run', async () => {
+            await mount(accepted, runWith('running'));
+
+            expect(button('Send')).toBeNull();
+
+            await act(async () => button('Stop')!.click());
+
+            expect(sent).toEqual([{ type: 'run.cancel', runId: 'r-1' }]);
+        });
+
+        it('is Send again once something is typed, so a message still reaches the orchestrator', async () => {
+            await mount(accepted, runWith('running'));
+            type('Use the blue one');
+
+            expect(button('Stop')).toBeNull();
+
+            await act(async () => button('Send')!.click());
+
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Use the blue one' }]);
+        });
+
+        it('has no Stop for a run that is over', async () => {
+            await mount(accepted, runWith('succeeded'));
+
+            expect(button('Stop')).toBeNull();
+            expect(button('Send')).not.toBeNull();
+        });
     });
 });

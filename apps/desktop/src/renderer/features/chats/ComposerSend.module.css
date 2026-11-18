@@ -1,0 +1,12 @@
+/* A ring that turns around the stop button while the orchestrator works. */
+.stopRing {
+    --spinner-size: 100%;
+    --spinner-width: 2px;
+    --spinner-color: var(--clowdy-button-color);
+    --spinner-foreground: color-mix(in srgb, var(--clowdy-button-color) 20%, transparent);
+
+    position: absolute;
+    inset: 1px;
+    pointer-events: none;
+    z-index: 0;
+}

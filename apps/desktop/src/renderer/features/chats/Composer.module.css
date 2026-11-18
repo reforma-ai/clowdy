@@ -1,34 +1,94 @@
 @reference '@clowdy/styles/rulesets';
 
-.composer {
+@property --border-angle {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+}
+
+@keyframes border-angle-spin {
+    to {
+        --border-angle: 360deg;
+    }
+}
+
+/* The card: a plate with a slow soft-colored ring running around it, and a glow once the text has focus. */
+.surface {
+    @ruleset typography-text-md;
+    position: relative;
     display: flex;
-    align-items: flex-end;
-    gap: var(--spacing-md);
-    padding: var(--spacing-md);
-    border: 1px solid var(--color-secondary-muted-border);
+    flex-direction: column;
+    width: 100%;
+    padding: var(--spacing-6);
     border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
     corner-shape: superellipse(var(--squircle-value));
+    --composer-border-coral: rgba(250, 136, 84, 0.16);
+    --composer-border-blue: rgba(91, 141, 239, 0.28);
+    --composer-border-pink: rgba(255, 161, 231, 0.26);
     background-color: var(--color-chat-composer);
-    transition: border-color 150ms ease-out;
+    transition: box-shadow var(--transition-duration) var(--ease-in-out);
+    line-height: var(--spacing-20);
 }
 
-.composer:focus-within {
-    border-color: var(--color-primary-muted-border);
+:global(.dark) .surface {
+    --composer-border-coral: rgba(250, 136, 84, 0.15);
+    --composer-border-blue: rgba(91, 141, 239, 0.2);
+    --composer-border-pink: rgba(255, 161, 231, 0.18);
 }
 
-/* The text field is the box's own: no plate, centered on the 30px buttons when it holds one line. */
-.field {
-    --clowdy-textarea-min-height: var(--spacing-30);
-    --clowdy-textarea-padding-block: var(--spacing-6);
-    --clowdy-textarea-padding-inline: var(--spacing-xs);
+.surface:focus-within {
+    box-shadow: 0 0 var(--spacing-20) var(--spacing-1) var(--color-chat-shadow);
+}
 
-    flex: 1;
+.surface::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    corner-shape: inherit;
+    padding: 1px;
+    pointer-events: none;
+    background-image: conic-gradient(from var(--border-angle), var(--composer-border-coral), var(--composer-border-blue) 50%, var(--composer-border-pink), var(--composer-border-coral));
+    animation: border-angle-spin 6s linear infinite;
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+}
+
+.main {
+    position: relative;
+    display: flex;
+    flex-direction: column;
     min-width: 0;
+    padding: var(--spacing-sm);
+    cursor: text;
 }
 
-/* About six lines, then it scrolls. */
-.input {
-    max-height: calc(var(--clowdy-textarea-line-height) * 6 + var(--clowdy-textarea-padding-block) * 2);
+/* The text grows with what is typed, up to a share of the window, then scrolls. */
+.field :global([contenteditable='true']) {
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-xs);
+    margin-top: var(--spacing-sm);
+    cursor: default;
+}
+
+.end {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
 }
 
 .mode {

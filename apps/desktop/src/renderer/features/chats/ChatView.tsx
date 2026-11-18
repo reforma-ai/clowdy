@@ -67,7 +67,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             ) }
 
             <div className={ styles.composer }>
-                <Composer chat={ chat } modeLocked={ isRunActive(run) } />
+                <Composer chat={ chat } run={ run } />
             </div>
         </>
     );

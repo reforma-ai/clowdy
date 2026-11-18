@@ -1,0 +1,8 @@
+/* A chip in the text is part of it, not a control: no hand, and the plate does not react to the pointer. */
+.chip {
+    cursor: inherit;
+}
+
+.chip:hover {
+    background-color: var(--color-secondary-muted-light);
+}
