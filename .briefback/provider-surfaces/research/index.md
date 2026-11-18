@@ -13,6 +13,8 @@ Question: what the app needs to (1) show the usage of the providers in the windo
 
 ## Pages
 
+- [session-verification.md](session-verification.md): real one-word turns on all three agents: what reaches a turn, what survives a resume, the context readings and `/compact`.
+
 - [session-model-effort.md](session-model-effort.md): what a chat/run stores, how engine, model and effort are chosen and applied, the three adapters' options and probes, gaps in the daemon and protocol.
 - [reforma-model-picker.md](reforma-model-picker.md): where the picker lives in Reforma, its exact look, data model, primitive parity, what to leave out, port checklist.
 - [header-usage-and-readonly.md](header-usage-and-readonly.md): the header band, the data a status needs, bb's popover, chats and the provider, the composer's place.

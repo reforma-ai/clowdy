@@ -23,7 +23,7 @@ Chat binding
 - The daemon applies the chat's `model`, then `effort`, in every turn: after `session/set_config_option` for the model it reads the returned options and sets the effort on the `thought_level` select option that has a choice of that value (so Cursor's per-model option ids need no special case). A set whose current value already equals the wanted one is skipped. A value the agent does not offer is logged and the agent keeps its own.
 - Efforts are the agent's own strings. The desktop labels them: `xhigh` and `extra-high` read "Extra high", `max` "Max", `ultra` "Ultra", `none` "None", `minimal` "Minimal"; any other string is capitalised with `-` and `_` turned into spaces.
 - Executors and verifiers a chat starts inherit its model and effort when they run on the same engine as the parent; a different engine takes the project's model. `run_spawn` may still name its own.
-- Clowdy always sends explicit values from the desktop, because a session otherwise starts on the person's own agent settings. Legacy chats take their engine and model from the orchestrator run (migration backfill).
+- Verified with real turns (`research/session-verification.md`): a resumed session comes back on the person's own agent settings for all three agents (Claude `sonnet`/`xhigh` here, Codex `gpt-6-sol`/`high`, Cursor whatever any process set last), even after a turn that used others, so model and effort are applied at the start of every turn. Clowdy always sends explicit values from the desktop, because a session otherwise starts on the person's own agent settings. Legacy chats take their engine and model from the orchestrator run (migration backfill).
 - `chat.send` is refused at once with a clear message when the chat's provider is switched off in Clowdy.
 
 Picker
@@ -39,10 +39,10 @@ Read-only and hand-off
 
 Context usage
 - The composer shows how full the chat's context window is, like Reforma's context ring: a small ring beside the model pill; its popover says "Context usage", the percent full with `~92K / 200K` and a bar, and a Compact button. One total only (no split into instructions, tools and conversation). The numbers come from the agent's own `usage_update { used, size }`, which the Claude and Codex adapters send; the daemon keeps the latest reading on the orchestrator's run, so a finished chat still shows it. A chat with no reading shows no ring.
-- Compact sends the agent's own `/compact` command to the orchestrator as a turn (both adapters implement it); it is offered while the orchestrator is idle and refused while it works. The stream shows what the agent reports for it.
+- Compact sends the agent's own `/compact` command to the orchestrator as a turn (Claude and Codex implement it; each reports a "Compact conversation" tool call and a lower `used`); it is offered while the orchestrator is idle and refused while it works. The stream shows what the agent reports for it.
 
 Cursor
-- Cursor joins by its own stage after its behaviour was verified with real prompts (`research/session-verification.md`): its catalog comes from `cursor/list_available_models` and the client advertises `_meta.parameterizedModelPicker`.
+- Cursor joins by its own stage. Verified: a model and effort set over ACP do reach the turn, but `session/set_config_option` also changes the model every new `cursor-agent` process of the person starts on (it is global), so Clowdy does not use it. A run selects Cursor's model and level at launch, `cursor-agent --model '<family>[<effortKey>=<level>]' acp` (accepted, and the turn ran on it); the stage first checks that this leaves the person's own default alone. The catalog comes from `cursor/list_available_models` (48 families with their effort option's key, levels and default). Cursor sends no `usage_update` and does not advertise `/compact`, so it has no context ring.
 
 **Reuse:** `AgentModels`/`AgentModel` (`packages/protocol/src/agents.ts`), `ModelCatalog` (`apps/daemon/src/providers/models.ts`), `useAgents()` and `providerAgents` (`apps/desktop/src/renderer/stores`, `features/settings/providers/providerView.ts`), `ProviderIcon`, `UsageBlock` rows, `formatRemaining` (`shared/time.ts`), `Popover`, `ListBox`, `Scrollable`, `Button` (`@clowdy/components`), `browserStorage`/`readStored`/`writeStored` (`stores/storage.ts`), `composerFiles`/`useComposerFiles` for the hand-off file, `ui.openDraft()` (`stores/UiStore.ts`).
 
@@ -67,6 +67,7 @@ Cursor
   - [ ] `chat.send` answers `unavailable` with "`<Agent>` is switched off in Clowdy" before anything is written, for a chat whose resolved engine is switched off.
   - [ ] `RunDriver` passes the run's `effort` in `EngineStartOptions`; `AcpSession` applies the model, then the effort on the matching `thought_level` option, skipping no-op sets and warning on unknown values.
   - [ ] Spawned runs inherit `model` and `effort` from the parent on the same engine; native sub-agents copy `effort` too.
+  - [ ] Codex's warning on resuming a session recorded with another model ("This session was recorded with model ... but is resuming with ...") is not shown as an assistant message: the turn changes the model right after it.
 
 **Files**
 
