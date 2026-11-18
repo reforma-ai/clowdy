@@ -50,6 +50,7 @@ src/commands/            One handler per command type, typed against the protoco
 src/runs/                The run runtime, see "Runtime": RunService, Scheduler, EngineLimits, RunDriver, tools, wake-ups, native sub-agents
 src/engine/              AgentEngine seam (types.ts), createEngines, the scripted fake engine, `acp/` (every agent, Claude Code and Codex included, over ACP)
 src/docs/                Docs folder service, path safety, tree, watcher
+src/files/               Project file search for `@` mentions: git's tracked and unignored files (a walk outside a repository), ranked by name, listing cached for 5 s
 src/skills/              System skills copy, skill catalog, enabled state, the user skills plugin, folder watchers (see "Skills")
 src/http/                Server, guards (host, origin, bearer, protocol), routes, SSE
 ```

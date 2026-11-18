@@ -19,6 +19,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/tasks/:id/detail               -> TaskDetail
  * GET  /v1/projects/:id/docs              -> DocsTree
  * GET  /v1/projects/:id/docs/file?path=   -> DocFile
+ * GET  /v1/projects/:id/files?query=&limit= -> string[] (paths below the project folder that contain every word of `query`,
+ *                                            best match first, at most `limit` (default 40, most 100); git's tracked and
+ *                                            unignored files, or a walk outside a repository; never the project's `.clowdy` folder)
  * POST /v1/shutdown                       -> { ok: true }; stops the daemon gracefully (live engines are aborted, their runs
  *                                            come back `interrupted` at the next start, nothing is marked cancelled)
  * GET  /v1/skills?projectId=              -> SkillCatalog (system and user skills; with `projectId` also that project's skills)
@@ -35,6 +38,7 @@ export const ROUTES = {
     taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
     docsFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs/file`,
+    projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     skills: '/v1/skills',
     agents: '/v1/agents',
     shutdown: '/v1/shutdown',

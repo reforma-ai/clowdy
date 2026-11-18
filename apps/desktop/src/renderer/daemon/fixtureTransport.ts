@@ -142,6 +142,12 @@ export class FixtureTransport implements Transport {
         return { path, content, hash: docHash(content) };
     }
 
+    async getProjectFiles(projectId: ProjectId, query: string, limit = 40): Promise<string[]> {
+        const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+
+        return (this.#data.files[projectId] ?? []).filter(path => words.every(word => path.toLowerCase().includes(word))).slice(0, limit);
+    }
+
     async getSkills(projectId?: ProjectId): Promise<SkillCatalog> {
         if (projectId !== undefined) this.#project(projectId);
 

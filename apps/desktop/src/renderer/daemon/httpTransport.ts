@@ -89,6 +89,14 @@ export class HttpTransport implements Transport {
         return this.#get(`${ ROUTES.docsFile(projectId) }?path=${ encodeURIComponent(path) }`);
     }
 
+    getProjectFiles(projectId: ProjectId, query: string, limit?: number): Promise<string[]> {
+        const params = new URLSearchParams({ query });
+
+        if (limit !== undefined) params.set('limit', String(limit));
+
+        return this.#get(`${ ROUTES.projectFiles(projectId) }?${ params }`);
+    }
+
     getSkills(projectId?: ProjectId): Promise<SkillCatalog> {
         return this.#get(projectId === undefined ? ROUTES.skills : `${ ROUTES.skills }?projectId=${ encodeURIComponent(projectId) }`);
     }

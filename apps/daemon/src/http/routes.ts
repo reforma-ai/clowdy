@@ -31,6 +31,10 @@ interface Route {
     handle(request: Request, url: URL, params: string[]): Response | Promise<Response>;
 }
 
+/** How many paths a file search answers with when it is not told, and the most it ever does. */
+const DEFAULT_FILE_LIMIT = 40;
+const MAX_FILE_LIMIT = 100;
+
 function integerParam(raw: string | null, name: string, fallback: number): number {
     if (raw === null) {
         return fallback;
@@ -46,7 +50,7 @@ function integerParam(raw: string | null, name: string, fallback: number): numbe
 
 export function createRoutes(context: RouteContext): Route[] {
     const { services } = context;
-    const { store, docs, skills } = services;
+    const { store, docs, files, skills } = services;
 
     return [
         {
@@ -133,6 +137,15 @@ export function createRoutes(context: RouteContext): Route[] {
             method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/docs\/file$/,
             handle: (_request, url, [id]) => json(docs.read(requireProject(store, id), url.searchParams.get('path') ?? '')),
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/files$/,
+            handle: async (_request, url, [id]) => {
+                const limit = Math.min(Math.max(integerParam(url.searchParams.get('limit'), 'limit', DEFAULT_FILE_LIMIT), 1), MAX_FILE_LIMIT);
+
+                return json(await files.search(requireProject(store, id), url.searchParams.get('query') ?? '', limit));
+            },
         },
         { method: 'GET', pattern: /^\/v1\/agents$/, handle: async () => json(await services.agents.list()) },
         {

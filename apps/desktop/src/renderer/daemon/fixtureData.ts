@@ -28,6 +28,8 @@ export interface FixtureData {
     artifacts: Artifact[];
     /** Markdown files of each project's docs folder, by relative path. */
     docs: Record<string, Record<string, string>>;
+    /** Paths of each project's files, relative to its folder, as the file search would list them. */
+    files: Record<string, string[]>;
     /** What the skills catalog lists; `projectId` marks a project's own skill. */
     skills: FixtureSkill[];
     skillWarnings: string[];
@@ -100,6 +102,18 @@ export function docHash(content: string): string {
 
     return `fx-${ hash.toString(16) }`;
 }
+
+const FIXTURE_FILES = [
+    'README.md',
+    'package.json',
+    'src/booking/index.tsx',
+    'src/booking/BookingForm.tsx',
+    'src/booking/price.ts',
+    'src/booking/price.test.ts',
+    'src/api/availability.ts',
+    'src/mail/confirmation.ts',
+    'src/db/schema.ts',
+];
 
 /** The docs tree as the daemon builds it: directories first, then files, each by name. */
 export function docsTree(paths: string[]): DocNode[] {
@@ -444,6 +458,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         items,
         artifacts,
         docs: { [projectId]: docs, [FIXTURE_EMPTY_PROJECT_ID]: {} },
+        files: { [projectId]: FIXTURE_FILES, [FIXTURE_EMPTY_PROJECT_ID]: [] },
         skills: fixtureSkills(projectId),
         skillWarnings: ['~/.claude/skills: Skipped "old-notes": it has no description'],
     };

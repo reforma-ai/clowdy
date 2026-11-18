@@ -47,6 +47,8 @@ export interface Transport {
     getTaskDetail: (taskId: TaskId) => Promise<TaskDetail>;
     getDocsTree: (projectId: ProjectId) => Promise<DocsTree>;
     getDocFile: (projectId: ProjectId, path: string) => Promise<DocFile>;
+    /** Files of the project folder whose path contains every word of `query`, best match first, as paths relative to the folder. */
+    getProjectFiles: (projectId: ProjectId, query: string, limit?: number) => Promise<string[]>;
     /** The skills agents get: system and user ones, and with a project also that project's. */
     getSkills: (projectId?: ProjectId) => Promise<SkillCatalog>;
 }

@@ -2,6 +2,7 @@ import type { Command, CommandType } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { DocsService } from '../docs/service';
 import type { AgentRegistry } from '../engine/acp/registry';
+import type { FilesService } from '../files/service';
 import type { RunDriver } from '../runs/driver';
 import type { RunService } from '../runs/service';
 import type { SkillsService } from '../skills/service';
@@ -14,6 +15,7 @@ export interface Services {
     runs: RunService;
     driver: RunDriver;
     docs: DocsService;
+    files: FilesService;
     skills: SkillsService;
     agents: AgentRegistry;
 }

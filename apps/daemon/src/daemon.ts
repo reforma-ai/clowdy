@@ -7,6 +7,7 @@ import { listProjects } from './db/projects';
 import { DocsService } from './docs/service';
 import { createEngines } from './engine';
 import { AgentRegistry } from './engine/acp/registry';
+import { FilesService } from './files/service';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
 import { RunDriver } from './runs/driver';
@@ -59,7 +60,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         const driver: RunDriver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, driver }, run, mode) });
         const wakes = new Wakeups(store, runs, driver, config.timings.wakeWindowMs);
         const docs = new DocsService(store);
-        const services: Services = { config, store, runs, driver, docs, skills, agents };
+        const services: Services = { config, store, runs, driver, docs, files: new FilesService(), skills, agents };
 
         await runs.recover();
         docs.watchExisting(listProjects(store.db));
