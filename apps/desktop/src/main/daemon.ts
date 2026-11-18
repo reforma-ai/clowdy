@@ -13,6 +13,8 @@ const POLL_INTERVAL_MS = 100;
 /** After a launched daemon exits (typically because another one holds the lock), how long to wait for that other one. */
 const EXIT_GRACE_MS = 3000;
 const LOG_TAIL_LINES = 20;
+/** How long a daemon asked to shut down may take to be gone. */
+const STOP_TIMEOUT_MS = 10_000;
 
 /** Why the app has no daemon. `details` is the dialog's second paragraph: a hint or the end of `daemon.log`. */
 export class DaemonError extends Error {
@@ -34,13 +36,13 @@ export function currentContext(): DaemonContext {
     return { host: nodeHost, platform, env, dataDir: daemonDataDir({ platform, home: homedir(), env }) };
 }
 
-interface RunningDaemon {
+export interface RunningDaemon {
     info: DaemonInfo;
     health: Health;
 }
 
 /** The daemon `daemon.json` names, if that very process answers its health check. A leftover file of a dead daemon yields none. */
-async function findRunning({ host, dataDir }: DaemonContext): Promise<RunningDaemon | undefined> {
+export async function findRunning({ host, dataDir }: DaemonContext): Promise<RunningDaemon | undefined> {
     const info = parseDaemonInfo(await host.readText(path.join(dataDir, 'daemon.json')) ?? '');
 
     if (!info) return undefined;
@@ -114,6 +116,22 @@ export async function ensureDaemon(context = currentContext()): Promise<DaemonIn
     const running = await findRunning(context);
 
     return running ? acceptable(running) : startDaemon(context);
+}
+
+/** Asks the daemon to shut down and waits until it is gone (its address no longer answers). Throws `DaemonError` when it stays. */
+export async function stopDaemon(context: DaemonContext, { info }: RunningDaemon): Promise<void> {
+    const { host } = context;
+    const deadline = host.now() + STOP_TIMEOUT_MS;
+
+    await host.stop(info);
+
+    while (host.now() < deadline) {
+        if (!await findRunning(context)) return;
+
+        await host.sleep(POLL_INTERVAL_MS);
+    }
+
+    throw new DaemonError(`The daemon (pid ${ info.pid }) did not stop within ${ STOP_TIMEOUT_MS / 1000 } seconds.`);
 }
 
 async function startDaemon(context: DaemonContext): Promise<DaemonInfo> {

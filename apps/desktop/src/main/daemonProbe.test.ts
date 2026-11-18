@@ -38,6 +38,13 @@ describe('parseHealth', () => {
         expect(parseHealth(JSON.stringify(health))).toEqual(health);
     });
 
+    test('keeps the count of active runs, which a restart must not ignore, and drops one that is not a count', () => {
+        expect(parseHealth(JSON.stringify({ ...health, activeRuns: 3 }))).toEqual({ ...health, activeRuns: 3 });
+        expect(parseHealth(JSON.stringify({ ...health, activeRuns: 0 }))).toEqual({ ...health, activeRuns: 0 });
+        expect(parseHealth(JSON.stringify({ ...health, activeRuns: -1 }))).toEqual(health);
+        expect(parseHealth(JSON.stringify({ ...health, activeRuns: 'many' }))).toEqual(health);
+    });
+
     test.each([
         ['not JSON', '<html>'],
         ['ok false', JSON.stringify({ ...health, ok: false })],

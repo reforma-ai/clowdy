@@ -34,22 +34,33 @@ const COMMAND_RETRY_MS = 500;
 
 const sleepFor = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
+const headersFor = (token: string): Record<string, string> => ({ authorization: `Bearer ${ token }`, [PROTOCOL_HEADER]: String(PROTOCOL_VERSION) });
+
 function isCommandResult(value: unknown): value is CommandResult {
     return typeof value === 'object' && value !== null && 'ok' in value && 'requestId' in value;
 }
 
 /** The daemon's HTTP + SSE API, as described by `@clowdy/protocol`. */
 export class HttpTransport implements Transport {
-    readonly #base: string;
-    readonly #headers: Record<string, string>;
+    #base: string;
+    #headers: Record<string, string>;
     readonly #fetch: typeof fetch;
     readonly #sleep: (ms: number) => Promise<void>;
 
     constructor({ url, token, fetch: fetchImpl = (...args) => fetch(...args), sleep = sleepFor }: HttpTransportOptions) {
         this.#base = url.replace(/\/+$/, '');
-        this.#headers = { authorization: `Bearer ${ token }`, [PROTOCOL_HEADER]: String(PROTOCOL_VERSION) };
+        this.#headers = headersFor(token);
         this.#fetch = fetchImpl;
         this.#sleep = sleep;
+    }
+
+    /**
+     * The daemon was replaced and listens elsewhere now. Requests made from here on go there, and the event feed,
+     * which retries until it connects, picks the new address up on its next attempt and resumes from its cursor.
+     */
+    setAddress({ url, token }: { url: string; token: string }): void {
+        this.#base = url.replace(/\/+$/, '');
+        this.#headers = headersFor(token);
     }
 
     getRootSnapshot(): Promise<RootSnapshot> {

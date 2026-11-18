@@ -1,3 +1,4 @@
+import { PROTOCOL_HEADER, PROTOCOL_VERSION, ROUTES, type DaemonInfo, type Health } from '@clowdy/protocol';
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, writeSync } from 'node:fs';
 import { open, readFile } from 'node:fs/promises';
@@ -5,8 +6,6 @@ import path from 'node:path';
 
 import { probeHealth } from './daemonProbe';
 import { loginShellPath } from './loginShell';
-
-import type { Health } from '@clowdy/protocol';
 
 export const HEALTH_TIMEOUT_MS = 800;
 
@@ -39,6 +38,8 @@ export interface DaemonHost {
     probe(port: number): Promise<Health | undefined>;
     /** Starts the daemon detached from the app, so it survives the app. Settles when that process ends. */
     launch(launch: DaemonLaunch): Promise<DaemonExit>;
+    /** Asks the daemon to shut down gracefully. Does not wait for it to end; a daemon that cannot be reached is taken as stopped. */
+    stop(info: DaemonInfo): Promise<void>;
     /** The user's login-shell PATH, or `undefined` when it cannot be had. */
     loginPath(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): Promise<string | undefined>;
     sleep(ms: number): Promise<void>;
@@ -90,11 +91,20 @@ function launch({ bun, entry, cwd, env, logPath }: DaemonLaunch): Promise<Daemon
     }
 }
 
+async function stop({ port, token }: DaemonInfo): Promise<void> {
+    await fetch(`http://127.0.0.1:${ port }${ ROUTES.shutdown }`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${ token }`, [PROTOCOL_HEADER]: String(PROTOCOL_VERSION) },
+        signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS * 5),
+    }).catch(() => undefined);
+}
+
 export const nodeHost: DaemonHost = {
     readText: file => readFile(file, 'utf8').catch(() => undefined),
     readLogTail,
     probe: port => probeHealth(port, HEALTH_TIMEOUT_MS),
     launch,
+    stop,
     loginPath: loginShellPath,
     sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
     now: () => Date.now(),

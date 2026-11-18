@@ -8,6 +8,8 @@ export const IPC_CHANNELS = {
     chooseDirectory: 'desktop:choose-directory',
     /** Synchronous (`sendSync`): the preload needs the answer before the page's scripts run. */
     getDaemon: 'desktop:get-daemon',
+    /** Main to renderer: the daemon was replaced and listens elsewhere now. */
+    daemonChanged: 'desktop:daemon-changed',
 } as const;
 
 /**
@@ -22,6 +24,8 @@ export interface DesktopBridge {
     setThemeSource: (theme: Theme) => Promise<void>;
     /** Where the daemon listens and the token it wants. Set when the page loads and a daemon answers; unset otherwise (reload to look again). */
     daemon?: { url: string; token: string };
+    /** Called with the new address when the daemon is replaced while the window is open (a development run restarts it after its sources change). Returns a function that stops listening. */
+    onDaemonChange: (listener: (daemon: { url: string; token: string }) => void) => () => void;
     /** Asks the person for a folder with the system dialog. Resolves `null` when they cancel. */
     chooseDirectory: () => Promise<string | null>;
 }

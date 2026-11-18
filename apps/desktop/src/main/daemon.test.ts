@@ -60,6 +60,10 @@ function setup(options: {
 
             return options.onLaunch?.(world) ?? new Promise<DaemonExit>(() => undefined);
         },
+        stop: async ({ port }) => {
+            world.daemons.delete(port);
+            world.files.delete(INFO_FILE);
+        },
         loginPath: async () => {
             world.logins += 1;
 

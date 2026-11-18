@@ -39,13 +39,13 @@ export function parseHealth(text: string): Health | undefined {
 
     if (!raw) return undefined;
 
-    const { ok, protocol, version, pid, startedAt } = raw;
+    const { ok, protocol, version, pid, startedAt, activeRuns } = raw;
 
     if (ok !== true || !isCount(protocol) || typeof version !== 'string' || !isPid(pid) || !isCount(startedAt)) {
         return undefined;
     }
 
-    return { ok, protocol, version, pid, startedAt };
+    return { ok, protocol, version, pid, startedAt, ...isCount(activeRuns) && { activeRuns } };
 }
 
 /**

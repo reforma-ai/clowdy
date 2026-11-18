@@ -1,6 +1,7 @@
 import { toast } from '@clowdy/components/Toast';
 
 import { createTransport, resolveDaemonConfig } from './daemon/config';
+import { HttpTransport } from './daemon/httpTransport';
 import { RootStore, type Notice } from './stores/RootStore';
 import { initialUiFromSearch } from './stores/UiStore';
 
@@ -12,8 +13,13 @@ function showNotice({ level, text }: Notice): void {
 
 const config = resolveDaemonConfig(location.search, window.desktop?.daemon);
 
+const transport = createTransport(config);
+
+// A daemon that was replaced listens elsewhere: the transport follows it and its feed resumes where it was.
+const stopFollowing = transport instanceof HttpTransport ? window.desktop?.onDaemonChange(address => transport.setAddress(address)) : undefined;
+
 /** The app's one store. It starts loading when the module is first imported. */
-export const root = new RootStore(createTransport(config), {
+export const root = new RootStore(transport, {
     notify: showNotice,
     initialUi: config.kind === 'fixtures' ? initialUiFromSearch(location.search) : undefined,
 });
@@ -26,4 +32,7 @@ if (import.meta.env.DEV) {
 }
 
 // A replaced module must not leave its event feed open next to the new one.
-import.meta.hot?.dispose(() => root.dispose());
+import.meta.hot?.dispose(() => {
+    stopFollowing?.();
+    root.dispose();
+});

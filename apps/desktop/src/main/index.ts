@@ -2,8 +2,10 @@ import { app, BrowserWindow, ipcMain, Menu, nativeTheme, protocol, session, shel
 import { release } from 'node:os';
 import path from 'node:path';
 
-import { attachDaemon, daemonAddress, ensureDaemon } from './daemon';
+import { IPC_CHANNELS } from '../shared/bridge';
+import { attachDaemon, currentContext, daemonAddress, ensureDaemon } from './daemon';
 import { showDaemonError } from './daemonDialog';
+import { keepDaemonFresh, type DaemonKeeper } from './daemonKeeper';
 import { registerIpc } from './ipc';
 import { createAppMenu } from './menu';
 import { createProtocolHandler } from './protocol';
@@ -85,7 +87,8 @@ function start(): void {
         });
         Menu.setApplicationMenu(createAppMenu());
 
-        const daemonError = await connectDaemon();
+        const keeper = startKeeper();
+        const daemonError = await connectDaemon(keeper);
         const window = openWindow();
 
         firstWindowOpen = true;
@@ -97,19 +100,44 @@ function start(): void {
 
 /**
  * Finds the daemon or starts one before the window opens, so the page loads with its address. Resolves with the
- * reason when there is none, and the window opens anyway. The daemon is never stopped from here: it outlives the app.
+ * reason when there is none, and the window opens anyway. Quitting never stops the daemon: it outlives the app (only a development run replaces a stale one, see `startKeeper`).
  */
-async function connectDaemon(): Promise<unknown> {
+async function connectDaemon(keeper: DaemonKeeper | undefined): Promise<unknown> {
     try {
         const { pid, port } = await ensureDaemon();
 
         console.info(`Using the daemon with pid ${ pid } on port ${ port }.`);
+
+        // A daemon left over from before the last source change is replaced now, while no window depends on it.
+        await keeper?.checkNow();
     }
     catch (error) {
         console.error('No daemon:', error);
 
         return error;
     }
+}
+
+/**
+ * A development run (`CLOWDY_DAEMON_WATCH` names the daemon's source folders, `scripts/dev.ts` sets it) replaces the
+ * daemon with a new one when its sources change, but only while it has no runs in progress. The windows are told
+ * where the new one is, and their event feed resumes from its cursor. A packaged app never does this.
+ */
+function startKeeper(): DaemonKeeper | undefined {
+    const dirs = app.isPackaged ? [] : (process.env.CLOWDY_DAEMON_WATCH ?? '').split(path.delimiter).filter(Boolean);
+
+    if (dirs.length === 0) return undefined;
+
+    return keepDaemonFresh({
+        context: currentContext(),
+        dirs,
+        log: message => console.info(message),
+        onRestarted: (info) => {
+            const address = daemonAddress(info);
+
+            BrowserWindow.getAllWindows().forEach(window => window.webContents.send(IPC_CHANNELS.daemonChanged, address));
+        },
+    });
 }
 
 function openWindow(): BrowserWindow {
