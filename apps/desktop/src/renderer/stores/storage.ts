@@ -2,6 +2,7 @@
 export interface KeyValueStorage {
     getItem: (key: string) => string | null;
     setItem: (key: string, value: string) => void;
+    removeItem?: (key: string) => void;
 }
 
 /** `localStorage`, or nothing where the browser blocks it (private windows, blocked site data). */
@@ -32,5 +33,14 @@ export function writeStored(storage: KeyValueStorage | undefined, key: string, v
     }
     catch {
         // Storage is a convenience: a full or blocked one must not break the app.
+    }
+}
+
+export function removeStored(storage: KeyValueStorage | undefined, key: string): void {
+    try {
+        storage?.removeItem?.(key);
+    }
+    catch {
+        // As above.
     }
 }

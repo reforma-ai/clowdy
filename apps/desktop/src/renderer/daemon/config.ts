@@ -33,6 +33,7 @@ const noDaemon = () => Promise.reject(new TransportError('No daemon is configure
 const unconfigured: Transport = {
     getRootSnapshot: noDaemon,
     getProjectSnapshot: noDaemon,
+    getProjectsInfo: noDaemon,
     subscribe: () => () => undefined,
     command: noDaemon,
     getItems: noDaemon,

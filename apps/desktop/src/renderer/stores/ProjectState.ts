@@ -193,7 +193,8 @@ export class ProjectState {
             case 'artifact.added':
                 this.artifactsRevision++;
                 break;
-            // Stream items belong to `StreamStore`; notices are shown by the root store.
+            // Stream items belong to `StreamStore`; notices and a deleted project are handled by the root store.
+            case 'project.deleted':
             case 'stream.item':
             case 'notice':
                 break;

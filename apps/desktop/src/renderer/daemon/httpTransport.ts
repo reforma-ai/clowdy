@@ -12,6 +12,7 @@ import type {
     DocFile,
     DocsTree,
     ProjectId,
+    ProjectInfo,
     ProjectSnapshot,
     RootSnapshot,
     SkillCatalog,
@@ -76,6 +77,10 @@ export class HttpTransport implements Transport {
 
     getRootSnapshot(): Promise<RootSnapshot> {
         return this.#get(ROUTES.snapshot);
+    }
+
+    getProjectsInfo(): Promise<ProjectInfo[]> {
+        return this.#get(ROUTES.projectsInfo);
     }
 
     getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {

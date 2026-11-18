@@ -23,6 +23,11 @@ export interface Notice {
     text: string;
 }
 
+/** The person's order: the personal space first, then by `position`, then by when the project was added. */
+function sortProjects(projects: readonly Project[]): Project[] {
+    return [...projects].sort((a, b) => Number(b.personal === true) - Number(a.personal === true) || a.position - b.position || a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+}
+
 export interface RootStoreOptions {
     storage?: KeyValueStorage;
     /** Shows a daemon notice to the person. */
@@ -93,7 +98,7 @@ export class RootStore {
             const snapshot = await this.transport.getRootSnapshot();
 
             runInAction(() => {
-                this.projects = snapshot.projects;
+                this.projects = sortProjects(snapshot.projects);
                 this.phase = 'ready';
                 this.loadError = '';
             });
@@ -101,7 +106,8 @@ export class RootStore {
             void this.refreshAgents();
 
             const stored = readStored(this.#storage, SELECTED_PROJECT_KEY);
-            const first = snapshot.projects.find(project => project.id === stored) ?? snapshot.projects[0];
+            // Nothing remembered: the first project of the person's own, and the personal space when there is none.
+            const first = this.projects.find(project => project.id === stored) ?? this.projects.find(project => !project.personal) ?? this.projects[0];
 
             if (first) this.selectProject(first.id);
         }
@@ -191,6 +197,24 @@ export class RootStore {
         return this.#addProject({ type: 'project.open', path, name }, path);
     }
 
+    /**
+     * Puts the projects in the order given (the personal space stays first, a project that is not named keeps its place after the named ones),
+     * at once, and tells the daemon. A refusal puts the order back.
+     */
+    async reorderProjects(projectIds: readonly ProjectId[]): Promise<CommandResult> {
+        const before = this.projects;
+        const named = projectIds.flatMap(id => before.find(project => project.id === id && !project.personal) ?? []);
+        const rest = before.filter(project => !project.personal && !named.includes(project));
+
+        this.projects = [...before.filter(project => project.personal), ...[...named, ...rest].map((project, index) => ({ ...project, position: index + 1 }))];
+
+        const result = await this.command({ type: 'project.reorder', projectIds: [...projectIds] });
+
+        if (!result.ok) this.projects = before;
+
+        return result;
+    }
+
     /** Ends the feed and the timers: for a replaced store (hot reload) and for tests. */
     dispose(): void {
         this.history.dispose();
@@ -228,10 +252,13 @@ export class RootStore {
         if (data.type === 'project.upserted') {
             const known = this.projects.some(project => project.id === data.project.id);
 
-            this.projects = known ? this.projects.map(project => (project.id === data.project.id ? data.project : project)) : [...this.projects, data.project];
+            this.projects = sortProjects(known ? this.projects.map(project => (project.id === data.project.id ? data.project : project)) : [...this.projects, data.project]);
 
             // The first project to appear, opened from another client or by the daemon, is the one to show.
             if (!known && !this.selectedProjectId) this.selectProject(data.project.id);
+        }
+        else if (data.type === 'project.deleted') {
+            this.#dropProject(event.projectId);
         }
         else if (data.type === 'stream.item') {
             this.streams.applyItem(data.item);
@@ -276,13 +303,21 @@ export class RootStore {
 
         try {
             const snapshot = await this.transport.getRootSnapshot();
+
+            // A project removed while the feed was away has no snapshot to load.
+            runInAction(() => {
+                for (const id of [...this.#states.keys()]) {
+                    if (!snapshot.projects.some(project => project.id === id)) this.#dropProject(id);
+                }
+            });
+
             const loaded = await Promise.all([...this.#states.values()].map(state => state.load()));
 
             if (loaded.includes(false)) throw new Error('A project did not reload');
 
             await this.streams.reloadAll();
             runInAction(() => {
-                this.projects = snapshot.projects;
+                this.projects = sortProjects(snapshot.projects);
             });
             this.#follow(snapshot.cursor);
             void this.refreshAgents();
@@ -292,6 +327,25 @@ export class RootStore {
         catch {
             this.#resyncTimer = setTimeout(() => void this.#resync(), RESYNC_RETRY_MS);
         }
+    }
+
+    /** The project is gone from the daemon: its state, streams and remembered window go, and a window that was on it moves to the first project. */
+    #dropProject(projectId: ProjectId): void {
+        const state = this.#states.get(projectId);
+
+        if (state) this.streams.forget([...state.runs.keys()]);
+
+        this.#states.delete(projectId);
+        this.projects = this.projects.filter(project => project.id !== projectId);
+        this.ui.forgetProject(projectId);
+
+        if (this.selectedProjectId !== projectId) return;
+
+        this.selectedProjectId = null;
+
+        const next = this.projects[0];
+
+        if (next) this.selectProject(next.id);
     }
 
     async #addProject(input: CommandInput, path: string | undefined): Promise<CommandResult> {
@@ -304,7 +358,7 @@ export class RootStore {
             const { projects } = await this.transport.getRootSnapshot();
 
             runInAction(() => {
-                this.projects = projects;
+                this.projects = sortProjects(projects);
 
                 const added = projects.find(project => !known.has(project.id)) ?? projects.find(project => project.path === path);
 

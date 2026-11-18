@@ -1,6 +1,6 @@
 import { makeAutoObservable, observableRef, reaction } from 'mobx';
 
-import { readStored, writeStored, type KeyValueStorage } from './storage';
+import { readStored, removeStored, writeStored, type KeyValueStorage } from './storage';
 
 import type { ChatId, ProjectId, RunId, TaskId } from '@clowdy/protocol';
 
@@ -9,7 +9,7 @@ export const SECTIONS = ['agents', 'tasks', 'docs'] as const;
 export type Section = typeof SECTIONS[number];
 
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
-export const SETTINGS_PAGES = ['appearance', 'providers', 'skills'] as const;
+export const SETTINGS_PAGES = ['appearance', 'projects', 'providers', 'skills'] as const;
 
 export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
@@ -42,6 +42,8 @@ interface StoredProjectUi {
     showArchived: boolean;
     tasksView: TasksView;
 }
+
+const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
@@ -95,7 +97,7 @@ export class ProjectUi {
     pendingFiles: readonly File[] = [];
 
     constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}) {
-        const key = `clowdy:ui:${ projectId }`;
+        const key = uiKey(projectId);
         const stored = readStored(storage, key) as Partial<Record<keyof StoredProjectUi, unknown>> | undefined;
 
         if (stored && typeof stored === 'object') {
@@ -211,6 +213,8 @@ export class ProjectUi {
 export class UiStore {
     settingsOpen = false;
     settingsPage: SettingsPage = 'appearance';
+    /** The project whose own page is open inside Settings > Projects; `null` shows the list of projects. */
+    settingsProjectId: ProjectId | null = null;
     readonly #projects = new Map<ProjectId, ProjectUi>();
 
     constructor(private readonly storage?: KeyValueStorage, private readonly initial?: InitialProjectUi) {
@@ -246,6 +250,11 @@ export class UiStore {
         ui.section = section;
     }
 
+    /** Leaves Settings for the section that is under it. */
+    closeSettings(): void {
+        this.settingsOpen = false;
+    }
+
     /** Opens Settings, on `page` when given and else on the page last shown. */
     openSettings(page?: SettingsPage): void {
         this.settingsOpen = true;
@@ -253,7 +262,25 @@ export class UiStore {
         if (page) this.settingsPage = page;
     }
 
+    /** Opens Settings > Projects, on the page of `projectId` or, without one, on the list. */
+    openProjectSettings(projectId: ProjectId | null = null): void {
+        this.settingsOpen = true;
+        this.settingsPage = 'projects';
+        this.settingsProjectId = projectId;
+    }
+
+    /** Another page of Settings always starts from its top: Projects shows its list again. */
     showSettingsPage(page: SettingsPage): void {
         this.settingsPage = page;
+        this.settingsProjectId = null;
+    }
+
+    /** The project was removed: its window state goes with it, kept or not. */
+    forgetProject(projectId: ProjectId): void {
+        this.#projects.delete(projectId);
+
+        if (this.settingsProjectId === projectId) this.settingsProjectId = null;
+
+        removeStored(this.storage, uiKey(projectId));
     }
 }

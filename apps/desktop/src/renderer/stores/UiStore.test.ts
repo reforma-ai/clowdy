@@ -7,7 +7,7 @@ import type { KeyValueStorage } from './storage';
 function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage & { data: Record<string, string> } {
     const data = { ...initial };
 
-    return { data, getItem: key => data[key] ?? null, setItem: (key, value) => void (data[key] = value) };
+    return { data, getItem: key => data[key] ?? null, setItem: (key, value) => void (data[key] = value), removeItem: key => void delete data[key] };
 }
 
 describe('UiStore', () => {
@@ -154,5 +154,33 @@ describe('UiStore', () => {
     it('ignores URL values that name no section or view', () => {
         expect(initialUiFromSearch('?section=nope&view=cards')).toEqual({});
         expect(initialUiFromSearch('')).toEqual({});
+    });
+
+    it('opens Settings on the list of projects or on the page of one, and shows the list again when a page is chosen', () => {
+        const ui = new UiStore();
+
+        ui.openProjectSettings('p1');
+        expect([ui.settingsOpen, ui.settingsPage, ui.settingsProjectId]).toEqual([true, 'projects', 'p1']);
+
+        ui.openProjectSettings();
+        expect(ui.settingsProjectId).toBeNull();
+
+        ui.openProjectSettings('p1');
+        ui.showSettingsPage('skills');
+        ui.showSettingsPage('projects');
+        expect(ui.settingsProjectId).toBeNull();
+    });
+
+    it('forgets a removed project: its window state, its stored copy, and its page in Settings', () => {
+        const storage = memoryStorage({ 'clowdy:ui:p1': JSON.stringify({ section: 'tasks' }) });
+        const ui = new UiStore(storage as KeyValueStorage);
+
+        expect(ui.forProject('p1').section).toBe('tasks');
+        ui.openProjectSettings('p1');
+        ui.forgetProject('p1');
+
+        expect(ui.settingsProjectId).toBeNull();
+        expect(storage.data['clowdy:ui:p1']).toBeUndefined();
+        expect(ui.forProject('p1').section).toBe('agents');
     });
 });

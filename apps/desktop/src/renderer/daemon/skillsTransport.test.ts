@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID } from './fixtureData';
+import { FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID } from './fixtureData';
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
 
@@ -62,8 +62,8 @@ describe('FixtureTransport skills', () => {
         expect(await transport.command({ type: 'skills.setEnabled', name: 'user:sql-review', enabled: true })).toMatchObject({ ok: true, data: { name: 'user:sql-review', enabled: true } });
         await new Promise(resolve => setTimeout(resolve, 0));
 
-        expect(events.map(event => event.data.type)).toEqual(['skills.changed', 'skills.changed']);
-        expect(events.map(event => event.projectId).sort()).toEqual([FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID].sort());
+        expect(events.map(event => event.data.type)).toEqual(['skills.changed', 'skills.changed', 'skills.changed']);
+        expect(events.map(event => event.projectId).sort()).toEqual([FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID].sort());
         expect((await transport.getSkills()).entries.find(entry => entry.name === 'user:sql-review')?.enabled).toBe(true);
 
         expect(await transport.command({ type: 'skills.setEnabled', name: 'clowdy:docs', enabled: false })).toMatchObject({ ok: false, error: { code: 'invalid' } });

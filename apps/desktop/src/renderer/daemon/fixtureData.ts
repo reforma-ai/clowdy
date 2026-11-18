@@ -21,6 +21,8 @@ import type {
 /** Everything the fixture daemon holds. Plain data: the transport mutates it and announces the changes. */
 export interface FixtureData {
     projects: Project[];
+    /** What `git` says in each project's folder: the `origin` address and the branch; a project without an entry has no remote. */
+    git: Record<ProjectId, { remoteUrl?: string; branch?: string }>;
     statuses: Record<string, TaskStatus[]>;
     chats: Chat[];
     tasks: Task[];
@@ -95,6 +97,7 @@ function fixtureSkills(projectId: ProjectId): FixtureSkill[] {
 
 export const FIXTURE_PROJECT_ID = 'p-car';
 export const FIXTURE_EMPTY_PROJECT_ID = 'p-clowdy';
+export const FIXTURE_PERSONAL_PROJECT_ID = 'p-personal';
 /** The run, and the two items of its stream, that the fixture timeline keeps changing. */
 export const FIXTURE_LIVE_RUN_ID = 'r-ex-07';
 export const FIXTURE_LIVE_TOOL_ID = 'r-ex-07-8';
@@ -313,6 +316,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
     const ago = (minutes: number) => now - minutes * MINUTE;
     const projectId = FIXTURE_PROJECT_ID;
 
+    // Seed order, not the list's: the transport answers with the personal space first, as the daemon does.
     const projects: Project[] = [
         {
             id: projectId,
@@ -321,6 +325,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
             taskPrefix: 'CAR',
             settings: { maxParallelRuns: 4, engine: 'claude', targetBranch: 'main' },
             createdAt: ago(60 * 24 * 12),
+            position: 1,
         },
         {
             id: FIXTURE_EMPTY_PROJECT_ID,
@@ -329,6 +334,17 @@ export function createFixtureData(now = Date.now()): FixtureData {
             taskPrefix: 'CLW',
             settings: {},
             createdAt: ago(60 * 24 * 3),
+            position: 2,
+        },
+        {
+            id: FIXTURE_PERSONAL_PROJECT_ID,
+            name: 'Personal',
+            path: '/Users/dev/Library/Application Support/Clowdy/daemon/personal',
+            taskPrefix: 'PER',
+            settings: {},
+            createdAt: ago(60 * 24 * 30),
+            position: 0,
+            personal: true,
         },
     ];
 
@@ -615,7 +631,11 @@ export function createFixtureData(now = Date.now()): FixtureData {
 
     return {
         projects,
-        statuses: { [projectId]: DEFAULT_STATUSES, [FIXTURE_EMPTY_PROJECT_ID]: DEFAULT_STATUSES },
+        git: {
+            [projectId]: { remoteUrl: 'git@github.com:acme/car-rental.git', branch: 'main' },
+            [FIXTURE_EMPTY_PROJECT_ID]: { remoteUrl: 'https://github.com/acme/clowdy.git', branch: 'main' },
+        },
+        statuses: { [projectId]: DEFAULT_STATUSES, [FIXTURE_EMPTY_PROJECT_ID]: DEFAULT_STATUSES, [FIXTURE_PERSONAL_PROJECT_ID]: DEFAULT_STATUSES },
         // As the daemon's migration leaves them: a chat that has an orchestrator records the engine and model it runs on.
         chats: chats.map((chat) => {
             const orchestrator = runs.find(candidate => candidate.id === chat.orchestratorRunId);
@@ -628,8 +648,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
         runTaskLinks,
         items,
         artifacts,
-        docs: { [projectId]: docs, [FIXTURE_EMPTY_PROJECT_ID]: {} },
-        files: { [projectId]: FIXTURE_FILES, [FIXTURE_EMPTY_PROJECT_ID]: [] },
+        docs: { [projectId]: docs, [FIXTURE_EMPTY_PROJECT_ID]: {}, [FIXTURE_PERSONAL_PROJECT_ID]: {} },
+        files: { [projectId]: FIXTURE_FILES, [FIXTURE_EMPTY_PROJECT_ID]: [], [FIXTURE_PERSONAL_PROJECT_ID]: [] },
         attachments: structuredClone(FIXTURE_ATTACHMENTS),
         skills: fixtureSkills(projectId),
         skillWarnings: ['~/.claude/skills: Skipped "old-notes": it has no description'],

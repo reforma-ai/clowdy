@@ -27,6 +27,7 @@ import type {
     EventData,
     Project,
     ProjectId,
+    ProjectInfo,
     ProjectSnapshot,
     RootSnapshot,
     Run,
@@ -109,7 +110,20 @@ export class FixtureTransport implements Transport {
     }
 
     async getRootSnapshot(): Promise<RootSnapshot> {
-        return structuredClone({ cursor: this.#cursor, projects: this.#data.projects });
+        return structuredClone({ cursor: this.#cursor, projects: this.#listed() });
+    }
+
+    async getProjectsInfo(): Promise<ProjectInfo[]> {
+        const { chats, tasks, git } = this.#data;
+
+        return structuredClone(this.#listed().map(project => ({
+            projectId: project.id,
+            folderExists: true,
+            ...git[project.id],
+            chats: chats.filter(chat => chat.projectId === project.id).length,
+            tasks: tasks.filter(task => task.projectId === project.id).length,
+            activeRuns: this.#activeRuns(project.id),
+        })));
     }
 
     async getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {
@@ -441,10 +455,71 @@ export class FixtureTransport implements Transport {
 
                 if (!project) return fail('not_found', 'No such project');
 
-                Object.assign(project, { name: command.name ?? project.name, settings: { ...project.settings, ...command.settings } });
+                const renamed = command.name !== undefined && command.name !== project.name;
+                const moved = command.path !== undefined && command.path !== project.path;
+
+                if (project.personal && (renamed || moved)) return fail('conflict', 'The personal space cannot be renamed or moved');
+
+                if (moved && this.#activeRuns(project.id) > 0) return fail('conflict', 'The agents of this project are still working. Stop them first.');
+
+                if (moved && data.projects.some(other => other.id !== project.id && other.path === command.path)) return fail('conflict', `${ command.path } is already a project`);
+
+                const settings: Project['settings'] = { ...project.settings };
+
+                for (const [key, value] of Object.entries(command.settings ?? {})) {
+                    if (value === null) delete settings[key as keyof Project['settings']];
+                    else Object.assign(settings, { [key]: value });
+                }
+
+                Object.assign(project, { name: command.name ?? project.name, path: command.path ?? project.path, settings });
                 this.#emit(project.id, { type: 'project.upserted', project, statuses: data.statuses[project.id] ?? DEFAULT_STATUSES });
 
-                return ok(structuredClone(project));
+                // Like the daemon: `{ project }`.
+                return ok({ project: structuredClone(project) });
+            }
+            case 'project.delete': {
+                const project = data.projects.find(candidate => candidate.id === command.projectId);
+
+                if (!project) return fail('not_found', 'No such project');
+
+                if (project.personal) return fail('conflict', 'The personal space cannot be removed');
+
+                if (this.#activeRuns(project.id) > 0) return fail('conflict', 'The agents of this project are still working. Stop them first.');
+
+                const runIds = new Set(data.runs.filter(run => run.projectId === project.id).map(run => run.id));
+
+                data.projects = data.projects.filter(candidate => candidate.id !== project.id);
+                data.chats = data.chats.filter(chat => chat.projectId !== project.id);
+                data.tasks = data.tasks.filter(task => task.projectId !== project.id);
+                data.runs = data.runs.filter(run => run.projectId !== project.id);
+                data.runTaskLinks = data.runTaskLinks.filter(link => !runIds.has(link.runId));
+                data.artifacts = data.artifacts.filter(artifact => artifact.projectId !== project.id);
+                runIds.forEach(runId => delete data.items[runId]);
+                delete data.statuses[project.id];
+                delete data.docs[project.id];
+                delete data.files[project.id];
+                this.#emit(project.id, { type: 'project.deleted' });
+
+                return ok({ projectId: project.id });
+            }
+            case 'project.reorder': {
+                const unknown = command.projectIds.find(id => !data.projects.some(project => project.id === id));
+
+                if (unknown !== undefined) return fail('invalid', `No such project: ${ unknown }`);
+
+                const named = [...new Set(command.projectIds)].flatMap(id => data.projects.find(project => project.id === id && !project.personal) ?? []);
+                const rest = data.projects.filter(project => !project.personal && !named.includes(project));
+                const ordered = [...data.projects.filter(project => project.personal), ...named, ...rest];
+
+                data.projects = ordered;
+                ordered.forEach((project, index) => {
+                    if (project.personal || project.position === index) return;
+
+                    project.position = index;
+                    this.#emit(project.id, { type: 'project.upserted', project, statuses: data.statuses[project.id] ?? DEFAULT_STATUSES });
+                });
+
+                return ok({ projects: structuredClone(ordered) });
             }
 
             case 'chat.create': {
@@ -719,9 +794,20 @@ export class FixtureTransport implements Transport {
         }
     }
 
+    /** The projects as the daemon lists them: the personal space first, then in the person's order. */
+    #listed(): Project[] {
+        return [...this.#data.projects].sort((a, b) => Number(b.personal === true) - Number(a.personal === true) || a.position - b.position);
+    }
+
+    /** Runs of the project that have not finished: what stops it from being removed or moved. */
+    #activeRuns(projectId: ProjectId): number {
+        return this.#data.runs.filter(run => run.projectId === projectId && !isTerminalRunStatus(run.status)).length;
+    }
+
     #addProject(name: string, path: string): Outcome {
         const prefix = name.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase() || 'TSK';
-        const project: Project = { id: this.#id('p'), name, path, taskPrefix: prefix, settings: {}, createdAt: Date.now() };
+        const position = Math.max(0, ...this.#data.projects.map(candidate => candidate.position)) + 1;
+        const project: Project = { id: this.#id('p'), name, path, taskPrefix: prefix, settings: {}, createdAt: Date.now(), position };
 
         this.#data.projects.push(project);
         this.#data.statuses[project.id] = DEFAULT_STATUSES;

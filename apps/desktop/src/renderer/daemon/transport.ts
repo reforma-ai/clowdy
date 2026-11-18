@@ -9,6 +9,7 @@ import type {
     DocFile,
     DocsTree,
     ProjectId,
+    ProjectInfo,
     ProjectSnapshot,
     RootSnapshot,
     RunId,
@@ -39,6 +40,8 @@ export type FeedStatus = 'connected' | 'reconnecting' | 'resync';
 export interface Transport {
     getRootSnapshot: () => Promise<RootSnapshot>;
     getProjectSnapshot: (projectId: ProjectId) => Promise<ProjectSnapshot>;
+    /** What the daemon reads about every project when asked: whether its folder is there, its git remote and branch, what it holds. In the order of the project list. */
+    getProjectsInfo: () => Promise<ProjectInfo[]>;
     /** Follows the change feed after `cursor`. Returns what ends the subscription. */
     subscribe: (cursor: number, onEvent: (event: ClowdyEvent) => void, onStatus: (status: FeedStatus) => void) => () => void;
     /**

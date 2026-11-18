@@ -1,6 +1,7 @@
+import { autorun } from 'mobx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID } from '../daemon/fixtureData';
+import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID } from '../daemon/fixtureData';
 import { FixtureTransport } from '../daemon/fixtureTransport';
 import { overrideTransport } from '../daemon/testing';
 import { BANNER_DELAY_MS, RootStore } from './RootStore';
@@ -9,10 +10,10 @@ import type { ClowdyEvent } from '@clowdy/protocol';
 import type { FeedStatus } from '../daemon/transport';
 import type { KeyValueStorage } from './storage';
 
-function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage {
+function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage & { data: Record<string, string> } {
     const data = { ...initial };
 
-    return { getItem: key => data[key] ?? null, setItem: (key, value) => void (data[key] = value) };
+    return { data, getItem: key => data[key] ?? null, setItem: (key, value) => void (data[key] = value), removeItem: key => void delete data[key] };
 }
 
 async function settle() {
@@ -28,14 +29,14 @@ afterEach(() => {
 });
 
 describe('RootStore', () => {
-    it('loads the projects and selects the first, with its snapshot', async () => {
+    it('loads the projects with the personal space first, and selects the first project of the person\'s own, with its snapshot', async () => {
         const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
 
         await root.load();
         await settle();
 
         expect(root.phase).toBe('ready');
-        expect(root.projects.map(project => project.name)).toEqual(['Car Rental', 'Clowdy']);
+        expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental', 'Clowdy']);
         expect(root.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
         expect(root.selectedProject?.status).toBe('ready');
         expect(root.selectedProject?.tasks.size).toBe(11);
@@ -116,7 +117,7 @@ describe('RootStore', () => {
         await settle();
 
         expect(result.ok).toBe(true);
-        expect(root.projects.map(project => project.name)).toEqual(['Car Rental', 'Clowdy', 'Garden Planner']);
+        expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental', 'Clowdy', 'Garden Planner']);
         expect(root.selectedProject?.project.name).toBe('Garden Planner');
         expect(root.selectedProject?.project.taskPrefix).toBe('GAR');
         root.dispose();
@@ -129,7 +130,7 @@ describe('RootStore', () => {
         await root.openProject('/Users/dev/clowdy');
         await settle();
 
-        expect(root.projects).toHaveLength(2);
+        expect(root.projects).toHaveLength(3);
         expect(root.selectedProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
         root.dispose();
     });
@@ -156,13 +157,117 @@ describe('RootStore', () => {
     it('shows the first project that appears while none is selected, and leaves a later one alone', async () => {
         const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
         const project = { ...createFixtureData().projects[0], id: 'prj-new', name: 'Opened elsewhere', path: '/tmp/opened-elsewhere' };
-        const upsert = (cursor: number, id: string): ClowdyEvent => ({ cursor, at: 0, projectId: id, data: { type: 'project.upserted', project: { ...project, id }, statuses: [] } });
+        const upsert = (cursor: number, id: string, position: number): ClowdyEvent => ({ cursor, at: 0, projectId: id, data: { type: 'project.upserted', project: { ...project, id, position }, statuses: [] } });
 
-        root.handleEvent(upsert(6000, 'prj-new'));
-        root.handleEvent(upsert(6001, 'prj-later'));
+        root.handleEvent(upsert(6000, 'prj-new', 1));
+        root.handleEvent(upsert(6001, 'prj-later', 2));
 
         expect(root.selectedProjectId).toBe('prj-new');
         expect(root.projects.map(candidate => candidate.id)).toEqual(['prj-new', 'prj-later']);
+        root.dispose();
+    });
+});
+
+describe('RootStore projects', () => {
+    it('opens on the personal space when the person has no project of their own', async () => {
+        const data = createFixtureData();
+
+        data.projects = data.projects.filter(project => project.personal);
+
+        const root = new RootStore(new FixtureTransport({ data }), { storage: memoryStorage() });
+
+        await root.load();
+        await settle();
+
+        expect(root.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+        expect(root.selectedProject?.status).toBe('ready');
+        root.dispose();
+    });
+
+    it('keeps the personal space first and the rest by position when a project is renamed or moved in the order', async () => {
+        const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
+
+        await root.load();
+        await settle();
+        await root.command({ type: 'project.update', projectId: FIXTURE_PERSONAL_PROJECT_ID, settings: { chatMode: 'semi' } });
+        await root.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, name: 'Car Rental 2' });
+        await settle();
+
+        expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental 2', 'Clowdy']);
+        root.dispose();
+    });
+
+    it('drops a removed project with its state and remembered window, and moves a window that was on it to the first project', async () => {
+        const storage = memoryStorage({ [`clowdy:ui:${ FIXTURE_EMPTY_PROJECT_ID }`]: JSON.stringify({ section: 'docs' }) });
+        const root = new RootStore(new FixtureTransport(), { storage });
+
+        await root.load();
+        root.selectProject(FIXTURE_EMPTY_PROJECT_ID);
+        await settle();
+        root.ui.openProjectSettings(FIXTURE_EMPTY_PROJECT_ID);
+
+        const result = await root.command({ type: 'project.delete', projectId: FIXTURE_EMPTY_PROJECT_ID });
+
+        await settle();
+
+        expect(result.ok).toBe(true);
+        expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental']);
+        expect(root.projectState(FIXTURE_EMPTY_PROJECT_ID)).toBeUndefined();
+        expect(root.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+        expect(root.selectedProject?.status).toBe('ready');
+        expect(root.ui.settingsProjectId).toBeNull();
+        expect(storage.data).not.toHaveProperty(`clowdy:ui:${ FIXTURE_EMPTY_PROJECT_ID }`);
+        root.dispose();
+    });
+
+    it('leaves the selection alone when another project is removed', async () => {
+        const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
+
+        await root.load();
+        await settle();
+        await root.command({ type: 'project.delete', projectId: FIXTURE_EMPTY_PROJECT_ID });
+        await settle();
+
+        expect(root.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+        root.dispose();
+    });
+
+    it('puts the projects in the dragged order at once, and back when the daemon refuses', async () => {
+        const transport = new FixtureTransport();
+        let refuse = false;
+        const flaky = overrideTransport(transport, {
+            command: input => (refuse ? Promise.resolve({ ok: false, requestId: 'x', error: { code: 'conflict', message: 'No' } }) : transport.command(input)),
+        });
+        const root = new RootStore(flaky, { storage: memoryStorage() });
+
+        await root.load();
+        await settle();
+
+        const pending = root.reorderProjects([FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID]);
+
+        expect(root.projects.map(project => [project.name, project.position])).toEqual([['Personal', 0], ['Clowdy', 1], ['Car Rental', 2]]);
+        await pending;
+        await settle();
+        expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Clowdy', 'Car Rental']);
+
+        refuse = true;
+
+        const result = await root.reorderProjects([FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID]);
+
+        expect(result.ok).toBe(false);
+        expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Clowdy', 'Car Rental']);
+        root.dispose();
+    });
+
+    it('keeps the personal space first however the order names it', async () => {
+        const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
+
+        await root.load();
+        await settle();
+        await root.reorderProjects([FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID]);
+        await settle();
+
+        expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Clowdy', 'Car Rental']);
         root.dispose();
     });
 });
@@ -270,6 +375,39 @@ describe('RootStore resync', () => {
         await settle();
 
         expect(asked).toEqual(['claude']);
+        root.dispose();
+    });
+
+    it('forgets a project that was removed while the feed was away', async () => {
+        const data = createFixtureData();
+        const transport = new FixtureTransport({ data });
+        const feeds: Array<(status: FeedStatus) => void> = [];
+        const spy = overrideTransport(transport, {
+            subscribe: (cursor, onEvent, onStatus) => {
+                feeds.push(onStatus);
+
+                return transport.subscribe(cursor, onEvent, onStatus);
+            },
+        });
+        const root = new RootStore(spy, { storage: memoryStorage() });
+        // Something on screen watches the list, as the window does; MobX complains about a change made outside an action only then.
+        const stopWatching = autorun(() => void root.projects.length);
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        await root.load();
+        root.selectProject(FIXTURE_EMPTY_PROJECT_ID);
+        await settle();
+        data.projects = data.projects.filter(project => project.id !== FIXTURE_EMPTY_PROJECT_ID);
+        feeds[0]('resync');
+        await settle();
+
+        expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental']);
+        expect(root.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+        expect(root.syncStatus).toBe('connected');
+        expect(feeds).toHaveLength(2);
+        expect(warn).not.toHaveBeenCalled();
+        stopWatching();
+        warn.mockRestore();
         root.dispose();
     });
 
