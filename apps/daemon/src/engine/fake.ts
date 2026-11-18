@@ -99,7 +99,10 @@ function hash(text: string): number {
 }
 
 class FakeSession implements EngineSession {
+    /** Steers taken and not yet answered; the script's checkpoint answers them. */
     private inbox: string[] = [];
+    /** The script has its checkpoint still ahead, so a steer will be answered: every script has one, and runs it once. */
+    private listening = true;
     private closing = new AbortController();
     private signal: AbortSignal;
     private calls = 0;
@@ -111,8 +114,15 @@ class FakeSession implements EngineSession {
         this.signal = AbortSignal.any([options.signal, this.closing.signal]);
     }
 
-    send(text: string): void {
+    /** Takes a steer while the script has not passed its checkpoint, which answers it; after that the runtime keeps the message for the next turn. */
+    async steer(text: string): Promise<boolean> {
+        if (!this.listening || this.signal.aborted) {
+            return false;
+        }
+
         this.inbox.push(text);
+
+        return true;
     }
 
     close(): void {
@@ -307,6 +317,7 @@ class FakeSession implements EngineSession {
 
         yield* this.say(`Got it: "${ text }". Let me check the current state.`);
         yield* this.tool('read_file', { path: 'README.md' }, async () => ({ path: 'README.md', lines: 84 }));
+        yield* this.checkpoint();
 
         const answer = 'Nothing else is needed right now. Tell me if you want a change.';
 
@@ -369,8 +380,10 @@ class FakeSession implements EngineSession {
         return this.tool(name, input, () => definition.execute(input, this.signal) as Promise<T>);
     }
 
-    /** Acknowledges messages the user sent while the session was working. */
+    /** Answers the steers the person sent while the session was working. A steer that comes later goes to the next turn. */
     private async *checkpoint(): Step {
+        this.listening = false;
+
         for (const text of this.inbox.splice(0)) {
             yield* this.say(`Noted: "${ text }". I'll take that into account.`);
         }

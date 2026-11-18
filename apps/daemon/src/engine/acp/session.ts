@@ -85,6 +85,38 @@ type Item =
 /** The process went away while the session still needed it. */
 class ProcessEnded extends Error {}
 
+/**
+ * The extension both pinned adapters (Claude Code's and Codex's) implement to hand a message to the turn in flight; the SDK has no types for it. An agent
+ * that can do it says `_meta.steering.supported` in its answer to `initialize`. `promptRequired` as the idle behaviour makes an agent with no turn running
+ * answer so instead of starting a turn of its own that no request of the client owns.
+ */
+const STEER_METHOD = '_session/steering';
+
+interface SteerRequest {
+    sessionId: string;
+    prompt: ContentBlock[];
+    _meta: { steering: { idleBehavior: 'promptRequired' } };
+}
+
+type SteerResponse = { outcome: 'injected' } | { outcome: 'startedNewTurn' } | { outcome: 'promptRequired'; reason?: string };
+
+/** Whether the agent's answer to `initialize` says it can take a steer. */
+function canSteer(init: { _meta?: Record<string, unknown> | null }): boolean {
+    const steering = init._meta?.steering as { supported?: unknown } | undefined;
+
+    return steering?.supported === true;
+}
+
+/**
+ * An agent may not have begun the turn of a prompt it has just been sent, and answers a steer then with `promptRequired`. While the prompt is still
+ * running the steer is asked again this often, this many times.
+ */
+const STEER_RETRY_MS = 100;
+const STEER_ATTEMPTS = 20;
+
+/** Where a session's one prompt is: not sent yet, with the agent, or answered (or never to be sent: the session ended before it). */
+type PromptState = 'before' | 'running' | 'over';
+
 const wait = (ms: number) => new Promise<void>((resolve) => {
     setTimeout(resolve, ms).unref();
 });
@@ -148,26 +180,79 @@ function isResumeWarning(update: SessionUpdate): boolean {
 }
 
 /**
- * One agent process driven over ACP for one turn of a run, plus any messages sent into it meanwhile. The turn is a
- * `session/prompt`; text sent while it runs waits and goes out as the next prompt, and the session reports `done` when
- * nothing is left to say.
+ * One agent process driven over ACP for one turn of a run: one `session/prompt`, and `done` when the agent answers it. A message the person writes
+ * meanwhile reaches the turn only as a steer (`steer`), when the agent can take one; the runtime keeps any other for the next turn.
  */
 export class AcpSession implements EngineSession {
-    private inbox: string[] = [];
     private closing = new AbortController();
     private signal: AbortSignal;
     private exited: Promise<void> = Promise.resolve();
     private connection?: ClientConnection;
     private sessionId?: string;
     private access?: BridgeAccess;
+    /** The agent said in `initialize` that it can take a steer. */
+    private steerable = false;
+    private prompt: PromptState = 'before';
+    /** Wake the steers that wait for the prompt to be with the agent (or for the session to end before it is). */
+    private promptWaiters: (() => void)[] = [];
 
     constructor(private options: EngineStartOptions, private deps: SessionDeps) {
         this.signal = AbortSignal.any([options.signal, this.closing.signal]);
-        this.inbox.push(options.prompt);
     }
 
-    send(text: string): void {
-        this.inbox.push(text);
+    /**
+     * Hands `text` to the turn in flight. A steer that comes while the agent is still starting waits until the prompt is with it, since a steer is only
+     * taken by a turn that runs; an agent that did not say it can steer, a prompt that is over, or an answer that is not `injected` leaves the message to
+     * the runtime, which keeps it for the next turn.
+     */
+    async steer(text: string): Promise<boolean> {
+        if (this.prompt === 'before') {
+            await new Promise<void>(resolve => this.promptWaiters.push(resolve));
+        }
+
+        const { connection, sessionId } = this;
+
+        if (this.prompt !== 'running' || !this.steerable || !connection || !sessionId || this.signal.aborted) {
+            return false;
+        }
+
+        try {
+            for (let attempt = 1; ; attempt++) {
+                const answer = await connection.agent.request<SteerResponse, SteerRequest>(STEER_METHOD, {
+                    sessionId,
+                    prompt: [{ type: 'text', text }],
+                    _meta: { steering: { idleBehavior: 'promptRequired' } },
+                });
+
+                if (answer?.outcome !== 'promptRequired' || attempt >= STEER_ATTEMPTS) {
+                    return answer?.outcome === 'injected';
+                }
+
+                await wait(STEER_RETRY_MS);
+
+                if (this.prompt !== 'running' || this.signal.aborted) {
+                    return false;
+                }
+            }
+        }
+        catch (error) {
+            this.deps.log?.(`${ this.deps.agentId } refused a steer: ${ errorMessage(error) }`);
+
+            return false;
+        }
+    }
+
+    /** Moves the prompt along and wakes the steers that wait for it. */
+    private promptIs(state: Exclude<PromptState, 'before'>): void {
+        if (this.prompt === 'over') {
+            return;
+        }
+
+        this.prompt = state;
+
+        for (const wake of this.promptWaiters.splice(0)) {
+            wake();
+        }
     }
 
     /** The conversation so far, when the runtime can tell it; a record that cannot be made leaves the turn as it is. */
@@ -185,6 +270,7 @@ export class AcpSession implements EngineSession {
     /** Stops the session and waits until its process is gone. */
     async close(): Promise<void> {
         this.closing.abort();
+        this.promptIs('over');
         // The token is useless once the session is over, even when nobody reads the generator to its end.
         this.access?.dispose();
         await Promise.race([this.exited, wait(CLOSE_WAIT_MS)]);
@@ -199,6 +285,16 @@ export class AcpSession implements EngineSession {
     }
 
     private async *run(): AsyncGenerator<EngineEvent> {
+        try {
+            yield* this.drive();
+        }
+        finally {
+            // However the session ended, a steer that still waits for the prompt waits for nothing.
+            this.promptIs('over');
+        }
+    }
+
+    private async *drive(): AsyncGenerator<EngineEvent> {
         if (this.signal.aborted) {
             return;
         }
@@ -357,6 +453,9 @@ export class AcpSession implements EngineSession {
             }
 
             const capabilities = init.agentCapabilities ?? {};
+
+            this.steerable = canSteer(init);
+
             const access = options.tools.length > 0 ? deps.bridge.register(options.tools, signal) : undefined;
 
             this.access = access;
@@ -450,66 +549,56 @@ export class AcpSession implements EngineSession {
             const record = options.resumeSessionId && !resumed ? this.record() : undefined;
 
             // An agent that cannot take a system prompt gets it in front of the first message of a conversation it has not seen.
-            let preface = [
+            const preface = [
                 !supportsSystemPrompt && !resumed && options.systemPrompt,
                 record,
             ].filter(Boolean).map(part => `${ part }\n\n---\n\n`).join('');
 
+            const mapper = new UpdateMapper({ toolNames: options.tools.map(tool => tool.name), costBefore: deps.costs.get(id), log: deps.log });
+
+            void connection.agent.request(methods.agent.session.prompt, { sessionId: id, prompt: [{ type: 'text', text: `${ preface }${ options.prompt }` } satisfies ContentBlock] }).then(
+                response => channel.push({ kind: 'stop', response }),
+                error => channel.push({ kind: 'failed', error })
+            );
+            this.promptIs('running');
+
             for (;;) {
-                const text = `${ preface }${ this.inbox.splice(0).join('\n\n') }`;
-                const mapper = new UpdateMapper({ toolNames: options.tools.map(tool => tool.name), costBefore: deps.costs.get(id), log: deps.log });
+                const item = await channel.next();
 
-                preface = '';
-                void connection.agent.request(methods.agent.session.prompt, { sessionId: id, prompt: [{ type: 'text', text } satisfies ContentBlock] }).then(
-                    response => channel.push({ kind: 'stop', response }),
-                    error => channel.push({ kind: 'failed', error })
-                );
-
-                for (;;) {
-                    const item = await channel.next();
-
-                    if (signal.aborted || item.kind === 'aborted') {
-                        return;
-                    }
-
-                    if (item.kind === 'update') {
-                        yield* mapper.update(item.update);
-                    }
-                    else if (item.kind === 'exited') {
-                        yield this.failure(processEnded(context, `exit code ${ proc.child.exitCode ?? 'unknown' }`, proc.stderr()));
-
-                        return;
-                    }
-                    else if (item.kind === 'failed') {
-                        yield* mapper.close();
-                        yield this.failure(classifyThrown(item.error, context, proc.stderr()));
-
-                        return;
-                    }
-                    else {
-                        yield* mapper.stop(item.response);
-
-                        if (mapper.cost !== undefined) {
-                            deps.costs.set(id, mapper.cost);
-                        }
-
-                        const failed = this.stopFailure(item.response.stopReason, agent.name);
-
-                        if (failed) {
-                            yield failed;
-
-                            return;
-                        }
-
-                        if (this.inbox.length > 0) {
-                            break;
-                        }
-
-                        yield { type: 'done', result: mapper.result() };
-
-                        return;
-                    }
+                if (signal.aborted || item.kind === 'aborted') {
+                    return;
                 }
+
+                if (item.kind === 'update') {
+                    yield* mapper.update(item.update);
+                    continue;
+                }
+
+                // Whatever ended it, the prompt takes no steer any more.
+                this.promptIs('over');
+
+                if (item.kind === 'exited') {
+                    yield this.failure(processEnded(context, `exit code ${ proc.child.exitCode ?? 'unknown' }`, proc.stderr()));
+
+                    return;
+                }
+
+                if (item.kind === 'failed') {
+                    yield* mapper.close();
+                    yield this.failure(classifyThrown(item.error, context, proc.stderr()));
+
+                    return;
+                }
+
+                yield* mapper.stop(item.response);
+
+                if (mapper.cost !== undefined) {
+                    deps.costs.set(id, mapper.cost);
+                }
+
+                yield this.stopFailure(item.response.stopReason, agent.name) ?? { type: 'done', result: mapper.result() };
+
+                return;
             }
         }
         catch (error) {

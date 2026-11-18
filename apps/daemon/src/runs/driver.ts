@@ -59,8 +59,8 @@ export interface Report {
 interface LiveRun {
     session?: EngineSession;
     engine?: EngineId;
-    /** Messages that arrived before the session started. */
-    pending: string[];
+    /** Writes the running turn's stream; a steer the agent took closes its open message. */
+    writer?: TurnWriter;
     /** Aborts this turn's session without cancelling the run. */
     turn?: AbortController;
     /** Set when the engine is at its subscription limit: the turn stops and the run waits for the reset. */
@@ -82,6 +82,8 @@ const firstLine = (text: string) => text.split('\n')[0].trim().slice(0, 300);
  * later wake-up starts a new turn of the same session. Everything durable goes through `RunService` and the stream writer.
  */
 export class RunDriver {
+    /** Called once a turn's engine session has started, with the run's id: messages steered while the run had no session can go to it now. */
+    onTurnStarted: (runId: string) => void = () => undefined;
     private live = new Map<string, LiveRun>();
     /** The last flight of each run. A new one starts behind it, so a run never has two turns at once. */
     private flights = new Map<string, Promise<void>>();
@@ -174,7 +176,7 @@ export class RunDriver {
      */
     launch(runId: string): void {
         this.deps.store.afterCommit(() => {
-            const live: LiveRun = { pending: [] };
+            const live: LiveRun = {};
             const previous = this.flights.get(runId) ?? Promise.resolve();
             const flight: Promise<void> = previous
                 .then(() => this.drive(runId, live))
@@ -199,21 +201,37 @@ export class RunDriver {
         }
     }
 
-    /** Passes a follow-up user message to the run's live session, or holds it until the session starts. */
-    deliver(runId: string, text: string): void {
-        this.deps.store.afterCommit(() => {
-            const live = this.live.get(runId);
+    /**
+     * Hands `text` to the turn the run is working on, as a steer, when its session can take one; resolves whether the agent took it. `taken` runs in the
+     * transaction that closes the turn's open message, so what the agent says from then on comes after whatever `taken` writes (the person's bubble).
+     * A run that waits (for a slot, an answer, a reset) has no turn to steer.
+     */
+    async steer(runId: string, text: string, taken: () => void): Promise<boolean> {
+        const live = this.live.get(runId);
+        const session = live?.session;
+        const writer = live?.writer;
 
-            if (!live) {
-                console.warn(`[clowdy] run ${ runId } is not live; the message stays in its stream only`);
-            }
-            else if (live.session) {
-                live.session.send(text);
-            }
-            else {
-                live.pending.push(text);
-            }
-        });
+        if (!session?.steer || !writer || this.deps.runs.require(runId).status !== 'running') {
+            return false;
+        }
+
+        let accepted = false;
+
+        try {
+            accepted = await session.steer(text);
+        }
+        catch (error) {
+            console.warn(`[clowdy] steering run ${ runId } failed: ${ errorMessage(error) }`);
+        }
+
+        if (accepted) {
+            this.deps.store.tx(() => {
+                writer.end();
+                taken();
+            });
+        }
+
+        return accepted;
     }
 
     /** `report_result`: the run's work is over with this outcome. The session gets a moment to end its turn, then is closed. */
@@ -331,12 +349,13 @@ export class RunDriver {
         const writer = new TurnWriter(store, runId);
 
         live.engine = run.engine;
+        live.writer = writer;
         live.turn = turnAbort;
         live.native = new NativeAgents(store, runs, run);
         live.prompt = prompt;
 
-        // The messages this turn sends are in the stream already; the record leaves them out, as the agent gets them in the prompt.
-        const incoming = [prompt, ...live.pending];
+        // The message this turn sends is in the stream already; the record leaves it out, as the agent gets it in the prompt.
+        const incoming = [prompt];
         const session = engine.start({
             cwd: work.cwd ?? project.path,
             prompt,
@@ -356,9 +375,7 @@ export class RunDriver {
             markMailboxDelivered(store.db, pending.map(entry => entry.id));
         });
 
-        for (const text of live.pending.splice(0)) {
-            session.send(text);
-        }
+        this.onTurnStarted(runId);
 
         try {
             this.settle(runId, live, await this.consume(run, session, writer, live));
@@ -389,6 +406,7 @@ export class RunDriver {
             writer.end();
             live.native.finish();
             live.session = undefined;
+            live.writer = undefined;
             live.pausedUntil = undefined;
             await Promise.resolve(session.close()).catch(() => undefined);
             this.sessions--;

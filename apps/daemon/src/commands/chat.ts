@@ -7,7 +7,9 @@ import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
 import { conflict, invalid, unavailable } from '../errors';
 import { firstMessage } from '../runs/prompts';
+import { isAtRest } from '../runs/queue';
 
+import type { QueuedMessageMode } from '@clowdy/protocol';
 import type { AgentRegistry } from '../engine/acp/registry';
 import type { Handlers, Services } from './context';
 
@@ -27,15 +29,16 @@ export function requireEnabled(agents: AgentRegistry, engine: string): void {
 }
 
 /**
- * The first message creates the chat's orchestrator run and names the chat after it (unless it was renamed).
- * Later messages go to the live session. A message to a finished chat, or to an orchestrator parked until its
- * children finish, starts a new turn of the same run: its stream keeps growing and its session is resumed.
+ * The first message creates the chat's orchestrator run and names the chat after it (unless it was renamed). A message to a finished chat, or to an
+ * orchestrator parked until its children finish, starts a new turn of the same run: its stream keeps growing and its session is resumed. A message to
+ * a busy orchestrator waits in the chat's queue, as a steer of the running turn or for the next turn (`mode`), and reaches the stream only when the
+ * agent gets it (`ChatQueue`).
  *
  * A message may carry files uploaded to the chat's project (`attachmentIds`), with no text at all. The stream shows the
  * person's own text and the files; the agent gets the text and, after a blank line, the list of where the files are
  * (`messageWithFiles`). That one string goes down every path below, as the text always did.
  */
-function send({ store, runs, driver, attachments, agents }: Services, chatId: string, rawText: string, attachmentIds: readonly string[] = []) {
+function send({ store, runs, driver, attachments, agents, queue }: Services, chatId: string, rawText: string, attachmentIds: readonly string[] = [], mode: QueuedMessageMode = 'queue') {
     const text = rawText.trim();
 
     if (!text && attachmentIds.length === 0) {
@@ -68,22 +71,26 @@ function send({ store, runs, driver, attachments, agents }: Services, chatId: st
 
     const run = runs.require(chat.orchestratorRunId);
 
+    if (!isAtRest(run)) {
+        queue.enqueue({ ...chat, updatedAt: now }, run, { mode, text, files, content });
+
+        return { chatId, runId: run.id };
+    }
+
+    // A paused queue stays paused: this message is the person's own next turn, not one of those they held back.
     attachments.markSent(files, chatId, run.id);
     appendItem(store, run.id, body);
     saveChat(store, { ...chat, updatedAt: now });
-
-    if (isTerminalRunStatus(run.status) || run.status === 'waiting_children') {
-        runs.resume(run.id, content);
-        driver.launch(run.id);
-    }
-    else {
-        driver.deliver(run.id, content);
-    }
+    runs.resume(run.id, content);
+    driver.launch(run.id);
 
     return { chatId, runId: run.id };
 }
 
-export const chatHandlers: Pick<Handlers, 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.setModel' | 'chat.compact' | 'chat.setArchived' | 'chat.delete' | 'chat.send'> = {
+type ChatCommand = 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.setModel' | 'chat.compact' | 'chat.setArchived' | 'chat.delete' | 'chat.send'
+    | 'chat.removeQueued' | 'chat.moveQueued' | 'chat.sendQueued';
+
+export const chatHandlers: Pick<Handlers, ChatCommand> = {
     'chat.create': ({ store, runs }, command) => {
         const project = requireProject(store, command.projectId);
 
@@ -159,5 +166,21 @@ export const chatHandlers: Pick<Handlers, 'chat.create' | 'chat.rename' | 'chat.
         return { chatId: command.chatId };
     },
 
-    'chat.send': (services, command) => send(services, command.chatId, command.text, command.attachmentIds),
+    'chat.send': (services, command) => send(services, command.chatId, command.text, command.attachmentIds, command.mode),
+
+    'chat.removeQueued': ({ queue }, command) => ({ chat: queue.remove(command.chatId, command.itemId, command.keepFiles) }),
+
+    'chat.moveQueued': ({ queue }, command) => ({ chat: queue.move(command.chatId, command.itemId, command.index) }),
+
+    /** A message that goes out at once is refused like `chat.send` for an agent that is switched off; a steer of a running turn needs nothing new of it. */
+    'chat.sendQueued': ({ store, runs, agents, queue }, command) => {
+        const chat = requireChat(store, command.chatId);
+        const run = chat.orchestratorRunId ? runs.require(chat.orchestratorRunId) : undefined;
+
+        if (run && isAtRest(run)) {
+            requireEnabled(agents, run.engine);
+        }
+
+        return queue.sendNow(command.chatId, command.itemId);
+    },
 };

@@ -11,6 +11,7 @@ import {
     getAttachment,
     insertAttachment,
     markAttachmentsSent,
+    markAttachmentsUnsent,
     unsentAttachmentIdsBefore,
 } from '../db/attachments';
 import { conflict, invalid, notFound, TooLargeError } from '../errors';
@@ -200,6 +201,20 @@ export class AttachmentsService {
         if (markAttachmentsSent(this.store.db, records.map(record => record.id), chatId, runId) !== records.length) {
             throw conflict('A file was sent with another message already');
         }
+    }
+
+    /**
+     * Gives the files of a message that will not be sent back to the project, unsent: a message box takes them again (the person edits a queued message).
+     * They count as uploaded now, so the sweep of unsent files gives the person as long as for any upload. Call it in the transaction that drops the message.
+     */
+    release(ids: readonly string[]): void {
+        markAttachmentsUnsent(this.store.db, [...ids], Date.now());
+    }
+
+    /** Drops the files of a message that will not be sent (a queued message the person removed): the rows now, the folders once the transaction commits. */
+    discard(ids: readonly string[]): void {
+        ids.forEach(id => deleteAttachment(this.store.db, id));
+        this.store.afterCommit(() => ids.forEach(id => this.removeFolder(id)));
     }
 
     /** Drops the files sent in a chat: the rows now, the folders once the transaction commits. Call it in the transaction that deletes the chat. */

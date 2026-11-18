@@ -1,6 +1,6 @@
-import { clean } from './json';
+import { clean, parseJson, toJson } from './json';
 
-import type { Chat, ChatTaskLink, Run } from '@clowdy/protocol';
+import type { Chat, ChatTaskLink, QueuedMessage, Run } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
 
 interface ChatRow {
@@ -13,6 +13,8 @@ interface ChatRow {
     effort: string | null;
     orchestrator_run_id: string | null;
     archived_at: number | null;
+    queue: string | null;
+    queue_paused: Chat['queuePaused'] | null;
     created_at: number;
     updated_at: number;
 }
@@ -27,6 +29,8 @@ const toChat = (row: ChatRow): Chat => clean({
     effort: row.effort,
     orchestratorRunId: row.orchestrator_run_id,
     archivedAt: row.archived_at,
+    queue: parseJson<QueuedMessage[]>(row.queue),
+    queuePaused: row.queue_paused,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
 }) as Chat;
@@ -43,12 +47,14 @@ export function listChats(db: Database, projectId: string): Chat[] {
 
 export function upsertChat(db: Database, chat: Chat): void {
     db.query(`
-        INSERT INTO chats (id, project_id, title, mode, engine, model, effort, orchestrator_run_id, archived_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO chats (id, project_id, title, mode, engine, model, effort, orchestrator_run_id, archived_at, queue, queue_paused, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET title = excluded.title, mode = excluded.mode, engine = excluded.engine, model = excluded.model, effort = excluded.effort,
-            orchestrator_run_id = excluded.orchestrator_run_id, archived_at = excluded.archived_at, updated_at = excluded.updated_at
+            orchestrator_run_id = excluded.orchestrator_run_id, archived_at = excluded.archived_at, queue = excluded.queue, queue_paused = excluded.queue_paused,
+            updated_at = excluded.updated_at
     `).run(
         chat.id, chat.projectId, chat.title, chat.mode, chat.engine ?? null, chat.model ?? null, chat.effort ?? null,
-        chat.orchestratorRunId ?? null, chat.archivedAt ?? null, chat.createdAt, chat.updatedAt
+        chat.orchestratorRunId ?? null, chat.archivedAt ?? null, chat.queue?.length ? toJson(chat.queue) : null, chat.queuePaused ?? null, chat.createdAt, chat.updatedAt
     );
 }
 
@@ -84,4 +90,9 @@ export function runsOfChat(db: Database, chatId: string): { id: string; status: 
 export function deleteChatAndRuns(db: Database, chatId: string): void {
     db.query('DELETE FROM runs WHERE chat_id = ?1 OR root_run_id IN (SELECT id FROM runs WHERE chat_id = ?1)').run(chatId);
     db.query('DELETE FROM chats WHERE id = ?').run(chatId);
+}
+
+/** Chats whose queue holds messages, for the start of the daemon: an orchestrator that came to rest just before a crash still owes them a turn. */
+export function chatIdsWithQueue(db: Database): string[] {
+    return (db.query('SELECT id FROM chats WHERE queue IS NOT NULL ORDER BY updated_at, id').all() as { id: string }[]).map(row => row.id);
 }

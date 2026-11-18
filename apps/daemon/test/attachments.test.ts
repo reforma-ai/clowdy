@@ -7,7 +7,7 @@ import { formatSize, messageWithFiles } from '../src/attachments/message';
 import { contentDisposition, mediaTypeOf, safeFileName, servedMediaType } from '../src/attachments/names';
 import { STALE_AFTER_MS } from '../src/attachments/service';
 import { projectSnapshot } from '../src/domain/snapshots';
-import { cleanTempDirs, command, restartHarness, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
+import { cleanTempDirs, command, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
 
 import type { Attachment, ChatMode } from '@clowdy/protocol';
 import type { Harness, Script } from './helpers';
@@ -285,20 +285,34 @@ describe('chat.send with files', () => {
         expect(rowOf(h, log.id)).toMatchObject({ chat_id: chat.id, run_id: runId });
     });
 
-    test('a message to a live session carries the same text and list', async () => {
-        const { h, engine, project, chat } = await setup(holding);
+    test('a message to a busy orchestrator keeps its files while it waits, and its turn carries the same text and list', async () => {
+        const gate = latch();
+        const { h, engine, project, chat } = await setup(async function* ({ number, signal }) {
+            yield { type: 'session', sessionId: 's1' };
+
+            if (number === 1) {
+                await gate.wait(signal);
+            }
+
+            yield { type: 'done', result: `turn ${ number }` };
+        });
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Start here' });
 
         await waitFor(() => engine.turns.length === 1, 'the orchestrator to start');
 
         const file = await attach(h, project.id, 'trace.txt', bytes(2048));
 
-        h.ok('chat.send', { chatId: chat.id, text: 'Why does it fail?', attachmentIds: [file.id] });
-        await waitFor(() => engine.sent.length === 1, 'the message to reach the session');
+        h.ok('chat.send', { chatId: chat.id, text: 'Why does it fail?', attachmentIds: [file.id], mode: 'queue' });
 
-        expect(engine.sent[0]).toBe(`Why does it fail?\n\nAttached files:\n- @${ pathOf(h, file) } (text/plain, 2 KB)`);
-        expect(userItems(h, runId).at(-1)).toEqual({ kind: 'user', text: 'Why does it fail?', attachments: [file] });
+        // The files belong to the chat from the moment the message is queued; the person's bubble waits for the agent.
         expect(rowOf(h, file.id)).toMatchObject({ chat_id: chat.id, run_id: runId });
+        expect(userItems(h, runId).filter(body => body.kind === 'user')).toHaveLength(1);
+
+        gate.release();
+        await waitFor(() => engine.turns.length === 2, 'the queued message\'s turn');
+
+        expect(engine.turns[1].prompt).toBe(`Why does it fail?\n\nAttached files:\n- @${ pathOf(h, file) } (text/plain, 2 KB)`);
+        expect(userItems(h, runId).filter(body => body.kind === 'user').at(-1)).toEqual({ kind: 'user', text: 'Why does it fail?', attachments: [file] });
     });
 
     test('a message to a finished chat starts the next turn with the same text and list, and no prefix', async () => {

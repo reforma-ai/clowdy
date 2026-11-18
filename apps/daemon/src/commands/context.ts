@@ -7,6 +7,7 @@ import type { FilesService } from '../files/service';
 import type { ModelCatalog } from '../providers/models';
 import type { ProvidersService } from '../providers/service';
 import type { RunDriver } from '../runs/driver';
+import type { ChatQueue } from '../runs/queue';
 import type { RunService } from '../runs/service';
 import type { SkillsService } from '../skills/service';
 import type { Store } from '../store';
@@ -17,6 +18,8 @@ export interface Services {
     store: Store;
     runs: RunService;
     driver: RunDriver;
+    /** What the person writes while a chat's orchestrator works: the queue, its turns and its steers. */
+    queue: ChatQueue;
     docs: DocsService;
     files: FilesService;
     attachments: AttachmentsService;

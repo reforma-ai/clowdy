@@ -16,6 +16,7 @@ import { announceAgentsChanged } from './providers/announce';
 import { ModelCatalog } from './providers/models';
 import { ProvidersService } from './providers/service';
 import { RunDriver } from './runs/driver';
+import { ChatQueue } from './runs/queue';
 import { RunService } from './runs/service';
 import { toolsFor } from './runs/tools';
 import { Wakeups } from './runs/wake';
@@ -70,11 +71,13 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         const wakes = new Wakeups(store, runs, driver, config.timings.wakeWindowMs);
         const docs = new DocsService(store);
         const attachments = new AttachmentsService(store, config.dataDir);
+        // Before the recovery: a turn the restart interrupted holds its chat's queue.
+        const queue = new ChatQueue({ store, runs, driver, attachments });
         const providers = options.providers ?? new ProvidersService({
             registry: agents,
             announce: () => announceAgentsChanged(store),
         });
-        const services: Services = { config, store, runs, driver, docs, files: new FilesService(), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
+        const services: Services = { config, store, runs, driver, queue, docs, files: new FilesService(), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
 
         await runs.recover();
         attachments.sweep();
@@ -84,6 +87,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         skills.watchFolders(listProjects(store.db));
         driver.resumeWaiting();
         wakes.resumePending();
+        queue.resumePending();
 
         let stopping: Promise<void> | undefined;
 

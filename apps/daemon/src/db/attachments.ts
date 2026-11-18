@@ -52,6 +52,13 @@ export function markAttachmentsSent(db: Database, ids: string[], chatId: string,
     return ids.reduce((changed, id) => changed + update.run(chatId, runId, id).changes, 0);
 }
 
+/** Makes sent files unsent again, as if they had just been uploaded: a message box may send them with another message. Returns how many it changed. */
+export function markAttachmentsUnsent(db: Database, ids: string[], now: number): number {
+    const update = db.query('UPDATE attachments SET chat_id = NULL, run_id = NULL, created_at = ? WHERE id = ?');
+
+    return ids.reduce((changed, id) => changed + update.run(now, id).changes, 0);
+}
+
 export function deleteAttachment(db: Database, id: string): void {
     db.query('DELETE FROM attachments WHERE id = ?').run(id);
 }

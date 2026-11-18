@@ -35,6 +35,37 @@ async function setup(agentEnv: Record<string, string> = {}) {
     return { h, project, chat, say, texts };
 }
 
+describe('a message while an ACP agent works', () => {
+    /** Starts a turn that says `first`, sleeps, and says `last`, and sends `say steered` as a steer once `first` is in the stream. */
+    async function steerDuringTurn(agentEnv: Record<string, string>) {
+        const { h, chat, say } = await setup(agentEnv);
+        const runId = say('say first\nsleep 800\nsay last');
+        const bodies = () => listItems(h.store.db, runId, 0).map(item => item.body);
+        const said = () => bodies().flatMap(body => (body.kind === 'assistant' ? [body.text] : body.kind === 'user' ? [`> ${ body.text.split('\n').at(-1) }`] : []));
+
+        await waitFor(() => said().includes('first'), 'the first words', 15_000);
+        h.ok('chat.send', { chatId: chat.id, text: 'say steered', mode: 'steer' });
+
+        return { h, runId, said };
+    }
+
+    test('steers the running prompt of an agent that can take one, and the bubble sits where the agent took it', async () => {
+        const { h, runId, said } = await steerDuringTurn({ FAKE_ACP_STEERING: '1' });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the turn', 15_000);
+
+        expect(said()).toEqual(['> say last', 'ok', 'first', '> say steered', 'steered', 'last']);
+    });
+
+    test('waits for the next turn with an agent that cannot steer', async () => {
+        const { h, runId, said } = await steerDuringTurn({});
+
+        await waitFor(() => said().includes('steered') && h.run(runId).status === 'succeeded', 'the next turn', 15_000);
+
+        expect(said()).toEqual(['> say last', 'ok', 'first', 'last', '> say steered', 'steered']);
+    });
+});
+
 describe('runs on an ACP agent, through the real runtime', () => {
     test('a chat turn streams the agent\'s message into the stream and succeeds, and its session is kept for the next turn', async () => {
         const { h, say, texts } = await setup();

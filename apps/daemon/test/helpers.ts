@@ -203,7 +203,6 @@ export class GateEngine implements AgentEngine {
         const aborted = this.aborted;
 
         return {
-            send() {},
             close() {},
             async *[Symbol.asyncIterator](): AsyncGenerator<EngineEvent> {
                 yield { type: 'session', sessionId: `gate-${ options.prompt }` };
@@ -260,8 +259,10 @@ export type Script = (turn: Turn) => AsyncGenerator<EngineEvent>;
 export class ScriptEngine implements AgentEngine {
     readonly id: EngineId = 'fake';
     readonly turns: EngineStartOptions[] = [];
-    /** Messages the runtime sent into live sessions, by session number. */
-    readonly sent: string[] = [];
+    /** Messages the runtime steered into live sessions, in order, whatever the answer. */
+    readonly steered: string[] = [];
+    /** Answers a steer; without it every steer is refused, as by an agent that cannot steer. */
+    steerAnswer?: (text: string, turn: Turn) => boolean | Promise<boolean>;
     closed = 0;
     /** When each session started and finished closing (epoch ms), by session number minus one. */
     readonly startedAt: number[] = [];
@@ -309,7 +310,11 @@ export class ScriptEngine implements AgentEngine {
         };
 
         return {
-            send: text => void engine.sent.push(text),
+            steer: async (text) => {
+                engine.steered.push(text);
+
+                return await engine.steerAnswer?.(text, turn) ?? false;
+            },
             close: async () => {
                 engine.closed++;
                 closing.abort();

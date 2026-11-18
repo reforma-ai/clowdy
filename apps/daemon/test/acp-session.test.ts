@@ -65,46 +65,14 @@ describe('a turn on an ACP agent', () => {
     });
 
     test('usage reports the prompt tokens and the cost of the turn, not the running total', async () => {
-        const { session, abort } = use().start('usage 100 20 0.25');
-
-        session.send('usage 10 5 0.5');
-
+        const { session, abort } = use().start('usage 100 20 0.25\nusage 10 5 0.5');
         const events = await collect(session);
 
         await session.close();
         abort.abort();
 
-        // Both messages were waiting before the first prompt went out, so they are one prompt; the cost is the session's total.
+        // The prompt's tokens add up, and its cost is the session's total so far.
         expect(events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 110, outputTokens: 25, costUsd: 0.75 }]);
-    });
-
-    test('a message sent while the turn runs waits, then goes out as the next prompt of the same session', async () => {
-        const { session } = use().start('say first\nsleep 200\nusage 1 1 0.1');
-        const iterator = session[Symbol.asyncIterator]();
-        const events: EngineEvent[] = [];
-
-        // Sent after the first prompt started.
-        for (let event = await iterator.next(); !event.done; event = await iterator.next()) {
-            events.push(event.value);
-
-            if (event.value.type === 'text' && events.length === 3) {
-                session.send('say second\nusage 2 2 0.2');
-            }
-
-            if (event.value.type === 'done' || event.value.type === 'error') {
-                break;
-            }
-        }
-
-        await session.close();
-
-        expect(types(events).filter(type => type === 'done')).toHaveLength(1);
-        expect(textOf(events)).toBe('firstsecond');
-        const usage = events.filter(event => event.type === 'usage');
-
-        expect(usage).toMatchObject([{ inputTokens: 1, outputTokens: 1 }, { inputTokens: 2, outputTokens: 2 }]);
-        // Each prompt reports its own share of the session's running cost.
-        expect(usage.map(event => event.type === 'usage' && event.costUsd)).toEqual([expect.closeTo(0.1), expect.closeTo(0.2)]);
     });
 
     test('the window\'s fill the agent reports becomes a context event', async () => {
@@ -248,6 +216,76 @@ describe('a turn on an ACP agent', () => {
         expect(textOf(events)).toBe('HOME=/home/someoneCLOWDY_TOKEN=ELECTRON_RUN_AS_NODE=');
         // Bun starts the fake agent with a home folder that does not exist, which can take a while on a busy machine.
     }, 20_000);
+});
+
+describe('steering', () => {
+    /** Reads the session to its end, steering `text` once the agent has said `after`; returns the events and what the steer resolved to. */
+    async function steerDuring(prompt: string, after: string, text: string, options?: Parameters<typeof rig>[0]) {
+        const { session } = use(options).start(prompt);
+        const events: EngineEvent[] = [];
+        let answer: Promise<boolean> | undefined;
+
+        for await (const event of session) {
+            events.push(event);
+
+            if (!answer && textOf(events).includes(after)) {
+                answer = session.steer!(text);
+            }
+
+            if (event.type === 'done' || event.type === 'error') {
+                break;
+            }
+        }
+
+        const taken = await answer;
+
+        await session.close();
+
+        return { events, taken };
+    }
+
+    test('a steer of the running prompt is injected, and the agent answers it in the same turn', async () => {
+        const { events, taken } = await steerDuring('say first\nsleep 200\nsay last', 'first', 'say steered', { agentEnv: { FAKE_ACP_STEERING: '1' } });
+
+        expect(taken).toBe(true);
+        expect(types(events).filter(type => type === 'done')).toHaveLength(1);
+        expect(textOf(events)).toBe('firststeeredlast');
+    });
+
+    test('an agent that does not say it can steer is not asked, and the message stays with the runtime', async () => {
+        const log = join(mkdtempSync(join(tmpdir(), 'clowdy-steer-')), 'requests');
+        const { events, taken } = await steerDuring('say first\nsleep 100\nsay last', 'first', 'say steered', { agentEnv: { FAKE_ACP_LOG: log } });
+
+        expect(taken).toBe(false);
+        expect(textOf(events)).toBe('firstlast');
+        expect(readFileSync(log, { encoding: 'utf8', flag: 'a+' })).toBe('');
+        rmSync(dirname(log), { recursive: true, force: true });
+    });
+
+    test('a steer that comes before the prompt waits for it, and one after the turn is refused', async () => {
+        const { session } = use({ agentEnv: { FAKE_ACP_STEERING: '1' } }).start('say first\nsleep 100');
+        // Nothing runs until the session is read: the agent is not even started yet.
+        const early = session.steer!('say early');
+        const events = await collect(session);
+        const late = await session.steer!('say late');
+
+        await session.close();
+
+        expect(await early).toBe(true);
+        expect(late).toBe(false);
+        expect(textOf(events)).toBe('firstearly');
+    });
+
+    test('a session that ends before its prompt refuses the steer that waited for it', async () => {
+        const { session, abort } = use({ agentEnv: { FAKE_ACP_STEERING: '1' } }).start('say first');
+        const waiting = session.steer!('say steered');
+
+        abort.abort();
+        await collect(session);
+        await session.close();
+
+        expect(await waiting).toBe(false);
+    });
 });
 
 describe('resuming', () => {

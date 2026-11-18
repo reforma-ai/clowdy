@@ -246,4 +246,14 @@ export const MIGRATIONS: Migration[] = [
             db.run('ALTER TABLE runs ADD COLUMN parent_tool_call_id TEXT');
         },
     },
+    {
+        version: 9,
+        up(db) {
+            // Messages waiting for a chat's busy orchestrator, as a JSON array of `QueuedMessage`, and why the queue holds (see `Chat.queue`).
+            db.run(`
+                ALTER TABLE chats ADD COLUMN queue TEXT;
+                ALTER TABLE chats ADD COLUMN queue_paused TEXT;
+            `);
+        },
+    },
 ];

@@ -13,6 +13,7 @@ const engine = z.string().min(1).max(64);
 const model = z.string().min(1).max(200);
 const effort = z.string().min(1).max(64);
 const actor = z.object({ kind: z.literal('user') });
+const queuedMode = z.enum(['steer', 'queue']);
 
 export const commandSchema = z.discriminatedUnion('type', [
     /* Projects */
@@ -61,8 +62,24 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('chat.setArchived'), chatId: z.string(), archived: z.boolean() }),
     /** Removes the chat with its orchestrator's conversation and every run below it; the tasks stay. Refused while any of its runs is active. */
     z.object({ ...base, type: z.literal('chat.delete'), chatId: z.string() }),
-    /** `text` may be empty when `attachmentIds` (files uploaded to the chat's project, not sent yet) name at least one file. */
-    z.object({ ...base, type: z.literal('chat.send'), chatId: z.string(), text: z.string(), attachmentIds: z.array(z.string()).max(MAX_ATTACHMENTS_PER_MESSAGE).optional() }),
+    /**
+     * `text` may be empty when `attachmentIds` (files uploaded to the chat's project, not sent yet) name at least one file. A chat at rest (no orchestrator yet,
+     * a finished one, or one waiting for its children) gets the message at once, whatever `mode` says. A busy orchestrator gets it later: `mode` puts it in the
+     * chat's queue as a steer of the running turn or as a next turn (`queue` when left out), and it shows in the stream once the agent has it.
+     */
+    z.object({ ...base, type: z.literal('chat.send'), chatId: z.string(), text: z.string(), attachmentIds: z.array(z.string()).max(MAX_ATTACHMENTS_PER_MESSAGE).optional(), mode: queuedMode.optional() }),
+    /**
+     * Takes a message out of the chat's queue. Its files are deleted with it, or, with `keepFiles`, go back to being uploaded and not sent, so a message box
+     * can take them again (the person edits the message).
+     */
+    z.object({ ...base, type: z.literal('chat.removeQueued'), chatId: z.string(), itemId: z.string(), keepFiles: z.boolean().optional() }),
+    /** Moves a queued message to `index` among the messages of its own kind (the steers, or the next turns); a larger index puts it last. */
+    z.object({ ...base, type: z.literal('chat.moveQueued'), chatId: z.string(), itemId: z.string(), index: z.number().int().min(0) }),
+    /**
+     * Sends a queued message now. While the orchestrator works it becomes a steer of the running turn (it stays a steer when the agent cannot take it, and goes
+     * first when the turn ends); at rest it goes out at once as the next turn and lets a paused queue flow again.
+     */
+    z.object({ ...base, type: z.literal('chat.sendQueued'), chatId: z.string(), itemId: z.string() }),
 
     /* Tasks */
     z.object({

@@ -46,8 +46,12 @@ export interface EngineStartOptions {
 }
 
 export interface EngineSession extends AsyncIterable<EngineEvent> {
-    /** A follow-up user message while the session is live. */
-    send(text: string): void;
+    /**
+     * Hands a message from the person to the turn in flight, for the agent to take in without stopping (a steer). Resolves `true` when the agent took it,
+     * so what it says from then on answers it too, and `false` when it did not (it cannot steer, or its turn is over): the runtime then keeps the message
+     * for the next turn. An engine that cannot steer leaves it out.
+     */
+    steer?(text: string): Promise<boolean>;
     close(): void | Promise<void>;
 }
 

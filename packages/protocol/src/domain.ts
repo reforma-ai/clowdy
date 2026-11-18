@@ -77,8 +77,37 @@ export interface Chat {
     orchestratorRunId?: RunId;
     /** When the person archived the chat; absent for a chat in use. An archived chat keeps its runs, tasks and stream, and a message to it brings it back. */
     archivedAt?: number;
+    /**
+     * Messages the person wrote while the orchestrator worked, waiting for it: the steers first, then the next turns, each part in its own order.
+     * Absent when nothing waits.
+     */
+    queue?: QueuedMessage[];
+    /** Why the queue waits for the person (Send now on a message) instead of going out when the orchestrator rests. Absent while it flows, and whenever it is empty. */
+    queuePaused?: QueuePause;
     createdAt: number;
     updatedAt: number;
+}
+
+/** How a message written while the orchestrator works reaches it: `steer` hands it to the turn in flight when the agent can take one, `queue` waits for the next turn. */
+export type QueuedMessageMode = 'steer' | 'queue';
+
+/** Why a chat's queue holds: the person pressed Stop, or the turn failed (or the daemon restarted under it). */
+export type QueuePause = 'stopped' | 'failed';
+
+/**
+ * A message waiting for a busy orchestrator. It reaches the agent as the next turn when the orchestrator rests (one message per turn, steers first),
+ * or earlier as a steer of the running turn. The stream shows the person's message only from the moment the agent got it.
+ */
+export interface QueuedMessage {
+    id: string;
+    mode: QueuedMessageMode;
+    /** What the person wrote, as the stream's `user` item will show it; may be empty when files are attached. */
+    text: string;
+    /** The files of the message. The daemon keeps them for it from the moment it was queued. */
+    attachments?: Attachment[];
+    /** What the agent is told: the text and, after a blank line, where the files are (as `chat.send` tells it). */
+    content: string;
+    createdAt: number;
 }
 
 /* ---------------------------------- Tasks --------------------------------- */

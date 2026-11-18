@@ -2,7 +2,7 @@ const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const RANDOM_BITS = 80n;
 const RANDOM_MASK = (1n << RANDOM_BITS) - 1n;
 
-export type IdPrefix = 'prj' | 'cht' | 'tsk' | 'run' | 'itm' | 'sts' | 'qst' | 'art' | 'att';
+export type IdPrefix = 'prj' | 'cht' | 'tsk' | 'run' | 'itm' | 'sts' | 'qst' | 'art' | 'att' | 'que';
 
 let lastTime = 0;
 let lastRandom = 0n;

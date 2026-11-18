@@ -238,18 +238,35 @@ describe('the scripted orchestrator', () => {
         expect(h.run(runId).context).toEqual({ used: before.context!.used + 4_000, size: 200_000 });
     });
 
-    test('a message sent while the orchestrator works reaches it and is acknowledged', async () => {
+    test('a steer sent while the orchestrator works reaches its turn and is acknowledged there', async () => {
         const { h, chat } = await setup({ fakeSpeed: 0.05 });
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });
 
         await waitFor(() => h.run(runId).status === 'running', 'the run to start');
-        h.ok('chat.send', { chatId: chat.id, text: 'Also keep it accessible' });
+        h.ok('chat.send', { chatId: chat.id, text: 'Also keep it accessible', mode: 'steer' });
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to finish', 15_000);
+
+        const texts = items(h, runId).flatMap(item => (item.body.kind === 'user' || item.body.kind === 'assistant' ? [item.body.text] : []));
+        const noted = texts.indexOf('Noted: "Also keep it accessible". I\'ll take that into account.');
+
+        // The bubble is where the agent took the steer, before the first resume with the children's results: the plan's turn answered it.
+        expect(texts.indexOf('Also keep it accessible')).toBeGreaterThan(0);
+        expect(noted).toBeGreaterThan(texts.indexOf('Also keep it accessible'));
+        expect(texts.indexOf('Executors are on it. I\'ll mark each task done as its executor reports.')).toBeGreaterThan(noted);
+    });
+
+    test('a message queued while the orchestrator works is its next turn once it parks for its executors', async () => {
+        const { h, chat } = await setup({ fakeSpeed: 0.05 });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });
+
+        await waitFor(() => h.run(runId).status === 'running', 'the run to start');
+        h.ok('chat.send', { chatId: chat.id, text: 'Also keep it accessible', mode: 'queue' });
         await waitFor(() => h.run(runId).status === 'succeeded', 'the run to finish', 15_000);
 
         const texts = items(h, runId).flatMap(item => (item.body.kind === 'user' || item.body.kind === 'assistant' ? [item.body.text] : []));
 
-        expect(texts).toContain('Also keep it accessible');
-        expect(texts).toContain('Noted: "Also keep it accessible". I\'ll take that into account.');
+        expect(texts.indexOf('Also keep it accessible')).toBeGreaterThan(texts.indexOf('Executors are on it. I\'ll mark each task done as its executor reports.'));
+        expect(texts.some(text => text.startsWith('Got it: "Also keep it accessible'))).toBe(true);
     });
 });
 
