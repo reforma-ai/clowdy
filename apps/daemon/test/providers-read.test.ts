@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { withAppServer } from '../src/providers/appserver';
 import { claude, claudeWindows, parseClaudeStatus, parseClaudeUsage, planLabel } from '../src/providers/claude';
 import { codex, codexPlan, codexWindows, parseCodexAccount, windowLabel } from '../src/providers/codex';
-import { cursor, cursorWindows, readCursorIdentity, readCursorToken } from '../src/providers/cursor';
+import { cursor, cursorConfigDirs, cursorWindows, readCursorIdentity, readCursorToken } from '../src/providers/cursor';
 import { runProgram } from '../src/providers/exec';
 
 import type { ProbeContext } from '../src/providers/types';
@@ -335,6 +335,27 @@ describe('Cursor', () => {
         expect(readCursorIdentity(found)).toEqual({ email: 'ada@example.com', name: 'Ada' });
         expect(await readCursorToken(found)).toBe('secret-token');
         expect(await readCursorToken(context({ home: join(root, 'nobody') }))).toBeUndefined();
+    });
+
+    test('looks first in the folder the person\'s own CURSOR_CONFIG_DIR names, then in the usual ones', async () => {
+        files({ authInfo: { email: 'usual@example.com' } }, { accessToken: 'usual-token' });
+
+        const mine = join(root, 'mine');
+        const own = (dir = mine) => context({ env: { PATH: process.env.PATH ?? '', CURSOR_CONFIG_DIR: dir } });
+
+        mkdirSync(mine);
+        writeFileSync(join(mine, 'cli-config.json'), JSON.stringify({ authInfo: { email: 'mine@example.com' } }));
+        writeFileSync(join(mine, 'auth.json'), JSON.stringify({ accessToken: 'my-token' }));
+
+        expect(readCursorIdentity(own())).toEqual({ email: 'mine@example.com' });
+        expect(await readCursorToken(own())).toBe('my-token');
+        // Without it, or with it empty, the person's own default folder is read as before.
+        expect(readCursorIdentity(context())).toEqual({ email: 'usual@example.com' });
+        expect(readCursorIdentity(own(''))).toEqual({ email: 'usual@example.com' });
+        // A folder with nothing in it leaves the usual ones to answer.
+        expect(readCursorIdentity(own(join(root, 'empty')))).toEqual({ email: 'usual@example.com' });
+        expect(await readCursorToken(own(join(root, 'empty')))).toBe('usual-token');
+        expect(cursorConfigDirs({ platform: 'win32', home: home(), env: { CURSOR_CONFIG_DIR: 'C:\\mine', APPDATA: 'C:\\app' } })[0]).toBe('C:\\mine');
     });
 
     test('signs nobody in without a token or an identity, and asks the dashboard with the token otherwise', async () => {

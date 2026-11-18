@@ -10,13 +10,18 @@ const API = 'https://api2.cursor.sh/aiserver.v1.DashboardService';
 const REQUEST_TIMEOUT_MS = 15_000;
 const KEYCHAIN_TIMEOUT_MS = 10_000;
 
-/** The folders Cursor's command line keeps its files in, most likely first. */
+/**
+ * The folders Cursor's command line keeps its files in, most likely first: the one the person's own `CURSOR_CONFIG_DIR` names
+ * (in the read's environment, which has their `env` override of the agent; never the folder a run keeps apart), then the usual ones.
+ */
 export function cursorConfigDirs({ platform, home, env }: Pick<ProbeContext, 'platform' | 'home' | 'env'>): string[] {
+    const own = env.CURSOR_CONFIG_DIR ? [env.CURSOR_CONFIG_DIR] : [];
+
     if (platform === 'win32') {
-        return env.APPDATA ? [join(env.APPDATA, 'Cursor'), join(home, '.cursor')] : [join(home, '.cursor')];
+        return [...own, ...(env.APPDATA ? [join(env.APPDATA, 'Cursor')] : []), join(home, '.cursor')];
     }
 
-    return [join(home, '.cursor'), join(env.XDG_CONFIG_HOME || join(home, '.config'), 'cursor')];
+    return [...own, join(home, '.cursor'), join(env.XDG_CONFIG_HOME || join(home, '.config'), 'cursor')];
 }
 
 function readJson(path: string): Record<string, unknown> | undefined {

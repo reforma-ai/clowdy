@@ -555,6 +555,20 @@ describe('probing an agent', () => {
         expect(probe).toMatchObject({ id: 'fake-acp', protocolVersion: 1, agentInfo: { name: 'fake-acp-agent', version: '1.0.0' }, sessionId: 'fake-1', options: ['model (model)'], capabilities: { sessionCapabilities: { resume: {}, systemPrompt: {} } } });
     });
 
+    test('tells the agent what a run tells it about the client, so the options it shows are the ones a run gets', async () => {
+        const meta = { parameterizedModelPicker: true };
+        const heard = async (options: Parameters<typeof use>[0]) => {
+            current?.stop();
+
+            const { registry, bridge } = use({ ...options, agentEnv: { FAKE_ACP_ECHO_CLIENT: '1' } });
+
+            return (await probeAgent(registry, bridge, 'fake-acp', { cwd: process.cwd() })).capabilities._meta?.client;
+        };
+
+        expect(await heard({ clientMeta: meta })).toMatchObject({ terminal: false, _meta: meta });
+        expect(await heard({})).not.toHaveProperty('_meta');
+    });
+
     test('says why an agent that is not there, or is not an ACP agent, cannot be probed', async () => {
         const missing = use({ command: '/nonexistent/agent', args: [] });
 

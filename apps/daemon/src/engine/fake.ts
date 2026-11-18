@@ -5,6 +5,10 @@ import type { AgentEngine, EngineEvent, EngineSession, EngineStartOptions } from
 const WORD_MS = 35;
 const TOOL_MS = 700;
 const THINK_MS = 400;
+/** The window the fake agent reports, the fill before its first turn and what each turn adds: a plausible context ring for the demo. */
+const CONTEXT_SIZE = 200_000;
+const CONTEXT_BASE = 6_000;
+const CONTEXT_PER_TURN = 4_000;
 
 /**
  * A scripted engine for building the UI and testing the runtime without spending a subscription. It follows the
@@ -15,11 +19,18 @@ const THINK_MS = 400;
  */
 export class FakeEngine implements AgentEngine {
     readonly id = 'fake';
+    /** Turns started per session id, so a conversation's reading grows from one turn to the next. */
+    private turns = new Map<string, number>();
 
     constructor(private speed: number) {}
 
     start(options: EngineStartOptions): EngineSession {
-        return new FakeSession(options, this.speed);
+        const sessionId = options.resumeSessionId ?? `fake-${ crypto.randomUUID() }`;
+        const turn = (this.turns.get(sessionId) ?? 0) + 1;
+
+        this.turns.set(sessionId, turn);
+
+        return new FakeSession(options, this.speed, sessionId, turn);
     }
 }
 
@@ -96,7 +107,7 @@ class FakeSession implements EngineSession {
     /** Tool call ids stay unique across the turns of one run, as real engines make them. */
     private tag = crypto.randomUUID().slice(0, 8);
 
-    constructor(private options: EngineStartOptions, private speed: number) {
+    constructor(private options: EngineStartOptions, private speed: number, private sessionId: string, private turn: number) {
         this.signal = AbortSignal.any([options.signal, this.closing.signal]);
     }
 
@@ -114,7 +125,7 @@ class FakeSession implements EngineSession {
 
     private async *script(): Step {
         try {
-            yield { type: 'session', sessionId: this.options.resumeSessionId ?? `fake-${ crypto.randomUUID() }` };
+            yield { type: 'session', sessionId: this.sessionId };
 
             const orchestrator = this.has('run_spawn');
             let result: string;
@@ -134,6 +145,7 @@ class FakeSession implements EngineSession {
                 result = yield* this.followUp();
             }
 
+            yield { type: 'context', used: Math.min(CONTEXT_SIZE, CONTEXT_BASE + CONTEXT_PER_TURN * this.turn), size: CONTEXT_SIZE };
             yield { type: 'usage', inputTokens: this.options.prompt.length, outputTokens: this.words };
             yield { type: 'done', result };
         }

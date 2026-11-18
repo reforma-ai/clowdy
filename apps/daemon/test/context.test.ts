@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { openDatabase } from '../src/db/connection';
 import { MIGRATIONS } from '../src/db/migrations';
 import { getRun } from '../src/db/runs';
+import { CONTINUE_MESSAGE } from '../src/runs/prompts';
 import { cleanTempDirs, latch, restartHarness, ScriptEngine, startHarness, tempDir, untilAborted, waitFor } from './helpers';
 
 import type { EngineEvent } from '../src/engine/types';
@@ -292,6 +293,37 @@ describe('chat.compact', () => {
         expect(h.run(runId)).toMatchObject({ status: 'succeeded', context: { used: 6_000, size: 200_000 } });
         expect(h.run(runId).result).toBeUndefined();
         expect(updatedAt()).toBe(before);
+    });
+
+    test('a compact turn that meets a passing problem sends the command again, since nothing was compacted; any other turn is asked to continue', async () => {
+        const { h, claude, project } = await setup(async function* (turn) {
+            yield session(turn);
+
+            // The compact turn (the second session) and the turn of the message after it (the fourth) are overloaded once.
+            if (turn.number === 2 || turn.number === 4) {
+                yield { type: 'error', message: 'Overloaded (529)', retryable: true };
+
+                return;
+            }
+
+            yield { type: 'done', result: 'ok' };
+        });
+        const { chat, runId } = await start(h, project.id);
+
+        await turnEnded(h, claude, runId, 1);
+        h.ok('chat.compact', { chatId: chat.id });
+        await turnEnded(h, claude, runId, 3);
+        expect(claude.turns.slice(1, 3).map(({ prompt, resumeSessionId }) => ({ prompt, resumeSessionId }))).toEqual([
+            { prompt: '/compact', resumeSessionId: 's1' },
+            { prompt: '/compact', resumeSessionId: 's1' },
+        ]);
+
+        h.ok('chat.send', { chatId: chat.id, text: 'more' });
+        await turnEnded(h, claude, runId, 5);
+        expect(claude.turns.slice(3).map(({ prompt, resumeSessionId }) => ({ prompt, resumeSessionId }))).toEqual([
+            { prompt: 'more', resumeSessionId: 's1' },
+            { prompt: CONTINUE_MESSAGE, resumeSessionId: 's1' },
+        ]);
     });
 
     test('is refused while the orchestrator works, and for a chat that has not started', async () => {

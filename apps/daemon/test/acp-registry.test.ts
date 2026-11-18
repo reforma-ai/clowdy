@@ -215,6 +215,10 @@ describe('AgentRegistry', () => {
         expect(target?.env).toMatchObject({ CURSOR_CONFIG_DIR: '/theirs' });
         expect(existsSync(join(dataDir, 'agents'))).toBe(false);
         expect((await reg.probeTarget('cursor', { HOME: '/h' }))?.env).not.toHaveProperty('CURSOR_CONFIG_DIR');
+
+        // An override of the agent in agents.json reaches a read the same way, and the account read looks there first.
+        reg.update('cursor', { env: { CURSOR_CONFIG_DIR: '/mine' } });
+        expect((await reg.probeTarget('cursor', { HOME: '/h' }))?.env).toMatchObject({ CURSOR_CONFIG_DIR: '/mine' });
     });
 
     test('a folder that cannot be made fails the run with a message instead of throwing, and breaks neither the listing nor a read', async () => {

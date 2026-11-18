@@ -208,6 +208,28 @@ describe('the scripted orchestrator', () => {
         expect(h.run(runId).error).toBeUndefined();
     });
 
+    test('every run reports how full its context is, and the reading grows by the same step with each turn of a conversation', async () => {
+        const { h, project, chat } = await setup();
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the first turn', 8000);
+
+        // An executor has one turn; the orchestrator has had several by now, each one a step above the first.
+        for (const executor of snapshot(h, project.id).runs.filter(run => run.origin === 'spawned')) {
+            expect(executor.context).toEqual({ used: 10_000, size: 200_000 });
+        }
+
+        const before = h.run(runId);
+
+        expect(before.context?.size).toBe(200_000);
+        expect(before.context!.used).toBeGreaterThan(10_000);
+
+        h.ok('chat.send', { chatId: chat.id, text: 'And what about contrast?' });
+        // A message makes the run `queued` at once, so `succeeded` is the end of the second turn.
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the second turn');
+        expect(h.run(runId).context).toEqual({ used: before.context!.used + 4_000, size: 200_000 });
+    });
+
     test('a message sent while the orchestrator works reaches it and is acknowledged', async () => {
         const { h, chat } = await setup({ fakeSpeed: 0.05 });
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });

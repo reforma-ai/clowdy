@@ -20,7 +20,8 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
  * FAKE_ACP_LOG is a file that gets a line for every `session/cancel` the agent receives.
  * FAKE_ACP_RESUME is `resume` (default), `load` (replays two messages first) or `none` (FAKE_ACP_LOST=1 refuses either with "Session not found"); FAKE_ACP_SYSTEM_PROMPT=0 drops
  * the system prompt capability; FAKE_ACP_AUTH=1 makes `session/new` ask for authentication; FAKE_ACP_EFFORT is `1` (a reasoning
- * option that follows the model) or `thinking` (the same, behind an option of another kind).
+ * option that follows the model) or `thinking` (the same, behind an option of another kind); FAKE_ACP_ECHO_CLIENT=1 puts what the client
+ * said in `initialize` into the agent's own capabilities (`_meta.client`), for a caller that sends no prompt, such as the probe.
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -123,6 +124,7 @@ const app = agent({ name: 'fake-acp-agent' })
                     ...(resumeMode === 'resume' && { resume: {} }),
                     ...(process.env.FAKE_ACP_SYSTEM_PROMPT !== '0' && { systemPrompt: {} }),
                 },
+                ...(process.env.FAKE_ACP_ECHO_CLIENT === '1' && { _meta: { client: params.clientCapabilities } }),
             },
         };
     })

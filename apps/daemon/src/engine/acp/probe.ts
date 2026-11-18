@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { errorMessage } from '../../errors';
 import { spawnInOwnGroup } from '../process';
 import { buildAgentEnv } from './env';
+import { clientCapabilities } from './session';
 
 import type { AgentCapabilities } from '@agentclientprotocol/sdk/unstable';
 import type { ToolBridge } from './bridge';
@@ -62,7 +63,7 @@ export async function probeAgent(registry: AgentRegistry, bridge: ToolBridge, id
     try {
         const init = await within(connection.agent.request(methods.agent.initialize, {
             protocolVersion: PROTOCOL_VERSION,
-            clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+            clientCapabilities: clientCapabilities(agent),
             clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' },
         }));
         const startedInMs = Date.now() - started;

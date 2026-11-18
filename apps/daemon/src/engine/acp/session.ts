@@ -7,7 +7,7 @@ import { buildAgentEnv } from './env';
 import { classifyFailure, classifyThrown, processEnded } from './failure';
 import { UpdateMapper } from './mapper';
 
-import type { ClientConnection, ContentBlock, NewSessionRequest, PromptResponse, RequestPermissionRequest, RequestPermissionResponse, SessionConfigOption, SessionUpdate } from '@agentclientprotocol/sdk/unstable';
+import type { ClientCapabilities, ClientConnection, ContentBlock, NewSessionRequest, PromptResponse, RequestPermissionRequest, RequestPermissionResponse, SessionConfigOption, SessionUpdate } from '@agentclientprotocol/sdk/unstable';
 import type { AgentProcess } from '../process';
 import type { EngineEvent, EngineSession, EngineStartOptions } from '../types';
 import type { BridgeAccess, ToolBridge } from './bridge';
@@ -30,6 +30,9 @@ type Env = Record<string, string | undefined>;
 
 /** How the daemon answers `session/request_permission`: nobody is at a terminal, so it decides for every agent alike. */
 export type PermissionPolicy = 'allow' | 'reject';
+
+/** What the client tells an agent it can do in `initialize`. The probe sends the same, so it shows the options a run gets. */
+export const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCapabilities => ({ fs: { readTextFile: false, writeTextFile: false }, terminal: false, ...(agent.clientMeta && { _meta: agent.clientMeta }) });
 
 export interface SessionDeps {
     agentId: string;
@@ -341,7 +344,7 @@ export class AcpSession implements EngineSession {
             const init = await Promise.race([
                 request(connection.agent.request(methods.agent.initialize, {
                     protocolVersion: PROTOCOL_VERSION,
-                    clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, ...(agent.clientMeta && { _meta: agent.clientMeta }) },
+                    clientCapabilities: clientCapabilities(agent),
                     clientInfo: { name: 'clowdy', title: 'Clowdy', version: deps.clientVersion },
                 })),
                 silent,

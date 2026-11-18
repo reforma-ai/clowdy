@@ -35,6 +35,8 @@ export interface DriverDeps {
     engines: EngineRegistry;
     /** The tools a run gets: an orchestrator's, or an executor's or verifier's. */
     tools(run: Run, mode: ChatMode): ToolDefinition[];
+    /** The message that makes the engine's agent compact its conversation, or `undefined` for an agent with no such command. */
+    compactCommand(engine: EngineId): string | undefined;
 }
 
 export interface SpawnInput {
@@ -507,9 +509,12 @@ export class RunDriver {
         const run = runs.require(runId);
         const now = runs.limits.now();
 
+        // A compact turn is its command and nothing else (`chat.compact`); nothing was compacted, so a "continue" would have the agent resume work that does not exist.
+        const compacting = live.prompt !== undefined && live.prompt === this.deps.compactCommand(run.engine);
+
         store.tx(() => {
             // Without a session there is nothing to continue: the turn starts again from its own message.
-            setRunWork(store.db, runId, { nextPrompt: run.sessionId ? CONTINUE_MESSAGE : live.prompt });
+            setRunWork(store.db, runId, { nextPrompt: run.sessionId && !compacting ? CONTINUE_MESSAGE : live.prompt });
             runs.setStatus(runId, 'blocked', {
                 reason: retry.kind === 'limit'
                     ? `${ engineName(run.engine) } is at its usage limit until ${ formatMoment(retry.until, now) }; this run continues then`
