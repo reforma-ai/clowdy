@@ -3,19 +3,20 @@ import { Button } from '@clowdy/components/Button';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle } from '@clowdy/icons/14';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 
 import { useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { StreamView } from '../../stream';
+import { ChatDropZone } from './ChatDropZone';
 import { ChatHeader } from './ChatHeader';
 import { isRunActive, liveLine } from './chatRun';
 import styles from './ChatView.module.css';
 import { perform } from './commands';
-import { Composer } from './Composer';
+import { Composer, type ComposerHandle } from './Composer';
 import { chatProgress } from './progress';
 import { ProgressCard } from './ProgressCard';
 
-import type { Chat } from '@clowdy/protocol';
+import type { Attachment, Chat } from '@clowdy/protocol';
 
 /** One chat: the header, the orchestrator's stream with the progress card in it, and the composer. */
 export function ChatView({ chat }: { chat: Chat }) {
@@ -26,7 +27,9 @@ export function ChatView({ chat }: { chat: Chat }) {
     const links = useMemo(() => ({
         taskOfKey: (key: string) => project.taskList.find(task => task.key === key),
         onOpenTask: (taskId: string) => ui.openTask(taskId),
-    }), [project, ui]);
+        attachmentBlob: (attachment: Attachment) => root.transport.getAttachment(project.id, attachment.id),
+    }), [project, ui, root]);
+    const composer = useRef<ComposerHandle>(null);
     const stream = useChatStream(chat);
     const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
     const progress = chatProgress(project.tasksOfChat(chat.id), project.statuses);
@@ -35,7 +38,7 @@ export function ChatView({ chat }: { chat: Chat }) {
     const cardAfter = items.findLast(item => item.body.kind === 'assistant')?.id;
 
     return (
-        <>
+        <ChatDropZone onFiles={ files => composer.current?.addFiles(files) }>
             <ChatHeader chat={ chat } run={ run } />
 
             { stream?.status === 'failed' && (
@@ -75,9 +78,9 @@ export function ChatView({ chat }: { chat: Chat }) {
             ) }
 
             <div className={ styles.composer }>
-                <Composer chat={ chat } run={ run } />
+                <Composer ref={ composer } chat={ chat } run={ run } />
             </div>
-        </>
+        </ChatDropZone>
     );
 }
 

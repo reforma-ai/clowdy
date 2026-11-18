@@ -1,4 +1,5 @@
 import type {
+    Attachment,
     ChatId,
     ClowdyEvent,
     Command,
@@ -49,6 +50,12 @@ export interface Transport {
     getDocFile: (projectId: ProjectId, path: string) => Promise<DocFile>;
     /** Files of the project folder whose path contains every word of `query`, best match first, as paths relative to the folder. */
     getProjectFiles: (projectId: ProjectId, query: string, limit?: number) => Promise<string[]>;
+    /** Stores a file in the project, to go with the next message of one of its chats. Rejects with a `TransportError` that carries the daemon's reason when it refuses. */
+    uploadAttachment: (projectId: ProjectId, file: File) => Promise<Attachment>;
+    /** The bytes of an attachment, to show it. */
+    getAttachment: (projectId: ProjectId, attachmentId: string) => Promise<Blob>;
+    /** Removes a file that was uploaded and not sent. */
+    deleteAttachment: (projectId: ProjectId, attachmentId: string) => Promise<void>;
     /** The skills agents get: system and user ones, and with a project also that project's. */
     getSkills: (projectId?: ProjectId) => Promise<SkillCatalog>;
 }

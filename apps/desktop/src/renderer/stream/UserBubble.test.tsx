@@ -35,4 +35,17 @@ describe('UserBubble', () => {
         expect(out).toContain('CAR-99');
         expect(out).not.toContain('>CAR-99</button>');
     });
+
+    it('shows the files of a message above its text, and no bubble for a message of files alone', () => {
+        const files = [{ id: 'a-1', name: 'shot.png', mediaType: 'image/png', size: 2048 }, { id: 'a-2', name: 'error.log', mediaType: 'text/plain', size: 10 }];
+        const withText = renderToStaticMarkup(<UserBubble text="See these" attachments={ files } at={ 0 } />);
+        const alone = renderToStaticMarkup(<UserBubble text="" attachments={ files } at={ 0 } />);
+
+        expect(withText).toContain('shot.png');
+        expect(withText).toContain('error.log');
+        expect(withText.indexOf('shot.png')).toBeLessThan(withText.indexOf('See these'));
+        expect(alone).toContain('shot.png');
+        expect(alone).not.toContain('data-streamdown');
+    });
 });
+

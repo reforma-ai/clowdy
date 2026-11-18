@@ -1,4 +1,4 @@
-import { isTerminalRunStatus } from '@clowdy/protocol';
+import { isTerminalRunStatus, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE } from '@clowdy/protocol';
 
 import {
     catalogTokens,
@@ -14,6 +14,7 @@ import {
 import { TransportError, type CommandInput, type FeedStatus, type StreamTarget, type Transport } from './transport';
 
 import type {
+    Attachment,
     ClowdyEvent,
     CommandResult,
     DocFile,
@@ -41,6 +42,14 @@ export interface FixtureTransportOptions {
     timeline?: boolean;
 }
 
+/** What the fixture keeps of a file: its bytes, and whether a message carries it already. */
+interface StoredFile {
+    projectId: ProjectId;
+    attachment: Attachment;
+    blob: Blob;
+    sent: boolean;
+}
+
 type Outcome = { ok: true; data: unknown } | { ok: false; error: { code: ErrorCode; message: string; details?: unknown } };
 
 const ok = (data: unknown = {}): Outcome => ({ ok: true, data });
@@ -58,10 +67,15 @@ export class FixtureTransport implements Transport {
     #cursor = 1000;
     #idCounter = 100;
     #timelineStarted = false;
+    readonly #files = new Map<string, StoredFile>();
 
     constructor({ data = createFixtureData(), timeline = false }: FixtureTransportOptions = {}) {
         this.#data = data;
         this.#timeline = timeline;
+
+        for (const { projectId, attachment, content } of data.attachments) {
+            this.#files.set(attachment.id, { projectId, attachment, blob: new Blob([content], { type: attachment.mediaType }), sent: true });
+        }
     }
 
     async getRootSnapshot(): Promise<RootSnapshot> {
@@ -146,6 +160,36 @@ export class FixtureTransport implements Transport {
         const words = query.toLowerCase().split(/\s+/).filter(Boolean);
 
         return (this.#data.files[projectId] ?? []).filter(path => words.every(word => path.toLowerCase().includes(word))).slice(0, limit);
+    }
+
+    async uploadAttachment(projectId: ProjectId, file: File): Promise<Attachment> {
+        this.#project(projectId);
+
+        if (file.size > MAX_ATTACHMENT_BYTES) throw new TransportError(`${ file.name } is over the size limit`, 413);
+
+        const attachment: Attachment = { id: this.#id('a'), name: file.name, mediaType: file.type || 'application/octet-stream', size: file.size };
+
+        this.#files.set(attachment.id, { projectId, attachment, blob: file, sent: false });
+
+        return structuredClone(attachment);
+    }
+
+    async getAttachment(projectId: ProjectId, attachmentId: string): Promise<Blob> {
+        const stored = this.#files.get(attachmentId);
+
+        if (stored?.projectId !== projectId) throw new TransportError('No such attachment', 404);
+
+        return stored.blob;
+    }
+
+    async deleteAttachment(projectId: ProjectId, attachmentId: string): Promise<void> {
+        const stored = this.#files.get(attachmentId);
+
+        if (stored?.projectId !== projectId) throw new TransportError('No such attachment', 404);
+
+        if (stored.sent) throw new TransportError('The file was sent already', 409);
+
+        this.#files.delete(attachmentId);
     }
 
     async getSkills(projectId?: ProjectId): Promise<SkillCatalog> {
@@ -330,7 +374,7 @@ export class FixtureTransport implements Transport {
                 return ok({ chatId: chat.id });
             }
             case 'chat.send':
-                return this.#sendMessage(command.chatId, command.text);
+                return this.#sendMessage(command.chatId, command.text, command.attachmentIds ?? []);
 
             case 'task.create': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
@@ -448,11 +492,27 @@ export class FixtureTransport implements Transport {
         return ok(structuredClone(project));
     }
 
-    #sendMessage(chatId: string, text: string): Outcome {
+    #sendMessage(chatId: string, text: string, attachmentIds: string[]): Outcome {
         const data = this.#data;
         const chat = data.chats.find(candidate => candidate.id === chatId);
 
         if (!chat) return fail('not_found', 'No such chat');
+
+        if (!text.trim() && attachmentIds.length === 0) return fail('invalid', 'The message is empty');
+
+        const files: StoredFile[] = [];
+
+        for (const id of new Set(attachmentIds)) {
+            const stored = this.#files.get(id);
+
+            if (stored?.projectId !== chat.projectId) return fail('not_found', `No such attachment: ${ id }`);
+
+            if (stored.sent) return fail('conflict', `${ stored.attachment.name } was sent already`);
+
+            files.push(stored);
+        }
+
+        if (files.reduce((sum, stored) => sum + stored.attachment.size, 0) > MAX_ATTACHMENTS_BYTES_PER_MESSAGE) return fail('invalid', 'The files are over the size limit of one message');
 
         let run = data.runs.find(candidate => candidate.id === chat.orchestratorRunId);
 
@@ -487,7 +547,9 @@ export class FixtureTransport implements Transport {
             this.#saveRun(run);
         }
 
-        this.#appendItem(run, { kind: 'user', text });
+        for (const stored of files) stored.sent = true;
+
+        this.#appendItem(run, { kind: 'user', text, ...(files.length > 0 && { attachments: files.map(stored => structuredClone(stored.attachment)) }) });
 
         const target = run;
 

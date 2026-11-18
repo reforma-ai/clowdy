@@ -1,12 +1,14 @@
 import { createContext } from 'react';
 
-import type { Task, TaskId } from '@clowdy/protocol';
+import type { Attachment, Task, TaskId } from '@clowdy/protocol';
 
 /** What a message's text may point at inside the app. Without it, task keys stay plain text. */
 export interface StreamLinks {
     /** The task a key like `CAR-24` names, when the project has one. */
     taskOfKey?: (key: string) => Pick<Task, 'id' | 'key' | 'title'> | undefined;
     onOpenTask?: (taskId: TaskId) => void;
+    /** The bytes of a file a message carries, to show an image. Without it a file shows as its icon. */
+    attachmentBlob?: (attachment: Attachment) => Promise<Blob>;
 }
 
 /** The default, one object for every stream without links: a fresh one per render would re-render everything that reads the context. */

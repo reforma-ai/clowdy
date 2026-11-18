@@ -4,6 +4,7 @@ import { SseParser } from './sse';
 import { TransportError, type CommandInput, type FeedStatus, type StreamTarget, type Transport } from './transport';
 
 import type {
+    Attachment,
     ClowdyEvent,
     CommandResult,
     DocFile,
@@ -38,6 +39,14 @@ const headersFor = (token: string): Record<string, string> => ({ authorization: 
 
 function isCommandResult(value: unknown): value is CommandResult {
     return typeof value === 'object' && value !== null && 'ok' in value && 'requestId' in value;
+}
+
+/** A refused request as an error: the daemon's own reason when it gave one, else its status. */
+async function refusal(response: Response, route: string): Promise<TransportError> {
+    const body = await response.json().catch(() => undefined) as { error?: { message?: unknown } } | undefined;
+    const reason = typeof body?.error?.message === 'string' ? body.error.message : undefined;
+
+    return new TransportError(reason ?? `The daemon answered ${ response.status } for ${ route }`, response.status);
 }
 
 /** The daemon's HTTP + SSE API, as described by `@clowdy/protocol`. */
@@ -95,6 +104,31 @@ export class HttpTransport implements Transport {
         if (limit !== undefined) params.set('limit', String(limit));
 
         return this.#get(`${ ROUTES.projectFiles(projectId) }?${ params }`);
+    }
+
+    async uploadAttachment(projectId: ProjectId, file: File): Promise<Attachment> {
+        const route = `${ ROUTES.projectAttachments(projectId) }?name=${ encodeURIComponent(file.name) }`;
+        const response = await this.#fetch(this.#base + route, { method: 'POST', headers: { ...this.#headers, 'content-type': file.type || 'application/octet-stream' }, body: file });
+
+        if (!response.ok) throw await refusal(response, route);
+
+        return await response.json() as Attachment;
+    }
+
+    async getAttachment(projectId: ProjectId, attachmentId: string): Promise<Blob> {
+        const route = ROUTES.projectAttachment(projectId, attachmentId);
+        const response = await this.#fetch(this.#base + route, { headers: this.#headers });
+
+        if (!response.ok) throw await refusal(response, route);
+
+        return await response.blob();
+    }
+
+    async deleteAttachment(projectId: ProjectId, attachmentId: string): Promise<void> {
+        const route = ROUTES.projectAttachment(projectId, attachmentId);
+        const response = await this.#fetch(this.#base + route, { method: 'DELETE', headers: this.#headers });
+
+        if (!response.ok) throw await refusal(response, route);
     }
 
     getSkills(projectId?: ProjectId): Promise<SkillCatalog> {

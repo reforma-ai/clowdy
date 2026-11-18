@@ -40,6 +40,9 @@ const unconfigured: Transport = {
     getDocsTree: noDaemon,
     getDocFile: noDaemon,
     getProjectFiles: noDaemon,
+    uploadAttachment: noDaemon,
+    getAttachment: noDaemon,
+    deleteAttachment: noDaemon,
     getSkills: noDaemon,
 };
 

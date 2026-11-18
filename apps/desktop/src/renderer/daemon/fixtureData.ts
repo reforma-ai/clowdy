@@ -1,5 +1,6 @@
 import type {
     Artifact,
+    Attachment,
     Chat,
     ChatTaskLink,
     DocNode,
@@ -30,9 +31,18 @@ export interface FixtureData {
     docs: Record<string, Record<string, string>>;
     /** Paths of each project's files, relative to its folder, as the file search would list them. */
     files: Record<string, string[]>;
+    /** Files sent with messages, by the fixture's seed data. */
+    attachments: FixtureAttachment[];
     /** What the skills catalog lists; `projectId` marks a project's own skill. */
     skills: FixtureSkill[];
     skillWarnings: string[];
+}
+
+/** A file a message already carries: the metadata the stream shows and the content the fixture serves. */
+export interface FixtureAttachment {
+    projectId: ProjectId;
+    attachment: Attachment;
+    content: string;
 }
 
 export type FixtureSkill = SkillEntry & { projectId?: ProjectId };
@@ -102,6 +112,14 @@ export function docHash(content: string): string {
 
     return `fx-${ hash.toString(16) }`;
 }
+
+const BOOKING_SKETCH = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><rect width="320" height="200" fill="#f3efe9"/><rect x="24" y="24" width="272" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="24" y="72" width="132" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="164" y="72" width="132" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="24" y="130" width="272" height="44" rx="10" fill="#fa8854"/></svg>';
+const BOOKING_LOG = 'TypeError: Cannot read properties of undefined (reading \'price\')\n    at BookingForm (src/booking/BookingForm.tsx:42:18)\n';
+
+const FIXTURE_ATTACHMENTS: FixtureAttachment[] = [
+    { projectId: FIXTURE_PROJECT_ID, attachment: { id: 'a-sketch', name: 'booking-sketch.svg', mediaType: 'image/svg+xml', size: BOOKING_SKETCH.length }, content: BOOKING_SKETCH },
+    { projectId: FIXTURE_PROJECT_ID, attachment: { id: 'a-log', name: 'booking-error.log', mediaType: 'text/plain', size: BOOKING_LOG.length }, content: BOOKING_LOG },
+];
 
 const FIXTURE_FILES = [
     'README.md',
@@ -350,7 +368,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
     };
 
     stream('r-orch-1', [
-        [94, { kind: 'user', text: 'Simplify the booking flow: one form instead of three steps, and show the price while the person types.' }],
+        [94, { kind: 'user', text: 'Simplify the booking flow: one form instead of three steps, and show the price while the person types.', attachments: FIXTURE_ATTACHMENTS.map(file => file.attachment) }],
         [94, { kind: 'assistant', done: true, text: 'I read the current flow. It has **three steps** and recalculates the price only on the last one.\n\nPlan:\n\n1. Move availability into one API call (`CAR-22`).\n2. Rebuild the form as one view (`CAR-24`).\n3. Send a short confirmation email (`CAR-25`).\n\nI will start the independent parts now.' }],
         [93, { kind: 'tool', toolCallId: 'tc-1', name: 'Grep', state: 'done', input: { pattern: 'BookingStep', path: 'src' }, output: 'src/booking/steps.tsx:12\nsrc/booking/steps.tsx:40\nsrc/booking/index.tsx:8' }],
         [92, { kind: 'tool', toolCallId: 'tc-2', name: 'Read', state: 'done', input: { file_path: 'src/booking/index.tsx' }, output: 'export function Booking() {\n    return <Steps />;\n}' }],
@@ -463,6 +481,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         artifacts,
         docs: { [projectId]: docs, [FIXTURE_EMPTY_PROJECT_ID]: {} },
         files: { [projectId]: FIXTURE_FILES, [FIXTURE_EMPTY_PROJECT_ID]: [] },
+        attachments: structuredClone(FIXTURE_ATTACHMENTS),
         skills: fixtureSkills(projectId),
         skillWarnings: ['~/.claude/skills: Skipped "old-notes": it has no description'],
     };

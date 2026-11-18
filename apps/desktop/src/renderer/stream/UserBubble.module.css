@@ -75,3 +75,9 @@
 
     color: var(--color-secondary-muted-text);
 }
+
+/* The files of a message sit above its text, on the person's side. */
+.files {
+    justify-content: flex-end;
+    max-width: 90%;
+}

@@ -53,7 +53,7 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
 
         switch (body.kind) {
             case 'user':
-                return <UserBubble text={ body.text } at={ item.at } animate={ !shown.has(item.id) } />;
+                return <UserBubble text={ body.text } attachments={ body.attachments } at={ item.at } animate={ !shown.has(item.id) } />;
             case 'assistant':
                 return <AssistantMessage text={ body.text } streaming={ !body.done } />;
             case 'tool':

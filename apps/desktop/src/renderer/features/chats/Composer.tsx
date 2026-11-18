@@ -1,19 +1,22 @@
+import { Attachments, PreviewableAttachment } from '@clowdy/components/Attachment';
 import { Button } from '@clowdy/components/Button';
 import { ListBoxItem } from '@clowdy/components/List';
 import { emptyComposerDoc, RichInput, type ComposerDoc, type RichInputHandle } from '@clowdy/components/RichInput';
 import { Select } from '@clowdy/components/Select';
 import { Tooltip } from '@clowdy/components/Tooltip';
 import { Clip } from '@clowdy/icons/14';
-import { useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useImperativeHandle, useRef, useState, type MouseEvent, type ReactNode, type Ref } from 'react';
 
 import { useRootStore } from '../../stores';
 import { isRunActive } from './chatRun';
 import { perform } from './commands';
 import styles from './Composer.module.css';
 import { draftOf, messageOf, saveDraft } from './composerDrafts';
+import { filesOf, releaseFiles, restoreFiles, takeFiles } from './composerFiles';
 import { serializeMention } from './composerMentions';
 import { ComposerSend } from './ComposerSend';
 import { MentionChip } from './MentionChip';
+import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
 
 import type { Chat, ChatId, ChatMode, ProjectId, Run } from '@clowdy/protocol';
@@ -32,6 +35,12 @@ const LINE_HEIGHT = 20;
 /** Where the words typed on the new-chat page are kept: there is no chat id to keep them under yet. */
 const NEW_CHAT_DRAFT = '@new-chat';
 
+/** What a page around the composer may ask of it. */
+export interface ComposerHandle {
+    /** Adds files to the message, as if they were picked with the attach button. */
+    addFiles: (files: readonly File[]) => void;
+}
+
 export interface ComposerProps {
     /** The chat to write to. Absent on the new-chat page, where the first message makes the chat (see `start`). */
     chat: Chat | undefined;
@@ -41,20 +50,23 @@ export interface ComposerProps {
     start?: { projectId: ProjectId; onStarted: (chatId: ChatId) => void };
     /** How many lines the empty field is tall (it still grows with the text). One by default. */
     minLines?: number;
+    ref?: Ref<ComposerHandle>;
 }
 
 /**
- * The message box: the text on top, below it attach (not built yet), the mode and send. Enter sends, Shift+Enter
+ * The message box: the files picked for the message and the text on top, below them attach, the mode and send. Enter sends, Shift+Enter
  * starts a new line, `@` mentions a task, document or file and `/` asks for a skill. While the orchestrator works and
  * nothing is typed, the send button stops it. Without a chat the first message makes one, so opening the new-chat page
  * again and again leaves no empty chats behind; if the message then fails the chat stays, and the retry goes to it.
  */
-export function Composer({ chat, run, start, minLines }: ComposerProps) {
+export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
     const root = useRootStore();
     const field = useRef<RichInputHandle>(null);
     const box = useRef<HTMLDivElement>(null);
     const triggers = useMentionTriggers(box);
     const key = chat?.id ?? NEW_CHAT_DRAFT;
+    // A file belongs to the project it was uploaded to, so the new-chat page keeps its files per project (its words are one for all).
+    const filesKey = chat?.id ?? `${ NEW_CHAT_DRAFT }:${ start?.projectId }`;
     const [doc, setDoc] = useState(() => draftOf(key));
     const [isStopping, setIsStopping] = useState(false);
     const [draftMode, setDraftMode] = useState<ChatMode>('autopilot');
@@ -62,6 +74,13 @@ export function Composer({ chat, run, start, minLines }: ComposerProps) {
     const [made, setMade] = useState<Chat>();
     const target = chat ?? made;
     const running = isRunActive(run);
+    const attach = useComposerFiles(filesKey, chat?.projectId ?? start?.projectId);
+    const picker = useRef<HTMLInputElement>(null);
+    const hasMessage = messageOf(doc) !== '' || attach.files.length > 0;
+    // A file still going up, or one that failed, holds the message back until the person has dealt with it.
+    const blocked = attach.uploading ? 'Wait until the files are uploaded' : attach.failed ? 'Retry or remove the file that did not upload' : undefined;
+
+    useImperativeHandle(ref, () => ({ addFiles: attach.add }), [attach.add]);
 
     const edit = (next: ComposerDoc) => {
         setDoc(next);
@@ -70,19 +89,27 @@ export function Composer({ chat, run, start, minLines }: ComposerProps) {
 
     const send = async (from: ComposerDoc) => {
         const message = messageOf(from);
+        const held = filesOf(filesKey);
 
-        if (!message) return;
+        if ((!message && held.length === 0) || held.some(file => file.status !== 'ready')) return;
 
         edit(emptyComposerDoc());
 
-        // Give the words back, unless the person has already started something new.
+        const files = takeFiles(filesKey);
+        // Give the words and the files back, unless the person has already started something new.
         const giveBack = () => {
             if (!messageOf(draftOf(key))) edit(from);
+
+            restoreFiles(filesKey, files);
         };
         let chatId = target?.id;
 
         if (!chatId) {
-            if (!start) return;
+            if (!start) {
+                giveBack();
+
+                return;
+            }
 
             const created = await perform(root, { type: 'chat.create', projectId: start.projectId, mode: draftMode });
             const fresh = (created.ok ? created.data : {}) as { chat?: Chat };
@@ -98,10 +125,19 @@ export function Composer({ chat, run, start, minLines }: ComposerProps) {
         }
 
         // The daemon decides what a message to a working orchestrator means, so there is no case to handle here.
-        const result = await perform(root, { type: 'chat.send', chatId, text: message });
+        const attachmentIds = files.flatMap(file => (file.attachment ? [file.attachment.id] : []));
+        const result = await perform(root, { type: 'chat.send', chatId, text: message, ...(attachmentIds.length > 0 && { attachmentIds }) });
 
-        if (!result.ok) giveBack();
-        else if (!chat) {
+        if (!result.ok) {
+            giveBack();
+
+            return;
+        }
+
+        // The daemon keeps the files now; the message shows them.
+        releaseFiles(files);
+
+        if (!chat) {
             setMade(undefined);
             start?.onStarted(chatId);
         }
@@ -130,6 +166,21 @@ export function Composer({ chat, run, start, minLines }: ComposerProps) {
         <div ref={ box } className={ styles.surface }>
             { /* The field is the keyboard way in; this only gives the mouse the whole card. */ }
             <div className={ styles.main } onMouseDown={ focusField }>
+                { attach.files.length > 0 && (
+                    <Attachments size="sm" className={ styles.files }>
+                        { attach.files.map(file => (
+                            <PreviewableAttachment
+                                key={ file.key }
+                                data={ { id: file.key, filename: file.name, mediaType: file.mediaType, size: file.size, preview: file.preview } }
+                                loading={ file.status === 'uploading' }
+                                error={ file.status === 'error' }
+                                onRetry={ () => attach.retry(file.key) }
+                                onRemove={ () => attach.remove(file.key) }
+                            />
+                        )) }
+                    </Attachments>
+                ) }
+
                 <RichInput
                     ref={ field }
                     value={ doc }
@@ -144,14 +195,28 @@ export function Composer({ chat, run, start, minLines }: ComposerProps) {
                     placeholder="Write a message…"
                     submitOnEnter
                     onSubmit={ next => void send(next) }
+                    // Files before text, as the zone around the page does: a file copied in Finder also puts its name on the clipboard as text.
+                    onPasteFiles={ attach.add }
                 />
 
                 <div className={ styles.row }>
-                    <Unavailable label="Attach a file" hint="Attachments are not available yet">
-                        <Button variant="filling" color="secondary" size="sm" iconOnly isDisabled aria-hidden>
-                            <Clip />
-                        </Button>
-                    </Unavailable>
+                    <Button variant="filling" color="secondary" size="sm" iconOnly aria-label="Attach files" tooltip="Attach files" onPress={ () => picker.current?.click() }>
+                        <Clip />
+                    </Button>
+                    <input
+                        ref={ picker }
+                        type="file"
+                        multiple
+                        hidden
+                        aria-hidden
+                        tabIndex={ -1 }
+                        onChange={ event => {
+                            attach.add(Array.from(event.currentTarget.files ?? []));
+                            // The same file may be picked again.
+                            event.currentTarget.value = '';
+                            field.current?.focus();
+                        } }
+                    />
 
                     <div className={ styles.end }>
                         <Unavailable label="Mode" hint={ running ? 'The mode stays as it is while the orchestrator works' : undefined }>
@@ -174,17 +239,20 @@ export function Composer({ chat, run, start, minLines }: ComposerProps) {
                             </Select>
                         </Unavailable>
 
-                        <ComposerSend
-                            canSend={ messageOf(doc) !== '' }
-                            running={ running }
-                            isStopping={ isStopping }
-                            onSend={ () => {
-                                void send(doc);
-                                // The button is off once the text is gone; the caret goes back to the field.
-                                field.current?.focus();
-                            } }
-                            onStop={ () => void stop() }
-                        />
+                        <Unavailable label="Send" hint={ hasMessage ? blocked : undefined }>
+                            <ComposerSend
+                                canSend={ hasMessage }
+                                blocked={ blocked !== undefined }
+                                running={ running }
+                                isStopping={ isStopping }
+                                onSend={ () => {
+                                    void send(doc);
+                                    // The button is off once the text is gone; the caret goes back to the field.
+                                    field.current?.focus();
+                                } }
+                                onStop={ () => void stop() }
+                            />
+                        </Unavailable>
                     </div>
                 </div>
             </div>

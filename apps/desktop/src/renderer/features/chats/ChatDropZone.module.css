@@ -1,0 +1,9 @@
+/* Takes the place the page's parts had, so they lay out as before; the veil covers all of it. */
+.zone {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}

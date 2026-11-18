@@ -69,6 +69,12 @@
     cursor: text;
 }
 
+/* The files picked for the message, above the text. */
+.files {
+    margin-bottom: var(--spacing-sm);
+    cursor: default;
+}
+
 /* The text grows with what is typed, up to a share of the window, then scrolls. */
 .field :global([contenteditable='true']) {
     max-height: 40vh;
