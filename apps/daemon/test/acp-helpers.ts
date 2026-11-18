@@ -33,6 +33,8 @@ export interface RigOptions {
     initializeTimeoutMs?: number;
     /** The options an adapter reads, as the built-in catalog gives them to Claude Code. */
     sessionMeta?: Record<string, unknown>;
+    /** What the agent is told it can do in `initialize`, as the built-in catalog gives it to Cursor. */
+    clientMeta?: Record<string, unknown>;
 }
 
 export function rig(options: RigOptions = {}): Rig {
@@ -40,13 +42,13 @@ export function rig(options: RigOptions = {}): Rig {
     const registry = new AgentRegistry({ discovery: quietDiscovery(env) });
     const bridge = new ToolBridge();
 
-    if (options.sessionMeta) {
+    if (options.sessionMeta || options.clientMeta) {
         const resolve = registry.resolve.bind(registry);
 
         registry.resolve = async (id) => {
             const found = await resolve(id);
 
-            return found.ok ? { ok: true, agent: { ...found.agent, sessionMeta: options.sessionMeta } } : found;
+            return found.ok ? { ok: true, agent: { ...found.agent, ...(options.sessionMeta && { sessionMeta: options.sessionMeta }), ...(options.clientMeta && { clientMeta: options.clientMeta }) } } : found;
         };
     }
 

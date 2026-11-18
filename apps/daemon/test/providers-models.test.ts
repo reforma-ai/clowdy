@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startDaemon } from '../src/daemon';
-import { codexModel, MODEL_ROUTES, ModelCatalog, parseClaudeModels, parseCursorModels } from '../src/providers/models';
+import { codexModel, cursorModels, MODEL_ROUTES, ModelCatalog, parseClaudeModels, parseCursorFamilies, parseCursorModels } from '../src/providers/models';
 import { FAKE_AGENT } from './acp-helpers';
 import { cleanTempDirs, Harness, testAgents, testConfig } from './helpers';
 
@@ -41,10 +41,10 @@ describe('Claude Code models', () => {
         { displayName: 'No value' },
     ];
 
-    test('takes the rows of the control response: the alias is the id, the versioned model is what it stands for', () => {
+    test('takes the rows of the control response: the alias is the id and a main model, the versioned model is what it stands for', () => {
         expect(parseClaudeModels(`${ JSON.stringify({ type: 'system', subtype: 'init' }) }\n${ response(rows) }\n`)).toEqual([
-            { id: 'default', name: 'Default (recommended)', description: 'Opus 5.5', isDefault: true, resolvedId: 'claude-opus-5-5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], supportsFast: true },
-            { id: 'opus', name: 'Opus 5.5', resolvedId: 'claude-opus-5-5', efforts: ['low', 'high'], supportsFast: true },
+            { id: 'default', name: 'Default (recommended)', description: 'Opus 5.5', isDefault: true, resolvedId: 'claude-opus-5-5', featured: true, efforts: ['low', 'medium', 'high', 'xhigh', 'max'], supportsFast: true },
+            { id: 'opus', name: 'Opus 5.5', resolvedId: 'claude-opus-5-5', featured: true, efforts: ['low', 'high'], supportsFast: true },
             { id: 'haiku-4', name: 'Haiku 4.5' },
         ]);
     });
@@ -104,6 +104,171 @@ describe('Codex models', () => {
 
 describe('Cursor models', () => {
     const listing = 'Available models\n\nauto - Auto (current, default)\ngpt-5.3-codex-low - Codex 5.3 Low\nclaude-opus-5-thinking-high - Claude Opus 5 (1M) Thinking High\n\nTip: use --model <id> to switch.\n';
+
+    const option = (id: string, category: string, currentValue: string, values: string[]) => ({ id, name: id, category, type: 'select', currentValue, options: values.map(value => ({ value, name: value })) });
+    const families = {
+        models: [
+            { value: 'default', name: 'Auto', configOptions: [] },
+            { value: 'grok-4.7', name: 'Grok 4.7', configOptions: [option('reasoning_effort', 'thought_level', 'high', ['low', 'medium', 'high', 'xhigh']), option('context', 'model_config', '256k', ['256k', '500k']), option('fast', 'model_config', 'true', ['false', 'true'])] },
+            { value: 'composer-2.5', name: 'Composer 2.5', configOptions: [option('fast', 'model_config', 'true', ['false', 'true'])] },
+            { value: 'claude-opus-4-8', name: 'Claude Opus 4.8', configOptions: [option('thinking', 'thought_level', 'true', ['false', 'true']), option('effort', 'thought_level', 'high', ['low', 'medium', 'high', 'xhigh', 'max'])] },
+            { value: 'claude-sonnet-4', name: 'Claude Sonnet 4', configOptions: [option('thinking', 'thought_level', 'false', ['false', 'true'])] },
+            { value: 'gpt-5.5', name: 'GPT-5.5', configOptions: [option('reasoning', 'thought_level', 'medium', ['none', 'low', 'medium', 'high', 'extra-high'])] },
+            { name: 'no value' },
+        ],
+    };
+
+    test('takes the families in Cursor\'s own order and the effort among their options by what it offers', () => {
+        expect(parseCursorFamilies(families)).toEqual([
+            { id: 'default', name: 'Auto', isDefault: true },
+            { id: 'grok-4.7', name: 'Grok 4.7', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'high', supportsFast: true },
+            { id: 'composer-2.5', name: 'Composer 2.5', supportsFast: true },
+            // `thinking` is a switch, not a level, wherever it stands among the options.
+            { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'high' },
+            { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
+            { id: 'gpt-5.5', name: 'GPT-5.5', efforts: ['none', 'low', 'medium', 'high', 'extra-high'], defaultEffort: 'medium' },
+        ]);
+        expect(parseCursorFamilies(undefined)).toEqual([]);
+        expect(parseCursorFamilies({ models: 'x' })).toEqual([]);
+    });
+
+    test('is read over ACP from `cursor-agent acp`, and an older Cursor that does not answer falls back to --list-models', async () => {
+        const acp = program('cursor-agent', `
+            const rl = require('node:readline').createInterface({ input: process.stdin });
+            const send = (message) => process.stdout.write(JSON.stringify(message) + '\\n');
+            if (!process.argv.includes('acp')) { console.log('Available models\\n\\nauto - Auto (current, default)'); process.exit(0); }
+            rl.on('line', (line) => {
+                const message = JSON.parse(line);
+                if (message.method === 'initialize') send({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: 1 } });
+                else if (message.method === 'cursor/list_available_models') send({ jsonrpc: '2.0', id: message.id, result: ${ JSON.stringify(families) } });
+            });
+        `, `#!${ process.execPath }`);
+        const listed = await new ModelCatalog({ registry: registryOf({ cursor: acp }), cwd: root }).get('cursor');
+
+        expect(listed.state).toBe('ok');
+        expect(listed.models.map(model => model.id)).toEqual(['default', 'grok-4.7', 'composer-2.5', 'claude-opus-4-8', 'claude-sonnet-4', 'gpt-5.5']);
+
+        // A program that ends at once on `acp` (an older Cursor) is read with --list-models instead.
+        const old = program('cursor-old', 'if [ "$1" = "acp" ]; then exit 1; fi; printf "Available models\\n\\nauto - Auto (current, default)\\n"');
+        const fallback = await new ModelCatalog({ registry: registryOf({ cursor: old }), cwd: root }).get('cursor');
+
+        expect(fallback).toMatchObject({ state: 'ok', models: [{ id: 'auto', name: 'Auto', isDefault: true }] });
+    });
+
+    /**
+     * A `cursor-agent` that speaks ACP in JavaScript: `onLine(message)` runs for each request of the client (`send` answers, `note` leaves a line
+     * in the returned file); `--list-models` (no `acp` argument) prints one model and leaves the note `list-models`.
+     */
+    function cursorAgent(onLine: string): { path: string; notes: () => string[] } {
+        const notes = join(root, 'notes.txt');
+        const path = program('cursor-agent', `
+            const fs = require('node:fs');
+            const note = (text) => fs.appendFileSync(${ JSON.stringify(notes) }, text + '\\n');
+            const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');
+            if (!process.argv.includes('acp')) { note('list-models'); console.log('Available models\\n\\nauto - Auto (current, default)'); process.exit(0); }
+            note('acp');
+            let listing;
+            require('node:readline').createInterface({ input: process.stdin }).on('line', (line) => {
+                const message = JSON.parse(line);
+                ${ onLine }
+            });
+        `, `#!${ process.execPath }`);
+
+        return { path, notes: () => existsSync(notes) ? readFileSync(notes, 'utf8').split('\n').filter(Boolean) : [] };
+    }
+
+    const initialized = 'if (message.method === \'initialize\') send({ id: message.id, result: { protocolVersion: 1 } });';
+
+    test('a request of Cursor, even one that reuses the id of a call, is refused and does not stand for the answer', async () => {
+        const cursor = cursorAgent(`
+            ${ initialized }
+            else if (message.method === 'cursor/list_available_models') {
+                listing = message.id;
+                send({ id: message.id, method: 'session/request_permission', params: {} });
+            }
+            // Cursor goes on only once its request was answered (it would wait for a permission for ever).
+            else if (message.error) {
+                note('refused ' + message.error.code);
+                send({ id: listing, result: ${ JSON.stringify(families) } });
+            }
+        `);
+        const listed = await new ModelCatalog({ registry: registryOf({ cursor: cursor.path }), cwd: root, routes: { cursor: context => cursorModels(context, 2_000) } }).get('cursor');
+
+        // Taken for the answer, the request would have given an empty list and sent the read to --list-models.
+        expect(listed.models.map(model => model.id)).toEqual(['default', 'grok-4.7', 'composer-2.5', 'claude-opus-4-8', 'claude-sonnet-4', 'gpt-5.5']);
+        expect(cursor.notes()).toEqual(['acp', 'refused -32601']);
+    });
+
+    test('a Cursor that is signed out is told so once, not asked a second time through --list-models, and is asked again next time', async () => {
+        const cursor = cursorAgent(`
+            ${ initialized }
+            else if (message.method === 'cursor/list_available_models') send({ id: message.id, error: { code: -32000, message: "Authentication required. Please run 'cursor-agent login' first" } });
+        `);
+        const catalog = new ModelCatalog({ registry: registryOf({ cursor: cursor.path }), cwd: root });
+        const first = await catalog.get('cursor');
+
+        expect(first).toEqual({ state: 'error', models: [], detail: 'Cursor is not signed in. Sign in on the Providers page, then try again.' });
+        expect(cursor.notes()).toEqual(['acp']);
+
+        // A failed read is not kept for ten minutes: signing in and asking again works.
+        await catalog.get('cursor');
+
+        expect(cursor.notes()).toEqual(['acp', 'acp']);
+    });
+
+    test('a Cursor that does not answer in time ends the read at that deadline, without a second wait on --list-models', async () => {
+        const cursor = cursorAgent('/* never answers */');
+        const started = Date.now();
+        const listed = await new ModelCatalog({ registry: registryOf({ cursor: cursor.path }), cwd: root, routes: { cursor: context => cursorModels(context, 400) } }).get('cursor');
+
+        expect(listed).toEqual({ state: 'error', models: [], detail: 'Cursor did not list its models in time' });
+        expect(cursor.notes()).not.toContain('list-models');
+        expect(Date.now() - started).toBeLessThan(3_000);
+    });
+
+    test('a Cursor that refuses the method, or lists nothing, is read with --list-models', async () => {
+        const unknown = cursorAgent(`
+            ${ initialized }
+            else if (message.method === 'cursor/list_available_models') send({ id: message.id, error: { code: -32601, message: 'Method not found' } });
+        `);
+
+        expect(await new ModelCatalog({ registry: registryOf({ cursor: unknown.path }), cwd: root }).get('cursor')).toMatchObject({ state: 'ok', models: [{ id: 'auto' }] });
+        expect(unknown.notes()).toEqual(['acp', 'list-models']);
+
+        const empty = cursorAgent(`
+            ${ initialized }
+            else if (message.method === 'cursor/list_available_models') send({ id: message.id, result: { models: [] } });
+        `);
+
+        expect(await new ModelCatalog({ registry: registryOf({ cursor: empty.path }), cwd: root }).get('cursor')).toMatchObject({ state: 'ok', models: [{ id: 'auto' }] });
+    });
+
+    test('an odd answer is read for what is in it and never thrown over: no records, repeated ids, grouped or empty options, values that are not text', () => {
+        const group = (...values: string[]) => ({ group: 'g', name: 'G', options: values.map(value => ({ value, name: value })) });
+        const odd = {
+            models: [
+                null, 'text', 7, [], { value: 5, name: 'a number' }, { name: 'no value' },
+                { value: 'a', name: 'First', configOptions: [null, 'x', 1, { id: 'effort', category: 'thought_level', type: 'select', currentValue: 'low', options: [null, { value: 'low' }, { value: 'low' }, { value: 3 }, group('high', 'max')] }] },
+                // The same family twice: the first stays.
+                { value: 'a', name: 'Second', configOptions: [] },
+                // A level option with nothing in it does not hide the one that has levels, and a switch is not a level.
+                { value: 'b', configOptions: [{ category: 'thought_level', type: 'select', options: [] }, { category: 'thought_level', type: 'select', options: [{ value: 'false' }, { value: 'true' }] }, { id: 'effort', category: 'thought_level', type: 'select', currentValue: 'zzz', options: [{ value: 'low' }, { value: 'high' }] }] },
+                // Options that are not a list, or not a select.
+                { value: 'c', name: 'C', configOptions: { id: 'effort' } },
+                { value: 'd', name: 'D', configOptions: [{ id: 'effort', category: 'thought_level', type: 'text', options: [{ value: 'low' }] }, { id: 'effort', category: 'thought_level', type: 'select', options: 'low' }] },
+            ],
+        };
+
+        expect(parseCursorFamilies(odd)).toEqual([
+            { id: 'a', name: 'First', efforts: ['low', 'high', 'max'], defaultEffort: 'low' },
+            // `zzz` is not one of its levels, so there is no default level to claim.
+            { id: 'b', name: 'b', efforts: ['low', 'high'] },
+            { id: 'c', name: 'C' },
+            { id: 'd', name: 'D' },
+        ]);
+        expect(parseCursorFamilies(null)).toEqual([]);
+        expect(parseCursorFamilies({ models: { value: 'a' } })).toEqual([]);
+    });
 
     test('takes the `id - Name` lines, drops the markers from the name and notes the default', () => {
         expect(parseCursorModels(listing)).toEqual([

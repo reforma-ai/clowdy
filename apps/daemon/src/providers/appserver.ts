@@ -15,17 +15,30 @@ interface Pending {
     reject: (error: Error) => void;
 }
 
+/** The program refused a call: its message and, when it sent one, its JSON-RPC code (ACP's `-32000` is "authentication required"). */
+export class RpcError extends Error {
+    constructor(message: string, readonly code?: number) {
+        super(message);
+    }
+}
+
+/** The conversation's deadline passed with no answer. */
+export class RpcTimeout extends Error {}
+
+/** JSON-RPC's "method not found", the answer to a request of the program that Clowdy does not serve. */
+const METHOD_NOT_FOUND = -32601;
+
 /**
- * Starts `<program> app-server` (JSON-RPC, one message per line on standard input and output), lets `run` talk to it, and
+ * Starts `<program> app-server` (or the program with `args`, as Cursor's `acp`: JSON-RPC, one message per line on standard input and output), lets `run` talk to it, and
  * stops it. The whole conversation has one deadline. Rejects with what failed, with the end of the program's stderr when
  * that helps. Used for reads only: the program does its own authentication, so nothing here touches a token.
  */
-export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) => Promise<T>, timeoutMs: number): Promise<T> {
+export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) => Promise<T>, timeoutMs: number, args: string[] = ['app-server']): Promise<T> {
     if (context.signal?.aborted) {
         throw new Error('stopped');
     }
 
-    const proc = await spawnInOwnGroup({ command: context.program, args: ['app-server'], cwd: context.cwd, env: context.env });
+    const proc = await spawnInOwnGroup({ command: context.program, args, cwd: context.cwd, env: context.env });
     const pending = new Map<number, Pending>();
     let nextId = 1;
     /** Set when the program ended: nothing it was asked after that will ever be answered. */
@@ -44,10 +57,16 @@ export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) =>
         return text ? ` (it wrote: ${ text })` : '';
     };
 
+    const write = (payload: object) => {
+        if (!ended) {
+            proc.child.stdin?.write(`${ JSON.stringify({ jsonrpc: '2.0', ...payload }) }\n`);
+        }
+    };
+
     proc.child.stdin?.on('error', () => undefined);
 
     createInterface({ input: proc.child.stdout! }).on('line', (line) => {
-        let message: { id?: unknown; result?: unknown; error?: { message?: unknown } };
+        let message: { id?: unknown; method?: unknown; result?: unknown; error?: { message?: unknown; code?: unknown } };
 
         try {
             message = JSON.parse(line);
@@ -56,7 +75,16 @@ export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) =>
             return;
         }
 
-        // Notifications and requests of the server carry no result of ours.
+        // A request or notification of the program, whatever its id: it may reuse the id of a call of ours, and it is not the answer to it. A request
+        // is refused (a program that waits for the reply, a permission or a login for one, goes on), a notification is not ours to answer.
+        if (typeof message.method === 'string') {
+            if (typeof message.id === 'number' || typeof message.id === 'string') {
+                write({ id: message.id, error: { code: METHOD_NOT_FOUND, message: 'Method not found' } });
+            }
+
+            return;
+        }
+
         if (typeof message.id !== 'number' || !pending.has(message.id)) {
             return;
         }
@@ -66,7 +94,7 @@ export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) =>
         pending.delete(message.id);
 
         if (message.error) {
-            waiting.reject(new Error(typeof message.error.message === 'string' ? message.error.message : 'the program answered with an error'));
+            waiting.reject(new RpcError(typeof message.error.message === 'string' ? message.error.message : 'the program answered with an error', typeof message.error.code === 'number' ? message.error.code : undefined));
         }
         else {
             waiting.resolve(message.result);
@@ -76,12 +104,6 @@ export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) =>
         ended = new Error(`the program ended before it answered${ tail() }`);
         failAll(ended);
     });
-
-    const write = (payload: object) => {
-        if (!ended) {
-            proc.child.stdin?.write(`${ JSON.stringify({ jsonrpc: '2.0', ...payload }) }\n`);
-        }
-    };
     const rpc: Rpc = {
         call: (method, params) => new Promise((resolve, reject) => {
             // Asked after the program ended, a call would wait for the deadline for an answer that cannot come.
@@ -112,7 +134,7 @@ export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) =>
         return await Promise.race([
             run(rpc),
             new Promise<never>((_resolve, reject) => {
-                timer = setTimeout(() => reject(new Error(`no answer in ${ Math.round(timeoutMs / 1000) } s${ tail() }`)), timeoutMs);
+                timer = setTimeout(() => reject(new RpcTimeout(`no answer in ${ Math.round(timeoutMs / 1000) } s${ tail() }`)), timeoutMs);
             }),
         ]);
     }

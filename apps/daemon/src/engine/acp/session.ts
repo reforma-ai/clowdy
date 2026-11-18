@@ -329,7 +329,7 @@ export class AcpSession implements EngineSession {
             const init = await Promise.race([
                 request(connection.agent.request(methods.agent.initialize, {
                     protocolVersion: PROTOCOL_VERSION,
-                    clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+                    clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, ...(agent.clientMeta && { _meta: agent.clientMeta }) },
                     clientInfo: { name: 'clowdy', title: 'Clowdy', version: deps.clientVersion },
                 })),
                 silent,

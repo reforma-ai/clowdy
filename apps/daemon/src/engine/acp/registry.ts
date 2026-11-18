@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 
+import { errorMessage } from '../../errors';
 import { AGENT_ID, KNOWN_AGENTS } from './catalog';
 import { Discovery } from './discovery';
 import { buildAgentEnv } from './env';
@@ -30,6 +31,8 @@ export interface ResolvedAgent {
     login?: string;
     /** The `_meta` of `session/new`, for the options its adapter reads. */
     sessionMeta?: Record<string, unknown>;
+    /** The `_meta` of the client capabilities in `initialize` (see `AgentSpec.clientMeta`). */
+    clientMeta?: Record<string, unknown>;
 }
 
 export type Resolution = { ok: true; agent: ResolvedAgent } | { ok: false; message: string };
@@ -46,6 +49,8 @@ export interface AgentRegistryOptions {
     now?: () => number;
     /** The Bun that runs adapter packages with `bun x`: the daemon's own by default, since the daemon runs on Bun. Tests replace it. */
     runtime?: () => Promise<string | undefined>;
+    /** The platform agents run on, for what is verified on some only (`AgentSpec.isolation`); this machine's by default. */
+    platform?: NodeJS.Platform;
 }
 
 export class AgentRegistryError extends Error {
@@ -65,13 +70,17 @@ export class AgentRegistry {
     private now: () => number;
     private runtime: () => Promise<string | undefined>;
     private file?: string;
+    private dataDir?: string;
+    private platform: NodeJS.Platform;
 
     constructor(options: AgentRegistryOptions = {}) {
         this.discovery = options.discovery ?? new Discovery();
         this.now = options.now ?? Date.now;
+        this.platform = options.platform ?? process.platform;
         this.runtime = options.runtime ?? (async () => process.versions.bun ? process.execPath : (await this.discovery.find(['bun']))?.path);
 
         if (options.dataDir) {
+            this.dataDir = options.dataDir;
             this.file = join(options.dataDir, 'agents.json');
             this.stored = this.load(this.file);
         }
@@ -118,17 +127,16 @@ export class AgentRegistry {
 
     /** What to start for `id`, or why it cannot be started. Always searches the machine afresh for the program. */
     async resolve(id: string): Promise<Resolution> {
-        const entry = this.entries().find(candidate => candidate.id === id);
-
-        return entry ? this.build(entry) : { ok: false, message: `There is no agent called "${ id }"` };
+        return await this.resolveAs(id, true);
     }
 
     /**
-     * What a read of the agent's account needs: its program and the environment a run of it gets (so a probe sees the
-     * `CLAUDE_CONFIG_DIR` or `CODEX_HOME` a run would). `undefined` for an agent that is off or not installed.
+     * What a read of the agent's account, its models or its sign-in needs: its program and the environment a run of it gets (so a probe sees the
+     * `CLAUDE_CONFIG_DIR` or `CODEX_HOME` a run would), except the folder a run keeps apart from the person's (`AgentSpec.isolation`): nothing
+     * here chooses a model, and a sign-in has to land where the person's own program and the account read look. `undefined` for an agent that is off or not installed.
      */
     async probeTarget(id: string, daemonEnv: Record<string, string | undefined> = process.env): Promise<{ program: string; env: Record<string, string> } | undefined> {
-        const resolution = await this.resolve(id);
+        const resolution = await this.resolveAs(id, false);
 
         if (!resolution.ok) {
             return undefined;
@@ -244,7 +252,39 @@ export class AgentRegistry {
         return (await this.discovery.find(entry.spec.programs))?.path;
     }
 
-    private async build(entry: Entry): Promise<Resolution> {
+    private async resolveAs(id: string, isolate: boolean): Promise<Resolution> {
+        const entry = this.entries().find(candidate => candidate.id === id);
+
+        return entry ? this.build(entry, isolate) : { ok: false, message: `There is no agent called "${ id }"` };
+    }
+
+    /**
+     * The folder an agent's run keeps its own state in, so the run changes nothing of the person's (see `AgentSpec.isolation`), made before the
+     * agent starts (owner only: it holds its session history). Nothing without a data folder, off the platforms where it is verified, or where
+     * the person's own value for the variable is set (theirs wins). A message when the folder cannot be made: the run then fails with it, rather
+     * than start on the person's own folder and change their default.
+     */
+    private isolation(spec: AgentSpec, override: AgentOverride): { env: Record<string, string> } | { message: string } | undefined {
+        const { isolation } = spec;
+
+        if (!isolation || !this.dataDir || !isolation.platforms.includes(this.platform) || override.env?.[isolation.env] !== undefined) {
+            return undefined;
+        }
+
+        const folder = join(this.dataDir, 'agents', isolation.dir);
+
+        try {
+            mkdirSync(folder, { recursive: true, mode: 0o700 });
+        }
+        catch (error) {
+            return { message: `${ spec.name } was not started: Clowdy could not make ${ folder }, where it keeps ${ spec.name }'s own settings apart from yours (${ errorMessage(error) })` };
+        }
+
+        return { env: { [isolation.env]: folder } };
+    }
+
+    /** `isolate`: for a run, the agent's own folder is made and named in its environment. A listing and a read pass `false` and touch no disk. */
+    private async build(entry: Entry, isolate: boolean): Promise<Resolution> {
         const override = this.stored.overrides[entry.id] ?? {};
 
         if (!this.isEnabled(entry.id)) {
@@ -262,11 +302,17 @@ export class AgentRegistry {
         }
 
         const { spec } = entry;
+        const apart = isolate ? this.isolation(spec, override) : undefined;
+
+        if (apart && 'message' in apart) {
+            return { ok: false, message: apart.message };
+        }
+
         const applied = appliedSettings(spec, override);
-        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, sessionMeta: withDisallowedTools(spec.sessionMeta, applied.disallowedTools) };
+        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, sessionMeta: withDisallowedTools(spec.sessionMeta, applied.disallowedTools), ...(spec.clientMeta && { clientMeta: spec.clientMeta }) };
 
         if (spec.launch.kind === 'binary') {
-            return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: withoutRemoved({ ...spec.env, ...applied.env, ...override.env }) } };
+            return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: withoutRemoved({ ...spec.env, ...apart?.env, ...applied.env, ...override.env }) } };
         }
 
         const runtime = await this.runtime();
@@ -277,13 +323,13 @@ export class AgentRegistry {
 
         return {
             ok: true,
-            agent: { ...base, program, command: runtime, args: ['x', '--bun', spec.launch.package], env: withoutRemoved({ ...PACKAGE_RUNNER_ENV, ...spec.env, ...applied.env, [spec.launch.pathEnv]: program, ...override.env }) },
+            agent: { ...base, program, command: runtime, args: ['x', '--bun', spec.launch.package], env: withoutRemoved({ ...PACKAGE_RUNNER_ENV, ...spec.env, ...apart?.env, ...applied.env, [spec.launch.pathEnv]: program, ...override.env }) },
         };
     }
 
     private async describe(entry: Entry): Promise<AgentInfo> {
         const override = this.stored.overrides[entry.id] ?? {};
-        const resolution = await this.build(entry);
+        const resolution = await this.build(entry, false);
         const program = await this.program(entry);
         const spec = entry.custom ? undefined : entry.spec;
         const fetches = spec?.launch.kind === 'package' ? spec.launch.package : undefined;
@@ -303,6 +349,7 @@ export class AgentRegistry {
             launch,
             ...(fetches && { fetches }),
             ...(spec?.login && { login: spec.login }),
+            ...(spec?.compact && { canCompact: true }),
             ...(spec?.settings?.length && { settings: settingsOf(spec, override) }),
             ...((override.path || override.env) && { overrides: { ...(override.path && { path: override.path }), ...(override.env && { env: override.env }) } }),
         };

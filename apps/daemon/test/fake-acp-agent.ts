@@ -9,6 +9,7 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
  *   usage <in> <out> <cost>     token usage for the prompt and a cumulative cost update
  *   limit <status> <resetsAt>   a rate limit signal in Claude's adapter format
  *   info                        says what the session was created with, as JSON
+ *   capabilities                says what the client told the agent it can do in `initialize`, as JSON
  *   choice                      says the model and reasoning level the session ended up on and how many options it was asked to set, as JSON
  *   prompt                      says the whole text of the prompt, as JSON
  *   env <NAME>                  says the value of an environment variable
@@ -44,6 +45,8 @@ interface FakeSession {
 }
 
 const sessions = new Map<string, FakeSession>();
+/** What the client said it can do in `initialize`, for the `capabilities` directive. */
+let clientCapabilities: unknown;
 let counter = 0;
 const resumeMode = process.env.FAKE_ACP_RESUME ?? 'resume';
 
@@ -101,17 +104,21 @@ const modelOptions = (model: string, effort = 'high') => [
 ];
 
 const app = agent({ name: 'fake-acp-agent' })
-    .onRequest(methods.agent.initialize, () => ({
-        protocolVersion: PROTOCOL_VERSION,
-        agentInfo: { name: 'fake-acp-agent', version: '1.0.0' },
-        agentCapabilities: {
-            loadSession: resumeMode === 'load',
-            sessionCapabilities: {
-                ...(resumeMode === 'resume' && { resume: {} }),
-                ...(process.env.FAKE_ACP_SYSTEM_PROMPT !== '0' && { systemPrompt: {} }),
+    .onRequest(methods.agent.initialize, ({ params }) => {
+        clientCapabilities = params.clientCapabilities;
+
+        return {
+            protocolVersion: PROTOCOL_VERSION,
+            agentInfo: { name: 'fake-acp-agent', version: '1.0.0' },
+            agentCapabilities: {
+                loadSession: resumeMode === 'load',
+                sessionCapabilities: {
+                    ...(resumeMode === 'resume' && { resume: {} }),
+                    ...(process.env.FAKE_ACP_SYSTEM_PROMPT !== '0' && { systemPrompt: {} }),
+                },
             },
-        },
-    }))
+        };
+    })
     .onRequest(methods.agent.session.new, ({ params }) => {
         if (process.env.FAKE_ACP_AUTH === '1') {
             throw new RequestError(-32000, 'Authentication required');
@@ -279,6 +286,9 @@ const app = agent({ name: 'fake-acp-agent' })
                 }
                 case 'info':
                     await say(JSON.stringify({ cwd: session.cwd, servers: session.mcpServers.map(server => server.name), systemPrompt: session.systemPrompt, meta: session.meta, model: session.model, prompts: session.count }));
+                    break;
+                case 'capabilities':
+                    await say(JSON.stringify(clientCapabilities));
                     break;
                 case 'choice':
                     await say(JSON.stringify({ model: session.model, effort: session.effort, sets: session.sets }));

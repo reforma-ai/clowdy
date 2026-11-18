@@ -34,6 +34,8 @@ export interface AgentInfo {
     usage?: AgentUsage;
     /** Whether the daemon can run the agent's login for the person (`agent.signIn`). */
     canSignIn?: boolean;
+    /** Whether the agent has a command that compacts its conversation, which `chat.compact` runs (Claude and Codex have one). */
+    canCompact?: boolean;
     /** A sign-in the daemon is running or has just finished for this agent. */
     signInSession?: AgentSignInSession;
     /** The agent's own settings Clowdy can control, with their current values. Empty or absent when there are none. */
@@ -123,7 +125,7 @@ export interface AgentSetting {
 
 /** One model an agent offers, as its own program lists it on this machine and account. */
 export interface AgentModel {
-    /** What a run's `model` takes: Claude Code's `opus`, Codex's `gpt-5.5`, a Cursor variant such as `gpt-5.3-codex-high`. */
+    /** What a run's `model` takes: Claude Code's `opus`, Codex's `gpt-5.5`, a Cursor model family such as `claude-opus-4-8` (its level is `effort`; an older Cursor lists variants such as `gpt-5.3-codex-high`). */
     id: string;
     name: string;
     description?: string;
@@ -136,6 +138,8 @@ export interface AgentModel {
     defaultEffort?: string;
     /** Whether the model has a faster, dearer mode. */
     supportsFast?: boolean;
+    /** The agent's main models, for a picker that shows few and keeps the rest behind "more". Absent on every row when the agent does not say: a picker then takes the first rows. */
+    featured?: boolean;
 }
 
 /** The answer of `GET /v1/agents/:id/models`. */

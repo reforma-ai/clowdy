@@ -203,6 +203,22 @@ describe('a turn on an ACP agent', () => {
         expect(textOf(events)).toBe('fresh');
     });
 
+    test('what the agent needs to hear about the client reaches it as the _meta of the capabilities', async () => {
+        const meta = { parameterizedModelPicker: true };
+        const heard = async (options?: Parameters<typeof use>[0]) => {
+            const { session } = use(options).start('capabilities');
+            const events = await collect(session);
+
+            await session.close();
+
+            return JSON.parse(textOf(events));
+        };
+
+        expect(await heard({ clientMeta: meta })).toMatchObject({ terminal: false, _meta: meta });
+        // An agent that asks for nothing gets none.
+        expect(await heard()).not.toHaveProperty('_meta');
+    });
+
     test('the options an adapter reads reach it as the _meta of the session', async () => {
         const meta = { claudeCode: { options: { disallowedTools: ['AskUserQuestion'] } } };
         const { session } = use({ sessionMeta: meta }).start('info');

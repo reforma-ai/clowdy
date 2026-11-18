@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -134,7 +134,7 @@ describe('Discovery', () => {
 });
 
 describe('AgentRegistry', () => {
-    const registry = (dataDir?: string) => new AgentRegistry({ discovery: discovery(), dataDir });
+    const registry = (dataDir?: string, platform?: NodeJS.Platform) => new AgentRegistry({ discovery: discovery(), dataDir, platform });
     const byId = async (reg: AgentRegistry, id: string) => (await reg.list()).find(info => info.id === id);
 
     test('an installed native agent is ready with its version and launch line; one that is not is missing and says so', async () => {
@@ -145,11 +145,100 @@ describe('AgentRegistry', () => {
         expect(await byId(reg, 'opencode')).toMatchObject({ status: 'missing', detail: expect.stringContaining('no `opencode` command was found'), launch: 'opencode acp' });
     });
 
+    test('on macOS a run of Cursor keeps its state in a folder of Clowdy\'s own (owner only), and Cursor learns that the client can show a model\'s effort', async () => {
+        const cursor = program('cursor-agent', 'cursor 2026.09.01');
+        const dataDir = join(root, 'data');
+        const resolved = await registry(dataDir, 'darwin').resolve('cursor');
+        const folder = join(dataDir, 'agents', 'cursor');
+
+        expect(resolved).toMatchObject({ ok: true, agent: { command: cursor, args: ['acp'], env: { CURSOR_CONFIG_DIR: folder }, clientMeta: { parameterizedModelPicker: true } } });
+        // The folder exists before the agent starts; it holds the session history, so only its owner reads it.
+        expect(statSync(folder).isDirectory()).toBe(true);
+        expect(statSync(folder).mode & 0o777).toBe(0o700);
+        // The other agents are never moved, and have nothing to say to `initialize`.
+        program('opencode', 'opencode 1.0.0');
+
+        const opencode = await registry(dataDir, 'darwin').resolve('opencode') as { agent: { env: Record<string, string>; clientMeta?: unknown } };
+
+        expect(opencode.agent.env).not.toHaveProperty('CURSOR_CONFIG_DIR');
+        expect(opencode.agent).not.toHaveProperty('clientMeta');
+
+        // An agent the person added is a command with arguments and variables, nothing more.
+        const reg = registry(dataDir, 'darwin');
+
+        reg.add({ id: 'mine', name: 'Mine', command: program('mine', 'x'), args: [], env: { A: '1' } });
+
+        const mine = await reg.resolve('mine') as { agent: { env: Record<string, string>; clientMeta?: unknown } };
+
+        expect(mine.agent.env).toEqual({ A: '1' });
+        expect(mine.agent).not.toHaveProperty('clientMeta');
+    });
+
+    test('the person\'s own folder for Cursor wins, and no folder of Clowdy\'s is made then', async () => {
+        program('cursor-agent', 'cursor 2026.09.01');
+
+        const dataDir = join(root, 'data');
+        const own = registry(dataDir, 'darwin');
+
+        own.update('cursor', { env: { CURSOR_CONFIG_DIR: '/mine' } });
+        expect(await own.resolve('cursor')).toMatchObject({ ok: true, agent: { env: { CURSOR_CONFIG_DIR: '/mine' } } });
+        expect(existsSync(join(dataDir, 'agents'))).toBe(false);
+    });
+
+    test('Cursor is moved only where that is verified, and only with a data folder of its own', async () => {
+        program('cursor-agent', 'cursor 2026.09.01');
+
+        const dataDir = join(root, 'data');
+        const envOf = async (reg: AgentRegistry) => (await reg.resolve('cursor') as { agent: { env: Record<string, string> } }).agent.env;
+
+        // Windows and Linux are not verified: the login may not survive, so a run keeps the person's own folder there.
+        expect(await envOf(registry(dataDir, 'win32'))).not.toHaveProperty('CURSOR_CONFIG_DIR');
+        expect(await envOf(registry(dataDir, 'linux'))).not.toHaveProperty('CURSOR_CONFIG_DIR');
+        expect(existsSync(join(dataDir, 'agents'))).toBe(false);
+        // A bare registry (no data folder) has nowhere to put it.
+        expect(await envOf(registry(undefined, 'darwin'))).not.toHaveProperty('CURSOR_CONFIG_DIR');
+        // The client capability is for every platform.
+        expect(await registry(dataDir, 'win32').resolve('cursor')).toMatchObject({ ok: true, agent: { clientMeta: { parameterizedModelPicker: true } } });
+    });
+
+    test('only a run makes Cursor\'s folder: a listing, a read (the account, the models) and the sign-in touch no disk and do not name it', async () => {
+        program('cursor-agent', 'cursor 2026.09.01');
+
+        const dataDir = join(root, 'data');
+        const reg = registry(dataDir, 'darwin');
+
+        expect(await byId(reg, 'cursor')).toMatchObject({ status: 'ready' });
+
+        const target = await reg.probeTarget('cursor', { HOME: '/h', CURSOR_CONFIG_DIR: '/theirs' });
+
+        // A read is the person\'s own Cursor (nothing in it chooses a model), and the sign-in has to land where their own program and the account read look.
+        expect(target?.env).toMatchObject({ CURSOR_CONFIG_DIR: '/theirs' });
+        expect(existsSync(join(dataDir, 'agents'))).toBe(false);
+        expect((await reg.probeTarget('cursor', { HOME: '/h' }))?.env).not.toHaveProperty('CURSOR_CONFIG_DIR');
+    });
+
+    test('a folder that cannot be made fails the run with a message instead of throwing, and breaks neither the listing nor a read', async () => {
+        const cursor = program('cursor-agent', 'cursor 2026.09.01');
+        const dataDir = join(root, 'data');
+
+        mkdirSync(dataDir);
+        // `agents` is a file, so nothing can be made under it.
+        writeFileSync(join(dataDir, 'agents'), 'not a folder');
+
+        const reg = registry(dataDir, 'darwin');
+        const resolved = await reg.resolve('cursor');
+
+        expect(resolved).toEqual({ ok: false, message: expect.stringContaining(`could not make ${ join(dataDir, 'agents', 'cursor') }`) });
+        // Starting on the person\'s own folder instead would change their default model, which is what the folder is for.
+        expect(await byId(reg, 'cursor')).toMatchObject({ status: 'ready', path: cursor });
+        expect((await reg.probeTarget('cursor'))?.program).toBe(cursor);
+    });
+
     test('Claude Code starts through its official adapter on the user\'s own claude, with the cautions of its profile', async () => {
         const claude = program('claude', '2.1.325 (Claude Code)');
         const reg = registry();
 
-        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: `bun x --bun ${ pinned('claude') }`, fetches: pinned('claude'), login: 'claude auth login', settings: expect.any(Array) });
+        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: `bun x --bun ${ pinned('claude') }`, fetches: pinned('claude'), login: 'claude auth login', canCompact: true, settings: expect.any(Array) });
 
         const resolved = await reg.resolve('claude');
 
@@ -235,7 +324,7 @@ describe('AgentRegistry', () => {
         bun = program('bun', '1.4.0');
         reg.refresh();
 
-        expect(await byId(reg, 'codex')).toMatchObject({ status: 'ready', version: '0.166.0' });
+        expect(await byId(reg, 'codex')).toMatchObject({ status: 'ready', version: '0.166.0', canCompact: true });
         expect(await byId(reg, 'claude')).toMatchObject({ status: 'missing' });
     });
 

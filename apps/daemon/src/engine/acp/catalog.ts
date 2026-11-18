@@ -41,6 +41,15 @@ export interface AgentSpec {
     sessionMeta?: Record<string, unknown>;
     /** The agent's own switches, shown with its account. */
     settings?: AgentSettingSpec[];
+    /**
+     * A folder of its own for what the agent keeps between runs (its settings, its session history and, for Cursor, the model every later process
+     * starts on): `env` is the variable that moves it, `dir` its name under the daemon's data folder, `platforms` where moving it is verified to
+     * leave the login alone (anywhere else the agent runs in the person's own folder, as before). Choosing a model for a run changes that default,
+     * so without this a run of Clowdy would change the person's own agent. Only runs use it: reads of the account and the sign-in are the person's own.
+     */
+    isolation?: { env: string; dir: string; platforms: NodeJS.Platform[] };
+    /** The `_meta` of the client capabilities in `initialize`: what this agent needs to hear to offer its full options (Cursor lists a model's effort only to a client that says it can show one). */
+    clientMeta?: Record<string, unknown>;
     /** The message that makes the agent compact its conversation (verified: both report it as a "Compact conversation" tool call and a smaller context). Absent when it has none. */
     compact?: string;
 }
@@ -113,6 +122,11 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         programs: ['cursor-agent', 'agent'],
         launch: { kind: 'binary', args: ['acp'] },
         login: 'cursor-agent login',
+        // Verified on macOS only: the login is in the keychain, so it follows the person into the folder; the model every new process starts on and
+        // the session history stay in it (research/cursor-isolation.md). On Windows and Linux the credential file is built from other variables, so the
+        // login should survive too, but nobody has run it: a run there keeps the person's own folder (and its default model) until somebody does.
+        isolation: { env: 'CURSOR_CONFIG_DIR', dir: 'cursor', platforms: ['darwin'] },
+        clientMeta: { parameterizedModelPicker: true },
     },
     {
         id: 'opencode',
