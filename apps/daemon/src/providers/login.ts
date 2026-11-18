@@ -9,6 +9,8 @@ const SIGN_IN_TIMEOUT_MS = 10 * 60_000;
 /** A finished session stays visible this long, so the page can say how it ended. */
 const KEEP_FINISHED_MS = 2 * 60_000;
 const OUTPUT_TAIL_CHARS = 8000;
+/** After the program ended, output it wrote last may still be on its way: wait this long for the pipes to close. */
+const OUTPUT_GRACE_MS = 200;
 
 export class SignInError extends Error {
     constructor(readonly kind: 'invalid' | 'conflict', message: string) {
@@ -21,14 +23,19 @@ const OSC_LINK = /\u001B\]8;[^;\u0007\u001B]*;([^\u0007\u001B]+)(?:\u0007|\u001B
 const ESCAPES = /\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)|\u001B\[[0-9;?]*[ -/]*[@-~]|\u001B[@-Z\\-_]/g;
 /* eslint-enable no-control-regex */
 
+const URL_IN_TEXT = /https?:\/\/[^\s<>"']+/g;
+/** The address of the login program's own listener (`Starting local login server on http://localhost:1455`): the page is somewhere else. */
+const LOOPBACK = /^https?:\/\/(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?(?:[/?#]|$)/i;
+
 /** What a login program printed that a person needs: the link to open, and a one-time code to enter there. */
 export function parseSignInOutput(output: string): { url?: string; code?: string; denied?: boolean } {
     // A terminal hyperlink names its target apart from its text: the last one is the one on screen.
     const hyperlinks = [...output.matchAll(OSC_LINK)].map(match => match[1]!);
     const plain = output.replace(ESCAPES, '');
-    const printed = /https?:\/\/[^\s<>"']+/.exec(plain)?.[0]?.replace(/[.,;:)\]]+$/, '');
+    const printed = [...plain.matchAll(URL_IN_TEXT)].map(match => match[0].replace(/[.,;:)\]]+$/, '')).find(link => !LOOPBACK.test(link));
     const url = hyperlinks.at(-1) ?? printed;
-    const code = /\b[A-Z0-9]{4,5}-[A-Z0-9]{4,5}\b/.exec(plain)?.[0];
+    // Not inside a link: its ids and states have the shape of a code too.
+    const code = /\b[A-Z0-9]{4,5}-[A-Z0-9]{4,5}\b/.exec(plain.replace(URL_IN_TEXT, ' '))?.[0];
 
     return {
         ...(url && { url }),
@@ -107,7 +114,7 @@ export class LoginSessions {
         const entry = { session: { step: 'starting', startedAt: this.now() } as Session, cancelled: false };
 
         this.sessions.set(id, entry);
-        void this.run(id, entry);
+        void this.run(id, entry).catch(error => this.finish(entry, 'failed', `The sign-in to ${ this.options.registry.nameOf(id) } broke: ${ error instanceof Error ? error.message : String(error) }`));
     }
 
     /** Stops the sign-in in progress. */
@@ -182,8 +189,11 @@ export class LoginSessions {
 
         const { proc } = entry;
         let output = '';
+        // Ended by us (the deadline, a refusal): whatever the program then exits with, the person did not sign in.
+        let stopped = false;
         const timer = setTimeout(() => {
             entry.session.message = 'The sign-in took too long';
+            stopped = true;
             proc.stop();
         }, this.timeoutMs);
         const onData = (text: string) => {
@@ -202,6 +212,7 @@ export class LoginSessions {
 
             if (found.denied) {
                 entry.session.message = 'The sign-in was refused';
+                stopped = true;
                 proc.stop();
             }
 
@@ -217,7 +228,15 @@ export class LoginSessions {
         this.options.announce();
 
         const code = await new Promise<number | null>((resolve) => {
-            proc.child.once('exit', exitCode => resolve(exitCode));
+            proc.child.once('exit', (exitCode) => {
+                // Its last words may still be in the pipes (`close` says they are not), and a leftover that holds them open must not hold us.
+                const grace = setTimeout(() => resolve(exitCode), OUTPUT_GRACE_MS);
+
+                proc.child.once('close', () => {
+                    clearTimeout(grace);
+                    resolve(exitCode);
+                });
+            });
             proc.child.once('error', () => resolve(null));
         });
 
@@ -226,7 +245,7 @@ export class LoginSessions {
         if (entry.cancelled) {
             this.finish(entry, 'cancelled', 'Sign-in cancelled');
         }
-        else if (code === 0) {
+        else if (code === 0 && !stopped) {
             this.finish(entry, 'done');
             this.options.onSignedIn(id);
         }

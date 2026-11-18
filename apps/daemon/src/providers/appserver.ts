@@ -21,10 +21,15 @@ interface Pending {
  * that helps. Used for reads only: the program does its own authentication, so nothing here touches a token.
  */
 export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) => Promise<T>, timeoutMs: number): Promise<T> {
+    if (context.signal?.aborted) {
+        throw new Error('stopped');
+    }
+
     const proc = await spawnInOwnGroup({ command: context.program, args: ['app-server'], cwd: context.cwd, env: context.env });
     const pending = new Map<number, Pending>();
     let nextId = 1;
-    let closed = false;
+    /** Set when the program ended: nothing it was asked after that will ever be answered. */
+    let ended: Error | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const failAll = (error: Error) => {
         for (const waiting of pending.values()) {
@@ -68,17 +73,24 @@ export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) =>
         }
     });
     void proc.exited.then(() => {
-        closed = true;
-        failAll(new Error(`the program ended before it answered${ tail() }`));
+        ended = new Error(`the program ended before it answered${ tail() }`);
+        failAll(ended);
     });
 
     const write = (payload: object) => {
-        if (!closed) {
+        if (!ended) {
             proc.child.stdin?.write(`${ JSON.stringify({ jsonrpc: '2.0', ...payload }) }\n`);
         }
     };
     const rpc: Rpc = {
         call: (method, params) => new Promise((resolve, reject) => {
+            // Asked after the program ended, a call would wait for the deadline for an answer that cannot come.
+            if (ended) {
+                reject(ended);
+
+                return;
+            }
+
             const id = nextId++;
 
             pending.set(id, { resolve, reject });
@@ -86,6 +98,15 @@ export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) =>
         }),
         notify: (method, params) => write({ method, ...(params !== undefined && { params }) }),
     };
+
+    const onAbort = () => proc.stop();
+
+    // The daemon stopping ends the program, which fails every call that waits for it.
+    context.signal?.addEventListener('abort', onAbort, { once: true });
+
+    if (context.signal?.aborted) {
+        onAbort();
+    }
 
     try {
         return await Promise.race([
@@ -97,6 +118,7 @@ export async function withAppServer<T>(context: ProbeContext, run: (rpc: Rpc) =>
     }
     finally {
         clearTimeout(timer);
+        context.signal?.removeEventListener('abort', onAbort);
         failAll(new Error('stopped'));
         proc.stop();
         await Promise.race([proc.exited, new Promise(resolve => setTimeout(resolve, 3000).unref())]);

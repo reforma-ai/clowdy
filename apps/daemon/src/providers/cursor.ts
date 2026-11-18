@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { runProgram } from './exec';
@@ -45,6 +45,9 @@ export function readCursorIdentity(context: Pick<ProbeContext, 'platform' | 'hom
     return {};
 }
 
+/** A token is a run of visible characters. Anything else is not one, and a header built from it would put its value into the error that says why it is refused. */
+const TOKEN = /^[\u0021-\u007E]{1,8192}$/;
+
 /**
  * The access token Cursor's command line stored: the macOS Keychain item `cursor-access-token` first, then `auth.json`.
  * It is the one credential the daemon reads for a provider, because Cursor offers no other way to see the plan's usage;
@@ -52,19 +55,18 @@ export function readCursorIdentity(context: Pick<ProbeContext, 'platform' | 'hom
  */
 export async function readCursorToken(context: ProbeContext): Promise<string | undefined> {
     if (context.platform === 'darwin') {
-        const run = await runProgram('/usr/bin/security', ['find-generic-password', '-s', 'cursor-access-token', '-a', 'cursor-user', '-w'], { env: context.env, cwd: context.cwd, timeoutMs: KEYCHAIN_TIMEOUT_MS });
+        const run = await runProgram('/usr/bin/security', ['find-generic-password', '-s', 'cursor-access-token', '-a', 'cursor-user', '-w'], { env: context.env, cwd: context.cwd, timeoutMs: KEYCHAIN_TIMEOUT_MS, signal: context.signal });
         const token = run.stdout.trim();
 
-        if (run.code === 0 && token) {
+        if (run.code === 0 && TOKEN.test(token)) {
             return token;
         }
     }
 
     for (const dir of cursorConfigDirs(context)) {
-        const file = join(dir, 'auth.json');
-        const token = existsSync(file) ? readJson(file)?.accessToken : undefined;
+        const token = readJson(join(dir, 'auth.json'))?.accessToken;
 
-        if (typeof token === 'string' && token) {
+        if (typeof token === 'string' && TOKEN.test(token)) {
             return token;
         }
     }
@@ -75,6 +77,7 @@ export async function readCursorToken(context: ProbeContext): Promise<string | u
 class RejectedError extends Error {}
 
 async function dashboard(context: ProbeContext, token: string, method: string): Promise<Record<string, unknown>> {
+    const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     const response = await context.fetch(`${ API }/${ method }`, {
         method: 'POST',
         headers: {
@@ -86,7 +89,9 @@ async function dashboard(context: ProbeContext, token: string, method: string): 
             'x-cursor-client-version': 'clowdy',
         },
         body: '{}',
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        // The token goes to this address and no other: an answer that sends it elsewhere is an error.
+        redirect: 'error',
+        signal: context.signal ? AbortSignal.any([timeout, context.signal]) : timeout,
     });
 
     if (response.status === 401 || response.status === 403) {
@@ -138,6 +143,8 @@ export function cursorWindows(usage: Record<string, unknown>): AgentUsageWindow[
 export const cursor: Provider = {
     id: 'cursor',
     login: { args: ['login'] },
+    // Each read asks the Keychain for the token, which can ask the person for access: the plan is billed by the month, so not often.
+    freshMs: 5 * 60_000,
     async read(context): Promise<ProviderRead> {
         const identity = readCursorIdentity(context);
         const token = await readCursorToken(context);
@@ -163,10 +170,12 @@ export const cursor: Provider = {
         }
         catch (error) {
             const rejected = error instanceof RejectedError;
+            // The token is never part of what a person or a client is told, whatever an error says.
+            const detail = (error instanceof Error ? error.message : String(error)).split(token).join('…');
 
             return {
                 signIn: rejected && !identity.email ? { status: 'signed-out', detail: 'The Cursor login has expired' } : { status: 'signed-in', account },
-                usage: { state: 'error', windows: [], detail: error instanceof Error ? error.message : String(error) },
+                usage: { state: 'error', windows: [], detail },
             };
         }
     },

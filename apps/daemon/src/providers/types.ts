@@ -12,6 +12,8 @@ export interface ProbeContext {
     now: () => number;
     platform: NodeJS.Platform;
     home: string;
+    /** Fires when the daemon stops: programs a probe started are ended and a read in flight gives up. */
+    signal?: AbortSignal;
 }
 
 /** The account half of a read, before the service stamps it with the time. */
@@ -34,4 +36,6 @@ export interface Provider {
     read(context: ProbeContext): Promise<ProviderRead>;
     /** The vendor's login, run for the person; the program is the agent's own. */
     login?: { args: string[] };
+    /** How long a read is reused when it did not fail; the service's own default when absent. */
+    freshMs?: number;
 }

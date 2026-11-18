@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,7 +32,7 @@ function program(name: string, body: string): string {
 const info = (): AgentInfo => ({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', launch: 'claude' });
 
 /** A service whose agent `claude` is the script `body`, with a reader that says "signed in" once the marker file exists. */
-function rig(body: string, options: { loginTimeoutMs?: number } = {}) {
+function rig(body: string, options: { loginTimeoutMs?: number; announce?: () => void } = {}) {
     const marker = join(root, 'signed-in');
     const announced: number[] = [];
     const registry = {
@@ -63,6 +63,14 @@ describe('parseSignInOutput', () => {
         expect(parseSignInOutput('\u001B]8;;https://cursor.com/loginDeepControl?x=1\u001B\\open this\u001B]8;;\u001B\\ and https://cursor.com/docs')).toEqual({ url: 'https://cursor.com/loginDeepControl?x=1' });
         expect(parseSignInOutput('error: access_denied')).toEqual({ denied: true });
         expect(parseSignInOutput('nothing to see')).toEqual({});
+    });
+
+    test('takes the page, not the program\'s own listener, and no code from inside a link', () => {
+        const output = 'Starting local login server on http://localhost:1455.\nIf your browser did not open, navigate to this URL to authenticate:\n\nhttps://auth.openai.com/oauth/authorize?client_id=app_X&state=AB12-CD34\n';
+
+        expect(parseSignInOutput(output)).toEqual({ url: 'https://auth.openai.com/oauth/authorize?client_id=app_X&state=AB12-CD34' });
+        expect(parseSignInOutput('Starting local login server on http://127.0.0.1:1455.\n')).toEqual({});
+        expect(parseSignInOutput(`${ output }Enter this one-time code: WXYZ-5678`)).toMatchObject({ code: 'WXYZ-5678' });
     });
 });
 
@@ -129,6 +137,38 @@ describe('signing in', () => {
         await denied.until(() => denied.session()?.step === 'failed');
 
         expect(denied.session()).toMatchObject({ step: 'failed', message: 'The sign-in was refused' });
+    });
+
+    test('is not a sign-in when the program was stopped by the deadline and then left with exit code 0', async () => {
+        // A program that catches the stop and says it ended well.
+        const { service, session, until } = rig(`exec '${ process.execPath }' -e "process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000)"`, { loginTimeoutMs: 400 });
+
+        service.signIn('claude');
+        await until(() => session()?.step === 'failed' || session()?.step === 'done');
+
+        expect(session()).toMatchObject({ step: 'failed', message: 'The sign-in took too long' });
+    });
+
+    test('goes on when announcing to the clients fails, from the output of the program and from its end', async () => {
+        const logged = spyOn(console, 'error').mockImplementation(() => undefined);
+
+        try {
+            const { service, session, until } = rig('echo "Visit https://claude.ai/login?x=1"; sleep 0.2; touch "$MARKER"; exit 0', {
+                announce: () => {
+                    throw new Error('the database is closed');
+                },
+            });
+
+            service.signIn('claude');
+            await until(() => session()?.step === 'done');
+            await until(() => service.decorate([info()])[0]!.signIn?.status === 'signed-in');
+
+            expect(session()).toMatchObject({ step: 'done', url: 'https://claude.ai/login?x=1' });
+            expect(service.decorate([info()])[0]!.signIn?.status).toBe('signed-in');
+        }
+        finally {
+            logged.mockRestore();
+        }
     });
 
     test('says so when the agent has no login to run or is not installed', async () => {

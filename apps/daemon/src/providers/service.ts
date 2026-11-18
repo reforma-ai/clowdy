@@ -14,6 +14,9 @@ const FRESH_MS = 90_000;
 const RETRY_FIRST_MS = 30_000;
 const RETRY_MAX_MS = 5 * 60_000;
 
+/** How long a read that failed `failures` times in a row waits before the next one: 30 s, 60 s, up to 5 min. */
+const retryDelay = (failures: number) => Math.min(RETRY_MAX_MS, RETRY_FIRST_MS * 2 ** (failures - 1));
+
 export const PROVIDERS: readonly Provider[] = [claude, codex, cursor];
 
 export interface ProvidersOptions {
@@ -52,6 +55,8 @@ export class ProvidersService {
     private now: () => number;
     private freshMs: number;
     private logins: LoginSessions;
+    /** Fires in `stop`: programs a read started end, and nothing starts or announces after it. */
+    private stopper = new AbortController();
 
     constructor(private options: ProvidersOptions) {
         this.providers = new Map((options.providers ?? PROVIDERS).map(provider => [provider.id, provider]));
@@ -60,9 +65,9 @@ export class ProvidersService {
         this.logins = new LoginSessions({
             registry: options.registry,
             providers: this.providers,
-            announce: options.announce,
+            announce: () => this.announce(),
             // The account is read again as soon as the vendor's program says it is done.
-            onSignedIn: id => void this.readNow(id).then(options.announce),
+            onSignedIn: id => void this.readNow(id).then(() => this.announce()),
             now: this.now,
             cwd: options.cwd ?? tmpdir(),
             timeoutMs: options.loginTimeoutMs,
@@ -78,14 +83,10 @@ export class ProvidersService {
         this.logins.cancel(id);
     }
 
-    /** Ends what runs for the agents, for when the daemon stops. */
+    /** Ends what runs for the agents (logins and reads), for when the daemon stops. */
     stop(): void {
+        this.stopper.abort();
         this.logins.stop();
-    }
-
-    /** Whether the daemon knows how to read this agent. */
-    has(id: string): boolean {
-        return this.providers.has(id);
     }
 
     /** The agents as `GET /v1/agents` answers: what the registry found, plus what is known of each account and its usage; stale reads start in the background. */
@@ -139,12 +140,29 @@ export class ProvidersService {
         }
     }
 
-    /** Reads one agent now and waits for it; a sign-in that just ended uses it. */
+    /**
+     * Reads one agent now and waits for it; a sign-in that just ended uses it. A read already under way began before the
+     * caller's news and may have seen the old account, so it is waited out and another one follows.
+     */
     async readNow(id: string): Promise<void> {
-        const entry = this.entry(id);
+        await this.entries.get(id)?.inflight;
 
-        entry.nextAt = 0;
-        await (entry.inflight ?? this.ensure(id));
+        this.entry(id).nextAt = 0;
+        await this.ensure(id);
+    }
+
+    /** Tells the clients. A failure to tell must not reach the read or the login program that asked, and nobody is told once the daemon has stopped (its database is closed). */
+    private announce(): void {
+        if (this.stopper.signal.aborted) {
+            return;
+        }
+
+        try {
+            this.options.announce();
+        }
+        catch (error) {
+            console.error('[clowdy] announcing a change of agents failed:', error);
+        }
     }
 
     private entry(id: string): Entry {
@@ -161,14 +179,19 @@ export class ProvidersService {
     private ensure(id: string): Promise<void> | undefined {
         const entry = this.entry(id);
 
-        if (entry.inflight || this.now() < entry.nextAt) {
+        if (entry.inflight || this.now() < entry.nextAt || this.stopper.signal.aborted) {
             return entry.inflight;
         }
 
         const generation = entry.generation;
 
         entry.inflight = this.read(id, entry, generation)
-            .catch(() => undefined)
+            .catch((error) => {
+                // A reader never throws, so this is a fault in the registry or here. Say so once per try, and wait as after any failed read.
+                console.error(`[clowdy] reading the account of ${ id } failed:`, error);
+                entry.failures++;
+                entry.nextAt = this.now() + retryDelay(entry.failures);
+            })
             .finally(() => {
                 entry.inflight = undefined;
             });
@@ -186,6 +209,7 @@ export class ProvidersService {
             now: this.now,
             platform: this.options.platform ?? process.platform,
             home: this.options.home ?? homedir(),
+            signal: this.stopper.signal,
         };
     }
 
@@ -198,7 +222,7 @@ export class ProvidersService {
 
         const read = await this.providers.get(id)!.read(context);
 
-        if (generation !== entry.generation) {
+        if (generation !== entry.generation || this.stopper.signal.aborted) {
             return;
         }
 
@@ -214,7 +238,7 @@ export class ProvidersService {
         const failed = signIn.status === 'unknown' || usage.state === 'error';
 
         entry.failures = failed ? entry.failures + 1 : 0;
-        entry.nextAt = this.now() + (failed ? Math.min(RETRY_MAX_MS, RETRY_FIRST_MS * 2 ** (entry.failures - 1)) : this.freshMs);
+        entry.nextAt = this.now() + (failed ? retryDelay(entry.failures) : this.providers.get(id)?.freshMs ?? this.freshMs);
         entry.signIn = signIn;
         entry.usage = usage;
 
@@ -222,7 +246,7 @@ export class ProvidersService {
             !== JSON.stringify([{ ...signIn, checkedAt: 0 }, { ...usage, fetchedAt: 0 }]);
 
         if (changed) {
-            this.options.announce();
+            this.announce();
         }
     }
 }

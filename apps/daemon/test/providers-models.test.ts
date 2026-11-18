@@ -161,6 +161,40 @@ describe('ModelCatalog', () => {
         expect(calls).toBe(4);
     });
 
+    test('stop fires the signal its reads carry, so the programs of a read under way end with the daemon', async () => {
+        let signal: AbortSignal | undefined;
+        const catalog = new ModelCatalog({
+            registry: registryOf({ claude: '/bin/claude' }),
+            routes: { claude: async (context) => {
+                signal = context.signal;
+
+                return { state: 'ok', models: [], fetchedAt: 1 };
+            } },
+        });
+
+        await catalog.get('claude');
+
+        expect(signal?.aborted).toBe(false);
+
+        catalog.stop();
+
+        expect(signal?.aborted).toBe(true);
+    });
+
+    test('answers an error, and asks again next time, when even finding the program fails', async () => {
+        let asked = 0;
+        const registry = { probeTarget: async () => {
+            asked++;
+
+            throw new Error('no search path');
+        }, nameOf: () => 'Claude Code' } as unknown as AgentRegistry;
+        const catalog = new ModelCatalog({ registry });
+
+        expect(await catalog.get('claude')).toMatchObject({ state: 'error', detail: 'no search path' });
+        expect(await catalog.get('claude')).toMatchObject({ state: 'error' });
+        expect(asked).toBe(2);
+    });
+
     test('is unavailable for an agent it has no way to read or that is not installed', async () => {
         const catalog = new ModelCatalog({ registry: registryOf({}) });
 

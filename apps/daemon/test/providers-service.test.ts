@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import { ProvidersService } from '../src/providers/service';
 
@@ -39,6 +39,29 @@ function rig(reads: ProviderRead[], { login = true }: { login?: boolean } = {}) 
 const settle = () => new Promise(resolve => setTimeout(resolve, 20));
 
 describe('ProvidersService', () => {
+    test('reuses a read as long as its provider says, not as long as the default', async () => {
+        let time = 1_000_000;
+        let calls = 0;
+        const provider: Provider = { id: 'claude', freshMs: 300_000, read: async () => {
+            calls++; return ok(8);
+        } };
+        const service = new ProvidersService({ registry: registry(['claude']), providers: [provider], announce: () => undefined, now: () => time, freshMs: 60_000, cwd: '/tmp' });
+
+        service.decorate([info('claude')]);
+        await settle();
+        time += 200_000;
+        service.decorate([info('claude')]);
+        await settle();
+
+        expect(calls).toBe(1);
+
+        time += 150_000;
+        service.decorate([info('claude')]);
+        await settle();
+
+        expect(calls).toBe(2);
+    });
+
     test('answers at once without the account, reads it in the background, and announces what it found', async () => {
         const { service, announced, calls } = rig([ok(8)]);
         const first = service.decorate([info('claude')]);
@@ -90,8 +113,6 @@ describe('ProvidersService', () => {
         await settle();
 
         expect(calls()).toBe(0);
-        expect(service.has('claude')).toBe(true);
-        expect(service.has('other')).toBe(false);
         expect(rig([ok(1)], { login: false }).service.decorate([info('claude')])[0]!.canSignIn).toBe(false);
     });
 
@@ -132,7 +153,140 @@ describe('ProvidersService', () => {
         expect(service.decorate([info('claude')])[0]!.usage).toMatchObject({ state: 'ok', windows: [{ usedPercent: 10 }] });
     });
 
-    test('refresh reads again at once, and forget drops what was known and ignores a read that was under way', async () => {
+    test('forget ignores a read that was under way: what it found is neither kept nor announced', async () => {
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const announced: number[] = [];
+        let calls = 0;
+        const service = new ProvidersService({
+            registry: registry(['claude']),
+            providers: [{ id: 'claude', read: async () => (++calls === 1 ? (await gate, ok(1)) : ok(2)) }],
+            announce: () => void announced.push(1),
+            cwd: '/tmp',
+        });
+
+        service.decorate([info('claude')]);
+        await settle();
+        service.forget('claude');
+        release();
+        await settle();
+
+        expect(announced).toHaveLength(0);
+
+        service.decorate([info('claude')]);
+        await settle();
+
+        expect(calls).toBe(2);
+        expect(service.decorate([info('claude')])[0]!.usage?.windows[0]?.usedPercent).toBe(2);
+    });
+
+    test('readNow waits out a read that began before and reads once more, so a sign-in that has just ended is seen', async () => {
+        const signedOut: ProviderRead = { signIn: { status: 'signed-out' }, usage: { state: 'unavailable', windows: [] } };
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        let calls = 0;
+        const service = new ProvidersService({
+            registry: registry(['claude']),
+            providers: [{ id: 'claude', read: async () => (++calls === 1 ? (await gate, signedOut) : ok(8)) }],
+            announce: () => undefined,
+            cwd: '/tmp',
+        });
+
+        // This read began while the login was still running: it will report nobody.
+        service.decorate([info('claude')]);
+        await settle();
+
+        const seen = service.readNow('claude');
+
+        release();
+        await seen;
+
+        expect(calls).toBe(2);
+        expect(service.decorate([info('claude')])[0]!.signIn?.status).toBe('signed-in');
+    });
+
+    test('a failing announce does not lose the read, and a reader that throws is tried again after a pause', async () => {
+        const logged = spyOn(console, 'error').mockImplementation(() => undefined);
+
+        try {
+            let time = 1_000_000;
+            let calls = 0;
+            const service = new ProvidersService({
+                registry: registry(['claude']),
+                providers: [{
+                    id: 'claude',
+                    read: async () => {
+                        if (++calls === 1) {
+                            throw new Error('the reader is broken');
+                        }
+
+                        return ok(3);
+                    },
+                }],
+                announce: () => {
+                    throw new Error('the database is closed');
+                },
+                now: () => time,
+                cwd: '/tmp',
+            });
+
+            service.decorate([info('claude')]);
+            await settle();
+            service.decorate([info('claude')]);
+            await settle();
+
+            // A broken reader is not asked again at once, whoever asks.
+            expect(calls).toBe(1);
+
+            time += 31_000;
+            service.decorate([info('claude')]);
+            await settle();
+
+            expect(calls).toBe(2);
+            expect(service.decorate([info('claude')])[0]!.usage?.windows[0]?.usedPercent).toBe(3);
+        }
+        finally {
+            logged.mockRestore();
+        }
+    });
+
+    test('stop ends the programs of a read under way, and nothing is read or announced after it', async () => {
+        let signal: AbortSignal | undefined;
+        let calls = 0;
+        const announced: number[] = [];
+        const service = new ProvidersService({
+            registry: registry(['claude']),
+            providers: [{
+                id: 'claude',
+                read: async (context) => {
+                    calls++;
+                    signal = context.signal;
+                    await new Promise(resolve => context.signal?.addEventListener('abort', resolve));
+
+                    return ok(5);
+                },
+            }],
+            announce: () => void announced.push(1),
+            cwd: '/tmp',
+        });
+
+        service.decorate([info('claude')]);
+        await settle();
+        service.stop();
+        await settle();
+        service.decorate([info('claude')]);
+        await settle();
+
+        expect(signal?.aborted).toBe(true);
+        expect(calls).toBe(1);
+        expect(announced).toHaveLength(0);
+    });
+
+    test('refresh reads again at once, and forget drops what was known', async () => {
         const { service, calls } = rig([ok(8), ok(9)]);
 
         service.decorate([info('claude')]);

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { startDaemon } from '../src/daemon';
 import { KNOWN_AGENTS } from '../src/engine/acp/catalog';
+import { announceAgentsChanged } from '../src/providers/announce';
 import { ProvidersService } from '../src/providers/service';
 import { FAKE_AGENT } from './acp-helpers';
 import { cleanTempDirs, Harness, restartHarness, startHarness, testAgents, testConfig, waitFor } from './helpers';
@@ -156,9 +157,11 @@ describe('accounts, usage and sign-in over the API', () => {
         mkdirSync(config.dataDir, { recursive: true });
         writeFileSync(login, `console.log('Open https://example.com/login?x=1'); await Bun.write(${ JSON.stringify(marker) }, '1');`);
 
+        // The announce of the real daemon, once it exists: background reads and login output announce from outside any transaction.
+        let announce = () => {};
         const providers = new ProvidersService({
             registry: agents,
-            announce: () => undefined,
+            announce: () => announce(),
             cwd: config.dataDir,
             providers: [{
                 id: 'mine',
@@ -170,7 +173,9 @@ describe('accounts, usage and sign-in over the API', () => {
         });
         const h = new Harness(await startDaemon(config, { agents, providers }), config);
 
+        announce = () => announceAgentsChanged(h.store);
         harnesses.push(h);
+        h.openRepo();
         h.ok('agent.add', { id: 'mine', name: 'My agent', command: process.execPath, args: [FAKE_AGENT] });
 
         return { h, list: async (): Promise<AgentInfo[]> => (await (await h.fetch('/v1/agents')).json() as AgentInfo[]).filter(agent => agent.id === 'mine') };
@@ -185,14 +190,22 @@ describe('accounts, usage and sign-in over the API', () => {
 
     test('lists the account and usage of an agent that has a reader, and runs its login on request', async () => {
         const { h, list } = await withReader();
+        const changes = () => h.events().filter(event => event.data.type === 'agents.changed').length;
 
         expect((await list())[0]).toMatchObject({ canSignIn: true });
         await until(async () => (await list())[0]?.signIn?.status === 'signed-out');
+
+        // The first read told the clients, though it ran from a timer and not from a command.
+        expect(changes()).toBeGreaterThan(1);
+
+        const before = changes();
 
         expect(h.ok('agent.signIn', { id: 'mine' })).toEqual({ id: 'mine' });
         await until(async () => (await list())[0]?.signInSession?.step === 'done');
         await until(async () => (await list())[0]?.signIn?.status === 'signed-in');
 
+        // The link, the end of the login and the new account each reached the clients.
+        expect(changes() - before).toBeGreaterThanOrEqual(3);
         expect((await list())[0]).toMatchObject({
             signInSession: { step: 'done', url: 'https://example.com/login?x=1' },
             signIn: { status: 'signed-in', account: { email: 'ada@example.com', plan: 'Max' } },

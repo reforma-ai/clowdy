@@ -67,7 +67,7 @@ export function parseClaudeModels(stdout: string): AgentModel[] | undefined {
 }
 
 async function claudeModels(context: ProbeContext): Promise<AgentModels> {
-    const run = await runProgram(context.program, CLAUDE_ARGS, { env: context.env, cwd: context.cwd, timeoutMs: CLAUDE_TIMEOUT_MS, input: CLAUDE_REQUEST });
+    const run = await runProgram(context.program, CLAUDE_ARGS, { env: context.env, cwd: context.cwd, timeoutMs: CLAUDE_TIMEOUT_MS, input: CLAUDE_REQUEST, signal: context.signal });
 
     if (run.error || run.timedOut) {
         return { state: 'error', models: [], detail: run.error ? `Could not start Claude Code: ${ run.error }` : 'Claude Code did not list its models in time' };
@@ -171,7 +171,7 @@ export function parseCursorModels(output: string): AgentModel[] {
 }
 
 async function cursorModels(context: ProbeContext): Promise<AgentModels> {
-    const run = await runProgram(context.program, ['--list-models'], { env: context.env, cwd: context.cwd, timeoutMs: CURSOR_TIMEOUT_MS });
+    const run = await runProgram(context.program, ['--list-models'], { env: context.env, cwd: context.cwd, timeoutMs: CURSOR_TIMEOUT_MS, signal: context.signal });
 
     if (run.error || run.timedOut) {
         return { state: 'error', models: [], detail: run.error ? `Could not start Cursor: ${ run.error }` : 'Cursor did not list its models in time' };
@@ -216,6 +216,8 @@ interface Cached {
 export class ModelCatalog {
     private cache = new Map<string, Cached>();
     private now: () => number;
+    /** Fires in `stop`, so the programs of a read under way end with the daemon. */
+    private stopper = new AbortController();
 
     constructor(private options: ModelCatalogOptions) {
         this.now = options.now ?? Date.now;
@@ -250,13 +252,13 @@ export class ModelCatalog {
     }
 
     private async read(id: string, route: (context: ProbeContext) => Promise<AgentModels>): Promise<AgentModels> {
-        const target = await this.options.registry.probeTarget(id);
-
-        if (!target) {
-            return { state: 'unavailable', models: [], detail: `${ this.options.registry.nameOf(id) } is not installed or is switched off in Clowdy` };
-        }
-
         try {
+            const target = await this.options.registry.probeTarget(id);
+
+            if (!target) {
+                return { state: 'unavailable', models: [], detail: `${ this.options.registry.nameOf(id) } is not installed or is switched off in Clowdy` };
+            }
+
             return await route({
                 ...target,
                 cwd: this.options.cwd ?? tmpdir(),
@@ -264,11 +266,17 @@ export class ModelCatalog {
                 now: this.now,
                 platform: this.options.platform ?? process.platform,
                 home: this.options.home ?? homedir(),
+                signal: this.stopper.signal,
             });
         }
         catch (error) {
             return { state: 'error', models: [], detail: error instanceof Error ? error.message : String(error) };
         }
+    }
+
+    /** Ends the reads under way, for when the daemon stops. */
+    stop(): void {
+        this.stopper.abort();
     }
 
     /** Forgets what was read, for when the program, the account or the environment changed. */

@@ -183,6 +183,7 @@ async function readUsage(context: ProbeContext): Promise<AgentUsage> {
         env: context.env,
         cwd: context.cwd,
         timeoutMs: USAGE_TIMEOUT_MS,
+        signal: context.signal,
     });
 
     if (run.error || run.timedOut) {
@@ -196,7 +197,7 @@ export const claude: Provider = {
     id: 'claude',
     login: { args: ['auth', 'login', '--claudeai'] },
     async read(context): Promise<ProviderRead> {
-        const status = await runProgram(context.program, ['auth', 'status', '--json'], { env: context.env, cwd: context.cwd, timeoutMs: STATUS_TIMEOUT_MS });
+        const status = await runProgram(context.program, ['auth', 'status', '--json'], { env: context.env, cwd: context.cwd, timeoutMs: STATUS_TIMEOUT_MS, signal: context.signal });
         const signIn = parseClaudeStatus(status);
 
         if (signIn.status !== 'signed-in') {

@@ -11,6 +11,7 @@ import { AgentRegistry } from './engine/acp/registry';
 import { FilesService } from './files/service';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
+import { announceAgentsChanged } from './providers/announce';
 import { ModelCatalog } from './providers/models';
 import { ProvidersService } from './providers/service';
 import { RunDriver } from './runs/driver';
@@ -70,11 +71,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         const attachments = new AttachmentsService(store, config.dataDir);
         const providers = options.providers ?? new ProvidersService({
             registry: agents,
-            announce: () => {
-                for (const project of listProjects(store.db)) {
-                    store.emit(project.id, { type: 'agents.changed' });
-                }
-            },
+            announce: () => announceAgentsChanged(store),
         });
         const services: Services = { config, store, runs, driver, docs, files: new FilesService(), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
 
@@ -93,6 +90,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             await driver.stop();
             created?.stop();
             providers.stop();
+            services.models.stop();
             docs.stop();
             skills.stop();
             store.db.close();

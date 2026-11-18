@@ -1,6 +1,6 @@
-import { listProjects } from '../db/projects';
 import { AgentRegistryError } from '../engine/acp/registry';
 import { conflict, invalid, notFound } from '../errors';
+import { announceAgentsChanged } from '../providers/announce';
 import { SignInError } from '../providers/login';
 
 import type { Handlers, Services } from './context';
@@ -10,9 +10,7 @@ function change<T>(services: Services, id: string | undefined, apply: () => T): 
     try {
         const result = apply();
 
-        for (const project of listProjects(services.store.db)) {
-            services.store.emit(project.id, { type: 'agents.changed' });
-        }
+        announceAgentsChanged(services.store);
 
         return result;
     }
@@ -33,9 +31,12 @@ export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agen
     }),
     'agent.update': (services, { id, enabled, path, env, name, command, args, settings }) => change(services, id, () => {
         services.agents.update(id, { enabled, path, env, name, command, args, settings });
-        // Another program, environment or switch can mean another account: read it again. A setting cannot.
+        // Another program, environment or switch can mean another account: read it again. A setting cannot, but it can change the models on offer.
         if (enabled !== undefined || path !== undefined || env !== undefined) {
             services.providers.forget(id);
+        }
+
+        if (enabled !== undefined || path !== undefined || env !== undefined || settings !== undefined) {
             services.models.forget(id);
         }
 

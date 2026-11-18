@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { withAppServer } from '../src/providers/appserver';
 import { claude, claudeWindows, parseClaudeStatus, parseClaudeUsage, planLabel } from '../src/providers/claude';
 import { codex, codexPlan, codexWindows, parseCodexAccount, windowLabel } from '../src/providers/codex';
 import { cursor, cursorWindows, readCursorIdentity, readCursorToken } from '../src/providers/cursor';
@@ -56,6 +57,47 @@ describe('runProgram', () => {
         const input = await runProgram(program('cat', 'cat; echo done'), [], { env: { PATH: process.env.PATH ?? '' }, cwd: root, timeoutMs: 5000 });
 
         expect(input).toMatchObject({ code: 0, stdout: 'done\n' });
+    });
+
+    test('does not wait for what the program left running when it ended, which may hold its pipes open', async () => {
+        const started = Date.now();
+        const run = await runProgram(program('leftover', 'sleep 30 &\necho hi'), [], { env: { PATH: process.env.PATH ?? '' }, cwd: root, timeoutMs: 20_000 });
+
+        expect(run).toMatchObject({ code: 0, stdout: 'hi\n', timedOut: false });
+        expect(Date.now() - started).toBeLessThan(5000);
+    });
+
+    test('ends the program with its children when the signal fires, and starts nothing when it fired already', async () => {
+        const pidFile = join(root, 'pid');
+        const controller = new AbortController();
+        const running = runProgram(program('long', `echo $$ > '${ pidFile }'\nsleep 30 &\nsleep 30`), [], { env: { PATH: process.env.PATH ?? '' }, cwd: root, timeoutMs: 20_000, signal: controller.signal });
+
+        for (let i = 0; i < 200 && !existsSync(pidFile); i++) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+
+        controller.abort();
+
+        expect(await running).toMatchObject({ code: null, error: 'stopped', timedOut: false });
+
+        const pid = Number(readFileSync(pidFile, 'utf8'));
+        const alive = () => {
+            try {
+                process.kill(pid, 0);
+
+                return true;
+            }
+            catch {
+                return false;
+            }
+        };
+
+        for (let i = 0; i < 100 && alive(); i++) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+
+        expect(alive()).toBe(false);
+        expect(await runProgram(program('never', 'echo started'), [], { env: {}, cwd: root, timeoutMs: 5000, signal: controller.signal })).toMatchObject({ code: null, stdout: '', error: 'stopped' });
     });
 });
 
@@ -190,6 +232,40 @@ describe('Codex', () => {
         expect(read.usage).toEqual({ state: 'ok', fetchedAt: 1_000, windows: [{ id: 'codex:primary', label: '5h', usedPercent: 3, resetsAt: 1_795_030_875_000 }] });
     });
 
+    test('does not wait for the deadline for a program that ended in the middle of the conversation', async () => {
+        const dying = program('codex-dying', `
+            const rl = require('node:readline').createInterface({ input: process.stdin });
+            rl.on('line', (line) => {
+                const message = JSON.parse(line);
+                if (message.method === 'initialize') {
+                    process.stdout.write(JSON.stringify({ id: message.id, result: {} }) + '\\n');
+                    setTimeout(() => process.exit(3), 50);
+                }
+            });
+        `, `#!${ process.execPath }`);
+        const started = Date.now();
+        const read = withAppServer(context({ program: dying }), async (rpc) => {
+            await rpc.call('initialize');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            await rpc.call('account/read');
+        }, 20_000);
+
+        await expect(read).rejects.toThrow('ended before it answered');
+        expect(Date.now() - started).toBeLessThan(5000);
+    });
+
+    test('stops the program and gives up when the daemon stops during a read', async () => {
+        const silent = program('codex-silent', 'sleep 30', '#!/bin/sh');
+        const controller = new AbortController();
+        const started = Date.now();
+        const read = codex.read(context({ program: silent, signal: controller.signal }));
+
+        setTimeout(() => controller.abort(), 100);
+
+        expect(await read).toMatchObject({ signIn: { status: 'unknown' } });
+        expect(Date.now() - started).toBeLessThan(5000);
+    });
+
     test('keeps the account when only the limits fail, and says unknown when the program does not answer', async () => {
         const noLimits = program('codex-nolimits', `
             const rl = require('node:readline').createInterface({ input: process.stdin });
@@ -266,6 +342,28 @@ describe('Cursor', () => {
         expect(read.usage).toEqual({ state: 'ok', fetchedAt: 1_000, windows: [{ id: 'plan', label: 'Plan usage', usedPercent: 5, resetsAt: 1_796_000_000_000 }] });
         expect(calls.map(call => call.url).sort()).toEqual(['https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage', 'https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo']);
         expect(calls.every(call => call.auth === 'Bearer secret-token' && call.client === 'cli')).toBe(true);
+    });
+
+    test('asks the dashboard without following a redirect, ignores a token that is not one, and never repeats the token in what it says', async () => {
+        files({ authInfo: { email: 'ada@example.com' } }, { accessToken: 'bad token\nsecond line' });
+
+        expect(await readCursorToken(context())).toBeUndefined();
+
+        files({ authInfo: { email: 'ada@example.com' } }, { accessToken: 'secret-token' });
+
+        const inits: Array<RequestInit | undefined> = [];
+        const leaky = await cursor.read(context({
+            fetch: (async (_url: string | URL | Request, init?: RequestInit) => {
+                inits.push(init);
+
+                throw new Error('could not reach Bearer secret-token');
+            }) as unknown as typeof fetch,
+        }));
+
+        expect(inits.length).toBeGreaterThan(0);
+        expect(inits.every(init => init?.redirect === 'error')).toBe(true);
+        expect(leaky.usage).toMatchObject({ state: 'error', detail: 'could not reach Bearer …' });
+        expect(JSON.stringify(leaky)).not.toContain('secret-token');
     });
 
     test('keeps the account and says why when the dashboard refuses or fails', async () => {

@@ -21,6 +21,8 @@ export interface RunOptions {
     maxChars?: number;
     /** Written to the program's standard input, which is then closed. Without it standard input is closed at once. */
     input?: string;
+    /** Ends the program with its group when it fires (the daemon stops); the result then has `error: 'stopped'`. */
+    signal?: AbortSignal;
 }
 
 const DEFAULT_MAX_CHARS = 4 * 1024 * 1024;
@@ -31,9 +33,15 @@ const DEFAULT_MAX_CHARS = 4 * 1024 * 1024;
  * its own process group so the deadline takes its children down too, and nothing is thrown: a program that cannot be
  * started is a result with `error`.
  */
-export function runProgram(command: string, args: string[], { env, cwd, timeoutMs, maxChars = DEFAULT_MAX_CHARS, input }: RunOptions): Promise<RunResult> {
+export function runProgram(command: string, args: string[], { env, cwd, timeoutMs, maxChars = DEFAULT_MAX_CHARS, input, signal }: RunOptions): Promise<RunResult> {
     return new Promise((resolve) => {
         let child: ReturnType<typeof spawn>;
+
+        if (signal?.aborted) {
+            resolve({ code: null, stdout: '', stderr: '', timedOut: false, error: 'stopped' });
+
+            return;
+        }
 
         try {
             child = spawn(command, args, { cwd, env, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
@@ -61,21 +69,29 @@ export function runProgram(command: string, args: string[], { env, cwd, timeoutM
 
             settled = true;
             clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
             resolve({ stdout, stderr, timedOut, ...result });
         };
-        const timer = setTimeout(() => {
-            timedOut = true;
-
+        const killGroup = () => {
             if (child.pid !== undefined) {
                 killProcessGroup(child.pid, 'SIGKILL');
             }
             else {
                 child.kill('SIGKILL');
             }
-
-            // A program that left a child holding its pipes open never closes them: do not wait for that.
+        };
+        // A program that left a child holding its pipes open never closes them: do not wait for that.
+        const timer = setTimeout(() => {
+            timedOut = true;
+            killGroup();
             finish({ code: null });
         }, timeoutMs);
+        const onAbort = () => {
+            killGroup();
+            finish({ code: null, error: 'stopped' });
+        };
+
+        signal?.addEventListener('abort', onAbort, { once: true });
 
         child.stdout?.setEncoding('utf8').on('data', (text: string) => {
             if (stdout.length < maxChars) {
@@ -88,12 +104,10 @@ export function runProgram(command: string, args: string[], { env, cwd, timeoutM
             }
         });
         child.once('error', error => finish({ code: null, error: error.message }));
+        // What the program left running goes with it, at once: a leftover that holds the pipes open would keep `close` from ever coming.
+        child.once('exit', killGroup);
         child.once('close', (code) => {
-            if (child.pid !== undefined) {
-                // What the program left running goes with it.
-                killProcessGroup(child.pid, 'SIGKILL');
-            }
-
+            killGroup();
             finish({ code });
         });
     });
