@@ -1,0 +1,89 @@
+/*
+ * The context ring of the message box and its popover. The ring and the bar share one tone: the ink of the text, then the warning tone from
+ * 80% and the danger tone from 90%, the thresholds and tokens of the usage bars (`UsageRows`). Terracotta stays with Send.
+ */
+
+.ring,
+.bar {
+    --context-color: var(--color-text);
+}
+
+.ring[data-tone='warning'],
+.bar[data-tone='warning'] {
+    --context-color: var(--color-warning);
+}
+
+.ring[data-tone='danger'],
+.bar[data-tone='danger'] {
+    --context-color: var(--color-danger);
+}
+
+/* ---------------------------------- The ring ---------------------------------- */
+
+.ring {
+    display: block;
+    flex-shrink: 0;
+}
+
+.track,
+.arc {
+    fill: none;
+    stroke-width: 2;
+}
+
+.track {
+    stroke: var(--color-secondary-muted-border-hover);
+}
+
+.arc {
+    stroke: var(--context-color);
+    stroke-linecap: round;
+    transition:
+        stroke-dasharray 300ms ease-out,
+        stroke 150ms ease-out;
+}
+
+/* ---------------------------------- The popover ---------------------------------- */
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    min-width: 0;
+    padding: var(--spacing-lg);
+}
+
+.figures {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+/* The percent at the left, the tokens at the right. */
+.readout {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+}
+
+.bar {
+    height: var(--spacing-6);
+    border-radius: var(--radius-full);
+    background-color: var(--color-secondary-muted);
+    overflow: hidden;
+}
+
+.fill {
+    height: 100%;
+    border-radius: inherit;
+    background-color: var(--context-color);
+    transition: width 300ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .arc,
+    .fill {
+        transition: none;
+    }
+}

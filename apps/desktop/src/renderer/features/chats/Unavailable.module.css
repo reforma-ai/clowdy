@@ -1,0 +1,8 @@
+/* The tooltip's hover target; the disabled control under it must not swallow the pointer. */
+.unavailable {
+    display: inline-flex;
+}
+
+.unavailable > * {
+    pointer-events: none;
+}

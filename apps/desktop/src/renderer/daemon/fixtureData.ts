@@ -176,6 +176,7 @@ function fixtureAgents(now: number): AgentInfo[] {
             fetches: '@agentclientprotocol/claude-agent-acp@0.107.0',
             login: 'claude auth login',
             canSignIn: true,
+            canCompact: true,
             signIn: { status: 'signed-in', account: { ...account, plan: 'Max' }, checkedAt: now },
             usage: {
                 state: 'ok',
@@ -205,6 +206,7 @@ function fixtureAgents(now: number): AgentInfo[] {
             fetches: '@agentclientprotocol/codex-acp@2.6.0',
             login: 'codex login',
             canSignIn: true,
+            canCompact: true,
             signIn: { status: 'signed-in', account: { ...account, plan: 'Plus' }, checkedAt: now },
             usage: {
                 state: 'ok',
@@ -389,7 +391,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
     });
 
     const runs: Run[] = [
-        run('r-orch-1', 'Orchestrator 01', 'orchestrator', 'running', { chatId: 'c-1', summary: 'Simplify booking', createdAt: ago(94), startedAt: ago(94) }),
+        run('r-orch-1', 'Orchestrator 01', 'orchestrator', 'running', { chatId: 'c-1', summary: 'Simplify booking', createdAt: ago(94), startedAt: ago(94), context: { used: 53000, size: 250000 } }),
         run('r-ex-07', 'Executor 07', 'executor', 'running', {
             parentRunId: 'r-orch-1',
             summary: 'Update the booking form',

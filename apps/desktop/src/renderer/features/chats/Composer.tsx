@@ -3,9 +3,8 @@ import { Button } from '@clowdy/components/Button';
 import { ListBoxItem } from '@clowdy/components/List';
 import { emptyComposerDoc, RichInput, type ComposerDoc, type RichInputHandle } from '@clowdy/components/RichInput';
 import { Select } from '@clowdy/components/Select';
-import { Tooltip } from '@clowdy/components/Tooltip';
 import { Clip } from '@clowdy/icons/14';
-import { useImperativeHandle, useRef, useState, type MouseEvent, type ReactNode, type Ref } from 'react';
+import { useImperativeHandle, useRef, useState, type MouseEvent, type Ref } from 'react';
 
 import { useRootStore } from '../../stores';
 import { isRunActive } from './chatRun';
@@ -15,8 +14,10 @@ import { draftOf, messageOf, saveDraft } from './composerDrafts';
 import { filesOf, releaseFiles, restoreFiles, takeFiles } from './composerFiles';
 import { serializeMention } from './composerMentions';
 import { ComposerSend } from './ComposerSend';
+import { ContextRing } from './ContextRing';
 import { MentionChip } from './MentionChip';
 import { ModelPicker, ModelPickerOff } from './ModelPicker';
+import { Unavailable } from './Unavailable';
 import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
 import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
@@ -234,6 +235,8 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
                     />
 
                     <div className={ styles.end }>
+                        <ContextRing chat={ chat } run={ run } />
+
                         { model.noProvider
                             ? <Unavailable label="Model" hint={ NO_PROVIDER_HINT }><ModelPickerOff /></Unavailable>
                             : <ModelPicker choice={ model.choice } providers={ model.providers } running={ running } onPick={ model.pick } /> }
@@ -276,19 +279,5 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
                 </div>
             </div>
         </div>
-    );
-}
-
-/**
- * A disabled control that still says why. A disabled button gets no pointer events, so the tooltip sits on a
- * focusable stand-in that does; without a hint the control is shown as it is.
- */
-function Unavailable({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-    if (!hint) return children;
-
-    return (
-        <Tooltip content={ hint } placement="top">
-            <span className={ styles.unavailable } role="button" tabIndex={ 0 } aria-disabled aria-label={ label }>{ children }</span>
-        </Tooltip>
     );
 }
