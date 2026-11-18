@@ -50,7 +50,8 @@ async function setup(script: Script, overrides: Parameters<typeof startHarness>[
 
 describe('a subscription rejection', () => {
     test('does not fail a run that waits for the user\'s answer; the run keeps waiting and can still be answered', async () => {
-        const resets = Date.now() + 300;
+        // Set once the daemon is up: its start (it makes the personal space) takes a moment, and the reset must still be ahead.
+        let resets = 0;
         const { h, engine, project, start } = await setup(async function* ({ options, signal, number, call }) {
             yield { type: 'session', sessionId: options.resumeSessionId ?? `s${ number }` };
 
@@ -65,6 +66,7 @@ describe('a subscription rejection', () => {
             await untilAborted(signal);
         });
 
+        resets = Date.now() + 300;
         h.ok('project.update', { projectId: project.id, settings: { chatMode: 'semi' } });
 
         const asking = start('Ask');
