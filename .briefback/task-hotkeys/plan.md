@@ -17,7 +17,7 @@
 
 - Copy Linear's keys and interaction model. Keep Clowdy's own visual language (DESIGN.md forbids cloning Linear's chrome, not its behavior).
 - The first piece builds the hotkey layer and binds it to the task actions that exist today. Each new task field (priority, assignee, labels, estimate, due date) comes later in its own stage, together with its Linear key.
-- The architecture is section-agnostic so every section and action can get hotkeys later. The first delivery binds only Tasks, the `G` section chords, the help overlay and key hints. List navigation in Chats, Agents and Docs is Stage 8, planned but not authorized yet.
+- The architecture is section-agnostic so every section and action can get hotkeys later. The first delivery binds only Tasks, the `G` section chords, the help overlay and key hints. List navigation in Chats, Agents and Docs is Stage 8, authorized together with the rest.
 - A keyboard cursor is separate from the open task, and a selection set is separate from both. Hover moves the cursor only on real pointer movement. `Enter` opens the detail panel. While the panel is open it follows the cursor. `Esc` closes the panel, and a second `Esc` clears the selection. A command acts on the selection when it is not empty, else on the cursor task. Bulk actions send one command per task.
 - The list view keeps the React Aria `Table`, and the board uses the same cursor and selection.
 - tinykeys 4.x (`parseKeybinding`, `matchKeybindingPress`) is the matcher. The registry, scope stack, chord state machine, input guards and conflict checks are our code in `apps/desktop/src/renderer/hotkeys/`, plain TypeScript with no decorators so Vitest can run it. One capture-phase `keydown` listener on `document` feeds the dispatcher, which resolves scope and priority itself (tinykeys alone resolves conflicts by declaration order).
@@ -25,7 +25,7 @@
 - A command is `id, title, group, keys, scope, when?, inInputs?, repeat?, handler`. Keys can differ per platform. Commands are off while the target is a text field, a combobox or an IME composition, unless the command sets `inInputs`. Commands outside an open dialog or overlay are off while it is open. `Tab` and `Shift+Tab` stay for focus movement.
 - The keymap is data. The help overlay, the tooltip and menu hints and the chord HUD all read the registry. There is no rebinding for now.
 - The command menu is deferred. Cmd/Ctrl+K stays unbound and reserved.
-- The Electron application menu stays role-based and unchanged. Stage 2 starts with a probe of whether a menu accelerator or a page `keydown` wins on macOS (and on Windows when the user runs it).
+- The Electron application menu stays role-based and unchanged. Stage 2 writes up whether a menu accelerator or a page `keydown` wins, with a manual probe for the user to run on macOS and Windows.
 - The dead engine `packages/lib/src/hotkeys.ts` is deleted, and its two consumers (`useRunner`, `UnitInput`) read modifier keys from the events instead.
 - Reserved keys for later fields, which nothing else may use: `A`, `I`, `P`, `L`, `Shift+E`, `Shift+D`, `Shift+C`, `Shift+P`, `Shift+S`, `M R`, `M M`, Cmd/Ctrl+K.
 - `Cmd/Ctrl+Enter` starts the task with an agent. It acts on the cursor task only and never on the selection, because it spends subscription quota. A task whose `startBlockedReason` is set does not offer the command or its hint. `O` then `C` opens the task's linked chat, and `O` then `D` opens its newest document result.
@@ -42,7 +42,6 @@
 - Shortcuts in the native application menu.
 - A peek or preview key (`Space`) and a keyboard way to reorder cards inside a column.
 - `Cmd+,` for Settings, and project-switch keys.
-- List navigation in Chats, Agents and Docs in the first delivery (Stage 8 only).
 - Windows runtime verification by the agent. Nothing has been run on Windows, so the user runs the Windows manual checks.
 
 ## Keymap (first delivery)
@@ -81,11 +80,11 @@ Windows swaps Cmd for Ctrl and Option for Alt unless a row says otherwise. "Conf
 
 **This stage:** `packages/lib/src/hotkeys.ts` is a MobX singleton copied from Reforma. Nothing registers with it, so its flags never change. Only `useRunner` (the pointer scrubbing behind numeric inputs) and `UnitInput` read it. Delete it and make those two read modifier keys from the events they already receive. A side effect is that the design-system `Input` stops importing decorator code, so the desktop Vitest config can render components that use it. The Alt-drag and Shift-step scrubbing in numeric inputs, which never worked in Clowdy, will start working as designed.
 
-- [ ] Complete
-  - [ ] `useRunner` takes the step and the Alt gate from the pointer events and follows Shift during a drag through window `keydown` and `keyup`, not through the singleton
-  - [ ] `UnitInput`'s `shouldRun` gets the pointer event and checks `altKey` on it
-  - [ ] `hotkeys.ts` is deleted, and no source file imports `@clowdy/lib/hotkeys` or `./hotkeys`
-  - [ ] The workaround mock of `@clowdy/components/Select` in `Composer.test.tsx` is removed if the real component now loads
+- [x] Complete
+  - [x] `useRunner` takes the step and the Alt gate from the pointer events and follows Shift during a drag through window `keydown` and `keyup`, not through the singleton
+  - [x] `UnitInput`'s `shouldRun` gets the pointer event and checks `altKey` on it
+  - [x] `hotkeys.ts` is deleted, and no source file imports `@clowdy/lib/hotkeys` or `./hotkeys`
+  - [x] The workaround mock of `@clowdy/components/Select` in `Composer.test.tsx` is removed if the real component now loads
 
 **Files**
 
@@ -93,25 +92,30 @@ Windows swaps Cmd for Ctrl and Option for Alt unless a row says otherwise. "Conf
 - `packages/components/src/Input/UnitInput.tsx` — `shouldRun`: read `altKey` from the event
 - `packages/lib/src/hotkeys.ts` — delete
 - `apps/desktop/src/renderer/features/chats/Composer.test.tsx` — drop the `Select` mock if it is no longer needed
+- `packages/lib/specs/useRunner.test.ts` — create: six tests of the modifier handling (added in the stage; `useRunner` had none)
 
 **Done when:** `rg "lib/hotkeys|from './hotkeys'" packages apps` finds nothing, and a desktop test can import `@clowdy/components/Select` without a parse error.
 **Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/lib --filter=@clowdy/components --filter=@clowdy/desktop`
-**Commits:** None yet.
+**Commits:**
+
+- `51b2367` refactor(lib): replace the unused hotkey engine with pointer event modifiers
+
+Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on files this stage did not touch (8 lint errors and 2 tests in `HexColorEditor`, `GradientStopThumb`, `Resizable`, `RichInputMentionNodeView`, `ScrollChromeRoot`, `colorValue.test.ts`, `shouldYieldRichInputAutofocus.test.ts`). Its typecheck passes.
 
 ## Stage 2 — Hotkey core and the menu probe
 
 **Depends on:** None.
 
-**This stage:** Build the engine the rest of the plan stands on, with no UI. A module-singleton registry holds commands. A scope stack decides which commands are live. A dispatcher listens once on `document` in the capture phase, matches with tinykeys' `parseKeybinding` and `matchKeybindingPress`, and tracks pending chords with a timeout and `Esc` to cancel. The input guards and the open-overlay rule decide when keys are ignored. The chord state is observable so a HUD can show it. A dev-time conflict check rejects two live commands on the same keys, and rejects a key that is both a chord prefix and a single key in the same scope. The stage begins with a probe, with real key presses in a running app, of whether the native menu's role accelerators (Cmd+R, Cmd+W, Cmd+A and Cmd+Z, which the Edit and View roles own) or the page `keydown` fire first.
+**This stage:** Build the engine the rest of the plan stands on, with no UI. A module-singleton registry holds commands. A scope stack decides which commands are live. A dispatcher listens once on `document` in the capture phase, matches with tinykeys' `parseKeybinding` and `matchKeybindingPress`, and tracks pending chords with a timeout and `Esc` to cancel. The input guards and the open-overlay rule decide when keys are ignored. The chord state is observable so a HUD can show it. A dev-time conflict check rejects two live commands on the same keys, and rejects a key that is both a chord prefix and a single key in the same scope. The stage begins with a note on whether the native menu's role accelerators (Cmd+R, Cmd+W, Cmd+A and Cmd+Z, which the Edit and View roles own) or the page `keydown` fire first, built from Electron's documentation and issues, with a manual probe procedure for the person to run.
 
-- [ ] Complete
-  - [ ] Probe result for macOS recorded in `research/menu-accelerator-probe.md` (Windows left for the user)
-  - [ ] `tinykeys` 4.0.1 added to `apps/desktop`
-  - [ ] Registry with `defineCommand`, per-platform keys, the scope stack and `when`
-  - [ ] Dispatcher with chords and their timeout, the guards (text targets, combobox roles, IME composition, key repeat, open overlays), and conflict detection
-  - [ ] React hooks `useHotkeyScope(scope)` and `useCommands(scope, commands)` that register on mount and dispose on unmount
-  - [ ] The dispatcher is installed once from `Shell`
-  - [ ] Pure tests of the dispatcher, the guards and the conflict check
+- [x] Complete
+  - [x] `research/menu-accelerator-probe.md` records what Electron documents about menu accelerators versus page `keydown`, which chords the role menu owns, the remedy for each, and a two-minute manual probe procedure. Scope change: the runtime probe is left to the user, because injecting real key presses would hit whatever app is in front on the user's desktop
+  - [x] `tinykeys` 4.0.1 added to `apps/desktop`
+  - [x] Registry with `defineCommand`, per-platform keys, the scope stack and `when`
+  - [x] Dispatcher with chords and their timeout, the guards (text targets, combobox roles, IME composition, key repeat, open overlays), and conflict detection
+  - [x] React hooks `useHotkeyScope(scope)` and `useCommands(scope, commands)` that register on mount and dispose on unmount
+  - [x] The dispatcher is installed once from `Shell`
+  - [x] Pure tests of the dispatcher, the guards and the conflict check
 
 **Files**
 
@@ -124,8 +128,21 @@ Windows swaps Cmd for Ctrl and Option for Alt unless a row says otherwise. "Conf
 - `apps/desktop/src/renderer/shell/Shell.tsx` — `Shell`: install and dispose the dispatcher
 - `.briefback/task-hotkeys/research/menu-accelerator-probe.md` — create: the probe result
 
-**Done when:** a test dispatches `g` then `c` through the dispatcher and gets one handler call, an IME composition, a text field and an open dialog each block single keys, a conflicting registration throws, and the probe note says which side wins for Cmd+R, Cmd+W, Cmd+A and Cmd+Z.
+**Done when:** a test dispatches `g` then `c` through the dispatcher and gets one handler call, an IME composition, a text field and an open dialog each block single keys, a conflicting registration throws, and the probe note names the documented winner for Cmd+R, Cmd+W, Cmd+A and Cmd+Z, or says it is undocumented, and lists the manual steps.
 **Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/desktop`
+**Landed API** (header comment of `hotkeys/index.ts`): `hotkeys` singleton and `createRegistry`, `defineCommand`, `listCommands`, `commandPresses`, `commandSequences`, `findKeyConflicts`, `installDispatcher`, `useHotkeyScope`, `useCommands`, observable `pending`.
+
+**Decisions made inside the stage**
+
+- Key names are `KeyboardEvent.key` names (`ArrowDown`, `Escape`, `Enter`, `Backspace`), and `code` names work too (`Quote`, `Slash`). Write `Cmd+Shift+'` in Stage 6 as `$mod+Shift+Quote`, because Shift turns `'` into `"` on a US layout.
+- A symbol key (`?`, `/`, `.`) also accepts Shift, so `?` can match.
+- A letter key matches its physical key when the layout types a non-Latin letter (Cyrillic, Greek). Dvorak and AZERTY match by the letter they type.
+- Held keys that a command claims are swallowed without running the handler.
+- Conflicts are checked across both platforms' keys, and duplicate ids and unknown modifiers throw.
+- Overlay guard: `[data-modal-overlay]`, `[data-modal-clickout-layer]`, `dialog` and `alertdialog`. An in-page list box is not an overlay.
+- Scope order follows mount order, so a later-mounted scope (a picker, a dialog) wins and gives the key back on unmount. A scope pushed by a child that mounts together with its parent sits below the parent's.
+- Menu accelerators: Electron's docs are silent. Electron 45.2.1 and Chromium source say the menu only receives keys the page left unhandled, so `preventDefault()` should win for Cmd+A and Cmd+Z. Not run. `research/menu-accelerator-probe.md` has the manual probe.
+
 **Commits:** None yet.
 
 ## Stage 3 — Help overlay, chord HUD, key hints and section chords
@@ -244,10 +261,10 @@ Windows swaps Cmd for Ctrl and Option for Alt unless a row says otherwise. "Conf
 
 **Depends on:** Stage 5.
 
-**This stage:** Go only if the Stage 2 probe shows that a page `keydown` for Cmd/Ctrl+Z is handled before the native Edit-menu Undo, or can be made so with a small change in `menu.ts`, and if inverse commands for status, title, description and dependency changes stay simple. Otherwise record the scope change and skip the stage. When it goes ahead, every status, title, description and dependency change made by the hotkeys or the panel records the previous values in a renderer undo stack and shows a toast with an Undo action. Cmd/Ctrl+Z reverses the latest entry by sending the inverse `task.update`. Delete is not undoable until a trash exists, and its confirm dialog stays.
+**This stage:** Scope change: the runtime probe is left to the user, so the stage ships on two paths. The toast Undo action always works. The Cmd/Ctrl+Z key is registered as well and works wherever the page `keydown` arrives before the native Edit-menu Undo, which the user's manual probe settles. If the probe says the menu wins on macOS, the fix is in `menu.ts` and is recorded as a follow-up, not guessed here. Every status, title, description and dependency change made by the hotkeys or the panel records the previous values in a renderer undo stack and shows a toast with an Undo action. Cmd/Ctrl+Z reverses the latest entry by sending the inverse `task.update`. Delete is not undoable until a trash exists, and its confirm dialog stays.
 
 - [ ] Complete
-  - [ ] Go decision recorded here with the probe result
+  - [ ] The probe outcome for Cmd/Ctrl+Z is noted here when the user reports it
   - [ ] An undo stack of `{ label, undo }` entries, capped in length
   - [ ] Status, title, description and dependency edits record an entry and show a toast with an Undo action
   - [ ] `Cmd+Z` in the `tasks` scope undoes the latest entry and is off in text fields
@@ -259,15 +276,15 @@ Windows swaps Cmd for Ctrl and Option for Alt unless a row says otherwise. "Conf
 - `apps/desktop/src/renderer/features/tasks/DetailPanel.tsx` — record title and description edits
 - `apps/desktop/src/main/menu.ts` — only if the probe says the Edit-menu Undo must be released to the page
 
-**Done when:** changing a status and pressing Cmd/Ctrl+Z restores it in the fixture daemon.
+**Done when:** changing a status and pressing the toast's Undo restores it in the fixture daemon, and a dispatched Cmd/Ctrl+Z does the same in a test.
 **Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/desktop`
 **Commits:** None yet.
 
-## Stage 8 — List navigation in Chats, Agents and Docs (later, not authorized yet)
+## Stage 8 — List navigation in Chats, Agents and Docs
 
 **Depends on:** Stages 3 and 4.
 
-**This stage:** Planned so the architecture is judged against more than one section, not for the first delivery. Each section pushes its own scope, registers `J` and `K` as aliases of the arrows, `Enter` and `Esc`, and shows hints, built on `ListCursor` where the list is ours and on the existing keys where the list is an ARIA tree. Re-read each file's current key handling when the stage starts.
+**This stage:** It tests the architecture against more than one section. Each section pushes its own scope, registers `J` and `K` as aliases of the arrows, `Enter` and `Esc`, and shows hints, built on `ListCursor` where the list is ours and on the existing keys where the list is an ARIA tree. Re-read each file's current key handling when the stage starts.
 
 - [ ] Complete
   - [ ] Chats list, Agents run tree and Docs tree each register a scope with their movement, open and close commands

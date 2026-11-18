@@ -1,12 +1,14 @@
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { cn } from '@clowdy/lib';
+import { useEffect } from 'react';
 
 import { Screen as AgentsScreen } from '../features/agents';
 import { Screen as ChatsScreen } from '../features/chats';
 import { Screen as DocsScreen } from '../features/docs';
 import { Screen as SettingsScreen } from '../features/settings';
 import { Screen as TasksScreen } from '../features/tasks';
+import { hotkeys, installDispatcher } from '../hotkeys';
 import { useProjectUi, useRootStore } from '../stores';
 import { NoProject } from './NoProject';
 import { Rail } from './Rail';
@@ -28,6 +30,8 @@ const SCREENS: Record<Section, ComponentType> = {
 /** The window: title band on top, rail on the left, the selected section's screen beside it. */
 export function Shell() {
     const root = useRootStore();
+
+    useEffect(() => installDispatcher(hotkeys), []);
 
     return (
         <div className={ styles.shell }>
