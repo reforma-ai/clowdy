@@ -187,11 +187,11 @@ Cursor
 
 **This stage:** The owner ran Stage 4 and found three things: a started chat with no stored model shows a bare provider name and a face with a hole where the slider would be, the list shows every model the agent has (dozens), and bb's list shows only a few main models with a "More models" submenu and a strip of providers. The stage fixes the face's spacing and wording for a chat with no model, replaces the provider sections by the strip, and shows five main models with a flyout for the rest.
 
-- [ ] Complete
-  - [ ] A chat with no model: "Default model" on the face's model button and a muted explanation, the pill reads the provider; no empty padding when there is no slider or description.
-  - [ ] The provider strip (marks with names as tooltips and `aria` labels, arrow keys) on the new-chat page replaces the sections; one usable provider shows no strip.
-  - [ ] Five main models per provider (the agent's order; Claude's `featured` rows when the daemon marks them; the selected model is always shown) and the "More models ›" row opening a flyout with the others: opens on press, Enter, Space and ArrowRight, closes on Escape and ArrowLeft with focus back on the row, positions itself on the side that has room, scrolls when long; picking from it works like picking from the list.
-  - [ ] Tests for each, and the popover's height with a flyout open.
+- [x] Complete
+  - [x] A chat with no model: "Default model" on the face's model button and a muted explanation, the pill reads the provider; no empty padding when there is no slider or description.
+  - [x] The provider strip (marks with names as tooltips and `aria` labels, arrow keys) on the new-chat page replaces the sections; one usable provider shows no strip.
+  - [x] Five main models per provider (the agent's order; Claude's `featured` rows when the daemon marks them; the selected model is always shown) and the "More models ›" row opening a flyout with the others: opens on press, Enter, Space and ArrowRight, closes on Escape and ArrowLeft with focus back on the row, positions itself on the side that has room, scrolls when long; picking from it works like picking from the list.
+  - [x] Tests for each, and the popover's height with a flyout open.
 
 **Files**
 
@@ -203,7 +203,9 @@ Cursor
 
 **Done when:** on the new-chat page with the fixtures the person sees a strip of three marks, five models and "More models ›", the flyout lists the rest; a started chat with no model opens a tidy face.
 **Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`; `cd apps/daemon && bun test test/providers-models.test.ts`
-**Commits:** None yet.
+**Commits:**
+- `ca55a08` feat(desktop): pick the provider from a strip and keep the model list to five rows and a More models flyout
+- `cc75819` (daemon half: `featured` on Claude's alias rows)
 
 ## Stage 5 — Read-only chats and hand-off
 
@@ -266,10 +268,10 @@ Cursor
 
 **This stage:** The visible part: a ring beside the model pill that fills with the context and opens a small popover with the total and a Compact button. It uses the run's `context` and sends `chat.compact`.
 
-- [ ] Complete
-  - [ ] A ring (percent drawn as an arc, tone at 80 and 90) shown only in a chat whose orchestrator has a reading; the popover with "Context usage", the percent, `~used / size` in K and a bar.
-  - [ ] Compact sends `chat.compact`, shows pending while the orchestrator works, and is disabled with a reason while it works.
-  - [ ] Tests for the arithmetic and formatting, the hidden state and the command.
+- [x] Complete
+  - [x] A ring (percent drawn as an arc, tone at 80 and 90) shown only in a chat whose orchestrator has a reading; the popover with "Context usage", the percent, `~used / size` in K and a bar.
+  - [x] Compact sends `chat.compact`, shows pending while the orchestrator works, and is disabled with a reason while it works.
+  - [x] Tests for the arithmetic and formatting, the hidden state and the command.
 
 **Files**
 
@@ -281,29 +283,32 @@ Cursor
 
 **Done when:** a chat whose orchestrator has `context { used: 53000, size: 250000 }` shows a ring, the popover reads "21% full ~53K / 250K", and Compact sends `chat.compact`.
 **Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Commits:**
+- `f998025` feat(desktop): show the context of a chat as a ring in the composer, with a Compact button
+- `cc75819` (daemon half: `AgentInfo.canCompact`)
 
-## Stage 8 — Cursor's models, levels and launch
+## Stage 8 — Cursor's models, levels and its own folder
 
 **Depends on:** Stage 1, Stage 3.
 
-**This stage:** Cursor's catalog is the 280 flattened variants of `cursor-agent --list-models`, so its picker would list hundreds of rows and no reasoning levels; and `session/set_config_option` changes the model every new `cursor-agent` of the person starts on. The stage reads Cursor's 48 model families with their own effort options from `cursor/list_available_models` (in Cursor's own order: Auto, Grok 4.7, Grok 4.6, Composer 2.5, ...), and selects the model and level at launch with `--model '<family>[<effortKey>=<level>]'`, never through `set_config_option`. The details of the flag (Auto's spelling, whether the person's default stays alone, load, errors) are in `research/cursor-launch-flag.md`.
+**This stage:** Cursor's catalog was the 280 flattened variants of `cursor-agent --list-models`, so its picker listed hundreds of rows and no reasoning levels; and every way of choosing its model (`session/set_config_option`, the `--model` flag) changes the model every new `cursor-agent` of the person starts on. The stage reads Cursor's 48 model families with their effort options from `cursor/list_available_models` (in Cursor's own order: Auto, Grok 4.7, Grok 4.6, Composer 2.5, ...), starts Cursor with a folder of its own (`CURSOR_CONFIG_DIR`, verified on macOS) so the person's default is never touched, and tells it that the client can show a model's effort (`parameterizedModelPicker`) so the generic model-then-effort setting of Stage 1 works for it. The research is in `research/cursor-launch-flag.md` and `research/cursor-isolation.md`; the launch flag turned out not to help (it changes the default too and wants an exact canonical string).
 
-- [ ] Complete
-  - [ ] `ModelCatalog` reads Cursor over ACP (`initialize`, `cursor/list_available_models`) and gives one `AgentModel` per family: `id` the family value (`default` is Auto), `name`, `efforts` and `defaultEffort` from the effort-like option (not `thinking`, `context` or `fast`), the option's id as `effortKey`, kept in Cursor's order.
-  - [ ] A run of Cursor passes the chat's model and level as the `--model` argument at launch (the effort key looked up in the cached catalog) and does not call `session/set_config_option` for them; a model the catalog does not know is logged and left to the agent.
-  - [ ] The person's own Cursor default is left alone (checked as in the research).
-  - [ ] Tests with a fake Cursor (`cursor/list_available_models`, the launch arguments).
+- [x] Complete
+  - [x] `ModelCatalog` reads Cursor over ACP (`initialize`, `cursor/list_available_models`) and gives one `AgentModel` per family in Cursor's order (`default` is Auto), with `efforts` and `defaultEffort` from its level option; the old list is the fallback.
+  - [x] Claude's alias rows are `featured` for the picker.
+  - [x] A run of Cursor starts with `CURSOR_CONFIG_DIR` in the data folder (macOS only: the login in the keychain is verified there; Windows and Linux keep the person's own folder until somebody checks) and the `parameterizedModelPicker` capability. Models reads, the listing and the sign-in stay on the person's own folder.
+  - [x] `AgentInfo.canCompact` for the composer's Compact button (Stage 7).
+  - [x] A real one-word turn through `AcpEngine` ran on the chosen model, a resume on another model ran on that one, and the person's default stayed Auto.
+  - [x] Tests with a fake Cursor (`cursor/list_available_models`, the folder, the capability).
 
 **Files**
 
-- `packages/protocol/src/agents.ts` — `AgentModel.effortKey?`.
-- `apps/daemon/src/providers/models.ts` — the Cursor source; `apps/daemon/test/providers-models.test.ts`.
-- `apps/daemon/src/engine/acp/catalog.ts`, `registry.ts`, `engine.ts`, `session.ts` — the launch argument and the skipped `set_config_option` for an agent that selects at launch.
-- `apps/daemon/src/engine/index.ts` — gives the engines a way to ask the catalog for a model's effort key.
-- `apps/daemon/test/` — fake agent and engine tests.
+- `packages/protocol/src/agents.ts` — `AgentModel.featured`.
+- `apps/daemon/src/providers/models.ts`, `appserver.ts` — the Cursor source over ACP; the featured rows; `apps/daemon/test/providers-models.test.ts`.
+- `apps/daemon/src/engine/acp/catalog.ts`, `registry.ts`, `session.ts` — `isolation`, `clientMeta`; tests in `test/acp-registry.test.ts`, `acp-session.test.ts`, `fake-acp-agent.ts`, `acp-helpers.ts`.
 - `apps/daemon/AGENTS.md`.
 
-**Done when:** `GET /v1/agents/cursor/models` answers about 48 families with levels, and a Cursor turn starts as `cursor-agent --model 'gemini-3.8-flash[reasoning_effort=low]' acp`.
-**Verify:** `cd apps/daemon && bun test && bun run typecheck && bun run lint`, then one real turn with a one-word prompt.
-**Commits:** None yet.
+**Done when:** `GET /v1/agents/cursor/models` answers about 48 families with levels, and a Cursor turn ran on the chosen model with the person's own default untouched.
+**Verify:** `cd apps/daemon && bun test && bun run typecheck && bun run lint`, and the one real turn.
+**Commits:**
+- `cc75819` feat(daemon): read Cursor's model families and give its runs a config folder of their own
