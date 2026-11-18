@@ -1,8 +1,8 @@
 import { Alert, AlertDescription, AlertIcon, AlertTitle } from '@clowdy/components/Alert';
 import { Breadcrumb } from '@clowdy/components/Breadcrumb';
 import { Button } from '@clowdy/components/Button';
+import { Loader } from '@clowdy/components/Loader';
 import { PanelTabHeader } from '@clowdy/components/Panel';
-import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { AttentionTriangle, Page, Save } from '@clowdy/icons/14';
 
@@ -134,7 +134,7 @@ function PathBar({ store, buffer }: { store: DocsStore; buffer: DocBuffer }) {
 function Loading() {
     return (
         <div className={ styles.center }>
-            <Spinner size="md" />
+            <Loader size="xxl" />
             <Text color="secondary">Loading…</Text>
         </div>
     );

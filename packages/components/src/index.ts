@@ -34,6 +34,7 @@ export * from './Input';
 export * from './LayoutGridControl';
 export * from './Lightbox';
 export * from './List';
+export * from './Loader';
 export * from './Lottie';
 export * from './Marker';
 export * from './Modal';

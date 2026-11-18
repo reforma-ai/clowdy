@@ -1,8 +1,8 @@
 import { cn } from '@clowdy/lib';
 
 import { Box } from '../Box';
+import { Loader } from '../Loader';
 import { Show } from '../Show';
-import { SpinnerLabel } from '../Spinner';
 import { Text } from '../Text';
 import styles from './Panel.module.css';
 
@@ -21,10 +21,12 @@ export function PanelEmptyRow({ children, className }: { children: ReactNode; cl
 
 PanelEmptyRow.displayName = 'PanelEmptyRow';
 
+/** Centered loader and label in place of a list that is still on its way. */
 export function PanelLoadingState() {
     return (
-        <Box className="m-auto" padding="lg">
-            <SpinnerLabel>Loading</SpinnerLabel>
+        <Box direction="row" align="center" gap="md" className="m-auto" padding="lg">
+            <Loader size="md" />
+            <Text variant="sm" color="secondary">Loading</Text>
         </Box>
     );
 }

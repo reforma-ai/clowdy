@@ -14,9 +14,10 @@
 }
 
 @layer components {
+    /* The arc is the colour of the text around it, so it contrasts with whatever it sits on; the track is the same colour, faint. Set `--spinner-color` to paint it. */
     .root {
-        --spinner-foreground: var(--color-secondary-muted);
-        --spinner-color: var(--color-primary);
+        --spinner-foreground: color-mix(in srgb, var(--spinner-color) 18%, transparent);
+        --spinner-color: currentColor;
         --spinner-size: 1em;
         --spinner-width: 0.15em;
 
@@ -26,8 +27,8 @@
     }
 
     .labelRoot {
-        --spinner-foreground: var(--color-secondary-muted);
-        --spinner-color: var(--color-primary);
+        --spinner-foreground: color-mix(in srgb, var(--spinner-color) 18%, transparent);
+        --spinner-color: currentColor;
         --spinner-size: 1em;
         --spinner-width: 0.15em;
 

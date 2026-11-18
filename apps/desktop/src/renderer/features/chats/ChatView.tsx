@@ -1,6 +1,6 @@
 import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
-import { Spinner } from '@clowdy/components/Spinner';
+import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { useMemo, useRef } from 'react';
@@ -59,7 +59,7 @@ export function ChatView({ chat }: { chat: Chat }) {
 
             { stream && (stream.status === 'idle' || stream.status === 'loading') && (
                 <div className={ styles.center }>
-                    <Spinner size="md" />
+                    <Loader size="xxl" />
                     <Text color="secondary">Loading messages…</Text>
                 </div>
             ) }

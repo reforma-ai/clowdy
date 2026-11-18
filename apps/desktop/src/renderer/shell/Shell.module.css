@@ -32,6 +32,11 @@
     border-radius: 0;
 }
 
+/* The window waits: the brand mark, bigger than a panel's. */
+.loader {
+    --loader-size: var(--spacing-56);
+}
+
 .center {
     display: flex;
     flex: 1;

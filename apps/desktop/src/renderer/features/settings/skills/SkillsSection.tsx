@@ -1,7 +1,7 @@
 import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Box } from '@clowdy/components/Box';
 import { Button } from '@clowdy/components/Button';
-import { Spinner } from '@clowdy/components/Spinner';
+import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { AttentionTriangle } from '@clowdy/icons/14';
 
@@ -34,7 +34,7 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
             <>
                 { INTRO }
                 <Box direction="row" gap="md" align="center">
-                    <Spinner size="sm" />
+                    <Loader size="md" />
                     <Text color="secondary">Loading skills…</Text>
                 </Box>
             </>

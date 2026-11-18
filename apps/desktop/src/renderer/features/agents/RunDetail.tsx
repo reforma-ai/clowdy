@@ -1,6 +1,6 @@
 import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
-import { Spinner } from '@clowdy/components/Spinner';
+import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
 import { AttentionCircle } from '@clowdy/icons/14';
@@ -104,7 +104,7 @@ function RunStream({ run }: { run: Run }) {
     if (!stream || stream.status === 'idle' || (stream.status === 'loading' && stream.items.length === 0)) {
         return (
             <div className={ styles.center }>
-                <Spinner size="md" />
+                <Loader size="xxl" />
                 <Text color="secondary">Loading the stream…</Text>
             </div>
         );

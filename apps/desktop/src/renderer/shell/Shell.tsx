@@ -1,4 +1,4 @@
-import { Spinner } from '@clowdy/components/Spinner';
+import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { cn } from '@clowdy/lib';
 import { useEffect } from 'react';
@@ -78,7 +78,7 @@ function ProjectScreen() {
 function Loading() {
     return (
         <div className={ styles.center }>
-            <Spinner size="md" />
+            <Loader className={ styles.loader } />
             <Text color="secondary">Loading…</Text>
         </div>
     );

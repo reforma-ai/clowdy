@@ -1,7 +1,7 @@
 import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Box } from '@clowdy/components/Box';
 import { Button } from '@clowdy/components/Button';
-import { Spinner } from '@clowdy/components/Spinner';
+import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { useEffect } from 'react';
@@ -44,7 +44,7 @@ export function ProvidersPage() {
             <>
                 { INTRO }
                 <Box direction="row" gap="md" align="center">
-                    <Spinner size="sm" />
+                    <Loader size="md" />
                     <Text color="secondary">Looking for agents…</Text>
                 </Box>
             </>
