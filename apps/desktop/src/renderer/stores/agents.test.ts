@@ -80,6 +80,28 @@ describe('RootStore agents', () => {
         expect([root.agentsStatus, root.agentsError, root.agents]).toEqual(['ready', '', []]);
     });
 
+    it('fetches again when the feed is back after a fetch failed, because no event will announce it', async () => {
+        const getAgents = vi.fn<() => Promise<AgentInfo[]>>();
+        const { root, base } = make({ getAgents });
+
+        getAgents.mockRejectedValueOnce(new Error('offline'));
+        await root.refreshAgents();
+
+        expect(root.agentsStatus).toBe('failed');
+
+        getAgents.mockResolvedValueOnce(await base.getAgents());
+        root.handleFeedStatus('connected');
+        await vi.waitFor(() => expect(root.agentsStatus).toBe('ready'));
+
+        expect(root.agents).toHaveLength(3);
+
+        // Healthy: a reconnect asks for nothing.
+        getAgents.mockClear();
+        root.handleFeedStatus('connected');
+
+        expect(getAgents).not.toHaveBeenCalled();
+    });
+
     it('lets the newest request win when an old one answers late', async () => {
         const answers: Array<(agents: AgentInfo[]) => void> = [];
         const getAgents = vi.fn(() => new Promise<AgentInfo[]>(resolve => answers.push(resolve)));
@@ -92,6 +114,32 @@ describe('RootStore agents', () => {
         await second;
         answers[0]!(everything);
         await first;
+
+        expect(root.agents.map(agent => agent.id)).toEqual(['claude']);
+    });
+
+    it('does not end an old request before the newest one has answered', async () => {
+        const answers: Array<(agents: AgentInfo[]) => void> = [];
+        const getAgents = vi.fn(() => new Promise<AgentInfo[]>(resolve => answers.push(resolve)));
+        const { root, base } = make({ getAgents });
+        const everything = await base.getAgents();
+        let firstEnded = false;
+        const first = root.refreshAgents().then(() => {
+            firstEnded = true;
+        });
+
+        // The event feed asks again while the command's own request is still on its way.
+        const second = root.refreshAgents();
+
+        answers[0]!(everything);
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        // A switch waits on the first one until the list changed: it must not fall back to its old value yet.
+        expect(firstEnded).toBe(false);
+        expect(root.agents).toEqual([]);
+
+        answers[1]!(everything.slice(0, 1));
+        await Promise.all([first, second]);
 
         expect(root.agents.map(agent => agent.id)).toEqual(['claude']);
     });

@@ -3,13 +3,14 @@ import { Text } from '@clowdy/components/Text';
 import { Refresh } from '@clowdy/icons/14';
 
 import { formatRemaining } from '../../../shared';
+import { InlineCode } from './InlineCode';
 import styles from './UsageBlock.module.css';
+import { useNow } from './useNow';
 
 import type { AgentUsage, AgentUsageWindow } from '@clowdy/protocol';
 
 export interface UsageBlockProps {
     usage: AgentUsage;
-    now: number;
     /** A read is on its way. */
     isRefreshing: boolean;
     onRefresh: () => void;
@@ -24,11 +25,11 @@ function UsageRow({ window, now }: { window: AgentUsageWindow; now: number }) {
     return (
         <li className={ styles.row }>
             <Text variant="sm" color="secondary" truncate className={ styles.label } title={ window.label }>{ window.label }</Text>
-            <div className={ styles.track } role="progressbar" aria-label={ `${ window.label } used` } aria-valuemin={ 0 } aria-valuemax={ 100 } aria-valuenow={ percent }>
+            <div className={ styles.track } role="progressbar" aria-label={ `${ window.label } used` } aria-valuemin={ 0 } aria-valuemax={ 100 } aria-valuenow={ percent } aria-valuetext={ `${ percent }%` }>
                 <div className={ styles.fill } data-level={ percent >= 90 ? 'high' : percent >= 75 ? 'warn' : undefined } style={ { width: `${ percent }%` } } />
             </div>
             <Text variant="sm" className={ styles.percent }>{ `${ percent }%` }</Text>
-            <Text variant="sm" color="secondary" className={ styles.reset } title="Time until the window resets">
+            <Text variant="sm" color="secondary" className={ styles.reset } title={ window.resetsAt === undefined ? undefined : 'Time until the window resets' }>
                 { window.resetsAt === undefined ? '' : formatRemaining(window.resetsAt - now) }
             </Text>
         </li>
@@ -36,8 +37,10 @@ function UsageRow({ window, now }: { window: AgentUsageWindow; now: number }) {
 }
 
 /** What is left of a plan, a bar per window, with a button that reads it again. Says why there is nothing when there is nothing. */
-export function UsageBlock({ usage, now, isRefreshing, onRefresh }: UsageBlockProps) {
+export function UsageBlock({ usage, isRefreshing, onRefresh }: UsageBlockProps) {
     const { state, windows, detail } = usage;
+    // Only a card that shows usage keeps a clock.
+    const now = useNow();
 
     return (
         <section className={ styles.block } aria-label="Usage">
@@ -55,7 +58,7 @@ export function UsageBlock({ usage, now, isRefreshing, onRefresh }: UsageBlockPr
             ) }
 
             { windows.length === 0 && state === 'ok' && <Text variant="sm" color="secondary">There are no limits to show.</Text> }
-            { state !== 'ok' && detail && <Text variant="sm" color={ state === 'error' ? 'danger' : 'secondary' }>{ detail }</Text> }
+            { state !== 'ok' && detail && <Text variant="sm" color={ state === 'error' ? 'danger' : 'secondary' }><InlineCode text={ detail } /></Text> }
             { state === 'error' && !detail && <Text variant="sm" color="danger">The usage could not be read.</Text> }
         </section>
     );

@@ -7,7 +7,6 @@ import { ProviderIcon } from './ProviderIcon';
 import { ProviderSettings } from './ProviderSettings';
 import { UsageBlock } from './UsageBlock';
 import { useAgentCommands } from './useAgentCommands';
-import { useNow } from './useNow';
 
 import type { AgentInfo } from '@clowdy/protocol';
 
@@ -17,13 +16,12 @@ import type { AgentInfo } from '@clowdy/protocol';
  */
 export function ProviderCard({ agent }: { agent: AgentInfo }) {
     const commands = useAgentCommands(agent.id);
-    const now = useNow();
     const installed = agent.status !== 'missing' && agent.status !== 'needs-runtime';
     const isOn = agent.enabled && installed;
-    const showUsage = isOn && agent.usage !== undefined;
+    const usage = isOn ? agent.usage : undefined;
 
     return (
-        <section className={ styles.card } aria-label={ agent.name } data-off={ !isOn || undefined }>
+        <section className={ styles.card } aria-label={ agent.name }>
             <header className={ styles.header }>
                 <span className={ styles.icon }><ProviderIcon agentId={ agent.id } size={ 22 } /></span>
                 <div className={ styles.title }>
@@ -44,9 +42,9 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
                 <AccountRow agent={ agent } commands={ commands } />
             </div>
 
-            { showUsage && agent.usage && (
+            { usage && (
                 <div className={ styles.section }>
-                    <UsageBlock usage={ agent.usage } now={ now } isRefreshing={ commands.pending.has('refresh') } onRefresh={ () => void commands.refresh() } />
+                    <UsageBlock usage={ usage } isRefreshing={ commands.pending.has('refresh') } onRefresh={ () => void commands.refresh() } />
                 </div>
             ) }
 

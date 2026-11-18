@@ -56,6 +56,7 @@ export class RootStore {
     readonly #notify: ((notice: Notice) => void) | undefined;
     #unsubscribe: (() => void) | undefined;
     #agentsSeq = 0;
+    #agentsInflight: Promise<void> | undefined;
     #agentsScheduled = false;
     #bannerTimer: ReturnType<typeof setTimeout> | undefined;
     #resyncTimer: ReturnType<typeof setTimeout> | undefined;
@@ -125,12 +126,26 @@ export class RootStore {
     }
 
     /**
-     * Fetches the agents again. The newest request wins, so a slow answer never replaces a newer one. Never rejects: a
-     * failure is `agentsStatus` and `agentsError`, and the list keeps what it had.
+     * Fetches the agents again. The newest request wins, so a slow answer never replaces a newer one, and the promise ends
+     * only when the newest request has: a caller that waits for the list to change (a switch that stays pending until then)
+     * must not be released by an answer that was already replaced. Never rejects: a failure is `agentsStatus` and
+     * `agentsError`, and the list keeps what it had.
      */
     async refreshAgents(): Promise<void> {
-        const request = ++this.#agentsSeq;
+        const fetched = this.#fetchAgents(++this.#agentsSeq);
+        let waited = fetched;
 
+        this.#agentsInflight = fetched;
+        await fetched;
+
+        // A newer request started meanwhile: its answer is the one that counts, so wait for it as well.
+        while (this.#agentsInflight !== waited) {
+            waited = this.#agentsInflight!;
+            await waited;
+        }
+    }
+
+    async #fetchAgents(request: number): Promise<void> {
         try {
             const agents = await this.transport.getAgents();
 
@@ -186,6 +201,9 @@ export class RootStore {
             clearTimeout(this.#bannerTimer);
             this.syncStatus = 'connected';
             this.bannerVisible = false;
+
+            // A fetch that failed while the daemon was away is asked again by no event: nothing may have changed since.
+            if (this.agentsStatus === 'failed') void this.refreshAgents();
 
             return;
         }

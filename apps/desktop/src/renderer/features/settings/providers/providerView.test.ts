@@ -19,7 +19,7 @@ describe('accountLine', () => {
     it('shows the e-mail and the plan of who is signed in', () => {
         const line = accountLine(agent({ signIn: { status: 'signed-in', checkedAt: 1, account: { email: 'me@x.dev', plan: 'Max' } } }));
 
-        expect(line).toMatchObject({ kind: 'account', text: 'me@x.dev', plan: 'Max' });
+        expect(line).toMatchObject({ text: 'me@x.dev', plan: 'Max' });
     });
 
     it('falls back to the name, then to how it is signed in', () => {
@@ -29,7 +29,7 @@ describe('accountLine', () => {
     });
 
     it('says so when nobody is signed in, and when it has not asked yet', () => {
-        expect(accountLine(agent({ signIn: { status: 'signed-out', checkedAt: 1 } }))).toMatchObject({ kind: 'note', text: 'Not signed in', tone: 'warning' });
+        expect(accountLine(agent({ signIn: { status: 'signed-out', checkedAt: 1 } }))).toMatchObject({ text: 'Not signed in', tone: 'warning' });
         expect(accountLine(agent())).toMatchObject({ text: 'Checking who is signed in…', tone: 'muted' });
         expect(accountLine(agent({ signIn: { status: 'unknown', checkedAt: 1, detail: 'The program did not answer' } }))).toMatchObject({ text: 'Could not tell who is signed in', detail: 'The program did not answer' });
     });

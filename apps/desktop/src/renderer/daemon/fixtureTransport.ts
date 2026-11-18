@@ -15,6 +15,7 @@ import { TransportError, type CommandInput, type FeedStatus, type StreamTarget, 
 
 import type {
     AgentInfo,
+    AgentOverrides,
     Attachment,
     ClowdyEvent,
     CommandResult,
@@ -66,6 +67,13 @@ const FIXTURE_SIGN_IN_LINKS: Record<string, string> = {
 };
 const SIGN_IN_LINK_MS = 400;
 const SIGN_IN_DONE_MS = 4000;
+
+/** The overrides of an agent without the parts that are not set, or none at all when nothing is left. */
+function withoutEmpty(overrides: AgentOverrides): AgentOverrides | undefined {
+    const { path, env } = overrides;
+
+    return path === undefined && env === undefined ? undefined : { ...(path !== undefined && { path }), ...(env !== undefined && { env }) };
+}
 
 type Outcome = { ok: true; data: unknown } | { ok: false; error: { code: ErrorCode; message: string; details?: unknown } };
 
@@ -301,7 +309,9 @@ export class FixtureTransport implements Transport {
 
         if (enabled !== undefined) {
             agent.enabled = enabled;
-            agent.status = enabled ? 'ready' : 'disabled';
+
+            // A program that is not there stays not there; only a ready agent and a switched-off one trade places.
+            if (agent.status === 'ready' || agent.status === 'disabled') agent.status = enabled ? 'ready' : 'disabled';
         }
 
         for (const [settingId, value] of Object.entries(settings ?? {})) {
@@ -312,11 +322,18 @@ export class FixtureTransport implements Transport {
             setting.value = value;
         }
 
-        // Where the program is: a path the person chose, or the one found by looking.
-        if (path === null) agent.path = FIXTURE_PROGRAMS[id];
-        else if (path !== undefined) agent.path = path;
+        // What the person changed about how the agent starts, kept as the daemon keeps it: a path they chose (`null` goes
+        // back to looking for the program) and the variables, which replace the saved set.
+        if (path === null) {
+            agent.path = FIXTURE_PROGRAMS[id];
+            agent.overrides = withoutEmpty({ ...agent.overrides, path: undefined });
+        }
+        else if (path !== undefined) {
+            agent.path = path;
+            agent.overrides = { ...agent.overrides, path };
+        }
 
-        void env;
+        if (env !== undefined) agent.overrides = withoutEmpty({ ...agent.overrides, env });
 
         this.#agentsChanged();
 

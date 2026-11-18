@@ -1,9 +1,12 @@
+import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Box } from '@clowdy/components/Box';
 import { Button } from '@clowdy/components/Button';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
+import { AttentionCircle } from '@clowdy/icons/14';
+import { useEffect } from 'react';
 
-import { useAgents } from '../../../stores';
+import { useAgents, useRootStore } from '../../../stores';
 import { ProviderCard } from './ProviderCard';
 import styles from './ProvidersPage.module.css';
 import { providerAgents } from './providerView';
@@ -17,7 +20,14 @@ const INTRO = (
 /** Settings > Providers (the window's own title is the page's): one card per provider, with its account, its usage and its settings. */
 export function ProvidersPage() {
     const { agents, status, error, refresh } = useAgents();
+    const root = useRootStore();
     const providers = providerAgents(agents);
+
+    // The daemon reads accounts and usage again when somebody asks for the agents and its last read is old, and it lets a
+    // finished sign-in lapse the same way: what the app fetched an hour ago is not what the page should show.
+    useEffect(() => {
+        void root.refreshAgents();
+    }, [root]);
 
     if (status === 'loading' && agents.length === 0) {
         return (
@@ -46,6 +56,13 @@ export function ProvidersPage() {
     return (
         <>
             { INTRO }
+            { status === 'failed' && (
+                <Alert color="danger">
+                    <AlertIcon><AttentionCircle /></AlertIcon>
+                    <AlertDescription>{ `The agents could not be read again, so what is shown may be out of date. ${ error }` }</AlertDescription>
+                    <AlertAction><Button size="sm" variant="bordered" onPress={ () => void refresh() }>Try again</Button></AlertAction>
+                </Alert>
+            ) }
             { providers.length === 0
                 ? <Text color="secondary" className={ styles.empty }>The daemon lists none of Claude Code, Codex or Cursor.</Text>
                 : <div className={ styles.cards }>{ providers.map(agent => <ProviderCard key={ agent.id } agent={ agent } />) }</div> }

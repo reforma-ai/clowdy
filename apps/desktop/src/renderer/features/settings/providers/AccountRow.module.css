@@ -48,11 +48,15 @@
     max-width: 100%;
 }
 
+/* The plan is short and says what the account is: a long e-mail gives way to it, not the other way round. */
+.plan {
+    flex-shrink: 0;
+}
+
 /* The address is long and only there to be copied: it gives way to the buttons. */
 .url {
     flex: 1 1 8rem;
     min-width: 0;
-    font-family: var(--font-mono, ui-monospace, monospace);
 }
 
 .code {

@@ -6,10 +6,13 @@ import { Text } from '@clowdy/components/Text';
 import { ArrowUpRight, Check } from '@clowdy/icons/14';
 
 import styles from './AccountRow.module.css';
+import { InlineCode } from './InlineCode';
 import { accountLine, isSignInRunning } from './providerView';
 
 import type { AgentInfo } from '@clowdy/protocol';
 import type { useAgentCommands } from './useAgentCommands';
+
+const TONE_COLOR = { default: undefined, muted: 'secondary', warning: 'warning' } as const;
 
 export interface AccountRowProps {
     agent: AgentInfo;
@@ -22,12 +25,15 @@ function SignInLink({ url, code }: { url?: string; code?: string }) {
         <div className={ styles.link }>
             { url && (
                 <>
-                    <Text variant="xs" color="secondary" className={ styles.url } truncate title={ url }>{ url }</Text>
+                    <Text variant="code" color="secondary" className={ styles.url } truncate title={ url }>{ url }</Text>
                     <CopyButton value={ url } variant="bordered" size="xs">Copy link</CopyButton>
-                    <Button variant="bordered" size="xs" href={ url } target="_blank" rel="noreferrer">
-                        <ArrowUpRight aria-hidden />
-                        Open
-                    </Button>
+                    {/* The app opens `https:` links only; a program may print another kind (a local address), which can only be copied. */}
+                    { url.startsWith('https://') && (
+                        <Button variant="bordered" size="xs" href={ url } target="_blank" rel="noreferrer">
+                            <ArrowUpRight aria-hidden />
+                            Open
+                        </Button>
+                    ) }
                 </>
             ) }
             { code && (
@@ -56,8 +62,8 @@ export function AccountRow({ agent, commands }: AccountRowProps) {
         <div className={ styles.account }>
             <div className={ styles.line }>
                 <div className={ styles.who }>
-                    <Text variant="sm" color={ line.tone === 'default' ? undefined : line.tone === 'muted' ? 'secondary' : line.tone } truncate title={ line.text }>{ line.text }</Text>
-                    { line.plan && <Badge size="xs" color="secondary" textValue={ line.plan }>{ line.plan }</Badge> }
+                    <Text variant="sm" color={ TONE_COLOR[line.tone] } truncate title={ line.text }>{ line.text }</Text>
+                    { line.plan && <Badge size="xs" color="secondary" textValue={ line.plan } className={ styles.plan }>{ line.plan }</Badge> }
                 </div>
 
                 { canAct && !running && (
@@ -73,11 +79,11 @@ export function AccountRow({ agent, commands }: AccountRowProps) {
                                 { signedIn ? 'Sign in again' : 'Sign in' }
                             </Button>
                         )
-                        : agent.login && <Text variant="xs" color="secondary">{ `Run \`${ agent.login }\` in a terminal` }</Text>
+                        : agent.login && <Text variant="xs" color="secondary">Run <Text as="code" variant="code">{ agent.login }</Text> in a terminal</Text>
                 ) }
             </div>
 
-            { line.detail && <Text variant="xs" color="secondary">{ line.detail }</Text> }
+            { line.detail && <Text variant="xs" color="secondary"><InlineCode text={ line.detail } /></Text> }
 
             { running && (
                 <div className={ styles.session } role="status">

@@ -275,6 +275,33 @@ describe('FixtureTransport agents', () => {
         expect((await agentsOf(transport)).cursor?.path).toBe('/Users/dev/.local/bin/cursor-agent');
     });
 
+    it('lists what the person changed as overrides: the path they chose, and the environment, which replaces the saved set', async () => {
+        const transport = new FixtureTransport();
+
+        expect((await agentsOf(transport)).claude?.overrides).toBeUndefined();
+
+        await transport.command({ type: 'agent.update', id: 'claude', path: '/opt/claude', env: { A: '1', B: '2' } });
+        await transport.command({ type: 'agent.update', id: 'claude', env: { C: '3' } });
+
+        expect((await agentsOf(transport)).claude?.overrides).toEqual({ path: '/opt/claude', env: { C: '3' } });
+
+        await transport.command({ type: 'agent.update', id: 'claude', path: null });
+
+        expect((await agentsOf(transport)).claude?.overrides).toEqual({ env: { C: '3' } });
+    });
+
+    it('does not make a program that is not installed ready by switching it on', async () => {
+        const data = createFixtureData();
+
+        data.agents.find(agent => agent.id === 'cursor')!.status = 'missing';
+
+        const transport = new FixtureTransport({ data });
+
+        await transport.command({ type: 'agent.update', id: 'cursor', enabled: true });
+
+        expect((await agentsOf(transport)).cursor?.status).toBe('missing');
+    });
+
     it('runs a sign-in: starting, then waiting with the link, then done with the agent signed in', async () => {
         const { transport, types } = await connected();
         const session = async () => (await agentsOf(transport)).codex?.signInSession;

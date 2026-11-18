@@ -10,12 +10,10 @@ export function providerAgents(agents: readonly AgentInfo[]): AgentInfo[] {
 
 /** What the line under a card's title says: who is signed in, or why there is nobody to show. */
 export interface AccountLine {
-    /** `account`: a person (the plan goes beside it). `note`: a state, in words. */
-    kind: 'account' | 'note';
     text: string;
     /** The plan badge, for an account. */
     plan?: string;
-    tone: 'default' | 'muted' | 'warning' | 'danger';
+    tone: 'default' | 'muted' | 'warning';
     /** A second, muted line: why, or what to do. */
     detail?: string;
 }
@@ -23,11 +21,11 @@ export interface AccountLine {
 /** Who is signed in to `agent`, or what is wrong, as one line for a person. */
 export function accountLine(agent: AgentInfo): AccountLine {
     if (agent.status === 'missing') {
-        return { kind: 'note', text: 'Not installed', tone: 'warning', detail: agent.detail };
+        return { text: 'Not installed', tone: 'warning', detail: agent.detail };
     }
 
     if (agent.status === 'needs-runtime') {
-        return { kind: 'note', text: 'Needs Bun to start', tone: 'warning', detail: agent.detail };
+        return { text: 'Needs Bun to start', tone: 'warning', detail: agent.detail };
     }
 
     const { signIn } = agent;
@@ -36,22 +34,22 @@ export function accountLine(agent: AgentInfo): AccountLine {
         const { account } = signIn;
         const text = account?.email ?? account?.name ?? (account?.method === 'api-key' ? 'Signed in with an API key' : 'Signed in');
 
-        return { kind: 'account', text, plan: account?.plan, tone: 'default', detail: signIn.detail };
+        return { text, plan: account?.plan, tone: 'default', detail: signIn.detail };
     }
 
     if (agent.status === 'disabled') {
-        return { kind: 'note', text: 'Turned off in Clowdy', tone: 'muted' };
+        return { text: 'Turned off in Clowdy', tone: 'muted' };
     }
 
     if (!signIn) {
-        return { kind: 'note', text: 'Checking who is signed in…', tone: 'muted' };
+        return { text: 'Checking who is signed in…', tone: 'muted' };
     }
 
     if (signIn.status === 'signed-out') {
-        return { kind: 'note', text: 'Not signed in', tone: 'warning', detail: signIn.detail };
+        return { text: 'Not signed in', tone: 'warning', detail: signIn.detail };
     }
 
-    return { kind: 'note', text: 'Could not tell who is signed in', tone: 'muted', detail: signIn.detail };
+    return { text: 'Could not tell who is signed in', tone: 'muted', detail: signIn.detail };
 }
 
 /** A sign-in the daemon is still running. */

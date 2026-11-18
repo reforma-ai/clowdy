@@ -55,13 +55,20 @@ function AdvancedPanel({ children }: { children: React.ReactNode }) {
     );
 }
 
-/** Where the program is, and the environment it starts with. Both are what the daemon keeps for the agent. */
+/**
+ * Where the program is, and the environment it starts with. The boxes show what the daemon saved (`agent.overrides`) and
+ * follow it when it changes; what the person has typed and not saved is a draft that stays until it is saved or typed away.
+ */
 function Advanced({ agent, commands }: SettingsProps) {
-    // What the person saved before is in the boxes, so a change starts from it.
-    const [path, setPath] = useState(agent.overrides?.path ?? '');
-    const [env, setEnv] = useState(agent.overrides?.env ? formatEnv(agent.overrides.env) : '');
+    const savedPath = agent.overrides?.path ?? '';
+    const savedEnv = agent.overrides?.env ? formatEnv(agent.overrides.env) : '';
+    const [pathDraft, setPathDraft] = useState<string>();
+    const [envDraft, setEnvDraft] = useState<string>();
+    const path = pathDraft ?? savedPath;
+    const env = envDraft ?? savedEnv;
     const parsed = parseEnv(env);
     const envError = env.trim() && !parsed.ok ? parsed.message : undefined;
+    const programNote = savedPath ? `Using ${ savedPath }` : agent.path ? `Found at ${ agent.path }` : 'Not found on this computer.';
 
     return (
         <Collapsible>
@@ -69,9 +76,7 @@ function Advanced({ agent, commands }: SettingsProps) {
             <AdvancedPanel>
                 <div className={ styles.field }>
                     <Text variant="sm" bold>Program</Text>
-                    <Text variant="sm" color="secondary" truncate title={ agent.path }>
-                        { agent.overrides?.path ? `Using ${ agent.overrides.path }` : agent.path ? `Found at ${ agent.path }` : 'Not found on this computer.' }
-                    </Text>
+                    <Text variant="sm" color="secondary" truncate title={ programNote }>{ programNote }</Text>
                     <div className={ styles.inputs }>
                         <Input
                             type="text"
@@ -80,18 +85,26 @@ function Advanced({ agent, commands }: SettingsProps) {
                             aria-label={ `Path to the ${ agent.name } program` }
                             placeholder="Use another program: /path/to/program"
                             value={ path }
-                            onChange={ setPath }
+                            onChange={ text => setPathDraft(text === savedPath ? undefined : text) }
                         />
                         <Button
                             variant="bordered"
                             size="sm"
-                            isDisabled={ !path.trim() }
+                            isDisabled={ pathDraft === undefined || !path.trim() }
                             isPending={ commands.pending.has('path') }
-                            onPress={ () => void commands.setPath(path.trim()).then(ok => ok && setPath('')) }
+                            onPress={ () => void commands.setPath(path.trim()).then(ok => ok && setPathDraft(undefined)) }
                         >
                             Use it
                         </Button>
-                        <Button variant="inline" color="secondary" size="sm" isDisabled={ commands.pending.has('path') } onPress={ () => void commands.setPath(null) }>Find it again</Button>
+                        <Button
+                            variant="inline"
+                            color="secondary"
+                            size="sm"
+                            isDisabled={ commands.pending.has('path') }
+                            onPress={ () => void commands.setPath(null).then(ok => ok && setPathDraft(undefined)) }
+                        >
+                            Find it again
+                        </Button>
                     </div>
                 </div>
 
@@ -106,16 +119,16 @@ function Advanced({ agent, commands }: SettingsProps) {
                         rows={ 3 }
                         value={ env }
                         isInvalid={ Boolean(envError) }
-                        onChange={ setEnv }
+                        onChange={ text => setEnvDraft(text === savedEnv ? undefined : text) }
                     />
                     { envError && <Text variant="sm" color="danger" role="alert">{ envError }</Text> }
                     <div>
                         <Button
                             variant="bordered"
                             size="sm"
-                            isDisabled={ !parsed.ok }
+                            isDisabled={ envDraft === undefined || !parsed.ok }
                             isPending={ commands.pending.has('env') }
-                            onPress={ () => parsed.ok && void commands.setEnv(parsed.env) }
+                            onPress={ () => parsed.ok && void commands.setEnv(parsed.env).then(ok => ok && setEnvDraft(undefined)) }
                         >
                             Save the environment
                         </Button>

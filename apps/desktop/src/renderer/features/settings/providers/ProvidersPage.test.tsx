@@ -14,6 +14,10 @@ import type { Transport } from '../../../daemon/transport';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const toasts = vi.hoisted(() => ({ error: vi.fn<(options: { message: string }) => void>() }));
+
+vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
+
 /*
  * The Providers page on the fixture daemon. The test build has no MobX observer plugin, so the page is drawn again by hand
  * after the store changes, as the observer does in the app.
@@ -53,6 +57,7 @@ function withAgent(id: string, change: (agent: AgentInfo) => void) {
 }
 
 beforeEach(() => {
+    toasts.error.mockClear();
     container = document.createElement('div');
     document.body.append(container);
     reactRoot = createRoot(container);
@@ -107,7 +112,8 @@ describe('the cards', () => {
         const cursor = card('Cursor');
 
         expect(cursor.textContent).toContain('Not installed');
-        expect(cursor.textContent).toContain('no `cursor-agent` command was found');
+        expect(cursor.textContent).toContain('no cursor-agent command was found');
+        expect(cursor.querySelector('code')?.textContent).toBe('cursor-agent');
         expect(cursor.querySelector('[role="progressbar"]')).toBeNull();
         expect(button(cursor, 'Sign in')).toBeUndefined();
         expect(switchOf(cursor, 'Use Cursor in Clowdy').disabled).toBe(true);
@@ -129,6 +135,18 @@ describe('the switch of a provider', () => {
         expect(switchOf(card('Codex'), 'Use Codex in Clowdy').checked).toBe(false);
         // Who was signed in stays on the card, so turning it back on is a known thing.
         expect(card('Codex').textContent).toContain('dev@example.com');
+    });
+
+    it('tells the person when the daemon refuses, and the switch stays as it was', async () => {
+        const refused = { ok: false, requestId: 'r', error: { code: 'invalid', message: 'Memory cannot be changed while a run uses it.' } } as const;
+
+        await start(overrideTransport(transport, { command: async () => refused }));
+        await press(switchOf(card('Claude Code'), 'Memory'));
+        await vi.waitFor(() => expect(toasts.error).toHaveBeenCalledWith({ message: 'Memory cannot be changed while a run uses it.' }));
+        await draw();
+
+        expect(switchOf(card('Claude Code'), 'Memory').checked).toBe(false);
+        expect(card('Claude Code').querySelector('[aria-busy="true"]')).toBeNull();
     });
 
     it('sends a setting by its id and shows the new value', async () => {
@@ -231,6 +249,16 @@ describe('signing in', () => {
         expect(card('Codex').textContent).toContain('ABCD-1234');
     });
 
+    it('can only copy a link that is not https, because the app opens nothing else', async () => {
+        await start(withAgent('codex', (agent) => {
+            agent.signIn = { status: 'signed-out', checkedAt: 1 };
+            agent.signInSession = { step: 'waiting', startedAt: Date.now(), url: 'http://localhost:1455/auth/callback' };
+        }));
+
+        expect(button(card('Codex'), 'Copy link')).toBeDefined();
+        expect(button(card('Codex'), 'Open')).toBeUndefined();
+    });
+
     it('shows the vendor\'s command when the daemon cannot run the sign-in', async () => {
         await start(withAgent('cursor', (agent) => {
             agent.canSignIn = false;
@@ -238,11 +266,38 @@ describe('signing in', () => {
         }));
 
         expect(button(card('Cursor'), 'Sign in')).toBeUndefined();
-        expect(card('Cursor').textContent).toContain('Run `cursor-agent login` in a terminal');
+        expect(card('Cursor').textContent).toContain('Run cursor-agent login in a terminal');
+        expect(card('Cursor').querySelector('code')?.textContent).toBe('cursor-agent login');
     });
 });
 
 describe('the usage', () => {
+    it('counts the time to reset down while the page is open, and stops its clock when it closes', async () => {
+        vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+
+        try {
+            await start(new FixtureTransport());
+
+            // The 5h row ends with its time to reset, a few minutes under half an hour.
+            const minutesLeft = () => Number(/(\d+)m$/.exec([...card('Claude Code').querySelectorAll('li')][0]!.textContent!)![1]);
+            const before = minutesLeft();
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(2 * 60_000);
+            });
+
+            expect(minutesLeft()).toBe(before - 2);
+
+            act(() => reactRoot.unmount());
+            reactRoot = createRoot(container);
+
+            expect(vi.getTimerCount()).toBe(0);
+        }
+        finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('reads it again from the refresh button', async () => {
         await start();
 
@@ -275,19 +330,62 @@ describe('the usage', () => {
 
 describe('before and without the agents', () => {
     it('says the agents could not be loaded, and tries again', async () => {
-        const getAgents = vi.fn<() => Promise<AgentInfo[]>>().mockRejectedValueOnce(new Error('offline'));
+        const getAgents = vi.fn<() => Promise<AgentInfo[]>>().mockRejectedValue(new Error('offline'));
 
         await start(overrideTransport(transport, { getAgents }));
 
         expect(container.textContent).toContain('The agents could not be loaded.');
         expect(container.textContent).toContain('offline');
 
-        getAgents.mockResolvedValueOnce(await transport.getAgents());
+        getAgents.mockResolvedValue(await transport.getAgents());
         await press(button(container, 'Try again'));
         await vi.waitFor(() => expect(store.agentsStatus).toBe('ready'));
         await draw();
 
         expect(card('Codex')).not.toBeNull();
+    });
+
+    it('keeps the cards and says they may be out of date when a later read fails', async () => {
+        const getAgents = vi.fn<() => Promise<AgentInfo[]>>();
+
+        getAgents.mockResolvedValue(await transport.getAgents());
+        await start(overrideTransport(transport, { getAgents }));
+        getAgents.mockRejectedValue(new Error('offline'));
+        await act(async () => {
+            await store.refreshAgents();
+        });
+        await draw();
+
+        expect(card('Codex')).not.toBeNull();
+        expect(container.textContent).toContain('could not be read again');
+        expect(container.textContent).toContain('offline');
+
+        getAgents.mockResolvedValue(await transport.getAgents());
+        await press(button(container, 'Try again'));
+        await vi.waitFor(() => expect(store.agentsStatus).toBe('ready'));
+        await draw();
+
+        expect(container.textContent).not.toContain('could not be read again');
+    });
+
+    it('asks the daemon again when the page opens, so what lapsed while it was closed is gone', async () => {
+        const data = createFixtureData();
+        const codex = data.agents.find(agent => agent.id === 'codex')!;
+
+        codex.signInSession = { step: 'failed', startedAt: 1, message: 'codex login ended without signing in.' };
+        store = new RootStore(new FixtureTransport({ data }), { storage });
+        await store.load();
+        await vi.waitFor(() => expect(store.agentsStatus).toBe('ready'));
+
+        expect(store.agents.find(agent => agent.id === 'codex')?.signInSession?.step).toBe('failed');
+
+        // The daemon lets a finished sign-in lapse and does not announce it.
+        delete codex.signInSession;
+        await draw();
+        await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'codex')?.signInSession).toBeUndefined());
+        await draw();
+
+        expect(card('Codex').textContent).not.toContain('codex login ended without signing in.');
     });
 
     it('says so when the daemon lists none of the three', async () => {
@@ -338,5 +436,97 @@ describe('the advanced settings', () => {
         await press(button(card('Claude Code'), 'Save the environment'));
 
         expect(command).toHaveBeenCalledWith({ type: 'agent.update', id: 'claude', env: { HTTPS_PROXY: 'http://proxy:3128' } });
+    });
+
+    /** Types `text` into the environment box as a person does. */
+    const typeEnv = (text: string) => act(async () => {
+        const area = card('Claude Code').querySelector('textarea')!;
+
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(area, text);
+        area.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const openAdvanced = async () => {
+        await press(button(card('Claude Code'), 'Advanced'));
+        await vi.waitFor(() => expect(card('Claude Code').querySelector('textarea')).not.toBeNull());
+    };
+
+    it('shows what the daemon saved after a save, and has nothing left to save', async () => {
+        await start();
+        await openAdvanced();
+        await typeEnv('TZ=UTC\n# the proxy\nHTTPS_PROXY=http://proxy:3128');
+
+        const save = () => button(card('Claude Code'), 'Save the environment')!;
+
+        expect(save().hasAttribute('disabled')).toBe(false);
+
+        await press(save());
+        await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.overrides?.env).toEqual({ TZ: 'UTC', HTTPS_PROXY: 'http://proxy:3128' }));
+        await draw();
+
+        expect(card('Claude Code').querySelector('textarea')!.value).toBe('HTTPS_PROXY=http://proxy:3128\nTZ=UTC');
+        expect(save().hasAttribute('disabled')).toBe(true);
+    });
+
+    it('replaces the saved environment with an empty one when the box is emptied', async () => {
+        await start(withAgent('claude', (agent) => {
+            agent.overrides = { env: { TZ: 'UTC' } };
+        }));
+        await openAdvanced();
+        await typeEnv('');
+
+        const command = vi.spyOn(store, 'command');
+
+        await press(button(card('Claude Code'), 'Save the environment'));
+
+        expect(command).toHaveBeenCalledWith({ type: 'agent.update', id: 'claude', env: {} });
+        await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.overrides?.env).toEqual({}));
+    });
+
+    it('follows a change made elsewhere while the box is untouched, and keeps what the person is typing', async () => {
+        await start();
+        await openAdvanced();
+
+        const elsewhere = (env: Record<string, string>) => act(async () => {
+            await transport.command({ type: 'agent.update', id: 'claude', env });
+            await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.overrides?.env).toEqual(env));
+        });
+
+        await elsewhere({ TZ: 'UTC' });
+        await draw();
+
+        expect(card('Claude Code').querySelector('textarea')!.value).toBe('TZ=UTC');
+
+        await typeEnv('TZ=UTC\nMINE=1');
+        await elsewhere({ TZ: 'CET' });
+        await draw();
+
+        expect(card('Claude Code').querySelector('textarea')!.value).toBe('TZ=UTC\nMINE=1');
+    });
+
+    it('keeps the program the person chose in its box, and clears the box when it goes back to looking', async () => {
+        await start();
+        await openAdvanced();
+
+        const field = () => card('Claude Code').querySelector<HTMLInputElement>('input[type="text"]')!;
+
+        expect(button(card('Claude Code'), 'Use it')!.hasAttribute('disabled')).toBe(true);
+
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field(), '/opt/claude');
+            field().dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await press(button(card('Claude Code'), 'Use it'));
+        await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.overrides?.path).toBe('/opt/claude'));
+        await draw();
+
+        expect(field().value).toBe('/opt/claude');
+        expect(card('Claude Code').textContent).toContain('Using /opt/claude');
+
+        await press(button(card('Claude Code'), 'Find it again'));
+        await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.overrides).toBeUndefined());
+        await draw();
+
+        expect(field().value).toBe('');
+        expect(card('Claude Code').textContent).toContain('Found at /Users/dev/.local/bin/claude');
     });
 });
