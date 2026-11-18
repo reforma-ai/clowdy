@@ -1,11 +1,12 @@
 import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Scrollable } from '@clowdy/components/Scrollable';
-import { Book, PaintBucket, Robot } from '@clowdy/icons/14';
+import { Book, Folder, PaintBucket, Robot } from '@clowdy/icons/14';
 
 import { SidebarHeading, SidebarLayout } from '../../shared';
 import { useRootStore, type SettingsPage } from '../../stores';
 import { AppearancePage } from './AppearancePage';
+import { ProjectsPage } from './projects';
 import { ProvidersPage } from './providers';
 import styles from './Screen.module.css';
 import { SkillsSection } from './skills';
@@ -26,6 +27,13 @@ const GROUPS: ReadonlyArray<{ id: string; label: string; pages: readonly PageVie
         label: 'General',
         pages: [
             { id: 'appearance', label: 'Appearance', icon: <PaintBucket />, render: () => <AppearancePage /> },
+        ],
+    },
+    {
+        id: 'workspace',
+        label: 'Workspace',
+        pages: [
+            { id: 'projects', label: 'Projects', icon: <Folder />, render: () => <ProjectsPage /> },
         ],
     },
     {

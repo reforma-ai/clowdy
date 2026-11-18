@@ -37,6 +37,46 @@ export async function openExistingProject(root: RootStore): Promise<void> {
     if (path) showFailure(await root.openProject(path));
 }
 
+/**
+ * A folder for a project that already exists: the system folder dialog in the desktop app, a small form with a path field in a plain browser.
+ * Resolves to the path, or `undefined` when the person closed the dialog.
+ */
+export async function pickFolder(): Promise<string | undefined> {
+    const choose = window.desktop?.chooseDirectory;
+
+    if (choose) return (await choose()) ?? undefined;
+
+    return new Promise((resolve) => {
+        Modal.create({ ...MODAL_OPTIONS, component: <FolderForm onPick={ resolve } />, onClose: () => resolve(undefined) });
+    });
+}
+
+function FolderForm({ onPick }: { onPick: (path: string) => void }) {
+    const { modal } = useModalContext();
+    const [path, setPath] = useState('');
+
+    return (
+        <form
+            className={ styles.form }
+            onSubmit={ (event) => {
+                event.preventDefault();
+
+                if (path.trim()) {
+                    onPick(path.trim());
+                    modal.cancel();
+                }
+            } }
+        >
+            <Text variant="heading-3">Choose a folder</Text>
+            <FormField layout="vertical">
+                <FormField.Label>Folder</FormField.Label>
+                <Input type="text" aria-label="Folder" value={ path } onChange={ setPath } placeholder="/Users/you/code/my-app" autoFocus />
+            </FormField>
+            <Button type="submit" color="primary" fullWidth isDisabled={ !path.trim() }>Use this folder</Button>
+        </form>
+    );
+}
+
 function showFailure(result: CommandResult): void {
     if (!result.ok) toast.error({ message: result.error.message });
 }

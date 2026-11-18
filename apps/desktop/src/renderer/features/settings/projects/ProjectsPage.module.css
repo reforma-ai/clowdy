@@ -1,0 +1,24 @@
+@reference '@clowdy/styles/rulesets';
+
+.header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-xl);
+}
+
+.intro {
+    flex: 1;
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.empty {
+    padding: var(--spacing-lg);
+    border: 1px dashed var(--color-surface-border);
+    border-radius: var(--radius-lg);
+}
