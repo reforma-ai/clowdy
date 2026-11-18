@@ -96,10 +96,16 @@ export const commandSchema = z.discriminatedUnion('type', [
         name: z.string().min(1).max(80).optional(),
         command: z.string().min(1).optional(),
         args: z.array(z.string()).optional(),
+        /** Turns the agent's own settings (`AgentInfo.settings`) on or off by id; settings left out keep their value. */
+        settings: z.record(z.string(), z.boolean()).optional(),
     }),
+    /** Starts the agent's own login for the person (also to sign in again as someone else). Answers at once; the progress is `AgentInfo.signInSession`. Refused when one is running. */
+    z.object({ ...base, type: z.literal('agent.signIn'), id: z.string().min(1) }),
+    /** Stops a sign-in in progress. */
+    z.object({ ...base, type: z.literal('agent.cancelSignIn'), id: z.string().min(1) }),
     /** Removes an agent that was added; the built-in ones can only be switched off. */
     z.object({ ...base, type: z.literal('agent.remove'), id: z.string().min(1) }),
-    /** Looks for the agents' programs again, for after the user installed one. */
+    /** Looks for the agents' programs again, for after the user installed one, and reads accounts and usage anew. */
     z.object({ ...base, type: z.literal('agents.refresh') }),
 
     /* Skills */

@@ -28,4 +28,88 @@ export interface AgentInfo {
     fetches?: string;
     /** The command a person runs in a terminal to sign in; shown when a run fails for lack of a login. */
     login?: string;
+    /** Who is signed in to the agent on this machine. Absent until the daemon has asked, and for agents it cannot ask. */
+    signIn?: AgentSignIn;
+    /** The agent's subscription limits. Absent until read, and for agents that have none to read. */
+    usage?: AgentUsage;
+    /** Whether the daemon can run the agent's login for the person (`agent.signIn`). */
+    canSignIn?: boolean;
+    /** A sign-in the daemon is running or has just finished for this agent. */
+    signInSession?: AgentSignInSession;
+    /** The agent's own settings Clowdy can control, with their current values. Empty or absent when there are none. */
+    settings?: AgentSetting[];
+}
+
+/** Whether somebody is signed in. `unknown`: the daemon could not tell (the program is missing or did not answer). */
+export type SignInStatus = 'signed-in' | 'signed-out' | 'unknown';
+
+/** The login of the agent on this machine: the one its own program uses, never an account Clowdy keeps. */
+export interface AgentAccount {
+    email?: string;
+    /** A display name, when the vendor has one and there is no e-mail. */
+    name?: string;
+    organization?: string;
+    /** The plan as the vendor names it (`Max`, `Plus`, `Pro+`). */
+    plan?: string;
+    /** `subscription` for a plan login, `api-key` for a key, `other` for anything else (a cloud provider, a token). */
+    method?: 'subscription' | 'api-key' | 'other';
+}
+
+export interface AgentSignIn {
+    status: SignInStatus;
+    account?: AgentAccount;
+    /** Epoch milliseconds of the last read. */
+    checkedAt: number;
+    /** Why the status is `unknown`, or a note such as which key the agent runs on. */
+    detail?: string;
+}
+
+/** One meter of a plan: the 5-hour window, the weekly one, a weekly one for one model, a monthly plan. */
+export interface AgentUsageWindow {
+    /** Stable within an agent: `session`, `weekly`, `weekly:fable`, `plan`. */
+    id: string;
+    /** Short, as a row label: `5h`, `7d`, `7d · Fable`, `Plan usage`. */
+    label: string;
+    /** 0-100, how much of the window is used. */
+    usedPercent: number;
+    /** Epoch milliseconds when the window resets. */
+    resetsAt?: number;
+}
+
+export interface AgentUsage {
+    /** `ok`: the windows are current. `unavailable`: there is nothing to show (an API key has no plan limits, the vendor offers no source). `error`: the last read failed; `windows` is the last good one, if any. */
+    state: 'ok' | 'unavailable' | 'error';
+    windows: AgentUsageWindow[];
+    /** Epoch milliseconds of the last successful read. */
+    fetchedAt?: number;
+    /** What went wrong or why there is nothing to show, for a person. */
+    detail?: string;
+}
+
+export type SignInStep = 'starting' | 'waiting' | 'done' | 'failed' | 'cancelled';
+
+/**
+ * A sign-in run by the daemon: the vendor's own login program, started for the person. The program opens the browser
+ * itself; `url` is the link it printed, for copying into another browser.
+ */
+export interface AgentSignInSession {
+    step: SignInStep;
+    /** The sign-in link the program printed. */
+    url?: string;
+    /** A one-time code the person has to enter on the page (device sign-in). */
+    code?: string;
+    /** What happened, for a person: how it failed, or that it was cancelled. */
+    message?: string;
+    /** Epoch milliseconds the session started. */
+    startedAt: number;
+}
+
+/** A setting of an agent that Clowdy can turn on or off by itself (an environment variable or a session option). */
+export interface AgentSetting {
+    id: string;
+    label: string;
+    description?: string;
+    value: boolean;
+    /** The value when the person has not chosen. */
+    default: boolean;
 }
