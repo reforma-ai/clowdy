@@ -86,7 +86,7 @@ describe('the cards', () => {
 
         const bars = [...card('Claude Code').querySelectorAll('[role="progressbar"]')];
 
-        expect(bars.map(bar => bar.getAttribute('aria-label'))).toEqual(['5h used', '7d used', '7d · Fable used']);
+        expect(bars.map(bar => bar.getAttribute('aria-label'))).toEqual(['Session used', 'Week used', 'Fable used']);
         expect(bars.map(bar => bar.getAttribute('aria-valuenow'))).toEqual(['8', '20', '0']);
         expect(card('Claude Code').textContent).toMatch(/8%.*?2\dm/);
         expect(card('Cursor').textContent).toContain('Plan usage');
@@ -278,7 +278,7 @@ describe('the usage', () => {
         try {
             await start(new FixtureTransport());
 
-            // The 5h row ends with its time to reset, a few minutes under half an hour.
+            // The Session row ends with its time to reset, a few minutes under half an hour.
             const minutesLeft = () => Number(/(\d+)m$/.exec([...card('Claude Code').querySelectorAll('li')][0]!.textContent!)![1]);
             const before = minutesLeft();
 
@@ -318,7 +318,7 @@ describe('the usage', () => {
 
         const command = vi.spyOn(store, 'command');
 
-        await press(button(card('Claude Code'), 'Read the usage again'));
+        await press(button(card('Claude Code'), 'Refresh usage'));
 
         expect(command).toHaveBeenCalledWith({ type: 'agents.refresh' });
     });
@@ -335,7 +335,7 @@ describe('the usage', () => {
             return { reads, getAgents };
         }
 
-        const spins = () => button(card('Claude Code'), 'Read the usage again')!.hasAttribute('data-pending');
+        const spins = () => button(card('Claude Code'), 'Refresh usage')!.hasAttribute('data-pending');
         const later = (ms: number) => act(async () => {
             await vi.advanceTimersByTimeAsync(ms);
         });
@@ -352,7 +352,7 @@ describe('the usage', () => {
             const { reads, getAgents } = await reading();
 
             await start(overrideTransport(transport, { getAgents }));
-            await press(button(card('Claude Code'), 'Read the usage again'));
+            await press(button(card('Claude Code'), 'Refresh usage'));
 
             expect(spins()).toBe(true);
 
@@ -370,7 +370,7 @@ describe('the usage', () => {
             const { getAgents } = await reading();
 
             await start(overrideTransport(transport, { getAgents }));
-            await press(button(card('Claude Code'), 'Read the usage again'));
+            await press(button(card('Claude Code'), 'Refresh usage'));
             await later(20_000);
 
             expect(spins()).toBe(true);

@@ -168,9 +168,9 @@ function fixtureAgents(now: number): AgentInfo[] {
                 state: 'ok',
                 fetchedAt: now,
                 windows: [
-                    { id: 'session', label: '5h', usedPercent: 8, resetsAt: inMinutes(28) },
-                    { id: 'weekly', label: '7d', usedPercent: 20, resetsAt: inMinutes(6 * 24 * 60) },
-                    { id: 'weekly:fable', label: '7d · Fable', usedPercent: 0, resetsAt: inMinutes(6 * 24 * 60) },
+                    { id: 'session', label: 'Session', usedPercent: 8, resetsAt: inMinutes(28) },
+                    { id: 'weekly', label: 'Week', usedPercent: 20, resetsAt: inMinutes(6 * 24 * 60) },
+                    { id: 'weekly:fable', label: 'Fable', usedPercent: 0, resetsAt: inMinutes(6 * 24 * 60) },
                 ],
             },
             settings: [
@@ -197,8 +197,8 @@ function fixtureAgents(now: number): AgentInfo[] {
                 state: 'ok',
                 fetchedAt: now,
                 windows: [
-                    { id: 'codex:primary', label: '5h', usedPercent: 0, resetsAt: inMinutes(4 * 60 + 59) },
-                    { id: 'codex:secondary', label: '7d', usedPercent: 17, resetsAt: inMinutes(24 * 60) },
+                    { id: 'codex:primary', label: 'Session', usedPercent: 0, resetsAt: inMinutes(4 * 60 + 59) },
+                    { id: 'codex:secondary', label: 'Week', usedPercent: 17, resetsAt: inMinutes(24 * 60) },
                 ],
             },
             settings: [],

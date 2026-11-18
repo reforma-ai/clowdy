@@ -49,7 +49,7 @@ const inMinutes = (minutes: number) => Date.now() + minutes * MINUTE + 5_000;
 
 const meter = (id: string, usedPercent: number, minutes?: number): AgentUsageWindow => ({
     id,
-    label: { session: '5h', weekly: '7d', 'weekly:fable': '7d · Fable', 'codex:primary': '5h', 'codex:secondary': '7d', 'spark:secondary': '7d · Codex Spark', plan: 'Plan usage' }[id] ?? id,
+    label: { session: 'Session', weekly: 'Week', 'weekly:fable': 'Fable', 'codex:primary': 'Session', 'codex:secondary': 'Week', 'spark:secondary': 'Codex Spark', plan: 'Plan usage' }[id] ?? id,
     usedPercent,
     resetsAt: minutes === undefined ? undefined : inMinutes(minutes),
 });
@@ -91,6 +91,14 @@ async function openPopover(name = 'Claude Code') {
     });
 }
 
+/** Closes the popover with Escape and waits until it is gone. */
+async function close() {
+    await act(async () => {
+        dialog()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await vi.waitFor(() => expect(dialog()).toBeNull());
+}
+
 beforeEach(() => {
     toasts.error.mockClear();
     container = document.createElement('div');
@@ -109,35 +117,43 @@ describe('the badges', () => {
         await start(agentsWith());
 
         expect(badges().map(element => element.getAttribute('aria-label'))).toEqual([
-            'Claude Code usage 78%, resets in 1 hour 32 minutes',
+            'Claude Code usage 8%, resets in 28 minutes',
             'Codex usage 85%, resets in 45 minutes',
             'Cursor usage 40%, resets in 3 days',
         ]);
     });
 
-    it('shows the mark, the percent used and the time to reset of the most used primary window', async () => {
+    it('shows the mark, the percent used and the time to reset of the nearest limit, not of the fullest', async () => {
         await start(agentsWith());
 
         const claude = badge('Claude Code');
 
-        // The weekly window (78%) beats the 5h one (8%); the Fable window (99%) is scoped and does not count.
-        expect(claude.textContent).toBe('78%1h 32m');
+        // The Session window (8%) is the nearest one, though the Week one (78%) and the Fable one (99%) are fuller.
+        expect(claude.textContent).toBe('8%28m');
         expect(claude.querySelector('svg')).not.toBeNull();
         expect(badge('Codex').textContent).toBe('85%45m');
         expect(badge('Cursor').textContent).toBe('40%3d');
     });
 
-    it('does not let the limit of a single model decide the badge, for Codex as for Claude', async () => {
+    it('shows a session that is at zero, as the nearest limit, whatever the fuller ones say', async () => {
         await start(agentsWith((providers) => {
-            providers.codex.usage!.windows = [meter('codex:primary', 12, 45), meter('codex:secondary', 30, 24 * 60), meter('spark:secondary', 99, 24 * 60)];
+            providers.claude.usage!.windows = [meter('session', 0, 300), meter('weekly', 90, 60), meter('weekly:fable', 99, 60)];
         }));
 
-        expect(badge('Codex').textContent).toBe('30%1d');
+        expect(badge('Claude Code').textContent).toBe('0%5h');
+    });
+
+    it('does not let the limit of a single model decide the badge, for Codex as for Claude', async () => {
+        await start(agentsWith((providers) => {
+            providers.codex.usage!.windows = [meter('spark:secondary', 99, 60), meter('codex:primary', 12, 45), meter('codex:secondary', 30, 24 * 60)];
+        }));
+
+        expect(badge('Codex').textContent).toBe('12%45m');
 
         await openPopover('Codex');
 
-        // The bars of the popover do show it.
-        expect(bars(section('Codex')).map(bar => bar.getAttribute('aria-label'))).toEqual(['7d · Codex Spark used', '7d used', '5h used']);
+        // The bars of the popover do show it, in the order the daemon gave.
+        expect(bars(section('Codex')).map(bar => bar.getAttribute('aria-label'))).toEqual(['Codex Spark used', 'Session used', 'Week used']);
     });
 
     it('shows the mark alone when every window of a provider is the limit of a single model', async () => {
@@ -158,14 +174,14 @@ describe('the badges', () => {
         expect(badge('Cursor').getAttribute('aria-label')).toBe('Cursor usage 40%');
     });
 
-    it('turns to the warning tone from 80% and to the danger tone from 90%', async () => {
+    it('turns red from 90% and is never orange: the warning tone is for the bars', async () => {
         await start(agentsWith((providers) => {
             providers.claude.usage!.windows = [meter('weekly', 79, 60)];
-            providers.codex.usage!.windows = [meter('codex:secondary', 80, 60)];
+            providers.codex.usage!.windows = [meter('codex:secondary', 89, 60)];
             providers.cursor.usage!.windows = [meter('plan', 90, 60)];
         }));
 
-        expect(badges().map(element => element.getAttribute('data-color'))).toEqual(['secondary', 'warning', 'danger']);
+        expect(badges().map(element => element.getAttribute('data-color'))).toEqual(['secondary', 'secondary', 'danger']);
     });
 
     it('shows the mark alone, muted, for a provider with no reading', async () => {
@@ -259,7 +275,7 @@ describe('the popover', () => {
         await openPopover('Cursor');
 
         expect(dialog()).not.toBeNull();
-        expect(dialog()!.getAttribute('aria-label')).toBe('Plan usage');
+        expect(dialog()!.getAttribute('aria-label')).toBe('Cursor plan usage');
         expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
         expect(badges().map(element => element.getAttribute('aria-expanded'))).toEqual(['false', 'false', 'true']);
     });
@@ -297,25 +313,19 @@ describe('the popover', () => {
         await vi.waitFor(() => expect(document.activeElement).toBe(codex));
     });
 
-    it('lists the providers by their headline percent, the most used first', async () => {
+    it('shows the provider of the badge that was pressed, and no other', async () => {
         await start(agentsWith());
-        await openPopover();
 
-        expect([...dialog()!.querySelectorAll('section[aria-label]')].map(element => element.getAttribute('aria-label'))).toEqual(['Codex', 'Claude Code', 'Cursor']);
+        for (const [name, shown] of [['Codex', 'Codex'], ['Cursor', 'Cursor'], ['Claude Code', 'Claude Code']]) {
+            await openPopover(name);
+
+            expect([...dialog()!.querySelectorAll('section[aria-label]')].map(element => element.getAttribute('aria-label'))).toEqual([shown]);
+
+            await close();
+        }
     });
 
-    it('puts a provider with no reading last, in the fixed order of the rest', async () => {
-        await start(agentsWith((providers) => {
-            providers.claude.usage = { state: 'unavailable', windows: [] };
-            providers.codex.usage!.windows = [meter('codex:secondary', 10, 60)];
-            providers.cursor.usage!.windows = [meter('plan', 60, 60)];
-        }));
-        await openPopover();
-
-        expect([...dialog()!.querySelectorAll('section[aria-label]')].map(element => element.getAttribute('aria-label'))).toEqual(['Cursor', 'Codex', 'Claude Code']);
-    });
-
-    it('shows the account and its plan, and a bar for every window, scoped ones too, the most used first', async () => {
+    it('shows the account and its plan, and a bar for every window, scoped ones too, the nearest first', async () => {
         await start(agentsWith());
         await openPopover();
 
@@ -323,21 +333,50 @@ describe('the popover', () => {
 
         expect(claude.textContent).toContain('claude@example.com');
         expect(claude.textContent).toContain('Max');
-        expect(bars(claude).map(bar => bar.getAttribute('aria-label'))).toEqual(['7d · Fable used', '7d used', '5h used']);
-        expect(bars(claude).map(bar => bar.getAttribute('aria-valuenow'))).toEqual(['99', '78', '8']);
-        expect([...claude.querySelectorAll('li')].map(row => row.textContent)).toEqual(['7d · Fable99%1h 32m', '7d78%1h 32m', '5h8%28m']);
+        expect(bars(claude).map(bar => bar.getAttribute('aria-label'))).toEqual(['Session used', 'Week used', 'Fable used']);
+        expect(bars(claude).map(bar => bar.getAttribute('aria-valuenow'))).toEqual(['8', '78', '99']);
+        expect([...claude.querySelectorAll('li')].map(row => row.textContent)).toEqual(['Session8% usedResets in 28m', 'Week78% usedResets in 1h 32m', 'Fable99% usedResets in 1h 32m']);
+
+        await close();
+        await openPopover('Codex');
+
         expect(section('Codex').textContent).toContain('codex@example.com');
         expect(section('Codex').textContent).toContain('Plus');
+
+        await close();
+        await openPopover('Cursor');
+
         expect(section('Cursor').textContent).toContain('Plan usage');
+    });
+
+    it('puts the figures under the bar, how much is used and when it resets, and says so when the time has come or is not known', async () => {
+        await start(agentsWith((providers) => {
+            providers.claude.usage!.windows = [meter('session', 35, 11), { ...meter('weekly', 10), resetsAt: Date.now() - 1_000 }, meter('weekly:fable', 0)];
+        }));
+        await openPopover();
+
+        const rows = [...section('Claude Code').querySelectorAll('li')];
+
+        // The figures are in a block of their own, after the label and the bar.
+        expect(rows.map(row => [...row.children].map(child => child.textContent))).toEqual([
+            ['Session', '', '35% usedResets in 11m'],
+            ['Week', '', '10% usedResets now'],
+            ['Fable', '', '0% used'],
+        ]);
     });
 
     it('uses the same tones as the badges for its bars: warning from 80%, danger from 90%', async () => {
         await start(agentsWith());
-        await openPopover();
 
         const tone = (name: string) => bars(section(name)).map(bar => bar.firstElementChild!.getAttribute('data-tone'));
 
-        expect(tone('Claude Code')).toEqual(['danger', null, null]);
+        await openPopover();
+
+        expect(tone('Claude Code')).toEqual([null, null, 'danger']);
+
+        await close();
+        await openPopover('Codex');
+
         expect(tone('Codex')).toEqual(['warning', null]);
     });
 
@@ -375,14 +414,16 @@ describe('the popover', () => {
             providers.codex.usage = { state: 'unavailable', windows: [], detail: 'Signed in with an API key: there are no plan limits.' };
             providers.claude.usage = { ...providers.claude.usage!, state: 'error', detail: 'The usage endpoint answered 429.' };
         }));
-        await openPopover();
+        await openPopover('Codex');
 
         expect(section('Codex').textContent).toContain('there are no plan limits');
         expect(bars(section('Codex'))).toHaveLength(0);
+
+        await close();
+        await openPopover();
+
         expect(section('Claude Code').textContent).toContain('The usage endpoint answered 429.');
         expect(bars(section('Claude Code'))).toHaveLength(3);
-        // The error is why a reading is not shown, so the order has them after Cursor, which has one.
-        expect([...dialog()!.querySelectorAll('section[aria-label]')].map(element => element.getAttribute('aria-label'))).toEqual(['Cursor', 'Claude Code', 'Codex']);
     });
 
     it('counts the time to reset down while it is open', async () => {
@@ -400,8 +441,8 @@ describe('the popover', () => {
                 await vi.advanceTimersByTimeAsync(2 * MINUTE);
             });
 
-            expect(before).toEqual(['85%45m', '5h85%45m']);
-            expect([reset(), row()]).toEqual(['85%43m', '5h85%43m']);
+            expect(before).toEqual(['85%45m', 'Session85% usedResets in 45m']);
+            expect([reset(), row()]).toEqual(['85%43m', 'Session85% usedResets in 43m']);
         }
         finally {
             vi.useRealTimers();
@@ -416,7 +457,7 @@ describe('the refresh action', () => {
 
         const command = vi.spyOn(store, 'command');
 
-        await press(button(dialog()!, 'Read the usage again'));
+        await press(button(dialog()!, 'Refresh usage'));
 
         expect(command).toHaveBeenCalledWith({ type: 'agents.refresh' });
     });
@@ -426,10 +467,10 @@ describe('the refresh action', () => {
 
         await start(overrideTransport(agentsWith(), { command: async () => refused }));
         await openPopover();
-        await press(button(dialog()!, 'Read the usage again'));
+        await press(button(dialog()!, 'Refresh usage'));
         await vi.waitFor(() => expect(toasts.error).toHaveBeenCalledWith({ message: 'The daemon is busy.' }));
 
-        expect(button(dialog()!, 'Read the usage again')!.hasAttribute('data-pending')).toBe(false);
+        expect(button(dialog()!, 'Refresh usage')!.hasAttribute('data-pending')).toBe(false);
     });
 
     describe('while it waits', () => {
@@ -444,7 +485,9 @@ describe('the refresh action', () => {
             return { reads, getAgents };
         }
 
-        const spins = () => button(dialog()!, 'Read the usage again')!.hasAttribute('data-pending');
+        const spins = () => button(dialog()!, 'Refresh usage')!.hasAttribute('data-pending');
+        // The icon itself turns (the button shows no spinner of its own in its place).
+        const iconTurns = () => /spin/i.test(button(dialog()!, 'Refresh usage')!.querySelector('svg')?.getAttribute('class') ?? '');
         const later = (ms: number) => act(async () => {
             await vi.advanceTimersByTimeAsync(ms);
         });
@@ -462,9 +505,11 @@ describe('the refresh action', () => {
 
             await start(overrideTransport(agentsWith(), { getAgents }));
             await press(badge('Claude Code'));
-            await press(button(dialog()!, 'Read the usage again'));
+            await press(button(dialog()!, 'Refresh usage'));
 
             expect(spins()).toBe(true);
+            expect(iconTurns()).toBe(true);
+            expect(button(dialog()!, 'Refresh usage')!.querySelector('[class*="pinner"]')).toBeNull();
 
             await act(async () => {
                 dialog()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -483,6 +528,7 @@ describe('the refresh action', () => {
             await later(1_500);
 
             expect(spins()).toBe(false);
+            expect(iconTurns()).toBe(false);
         });
 
         it('keeps spinning when the provider that was read last is switched off meanwhile', async () => {
@@ -496,7 +542,7 @@ describe('the refresh action', () => {
 
             await start(overrideTransport(agentsWith(), { getAgents }));
             await press(badge('Codex'));
-            await press(button(dialog()!, 'Read the usage again'));
+            await press(button(dialog()!, 'Refresh usage'));
 
             off.claude = true;
             await later(3_000);
@@ -512,7 +558,7 @@ describe('the refresh action', () => {
 
             await start(overrideTransport(agentsWith(), { getAgents }));
             await press(badge('Claude Code'));
-            await press(button(dialog()!, 'Read the usage again'));
+            await press(button(dialog()!, 'Refresh usage'));
             await later(2_000);
             act(() => reactRoot.unmount());
             reactRoot = createRoot(container);
@@ -530,7 +576,7 @@ describe('the refresh action', () => {
 
             await start(overrideTransport(agentsWith(), { getAgents }));
             await press(badge('Claude Code'));
-            await press(button(dialog()!, 'Read the usage again'));
+            await press(button(dialog()!, 'Refresh usage'));
             await later(20_000);
 
             expect(spins()).toBe(true);

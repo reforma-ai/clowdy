@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { accountLine, formatEnv, headlineWindow, isSignInRunning, isUsableProvider, parseEnv, providerAgents, sortByHeadline, sortWindowsByUsage, usageTone, windowPercent } from './providerView';
+import { accountLine, formatEnv, headlineWindow, isSignInRunning, isUsableProvider, parseEnv, providerAgents, usageTone, windowPercent } from './providerView';
 
 import type { AgentInfo, AgentUsage, AgentUsageWindow } from '@clowdy/protocol';
 
@@ -54,35 +54,25 @@ describe('windowPercent', () => {
 });
 
 describe('headlineWindow', () => {
-    it('is the most used of the primary windows', () => {
-        const claude = agent({ usage: usage([meter('session', 8), meter('weekly', 78), meter('other', 20)]) });
-
-        expect(headlineWindow(claude)?.id).toBe('weekly');
+    it('is the first window of the plan, the nearest limit, whatever its percent', () => {
+        expect(headlineWindow(agent({ usage: usage([meter('session', 0), meter('weekly', 78), meter('other', 20)]) }))?.id).toBe('session');
+        expect(headlineWindow(agent({ usage: usage([meter('session', 8), meter('weekly', 78)]) }))?.id).toBe('session');
+        expect(headlineWindow(agent({ usage: usage([meter('session', Number.NaN), meter('weekly', 12)]) }))?.id).toBe('session');
     });
 
-    it('leaves out a scoped window, whatever its percent, and takes the first of equal ones', () => {
-        expect(headlineWindow(agent({ usage: usage([meter('session', 8), meter('weekly', 20), meter('weekly:fable', 95)]) }))?.id).toBe('weekly');
-        expect(headlineWindow(agent({ usage: usage([meter('session', 30), meter('weekly', 30)]) }))?.id).toBe('session');
+    it('leaves out a scoped window, whatever its place and its percent', () => {
+        expect(headlineWindow(agent({ usage: usage([meter('weekly:fable', 95), meter('session', 8), meter('weekly', 20)]) }))?.id).toBe('session');
         expect(headlineWindow(agent({ usage: usage([meter('weekly:fable', 95)]) }))).toBeUndefined();
+        expect(headlineWindow(agent({ usage: usage([meter('weekly:fable', 99)]) }))).toBeUndefined();
     });
 
     it('takes the windows of Codex\'s main limit for primary ones, and leaves out the limit of a single model', () => {
         const codex = agent({ id: 'codex', usage: usage([meter('codex:primary', 3), meter('codex:secondary', 18), meter('spark:secondary', 40)]) });
 
         // The ids the daemon really gives Codex's windows all carry a `:`, so a rule on the colon alone would leave it without a headline.
-        expect(headlineWindow(codex)?.id).toBe('codex:secondary');
+        expect(headlineWindow(codex)?.id).toBe('codex:primary');
         expect(headlineWindow(agent({ id: 'codex', usage: usage([meter('spark:secondary', 40)]) }))).toBeUndefined();
         expect(headlineWindow(agent({ id: 'claude', usage: usage([meter('codex:primary', 90), meter('session', 5)]) }))?.id).toBe('session');
-    });
-
-    it('skips a scoped window even when it is the only one that has a number, and is not fooled by a window that is not a number', () => {
-        expect(headlineWindow(agent({ usage: usage([meter('weekly:fable', 99)]) }))).toBeUndefined();
-        // A NaN first window would otherwise stay the headline, since nothing is greater than it.
-        expect(headlineWindow(agent({ usage: usage([meter('session', Number.NaN), meter('weekly', 12)]) }))?.id).toBe('weekly');
-    });
-
-    it('compares the percents the badge shows, so 78.4 and 78.2 are equal and the first wins', () => {
-        expect(headlineWindow(agent({ usage: usage([meter('session', 78.2), meter('weekly', 78.4)]) }))?.id).toBe('session');
     });
 
     it('is nothing without a trusted reading: no usage, not ok, no windows or signed out', () => {
@@ -95,38 +85,6 @@ describe('headlineWindow', () => {
         expect(headlineWindow(agent({ usage: usage([]) }))).toBeUndefined();
         expect(headlineWindow(agent({ usage: usage(windows), signIn: { status: 'signed-out', checkedAt: 1 } }))).toBeUndefined();
         expect(headlineWindow(agent({ usage: usage(windows), signIn: { status: 'signed-in', checkedAt: 1 } }))?.id).toBe('session');
-    });
-});
-
-describe('sortByHeadline', () => {
-    const withUsage = (id: string, percents: number[], patch: Partial<AgentInfo> = {}) => agent({ id, usage: usage(percents.map((percent, index) => meter(`w${ index }`, percent))), ...patch });
-
-    it('puts the most used provider first, the ones without a reading last, and keeps the order of equal ones', () => {
-        const all = [
-            agent({ id: 'claude' }),
-            withUsage('codex', [10, 40]),
-            withUsage('cursor', [40]),
-            withUsage('gemini', [90]),
-            withUsage('mine', [10], { signIn: { status: 'signed-out', checkedAt: 1 } }),
-        ];
-
-        expect(sortByHeadline(all).map(item => item.id)).toEqual(['gemini', 'codex', 'cursor', 'claude', 'mine']);
-    });
-
-    it('does not change the list it is given', () => {
-        const all = [agent({ id: 'claude' }), withUsage('codex', [10])];
-
-        sortByHeadline(all);
-
-        expect(all.map(item => item.id)).toEqual(['claude', 'codex']);
-    });
-});
-
-describe('sortWindowsByUsage', () => {
-    it('lists the most used window first and keeps the order of equal ones', () => {
-        const sorted = sortWindowsByUsage([meter('a', 8), meter('b', 20), meter('c', 0), meter('d', 20)]);
-
-        expect(sorted.map(item => item.id)).toEqual(['b', 'd', 'a', 'c']);
     });
 });
 

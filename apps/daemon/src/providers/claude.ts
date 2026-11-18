@@ -110,15 +110,18 @@ export function claudeWindows(limits: unknown): AgentUsageWindow[] {
         const kind = text(row.kind) ?? 'limit';
         // The server's reset times drift by a few hundred milliseconds from read to read: to the minute, so an unchanged window reads as unchanged.
         const resetsAt = typeof row.resets_at === 'string' ? Math.round(Date.parse(row.resets_at) / 60_000) * 60_000 : Number.NaN;
-        const base = kind === 'session' ? { id: 'session', label: '5h' }
-            : kind === 'weekly_all' ? { id: 'weekly', label: '7d' }
-                : model ? { id: `weekly:${ slug(model) }`, label: `7d · ${ model }` }
+        const base = kind === 'session' ? { id: 'session', label: 'Session' }
+            : kind === 'weekly_all' ? { id: 'weekly', label: 'Week' }
+                : model ? { id: `weekly:${ slug(model) }`, label: model }
                     : { id: kind, label: kind.replace(/_/g, ' ') };
 
         windows.push({ ...base, usedPercent: Math.min(100, Math.max(0, row.percent)), ...(Number.isFinite(resetsAt) && { resetsAt }) });
     }
 
-    return windows;
+    // The nearest limit comes first, whatever order the server listed them in: the session, then the week, then the weeks of single models.
+    const rank = (window: AgentUsageWindow) => (window.id === 'session' ? 0 : window.id === 'weekly' ? 1 : 2);
+
+    return windows.sort((a, b) => rank(a) - rank(b));
 }
 
 /** The lines of `claude -p "/usage" --output-format stream-json`: the report rides on the assistant line of the command. */
@@ -158,13 +161,13 @@ export function parseClaudeUsage(stdout: string): AgentUsage {
         const used = Number(percent);
 
         if (kind!.toLowerCase() === 'session') {
-            fromText.push({ id: 'session', label: '5h', usedPercent: used });
+            fromText.push({ id: 'session', label: 'Session', usedPercent: used });
         }
         else if (!scope || /all models/i.test(scope)) {
-            fromText.push({ id: 'weekly', label: '7d', usedPercent: used });
+            fromText.push({ id: 'weekly', label: 'Week', usedPercent: used });
         }
         else {
-            fromText.push({ id: `weekly:${ slug(scope) }`, label: `7d · ${ scope }`, usedPercent: used });
+            fromText.push({ id: `weekly:${ slug(scope) }`, label: scope, usedPercent: used });
         }
     }
 

@@ -42,8 +42,8 @@ export interface ButtonProps extends RACButtonProps {
     tooltipOffset?: number;
     isPressed?: boolean;
     tabIndex?: number;
-    /** Where the pending spinner goes: over the hidden label, or before the label it keeps. */
-    spinnerPlacement?: 'center' | 'start';
+    /** Where the pending spinner goes: over the hidden label, before the label it keeps, or nowhere (the label stays as it is and the caller animates it). */
+    spinnerPlacement?: 'center' | 'start' | 'none';
 }
 
 export function Button(props: ButtonProps) {
@@ -116,12 +116,12 @@ export function Button(props: ButtonProps) {
                 <>
                     <span
                         className={ cn(styles.content, contentClassName) }
-                        data-hidden={ isPending || undefined }
+                        data-hidden={ (isPending && spinnerPlacement === 'center') || undefined }
                     >
                         {children}
                     </span>
 
-                    <Show when={ isPending }>
+                    <Show when={ isPending && spinnerPlacement === 'center' }>
                         <Spinner size="inherit" className={ styles.spinner } aria-hidden="true" />
                     </Show>
                 </>

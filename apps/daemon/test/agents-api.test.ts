@@ -167,7 +167,7 @@ describe('accounts, usage and sign-in over the API', () => {
                 id: 'mine',
                 login: { args: [login] },
                 read: async () => await Bun.file(marker).exists()
-                    ? { signIn: { status: 'signed-in', account: { email: 'ada@example.com', plan: 'Max', method: 'subscription' } }, usage: { state: 'ok', windows: [{ id: 'session', label: '5h', usedPercent: 8 }], fetchedAt: 1 } }
+                    ? { signIn: { status: 'signed-in', account: { email: 'ada@example.com', plan: 'Max', method: 'subscription' } }, usage: { state: 'ok', windows: [{ id: 'session', label: 'Session', usedPercent: 8 }], fetchedAt: 1 } }
                     : { signIn: { status: 'signed-out' }, usage: { state: 'unavailable', windows: [] } },
             }],
         });
@@ -209,7 +209,7 @@ describe('accounts, usage and sign-in over the API', () => {
         expect((await list())[0]).toMatchObject({
             signInSession: { step: 'done', url: 'https://example.com/login?x=1' },
             signIn: { status: 'signed-in', account: { email: 'ada@example.com', plan: 'Max' } },
-            usage: { state: 'ok', windows: [{ id: 'session', label: '5h', usedPercent: 8 }] },
+            usage: { state: 'ok', windows: [{ id: 'session', label: 'Session', usedPercent: 8 }] },
         });
     });
 

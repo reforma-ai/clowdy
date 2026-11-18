@@ -76,10 +76,21 @@ interface Snapshot {
     secondary?: Window | null;
 }
 
-/** 300 minutes is `5h`, a week is `7d`: the windows say how long they are, and nothing says which one is which. */
+const SESSION_MINUTES = 5 * 60;
+const WEEK_MINUTES = 7 * 24 * 60;
+
+/** 300 minutes is the `Session`, a week is the `Week`: the windows say how long they are, and nothing says which one is which. Another length is told as it is (`1d`, `3h`, `90m`). */
 export function windowLabel(minutes: unknown, fallback: string): string {
     if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) {
         return fallback;
+    }
+
+    if (minutes === SESSION_MINUTES) {
+        return 'Session';
+    }
+
+    if (minutes === WEEK_MINUTES) {
+        return 'Week';
     }
 
     if (minutes % 1440 === 0) {
@@ -87,6 +98,15 @@ export function windowLabel(minutes: unknown, fallback: string): string {
     }
 
     return minutes % 60 === 0 ? `${ minutes / 60 }h` : `${ minutes }m`;
+}
+
+/** The weekly limit of one model is named for the model, as Claude's is (`Fable`); another window of it says which one it is (`Session · Codex Spark`). */
+function modelWindowLabel(window: string, model: string | undefined): string {
+    if (model === undefined) {
+        return window;
+    }
+
+    return window === 'Week' ? model : `${ window } · ${ model }`;
 }
 
 /** `account/rateLimits/read` as windows: the main bucket first, then the buckets of single models. Every window is optional. */
@@ -98,16 +118,16 @@ export function codexWindows(response: { rateLimits?: Snapshot | null; rateLimit
     const windows: AgentUsageWindow[] = [];
 
     for (const [limitId, snapshot] of ordered) {
-        const named = limitId === 'codex' ? '' : ` · ${ snapshot.limitName ?? limitId }`;
+        const model = limitId === 'codex' ? undefined : snapshot.limitName ?? limitId;
 
-        for (const [slot, window, fallback] of [['primary', snapshot.primary, '5h'], ['secondary', snapshot.secondary, '7d']] as const) {
+        for (const [slot, window, fallback] of [['primary', snapshot.primary, 'Session'], ['secondary', snapshot.secondary, 'Week']] as const) {
             if (typeof window?.usedPercent !== 'number' || !Number.isFinite(window.usedPercent)) {
                 continue;
             }
 
             windows.push({
                 id: `${ limitId }:${ slot }`,
-                label: `${ windowLabel(window.windowDurationMins, fallback) }${ named }`,
+                label: modelWindowLabel(windowLabel(window.windowDurationMins, fallback), model),
                 usedPercent: Math.min(100, Math.max(0, window.usedPercent)),
                 ...(typeof window.resetsAt === 'number' && { resetsAt: window.resetsAt * 1000 }),
             });

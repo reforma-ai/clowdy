@@ -228,8 +228,8 @@ describe('FixtureTransport agents', () => {
 
         expect(Object.keys(agents)).toEqual(['claude', 'codex', 'cursor']);
         expect(agents.claude?.signIn?.account).toMatchObject({ plan: 'Max' });
-        expect(agents.claude?.usage?.windows.map(window => window.label)).toEqual(['5h', '7d', '7d · Fable']);
-        expect(agents.codex?.usage?.windows.map(window => window.label)).toEqual(['5h', '7d']);
+        expect(agents.claude?.usage?.windows.map(window => window.label)).toEqual(['Session', 'Week', 'Fable']);
+        expect(agents.codex?.usage?.windows.map(window => window.label)).toEqual(['Session', 'Week']);
         expect(agents.cursor?.usage?.windows.map(window => window.label)).toEqual(['Plan usage']);
     });
 

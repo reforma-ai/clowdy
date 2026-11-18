@@ -127,11 +127,21 @@ describe('Claude Code', () => {
         ];
 
         expect(claudeWindows(limits)).toEqual([
-            { id: 'session', label: '5h', usedPercent: 5, resetsAt: Date.parse('2026-11-18T20:00:00Z') },
-            { id: 'weekly', label: '7d', usedPercent: 22, resetsAt: Date.parse('2026-11-24T15:00:00Z') },
-            { id: 'weekly:fable', label: '7d · Fable', usedPercent: 0, resetsAt: Date.parse('2026-11-24T15:00:00Z') },
+            { id: 'session', label: 'Session', usedPercent: 5, resetsAt: Date.parse('2026-11-18T20:00:00Z') },
+            { id: 'weekly', label: 'Week', usedPercent: 22, resetsAt: Date.parse('2026-11-24T15:00:00Z') },
+            { id: 'weekly:fable', label: 'Fable', usedPercent: 0, resetsAt: Date.parse('2026-11-24T15:00:00Z') },
             { id: 'something_new', label: 'something new', usedPercent: 100 },
         ]);
+    });
+
+    test('lists the nearest limit first, whatever order the server gave: the session, then the week, then the weeks of single models', () => {
+        const limits = [
+            { kind: 'weekly_scoped', percent: 90, resets_at: null, scope: { model: { display_name: 'Fable' } } },
+            { kind: 'weekly_all', percent: 40, resets_at: null, scope: null },
+            { kind: 'session', percent: 0, resets_at: null, scope: null },
+        ];
+
+        expect(claudeWindows(limits).map(window => window.id)).toEqual(['session', 'weekly', 'weekly:fable']);
     });
 
     test('takes the report from the assistant line of the stream, and the text of an older Claude Code when there is none', () => {
@@ -142,11 +152,11 @@ describe('Claude Code', () => {
             JSON.stringify({ type: 'result', subtype: 'success' }),
         ].join('\n');
 
-        expect(parseClaudeUsage(stream)).toEqual({ state: 'ok', windows: [{ id: 'session', label: '5h', usedPercent: 8, resetsAt: Date.parse('2026-11-18T20:00:00Z') }] });
+        expect(parseClaudeUsage(stream)).toEqual({ state: 'ok', windows: [{ id: 'session', label: 'Session', usedPercent: 8, resetsAt: Date.parse('2026-11-18T20:00:00Z') }] });
 
         const old = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Current session: 5% used · resets 5pm\nCurrent week (all models): 22% used · resets Nov 24\nCurrent week (Fable): 0% used' }] } });
 
-        expect(parseClaudeUsage(old)).toEqual({ state: 'ok', windows: [{ id: 'session', label: '5h', usedPercent: 5 }, { id: 'weekly', label: '7d', usedPercent: 22 }, { id: 'weekly:fable', label: '7d · Fable', usedPercent: 0 }] });
+        expect(parseClaudeUsage(old)).toEqual({ state: 'ok', windows: [{ id: 'session', label: 'Session', usedPercent: 5 }, { id: 'weekly', label: 'Week', usedPercent: 22 }, { id: 'weekly:fable', label: 'Fable', usedPercent: 0 }] });
         expect(parseClaudeUsage(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Usage is rate limited until 3:14am' }] } }))).toMatchObject({ state: 'error', detail: 'Usage is rate limited until 3:14am' });
         expect(parseClaudeUsage('')).toMatchObject({ state: 'error' });
     });
@@ -160,7 +170,7 @@ describe('Claude Code', () => {
         const read = await claude.read(context({ program: subscription }));
 
         expect(read.signIn).toEqual({ status: 'signed-in', account: { method: 'subscription', email: 'ada@example.com', plan: 'Max' } });
-        expect(read.usage).toMatchObject({ state: 'ok', fetchedAt: 1_000, windows: [{ id: 'weekly', label: '7d', usedPercent: 20 }] });
+        expect(read.usage).toMatchObject({ state: 'ok', fetchedAt: 1_000, windows: [{ id: 'weekly', label: 'Week', usedPercent: 20 }] });
 
         const key = program('claude-key', `echo '${ JSON.stringify({ loggedIn: true, authMethod: 'api_key' }) }'`);
         const keyed = await claude.read(context({ program: key }));
@@ -189,7 +199,7 @@ describe('Codex', () => {
     });
 
     test('labels a window by its length, and falls back on the slot when it does not say', () => {
-        expect([windowLabel(300, 'x'), windowLabel(10080, 'x'), windowLabel(1440, 'x'), windowLabel(90, 'x'), windowLabel(null, '5h')]).toEqual(['5h', '7d', '1d', '90m', '5h']);
+        expect([windowLabel(300, 'x'), windowLabel(10080, 'x'), windowLabel(1440, 'x'), windowLabel(180, 'x'), windowLabel(90, 'x'), windowLabel(null, 'Session')]).toEqual(['Session', 'Week', '1d', '3h', '90m', 'Session']);
     });
 
     test('shows the main bucket first, then the buckets of single models, with every window optional', () => {
@@ -202,15 +212,21 @@ describe('Codex', () => {
         };
 
         expect(codexWindows(response)).toEqual([
-            { id: 'codex:primary', label: '5h', usedPercent: 3, resetsAt: 1_795_030_875_000 },
-            { id: 'codex:secondary', label: '7d', usedPercent: 18, resetsAt: 1_795_102_146_000 },
-            { id: 'spark:secondary', label: '7d · Codex Spark', usedPercent: 40, resetsAt: 1_795_102_146_000 },
+            { id: 'codex:primary', label: 'Session', usedPercent: 3, resetsAt: 1_795_030_875_000 },
+            { id: 'codex:secondary', label: 'Week', usedPercent: 18, resetsAt: 1_795_102_146_000 },
+            { id: 'spark:secondary', label: 'Codex Spark', usedPercent: 40, resetsAt: 1_795_102_146_000 },
         ]);
         expect(codexWindows({ rateLimits: { primary: { usedPercent: 9, windowDurationMins: null, resetsAt: null }, secondary: { usedPercent: 1, windowDurationMins: null, resetsAt: null } } })).toEqual([
-            { id: 'codex:primary', label: '5h', usedPercent: 9 },
-            { id: 'codex:secondary', label: '7d', usedPercent: 1 },
+            { id: 'codex:primary', label: 'Session', usedPercent: 9 },
+            { id: 'codex:secondary', label: 'Week', usedPercent: 1 },
         ]);
         expect(codexWindows({ rateLimits: null, rateLimitsByLimitId: null })).toEqual([]);
+    });
+
+    test('names a window of a single model for the model when it is the weekly one, and says which window it is otherwise', () => {
+        const spark = { limitId: 'spark', limitName: 'Codex Spark', primary: { usedPercent: 5, windowDurationMins: 300, resetsAt: null }, secondary: { usedPercent: 7, windowDurationMins: 10080, resetsAt: null } };
+
+        expect(codexWindows({ rateLimitsByLimitId: { spark } }).map(window => window.label)).toEqual(['Session · Codex Spark', 'Codex Spark']);
     });
 
     test('talks to `codex app-server`: initialize, account/read, account/rateLimits/read, one JSON message per line', async () => {
@@ -229,7 +245,7 @@ describe('Codex', () => {
         const read = await codex.read(context({ program: fake }));
 
         expect(read.signIn).toEqual({ status: 'signed-in', account: { method: 'subscription', email: 'ada@example.com', plan: 'Plus' } });
-        expect(read.usage).toEqual({ state: 'ok', fetchedAt: 1_000, windows: [{ id: 'codex:primary', label: '5h', usedPercent: 3, resetsAt: 1_795_030_875_000 }] });
+        expect(read.usage).toEqual({ state: 'ok', fetchedAt: 1_000, windows: [{ id: 'codex:primary', label: 'Session', usedPercent: 3, resetsAt: 1_795_030_875_000 }] });
     });
 
     test('does not wait for the deadline for a program that ended in the middle of the conversation', async () => {

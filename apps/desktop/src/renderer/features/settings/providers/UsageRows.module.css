@@ -9,7 +9,7 @@
 .rows {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-md);
+    gap: var(--spacing-lg);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -21,10 +21,9 @@
 }
 
 .row {
-    display: grid;
-    grid-template-columns: var(--usage-columns, 6.5rem minmax(4rem, 1fr) 2.75rem 4.5rem);
-    align-items: center;
-    column-gap: var(--spacing-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
 }
 
 .label {
@@ -54,15 +53,36 @@
     background-color: var(--color-danger);
 }
 
-.percent,
-.reset {
-    font-variant-numeric: tabular-nums;
-    text-align: end;
+/* How much is used at the left, when it resets at the right. */
+.details {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+}
+
+.figure {
     white-space: nowrap;
+}
+
+/* The refresh icon turns while a read is on its way. */
+.spin {
+    animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .fill {
         transition: none;
+    }
+
+    /* Nothing turns, so the icon is faded for as long as the read lasts. */
+    .spin {
+        animation: none;
+        opacity: 0.5;
     }
 }

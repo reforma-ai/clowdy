@@ -73,11 +73,11 @@ export interface AgentSignIn {
     detail?: string;
 }
 
-/** One meter of a plan: the 5-hour window, the weekly one, a weekly one for one model, a monthly plan. */
+/** One meter of a plan: the 5-hour window, the weekly one, a weekly one for one model, a monthly plan. An agent lists them nearest first: the 5-hour window, then the weekly one, then the ones of single models. */
 export interface AgentUsageWindow {
     /** Stable within an agent: `session`, `weekly`, `weekly:fable`, `plan`. */
     id: string;
-    /** Short, as a row label: `5h`, `7d`, `7d · Fable`, `Plan usage`. */
+    /** Short, as a row label: `Session`, `Week`, `Fable` (the weekly limit of one model), `Plan usage`. */
     label: string;
     /** 0-100, how much of the window is used. */
     usedPercent: number;

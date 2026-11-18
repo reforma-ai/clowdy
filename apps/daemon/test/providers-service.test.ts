@@ -18,7 +18,7 @@ function registry(ready: string[]): AgentRegistry {
 
 const ok = (percent: number, email = 'ada@example.com'): ProviderRead => ({
     signIn: { status: 'signed-in', account: { email, method: 'subscription' } },
-    usage: { state: 'ok', windows: [{ id: 'session', label: '5h', usedPercent: percent }], fetchedAt: 1 },
+    usage: { state: 'ok', windows: [{ id: 'session', label: 'Session', usedPercent: percent }], fetchedAt: 1 },
 });
 
 /** A provider whose reads come from a script, one per call, and a clock the test moves. */
@@ -126,7 +126,7 @@ describe('ProvidersService', () => {
         service.decorate([info('claude')]);
         await settle();
 
-        expect(service.decorate([info('claude')])[0]!.usage).toEqual({ state: 'error', detail: 'offline', windows: [{ id: 'session', label: '5h', usedPercent: 8 }], fetchedAt: 1 });
+        expect(service.decorate([info('claude')])[0]!.usage).toEqual({ state: 'error', detail: 'offline', windows: [{ id: 'session', label: 'Session', usedPercent: 8 }], fetchedAt: 1 });
         expect(calls()).toBe(2);
 
         // A failure waits 30 s before the next try, and a second one 60 s.

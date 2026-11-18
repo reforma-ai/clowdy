@@ -32,7 +32,7 @@ export function usageTone(percent: number): UsageTone {
 }
 
 /**
- * Whether a window is one model's limit, not the plan's: Claude's `weekly:fable` (`7d · Fable`) and Codex's `spark:secondary`.
+ * Whether a window is one model's limit, not the plan's: Claude's `weekly:fable` (`Fable`) and Codex's `spark:secondary`.
  * The plan's own windows have no `:` in their id (`session`, `weekly`, `plan`), except Codex's, which are named after its main
  * limit, `codex:primary` and `codex:secondary`: an id that starts with the agent's own id.
  */
@@ -41,39 +41,17 @@ function isScopedWindow(agent: AgentInfo, window: AgentUsageWindow): boolean {
 }
 
 /**
- * The window a provider is summed up by: the primary window (not a scoped one, see `isScopedWindow`) that is the most used,
- * the first of them when several are equal. One model's limit says little about the plan, so a scoped window is left out.
+ * The window a provider is summed up by: its nearest limit, the first of the plan's own windows (not a scoped one, see `isScopedWindow`).
+ * The daemon lists a plan's windows shortest first, so this is the session of Claude and the 5-hour window of Codex, shown whatever its
+ * percent: a session at zero is still the limit that comes next, and a weekly one that happens to be fuller is not.
+ * One model's limit says little about the plan, so a scoped window is left out.
  * Nothing when there is no reading to trust: the usage is not `ok` (a failed read keeps the last windows, which are not
- * news), nobody is signed in, or it has no primary window.
+ * news), nobody is signed in, or it has no window of the plan.
  */
 export function headlineWindow(agent: AgentInfo): AgentUsageWindow | undefined {
     if (agent.usage?.state !== 'ok' || agent.signIn?.status === 'signed-out') return undefined;
 
-    let headline: AgentUsageWindow | undefined;
-
-    for (const window of agent.usage.windows) {
-        if (isScopedWindow(agent, window)) continue;
-
-        if (!headline || windowPercent(window) > windowPercent(headline)) headline = window;
-    }
-
-    return headline;
-}
-
-/** `providers` by their headline percent, the most used first; those without a reading come last. Equal ones keep their order. */
-export function sortByHeadline(providers: readonly AgentInfo[]): AgentInfo[] {
-    const percent = (agent: AgentInfo) => {
-        const headline = headlineWindow(agent);
-
-        return headline ? windowPercent(headline) : -1;
-    };
-
-    return [...providers].sort((a, b) => percent(b) - percent(a));
-}
-
-/** A provider's windows, the most used first; equal ones keep their order. */
-export function sortWindowsByUsage(windows: readonly AgentUsageWindow[]): AgentUsageWindow[] {
-    return [...windows].sort((a, b) => windowPercent(b) - windowPercent(a));
+    return agent.usage.windows.find(window => !isScopedWindow(agent, window));
 }
 
 /** What the line under a card's title says: who is signed in, or why there is nobody to show. */
