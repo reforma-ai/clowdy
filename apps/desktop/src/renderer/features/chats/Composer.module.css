@@ -71,7 +71,7 @@
 
 /* The files picked for the message, above the text. */
 .files {
-    margin-bottom: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
     cursor: default;
 }
 
