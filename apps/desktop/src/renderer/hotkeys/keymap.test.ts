@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
 
-import { runCommands } from '../features/agents/runCommands';
-import { chatCommands } from '../features/chats/chatCommands';
+import { agentCommands } from '../features/agents/agentCommands';
 import { docSaveCommand, docTreeCommands } from '../features/docs/docCommands';
 import { taskCommands, type TaskCommandDeps } from '../features/tasks/taskCommands';
 import { shellCommands } from '../shell/shellCommands';
@@ -20,8 +19,7 @@ function wholeKeymap(): Command[] {
     return [
         ...shell,
         ...taskCommands(nothing as TaskCommandDeps),
-        ...chatCommands({ list: () => null, ids: () => [], openId: () => undefined }),
-        ...runCommands({ tree: () => null, ...list, select: vi.fn() }),
+        ...agentCommands({ list: () => null, ids: () => [], openId: () => undefined }),
         ...docTreeCommands({ tree: () => null, ...list }),
         docSaveCommand(nothing),
     ];
@@ -48,13 +46,13 @@ describe('the whole keymap', () => {
         const commands = wholeKeymap();
 
         expect(new Set(commands.map(({ id }) => id)).size).toBe(commands.length);
-        expect(new Set(commands.map(({ scope }) => scope))).toEqual(new Set(['app', 'tasks', 'chats', 'agents', 'docs']));
+        expect(new Set(commands.map(({ scope }) => scope))).toEqual(new Set(['app', 'tasks', 'agents', 'docs']));
     });
 
     it('has J in every section, so the no-collision check above is what lets them share it', () => {
         const keysOf = (scope: string) => wholeKeymap().filter(command => command.scope === scope).flatMap(({ keys }) => (typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : []));
 
-        for (const scope of ['tasks', 'chats', 'agents', 'docs']) expect(keysOf(scope)).toContain('j');
+        for (const scope of ['tasks', 'agents', 'docs']) expect(keysOf(scope)).toContain('j');
     });
 
     it('does reject an app command that takes a key of a section', () => {
@@ -63,6 +61,6 @@ describe('the whole keymap', () => {
 
         expect(conflicts.length).toBeGreaterThan(0);
         expect(conflicts.every(({ a, b }) => a.id === 'app.j' || b.id === 'app.j')).toBe(true);
-        expect(new Set(conflicts.flatMap(({ a, b }) => [a.scope, b.scope]))).toEqual(new Set(['app', 'tasks', 'chats', 'agents', 'docs']));
+        expect(new Set(conflicts.flatMap(({ a, b }) => [a.scope, b.scope]))).toEqual(new Set(['app', 'tasks', 'agents', 'docs']));
     });
 });

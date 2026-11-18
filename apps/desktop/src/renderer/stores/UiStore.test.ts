@@ -19,9 +19,43 @@ describe('UiStore', () => {
         ui.openRun('r1');
         expect([ui.section, ui.runId]).toEqual(['agents', 'r1']);
         ui.openChat('c1');
-        expect([ui.section, ui.chatId]).toEqual(['chats', 'c1']);
+        expect([ui.section, ui.chatId, ui.runId]).toEqual(['agents', 'c1', null]);
         ui.openDoc('decisions/pricing.md');
         expect([ui.section, ui.docPath]).toEqual(['docs', 'decisions/pricing.md']);
+    });
+
+    it('keeps a chat and one of its runs apart: opening one clears the other, and so does the new-chat row', () => {
+        const ui = new UiStore().forProject('p1');
+
+        ui.openChat('c1');
+        ui.openRun('r1');
+        expect([ui.chatId, ui.runId, ui.draft]).toEqual(['c1', 'r1', false]);
+
+        ui.openDraft();
+        expect([ui.section, ui.runId, ui.draft]).toEqual(['agents', null, true]);
+
+        ui.openRun('r1');
+        expect(ui.draft).toBe(false);
+
+        ui.openDraft();
+        ui.openChat('c2');
+        expect([ui.chatId, ui.runId, ui.draft]).toEqual(['c2', null, false]);
+    });
+
+    it('does not keep the new-chat row between sessions, but shows it again with back and forward', () => {
+        const storage = memoryStorage();
+        const first = new UiStore(storage).forProject('p1');
+
+        first.openDraft();
+
+        expect(new UiStore(storage).forProject('p1').draft).toBe(false);
+
+        const view = first.view;
+
+        first.openChat('c1');
+        first.show(view);
+
+        expect(first.draft).toBe(true);
     });
 
     it('remembers each project on its own and restores it in a new window', () => {
@@ -30,21 +64,23 @@ describe('UiStore', () => {
 
         first.forProject('p1').openTask('t7');
         first.forProject('p1').setTasksView('list');
-        first.forProject('p1').setShowFinished(true);
+        first.forProject('p1').setShowFinished(false);
+        first.forProject('p1').setShowSubthreads(false);
+        first.forProject('p1').setShowArchived(true);
         first.forProject('p2').openChat('c3');
 
         const second = new UiStore(storage);
 
-        expect(second.forProject('p1')).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list', showFinished: true });
-        expect(second.forProject('p2')).toMatchObject({ section: 'chats', chatId: 'c3', tasksView: 'board', showFinished: false });
-        expect(second.forProject('p3').section).toBe('chats');
+        expect(second.forProject('p1')).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list', showFinished: false, showSubthreads: false, showArchived: true });
+        expect(second.forProject('p2')).toMatchObject({ section: 'agents', chatId: 'c3', tasksView: 'board', showFinished: true, showSubthreads: true, showArchived: false });
+        expect(second.forProject('p3').section).toBe('agents');
     });
 
     it('starts from defaults when the stored value is damaged', () => {
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"nope","taskId":5,"tasksView":"cards"}' })).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'chats', taskId: null, tasksView: 'board' });
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': 'not json' })).forProject('p1').section).toBe('chats');
+        expect(ui).toMatchObject({ section: 'agents', taskId: null, tasksView: 'board' });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': 'not json' })).forProject('p1').section).toBe('agents');
     });
 
     it('keeps working when storage throws', () => {
@@ -84,11 +120,17 @@ describe('UiStore', () => {
         expect([store.settingsOpen, store.settingsPage]).toEqual([true, 'engine']);
     });
 
+    it('shows the Agents section for a section an older version stored under the name Chats', () => {
+        const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"chats","chatId":"c-1"}' })).forProject('p1');
+
+        expect(ui).toMatchObject({ section: 'agents', chatId: 'c-1' });
+    });
+
     it('starts from what the page URL preselects, ahead of the stored state', () => {
-        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&finished=1&chat=c-1&run=r-1&doc=a.md');
+        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&finished=1&subthreads=0&archived=1&chat=c-1&run=r-1&doc=a.md');
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","tasksView":"board"}' }), initial).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', showFinished: true, chatId: 'c-1', runId: 'r-1', docPath: 'a.md' });
+        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', showFinished: true, showSubthreads: false, showArchived: true, chatId: 'c-1', runId: 'r-1', docPath: 'a.md' });
     });
 
     it('ignores URL values that name no section or view', () => {

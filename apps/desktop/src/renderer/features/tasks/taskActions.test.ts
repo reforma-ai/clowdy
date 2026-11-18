@@ -482,7 +482,7 @@ describe('Copy', () => {
 });
 
 describe('Open the linked chat', () => {
-    it('opens the newest chat that discusses the cursor task, in Chats', async () => {
+    it('opens the newest chat that discusses the cursor task, in Agents', async () => {
         await mount();
         // CAR-28 is discussed in c-2 (four days ago) and now in c-4 (minutes ago).
         project().applyEvent({ cursor: project().cursor + 1, at: 0, projectId: FIXTURE_PROJECT_ID, data: { type: 'link.chatTask', link: { chatId: 'c-4', taskId: 't-28' }, present: true } });
@@ -491,7 +491,7 @@ describe('Open the linked chat', () => {
         press('c');
 
         expect(project().chatsOfTask('t-28').map(chat => chat.id).sort()).toEqual(['c-2', 'c-4']);
-        expect(ui().section).toBe('chats');
+        expect(ui().section).toBe('agents');
         expect(ui().chatId).toBe('c-4');
     });
 
@@ -582,9 +582,9 @@ describe('Back and forward', () => {
         press('End');
 
         expect(ui().taskId).toBe('t-30');
-        // Chats, the Tasks screen and the open task: the tasks the cursor passed are not stops.
+        // Agents, the Tasks screen and the open task: the tasks the cursor passed are not stops.
         expect(stepsBack()).toBe(2);
-        expect(ui().section).toBe('chats');
+        expect(ui().section).toBe('agents');
 
         root.history.forward();
         root.history.forward();

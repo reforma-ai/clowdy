@@ -34,7 +34,7 @@ interface NavHost {
  * One reaction watches the navigation state, so every action that changes what the window shows is an entry without its call site knowing:
  * a new one drops the entries ahead of the current one. Going back or forward applies the entry and moves the position, in one action. When the reaction
  * then looks, the state equals the current entry and records nothing, so applying needs no flag of its own. That holds as long as nothing else changes
- * the state in response: a screen that picks another selection when it mounts (the Agents screen, when the remembered run is gone) does it in
+ * the state in response: a screen that picks another selection when it mounts (a screen that finds its remembered selection gone) does it in
  * `replacing`, or the pick would be a new entry and drop the way forward.
  * Recording starts at the first selected project, so loading the app does not leave a pile of entries.
  */
@@ -153,9 +153,8 @@ export class NavHistory {
         if (settingsOpen || state?.status !== 'ready') return true;
 
         switch (section) {
-            case 'chats': return chatId === null || state.chats.has(chatId);
+            case 'agents': return (chatId === null || state.chats.has(chatId)) && (runId === null || state.runs.has(runId));
             case 'tasks': return taskId === null || state.tasks.has(taskId);
-            case 'agents': return runId === null || state.runs.has(runId);
             case 'docs': return true;
         }
     }

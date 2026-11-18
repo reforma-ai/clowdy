@@ -4,7 +4,6 @@ import { cn } from '@clowdy/lib';
 import { useEffect } from 'react';
 
 import { Screen as AgentsScreen } from '../features/agents';
-import { Screen as ChatsScreen } from '../features/chats';
 import { Screen as DocsScreen } from '../features/docs';
 import { Screen as SettingsScreen } from '../features/settings';
 import { Screen as TasksScreen } from '../features/tasks';
@@ -23,9 +22,8 @@ import type { ComponentType } from 'react';
 import type { Section } from '../stores';
 
 const SCREENS: Record<Section, ComponentType> = {
-    chats: ChatsScreen,
-    tasks: TasksScreen,
     agents: AgentsScreen,
+    tasks: TasksScreen,
     docs: DocsScreen,
 };
 

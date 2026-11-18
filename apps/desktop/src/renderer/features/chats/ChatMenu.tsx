@@ -1,18 +1,21 @@
 import { Menu, MenuItem, MenuSeparator } from '@clowdy/components/List';
 import { PopoverScroll } from '@clowdy/components/Popover';
-import { EditPen, Trash } from '@clowdy/icons/14';
+import { Box, EditPen, Trash } from '@clowdy/icons/14';
 
 export interface ChatMenuProps {
-    /** A chat whose agents are working cannot be deleted. */
+    /** A chat whose agents are working can be neither archived nor deleted. */
     isBusy: boolean;
+    /** The chat is archived: the entry brings it back instead of putting it away. */
+    isArchived: boolean;
     /** Closes the popover the menu is in. Called before the action runs. */
     onClose: () => void;
     onRename: () => void;
+    onArchive: () => void;
     onDelete: () => void;
 }
 
 /** What can be done to a chat: the content of its `⋯` popover and of its right-click menu. */
-export function ChatMenu({ isBusy, onClose, onRename, onDelete }: ChatMenuProps) {
+export function ChatMenu({ isBusy, isArchived, onClose, onRename, onArchive, onDelete }: ChatMenuProps) {
     return (
         <PopoverScroll>
             <Menu
@@ -22,10 +25,20 @@ export function ChatMenu({ isBusy, onClose, onRename, onDelete }: ChatMenuProps)
                     onClose();
 
                     if (key === 'rename') onRename();
+                    else if (key === 'archive') onArchive();
                     else if (key === 'delete') onDelete();
                 } }
             >
                 <MenuItem id="rename" icon={ <EditPen /> } textValue="Rename">Rename</MenuItem>
+                <MenuItem
+                    id="archive"
+                    icon={ <Box /> }
+                    textValue={ isArchived ? 'Unarchive' : 'Archive' }
+                    isDisabled={ isBusy && !isArchived }
+                    description={ isBusy && !isArchived ? 'Stop the chat first' : undefined }
+                >
+                    { isArchived ? 'Unarchive' : 'Archive' }
+                </MenuItem>
                 <MenuSeparator />
                 <MenuItem
                     id="delete"

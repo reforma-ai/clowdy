@@ -33,8 +33,8 @@ const ui = () => root.ui.forProject(root.selectedProjectId!);
 
 /** Where the window is, in one comparable string: the project and the place, or Settings over it. */
 function place(): string {
-    const { section, chatId, taskId, runId, docPath } = ui();
-    const here = { chats: chatId, tasks: taskId, agents: runId, docs: docPath }[section];
+    const { section, chatId, taskId, runId, docPath, draft } = ui();
+    const here = { agents: draft ? '@new-chat' : (runId ?? chatId), tasks: taskId, docs: docPath }[section];
 
     return `${ root.selectedProjectId }/${ root.ui.settingsOpen ? `settings:${ root.ui.settingsPage }` : `${ section }:${ here }` }`;
 }
@@ -86,9 +86,9 @@ describe('NavHistory recording', () => {
             'p-car/docs:decisions/pricing.md',
             'p-car/agents:r-ex-07',
             'p-car/tasks:t-24',
-            'p-car/chats:c-1',
+            'p-car/agents:c-1',
             'p-car/tasks:null',
-            'p-car/chats:null',
+            'p-car/agents:null',
         ]);
 
         const forward = [place()];
@@ -99,6 +99,23 @@ describe('NavHistory recording', () => {
         }
 
         expect(forward).toEqual([...stops].reverse());
+    });
+
+    it('records the new-chat row as a place of its own, and leaves it by opening a chat or a run', () => {
+        ui().openChat('c-1');
+        ui().openDraft();
+
+        expect(place()).toBe('p-car/agents:@new-chat');
+
+        ui().openRun('r-ex-07');
+
+        expect(place()).toBe('p-car/agents:r-ex-07');
+        expect(ui().draft).toBe(false);
+
+        root.history.back();
+        expect(place()).toBe('p-car/agents:@new-chat');
+        root.history.back();
+        expect(place()).toBe('p-car/agents:c-1');
     });
 
     it('records Settings and its pages', () => {
@@ -113,7 +130,7 @@ describe('NavHistory recording', () => {
         root.history.back();
         expect(place()).toBe('p-car/settings:engine');
         root.history.back();
-        expect(place()).toBe('p-car/chats:null');
+        expect(place()).toBe('p-car/agents:null');
         expect(root.history.canGoBack).toBe(false);
 
         root.history.forward();
@@ -143,9 +160,9 @@ describe('NavHistory recording', () => {
             'p-car/tasks:t-24',
             'p-clowdy/docs:null',
             'p-clowdy/settings:appearance',
-            'p-clowdy/chats:null',
+            'p-clowdy/agents:null',
             'p-car/tasks:t-24',
-            'p-car/chats:null',
+            'p-car/agents:null',
         ]);
         expect(root.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
 
@@ -183,29 +200,31 @@ describe('NavHistory recording', () => {
         root.history.back();
         expect(root.history.canGoForward).toBe(true);
 
-        root.ui.showSection(ui(), 'agents');
+        root.ui.showSection(ui(), 'docs');
 
         expect(root.history.canGoForward).toBe(false);
         root.history.back();
-        expect(place()).toBe('p-car/chats:null');
+        expect(place()).toBe('p-car/agents:null');
     });
 
-    it('does not record the view options: the Tasks view, finished runs', () => {
+    it('does not record the view options: the Tasks view, the subthreads shown', () => {
         ui().setTasksView('list');
-        ui().setShowFinished(true);
+        ui().setShowFinished(false);
+        ui().setShowSubthreads(false);
         ui().setTasksView('board');
 
         expect(root.history.canGoBack).toBe(false);
 
         ui().openTask('t-24');
         ui().setTasksView('list');
-        ui().setShowFinished(false);
+        ui().setShowFinished(true);
+        ui().setShowSubthreads(true);
 
         expect(stepsBack()).toBe(1);
     });
 
     it('does not record a change that leaves the place as it was', () => {
-        root.ui.showSection(ui(), 'chats');
+        root.ui.showSection(ui(), 'agents');
         ui().openChat(null);
         root.ui.showSettingsPage('skills');
 
@@ -229,7 +248,7 @@ describe('NavHistory.replacing', () => {
 
         // One entry for the three, over the section it came from.
         expect(stepsBack()).toBe(1);
-        expect(place()).toBe('p-car/chats:null');
+        expect(place()).toBe('p-car/agents:null');
 
         root.history.forward();
         expect(place()).toBe('p-car/tasks:t-23');
@@ -266,7 +285,7 @@ describe('NavHistory.replacing', () => {
 
         expect(place()).toBe('p-car/tasks:null');
         expect(stepsBack()).toBe(1);
-        expect(place()).toBe('p-car/chats:null');
+        expect(place()).toBe('p-car/agents:null');
     });
 });
 
@@ -300,7 +319,7 @@ describe('NavHistory entries that are gone', () => {
 
         // The entry of the deleted task is gone, and the one before it shows what the window shows now.
         expect(stepsBack()).toBe(1);
-        expect(place()).toBe('p-car/chats:null');
+        expect(place()).toBe('p-car/agents:null');
 
         root.history.forward();
         expect(place()).toBe('p-car/tasks:null');
@@ -316,10 +335,10 @@ describe('NavHistory entries that are gone', () => {
         expect(root.selectedProject?.runs.has('r-orch-2')).toBe(false);
 
         root.history.back();
-        expect(place()).toBe('p-car/chats:null');
+        expect(place()).toBe('p-car/agents:null');
         expect(root.history.canGoBack).toBe(false);
         root.history.forward();
-        expect(place()).toBe('p-car/chats:c-1');
+        expect(place()).toBe('p-car/agents:c-1');
     });
 
     it('does not skip a place because of a selection it remembers in another section', async () => {
@@ -329,7 +348,7 @@ describe('NavHistory entries that are gone', () => {
 
         // The Docs entry carries `chatId: 'c-2'` along, which Docs does not show.
         root.history.back();
-        expect(place()).toBe('p-car/chats:null');
+        expect(place()).toBe('p-car/agents:null');
         root.history.forward();
         expect(place()).toBe('p-car/docs:decisions/pricing.md');
     });
@@ -344,7 +363,7 @@ describe('NavHistory entries that are gone', () => {
 
         expect(root.history.canGoForward).toBe(false);
         root.history.forward();
-        expect(place()).toBe('p-car/chats:null');
+        expect(place()).toBe('p-car/agents:null');
     });
 
     it('cannot tell what a project holds before its snapshot has arrived, and does not skip', async () => {
@@ -360,7 +379,7 @@ describe('NavHistory entries that are gone', () => {
         ui().openChat('c-9');
         root.history.back();
 
-        expect(place()).toBe('p-car/chats:c-1');
+        expect(place()).toBe('p-car/agents:c-1');
     });
 
     it('skips a project that is gone', () => {

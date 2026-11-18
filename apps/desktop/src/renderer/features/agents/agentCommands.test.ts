@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { installDispatcher } from '../../hotkeys/dispatcher';
 import { createRegistry } from '../../hotkeys/registry';
-import { chatCommands, CHATS_SCOPE } from './chatCommands';
+import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 
 import type { HotkeyRegistry } from '../../hotkeys/registry';
 
@@ -13,11 +13,11 @@ let uninstall: () => void;
 /** The grid list's markup as React Aria draws it (rows keyed by `data-key`, a `⋯` button and a rename field inside), beside the composer. */
 function mount() {
     document.body.innerHTML = `
-        <nav><button id="rail">Chats</button></nav>
+        <nav><button id="rail">Agents</button></nav>
         <aside>
             <button id="new">New chat</button>
             <div id="list">
-                <div role="grid" aria-label="Chats">
+                <div role="grid" aria-label="Agents">
                     <div role="row" id="c1" data-key="c1" tabindex="0"><div role="gridcell"><span>Plan</span><button id="more1" tabindex="-1">More</button></div></div>
                     <div role="row" id="c2" data-key="c2" tabindex="-1"><div role="gridcell"><input id="rename" value="Fix"></div></div>
                     <div role="row" id="c3" data-key="c3" tabindex="-1"><div role="gridcell"><span>Docs</span></div></div>
@@ -33,9 +33,9 @@ const focused = () => document.activeElement?.id ?? '';
 function setup(openId: string | undefined = 'c1') {
     mount();
     registry = createRegistry('darwin');
-    registry.pushScope(CHATS_SCOPE);
+    registry.pushScope(AGENTS_SCOPE);
 
-    for (const command of chatCommands({ list: () => element('list'), ids: () => ['c1', 'c2', 'c3'], openId: () => openId })) registry.defineCommand(command);
+    for (const command of agentCommands({ list: () => element('list'), ids: () => ['c1', 'c2', 'c3'], openId: () => openId })) registry.defineCommand(command);
 
     uninstall = installDispatcher(registry);
 }
@@ -57,17 +57,17 @@ afterEach(() => {
     uninstall?.();
 });
 
-describe('chat commands', () => {
-    it('register J and K in the Chats group for the chats scope', () => {
+describe('agent commands', () => {
+    it('register J and K in the Agents group for the agents scope', () => {
         setup();
 
         expect(registry.listCommands().all.map(({ id, title, group, keys, scope }) => [id, title, group, keys, scope])).toEqual([
-            ['chats.cursor.down', 'Move down', 'Chats', 'j', CHATS_SCOPE],
-            ['chats.cursor.up', 'Move up', 'Chats', 'k', CHATS_SCOPE],
+            ['agents.cursor.down', 'Move down', 'Agents', 'j', AGENTS_SCOPE],
+            ['agents.cursor.up', 'Move up', 'Agents', 'k', AGENTS_SCOPE],
         ]);
     });
 
-    it('move the focus from chat to chat, by the row of the grid list', () => {
+    it('move the focus from row to row, a chat or a run below it, by the row of the grid list', () => {
         setup();
         element('c1').focus();
 
@@ -116,6 +116,6 @@ describe('chat commands', () => {
         element('composer').focus();
 
         expect(press('j', element('composer'))).toBe(false);
-        expect(registry.listCommands().live.map(({ id }) => id)).toEqual(['chats.cursor.down', 'chats.cursor.up']);
+        expect(registry.listCommands().live.map(({ id }) => id)).toEqual(['agents.cursor.down', 'agents.cursor.up']);
     });
 });

@@ -1,6 +1,6 @@
 import { Tooltip } from '@clowdy/components/Tooltip';
 import { Checkbox } from '@clowdy/icons/14';
-import { Chat, File, Settings, Team } from '@clowdy/icons/16';
+import { File, Settings, Team } from '@clowdy/icons/16';
 import { cn } from '@clowdy/lib';
 
 import { commandTooltip } from '../hotkeys';
@@ -12,13 +12,12 @@ import type { ComponentType, SVGProps } from 'react';
 
 /** Each icon is drawn at its own size: the 16 pack where it has the glyph, else the 14 pack, never scaled. */
 const SECTION_VIEWS: Record<Section, { label: string; icon: ComponentType<SVGProps<SVGSVGElement>>; size: number }> = {
-    chats: { label: 'Chats', icon: Chat, size: 16 },
-    tasks: { label: 'Tasks', icon: Checkbox, size: 14 },
     agents: { label: 'Agents', icon: Team, size: 16 },
-    docs: { label: 'Documents', icon: File, size: 16 },
+    tasks: { label: 'Tasks', icon: Checkbox, size: 14 },
+    docs: { label: 'Docs', icon: File, size: 16 },
 };
 
-/** The left rail: the four sections, and Settings pinned at the bottom. */
+/** The left rail: the three sections, and Settings pinned at the bottom. */
 export function Rail() {
     const root = useRootStore();
     const ui = root.selectedProjectId ? root.ui.forProject(root.selectedProjectId) : undefined;

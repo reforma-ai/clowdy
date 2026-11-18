@@ -4,7 +4,7 @@ import { readStored, writeStored, type KeyValueStorage } from './storage';
 
 import type { ChatId, ProjectId, RunId, TaskId } from '@clowdy/protocol';
 
-export const SECTIONS = ['chats', 'tasks', 'agents', 'docs'] as const;
+export const SECTIONS = ['agents', 'tasks', 'docs'] as const;
 
 export type Section = typeof SECTIONS[number];
 
@@ -21,6 +21,8 @@ export interface ProjectView {
     taskId: TaskId | null;
     runId: RunId | null;
     docPath: string | null;
+    /** Agents: the new-chat row is selected, and no chat exists yet. */
+    draft: boolean;
 }
 
 /** Whether Settings covers the window, and on which page. The page is `null` while Settings is closed, because it does not show then. */
@@ -36,13 +38,15 @@ interface StoredProjectUi {
     runId: RunId | null;
     docPath: string | null;
     showFinished: boolean;
+    showSubthreads: boolean;
+    showArchived: boolean;
     tasksView: TasksView;
 }
 
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'showFinished' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'showFinished' | 'showSubthreads' | 'showArchived' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -62,6 +66,10 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
 
     if (params.has('finished')) initial.showFinished = params.get('finished') !== '0';
 
+    if (params.has('subthreads')) initial.showSubthreads = params.get('subthreads') !== '0';
+
+    if (params.has('archived')) initial.showArchived = params.get('archived') !== '0';
+
     if (view === 'board' || view === 'list') initial.tasksView = view;
 
     return initial;
@@ -69,13 +77,19 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
 
 /** What a project's window shows, remembered per project. The `open*` actions are how one section links to another. */
 export class ProjectUi {
-    section: Section = 'chats';
+    section: Section = 'agents';
     chatId: ChatId | null = null;
     taskId: TaskId | null = null;
     runId: RunId | null = null;
     docPath: string | null = null;
-    /** Agents: also list finished runs. */
-    showFinished = false;
+    /** Agents: the new-chat row is selected, and the chat it starts does not exist until its first message is sent. Not kept between sessions. */
+    draft = false;
+    /** Agents: list the runs below each chat, the chat's subthreads. */
+    showSubthreads = true;
+    /** Agents: list a subthread that has finished. */
+    showFinished = true;
+    /** Agents: list the chats that were archived. */
+    showArchived = false;
     tasksView: TasksView = 'board';
 
     constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}) {
@@ -88,7 +102,9 @@ export class ProjectUi {
             this.taskId = idOrNull(stored.taskId);
             this.runId = idOrNull(stored.runId);
             this.docPath = idOrNull(stored.docPath);
-            this.showFinished = stored.showFinished === true;
+            this.showFinished = stored.showFinished !== false;
+            this.showSubthreads = stored.showSubthreads !== false;
+            this.showArchived = stored.showArchived === true;
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';
         }
 
@@ -102,6 +118,8 @@ export class ProjectUi {
                 runId: this.runId,
                 docPath: this.docPath,
                 showFinished: this.showFinished,
+                showSubthreads: this.showSubthreads,
+                showArchived: this.showArchived,
                 tasksView: this.tasksView,
             }),
             value => writeStored(storage, key, value)
@@ -110,22 +128,32 @@ export class ProjectUi {
 
     /** The place the window shows, as a value that can be kept and shown again with `show`. */
     get view(): ProjectView {
-        return { section: this.section, chatId: this.chatId, taskId: this.taskId, runId: this.runId, docPath: this.docPath };
+        return { section: this.section, chatId: this.chatId, taskId: this.taskId, runId: this.runId, docPath: this.docPath, draft: this.draft };
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ section, chatId, taskId, runId, docPath }: ProjectView): void {
+    show({ section, chatId, taskId, runId, docPath, draft }: ProjectView): void {
         this.section = section;
         this.chatId = chatId;
         this.taskId = taskId;
         this.runId = runId;
         this.docPath = docPath;
+        this.draft = draft;
     }
 
-    /** Shows the chat, in the Chats section; `null` leaves none selected. */
+    /** Shows the chat, in the Agents section; `null` leaves none selected. */
     openChat(chatId: ChatId | null): void {
-        this.section = 'chats';
+        this.section = 'agents';
         this.chatId = chatId;
+        this.runId = null;
+        this.draft = false;
+    }
+
+    /** Shows the new-chat row of the Agents section: a chat that is only made when its first message is sent. */
+    openDraft(): void {
+        this.section = 'agents';
+        this.runId = null;
+        this.draft = true;
     }
 
     /** Shows the task in the Tasks section; `null` closes its detail panel. */
@@ -134,9 +162,11 @@ export class ProjectUi {
         this.taskId = taskId;
     }
 
+    /** Shows the run in the Agents section, below its chat; a root run is its chat. */
     openRun(runId: RunId | null): void {
         this.section = 'agents';
         this.runId = runId;
+        this.draft = false;
     }
 
     openDoc(path: string | null): void {
@@ -146,6 +176,14 @@ export class ProjectUi {
 
     setShowFinished(show: boolean): void {
         this.showFinished = show;
+    }
+
+    setShowSubthreads(show: boolean): void {
+        this.showSubthreads = show;
+    }
+
+    setShowArchived(show: boolean): void {
+        this.showArchived = show;
     }
 
     setTasksView(view: TasksView): void {

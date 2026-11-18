@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildRunTree } from '../../stores/runTree';
-import { ancestorIds, countActiveChildren, describeRun, filterTree, flattenTree, reconcileSelection, runMatches, settleSelection, treeOrder } from './agentTree';
+import { agentRows, ancestorIds, countActiveChildren, describeRun, resolveSelection, visibleChats } from './agentTree';
 
-import type { Run, RunStatus } from '@clowdy/protocol';
+import type { Chat, Run, RunStatus } from '@clowdy/protocol';
 
 let clock = 0;
 
@@ -11,151 +11,116 @@ function run(id: string, status: RunStatus = 'running', rest: Partial<Run> = {})
     return { id, projectId: 'p', rootRunId: id, role: 'executor', name: `Name ${ id }`, summary: `Summary ${ id }`, status, engine: 'fake', createdAt: ++clock, ...rest };
 }
 
+function chat(id: string, orchestratorRunId?: string): Chat {
+    return { id, projectId: 'p', title: `Chat ${ id }`, orchestratorRunId, createdAt: 1, updatedAt: 1 } as Chat;
+}
+
 /** orch, with a (running, with a1 below it), b (done) and c (waiting). */
 const runs = [
     run('orch', 'running', { createdAt: 1 }),
-    run('a', 'running', { parentRunId: 'orch', createdAt: 2 }),
-    run('a1', 'running', { parentRunId: 'a', createdAt: 3 }),
-    run('b', 'succeeded', { parentRunId: 'orch', createdAt: 4 }),
-    run('c', 'waiting_user', { parentRunId: 'orch', createdAt: 5 }),
+    run('a', 'running', { parentRunId: 'orch', rootRunId: 'orch', createdAt: 2 }),
+    run('a1', 'running', { parentRunId: 'a', rootRunId: 'orch', createdAt: 3 }),
+    run('b', 'succeeded', { parentRunId: 'orch', rootRunId: 'orch', createdAt: 4 }),
+    run('c', 'waiting_user', { parentRunId: 'orch', rootRunId: 'orch', createdAt: 5 }),
+    run('other', 'running', { createdAt: 6 }),
 ];
 
-const ids = (nodes: ReturnType<typeof buildRunTree>) => treeOrder(nodes);
+const chats = [chat('chat-1', 'orch'), chat('chat-2', 'other'), chat('chat-3')];
 
-describe('flattenTree', () => {
-    it('lists parents before their children with depth and child counts', () => {
-        const rows = flattenTree(buildRunTree(runs), new Set());
+describe('agentRows', () => {
+    it('lists each chat followed by the runs below its orchestrator, which is the chat itself', () => {
+        const rows = agentRows(chats, buildRunTree(runs), new Set());
 
-        expect(rows.map(row => [row.run.id, row.depth, row.childCount])).toEqual([
-            ['orch', 0, 3],
-            ['a', 1, 1],
-            ['a1', 2, 0],
-            ['b', 1, 0],
-            ['c', 1, 0],
+        expect(rows.map(row => [row.kind, row.id, row.depth, row.childCount])).toEqual([
+            ['chat', 'chat-1', 0, 3],
+            ['run', 'a', 1, 1],
+            ['run', 'a1', 2, 0],
+            ['run', 'b', 1, 0],
+            ['run', 'c', 1, 0],
+            ['chat', 'chat-2', 0, 0],
+            ['chat', 'chat-3', 0, 0],
         ]);
     });
 
-    it('marks which connectors go on below each row', () => {
-        const rows = flattenTree(buildRunTree(runs), new Set());
-        const guides = Object.fromEntries(rows.map(row => [row.run.id, row.guides]));
+    it('keeps the order of the chats it is given, whatever the order of the runs', () => {
+        const rows = agentRows([chats[1], chats[0]], buildRunTree(runs), new Set());
 
-        expect(guides).toEqual({
-            orch: [],
-            a: [true],
-            // The connector of level 1 passes a1 because b and c follow a; a1 itself is the last child of a.
-            a1: [true, false],
-            b: [true],
-            c: [false],
-        });
+        expect(rows.filter(row => row.kind === 'chat').map(row => row.id)).toEqual(['chat-2', 'chat-1']);
     });
 
-    it('hides what is below a collapsed run, and shows it all when expanding everything', () => {
+    it('hides what is below a collapsed chat or run, and says so', () => {
         const tree = buildRunTree(runs);
 
-        expect(flattenTree(tree, new Set(['a'])).map(row => row.run.id)).toEqual(['orch', 'a', 'b', 'c']);
-        expect(flattenTree(tree, new Set(['orch'])).map(row => row.run.id)).toEqual(['orch']);
-        expect(flattenTree(tree, new Set(['orch', 'a']), true).map(row => row.run.id)).toEqual(['orch', 'a', 'a1', 'b', 'c']);
+        expect(agentRows(chats, tree, new Set(['a'])).map(row => row.id)).toEqual(['chat-1', 'a', 'b', 'c', 'chat-2', 'chat-3']);
+        expect(agentRows(chats, tree, new Set(['chat-1'])).map(row => row.id)).toEqual(['chat-1', 'chat-2', 'chat-3']);
+        expect(agentRows(chats, tree, new Set(['chat-1'])).find(row => row.id === 'chat-1')).toMatchObject({ childCount: 3, isExpanded: false });
     });
 
-    it('reports a collapsed run as not expanded', () => {
-        const [orch] = flattenTree(buildRunTree(runs), new Set(['orch']));
+    it('shows a chat with no orchestrator run, or whose run is gone, without children', () => {
+        const rows = agentRows([chat('lonely', 'missing')], buildRunTree(runs), new Set());
 
-        expect(orch.isExpanded).toBe(false);
-        expect(orch.childCount).toBe(3);
-    });
-});
-
-describe('filterTree', () => {
-    const matching = (text: string) => (candidate: Run) => runMatches(candidate, [], text);
-
-    it('keeps the ancestors of a match but not its non-matching children', () => {
-        const filtered = filterTree(buildRunTree(runs), matching('name a1'));
-
-        expect(ids(filtered)).toEqual(['orch', 'a', 'a1']);
-    });
-
-    it('keeps only the matching children of a match', () => {
-        const filtered = filterTree(buildRunTree(runs), candidate => candidate.id === 'a' || candidate.id === 'orch');
-
-        expect(ids(filtered)).toEqual(['orch', 'a']);
-    });
-
-    it('is empty when nothing matches', () => {
-        expect(filterTree(buildRunTree(runs), matching('zzz'))).toEqual([]);
+        expect(rows).toEqual([expect.objectContaining({ kind: 'chat', id: 'lonely', childCount: 0 })]);
     });
 });
 
-describe('runMatches', () => {
-    it('matches the name, the summary and the task keys, ignoring case', () => {
-        const target = run('x', 'running', { name: 'Executor 07', summary: 'Update the booking form' });
+describe('visibleChats', () => {
+    const list = [chats[0], { ...chats[1], archivedAt: 5 }, chats[2]];
 
-        expect(runMatches(target, [], 'executor')).toBe(true);
-        expect(runMatches(target, [], 'BOOKING')).toBe(true);
-        expect(runMatches(target, ['CAR-24'], 'car-24')).toBe(true);
-        expect(runMatches(target, ['CAR-24'], 'car-25')).toBe(false);
+    it('leaves archived chats out unless they are asked for', () => {
+        expect(visibleChats(list, false).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
+        expect(visibleChats(list, true).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-2', 'chat-3']);
     });
 
-    it('ignores spaces around the text', () => {
-        expect(runMatches(run('x', 'running', { name: 'Executor 07' }), [], '  executor ')).toBe(true);
-    });
-});
-
-describe('settleSelection', () => {
-    const order = ['orch', 'a', 'a1', 'b', 'c'];
-
-    it('keeps a selection that is visible', () => {
-        expect(settleSelection('a', order, ['orch', 'a', 'c'])).toBe('a');
-    });
-
-    it('moves a hidden selection to the closest visible run', () => {
-        expect(settleSelection('b', order, ['orch', 'a', 'a1', 'c'])).toBe('a1');
-        expect(settleSelection('a1', order, ['orch', 'c'])).toBe('orch');
-    });
-
-    it('prefers the earlier run when two are equally close', () => {
-        expect(settleSelection('b', order, ['a1', 'c'])).toBe('a1');
-    });
-
-    it('falls back to the first visible run when the selection is gone, or when nothing is selected', () => {
-        expect(settleSelection('gone', order, ['a', 'c'])).toBe('a');
-        expect(settleSelection(null, order, ['a', 'c'])).toBe('a');
-    });
-
-    it('selects nothing when no run is visible', () => {
-        expect(settleSelection('b', order, [])).toBeNull();
-        expect(settleSelection(null, [], [])).toBeNull();
+    it('keeps the open chat in the list, archived or not, so its page has a row', () => {
+        expect(visibleChats(list, false, 'chat-2').map(candidate => candidate.id)).toEqual(['chat-1', 'chat-2', 'chat-3']);
+        expect(visibleChats(list, false, 'chat-1').map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
     });
 });
 
-describe('reconcileSelection', () => {
-    const order = ['orch', 'a', 'a1', 'b', 'c'];
-    const visible = ['orch', 'a', 'a1', 'c'];
+describe('resolveSelection', () => {
+    const byChat = new Map(chats.map(candidate => [candidate.id, candidate]));
+    const byRun = new Map(runs.map(candidate => [candidate.id, candidate]));
+    const resolve = (chatId: string | null, runId: string | null, draft = false) => resolveSelection(byChat, chats, byRun, chatId, runId, draft);
 
-    it('keeps a visible selection, whether it just arrived or not', () => {
-        expect(reconcileSelection('a', true, order, visible)).toEqual({ kind: 'keep' });
-        expect(reconcileSelection('a', false, order, visible)).toEqual({ kind: 'keep' });
+    it('shows the chat that was opened', () => {
+        expect(resolve('chat-2', null)).toEqual({ chat: byChat.get('chat-2'), run: undefined, draft: false });
     });
 
-    it('brings finished runs back when a hidden run is opened from elsewhere', () => {
-        expect(reconcileSelection('b', true, order, visible)).toEqual({ kind: 'show-finished' });
+    it('shows a run below a chat, with its chat, wherever the chat remembered was', () => {
+        expect(resolve('chat-2', 'a1')).toEqual({ chat: byChat.get('chat-1'), run: byRun.get('a1'), draft: false });
     });
 
-    it('moves to the closest visible run when the shown selection turns hidden', () => {
-        expect(reconcileSelection('b', false, order, visible)).toEqual({ kind: 'select', runId: 'a1' });
+    it('takes a root run for its chat', () => {
+        expect(resolve(null, 'orch')).toEqual({ chat: byChat.get('chat-1'), run: undefined, draft: false });
     });
 
-    it('selects nothing when the selection turns hidden and nothing else is visible', () => {
-        expect(reconcileSelection('b', false, order, [])).toEqual({ kind: 'select', runId: null });
+    it('falls back to the chat that was selected, then to the first one, when the run or the chat is gone', () => {
+        expect(resolve('chat-2', 'gone')).toEqual({ chat: byChat.get('chat-2'), run: undefined, draft: false });
+        expect(resolve('gone', null)).toEqual({ chat: chats[0], run: undefined, draft: false });
+        expect(resolve(null, null)).toEqual({ chat: chats[0], run: undefined, draft: false });
     });
 
-    it('falls back to the first visible run for a selection that is gone, even one that just arrived', () => {
-        expect(reconcileSelection('gone', true, order, visible)).toEqual({ kind: 'select', runId: 'orch' });
-        expect(reconcileSelection('gone', false, order, visible)).toEqual({ kind: 'select', runId: 'orch' });
+    it('falls back when the run belongs to no chat that is listed', () => {
+        const orphan = new Map([...byRun, ['x', run('x', 'running', { parentRunId: 'ghost', rootRunId: 'ghost' })]]);
+
+        expect(resolveSelection(byChat, chats, orphan, 'chat-2', 'x')).toEqual({ chat: byChat.get('chat-2'), run: undefined, draft: false });
     });
 
-    it('selects the first run when none is selected, and keeps none when there are none', () => {
-        expect(reconcileSelection(null, true, order, visible)).toEqual({ kind: 'select', runId: 'orch' });
-        expect(reconcileSelection(null, true, [], [])).toEqual({ kind: 'keep' });
+    it('opens an archived chat that was asked for, and a run of an archived chat below it, though the list does not show it', () => {
+        const archived = new Map([...byChat, ['chat-1', { ...chats[0], archivedAt: 5 }]]);
+        const shown = chats.filter(candidate => candidate.id !== 'chat-1');
+
+        expect(resolveSelection(archived, shown, byRun, 'chat-1', null)).toEqual({ chat: archived.get('chat-1'), run: undefined, draft: false });
+        expect(resolveSelection(archived, shown, byRun, null, 'a1')).toEqual({ chat: archived.get('chat-1'), run: byRun.get('a1'), draft: false });
+        expect(resolveSelection(archived, shown, byRun, null, null)).toEqual({ chat: shown[0], run: undefined, draft: false });
+    });
+
+    it('shows the new-chat row when it was asked for, whatever else is remembered', () => {
+        expect(resolve('chat-2', 'a1', true)).toEqual({ chat: undefined, run: undefined, draft: true });
+    });
+
+    it('shows the new-chat row when there is no chat to show', () => {
+        expect(resolveSelection(new Map(), [], byRun, null, 'a')).toEqual({ chat: undefined, run: undefined, draft: true });
     });
 });
 

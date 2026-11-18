@@ -1,21 +1,11 @@
-import { ACTIVE_RUN_STATUSES, type Run, type RunId } from '@clowdy/protocol';
+import { ACTIVE_RUN_STATUSES, type Chat, type ChatId, type Run, type RunId } from '@clowdy/protocol';
 
 import type { RunNode } from '../../stores/runTree';
 
-/** One line of the tree as drawn: a run and where it sits. */
-export interface TreeRow {
-    run: Run;
-    depth: number;
-    /** Children in the tree, after the filters. */
-    childCount: number;
-    isExpanded: boolean;
-    /**
-     * One entry per level up to this row's own. Entry `i` says whether the connector at level `i` goes on below
-     * this row: for the levels above, because an ancestor has later siblings; for the last entry, because this
-     * row has later siblings itself.
-     */
-    guides: boolean[];
-}
+/** One line of the Agents list: a chat, or a run nested under the chat that started it. */
+export type AgentRow =
+    | { kind: 'chat'; id: ChatId; chat: Chat; depth: 0; childCount: number; isExpanded: boolean }
+    | { kind: 'run'; id: RunId; run: Run; depth: number; childCount: number; isExpanded: boolean };
 
 /** A line under a run's summary, saying why it waits or stopped. */
 export interface RowNote {
@@ -24,110 +14,79 @@ export interface RowNote {
 }
 
 /**
- * Keeps the nodes that match, and the ancestors of every match. A match does not bring its children along:
- * only the ones that match, or lead to a match, stay.
+ * The list as rows, top to bottom: the chats as they are given, each followed by the runs below its orchestrator (the
+ * orchestrator is the chat itself, so it has no row of its own). A collapsed chat or run hides what is below it. Ids of
+ * chats and runs never collide, so one set holds the folds of both.
  */
-export function filterTree(nodes: RunNode[], matches: (run: Run) => boolean): RunNode[] {
-    return nodes.flatMap((node) => {
-        const children = filterTree(node.children, matches);
-
-        return matches(node.run) || children.length > 0 ? { run: node.run, children } : [];
-    });
-}
-
-/** Whether the run's name, summary or one of its tasks' keys contains the text, ignoring case. */
-export function runMatches(run: Run, taskKeys: string[], text: string): boolean {
-    const needle = text.trim().toLowerCase();
-
-    return [run.name, run.summary, ...taskKeys].some(value => value.toLowerCase().includes(needle));
-}
-
-/**
- * The tree as rows, top to bottom. A collapsed run hides what is below it unless `expandAll` is set (a search
- * shows every match, so it opens every fold).
- */
-export function flattenTree(nodes: RunNode[], collapsed: ReadonlySet<RunId>, expandAll = false): TreeRow[] {
-    const rows: TreeRow[] = [];
-    const walk = (level: RunNode[], depth: number, ancestorGuides: boolean[]) => {
-        level.forEach((node, index) => {
-            const isExpanded = expandAll || !collapsed.has(node.run.id);
-            const guides = depth === 0 ? [] : [...ancestorGuides, index < level.length - 1];
-
-            rows.push({
-                run: node.run,
-                depth,
-                childCount: node.children.length,
-                isExpanded,
-                guides,
-            });
-
-            if (isExpanded) walk(node.children, depth + 1, guides);
-        });
+export function agentRows(chats: readonly Chat[], forest: readonly RunNode[], collapsed: ReadonlySet<string>): AgentRow[] {
+    const nodes = new Map<RunId, RunNode>();
+    const index = (level: readonly RunNode[]) => {
+        for (const node of level) {
+            nodes.set(node.run.id, node);
+            index(node.children);
+        }
     };
 
-    walk(nodes, 0, []);
+    index(forest);
+
+    const rows: AgentRow[] = [];
+    const walk = (children: readonly RunNode[], depth: number) => {
+        for (const { run, children: below } of children) {
+            const isExpanded = !collapsed.has(run.id);
+
+            rows.push({ kind: 'run', id: run.id, run, depth, childCount: below.length, isExpanded });
+
+            if (isExpanded) walk(below, depth + 1);
+        }
+    };
+
+    for (const chat of chats) {
+        const below = (chat.orchestratorRunId ? nodes.get(chat.orchestratorRunId)?.children : undefined) ?? [];
+        const isExpanded = !collapsed.has(chat.id);
+
+        rows.push({ kind: 'chat', id: chat.id, chat, depth: 0, childCount: below.length, isExpanded });
+
+        if (isExpanded) walk(below, 1);
+    }
 
     return rows;
 }
 
-/** How many children of each run are still going. Counted over every run, so a filter does not change it. */
-export function countActiveChildren(runs: Iterable<Run>): Map<RunId, number> {
-    const counts = new Map<RunId, number>();
-
-    for (const run of runs) {
-        if (run.parentRunId !== undefined && ACTIVE_RUN_STATUSES.includes(run.status)) counts.set(run.parentRunId, (counts.get(run.parentRunId) ?? 0) + 1);
-    }
-
-    return counts;
+/**
+ * The chats the list shows: archived ones only when asked for, and the one that is open, so the page beside the list
+ * always has its row.
+ */
+export function visibleChats(chatList: readonly Chat[], showArchived: boolean, openId?: ChatId): Chat[] {
+    return chatList.filter(chat => chat.archivedAt === undefined || showArchived || chat.id === openId);
 }
 
-/** Every run id of the forest, parents before their children, in the order the tree shows them. */
-export function treeOrder(nodes: RunNode[]): RunId[] {
-    return nodes.flatMap(node => [node.run.id, ...treeOrder(node.children)]);
+/** What the main pane shows: a chat, and a run of that chat when the person opened one below it, or the new-chat row. */
+export interface AgentSelection {
+    chat: Chat | undefined;
+    /** A run below the chat's orchestrator. The orchestrator itself is the chat, so it is never here. */
+    run: Run | undefined;
+    /** The new-chat row: asked for, or the only thing there is to show because the project has no chat yet. */
+    draft: boolean;
 }
 
 /**
- * The run to show when the selected one is not in the tree any more, because it finished and finished runs are
- * hidden or it is gone: the closest visible run in tree order (the earlier one on a tie), or none.
- * `order` lists every run, `visible` those that are shown.
+ * The selection the screen shows, from what the UI remembers. A remembered run wins when its chat is known (a run is
+ * opened from a chip or from the list), and a root run is its chat. Anything gone falls back to the chat that was
+ * selected (archived or not: it was asked for), and then to the first chat of `chatList`, the chats the list shows;
+ * with no chat at all the new-chat row is what shows.
  */
-export function settleSelection(selected: RunId | null, order: RunId[], visible: RunId[]): RunId | null {
-    if (selected !== null && visible.includes(selected)) return selected;
+export function resolveSelection(chats: ReadonlyMap<ChatId, Chat>, chatList: readonly Chat[], runs: ReadonlyMap<RunId, Run>, chatId: ChatId | null, runId: RunId | null, draft = false): AgentSelection {
+    if (draft) return { chat: undefined, run: undefined, draft: true };
 
-    const index = selected === null ? -1 : order.indexOf(selected);
+    const run = runId === null ? undefined : runs.get(runId);
+    // Whose run it is does not depend on what the list shows: a run of an archived chat still opens below its chat.
+    const owner = run ? [...chats.values()].find(chat => chat.orchestratorRunId === run.rootRunId) : undefined;
 
-    if (index === -1) return visible[0] ?? null;
+    if (run && owner) return { chat: owner, run: run.parentRunId === undefined ? undefined : run, draft: false };
 
-    const shown = new Set(visible);
+    const chat = (chatId === null ? undefined : chats.get(chatId)) ?? chatList[0];
 
-    for (let distance = 1; distance < order.length; distance++) {
-        const candidates = [order[index - distance], order[index + distance]];
-        const found = candidates.find(candidate => candidate !== undefined && shown.has(candidate));
-
-        if (found !== undefined) return found;
-    }
-
-    return null;
-}
-
-/** What to do about the selection once the tree is known. */
-export type SelectionStep = { kind: 'keep' } | { kind: 'show-finished' } | { kind: 'select'; runId: RunId | null };
-
-/**
- * A selection that the tree hides is dealt with by how it came to be hidden. One that has just arrived (a link
- * from another section, or one remembered from the last visit) is a request to see that run, so finished runs
- * must come back. One that was shown and then turned hidden (the switch went off, or its run finished) moves to
- * the closest visible run, see `settleSelection`.
- * `arrived` is whether the selection changed since the tree last looked.
- */
-export function reconcileSelection(selected: RunId | null, arrived: boolean, order: RunId[], visible: RunId[]): SelectionStep {
-    if (selected !== null && visible.includes(selected)) return { kind: 'keep' };
-
-    if (arrived && selected !== null && order.includes(selected)) return { kind: 'show-finished' };
-
-    const settled = settleSelection(selected, order, visible);
-
-    return settled === selected ? { kind: 'keep' } : { kind: 'select', runId: settled };
+    return { chat, run: undefined, draft: chat === undefined };
 }
 
 /** The run's parents, nearest first. */
@@ -139,6 +98,17 @@ export function ancestorIds(runs: ReadonlyMap<RunId, Run>, runId: RunId): RunId[
     }
 
     return ancestors;
+}
+
+/** How many children of each run are still going. Counted over every run, so what is folded away does not change it. */
+export function countActiveChildren(runs: Iterable<Run>): Map<RunId, number> {
+    const counts = new Map<RunId, number>();
+
+    for (const run of runs) {
+        if (run.parentRunId !== undefined && ACTIVE_RUN_STATUSES.includes(run.status)) counts.set(run.parentRunId, (counts.get(run.parentRunId) ?? 0) + 1);
+    }
+
+    return counts;
 }
 
 /** Why the run waits or stopped, for the line under its summary. Nothing for a run that is simply working or done. */

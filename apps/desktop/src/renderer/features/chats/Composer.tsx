@@ -16,7 +16,7 @@ import { ComposerSend } from './ComposerSend';
 import { MentionChip } from './MentionChip';
 import { useMentionTriggers } from './useMentionTriggers';
 
-import type { Chat, ChatMode, Run } from '@clowdy/protocol';
+import type { Chat, ChatId, ChatMode, ProjectId, Run } from '@clowdy/protocol';
 
 const MODES: ReadonlyArray<{ id: ChatMode; name: string }> = [
     { id: 'autopilot', name: 'Autopilot' },
@@ -26,29 +26,41 @@ const MODES: ReadonlyArray<{ id: ChatMode; name: string }> = [
 /** What a press on the card's empty parts must leave alone: the controls, which take the press themselves. */
 const CONTROLS = 'button, [role="button"], [role="combobox"], [contenteditable="true"], a, input';
 
+/** Where the words typed on the new-chat page are kept: there is no chat id to keep them under yet. */
+const NEW_CHAT_DRAFT = '@new-chat';
+
 export interface ComposerProps {
-    chat: Chat;
+    /** The chat to write to. Absent on the new-chat page, where the first message makes the chat (see `start`). */
+    chat: Chat | undefined;
     /** The chat's orchestrator, once the first message started one. While it works the mode stays as it is. */
     run: Run | undefined;
+    /** For the new-chat page: the project the chat is made in, and what to do once its first message is sent. */
+    start?: { projectId: ProjectId; onStarted: (chatId: ChatId) => void };
 }
 
 /**
  * The message box: the text on top, below it attach (not built yet), the mode and send. Enter sends, Shift+Enter
  * starts a new line, `@` mentions a task, document or file and `/` asks for a skill. While the orchestrator works and
- * nothing is typed, the send button stops it.
+ * nothing is typed, the send button stops it. Without a chat the first message makes one, so opening the new-chat page
+ * again and again leaves no empty chats behind; if the message then fails the chat stays, and the retry goes to it.
  */
-export function Composer({ chat, run }: ComposerProps) {
+export function Composer({ chat, run, start }: ComposerProps) {
     const root = useRootStore();
     const field = useRef<RichInputHandle>(null);
     const box = useRef<HTMLDivElement>(null);
     const triggers = useMentionTriggers(box);
-    const [doc, setDoc] = useState(() => draftOf(chat.id));
+    const key = chat?.id ?? NEW_CHAT_DRAFT;
+    const [doc, setDoc] = useState(() => draftOf(key));
     const [isStopping, setIsStopping] = useState(false);
+    const [draftMode, setDraftMode] = useState<ChatMode>('autopilot');
+    // The chat a first message made, when sending the message then failed.
+    const [made, setMade] = useState<Chat>();
+    const target = chat ?? made;
     const running = isRunActive(run);
 
     const edit = (next: ComposerDoc) => {
         setDoc(next);
-        saveDraft(chat.id, next);
+        saveDraft(key, next);
     };
 
     const send = async (from: ComposerDoc) => {
@@ -58,11 +70,36 @@ export function Composer({ chat, run }: ComposerProps) {
 
         edit(emptyComposerDoc());
 
-        // The daemon decides what a message to a working orchestrator means, so there is no case to handle here.
-        const result = await perform(root, { type: 'chat.send', chatId: chat.id, text: message });
-
         // Give the words back, unless the person has already started something new.
-        if (!result.ok && !messageOf(draftOf(chat.id))) edit(from);
+        const giveBack = () => {
+            if (!messageOf(draftOf(key))) edit(from);
+        };
+        let chatId = target?.id;
+
+        if (!chatId) {
+            if (!start) return;
+
+            const created = await perform(root, { type: 'chat.create', projectId: start.projectId, mode: draftMode });
+            const fresh = (created.ok ? created.data : {}) as { chat?: Chat };
+
+            if (!fresh.chat) {
+                giveBack();
+
+                return;
+            }
+
+            setMade(fresh.chat);
+            chatId = fresh.chat.id;
+        }
+
+        // The daemon decides what a message to a working orchestrator means, so there is no case to handle here.
+        const result = await perform(root, { type: 'chat.send', chatId, text: message });
+
+        if (!result.ok) giveBack();
+        else if (!chat) {
+            setMade(undefined);
+            start?.onStarted(chatId);
+        }
     };
 
     const stop = async () => {
@@ -95,7 +132,7 @@ export function Composer({ chat, run }: ComposerProps) {
                     triggers={ triggers }
                     renderMention={ MentionChip }
                     serializeMention={ serializeMention }
-                    autoFocus={ !chat.orchestratorRunId }
+                    autoFocus={ !chat?.orchestratorRunId }
                     className={ styles.field }
                     aria-label="Message"
                     placeholder="Write a message…"
@@ -119,9 +156,13 @@ export function Composer({ chat, run }: ComposerProps) {
                                 placement="top"
                                 className={ styles.mode }
                                 items={ MODES }
-                                isDisabled={ running }
-                                selectedKey={ chat.mode }
-                                onSelectionChange={ (key: unknown) => void perform(root, { type: 'chat.setMode', chatId: chat.id, mode: key as ChatMode }) }
+                                // A chat made by a first message that failed keeps the mode it was made with.
+                                isDisabled={ running || (!chat && made !== undefined) }
+                                selectedKey={ target?.mode ?? draftMode }
+                                onSelectionChange={ (picked: unknown) => {
+                                    if (chat) void perform(root, { type: 'chat.setMode', chatId: chat.id, mode: picked as ChatMode });
+                                    else setDraftMode(picked as ChatMode);
+                                } }
                             >
                                 { mode => <ListBoxItem id={ mode.id } text={ mode.name } /> }
                             </Select>

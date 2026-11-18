@@ -44,12 +44,11 @@ afterEach(() => {
 
 describe('section chords', () => {
     it.each([
-        ['c', 'chats'],
-        ['t', 'tasks'],
         ['a', 'agents'],
+        ['t', 'tasks'],
         ['d', 'docs'],
     ] as const)('G then %s shows the %s section of the selected project', (second, section) => {
-        ui.forProject('p').section = section === 'chats' ? 'agents' : 'chats';
+        ui.forProject('p').section = section === 'agents' ? 'tasks' : 'agents';
 
         press({ key: 'g' });
         press({ key: second });
@@ -64,8 +63,8 @@ describe('section chords', () => {
         try {
             press({ key: 'g' });
 
-            expect(registry.pending?.candidates.map(({ command }) => command.id).sort()).toEqual(['nav.agents', 'nav.chats', 'nav.docs', 'nav.tasks']);
-            expect(sectionOf()).toBe('chats');
+            expect(registry.pending?.candidates.map(({ command }) => command.id).sort()).toEqual(['nav.agents', 'nav.docs', 'nav.tasks']);
+            expect(sectionOf()).toBe('agents');
 
             vi.advanceTimersByTime(1000);
 
@@ -73,7 +72,7 @@ describe('section chords', () => {
 
             press({ key: 't' });
 
-            expect(sectionOf()).toBe('chats');
+            expect(sectionOf()).toBe('agents');
         }
         finally {
             vi.useRealTimers();
@@ -86,7 +85,7 @@ describe('section chords', () => {
         press({ key: 't' });
 
         expect(registry.pending).toBeNull();
-        expect(sectionOf()).toBe('chats');
+        expect(sectionOf()).toBe('agents');
     });
 
     it('also leaves Settings', () => {
@@ -111,7 +110,7 @@ describe('section chords', () => {
 
         press({ key: 't' });
 
-        expect(sectionOf()).toBe('chats');
+        expect(sectionOf()).toBe('agents');
     });
 
     it('is a plain letter while a text field has focus', () => {
@@ -126,7 +125,7 @@ describe('section chords', () => {
 
             expect(first.defaultPrevented).toBe(false);
             expect(registry.pending).toBeNull();
-            expect(sectionOf()).toBe('chats');
+            expect(sectionOf()).toBe('agents');
         }
         finally {
             input.remove();
@@ -143,7 +142,7 @@ describe('section chords', () => {
             press({ key: 'g' });
             press({ key: 't' });
 
-            expect(sectionOf()).toBe('chats');
+            expect(sectionOf()).toBe('agents');
         }
         finally {
             overlay.remove();
@@ -292,7 +291,7 @@ describe('the keymap', () => {
         for (const command of shellCommands(root, openHelp)) probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.chats', 'nav.tasks', 'nav.agents', 'nav.docs', 'nav.back', 'nav.forward']);
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'nav.back', 'nav.forward']);
         expect(navCommandId('tasks')).toBe('nav.tasks');
     });
 });

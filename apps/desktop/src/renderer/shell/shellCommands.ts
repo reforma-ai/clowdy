@@ -4,11 +4,10 @@ import type { NavHistory, RootStore, Section } from '../stores';
 /** The id of the command that switches to the section, which the Rail asks for the hint of its button. */
 export const navCommandId = (section: Section) => `nav.${ section }`;
 
-/** `G` then a letter, the way Linear goes places: C for Chats, T for Tasks, A for Agents, D for Docs. */
+/** `G` then a letter, the way Linear goes places: A for Agents (the chats and the runs below them), T for Tasks, D for Docs. */
 const SECTION_CHORDS: Record<Section, { title: string; keys: string }> = {
-    chats: { title: 'Go to Chats', keys: 'g c' },
-    tasks: { title: 'Go to Tasks', keys: 'g t' },
     agents: { title: 'Go to Agents', keys: 'g a' },
+    tasks: { title: 'Go to Tasks', keys: 'g t' },
     docs: { title: 'Go to Docs', keys: 'g d' },
 };
 
