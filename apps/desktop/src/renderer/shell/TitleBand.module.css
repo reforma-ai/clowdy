@@ -7,3 +7,14 @@
     padding-left: calc(var(--titlebar-inset) + var(--spacing-lg));
     padding-right: calc(var(--titlebar-inset-end) + var(--spacing-lg));
 }
+
+.history {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+}
+
+/* The one control at the right edge. The band's own right padding keeps it clear of the Windows caption buttons. */
+.shortcuts {
+    margin-left: auto;
+}

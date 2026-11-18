@@ -8,15 +8,13 @@ import { taskCommands, type TaskCommandDeps } from '../features/tasks/taskComman
 import { shellCommands } from '../shell/shellCommands';
 import { createRegistry, findKeyConflicts, type Command, type Platform } from './registry';
 
-import type { RootStore } from '../stores';
-
 /**
  * Every section's commands as the app registers them, built with stand-ins for what they read at run time. The builders only read their
  * dependencies inside handlers and `when`, so the stand-ins are never called: this test is about the keys.
  */
 function wholeKeymap(): Command[] {
     const nothing = new Proxy({}, { get: () => () => undefined }) as never;
-    const shell = shellCommands(nothing as Pick<RootStore, 'selectedProjectId' | 'ui'>, vi.fn()).map((command): Command => ({ ...command, scope: 'app' }));
+    const shell = shellCommands(nothing, vi.fn()).map((command): Command => ({ ...command, scope: 'app' }));
     const list = { ids: () => [], openId: () => null };
 
     return [

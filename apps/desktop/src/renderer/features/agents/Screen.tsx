@@ -1,7 +1,7 @@
 import { Text } from '@clowdy/components/Text';
 import { useEffect, useRef, useState } from 'react';
 
-import { useProjectState, useProjectUi } from '../../stores';
+import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { ancestorIds, countActiveChildren, filterTree, flattenTree, reconcileSelection, runMatches, settleSelection, treeOrder } from './agentTree';
 import { RunDetail } from './RunDetail';
 import { RunList } from './RunList';
@@ -11,6 +11,7 @@ import type { RunId } from '@clowdy/protocol';
 
 /** Agents: the tree of runs on the left, the selected run's stream on the right. */
 export function Screen() {
+    const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
     const [query, setQuery] = useState('');
@@ -31,7 +32,8 @@ export function Screen() {
         const step = reconcileSelection(ui.runId, arrived, treeOrder(project.runTree(true)), treeOrder(project.runTree(ui.showFinished)));
 
         if (step.kind === 'show-finished') ui.setShowFinished(true);
-        else if (step.kind === 'select') ui.openRun(step.runId);
+        // The screen picking a run for the person is not a step of its own: it settles the entry the visit just made.
+        else if (step.kind === 'select') root.history.replacing(() => ui.openRun(step.runId));
     });
 
     // Show where the selected run is: open the folds above it.

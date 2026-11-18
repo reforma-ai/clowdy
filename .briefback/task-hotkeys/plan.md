@@ -280,7 +280,9 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 - `EditableText` blurs on `Esc` and `Enter`, so focus lands on `body` and the next key only reveals the cursor. Returning it to the cursor would make rename smoother. It touches the panel and `EditableText` flow.
 - The design-system `Autocomplete` drops the input `aria-label` when a placeholder is set (pre-existing). `Select showSearch` does the same.
 
-**Commits:** None yet.
+**Commits:**
+
+- `5d0ebdd` feat(desktop): status, dependency, rename, start and delete keys for tasks
 
 ## Stage 6 — View, create and linked-item keys, and hints in the Tasks UI
 
@@ -371,14 +373,15 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **Depends on:** Stage 3 (the `app` scope commands and the title band hint), and Stage 4 for the cursor-follow rule. It touches different files from Stages 5 and 6, so it can run alongside them. The one-line change in `taskCommands.ts` that makes cursor-follow replace the entry is made by the parent after Stage 6.
 
-**This stage:** The window has no way back. Add a `NavHistory` store that watches the navigation state (selected project, section, open chat, task, run and document, Settings and its page) and records a snapshot whenever it changes, so any action that changes what the window shows is covered without each call site knowing. Going back or forward applies a snapshot, which must not record a new entry (an applied snapshot equals the current entry). Header buttons and `Cmd/Ctrl+[` and `Cmd/Ctrl+]` drive it. The buttons sit at the left of the title band, before the project select, like the reference image the owner gave (chevrons next to the window controls).
+**This stage:** The window has no way back. Add a `NavHistory` store that watches the navigation state (selected project, section, open chat, task, run and document, Settings and its page) and records a snapshot whenever it changes, so any action that changes what the window shows is covered without each call site knowing. Going back or forward applies a snapshot, which must not record a new entry (an applied snapshot equals the current entry). Header buttons and `Cmd/Ctrl+[` and `Cmd/Ctrl+]` drive it. A keyboard icon button at the right of the title band opens the help overlay, as the owner asked. The buttons sit at the left of the title band, before the project select, like the reference image the owner gave (chevrons next to the window controls).
 
-- [ ] Complete
-  - [ ] `NavHistory` with `back`, `forward`, `canGoBack`, `canGoForward`, a `replacing(fn)` wrapper for changes that should overwrite the current entry, a cap of 100, and skipping entries whose chat, task or run is gone
-  - [ ] `root.history` owned by `RootStore`, applying a snapshot through `selectProject`, the `ProjectUi` fields and the Settings state
-  - [ ] `nav.back` (`$mod+[`) and `nav.forward` (`$mod+]`) in the `app` scope, available only when there is somewhere to go, with hints
-  - [ ] Back and forward buttons in `TitleBand`, disabled when unavailable, with tooltips showing the keys
-  - [ ] Tests for push, truncate on a new entry, replace, the cap, skipping stale entries, applying snapshots across projects and Settings, and no entry recorded by going back
+- [x] Complete
+  - [x] `NavHistory` with `back`, `forward`, `canGoBack`, `canGoForward`, a `replacing(fn)` wrapper for changes that should overwrite the current entry, a cap of 100, and skipping entries whose chat, task or run is gone
+  - [x] `root.history` owned by `RootStore`, applying a snapshot through `selectProject`, the `ProjectUi` fields and the Settings state
+  - [x] `nav.back` (`$mod+[`) and `nav.forward` (`$mod+]`) in the `app` scope, available only when there is somewhere to go, with hints
+  - [x] Back and forward buttons in `TitleBand`, disabled when unavailable, with tooltips showing the keys
+  - [x] A keyboard shortcuts button at the right of `TitleBand` that opens the help overlay (`openHelp`), with a new `keyboard` glyph in the 16px icon pack. Cmd+? is `$mod+/`, which already matches Cmd+Shift+/ because a symbol key accepts Shift
+  - [x] Tests for push, truncate on a new entry, replace, the cap, skipping stale entries, applying snapshots across projects and Settings, and no entry recorded by going back
 
 **Files**
 
@@ -386,8 +389,23 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 - `apps/desktop/src/renderer/stores/RootStore.ts`, `index.ts` — `RootStore`: owns and exposes `history`
 - `apps/desktop/src/renderer/stores/UiStore.ts` — a way to apply a snapshot to `ProjectUi` and the Settings state
 - `apps/desktop/src/renderer/shell/shellCommands.ts`, `shellCommands.test.ts` — `nav.back` and `nav.forward`
-- `apps/desktop/src/renderer/shell/TitleBand.tsx`, `TitleBand.module.css` — the two buttons
+- `apps/desktop/src/renderer/shell/TitleBand.tsx`, `TitleBand.module.css` — the two buttons, and the shortcuts button on the right
+- `packages/icons/src/16/keyboard.svg` — create: no keyboard glyph exists in the packs. The generated `dist/` is rebuilt with `bun run build` in `packages/icons`
 
 **Done when:** after opening a chat, a task, then Documents, `Cmd+[` returns through them in reverse and `Cmd+]` forward again, and the buttons do the same and disable at the ends.
 **Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/desktop`
+**Landed in the stage**
+
+- `NavHistory` (`stores/NavHistory.ts`): `back()`, `forward()`, `canGoBack`, `canGoForward`, `replacing(fn)`, `dispose()`, `HISTORY_LIMIT` (100). Recording starts when the first project is selected. Going back or forward sets the index and applies the snapshot in one action, so the reaction sees state equal to the current entry and records nothing; no flag is needed. Entries are skipped when the project, chat, task or run of the entry's own section is gone, and also when they show the same place as the current entry. `canGoBack` and `canGoForward` follow the same rule. `RootStore` owns `history` and gained `projectState(id)`; `ProjectUi` and `UiStore` gained `view`, `show`, `settingsView` and `restore`.
+- Keys are `$mod+BracketLeft` and `$mod+BracketRight`, so they also work on non-Latin layouts. They are off in text fields, where `Cmd+[` outdents in the editors.
+- `help.open` gained `$mod+?`, because Cmd+Shift+/ reports the key `?` and did not match `$mod+/`.
+- `TitleBand`: back and forward at the left, the keyboard shortcuts button at the right, all `variant="filling"` as DESIGN.md prescribes for toolbars, `no-drag` through the global button rule. New `keyboard` glyph in the 16px pack.
+- The Agents screen's first-visit auto-select runs inside `root.history.replacing(...)`, because it recorded two entries and dropped the forward history. Chats, Docs and Tasks write no selection from effects.
+
+**Follow-ups**
+
+- Tasks cursor-follow must call `root.history.replacing(...)` from a plain handler. Inside another MobX action the overwrite is silently lost and the change becomes an entry. Done by the parent after Stage 6.
+- A stale stored id at startup (a task or chat deleted since the last run) makes the first entry unreachable once the project snapshot arrives. A fix would rewrite entry 0 to what the window actually shows when the first project is ready.
+- Mouse side buttons, Cmd+←/→ and a history that survives a restart are out of scope.
+
 **Commits:** None yet.

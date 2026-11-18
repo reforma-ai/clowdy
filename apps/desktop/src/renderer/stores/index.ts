@@ -1,4 +1,5 @@
 export { RootStoreProvider, useChatStream, useProjectState, useProjectUi, useRootStore, useRunStream } from './hooks';
+export { NavHistory } from './NavHistory';
 export { ProjectState } from './ProjectState';
 export { RootStore } from './RootStore';
 export { buildRunTree, type RunNode } from './runTree';
