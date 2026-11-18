@@ -442,7 +442,9 @@ function ModelList({ choice, held, providers, active, onBack, onPickModel }: Lis
 
             <Scrollable className={ styles.modelScroll } onKeyDown={ onRowsKeyDown }>
                 <Show when={ shown && rows.length > 0 }>
+                    { /* One list per provider: the rows of another provider would otherwise be matched to the key the old list had focused, and Tab would land on its last row. */ }
                     <ListBox
+                        key={ shown!.id }
                         className={ styles.modelList }
                         aria-label="Model"
                         size="sm"
@@ -622,6 +624,11 @@ function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
     // does the same: the listbox reports no change when its selected row is chosen again, so nothing else would answer the key. It is
     // read in the capture phase because a row's press handling stops its own Enter and Space before they bubble.
     const onListKeyDown = (event: KeyboardEvent) => {
+        // A pick moves the focus to the model button while Enter is still down, and on a Mac neither the list nor the flyout cancels Enter's own
+        // action, which is a click on whatever has the focus by then: it would press that button and open the list again. This is read
+        // before the next check because the flyout's rows are meant too.
+        if (event.key === 'Enter' && event.target instanceof Element && event.target.closest('[role="option"]')) event.preventDefault();
+
         // What happens in the flyout comes up through its portal to here: it is the flyout's own (it closes itself on Escape).
         if (!event.currentTarget.contains(event.target as Node)) return;
 
