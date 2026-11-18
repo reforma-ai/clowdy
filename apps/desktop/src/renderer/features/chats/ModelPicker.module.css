@@ -172,6 +172,7 @@
     @ruleset typography-heading-4;
 }
 
+/* The block under the model button. The face draws it only when it has something to put in it, so a face of the button alone is padded the same all round. */
 .reasoning {
     display: flex;
     flex-direction: column;
@@ -212,6 +213,47 @@
     color: var(--color-text);
 }
 
+/* The marks of the providers, under the head: one tab each, the selected one on a plate. */
+.strip {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0 var(--spacing-sm) var(--spacing-xs);
+}
+
+.tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-30);
+    height: var(--spacing-30);
+    padding: 0;
+    border: 0;
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background: transparent;
+    color: var(--color-secondary-muted-text);
+    cursor: pointer;
+    transition:
+        background-color var(--transition-duration-fast),
+        color var(--transition-duration-fast);
+}
+
+.tab:hover {
+    background: var(--color-secondary-muted-light);
+    color: var(--color-text);
+}
+
+.tab[aria-selected='true'] {
+    background: var(--color-secondary-muted);
+    color: var(--color-text);
+}
+
+.tab:focus-visible {
+    outline: var(--spacing-4) solid var(--color-primary-muted-border);
+    outline-offset: 0;
+}
+
 /*
  * The list scrolls inside this. The popover is as tall as the room above the pill and clips what does not fit, and on the new-chat page
  * the card sits in the middle of the window, so in a low window the cap leaves room for the head and what lies above the card.
@@ -237,12 +279,6 @@
     margin-top: var(--spacing-md);
 }
 
-.noteTitle {
-    @ruleset typography-text-xs;
-    color: var(--color-secondary-muted-text);
-    font-weight: 500;
-}
-
 .noteText {
     @ruleset typography-text-sm;
     color: var(--color-secondary-muted-text);
@@ -252,4 +288,32 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
+}
+
+/* The "More models" row has no mark; this is the room of one, so its words stand under the names above. */
+.markSlot {
+    display: block;
+    flex-shrink: 0;
+    width: var(--spacing-16);
+    height: var(--spacing-16);
+}
+
+/*
+ * The flyout of "More models": a popover of its own that opens beside the row (to its right, where there is room; React Aria turns it
+ * to the other side where there is not) and may reach past the picker's edge. The list scrolls inside it, within what the window leaves,
+ * and inside the popover's own cap, which React Aria sets from the room it has.
+ */
+.flyout {
+    overflow: clip;
+}
+
+.flyoutBody {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.flyoutScroll {
+    min-height: 0;
+    max-height: min(360px, calc(100vh - 3rem));
 }

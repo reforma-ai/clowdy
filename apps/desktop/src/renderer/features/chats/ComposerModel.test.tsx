@@ -96,7 +96,10 @@ const selectModel = () => dialog()!.querySelector<HTMLButtonElement>('button[ari
 const slider = () => dialog()!.querySelector<HTMLElement>('[role="slider"]')!;
 const options = () => [...document.querySelectorAll<HTMLElement>('[role="option"]')];
 const optionNamed = (name: string) => options().find(option => option.textContent === name)!;
-const headers = () => [...document.querySelectorAll('[role="listbox"] header')].map(header => header.textContent);
+const tabs = () => [...document.querySelectorAll<HTMLElement>('[role="tab"]')];
+const tabNames = () => tabs().map(tab => tab.getAttribute('aria-label'));
+const flyout = () => document.querySelector<HTMLElement>('[data-model-flyout]');
+const flyoutOptions = () => [...(flyout()?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
 const stored = () => localStorage.getItem('clowdy:model-choice');
 
 function type(value: string) {
@@ -132,10 +135,21 @@ async function openPicker() {
     await settle();
 }
 
-/** Picks a model by its name in the open popover's list, and leaves the popover open on its face. */
-async function pickModel(name: string) {
+/** Picks a model by its name in the open popover's list (on the tab of its provider, when it is not the one the list starts on), and leaves the popover open on its face. */
+async function pickModel(name: string, provider?: string) {
     await press(selectModel());
+
+    if (provider) await press(tabs().find(tab => tab.getAttribute('aria-label') === provider));
+
     await press(optionNamed(name));
+}
+
+/** Picks a model that is behind "More models", from the flyout. */
+async function pickMoreModel(name: string) {
+    await press(selectModel());
+    await press(optionNamed('More models'));
+    await settle();
+    await press(flyoutOptions().find(option => option.textContent === name));
 }
 
 /** A chat that has a choice of its own, with or without its orchestrator started. */
@@ -168,7 +182,7 @@ describe('on the new-chat page', () => {
     it('starts the chat on what the picker holds: the provider, the model and the level', async () => {
         await mount();
         await openPicker();
-        await pickModel('GPT-6.2 Sol');
+        await pickModel('GPT-6.2 Sol', 'Codex');
         await key(slider(), 'End');
         type('Build the thing');
         await pressEnter();
@@ -191,7 +205,7 @@ describe('on the new-chat page', () => {
     it('leaves out the level of a model that has none', async () => {
         await mount();
         await openPicker();
-        await pickModel('Haiku 4.5');
+        await pickMoreModel('Haiku 4.5');
         type('Build the thing');
         await pressEnter();
 
@@ -286,15 +300,52 @@ describe('on the new-chat page', () => {
         expect(sent[0]).toEqual({ type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'claude' });
     });
 
-    it('lists a section for each provider that is on, in the order Claude Code, Codex, Cursor', async () => {
+    it('has a strip with a tab for each provider that is on, in the order Claude Code, Codex, Cursor, on the provider that is held', async () => {
         await mount();
         await openPicker();
         await press(selectModel());
 
-        expect(headers()).toEqual(['Claude Code', 'Codex', 'Cursor']);
+        expect(tabNames()).toEqual(['Claude Code', 'Codex', 'Cursor']);
+        expect(tabs().filter(tab => tab.getAttribute('aria-selected') === 'true').map(tab => tab.getAttribute('aria-label'))).toEqual(['Claude Code']);
+        expect(document.querySelectorAll('[role="listbox"] header')).toHaveLength(0);
+        expect(options().map(option => option.textContent)).toEqual(['Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5', 'More models']);
     });
 
-    it('leaves out a provider that is off, and has no sections with one', async () => {
+    it('turns the list to another provider with a tab and picks nothing, and sends the provider with the first message only when a model of it is picked', async () => {
+        await mount();
+        await openPicker();
+        await press(selectModel());
+        await press(tabs()[1]);
+
+        expect(options().map(option => option.textContent)).toEqual(['GPT-6.2 Sol', 'GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Mini', 'GPT-6 Codex', 'More models']);
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+        expect(stored()).toBeNull();
+
+        type('Build the thing');
+        await pressEnter();
+
+        expect(sent[0]).toEqual({ type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'claude', model: 'opus', effort: 'high' });
+    });
+
+    it('picks a model from the flyout of the provider the strip shows', async () => {
+        await mount();
+        await openPicker();
+        await press(selectModel());
+        await press(tabs()[2]);
+        await press(optionNamed('More models'));
+        await settle();
+
+        expect(flyoutOptions().map(option => option.textContent)).toEqual(['Claude Opus 5', 'Claude Opus 4.8', 'Gemini 4 Carbon', 'GPT-5.5', 'Muse Wonder 1.0']);
+
+        await press(flyoutOptions().find(option => option.textContent === 'Gemini 4 Carbon'));
+        type('Go');
+        await pressEnter();
+
+        expect(sent[0]).toEqual({ type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'cursor', model: 'gemini-4-carbon', effort: 'high' });
+        expect(readRemembered()).toMatchObject({ engine: 'cursor', models: { cursor: 'gemini-4-carbon' } });
+    });
+
+    it('leaves out a provider that is off, and has no strip with one', async () => {
         await mount({}, {
             change: (data) => {
                 for (const agent of data.agents) agent.enabled = agent.id === 'codex';
@@ -306,9 +357,9 @@ describe('on the new-chat page', () => {
         await openPicker();
         await press(selectModel());
 
-        expect(headers()).toEqual([]);
+        expect(tabs()).toEqual([]);
         expect(options().length).toBeGreaterThan(0);
-        expect(options().every(option => option.getAttribute('data-engine') === 'codex')).toBe(true);
+        expect(options().filter(option => option.hasAttribute('data-engine')).every(option => option.getAttribute('data-engine') === 'codex')).toBe(true);
     });
 
     it('leaves out a provider that is not installed', async () => {
@@ -320,7 +371,7 @@ describe('on the new-chat page', () => {
         await openPicker();
         await press(selectModel());
 
-        expect(headers()).toEqual(['Claude Code', 'Codex']);
+        expect(tabNames()).toEqual(['Claude Code', 'Codex']);
     });
 
     describe('with no provider on', () => {
@@ -374,7 +425,7 @@ describe('on the new-chat page', () => {
             type('Build the thing');
             await pressEnter();
             await openPicker();
-            await pickModel('GPT-6 Sol');
+            await pickModel('GPT-6 Sol', 'Codex');
 
             expect(sent.map(input => input.type)).toEqual(['chat.create', 'chat.send', 'chat.setModel']);
             expect(sent[2]).toEqual({ type: 'chat.setModel', chatId: 'c-new', engine: 'codex', model: 'gpt-6-sol', effort: 'high' });
@@ -383,7 +434,7 @@ describe('on the new-chat page', () => {
             // No orchestrator has started, so the provider may still change.
             await press(selectModel());
 
-            expect(headers()).toEqual(['Claude Code', 'Codex', 'Cursor']);
+            expect(tabNames()).toEqual(['Claude Code', 'Codex', 'Cursor']);
         });
 
         it('keeps the chat it made on its own choice, and does not call it a page with no provider, when every provider is switched off after', async () => {
@@ -458,7 +509,7 @@ describe('in a chat', () => {
 
         await mount({ chat, run: runOf() });
         await openPicker();
-        await pickModel('Haiku 4.5');
+        await pickMoreModel('Haiku 4.5');
 
         expect(sent).toEqual([{ type: 'chat.setModel', chatId: chat.id, model: 'claude-haiku-4-5-20251001', effort: null }]);
     });
@@ -479,6 +530,46 @@ describe('in a chat', () => {
         await pickModel('Opus 5.5');
 
         expect(sent).toEqual([]);
+    });
+
+    it('shows the model the daemon took at once, and not the old one until the chat\'s record gets here', async () => {
+        const chat = chatOn();
+        const { update } = await mount({ chat, run: runOf() });
+
+        await openPicker();
+        await pickModel('Fable 5.2');
+
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Fable 5.2 · High');
+        expect(selectModel().textContent).toBe('Fable 5.2High');
+
+        // The record comes, and the store is what the pill reads again.
+        await update({ chat: { ...chat, model: 'fable' } });
+
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Fable 5.2 · High');
+
+        // Another client changed the chat after: the pill follows it.
+        await update({ chat: { ...chat, model: 'sonnet', effort: 'low' } });
+
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Sonnet 5.5 · Low');
+    });
+
+    it('keeps the old model on the pill when the daemon refused the pick', async () => {
+        await mount({ chat: chatOn(), run: runOf(), answer: () => refused });
+        await openPicker();
+        await pickModel('Fable 5.2');
+
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+    });
+
+    it('shows Claude\'s hidden default as the model it stands for, checked in the list', async () => {
+        await mount({ chat: chatOn({ model: 'default' }), run: runOf({ model: 'default' }) });
+
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+
+        await openPicker();
+        await press(selectModel());
+
+        expect(options().filter(option => option.getAttribute('aria-selected') === 'true').map(option => option.textContent)).toEqual(['Opus 5.5']);
     });
 
     it('remembers a pick the daemon took, the level too', async () => {
@@ -503,14 +594,20 @@ describe('in a chat', () => {
         expect(stored()).toBeNull();
     });
 
-    it('lists the models of the chat\'s provider alone, with no sections, once its orchestrator has started', async () => {
+    it('lists the models of the chat\'s provider alone, with no strip, once its orchestrator has started', async () => {
         await mount({ chat: chatOn({ engine: 'codex', model: 'gpt-6-sol', effort: 'high' }), run: runOf({ engine: 'codex' }) });
         await openPicker();
         await press(selectModel());
 
-        expect(headers()).toEqual([]);
+        expect(tabs()).toEqual([]);
         expect(options().length).toBeGreaterThan(0);
-        expect(options().every(option => option.getAttribute('data-engine') === 'codex')).toBe(true);
+        expect(options().filter(option => option.hasAttribute('data-engine')).every(option => option.getAttribute('data-engine') === 'codex')).toBe(true);
+
+        await press(optionNamed('More models'));
+        await settle();
+
+        // The rest of Codex's models, and nothing of another provider's.
+        expect(flyoutOptions().map(option => option.textContent)).toEqual(['GPT-5.5', 'GPT-5.5 Mini', 'GPT-5.4']);
     });
 
     it('can change the provider too while there is no orchestrator yet, and sends it', async () => {
@@ -520,8 +617,9 @@ describe('in a chat', () => {
         await openPicker();
         await press(selectModel());
 
-        expect(headers()).toEqual(['Claude Code', 'Codex', 'Cursor']);
+        expect(tabNames()).toEqual(['Claude Code', 'Codex', 'Cursor']);
 
+        await press(tabs()[1]);
         await press(optionNamed('GPT-6.2 Sol'));
 
         expect(sent).toEqual([{ type: 'chat.setModel', chatId: chat.id, engine: 'codex', model: 'gpt-6.2-sol', effort: 'high' }]);
@@ -552,6 +650,39 @@ describe('in a chat', () => {
         await mount({ chat: chatOn({ model: 'claude-sonnet-3-7' }), run: runOf({ model: 'claude-sonnet-3-7' }) });
 
         expect(trigger()!.getAttribute('aria-label')).toBe('Model: claude-sonnet-3-7');
+    });
+
+    describe('with no model', () => {
+        // A chat from before models were stored: it ran on the agent's own default.
+        const bare = (rest: Partial<Chat> = {}) => chatOn({ model: undefined, effort: undefined, ...rest });
+
+        it('reads the provider on the pill and "Default model" on the face, with the line that says what that means', async () => {
+            await mount({ chat: bare(), run: runOf({ model: undefined, effort: undefined }) });
+
+            expect(trigger()!.getAttribute('aria-label')).toBe('Model: Claude Code');
+
+            await openPicker();
+
+            expect(selectModel().textContent).toBe('Default model');
+            expect(dialog()!.textContent).toContain('Runs on Claude Code\'s own default until you pick a model.');
+            expect(slider()).toBeNull();
+            expect(dialog()!.textContent).not.toContain('Reasoning effort');
+        });
+
+        it('lists the chat\'s provider alone, checks no row, and sends the pick as the chat\'s first model', async () => {
+            const chat = bare();
+
+            await mount({ chat, run: runOf({ model: undefined, effort: undefined }) });
+            await openPicker();
+            await press(selectModel());
+
+            expect(tabs()).toEqual([]);
+            expect(options().filter(option => option.getAttribute('aria-selected') === 'true')).toEqual([]);
+
+            await press(optionNamed('Sonnet 5.5'));
+
+            expect(sent).toEqual([{ type: 'chat.setModel', chatId: chat.id, model: 'sonnet', effort: 'high' }]);
+        });
     });
 
     describe('from before chats had a choice of their own', () => {
@@ -610,5 +741,22 @@ describe('pressing the card', () => {
         await press(selectModel());
 
         expect((await mouseDown(optionNamed('Fable 5.2'))).defaultPrevented).toBe(false);
+    });
+
+    it('leaves a press inside the flyout of "More models" to the flyout, which is outside the card, and does not move the caret to the text', async () => {
+        await mount({ chat: chatOn(), run: runOf() });
+        await openPicker();
+        await press(selectModel());
+        await press(optionNamed('More models'));
+        await settle();
+        (document.activeElement as HTMLElement | null)?.blur();
+
+        const row = flyoutOptions()[0]!;
+
+        expect((await mouseDown(row)).defaultPrevented).toBe(false);
+        expect((await mouseDown(flyout()!)).defaultPrevented).toBe(false);
+        expect(document.activeElement).not.toBe(field());
+        // The press did not take the popover with it.
+        expect(dialog()).not.toBeNull();
     });
 });

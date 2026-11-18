@@ -56,7 +56,7 @@ const press = (element: Element | null | undefined) => act(async () => {
 });
 
 const trigger = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Model:"]')!;
-const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
+const dialog = () => document.querySelector<HTMLElement>('[role="dialog"][aria-label="Model and reasoning effort"]');
 const selectModel = () => dialog()!.querySelector<HTMLButtonElement>('button[aria-label="Select model"]')!;
 const faceLayer = () => selectModel().parentElement!.parentElement!;
 const listLayer = () => faceLayer().nextElementSibling as HTMLElement;
@@ -64,6 +64,12 @@ const slider = () => dialog()!.querySelector<HTMLElement>('[role="slider"]');
 const options = () => [...listLayer().querySelectorAll<HTMLElement>('[role="option"]')];
 const optionNamed = (name: string) => options().find(option => option.textContent === name)!;
 const texts = (elements: Element[]) => elements.map(element => element.textContent);
+const tabs = () => [...listLayer().querySelectorAll<HTMLElement>('[role="tab"]')];
+const tabNamed = (name: string) => tabs().find(tab => tab.getAttribute('aria-label') === name)!;
+const selectedTab = () => tabs().filter(tab => tab.getAttribute('aria-selected') === 'true').map(tab => tab.getAttribute('aria-label'));
+const flyout = () => document.querySelector<HTMLElement>('[data-model-flyout]');
+const flyoutOptions = () => [...(flyout()?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
+const flyoutOptionNamed = (name: string) => flyoutOptions().find(option => option.textContent === name)!;
 const onList = () => !listLayer().hasAttribute('inert');
 const onFace = () => !faceLayer().hasAttribute('inert');
 const key = (target: Element, name: string) => act(async () => {
@@ -78,6 +84,21 @@ async function open() {
 async function openList() {
     await open();
     await press(selectModel());
+}
+
+/** A key as a person presses it: down, then up. */
+const tap = async (target: Element, name: string) => {
+    await key(target, name);
+    await act(async () => {
+        target.dispatchEvent(new KeyboardEvent('keyup', { key: name, bubbles: true, cancelable: true }));
+    });
+};
+
+/** Opens the flyout of "More models" with a press, and lets it place itself. */
+async function openFlyout() {
+    await openList();
+    await press(optionNamed('More models'));
+    await settle();
 }
 
 /** A model list of a provider, with the levels each model is given. */
@@ -334,22 +355,15 @@ describe('the popover', () => {
 });
 
 describe('the list', () => {
-    it('is in a section for each provider, in the order they are offered, each model with its provider\'s mark', async () => {
+    it('shows the main models of the provider in force, each with its mark, and the row that opens the rest', async () => {
         await setup(opus);
         await openList();
 
-        expect(texts([...listLayer().querySelectorAll('header')])).toEqual(['Claude Code', 'Codex', 'Cursor']);
-        expect(texts(options())).toEqual([
-            // The "Default (recommended)" row is Opus once, as the default.
-            'Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5', 'Opus 4.6', 'Haiku 4.5',
-            'GPT-6.2 Sol', 'GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Mini',
-            // Cursor's own model named Auto is a row like any other.
-            'Auto', 'Claude Opus 5.5', 'GPT-5.5', 'Grok 4.5', 'Composer 2.5',
-        ]);
-        expect(options().every(option => option.querySelector('svg') !== null)).toBe(true);
-        expect(options().map(option => option.getAttribute('data-engine'))).toEqual(
-            [...Array(6).fill('claude'), ...Array(4).fill('codex'), ...Array(5).fill('cursor')]
-        );
+        // The "Default (recommended)" row is Opus once, as the default, and the daemon marks Claude's four aliases as the main ones.
+        expect(texts(options())).toEqual(['Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5', 'More models']);
+        expect(options().filter(option => option.hasAttribute('data-model-id')).every(option => option.querySelector('svg') !== null)).toBe(true);
+        expect(options().map(option => option.getAttribute('data-engine'))).toEqual([...Array(4).fill('claude'), null]);
+        expect(listLayer().querySelector('header')).toBeNull();
         expect(listLayer().querySelector('[role="listbox"]')!.getAttribute('aria-label')).toBe('Model');
     });
 
@@ -377,17 +391,22 @@ describe('the list', () => {
         });
         await openList();
 
-        expect(texts(options().filter(option => option.getAttribute('data-model-id') === 'default'))).toEqual(['Default (recommended)', 'Auto']);
+        expect(texts(options().filter(option => option.getAttribute('data-model-id') === 'default'))).toEqual(['Auto']);
         expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual(['Auto']);
+
+        await press(tabNamed('Claude Code'));
+
+        expect(texts(options().filter(option => option.getAttribute('data-model-id') === 'default'))).toEqual(['Default (recommended)']);
+        expect(options().filter(option => option.getAttribute('aria-selected') === 'true')).toEqual([]);
     });
 
-    it('has no section header when it offers one provider', async () => {
+    it('has no strip when it offers one provider', async () => {
         await setup(opus, {}, ['claude']);
         await openList();
 
-        expect(listLayer().querySelector('header')).toBeNull();
-        expect(options()).toHaveLength(6);
-        expect(options().every(option => option.getAttribute('data-engine') === 'claude')).toBe(true);
+        expect(listLayer().querySelector('[role="tablist"]')).toBeNull();
+        expect(texts(options())).toEqual(['Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5', 'More models']);
+        expect(options().filter(option => option.hasAttribute('data-engine')).every(option => option.getAttribute('data-engine') === 'claude')).toBe(true);
     });
 
     it('goes back to the face with Back, and writes nothing', async () => {
@@ -415,6 +434,7 @@ describe('the list', () => {
         writeRemembered({ models: {}, efforts: { 'codex/gpt-6-sol': 'ultra' } });
         await setup(opus);
         await openList();
+        await press(tabNamed('Codex'));
         await press(optionNamed('GPT-6 Sol'));
 
         expect(picks).toEqual([{ engine: 'codex', model: 'gpt-6-sol', effort: 'ultra' }]);
@@ -423,9 +443,10 @@ describe('the list', () => {
     it('gives a model with no levels none', async () => {
         await setup(opus);
         await openList();
-        await press(optionNamed('Haiku 4.5'));
+        await press(tabNamed('Cursor'));
+        await press(optionNamed('Composer 2.5'));
 
-        expect(picks).toEqual([{ engine: 'claude', model: 'claude-haiku-4-5-20251001' }]);
+        expect(picks).toEqual([{ engine: 'cursor', model: 'composer-2.5' }]);
     });
 
     it('just goes back when the model in force is picked again', async () => {
@@ -598,7 +619,9 @@ describe('when the models are not there', () => {
 
         await press(selectModel());
 
-        expect(listLayer().querySelectorAll('[role="status"]')).toHaveLength(3);
+        // The strip is there, and the provider it shows is the one being read.
+        expect(tabs()).toHaveLength(3);
+        expect(listLayer().querySelectorAll('[role="status"]')).toHaveLength(1);
         expect(listLayer().textContent).toContain('Reading the models…');
         expect(options()).toEqual([]);
 
@@ -636,17 +659,22 @@ describe('when the models are not there', () => {
         await setup(opus, { read });
         await openList();
 
+        // The provider in force has its models; the one that failed says so when the strip turns to it, and only then.
+        expect(listLayer().querySelector('.note, [class*="note"]')).toBeNull();
+        expect(options().length).toBeGreaterThan(0);
+
+        await press(tabNamed('Codex'));
+
         const note = listLayer().querySelector<HTMLElement>('[data-provider="codex"]')!;
 
-        expect(note.textContent).toContain('Codex');
         expect(note.textContent).toContain('The models could not be read. The daemon is away');
-        expect(texts([...listLayer().querySelectorAll('header')])).toEqual(['Claude Code', 'Cursor']);
+        expect(options()).toEqual([]);
 
         fail = false;
         await press(note.querySelector('button'));
         await draw();
 
-        expect(listLayer().querySelector('[data-provider="codex"]')).toBeNull();
+        expect(listLayer().querySelector('[class*="note"]')).toBeNull();
         expect(options().filter(option => option.getAttribute('data-engine') === 'codex').length).toBeGreaterThan(0);
     });
 
@@ -657,12 +685,13 @@ describe('when the models are not there', () => {
             },
         });
         await openList();
+        await press(tabNamed('Cursor'));
 
         const note = listLayer().querySelector<HTMLElement>('[data-provider="cursor"]')!;
 
         expect(note.textContent).toContain('Cursor is not signed in');
         expect(note.querySelector('button')!.textContent).toBe('Retry');
-        expect(options().some(option => option.getAttribute('data-engine') === 'cursor')).toBe(false);
+        expect(options()).toEqual([]);
     });
 
     it('shows a held model that is not in the list by its id, says so, and selects no row', async () => {
@@ -705,11 +734,12 @@ describe('when the models are not there', () => {
         await act(async () => store.models.of('codex').reload());
         await draw();
         await openList();
+        await press(tabNamed('Codex'));
 
         const note = listLayer().querySelector<HTMLElement>('[data-provider="codex"]')!;
 
         expect(note.textContent).toContain('The daemon is away');
-        expect(options().filter(option => option.getAttribute('data-engine') === 'codex')).toHaveLength(4);
+        expect(options().filter(option => option.getAttribute('data-engine') === 'codex')).toHaveLength(5);
     });
 
     it('holds the stored choice of a provider that is not offered, by its id', async () => {
@@ -727,5 +757,580 @@ describe('the remembered choice', () => {
         await press(optionNamed('Fable 5.2'));
 
         expect(picks).toEqual([{ engine: 'claude', model: 'fable', effort: 'max' }]);
+    });
+});
+
+describe('a chat with no model', () => {
+    const bare = { engine: 'claude' } satisfies ModelChoice;
+    const sentence = 'Runs on Claude Code\'s own default until you pick a model.';
+
+    it('reads "Default model" on the face, with the provider\'s mark and a muted line, and the provider on the pill', async () => {
+        await setup(bare, {}, ['claude']);
+
+        expect(trigger().textContent).toBe('Claude Code');
+
+        await open();
+
+        expect(selectModel().textContent).toBe('Default model');
+        expect(selectModel().querySelectorAll('svg')).toHaveLength(2);
+        expect(faceLayer().textContent).toBe(`Default model${ sentence }`);
+        expect(slider()).toBeNull();
+        expect(dialog()!.textContent).not.toContain('Reasoning effort');
+    });
+
+    it('names the provider the list was given', async () => {
+        await setup({ engine: 'codex' }, {}, ['codex']);
+        await open();
+
+        expect(faceLayer().textContent).toBe('Default modelRuns on Codex\'s own default until you pick a model.');
+    });
+
+    it('checks no row of the list', async () => {
+        await setup(bare, {}, ['claude']);
+        await openList();
+
+        expect(options().length).toBeGreaterThan(0);
+        expect(options().filter(option => option.getAttribute('aria-selected') === 'true')).toEqual([]);
+        expect(listLayer().contains(document.activeElement)).toBe(true);
+    });
+
+    it('does not say it while the models are still being read', async () => {
+        await setup(bare, { read: () => new Promise<AgentModels>(() => undefined), preload: false }, ['claude']);
+        await open();
+
+        expect(selectModel().textContent).toBe('Model');
+        expect(faceLayer().textContent).not.toContain('own default');
+    });
+
+    it('is picked out of by a pick like any other model', async () => {
+        await setup(bare, {}, ['claude']);
+        await openList();
+        await press(optionNamed('Fable 5.2'));
+
+        expect(picks).toEqual([{ engine: 'claude', model: 'fable', effort: 'high' }]);
+    });
+});
+
+describe('the face\'s spacing', () => {
+    /** The block under the model button: the slider, the description, the line of a chat with no model. */
+    const reasoning = () => faceLayer().querySelector('[class*="reasoning"]');
+
+    it('reserves no block under the model button when there is nothing to put in it', async () => {
+        // A model with no levels and no description: the face is the button alone.
+        await setup({ engine: 'claude', model: 'bare' }, {
+            change: (data) => {
+                data.agentModels.claude = models(['bare']);
+            },
+        });
+        await open();
+
+        expect(faceLayer().textContent).toBe('BARE');
+        expect(reasoning()).toBeNull();
+        expect([...faceLayer().firstElementChild!.children]).toHaveLength(1);
+    });
+
+    it('has the block for a slider', async () => {
+        await setup(opus);
+        await open();
+
+        expect(reasoning()).not.toBeNull();
+    });
+
+    it('has the block for a description', async () => {
+        await setup({ engine: 'claude', model: 'described' }, {
+            change: (data) => {
+                data.agentModels.claude = models(['described', undefined, { description: 'Quick' }]);
+            },
+        });
+        await open();
+
+        expect(reasoning()!.textContent).toBe('Quick');
+    });
+
+    it('has the block for the line of a chat with no model', async () => {
+        await setup({ engine: 'claude' }, {}, ['claude']);
+        await open();
+
+        expect(reasoning()!.textContent).toBe('Runs on Claude Code\'s own default until you pick a model.');
+    });
+
+    it('has the block for the word that a pick applies later, and for that alone', async () => {
+        await setup({ engine: 'claude', model: 'bare' }, {
+            change: (data) => {
+                data.agentModels.claude = models(['bare']);
+            },
+        }, ['claude'], true);
+        await open();
+
+        expect(reasoning()!.textContent).toBe('Applies from the next message');
+    });
+});
+
+describe('the provider strip', () => {
+    it('is a tablist of the providers\' marks with their names, the one in force selected', async () => {
+        await setup({ engine: 'codex', model: 'gpt-6-sol', effort: 'high' });
+        await openList();
+
+        expect(listLayer().querySelector('[role="tablist"]')!.getAttribute('aria-label')).toBe('Provider');
+        expect(tabs().map(tab => tab.getAttribute('aria-label'))).toEqual(['Claude Code', 'Codex', 'Cursor']);
+        expect(tabs().every(tab => tab.querySelector('svg') !== null && tab.textContent === '')).toBe(true);
+        expect(selectedTab()).toEqual(['Codex']);
+        expect(tabs().map(tab => tab.tabIndex)).toEqual([-1, 0, -1]);
+        expect(options().filter(option => option.hasAttribute('data-engine')).every(option => option.getAttribute('data-engine') === 'codex')).toBe(true);
+    });
+
+    it('sits under the head row, above the list', async () => {
+        await setup(opus);
+        await openList();
+
+        const strip = listLayer().querySelector('[role="tablist"]')!;
+
+        expect(strip.previousElementSibling!.textContent).toBe('Select model');
+        expect(strip.nextElementSibling!.contains(options()[0]!)).toBe(true);
+    });
+
+    it('turns the list to another provider and picks nothing', async () => {
+        await setup(opus);
+        await openList();
+        await press(tabNamed('Cursor'));
+
+        expect(selectedTab()).toEqual(['Cursor']);
+        expect(texts(options())).toEqual(['Auto', 'Grok 4.7', 'Grok 4.6', 'Composer 2.5', 'Claude Opus 5.5', 'More models']);
+        expect(options().filter(option => option.getAttribute('aria-selected') === 'true')).toEqual([]);
+        expect(picks).toEqual([]);
+        expect(onList()).toBe(true);
+        // The pill and the face still say what is held.
+        expect(trigger().getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+
+        await press(tabNamed('Claude Code'));
+
+        expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual(['Opus 5.5']);
+    });
+
+    it('moves between the tabs with the arrows, Home and End, and wraps', async () => {
+        await setup(opus);
+        await openList();
+        tabNamed('Claude Code').focus();
+
+        await key(document.activeElement!, 'ArrowRight');
+
+        expect(selectedTab()).toEqual(['Codex']);
+        expect(document.activeElement).toBe(tabNamed('Codex'));
+
+        await key(document.activeElement!, 'ArrowRight');
+        await key(document.activeElement!, 'ArrowRight');
+
+        expect(selectedTab()).toEqual(['Claude Code']);
+
+        await key(document.activeElement!, 'ArrowLeft');
+
+        expect(selectedTab()).toEqual(['Cursor']);
+        expect(options().some(option => option.getAttribute('data-model-id') === 'composer-2.5')).toBe(true);
+
+        await key(document.activeElement!, 'Home');
+
+        expect(selectedTab()).toEqual(['Claude Code']);
+
+        await key(document.activeElement!, 'End');
+
+        expect(selectedTab()).toEqual(['Cursor']);
+        expect(picks).toEqual([]);
+        // The strip keeps the keys it uses: the list pane has not gone back to the face.
+        expect(onList()).toBe(true);
+    });
+
+    it('starts on the provider in force every time the list opens', async () => {
+        await setup(opus);
+        await openList();
+        await press(tabNamed('Codex'));
+        await press(listLayer().querySelector('button[aria-label="Back"]'));
+        await press(selectModel());
+
+        expect(selectedTab()).toEqual(['Claude Code']);
+    });
+
+    it('follows the model in force to another provider', async () => {
+        await setup(opus);
+        await openList();
+        await press(tabNamed('Codex'));
+        await press(optionNamed('GPT-6 Sol'));
+
+        props = { ...props, choice: picks[0]! };
+        await draw();
+        await press(selectModel());
+
+        expect(selectedTab()).toEqual(['Codex']);
+        expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual(['GPT-6 Sol']);
+    });
+
+    it('is not there for one provider, and the list shows the held model\'s provider when the held one is not offered', async () => {
+        await setup(opus, {}, ['codex', 'cursor']);
+        await openList();
+
+        // Claude is not offered: the strip starts on the first that is.
+        expect(selectedTab()).toEqual(['Codex']);
+        expect(tabs()).toHaveLength(2);
+    });
+
+    it('shows the provider\'s name as a tooltip when a tab is reached with the keyboard', async () => {
+        await setup(opus);
+        await openList();
+        tabNamed('Claude Code').focus();
+        await key(document.activeElement!, 'ArrowRight');
+        await settle();
+
+        expect(document.querySelector('[role="tooltip"]')!.textContent).toBe('Codex');
+    });
+});
+
+describe('the main models', () => {
+    it('are the first five in the agent\'s own order when it marks none as featured', async () => {
+        await setup({ engine: 'cursor', model: 'default' });
+        await openList();
+
+        expect(texts(options())).toEqual(['Auto', 'Grok 4.7', 'Grok 4.6', 'Composer 2.5', 'Claude Opus 5.5', 'More models']);
+
+        await press(tabNamed('Codex'));
+
+        expect(texts(options())).toEqual(['GPT-6.2 Sol', 'GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Mini', 'GPT-6 Codex', 'More models']);
+    });
+
+    it('are the featured rows when the agent marks some, however many', async () => {
+        await setup({ engine: 'claude', model: 'sonnet', effort: 'high' }, {
+            change: (data) => {
+                for (const model of data.agentModels.claude!.models) model.featured = ['claude-opus-4-6', 'fable'].includes(model.id) || undefined;
+            },
+        });
+        await openList();
+
+        // Two featured rows, and the model in force (Sonnet, which is not one of them) after them.
+        expect(texts(options())).toEqual(['Fable 5.2', 'Opus 4.6', 'Sonnet 5.5', 'More models']);
+
+        await press(optionNamed('More models'));
+        await settle();
+
+        expect(texts(flyoutOptions())).toEqual(['Opus 5.5', 'Haiku 5.5', 'Haiku 4.5']);
+    });
+
+    it('show the model in force as an extra row after them when it is not one of them, and the rest are behind "More models"', async () => {
+        await setup({ engine: 'cursor', model: 'gpt-5.5', effort: 'medium' });
+        await openList();
+
+        expect(texts(options())).toEqual(['Auto', 'Grok 4.7', 'Grok 4.6', 'Composer 2.5', 'Claude Opus 5.5', 'GPT-5.5', 'More models']);
+        expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual(['GPT-5.5']);
+
+        await press(optionNamed('More models'));
+        await settle();
+
+        expect(texts(flyoutOptions())).toEqual(['Claude Opus 5', 'Claude Opus 4.8', 'Gemini 4 Carbon', 'Muse Wonder 1.0']);
+    });
+
+    it('show a model in force that the agent has not featured after the featured rows', async () => {
+        await setup({ engine: 'claude', model: 'claude-opus-4-6', effort: 'high' });
+        await openList();
+
+        expect(texts(options())).toEqual(['Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5', 'Opus 4.6', 'More models']);
+
+        await press(optionNamed('More models'));
+        await settle();
+
+        expect(texts(flyoutOptions())).toEqual(['Haiku 4.5']);
+    });
+
+    it('have no "More models" row when there is no more', async () => {
+        await setup({ engine: 'claude', model: 'a' }, {
+            change: (data) => {
+                data.agentModels.claude = models(['a'], ['b'], ['c']);
+            },
+        });
+        await openList();
+
+        expect(texts(options())).toEqual(['A', 'B', 'C']);
+        expect(flyout()).toBeNull();
+    });
+
+    it('show a model held as the twin of another row as that row, checked', async () => {
+        // Claude Code's hidden `default` row is Opus, which the list shows once.
+        await setup({ engine: 'claude', model: 'default', effort: 'high' });
+
+        expect(trigger().textContent).toBe('Opus 5.5High');
+
+        await openList();
+
+        expect(texts(options().filter(option => option.getAttribute('aria-selected') === 'true'))).toEqual(['Opus 5.5']);
+        expect(texts(options())).not.toContain('Default (recommended)');
+
+        // The model in force is not a new pick.
+        await press(optionNamed('Opus 5.5'));
+
+        expect(picks).toEqual([]);
+    });
+});
+
+describe('the flyout of "More models"', () => {
+    const moreRow = () => optionNamed('More models');
+
+    it('has no mark on its row, a chevron at its end, and stays closed until it is asked for', async () => {
+        await setup(opus);
+        await openList();
+
+        expect(flyout()).toBeNull();
+        expect(moreRow().querySelector('svg')).not.toBeNull();
+        expect(moreRow().hasAttribute('data-model-id')).toBe(false);
+        expect(moreRow().getAttribute('aria-selected')).not.toBe('true');
+    });
+
+    it('opens on a press with the rest of the provider\'s models, as rows with a mark', async () => {
+        await setup(opus);
+        await openFlyout();
+
+        expect(flyout()).not.toBeNull();
+        expect(flyout()!.getAttribute('aria-label')).toBe('More models');
+        expect(texts(flyoutOptions())).toEqual(['Opus 4.6', 'Haiku 4.5']);
+        expect(flyoutOptions().every(option => option.querySelector('svg') !== null && option.getAttribute('data-engine') === 'claude')).toBe(true);
+        expect(flyout()!.querySelector('[role="listbox"]')!.getAttribute('aria-label')).toBe('More models');
+        // The flyout is a popover of its own, outside the picker's, and the picker stays where it is.
+        expect(dialog()!.contains(flyout())).toBe(false);
+        expect(onList()).toBe(true);
+        expect(picks).toEqual([]);
+    });
+
+    it('takes the focus into its list', async () => {
+        await setup(opus);
+        await openFlyout();
+
+        expect(document.activeElement).toBe(flyoutOptionNamed('Opus 4.6'));
+    });
+
+    it.each([
+        ['Enter', 'Enter'],
+        ['Space', ' '],
+        ['ArrowRight', 'ArrowRight'],
+    ])('opens on %s on the row', async (_name, name) => {
+        await setup(opus);
+        await openList();
+        moreRow().focus();
+        await tap(moreRow(), name);
+        await settle();
+
+        expect(flyout()).not.toBeNull();
+        expect(texts(flyoutOptions())).toEqual(['Opus 4.6', 'Haiku 4.5']);
+        expect(onList()).toBe(true);
+        expect(picks).toEqual([]);
+    });
+
+    it('does not open on ArrowRight on a model', async () => {
+        await setup(opus);
+        await openList();
+        await tap(optionNamed('Fable 5.2'), 'ArrowRight');
+        await settle();
+
+        expect(flyout()).toBeNull();
+    });
+
+    it.each([['Escape'], ['ArrowLeft']])('closes on %s, with the focus back on the row, and the picker stays where it was', async (name) => {
+        await setup(opus);
+        await openFlyout();
+        await key(document.activeElement!, name);
+        await settle();
+
+        expect(flyout()).toBeNull();
+        expect(document.activeElement).toBe(moreRow());
+        // Escape closes only the layer on top: the list is still there, and so is the popover.
+        expect(onList()).toBe(true);
+        expect(dialog()).not.toBeNull();
+        expect(picks).toEqual([]);
+
+        // And the next Escape goes back to the face, as ever.
+        await key(document.activeElement!, 'Escape');
+
+        expect(onFace()).toBe(true);
+    });
+
+    it('opens again after it closed', async () => {
+        await setup(opus);
+        await openFlyout();
+        await key(document.activeElement!, 'Escape');
+        await settle();
+        await tap(moreRow(), 'ArrowRight');
+        await settle();
+
+        expect(flyout()).not.toBeNull();
+    });
+
+    it('picks like the list does: with the level the model takes, back to the face, the picker open and the flyout gone', async () => {
+        await setup(opus);
+        await openFlyout();
+        await press(flyoutOptionNamed('Opus 4.6'));
+        await settle();
+
+        expect(picks).toEqual([{ engine: 'claude', model: 'claude-opus-4-6', effort: 'high' }]);
+        expect(onFace()).toBe(true);
+        expect(dialog()).not.toBeNull();
+        expect(flyout()).toBeNull();
+        expect(document.activeElement).toBe(selectModel());
+    });
+
+    it('gives a model with no levels none', async () => {
+        await setup(opus);
+        await openFlyout();
+        await press(flyoutOptionNamed('Haiku 4.5'));
+
+        expect(picks).toEqual([{ engine: 'claude', model: 'claude-haiku-4-5-20251001' }]);
+    });
+
+    it('picks with the keyboard: arrows to a row, Enter', async () => {
+        await setup(opus);
+        await openFlyout();
+
+        expect(document.activeElement).toBe(flyoutOptionNamed('Opus 4.6'));
+
+        await key(document.activeElement!, 'ArrowDown');
+        await tap(document.activeElement!, 'Enter');
+
+        expect(picks).toEqual([{ engine: 'claude', model: 'claude-haiku-4-5-20251001' }]);
+        expect(onFace()).toBe(true);
+    });
+
+    it('lists the rest of the provider the strip shows, and the level a model was last used at', async () => {
+        writeRemembered({ models: {}, efforts: { 'codex/gpt-5.5': 'xhigh' } });
+        await setup(opus);
+        await openList();
+        await press(tabNamed('Codex'));
+        await press(moreRow());
+        await settle();
+
+        expect(texts(flyoutOptions())).toEqual(['GPT-5.5', 'GPT-5.5 Mini', 'GPT-5.4']);
+
+        await press(flyoutOptionNamed('GPT-5.5'));
+
+        expect(picks).toEqual([{ engine: 'codex', model: 'gpt-5.5', effort: 'xhigh' }]);
+    });
+
+    it('does not close the picker for a press that lands in it, on a row or on its plate', async () => {
+        await setup(opus);
+        await openFlyout();
+
+        const plate = flyout()!;
+
+        await act(async () => {
+            plate.dispatchEvent(new PointerEvent('pointerdown', pointer));
+            plate.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+            plate.dispatchEvent(new PointerEvent('pointerup', pointer));
+            plate.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+            plate.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
+        });
+        await settle();
+
+        expect(dialog()).not.toBeNull();
+        expect(onList()).toBe(true);
+        expect(flyout()).not.toBeNull();
+
+        await press(flyoutOptionNamed('Opus 4.6'));
+        await settle();
+
+        expect(dialog()).not.toBeNull();
+        expect(picks).toHaveLength(1);
+    });
+
+    it('closes, and not the picker, on a press that lands in the picker outside it', async () => {
+        await setup(opus);
+        await openFlyout();
+        await press(listLayer().querySelector('[class*="listTitle"]'));
+        await settle();
+
+        expect(flyout()).toBeNull();
+        expect(dialog()).not.toBeNull();
+        expect(onList()).toBe(true);
+        expect(picks).toEqual([]);
+    });
+
+    it('does not change the height of the picker, which is the list\'s: the flyout is outside it', async () => {
+        const heights: Record<string, number> = { face: 130, list: 300 };
+
+        vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+            return this.matches('[class*="layer"]') ? (this.querySelector('[role="listbox"]') ? heights.list! : heights.face!) : 0;
+        });
+
+        await setup(opus);
+        await openList();
+
+        const stage = faceLayer().parentElement!;
+
+        expect(stage.style.height).toBe('300px');
+
+        await press(moreRow());
+        await settle();
+
+        expect(flyout()).not.toBeNull();
+        expect(stage.style.height).toBe('300px');
+        expect(stage.contains(flyout())).toBe(false);
+    });
+
+    it('is let go when the list goes back to the face, and when the popover closes', async () => {
+        await setup(opus);
+        await openFlyout();
+        await press(listLayer().querySelector('button[aria-label="Back"]'));
+        await settle();
+
+        expect(flyout()).toBeNull();
+
+        await press(selectModel());
+
+        // It does not come back with the list.
+        expect(flyout()).toBeNull();
+    });
+
+    it('turns to another provider\'s rest when the strip does, and has none for a provider with no more', async () => {
+        await setup(opus, {
+            change: (data) => {
+                data.agentModels.cursor = models(['a'], ['b']);
+            },
+        });
+        await openFlyout();
+        await key(document.activeElement!, 'Escape');
+        await settle();
+        await press(tabNamed('Cursor'));
+
+        expect(texts(options())).toEqual(['A', 'B']);
+        expect(flyout()).toBeNull();
+    });
+});
+
+describe('a press on a row', () => {
+    const up = (element: Element, button: number) => act(async () => {
+        element.dispatchEvent(new PointerEvent('pointerup', { ...pointer, button }));
+    });
+
+    it('picks the model as the pointer lets go with the primary button', async () => {
+        await setup(opus);
+        await openList();
+        await up(optionNamed('Fable 5.2'), 0);
+
+        expect(picks).toEqual([{ engine: 'claude', model: 'fable', effort: 'high' }]);
+    });
+
+    it('is not a pick with any other button: a secondary press is the system\'s', async () => {
+        await setup(opus);
+        await openList();
+        await up(optionNamed('Fable 5.2'), 2);
+        await up(optionNamed('Fable 5.2'), 1);
+
+        expect(picks).toEqual([]);
+        expect(onList()).toBe(true);
+    });
+
+    it('does not open the flyout with another button either', async () => {
+        await setup(opus);
+        await openList();
+        await up(optionNamed('More models'), 2);
+        await settle();
+
+        expect(flyout()).toBeNull();
+
+        await up(optionNamed('More models'), 0);
+        await settle();
+
+        expect(flyout()).not.toBeNull();
     });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { choiceForModel, defaultEffort, defaultModel, levelLabel, pickableModels, readRemembered, remember, startingChoice, startingEngine, writeRemembered, type RememberedChoice } from './modelSelection';
+import { choiceForModel, defaultEffort, defaultModel, legalEffort, levelLabel, mainModels, modelRow, moreModels, pickableModels, readRemembered, remember, startingChoice, startingEngine, writeRemembered, type RememberedChoice } from './modelSelection';
 
 import type { AgentModel } from '@clowdy/protocol';
 
@@ -113,6 +113,128 @@ describe('defaultEffort', () => {
         expect(defaultEffort({ id: 'm', name: 'M', efforts: [], defaultEffort: 'high' })).toBeUndefined();
         expect(defaultEffort({ id: 'm', name: 'M', efforts: ['low', 'max'] })).toBe('max');
         expect(defaultEffort({ id: 'm', name: 'M', efforts: ['none'], defaultEffort: 'high' })).toBe('none');
+    });
+});
+
+describe('legalEffort', () => {
+    const model: AgentModel = { id: 'm', name: 'M', efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' };
+
+    it('is the level when the model offers it', () => {
+        expect(legalEffort(model, 'low')).toBe('low');
+        expect(legalEffort(model, 'high')).toBe('high');
+    });
+
+    it('is the model\'s own default for a level it does not offer, and for none', () => {
+        expect(legalEffort(model, 'xhigh')).toBe('medium');
+        expect(legalEffort(model, undefined)).toBe('medium');
+        expect(legalEffort({ ...model, defaultEffort: undefined }, 'max')).toBe('high');
+    });
+
+    it('is nothing for a model with no levels, whatever level it is given', () => {
+        expect(legalEffort({ id: 'm', name: 'M' }, 'high')).toBeUndefined();
+        expect(legalEffort({ id: 'm', name: 'M', efforts: [] }, 'high')).toBeUndefined();
+    });
+});
+
+describe('mainModels and moreModels', () => {
+    const named = (...ids: string[]): AgentModel[] => ids.map(id => ({ id, name: id.toUpperCase() }));
+    const ids = (models: readonly AgentModel[]) => models.map(model => model.id);
+
+    it('are the first five in the agent\'s own order when it marks none as featured', () => {
+        const models = named('a', 'b', 'c', 'd', 'e', 'f', 'g');
+
+        expect(ids(mainModels(models))).toEqual(['a', 'b', 'c', 'd', 'e']);
+        expect(ids(moreModels(models))).toEqual(['f', 'g']);
+    });
+
+    it('keep every row of a list of five or fewer as main, and leave nothing behind "More models"', () => {
+        expect(ids(mainModels(named('a', 'b')))).toEqual(['a', 'b']);
+        expect(ids(moreModels(named('a', 'b')))).toEqual([]);
+        expect(ids(mainModels(named('a', 'b', 'c', 'd', 'e')))).toEqual(['a', 'b', 'c', 'd', 'e']);
+        expect(ids(moreModels(named('a', 'b', 'c', 'd', 'e')))).toEqual([]);
+        expect(mainModels([])).toEqual([]);
+        expect(moreModels([])).toEqual([]);
+    });
+
+    it('are the featured rows when any row is featured, however many or few, and in the agent\'s order', () => {
+        const featured = (id: string, on = true): AgentModel => ({ id, name: id, ...(on && { featured: true }) });
+        const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(id => featured(id));
+
+        expect(ids(mainModels(many))).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g']);
+        expect(ids(moreModels(many))).toEqual([]);
+
+        const some = [featured('a', false), featured('b'), featured('c', false), featured('d'), featured('e', false), featured('f', false), featured('g', false)];
+
+        expect(ids(mainModels(some))).toEqual(['b', 'd']);
+        expect(ids(moreModels(some))).toEqual(['a', 'c', 'e', 'f', 'g']);
+    });
+
+    it('add the model in force after the main ones when it is not one of them, and not twice when it is', () => {
+        const models = named('a', 'b', 'c', 'd', 'e', 'f', 'g');
+
+        expect(ids(mainModels(models, 'g'))).toEqual(['a', 'b', 'c', 'd', 'e', 'g']);
+        expect(ids(moreModels(models, 'g'))).toEqual(['f']);
+        expect(ids(mainModels(models, 'c'))).toEqual(['a', 'b', 'c', 'd', 'e']);
+        expect(ids(moreModels(models, 'c'))).toEqual(['f', 'g']);
+
+        const featured: AgentModel[] = [{ id: 'a', name: 'A', featured: true }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }];
+
+        expect(ids(mainModels(featured, 'c'))).toEqual(['a', 'c']);
+        expect(ids(moreModels(featured, 'c'))).toEqual(['b']);
+    });
+
+    it('ignore a model in force the agent does not list, and one that was never picked', () => {
+        const models = named('a', 'b', 'c', 'd', 'e', 'f');
+
+        expect(ids(mainModels(models, 'gone'))).toEqual(['a', 'b', 'c', 'd', 'e']);
+        expect(ids(moreModels(models, 'gone'))).toEqual(['f']);
+        expect(ids(mainModels(models, undefined))).toEqual(['a', 'b', 'c', 'd', 'e']);
+    });
+
+    it('split what pickableModels gives: Claude\'s default row is Opus, once, and a featured one', () => {
+        const rows = pickableModels([
+            { id: 'default', name: 'Default (recommended)', isDefault: true, resolvedId: 'claude-opus-5-5', featured: true },
+            { id: 'opus', name: 'Opus 5.5', resolvedId: 'claude-opus-5-5', featured: true },
+            { id: 'sonnet', name: 'Sonnet 5.5', resolvedId: 'claude-sonnet-5-5', featured: true },
+            { id: 'claude-opus-4-6', name: 'Opus 4.6' },
+        ]);
+
+        expect(ids(mainModels(rows))).toEqual(['opus', 'sonnet']);
+        expect(ids(moreModels(rows))).toEqual(['claude-opus-4-6']);
+    });
+
+    it('leave the rows they were given as they were', () => {
+        const models = named('a', 'b', 'c', 'd', 'e', 'f');
+        const before = structuredClone(models);
+
+        mainModels(models, 'f');
+        moreModels(models, 'f');
+
+        expect(models).toEqual(before);
+    });
+});
+
+describe('modelRow', () => {
+    it('is the row of the list for an id it shows', () => {
+        expect(modelRow(claude, 'sonnet')?.id).toBe('sonnet');
+        expect(modelRow(claude, 'haiku-4-5')?.name).toBe('Haiku 4.5');
+    });
+
+    it('is the row of the model Claude\'s hidden default stands for', () => {
+        const row = modelRow(claude, 'default');
+
+        expect(row).toMatchObject({ id: 'opus', name: 'Opus 5.5', isDefault: true });
+    });
+
+    it('is nothing for a model the agent does not list, and for no models', () => {
+        expect(modelRow(claude, 'retired')).toBeUndefined();
+        expect(modelRow([], 'opus')).toBeUndefined();
+    });
+
+    it('keeps a default row that is a model of its own', () => {
+        const cursor: AgentModel[] = [{ id: 'default', name: 'Auto', isDefault: true }, { id: 'gpt-5.5', name: 'GPT-5.5' }];
+
+        expect(modelRow(cursor, 'default')?.name).toBe('Auto');
     });
 });
 

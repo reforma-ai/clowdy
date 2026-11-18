@@ -16,6 +16,9 @@ function choiceOf(source: Pick<Chat, 'engine' | 'model' | 'effort'> | undefined)
     return source?.engine ? { engine: source.engine, ...(source.model && { model: source.model }), ...(source.effort && { effort: source.effort }) } : undefined;
 }
 
+/** The same choice, as one string, to tell whether what the store holds has moved since a pick. */
+const choiceKey = (choice: ModelChoice | undefined) => (choice ? [choice.engine, choice.model ?? '', choice.effort ?? ''].join('\n') : '');
+
 interface ModelChoiceArgs {
     /** The chat the composer is on, live from the store. Absent on the new-chat page. */
     chat: Chat | undefined;
@@ -47,12 +50,16 @@ export function useModelChoice({ chat, made, run }: ModelChoiceArgs): ModelChoic
     const { agents, status } = useAgents();
     const [remembered] = useState(readRemembered);
     const [picked, setPicked] = useState<ModelChoice>();
+    // What a chat was picked onto, until the store brings the chat's own record: `from` is what the store held when it was picked.
+    const [pending, setPending] = useState<{ chatId: string; from: string; choice: ModelChoice }>();
     const target = chat ?? made;
     // From the first message on, the provider is fixed.
     const started = target?.orchestratorRunId !== undefined;
     const usable = providerAgents(agents).filter(isUsableProvider);
     // A chat holds its own choice; the new-chat page holds the pick, else the one it starts from.
-    const fixed = chat ? (choiceOf(chat) ?? choiceOf(run)) : (picked ?? choiceOf(made));
+    const stored = chat ? (choiceOf(chat) ?? choiceOf(run)) : undefined;
+    const waiting = chat && pending?.chatId === chat.id && pending.from === choiceKey(stored) ? pending.choice : undefined;
+    const fixed = chat ? (waiting ?? stored) : (picked ?? choiceOf(made));
     const starting = !chat && !fixed;
     const engine = starting ? startingEngine(usable.map(agent => agent.id), remembered) : fixed?.engine;
     const list = useAgentModels(engine);
@@ -89,7 +96,9 @@ export function useModelChoice({ chat, made, run }: ModelChoiceArgs): ModelChoic
 
             if (!result.ok) return;
 
-            if (!chat) setPicked(next);
+            // The daemon took it: the pill says so now, and not when the chat's record gets here (it is stopped holding once that moves).
+            if (chat) setPending({ chatId: chat.id, from: choiceKey(stored), choice: next });
+            else setPicked(next);
 
             keep();
         })();

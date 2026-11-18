@@ -1,25 +1,26 @@
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
-import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
+import { ListBox, ListBoxItem } from '@clowdy/components/List';
 import { OverlayTriggerStateContext, Popover, PopoverTrigger } from '@clowdy/components/Popover';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Show } from '@clowdy/components/Show';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { ChevronDown } from '@clowdy/icons/10';
-import { Check, ChevronLeft } from '@clowdy/icons/14';
+import { Check, ChevronLeft, ChevronRight } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
-import { use, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { use, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
 
 import { ProviderIcon } from '../settings/providers/ProviderIcon';
 import styles from './ModelPicker.module.css';
-import { choiceForModel, defaultEffort, levelLabel, pickableModels, readRemembered, type ModelChoice } from './modelSelection';
+import { choiceForModel, legalEffort, levelLabel, mainModels, modelRow, moreModels, pickableModels, readRemembered, type ModelChoice } from './modelSelection';
 import { ReasoningSlider } from './ReasoningSlider';
 
 import type { AgentModel } from '@clowdy/protocol';
 import type { AgentModelList } from '../../stores';
 
-/** One provider the list offers: its id, its name for a section header, and the models it lists (read when the popover first opens). */
+/** One provider the list offers: its id, its name (for the strip's tooltip and the face's words), and the models it lists (read when the popover first opens). */
 export interface PickerProvider {
     id: string;
     name: string;
@@ -29,7 +30,7 @@ export interface PickerProvider {
 export interface ModelPickerProps {
     /** What the picker holds. Without one there is nothing to show. */
     choice: ModelChoice | undefined;
-    /** The providers the list offers, in order. More than one makes sections; a chat that has started has the one it runs on. */
+    /** The providers the list offers, in order. More than one makes a strip of their marks above the list; a chat that has started has the one it runs on. */
     providers: readonly PickerProvider[];
     /** The orchestrator is working: a pick applies from its next message, and the popover says so. */
     running?: boolean;
@@ -40,7 +41,7 @@ export interface ModelPickerProps {
 /** What the picker knows of the choice it holds, from the lists of the providers. */
 interface Held {
     provider: PickerProvider | undefined;
-    /** The provider's entry for the model, when it lists it. */
+    /** The provider's row for the model, when it lists it: Claude's hidden `default` is the row of the model it stands for. */
     model: AgentModel | undefined;
     /** The model's name, else its id as it was stored, else what stands in until there is one. */
     title: string;
@@ -52,18 +53,28 @@ interface Held {
     loading: boolean;
     /** The list was read and has no such model: a retired or older id. */
     missing: boolean;
+    /** There is no model: the agent runs on its own default. */
+    defaulted: boolean;
 }
 
 function holdOf(choice: ModelChoice, providers: readonly PickerProvider[]): Held {
     const provider = providers.find(candidate => candidate.id === choice.engine);
     const answer = provider?.list.models;
-    const model = answer?.models.find(candidate => candidate.id === choice.model);
+    const model = answer && choice.model !== undefined ? modelRow(answer.models, choice.model) : undefined;
     const loading = provider !== undefined && answer === undefined && (provider.list.status === 'idle' || provider.list.status === 'loading');
-    const levels = model?.efforts ?? [];
-    const level = model && levels.length > 0 ? (choice.effort !== undefined && levels.includes(choice.effort) ? choice.effort : defaultEffort(model)) : undefined;
+    const level = model ? legalEffort(model, choice.effort) : undefined;
     const title = model?.name ?? choice.model ?? (loading ? 'Model' : provider?.name ?? 'Model');
 
-    return { provider, model, title, levels, level, loading, missing: choice.model !== undefined && answer?.state === 'ok' && model === undefined };
+    return {
+        provider,
+        model,
+        title,
+        levels: model?.efforts ?? [],
+        level,
+        loading,
+        missing: choice.model !== undefined && answer?.state === 'ok' && model === undefined,
+        defaulted: choice.model === undefined && !loading,
+    };
 }
 
 /** The key of a row: models of two providers may share an id (Claude Code's `default`, Cursor's `default`). */
@@ -120,9 +131,12 @@ function Trigger({ choice, providers }: { choice: ModelChoice; providers: readon
     );
 }
 
+/** What lies outside the popover's own box and still belongs to it: a listbox (a press on a row) and the "More models" flyout, which is portalled. */
+const OWN_LAYERS = '[role="listbox"], [data-model-flyout]';
+
 /**
  * The popover keeps the trigger's rectangle for as long as it is open: the label changes width as a model is chosen, and an anchor that
- * moved would make it jump. A press that lands in a list is the list's own, not an outside press.
+ * moved would make it jump. A press (or focus) that lands in a list, or in the flyout of "More models", is the picker's own, not an outside press.
  */
 function FrozenPopover({ children }: { children: ReactNode }) {
     const isOpen = use(OverlayTriggerStateContext)!.isOpen;
@@ -139,7 +153,7 @@ function FrozenPopover({ children }: { children: ReactNode }) {
             spacing="none"
             width={ 320 }
             aria-label="Model and reasoning effort"
-            shouldCloseOnInteractOutside={ target => !(target instanceof Element && target.closest('[role="listbox"]')) }
+            shouldCloseOnInteractOutside={ target => !(target instanceof Element && target.closest(OWN_LAYERS)) }
             getTargetRect={ (target) => {
                 frozen.current ??= target.getBoundingClientRect();
 
@@ -160,14 +174,25 @@ interface FaceProps {
     onLevel: (level: string) => void;
 }
 
-/** The first pane: the model as a big button that opens the list, and the reasoning effort of that model. */
+/** What the face says under the model when it has no level to show: the agent's own default, the model's description, or that the model has gone. */
+function faceNote(held: Held): string | undefined {
+    if (held.levels.length > 0) return undefined;
+
+    if (held.defaulted) return `Runs on ${ held.provider?.name ?? 'the provider' }'s own default until you pick a model.`;
+
+    return held.model?.description ?? (held.missing ? `${ held.provider?.name ?? 'The provider' } does not list this model anymore.` : undefined);
+}
+
+/** The first pane: the model as a big button that opens the list, and under it what there is to say of the model's reasoning effort, if anything. */
 function Face({ choice, held, running, buttonRef, onOpenList, onLevel }: FaceProps) {
+    const note = faceNote(held);
+
     return (
         <div className={ styles.face }>
             <Button ref={ buttonRef } variant="filling" color="secondary" size="md" className={ styles.modelButton } aria-label="Select model" onPress={ onOpenList }>
                 <ProviderIcon agentId={ choice.engine } size={ 16 } aria-hidden="true" />
                 <span className={ styles.modelLabel }>
-                    <span className={ styles.modelTitle }>{ held.title }</span>
+                    <span className={ styles.modelTitle }>{ held.defaulted ? 'Default model' : held.title }</span>
                     <Show when={ held.level }>
                         { level => <span className={ styles.level }>{ levelLabel(level) }</span> }
                     </Show>
@@ -175,55 +200,195 @@ function Face({ choice, held, running, buttonRef, onOpenList, onLevel }: FacePro
                 <ChevronDown aria-hidden="true" />
             </Button>
 
-            <div className={ styles.reasoning }>
-                { /* The level is there for a model with levels: a slider to move along them, or its only one as text. */ }
-                <Show when={ held.level }>
-                    { level => (
-                        <>
-                            <Text variant="label" color="secondary">Reasoning effort</Text>
-                            { held.levels.length > 1
-                                ? <ReasoningSlider levels={ held.levels } value={ level } onChange={ onLevel } />
-                                : <Text className={ styles.faceText }>{ levelLabel(level) }</Text> }
-                        </>
-                    ) }
-                </Show>
+            { /* Nothing to put here, no block: it would only add its padding to the face. */ }
+            <Show when={ held.level !== undefined || Boolean(note) || running }>
+                <div className={ styles.reasoning }>
+                    { /* The level is there for a model with levels: a slider to move along them, or its only one as text. */ }
+                    <Show when={ held.level }>
+                        { level => (
+                            <>
+                                <Text variant="label" color="secondary">Reasoning effort</Text>
+                                { held.levels.length > 1
+                                    ? <ReasoningSlider levels={ held.levels } value={ level } onChange={ onLevel } />
+                                    : <Text className={ styles.faceText }>{ levelLabel(level) }</Text> }
+                            </>
+                        ) }
+                    </Show>
 
-                <Show when={ held.levels.length === 0 ? (held.model?.description ?? (held.missing ? `${ held.provider?.name ?? 'The provider' } does not list this model anymore.` : '')) : undefined }>
-                    { text => <Text className={ styles.faceText }>{ text }</Text> }
-                </Show>
+                    <Show when={ note }>
+                        { text => <Text className={ styles.faceText }>{ text }</Text> }
+                    </Show>
 
-                <Show when={ running }>
-                    <Text className={ styles.footnote }>Applies from the next message</Text>
-                </Show>
-            </div>
+                    <Show when={ running }>
+                        <Text className={ styles.footnote }>Applies from the next message</Text>
+                    </Show>
+                </div>
+            </Show>
         </div>
     );
 }
 
+interface StripProps {
+    providers: readonly PickerProvider[];
+    /** The provider whose models the list shows. */
+    value: string;
+    /** The list is in view. Its tabs have a tooltip only then: React Aria's tooltip wants a trigger that can be focused, and a pane out of view is `inert`. */
+    active: boolean;
+    onChange: (id: string) => void;
+}
+
+/**
+ * The marks of the providers the list offers, as tabs: one is selected and the list shows its models. A tab picks nothing, it only turns
+ * the list to another provider. The arrows, Home and End move between the tabs (and select the one they land on: a tab shows a list, which
+ * is cheap to show), and only the selected tab is in the tab order.
+ */
+function ProviderStrip({ providers, value, active, onChange }: StripProps) {
+    const strip = useRef<HTMLDivElement>(null);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+        const last = providers.length - 1;
+        const index = providers.findIndex(provider => provider.id === value);
+        const next = event.key === 'ArrowRight' ? (index >= last ? 0 : index + 1) : event.key === 'ArrowLeft' ? (index <= 0 ? last : index - 1) : event.key === 'Home' ? 0 : event.key === 'End' ? last : undefined;
+
+        if (next === undefined) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        onChange(providers[next]!.id);
+        strip.current?.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
+    };
+
+    return (
+        <div ref={ strip } className={ styles.strip } role="tablist" aria-label="Provider" onKeyDown={ onKeyDown }>
+            <For each={ providers }>
+                { (provider) => {
+                    const tab = (
+                        <button
+                            key={ provider.id }
+                            type="button"
+                            role="tab"
+                            className={ styles.tab }
+                            aria-label={ provider.name }
+                            aria-selected={ provider.id === value }
+                            tabIndex={ provider.id === value ? 0 : -1 }
+                            data-tab={ provider.id }
+                            onClick={ () => onChange(provider.id) }
+                        >
+                            <ProviderIcon agentId={ provider.id } size={ 16 } aria-hidden="true" />
+                        </button>
+                    );
+
+                    return active ? <Tooltip key={ provider.id } content={ provider.name } placement="bottom">{ tab }</Tooltip> : tab;
+                } }
+            </For>
+        </div>
+    );
+}
+
+/**
+ * The body of the flyout: it hears the flyout's keys and puts the focus on the first row of its list once the rows are there. React Aria's
+ * own `autoFocus` of the list runs before the rows exist and the popover then takes the focus for itself, which leaves the arrows with
+ * nothing to move.
+ */
+function FlyoutBody({ children, onKeyDown }: { children: ReactNode; onKeyDown: (event: KeyboardEvent) => void }) {
+    const box = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        let frame = 0;
+        let tries = 0;
+
+        const focusFirst = () => {
+            const row = box.current?.querySelector<HTMLElement>('[role="option"]');
+
+            if (row) row.focus();
+            else if (tries++ < 20) frame = requestAnimationFrame(focusFirst);
+        };
+
+        focusFirst();
+
+        return () => cancelAnimationFrame(frame);
+    }, []);
+
+    return <div ref={ box } className={ styles.flyoutBody } onKeyDown={ onKeyDown }>{ children }</div>;
+}
+
+/** The row that opens the flyout. It is a row of the list (the arrows reach it) that picks nothing. */
+const MORE_KEY = 'more';
+
+/** Only the primary button lets go of a row as a pick: a secondary press is the system's (a context menu), not the person's choice. */
+const primary = (action: () => void) => (event: PointerEvent) => {
+    if (event.button === 0) action();
+};
+
 interface ListProps {
     choice: ModelChoice;
+    held: Held;
     providers: readonly PickerProvider[];
+    /** The list is the pane in view. When it is not, what the person did in it (the provider they turned to, the flyout) is let go. */
+    active: boolean;
     onBack: () => void;
     onPickModel: (provider: PickerProvider, model: AgentModel) => void;
 }
 
-/** The second pane: the models, in a section for each provider when there are several, then what the providers that gave none say. */
-function ModelList({ choice, providers, onBack, onPickModel }: ListProps) {
-    const groups = providers.map(provider => ({ provider, rows: rowsOf(provider) })).filter(group => group.rows.length > 0);
-    const notes = providers.flatMap((provider) => {
-        const note = noteOf(provider);
+/**
+ * The second pane: a strip of the providers when there are several, then the main models of the one the strip shows and a "More models"
+ * row that opens a flyout with the rest, or what that provider says instead (it is being read, or why it gives no models).
+ */
+function ModelList({ choice, held, providers, active, onBack, onPickModel }: ListProps) {
+    const [viewed, setViewed] = useState<string>();
+    const [flyoutFor, setFlyoutFor] = useState<string>();
+    const [wasActive, setWasActive] = useState(active);
+    const moreRow = useRef<HTMLDivElement>(null);
+    const focusRowOnClose = useRef(false);
 
-        return note ? [{ provider, note }] : [];
-    });
-    const sectioned = providers.length > 1;
-    const flat = groups[0];
-    const byKey = new Map(groups.flatMap(({ provider, rows }) => rows.map(model => [rowKey(provider.id, model.id), { provider, model }] as const)));
-    const selected = choice.model === undefined ? undefined : rowKey(choice.engine, choice.model);
+    // Out of view the list forgets its tab and its flyout, so the next opening starts on the provider in force.
+    if (active !== wasActive) {
+        setWasActive(active);
+
+        if (!active) {
+            setViewed(undefined);
+            setFlyoutFor(undefined);
+        }
+    }
+
+    const shown = providers.find(provider => provider.id === viewed) ?? providers.find(provider => provider.id === choice.engine) ?? providers[0];
+    const rows = shown ? rowsOf(shown) : [];
+    const selectedId = shown && held.provider?.id === shown.id ? held.model?.id : undefined;
+    const main = mainModels(rows, selectedId);
+    const more = moreModels(rows, selectedId);
+    const note = shown ? noteOf(shown) : undefined;
+    const selected = shown && selectedId !== undefined ? rowKey(shown.id, selectedId) : undefined;
+    const byKey = new Map(rows.map(model => [rowKey(shown!.id, model.id), model] as const));
+    const flyoutOpen = active && shown !== undefined && flyoutFor === shown.id && more.length > 0;
+
+    const openFlyout = () => {
+        if (shown) setFlyoutFor(shown.id);
+    };
+
+    // Escape and ArrowLeft in the flyout give the focus back to the row that opened it; a press outside it does not take the focus anywhere.
+    // The row is out of reach (`inert`) while the flyout is open, so the focus goes once it is closed.
+    const closeFlyout = (restoreFocus: boolean) => {
+        focusRowOnClose.current = restoreFocus;
+        setFlyoutFor(undefined);
+    };
+
+    useEffect(() => {
+        if (flyoutOpen || !focusRowOnClose.current) return;
+
+        focusRowOnClose.current = false;
+        moreRow.current?.focus();
+    }, [flyoutOpen]);
 
     const pickKey = (key: unknown) => {
-        const row = typeof key === 'string' ? byKey.get(key) : undefined;
+        if (key === MORE_KEY) {
+            openFlyout();
 
-        if (row) onPickModel(row.provider, row.model);
+            return;
+        }
+
+        const model = typeof key === 'string' ? byKey.get(key) : undefined;
+
+        if (shown && model) onPickModel(shown, model);
     };
 
     const renderRow = (provider: PickerProvider, model: AgentModel) => {
@@ -239,9 +404,27 @@ function ModelList({ choice, providers, onBack, onPickModel }: ListProps) {
                 icon={ <ProviderIcon agentId={ provider.id } size={ 16 } aria-hidden="true" /> }
                 endAffix={ key === selected ? <Check aria-hidden="true" /> : undefined }
                 // A press on a row picks it as the pointer lets go, before the popover can read the press as one outside it.
-                onPointerUp={ () => pickKey(key) }
+                onPointerUp={ primary(() => pickKey(key)) }
             />
         );
+    };
+
+    // ArrowRight on "More models" opens the flyout, as it would a submenu. It is read here, on the rows, and not on the pane, which also
+    // hears what happens in the flyout (a React event goes up through its portal).
+    const onRowsKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== 'ArrowRight' || !(event.target instanceof Element) || !event.target.closest('[data-more]')) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        openFlyout();
+    };
+
+    const onFlyoutKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== 'Escape' && event.key !== 'ArrowLeft') return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        closeFlyout(true);
     };
 
     return (
@@ -253,8 +436,12 @@ function ModelList({ choice, providers, onBack, onPickModel }: ListProps) {
                 <Text className={ styles.listTitle }>Select model</Text>
             </span>
 
-            <Scrollable className={ styles.modelScroll }>
-                <Show when={ groups.length > 0 }>
+            <Show when={ providers.length > 1 && shown }>
+                { current => <ProviderStrip providers={ providers } value={ current.id } active={ active } onChange={ setViewed } /> }
+            </Show>
+
+            <Scrollable className={ styles.modelScroll } onKeyDown={ onRowsKeyDown }>
+                <Show when={ shown && rows.length > 0 }>
                     <ListBox
                         className={ styles.modelList }
                         aria-label="Model"
@@ -266,26 +453,28 @@ function ModelList({ choice, providers, onBack, onPickModel }: ListProps) {
                             if (keys !== 'all') pickKey([...keys][0]);
                         } }
                     >
-                        <Show when={ sectioned } fallback={ flat && <For each={ flat.rows }>{ model => renderRow(flat.provider, model) }</For> }>
-                            <For each={ groups }>
-                                { ({ provider, rows }) => (
-                                    <ListBoxSection key={ provider.id } id={ provider.id }>
-                                        <ListBoxHeader>{ provider.name }</ListBoxHeader>
-                                        <For each={ rows }>{ model => renderRow(provider, model) }</For>
-                                    </ListBoxSection>
-                                ) }
-                            </For>
+                        <For each={ main }>{ model => renderRow(shown!, model) }</For>
+
+                        <Show when={ more.length > 0 }>
+                            <ListBoxItem
+                                key={ MORE_KEY }
+                                id={ MORE_KEY }
+                                ref={ moreRow }
+                                data-more=""
+                                text="More models"
+                                // The room of a mark, so the words stand under the names above.
+                                icon={ <span className={ styles.markSlot } aria-hidden="true" /> }
+                                endAffix={ <ChevronRight aria-hidden="true" /> }
+                                onPointerUp={ primary(openFlyout) }
+                            />
                         </Show>
                     </ListBox>
                 </Show>
 
-                <For each={ notes }>
-                    { ({ provider, note }) => (
-                        <div key={ provider.id } className={ styles.note } data-provider={ provider.id }>
-                            <Show when={ sectioned }>
-                                <span className={ styles.noteTitle }>{ provider.name }</span>
-                            </Show>
-                            { note.busy
+                <Show when={ shown && note }>
+                    { current => (
+                        <div className={ styles.note } data-provider={ shown!.id }>
+                            { current.busy
                                 ? (
                                     <span className={ styles.noteBusy }>
                                         <Spinner size="xs" />
@@ -294,14 +483,50 @@ function ModelList({ choice, providers, onBack, onPickModel }: ListProps) {
                                 )
                                 : (
                                     <>
-                                        <Text className={ styles.noteText }>{ note.text }</Text>
-                                        <Button size="xs" variant="bordered" onPress={ () => void provider.list.reload() }>Retry</Button>
+                                        <Text className={ styles.noteText }>{ current.text }</Text>
+                                        <Button size="xs" variant="bordered" onPress={ () => void shown!.list.reload() }>Retry</Button>
                                     </>
                                 ) }
                         </div>
                     ) }
-                </For>
+                </Show>
             </Scrollable>
+
+            { /* The flyout is a popover of its own, beside the row, and may reach past the picker's edge: it is where there is room. */ }
+            <Show when={ shown && more.length > 0 }>
+                <Popover
+                    isOpen={ flyoutOpen }
+                    onOpenChange={ (open) => {
+                        if (!open) closeFlyout(false);
+                    } }
+                    triggerRef={ moreRow }
+                    placement="right top"
+                    offset={ 16 }
+                    spacing="none"
+                    width={ 240 }
+                    className={ styles.flyout }
+                    aria-label="More models"
+                    data-model-flyout=""
+                >
+                    <FlyoutBody onKeyDown={ onFlyoutKeyDown }>
+                        <Scrollable className={ styles.flyoutScroll }>
+                            <ListBox
+                                className={ styles.modelList }
+                                aria-label="More models"
+                                size="sm"
+                                selectionMode="single"
+                                disallowEmptySelection
+                                selectedKeys={ [] }
+                                onSelectionChange={ (keys) => {
+                                    if (keys !== 'all') pickKey([...keys][0]);
+                                } }
+                            >
+                                <For each={ more }>{ model => renderRow(shown!, model) }</For>
+                            </ListBox>
+                        </Scrollable>
+                    </FlyoutBody>
+                </Popover>
+            </Show>
         </div>
     );
 }
@@ -387,8 +612,8 @@ function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
 
         settled.current = true;
 
-        // The model in force just goes back to the face; any other is a pick, with the level it takes there.
-        if (provider.id !== choice.engine || model.id !== choice.model) onPick(choiceForModel(provider.id, model, choice.effort, readRemembered()));
+        // The model in force (Claude's `default` and `opus` are one) just goes back to the face; any other is a pick, with the level it takes there.
+        if (provider.id !== choice.engine || model.id !== held.model?.id) onPick(choiceForModel(provider.id, model, choice.effort, readRemembered()));
 
         setPicking(false);
     };
@@ -397,6 +622,9 @@ function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
     // does the same: the listbox reports no change when its selected row is chosen again, so nothing else would answer the key. It is
     // read in the capture phase because a row's press handling stops its own Enter and Space before they bubble.
     const onListKeyDown = (event: KeyboardEvent) => {
+        // What happens in the flyout comes up through its portal to here: it is the flyout's own (it closes itself on Escape).
+        if (!event.currentTarget.contains(event.target as Node)) return;
+
         const inForce = (event.key === 'Enter' || event.key === ' ') && event.target instanceof Element && event.target.closest('[role="option"][aria-selected="true"]') !== null;
 
         if (event.key !== 'Escape' && !inForce) return;
@@ -412,7 +640,7 @@ function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
                 <Face choice={ choice } held={ held } running={ running } buttonRef={ modelButton } onOpenList={ openList } onLevel={ level => onPick({ ...choice, effort: level }) } />
             </div>
             <div ref={ listLayer } className={ cn(styles.layer, styles.listLayer) } data-open={ picking || undefined } inert={ !picking || undefined } onKeyDownCapture={ onListKeyDown }>
-                <ModelList choice={ choice } providers={ providers } onBack={ () => setPicking(false) } onPickModel={ pickModel } />
+                <ModelList choice={ choice } held={ held } providers={ providers } active={ picking } onBack={ () => setPicking(false) } onPickModel={ pickModel } />
             </div>
         </div>
     );

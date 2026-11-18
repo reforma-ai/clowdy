@@ -92,6 +92,44 @@ export function pickableModels(models: readonly AgentModel[]): AgentModel[] {
     return models.flatMap(model => (duplicates.has(model) ? [] : [stood.has(model) ? { ...model, isDefault: true } : model]));
 }
 
+/** How many models a list shows before "More models" (the agent's `featured` rows are shown whatever their number). */
+export const MAIN_MODEL_COUNT = 5;
+
+/**
+ * The main models of a list, for a picker that shows few: the agent's `featured` rows when it marks any (however many), else the first five
+ * in the agent's own order. The model in force is always one of them: when it is not, it follows the main ones as an extra row.
+ */
+export function mainModels(models: readonly AgentModel[], selectedId?: string): AgentModel[] {
+    const featured = models.filter(model => model.featured);
+    const main = featured.length > 0 ? featured : models.slice(0, MAIN_MODEL_COUNT);
+    const selected = selectedId === undefined ? undefined : models.find(model => model.id === selectedId);
+
+    return selected && !main.includes(selected) ? [...main, selected] : main;
+}
+
+/** What `mainModels` leaves out, in the agent's order: the rows behind "More models". */
+export function moreModels(models: readonly AgentModel[], selectedId?: string): AgentModel[] {
+    const shown = new Set(mainModels(models, selectedId));
+
+    return models.filter(model => !shown.has(model));
+}
+
+/**
+ * The row of `pickableModels(models)` that stands for the model `id`. Claude's hidden `default` row is the model another row (`opus`) names
+ * too, and is left out of the list: its id finds that row, so a chat that holds `default` has `opus` checked. Nothing for an id the agent
+ * does not list.
+ */
+export function modelRow(models: readonly AgentModel[], id: string): AgentModel | undefined {
+    const rows = pickableModels(models);
+    const row = rows.find(candidate => candidate.id === id);
+
+    if (row) return row;
+
+    const resolved = models.find(candidate => candidate.id === id)?.resolvedId;
+
+    return resolved ? rows.find(candidate => candidate.id === resolved || candidate.resolvedId === resolved) : undefined;
+}
+
 /** The model a new chat starts on when nothing was picked: the one the agent marks as its default, else the first. */
 export function defaultModel(models: readonly AgentModel[]): AgentModel | undefined {
     return models.find(model => model.isDefault) ?? models[0];
@@ -106,13 +144,18 @@ export function defaultEffort(model: AgentModel): string | undefined {
     return levels.includes('high') ? 'high' : levels[Math.floor(levels.length / 2)];
 }
 
+/** `effort` when the model offers it, else the model's own default; nothing for a model with no levels. */
+export function legalEffort(model: AgentModel, effort: string | undefined): string | undefined {
+    return effort !== undefined && (model.efforts ?? []).includes(effort) ? effort : defaultEffort(model);
+}
+
 /**
  * What the picker holds after the person picked `model` of `engine`: the level they last used on it, else the one they had if the model
  * offers it, else the model's own default. A model with no levels has none.
  */
 export function choiceForModel(engine: string, model: AgentModel, current: string | undefined, remembered: RememberedChoice): ModelChoice {
     const levels = model.efforts ?? [];
-    const effort = [lastEffort(remembered, engine, model.id), current].find((level): level is string => level !== undefined && levels.includes(level)) ?? defaultEffort(model);
+    const effort = legalEffort(model, [lastEffort(remembered, engine, model.id), current].find(level => level !== undefined && levels.includes(level)));
 
     return { engine, model: model.id, ...(effort && { effort }) };
 }
