@@ -34,7 +34,8 @@ export interface ProjectSettings {
     targetBranch?: string;
 }
 
-export type EngineId = 'claude' | 'codex' | 'fake';
+/** The id of an agent the daemon can run: `claude`, `codex`, `cursor`, a custom agent's id, or `fake` (the scripted demo engine). */
+export type EngineId = string;
 
 export interface Chat {
     id: ChatId;

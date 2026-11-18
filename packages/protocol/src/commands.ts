@@ -7,7 +7,7 @@ import { z } from 'zod';
 const base = { requestId: z.string().min(8).max(100) };
 
 const chatMode = z.enum(['autopilot', 'semi']);
-const engine = z.enum(['claude', 'codex', 'fake']);
+const engine = z.string().min(1).max(64);
 const actor = z.object({ kind: z.literal('user') });
 
 export const commandSchema = z.discriminatedUnion('type', [
@@ -76,6 +76,26 @@ export const commandSchema = z.discriminatedUnion('type', [
         /** Hash of the version the edit started from; `null` creates a new file. A mismatch answers `conflict`. */
         baseHash: z.string().nullable(),
     }),
+
+    /* Agents */
+    /** Adds an agent the daemon can run: any command that speaks the Agent Client Protocol on stdio. */
+    z.object({ ...base, type: z.literal('agent.add'), id: z.string().min(1).max(32), name: z.string().min(1).max(80), command: z.string().min(1), args: z.array(z.string()).optional(), env: z.record(z.string(), z.string()).optional() }),
+    /** Changes an agent, built in or added. `path: null` goes back to looking for the program; `name`, `command` and `args` apply to added agents only. */
+    z.object({
+        ...base,
+        type: z.literal('agent.update'),
+        id: z.string().min(1),
+        enabled: z.boolean().optional(),
+        path: z.string().min(1).nullable().optional(),
+        env: z.record(z.string(), z.string()).optional(),
+        name: z.string().min(1).max(80).optional(),
+        command: z.string().min(1).optional(),
+        args: z.array(z.string()).optional(),
+    }),
+    /** Removes an agent that was added; the built-in ones can only be switched off. */
+    z.object({ ...base, type: z.literal('agent.remove'), id: z.string().min(1) }),
+    /** Looks for the agents' programs again, for after the user installed one. */
+    z.object({ ...base, type: z.literal('agents.refresh') }),
 
     /* Skills */
     /** Switches a user skill on or off for every run. `name` is the entry's name from `GET /v1/skills` (`user:deploy`). */

@@ -1,3 +1,4 @@
+export * from './agents';
 export * from './api';
 export * from './commands';
 export * from './domain';

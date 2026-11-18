@@ -33,6 +33,8 @@ export type EventData =
      * User-level changes are announced once per project. Clients refetch `GET /v1/skills`.
      */
     | { type: 'skills.changed' }
+    /** The agents the daemon can run changed (one was added, removed, switched, or found again). Clients refetch `GET /v1/agents`. */
+    | { type: 'agents.changed' }
     | { type: 'notice'; level: 'info' | 'warn' | 'error'; text: string };
 
 export type EventType = EventData['type'];

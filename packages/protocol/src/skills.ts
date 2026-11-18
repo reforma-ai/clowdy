@@ -1,5 +1,3 @@
-import type { EngineId } from './domain';
-
 /**
  * Where a skill comes from. System skills ship with Clowdy and cannot be switched off, user skills live in the
  * person's own skill folders (`~/.claude/skills`, `~/.agents/skills`), project skills in the repository.
@@ -7,7 +5,7 @@ import type { EngineId } from './domain';
 export type SkillSource = 'system' | 'user' | 'project';
 
 /** The engines that load skills. A skill is listed for every engine that sees it. */
-export type SkillEngine = Exclude<EngineId, 'fake'>;
+export type SkillEngine = 'claude' | 'codex';
 
 export interface SkillEntry {
     /** Stable key of the entry, unique within one catalog. */

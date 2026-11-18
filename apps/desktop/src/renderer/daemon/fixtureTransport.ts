@@ -385,6 +385,11 @@ export class FixtureTransport implements Transport {
 
                 return ok({ name: command.name, enabled: command.enabled });
             }
+            case 'agent.add':
+            case 'agent.update':
+            case 'agent.remove':
+            case 'agents.refresh':
+                return fail('unavailable', 'The demo data has no agents to change');
             case 'docs.write': {
                 const files = data.docs[command.projectId] ??= {};
                 const existing = files[command.path];

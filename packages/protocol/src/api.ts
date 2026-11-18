@@ -22,6 +22,7 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * POST /v1/shutdown                       -> { ok: true }; stops the daemon gracefully (live engines are aborted, their runs
  *                                            come back `interrupted` at the next start, nothing is marked cancelled)
  * GET  /v1/skills?projectId=              -> SkillCatalog (system and user skills; with `projectId` also that project's skills)
+ * GET  /v1/agents                         -> AgentInfo[] (every agent the daemon knows, with whether it can start one on this machine)
  */
 export const ROUTES = {
     health: '/v1/health',
@@ -35,6 +36,7 @@ export const ROUTES = {
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
     docsFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs/file`,
     skills: '/v1/skills',
+    agents: '/v1/agents',
     shutdown: '/v1/shutdown',
 } as const;
 
