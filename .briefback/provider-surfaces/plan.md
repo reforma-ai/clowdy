@@ -100,12 +100,12 @@ Cursor
 
 **This stage:** The usage of the providers is only on the Providers page. The stage puts the badges and the popover in the window header so the person sees the plan's state while working. The usage rows of the Providers page are extracted into a shared component so both screens show the same thing, and the two tone thresholds are made one (80 and 90).
 
-- [ ] Complete
-  - [ ] A shared usage-rows component used by `UsageBlock` and the popover; thresholds 80/90 in one place.
-  - [ ] `UsageStatus` in `TitleBand`: one badge per usable provider (mark, headline percent, time to reset), muted mark alone with no reading, hidden when no provider is usable; opens the popover.
-  - [ ] The popover: providers by headline percent descending, account line with plan badge, bars, refresh action, loading / signed-out / unavailable / error states.
-  - [ ] The header refetches the agents every five minutes (not while the window is hidden) and on focus.
-  - [ ] Tests for the headline rule, ordering, tones, hidden state and the refetch rhythm.
+- [x] Complete
+  - [x] A shared usage-rows component used by `UsageBlock` and the popover; thresholds 80/90 in one place.
+  - [x] `UsageStatus` in `TitleBand`: one badge per usable provider (mark, headline percent, time to reset), muted mark alone with no reading, hidden when no provider is usable; opens the popover.
+  - [x] The popover: providers by headline percent descending, account line with plan badge, bars, refresh action, loading / signed-out / unavailable / error states.
+  - [x] The header refetches the agents every five minutes (not while the window is hidden) and on focus.
+  - [x] Tests for the headline rule, ordering, tones, hidden state and the refetch rhythm.
 
 **Files**
 
@@ -119,7 +119,9 @@ Cursor
 
 **Done when:** with the fixture transport the header shows a badge per usable provider and the popover lists them by usage, and the status refetches every five minutes.
 **Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Commits:**
+
+- `3bdfe42` feat(desktop): show the usage of the providers in the window header (the review also fixed Codex's window ids: a window is scoped only when its `:` prefix is not its own agent's)
 
 ## Stage 3 — Models, remembered choice and level labels in the desktop
 
@@ -127,12 +129,12 @@ Cursor
 
 **This stage:** The picker needs the models of each provider, rules for what is selected and remembered, and labels for reasoning levels. This stage builds that without UI so it can be tested alone: the transport call, a store that loads and caches the model lists, the remembered selection, and the pure functions the picker will call. It encodes the memory and default rules of the grill.
 
-- [ ] Complete
-  - [ ] `getAgentModels(agentId)` on the transport (HTTP and fixtures) and a store that loads a provider's models once, with loading, ready and failed states and a retry.
-  - [ ] Remembered choice (last provider, last model per provider, last effort per model) in `localStorage`; a function that gives the starting selection for a new chat from the usable providers and the loaded models.
-  - [ ] A function that makes a stored selection legal for a model (an effort the model no longer offers falls to the model's default, a model that disappeared falls to the provider's default).
-  - [ ] Level labels and the slider's level list for a model (0, 1 or many levels).
-  - [ ] Fixtures with Claude, Codex and Cursor models, including a model with no effort and one with a single effort.
+- [x] Complete
+  - [x] `getAgentModels(agentId)` on the transport (HTTP and fixtures) and a store that loads a provider's models once, with loading, ready and failed states and a retry.
+  - [x] Remembered choice (last provider, last model per provider, last effort per model) in `localStorage`; a function that gives the starting selection for a new chat from the usable providers and the loaded models.
+  - [x] A function that makes a stored selection legal for a model (an effort the model no longer offers falls to the model's default, a model that disappeared falls to the provider's default).
+  - [x] Level labels and the slider's level list for a model (0, 1 or many levels).
+  - [x] Fixtures with Claude, Codex and Cursor models, including a model with no effort and one with a single effort.
 
 **Files**
 
@@ -146,7 +148,9 @@ Cursor
 
 **Done when:** the unit tests show the starting selection for no memory, a remembered provider, a remembered model with an effort the model dropped, and the label table.
 **Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Commits:**
+
+- `d8ab1ea` feat(desktop): read the models of each agent and remember the last choice
 
 ## Stage 4 — The model and reasoning picker in the composer
 
@@ -230,11 +234,11 @@ Cursor
 
 **This stage:** The agents already tell Clowdy how full the context is (`usage_update { used, size }`), and the mapper receives it and ignores it. The stage turns it into a reading on the orchestrator's run, so clients can show it, and adds a command that asks the agent to compact. Readings arrive with every message, so they are written when they move by a percent or when the turn ends, not each time.
 
-- [ ] Complete
-  - [ ] `Run.context { used, size }` (migration 6) written from the engine's `context` event, throttled; published with `run.upserted`.
-  - [ ] `UpdateMapper` turns `usage_update` into a `context` event beside the cost it already reads.
-  - [ ] `chat.compact { chatId }` starts a turn of the orchestrator with `/compact` as its message and without a user item in the stream; refused (`conflict`) while the orchestrator works and (`invalid`) for a chat that has no orchestrator.
-  - [ ] Tests with the fake ACP agent (`usage_update`, `/compact`) and the script engine.
+- [x] Complete
+  - [x] `Run.context { used, size }` (migration 6) written from the engine's `context` event, throttled; published with `run.upserted`.
+  - [x] `UpdateMapper` turns `usage_update` into a `context` event beside the cost it already reads.
+  - [x] `chat.compact { chatId }` starts a turn of the orchestrator with `/compact` as its message and without a user item in the stream; refused (`conflict`) while the orchestrator works and (`invalid`) for a chat that has no orchestrator.
+  - [x] Tests with the fake ACP agent (`usage_update`, `/compact`) and the script engine.
 
 **Files**
 
@@ -248,7 +252,9 @@ Cursor
 
 **Done when:** a turn of the fake agent leaves its `used` and `size` on the orchestrator's run, and `chat.compact` on an idle chat starts a turn whose prompt is `/compact`.
 **Verify:** `cd apps/daemon && bun test && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Commits:**
+
+- `292a905` feat(daemon): keep the context reading of a run and compact a chat on request
 
 ## Stage 7 — The context ring in the composer
 
