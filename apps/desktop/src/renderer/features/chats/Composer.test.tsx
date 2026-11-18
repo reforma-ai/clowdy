@@ -9,9 +9,6 @@ import { Composer } from './Composer';
 import type { Chat, CommandResult } from '@clowdy/protocol';
 import type { CommandInput } from '../../daemon/transport';
 
-// The design system's Select cannot be loaded by Vitest (its Input does not parse there); the mode is not under test.
-vi.mock('@clowdy/components/Select', () => ({ Select: () => null }));
-
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const newChat = (id: string): Chat => ({ id, projectId: 'p', title: 'New chat', mode: 'autopilot', createdAt: 0, updatedAt: 0 });

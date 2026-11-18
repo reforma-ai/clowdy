@@ -1,7 +1,5 @@
-import { reaction, type IReactionDisposer } from 'mobx';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 
-import hotkeys from './hotkeys';
 import { clamp } from './math';
 
 interface Coord {
@@ -39,7 +37,8 @@ export interface UseRunnerOptions {
     option?: boolean;
     allowFakeCursor?: boolean;
     disabled?: boolean;
-    shouldRun?: (target: HTMLElement) => boolean;
+    /** Gate for a drag, asked on pointerdown. The event carries the modifier keys. */
+    shouldRun?: (target: HTMLElement, event: PointerEvent) => boolean;
 }
 
 export interface UseRunnerReturn {
@@ -95,7 +94,7 @@ export function useRunner<T extends HTMLElement>(
         let startValue = 0;
         let currentValue = 0;
         let dragAbort: AbortController | null = null;
-        let shiftReactionDisposer: IReactionDisposer | null = null;
+        let shiftHeld = false;
 
         const allowFakeCursor = () => (
             (optionsRef.current.allowFakeCursor ?? true)
@@ -200,6 +199,7 @@ export function useRunner<T extends HTMLElement>(
             shift: (lastCoords[axis] - startCoords[axis]) * signFactor / (optionsRef.current.factor ?? 1),
         });
 
+        // `ev` is absent when a Shift toggle re-applies the step without pointer movement
         const onPointerMove = (ev?: PointerEvent) => {
             const snap = optionsRef.current.snap ?? {};
             const snapDuration = snap.duration ?? 5;
@@ -209,6 +209,8 @@ export function useRunner<T extends HTMLElement>(
             if (ev) {
                 ev.preventDefault();
                 ev.stopPropagation();
+
+                shiftHeld = ev.shiftKey;
 
                 lastCoords = {
                     x: fakeCursorEl ? lastCoords.x + (ev.movementX || 0) : ev.clientX,
@@ -237,7 +239,7 @@ export function useRunner<T extends HTMLElement>(
             }
 
             const factor = optionsRef.current.factor ?? 1;
-            const step = hotkeys.shiftKey
+            const step = shiftHeld
                 ? (optionsRef.current.shiftStep ?? 10)
                 : (optionsRef.current.step ?? 1);
 
@@ -262,9 +264,6 @@ export function useRunner<T extends HTMLElement>(
 
             optionsRef.current.onEnd?.(getPayload(ev));
 
-            shiftReactionDisposer?.();
-            shiftReactionDisposer = null;
-
             dragAbort?.abort();
             dragAbort = null;
 
@@ -274,14 +273,23 @@ export function useRunner<T extends HTMLElement>(
             setIsDragging(false);
         };
 
-        const onPointerDown = (ev: PointerEvent) => {
-            const { shouldRun, option: isOption } = optionsRef.current;
-
-            if (shouldRun && !shouldRun(ev.target as HTMLElement)) {
+        const onShiftToggle = (ev: KeyboardEvent) => {
+            if (ev.shiftKey === shiftHeld) {
                 return;
             }
 
-            if (isOption && !hotkeys.altKey) {
+            shiftHeld = ev.shiftKey;
+            onPointerMove();
+        };
+
+        const onPointerDown = (ev: PointerEvent) => {
+            const { shouldRun, option: isOption } = optionsRef.current;
+
+            if (shouldRun && !shouldRun(ev.target as HTMLElement, ev)) {
+                return;
+            }
+
+            if (isOption && !ev.altKey) {
                 return;
             }
 
@@ -291,6 +299,7 @@ export function useRunner<T extends HTMLElement>(
             startCoords = { x: ev.clientX, y: ev.clientY };
             lastCoords = { x: ev.clientX, y: ev.clientY };
             snapCoords = { x: null, y: null };
+            shiftHeld = ev.shiftKey;
             startValue = optionsRef.current.value;
             currentValue = startValue;
 
@@ -307,10 +316,8 @@ export function useRunner<T extends HTMLElement>(
             overlay?.addEventListener('pointerleave', onPointerUp as EventListener, { signal: dragAbort.signal });
 
             // re-apply on Shift toggle so the step change takes effect without pointer movement
-            shiftReactionDisposer = reaction(
-                () => hotkeys.shiftKey,
-                () => onPointerMove()
-            );
+            window.addEventListener('keydown', onShiftToggle, { signal: dragAbort.signal });
+            window.addEventListener('keyup', onShiftToggle, { signal: dragAbort.signal });
         };
 
         const targetAbort = new AbortController();
@@ -320,7 +327,6 @@ export function useRunner<T extends HTMLElement>(
         return () => {
             targetAbort.abort();
             dragAbort?.abort();
-            shiftReactionDisposer?.();
             removeOverlay();
             target.classList.remove('runner-in-move');
         };
