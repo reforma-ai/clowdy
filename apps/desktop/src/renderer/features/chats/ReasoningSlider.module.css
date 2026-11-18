@@ -1,0 +1,158 @@
+/*
+ * The reasoning slider's look is Reforma's: a pill track that fills toward a round thumb, a dot at each stop, and a thumb that is
+ * pulled only part of the way to the pointer while it is dragged. The thumb sits at `--level-p`, the sum of two numbers that
+ * transition on their own (the level in force, slowly; the pointer's pull, quickly), which is why they are registered below.
+ */
+@property --level-p {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 0;
+}
+
+@property --level-anchor-p {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 0;
+}
+
+@property --level-pointer-p {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 0;
+}
+
+@property --point-p {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 0;
+}
+
+.track {
+    --thumb-width: var(--spacing-30);
+    --thumb-half: calc(var(--thumb-width) / 2);
+    --level-p: calc(var(--level-anchor-p) + var(--level-pointer-p));
+
+    position: relative;
+    align-self: stretch;
+    width: auto;
+    height: var(--spacing-24);
+    margin-top: var(--spacing-xs);
+    border-radius: var(--radius-full);
+    background: var(--color-primary-muted);
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+    outline: none;
+    transition:
+        --level-anchor-p 220ms var(--ease),
+        --level-pointer-p var(--transition-duration-fast) var(--ease);
+}
+
+.track[data-dragging] {
+    cursor: grabbing;
+    transition-property: --level-anchor-p;
+}
+
+/* From the start of the track to the thumb's centre. */
+.fill {
+    position: absolute;
+    top: 0;
+    inset-inline-start: 0;
+    width: calc(var(--thumb-half) + var(--level-p) * (100% - var(--thumb-width)));
+    min-width: var(--spacing-24);
+    height: 100%;
+    border-radius: inherit;
+    overflow: hidden;
+    background: linear-gradient(to right, var(--color-primary-border), var(--color-primary-light));
+    box-shadow: 0 0 var(--spacing-8) var(--color-primary-a40);
+    pointer-events: none;
+}
+
+.fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, transparent, var(--color-primary-content), transparent);
+    background-size: 200% 100%;
+    opacity: 0.22;
+    animation: range-shimmer 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes range-shimmer {
+    from {
+        background-position: 0% 50%;
+    }
+
+    to {
+        background-position: 100% 50%;
+    }
+}
+
+/* One stop: a zero-width column at its place on the track, with the dot centred on it. */
+.point {
+    position: absolute;
+    top: 0;
+    left: calc(var(--thumb-half) + var(--point-p) * (100% - var(--thumb-width)));
+    width: 0;
+    height: 100%;
+    z-index: 0;
+}
+
+.point::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: var(--spacing-4);
+    height: var(--spacing-4);
+    border-radius: var(--radius-full);
+    background: var(--color-primary-content);
+    opacity: 0.45;
+    transform: translate(-50%, -50%);
+    transition: transform var(--transition-duration-fast) var(--ease);
+}
+
+.point[data-hot]::before {
+    transform: translate(-50%, -50%) scale(1.5);
+}
+
+.thumb {
+    position: absolute;
+    top: 50%;
+    left: calc(var(--thumb-half) + var(--level-p) * (100% - var(--thumb-width)));
+    box-sizing: border-box;
+    width: var(--thumb-width);
+    height: var(--thumb-width);
+    border: var(--spacing-1) solid var(--color-primary-muted-border);
+    border-radius: var(--radius-full);
+    background: var(--color-primary-content);
+    box-shadow: var(--shadow-xs), var(--shadow-sm);
+    translate: -50% -50%;
+    transition: scale var(--transition-duration-fast) var(--ease);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.thumb[data-dragging] {
+    scale: 1.08;
+}
+
+.track:focus-visible .thumb {
+    box-shadow:
+        var(--shadow-xs),
+        var(--shadow-sm),
+        0 0 0 var(--spacing-4) var(--color-primary-muted-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .thumb,
+    .point::before,
+    .track,
+    .track[data-dragging],
+    .fill,
+    .fill::after {
+        transition: none;
+        animation: none;
+    }
+}

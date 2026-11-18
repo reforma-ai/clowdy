@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RootStoreProvider, type RootStore } from '../../stores';
 import { Composer } from './Composer';
+import { modelStore } from './modelTestKit';
 
 import type { Chat, CommandResult, DocNode, Run, SkillEntry, Task } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
@@ -43,7 +44,7 @@ async function mount(result: CommandResult | Promise<CommandResult>, run?: Run) 
 
         return result;
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: tasks } };
+    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: tasks }, ...await modelStore() };
 
     await act(async () => {
         root.render(

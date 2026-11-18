@@ -16,8 +16,10 @@ import { filesOf, releaseFiles, restoreFiles, takeFiles } from './composerFiles'
 import { serializeMention } from './composerMentions';
 import { ComposerSend } from './ComposerSend';
 import { MentionChip } from './MentionChip';
+import { ModelPicker, ModelPickerOff } from './ModelPicker';
 import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
+import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
 
 import type { Chat, ChatId, ChatMode, ProjectId, Run } from '@clowdy/protocol';
 
@@ -54,10 +56,11 @@ export interface ComposerProps {
 }
 
 /**
- * The message box: the files picked for the message and the text on top, below them attach, the mode and send. Enter sends, Shift+Enter
- * starts a new line, `@` mentions a task, document or file and `/` asks for a skill. While the orchestrator works and
- * nothing is typed, the send button stops it. Without a chat the first message makes one, so opening the new-chat page
- * again and again leaves no empty chats behind; if the message then fails the chat stays, and the retry goes to it.
+ * The message box: the files picked for the message and the text on top, below them attach, the model and its reasoning level, the
+ * mode and send. Enter sends, Shift+Enter starts a new line, `@` mentions a task, document or file and `/` asks for a skill. While the
+ * orchestrator works and nothing is typed, the send button stops it. Without a chat the first message makes one, on the model the
+ * picker holds, so opening the new-chat page again and again leaves no empty chats behind; if the message then fails the chat
+ * stays, and the retry goes to it.
  */
 export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
     const root = useRootStore();
@@ -70,15 +73,20 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
     const [doc, setDoc] = useState(() => draftOf(key));
     const [isStopping, setIsStopping] = useState(false);
     const [draftMode, setDraftMode] = useState<ChatMode>('autopilot');
-    // The chat a first message made, when sending the message then failed.
-    const [made, setMade] = useState<Chat>();
+    // The chat a first message made, when sending the message then failed. It belongs to the project it was made in: the page of
+    // another project (the same composer, drawn again) starts its own chat, and a model picked there is not picked for this one.
+    const [madeIn, setMade] = useState<Chat>();
+    const made = madeIn?.projectId === start?.projectId ? madeIn : undefined;
     const target = chat ?? made;
     const running = isRunActive(run);
+    const model = useModelChoice({ chat, made, run });
     const attach = useComposerFiles(filesKey, chat?.projectId ?? start?.projectId);
     const picker = useRef<HTMLInputElement>(null);
     const hasMessage = messageOf(doc) !== '' || attach.files.length > 0;
     // A file still going up, or one that failed, holds the message back until the person has dealt with it.
-    const blocked = attach.uploading ? 'Wait until the files are uploaded' : attach.failed ? 'Retry or remove the file that did not upload' : undefined;
+    const blocked = model.noProvider
+        ? NO_PROVIDER_HINT
+        : attach.uploading ? 'Wait until the files are uploaded' : attach.failed ? 'Retry or remove the file that did not upload' : undefined;
 
     useImperativeHandle(ref, () => ({ addFiles: attach.add }), [attach.add]);
 
@@ -91,7 +99,7 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
         const message = messageOf(from);
         const held = filesOf(filesKey);
 
-        if ((!message && held.length === 0) || held.some(file => file.status !== 'ready')) return;
+        if ((!message && held.length === 0) || held.some(file => file.status !== 'ready') || model.noProvider) return;
 
         edit(emptyComposerDoc());
 
@@ -111,7 +119,14 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
                 return;
             }
 
-            const created = await perform(root, { type: 'chat.create', projectId: start.projectId, mode: draftMode });
+            const { choice } = model;
+            // The chat starts on what the picker holds: the provider, its model and the level of that model.
+            const created = await perform(root, {
+                type: 'chat.create',
+                projectId: start.projectId,
+                mode: draftMode,
+                ...(choice && { engine: choice.engine, ...(choice.model && { model: choice.model }), ...(choice.effort && { effort: choice.effort }) }),
+            });
             const fresh = (created.ok ? created.data : {}) as { chat?: Chat };
 
             if (!fresh.chat) {
@@ -219,6 +234,10 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
                     />
 
                     <div className={ styles.end }>
+                        { model.noProvider
+                            ? <Unavailable label="Model" hint={ NO_PROVIDER_HINT }><ModelPickerOff /></Unavailable>
+                            : <ModelPicker choice={ model.choice } providers={ model.providers } running={ running } onPick={ model.pick } /> }
+
                         <Unavailable label="Mode" hint={ running ? 'The mode stays as it is while the orchestrator works' : undefined }>
                             <Select
                                 aria-label="Mode"

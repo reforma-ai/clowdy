@@ -28,6 +28,8 @@
     background-color: var(--color-chat-composer);
     transition: box-shadow var(--transition-duration) var(--ease-in-out);
     line-height: var(--spacing-20);
+    /* The model picker's pill drops the model's level when the card is narrow (a container query on this card). The width is the parent's, never the content's. */
+    container-type: inline-size;
 }
 
 :global(.dark) .surface {

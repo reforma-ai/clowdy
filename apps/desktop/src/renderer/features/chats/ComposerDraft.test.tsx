@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RootStoreProvider, type RootStore } from '../../stores';
 import { Composer } from './Composer';
 import { saveDraft } from './composerDrafts';
+import { modelStore } from './modelTestKit';
 
 import type { Chat, CommandResult } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
@@ -38,7 +39,7 @@ async function mount(answer: (input: CommandInput) => CommandResult, minLines?: 
 
         return answer(input);
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: [] } };
+    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: [] }, ...await modelStore() };
 
     await act(async () => {
         root.render(
@@ -85,7 +86,7 @@ describe('Composer without a chat', () => {
         await pressEnter();
 
         expect(sent).toEqual([
-            { type: 'chat.create', projectId: 'p', mode: 'autopilot' },
+            { type: 'chat.create', projectId: 'p', mode: 'autopilot', engine: 'claude', model: 'opus', effort: 'high' },
             { type: 'chat.send', chatId: 'c-new', text: 'Build the thing' },
         ]);
         expect(started).toEqual(['c-new']);

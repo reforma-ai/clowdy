@@ -1,0 +1,255 @@
+@reference '@clowdy/styles/rulesets';
+
+/*
+ * The model and reasoning picker: Reforma's "grade" picker. A pill in the composer opens a 320px popover with two panes on one stage:
+ * the face (a big model button over the reasoning slider) and the list of models, which replaces the face while it is open. The
+ * panes cross-fade and the stage's height follows the active pane, all in CSS: both panes stay mounted and the hidden one is `inert`.
+ */
+
+/* ---------------------------------- The pill ---------------------------------- */
+
+.trigger {
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: min(100%, 16rem);
+    padding-left: var(--spacing-sm);
+}
+
+/*
+ * Open, the plate of a pressed button stays and the whole label goes muted. The plate is drawn here and not with the button's
+ * `isPressed`, which would also make the pill a toggle (`aria-pressed`) when it is a button that opens a popover (`aria-expanded`).
+ */
+.trigger[data-open] {
+    --clowdy-button-color: var(--color-secondary-muted-text);
+    --clowdy-button-color--hover: var(--color-secondary-muted-text);
+
+    border-color: var(--clowdy-button-border--hover);
+    background-color: var(--clowdy-button-bg--hover);
+    opacity: var(--clowdy-button-opacity--hover);
+}
+
+.triggerContent {
+    justify-content: flex-start;
+    min-width: 0;
+}
+
+.triggerContent svg {
+    flex-shrink: 0;
+}
+
+.modelLabel {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3em;
+    min-width: 0;
+}
+
+.level {
+    color: var(--color-secondary-muted-text);
+    flex-shrink: 0;
+}
+
+/* The composer card is the container: a narrow card keeps the model's name and drops its level. */
+@container (max-width: 340px) {
+    .trigger .level {
+        display: none;
+    }
+}
+
+/* ---------------------------------- The popover ---------------------------------- */
+
+/*
+ * `clip`, not `hidden`: a box that is hidden is still a scroll container, and focusing a row of the list while it slides in would
+ * scroll the stage and the popover to reveal it (the list is taller than the stage at that moment), leaving the panes shifted.
+ */
+.popover {
+    overflow: clip;
+}
+
+/* An opaque plate under the sliding panes. */
+.popover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--color-surface-float);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.face,
+.models,
+.stage {
+    position: relative;
+    z-index: 2;
+}
+
+/*
+ * The stage holds both panes in one grid cell until the active one has been measured, then fixes its height to it, so a swap
+ * resizes the popover. The first measure sets the height without a transition: `data-animate` comes after it.
+ */
+.stage {
+    display: grid;
+    overflow: clip;
+}
+
+.stage[data-measured] {
+    display: block;
+}
+
+.stage[data-animate] {
+    transition: height 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.layer {
+    grid-area: 1 / 1;
+    align-self: start;
+    min-width: 0;
+    transition:
+        opacity 0.28s cubic-bezier(0.32, 0.72, 0, 1),
+        transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.stage[data-measured] .layer {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    width: 100%;
+}
+
+/* The face sinks a little as the list rises over it; the list is out of sight and out of reach (`inert`) until asked for. */
+.faceLayer[data-hidden] {
+    opacity: 0;
+    transform: translateY(calc(var(--spacing-8) * -1));
+    pointer-events: none;
+}
+
+.listLayer {
+    z-index: 2;
+    background: var(--color-surface-float);
+    opacity: 0;
+    transform: translateY(var(--spacing-24));
+    pointer-events: none;
+}
+
+.listLayer[data-open] {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .stage[data-animate],
+    .layer {
+        transition: none;
+    }
+}
+
+/* ---------------------------------- The face ---------------------------------- */
+
+.face {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--spacing-lg);
+    gap: var(--spacing-lg);
+}
+
+.modelButton {
+    align-self: flex-start;
+    max-width: 100%;
+    padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.modelTitle {
+    @ruleset typography-heading-4;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.modelButton .level {
+    @ruleset typography-heading-4;
+}
+
+.reasoning {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding-inline: var(--spacing-md);
+    padding-bottom: var(--spacing-md);
+}
+
+.faceText {
+    @ruleset typography-text-sm;
+    color: var(--color-secondary-muted-text);
+}
+
+.footnote {
+    @ruleset typography-text-xs;
+    color: var(--color-secondary-muted-text);
+    margin-top: var(--spacing-xs);
+}
+
+/* ---------------------------------- The list ---------------------------------- */
+
+.models {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.listHead {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-height: var(--spacing-30);
+    padding: var(--spacing-sm);
+}
+
+.listTitle {
+    @ruleset typography-heading-6;
+    color: var(--color-text);
+}
+
+/*
+ * The list scrolls inside this. The popover is as tall as the room above the pill and clips what does not fit, and on the new-chat page
+ * the card sits in the middle of the window, so in a low window the cap leaves room for the head and what lies above the card.
+ */
+.modelScroll {
+    max-height: min(360px, calc(100vh - 24rem));
+}
+
+.modelList {
+    padding: var(--spacing-sm);
+}
+
+/* What a provider says instead of rows: it is being read, or why it gives none, with a way to ask again. */
+.note {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
+}
+
+.modelList + .note {
+    margin-top: var(--spacing-md);
+}
+
+.noteTitle {
+    @ruleset typography-text-xs;
+    color: var(--color-secondary-muted-text);
+    font-weight: 500;
+}
+
+.noteText {
+    @ruleset typography-text-sm;
+    color: var(--color-secondary-muted-text);
+}
+
+.noteBusy {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
