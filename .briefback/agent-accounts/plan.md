@@ -70,7 +70,7 @@ Each stage ends with its checks and one commit on the branch.
 
 - The usage popover in the header or status bar, in bb's look; usage polling while a page is open; the refresh button spinner until `fetchedAt` changes.
 - A disabled provider: read-only chats with a hand-off to a new chat; provider and model pickers in the composer (the model list is ready); statistics.
-- The brand marks are hand-drawn; the real Claude mark is in `packages/icons/src/logo/`.
+- Brand marks: done after the first landing. Claude and Codex use `Claude` and `Openai` of `@clowdy/icons/logo` (Reforma's set); Cursor's is its own 2D cube from cursor.com/brand, added to the same pack (`packages/icons/src/logo/SOURCES.md`).
 - Several accounts per provider (Orca's per-account config folders) if it is ever wanted; `agent.signIn` is the same login mechanism with another config folder.
 - `agents.changed` rows are persisted per project on every change; a non-persisted notification would keep the event log smaller.
 
