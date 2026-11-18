@@ -16,7 +16,7 @@ export function DocsSidebar({ store }: { store: DocsStore }) {
     return (
         <aside className={ styles.sidebar } aria-label="Documents">
             <SidebarHeading title="Documents">
-                <Button variant="ghost" size="sm" iconOnly aria-label="New document" tooltip="New document" onPress={ () => openNewDocument(store) }>
+                <Button variant="filling" size="sm" iconOnly aria-label="New document" tooltip="New document" onPress={ () => openNewDocument(store) }>
                     <Plus />
                 </Button>
             </SidebarHeading>

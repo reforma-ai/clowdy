@@ -206,7 +206,17 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                         } }
                     >
                         <GridListSection aria-label={ isGrouped ? 'New chat' : 'Chats' }>
-                            <GridListItem id={ NEW_CHAT_ROW } text="New chat" icon={ <Plus /> } endAffix={ <CommandHotkey id={ NEW_CHAT_COMMAND } size="xs" /> }>
+                            <GridListItem
+                                id={ NEW_CHAT_ROW }
+                                text="New chat"
+                                icon={ <Plus /> }
+                                // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
+                                endAffix={ (
+                                    <span className={ styles.end } data-show={ listBoxItemDataShow.itemHover }>
+                                        <CommandHotkey id={ NEW_CHAT_COMMAND } size="xs" />
+                                    </span>
+                                ) }
+                            >
                                 <span className={ styles.title }>New chat</span>
                             </GridListItem>
                             { !isGrouped && rows.map(renderRow) }
@@ -254,7 +264,7 @@ function FilterMenu() {
 
     return (
         <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
-            <Button variant="ghost" size="sm" iconOnly aria-label="Filters" tooltip="Filters">
+            <Button variant="filling" size="sm" iconOnly aria-label="Filters" tooltip="Filters">
                 <More />
             </Button>
             <Popover placement="bottom end" spacing="xs" width={ 240 }>
