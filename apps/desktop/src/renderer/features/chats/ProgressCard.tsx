@@ -18,7 +18,7 @@ export function ProgressCard({ progress }: { progress: ChatProgress }) {
 
     return (
         <section className={ styles.card } aria-label="Progress">
-            <Text bold>{ `Implementation · ${ done } of ${ total } ${ total === 1 ? 'task' : 'tasks' } done` }</Text>
+            <Text weight="medium">{ `Implementation · ${ done } of ${ total } ${ total === 1 ? 'task' : 'tasks' } done` }</Text>
 
             <div
                 className={ styles.track }

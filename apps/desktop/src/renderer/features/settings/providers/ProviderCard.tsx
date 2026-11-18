@@ -28,7 +28,7 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
                 <header className={ styles.header }>
                     <span className={ styles.icon }><ProviderIcon agentId={ agent.id } size={ 22 } /></span>
                     <div className={ styles.title }>
-                        <Text bold>{ agent.name }</Text>
+                        <Text weight="medium">{ agent.name }</Text>
                         { agent.version && <Text variant="xs" color="secondary" className={ styles.version }>{ `v${ agent.version }` }</Text> }
                     </div>
                     <Switch

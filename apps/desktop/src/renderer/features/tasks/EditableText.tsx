@@ -8,7 +8,7 @@ export interface EditableTextProps {
     /** Saves the edit; resolves to whether it was accepted. A refused edit goes back to `value`. */
     onCommit: (value: string) => Promise<boolean>;
     'aria-label': string;
-    /** The big bold form, one line at a time, for a title. Otherwise a plain plate for a paragraph. */
+    /** The big form, one line at a time, for a title. Otherwise a plain plate for a paragraph. */
     variant: 'title' | 'body';
     placeholder?: string;
     /** An empty edit goes back to `value` instead of saving. */

@@ -22,7 +22,7 @@ export function SettingsRow({ title, description, children, stacked = false, foo
     return (
         <SettingsBlock { ...props } className={ cn(styles.row, className) } data-stacked={ stacked || undefined }>
             <div className={ styles.text }>
-                <Text variant="sm" bold>{ title }</Text>
+                <Text variant="sm" weight="medium">{ title }</Text>
                 { description && <Text variant="sm" color="secondary">{ description }</Text> }
             </div>
             { children && <div className={ styles.control }>{ children }</div> }

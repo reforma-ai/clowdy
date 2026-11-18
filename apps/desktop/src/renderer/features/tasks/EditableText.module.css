@@ -13,7 +13,6 @@
 .titleText {
     @ruleset typography-heading-3;
 
-    font-weight: 600;
     line-height: var(--spacing-24);
     overflow-wrap: anywhere;
 }

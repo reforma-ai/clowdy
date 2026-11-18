@@ -5,6 +5,7 @@ import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/Tog
 import { Columns, List, Plus } from '@clowdy/icons/14';
 
 import { commandHint, CommandHotkey, commandTooltip } from '../../hotkeys';
+import { SCREEN_TITLE } from '../../shared';
 import { FilterPopover } from './FilterPopover';
 import styles from './TasksHeader.module.css';
 
@@ -47,7 +48,7 @@ export function TasksHeader({ subtitle, view, onViewChange, onCreate, filter, on
     return (
         <header className={ styles.header }>
             <div className={ styles.titles }>
-                <Text variant="heading-3" weight="semibold">Tasks</Text>
+                <Text variant={ SCREEN_TITLE }>Tasks</Text>
                 <Text color="secondary" truncate>{ subtitle }</Text>
             </div>
 

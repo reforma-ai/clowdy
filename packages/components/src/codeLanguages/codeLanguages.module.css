@@ -30,7 +30,7 @@
 
     .heading {
         color: var(--color-primary-text);
-        font-weight: bold;
+        font-weight: 600;
     }
 
     .emphasis {
@@ -38,7 +38,7 @@
     }
 
     .strong {
-        font-weight: bold;
+        font-weight: 600;
     }
 
     .strikethrough {

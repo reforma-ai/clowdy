@@ -27,7 +27,7 @@ export function ProjectSelect() {
         <MenuTrigger>
             <Button variant="bordered" className={ styles.trigger } aria-label="Project">
                 { selected?.personal ? <Home /> : <Folder /> }
-                <Text bold truncate>{ selected?.name ?? 'No project' }</Text>
+                <Text weight="medium" truncate>{ selected?.name ?? 'No project' }</Text>
                 <ChevronDown />
             </Button>
             <Popover placement="bottom start" width={ 280 }>

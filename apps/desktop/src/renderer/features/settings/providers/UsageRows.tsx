@@ -60,7 +60,7 @@ export type UsageHeaderProps = Omit<RefreshUsageButtonProps, 'className'>;
 export function UsageHeader({ isRefreshing, onRefresh }: UsageHeaderProps) {
     return (
         <div className={ styles.header }>
-            <Text variant="sm" bold>Usage</Text>
+            <Text variant="sm" weight="medium">Usage</Text>
             <RefreshUsageButton isRefreshing={ isRefreshing } onRefresh={ onRefresh } />
         </div>
     );

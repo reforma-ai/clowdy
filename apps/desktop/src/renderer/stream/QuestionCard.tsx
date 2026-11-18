@@ -25,7 +25,7 @@ function QuestionText({ text }: { text: string }) {
 
     return (
         <div className={ styles.text }>
-            <Text bold>{ title }</Text>
+            <Text weight="medium">{ title }</Text>
             { paragraphs.map(paragraph => <Text key={ paragraph } color="secondary" whitespace="pre-line">{ paragraph }</Text>) }
         </div>
     );

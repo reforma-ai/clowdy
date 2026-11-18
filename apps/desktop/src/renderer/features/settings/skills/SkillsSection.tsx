@@ -59,7 +59,7 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
                 <>
                     { INTRO }
                     { ' ' }
-                    <span data-testid="skills-cost">Enabled skills add about <Text bold>{ tokenLabel(tokens) }</Text> to every run.</span>
+                    <span data-testid="skills-cost">Enabled skills add about <Text weight="medium">{ tokenLabel(tokens) }</Text> to every run.</span>
                 </>
             ) }
         >

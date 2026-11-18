@@ -169,7 +169,7 @@ function ProviderUsage({ agent, now, onOpenProviders, isRefreshing, onRefresh }:
         <section className={ styles.provider } aria-label={ agent.name }>
             <header className={ styles.who }>
                 <ProviderIcon agentId={ agent.id } size={ 16 } />
-                <Text variant="sm" bold truncate className={ styles.account } title={ who }>{ who }</Text>
+                <Text variant="sm" weight="medium" truncate className={ styles.account } title={ who }>{ who }</Text>
                 <Show when={ isSignedIn ? line.plan : undefined }>
                     { plan => <Badge size="xs" color="secondary" textValue={ plan } className={ styles.plan }>{ plan }</Badge> }
                 </Show>

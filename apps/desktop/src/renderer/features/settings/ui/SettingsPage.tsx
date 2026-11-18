@@ -1,6 +1,7 @@
 import { Breadcrumb } from '@clowdy/components/Breadcrumb';
 import { Text } from '@clowdy/components/Text';
 
+import { SCREEN_TITLE } from '../../../shared';
 import styles from './SettingsPage.module.css';
 
 import type { ReactNode } from 'react';
@@ -29,9 +30,9 @@ export function SettingsPage({ title, parents = [], description, actions, childr
             <header className={ styles.header }>
                 <div className={ styles.titleLine }>
                     { parents.length === 0
-                        ? <Text as="h1" variant="heading-2" className={ styles.title }>{ title }</Text>
+                        ? <Text as="h1" variant={ SCREEN_TITLE } className={ styles.title }>{ title }</Text>
                         : (
-                            <Breadcrumb variant="heading-2" aria-label="Settings path">
+                            <Breadcrumb variant={ SCREEN_TITLE } aria-label="Settings path">
                                 { parents.map(parent => <Breadcrumb.Link key={ parent.label } onPress={ parent.onPress }>{ parent.label }</Breadcrumb.Link>) }
                                 <Breadcrumb.Page>{ title }</Breadcrumb.Page>
                             </Breadcrumb>

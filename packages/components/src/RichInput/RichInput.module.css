@@ -27,6 +27,11 @@
         line-height: inherit;
     }
 
+    /* The same 600 as bold in a sent message (markdown); the browser's own would be 700. */
+    .editor :global(strong) {
+        font-weight: 600;
+    }
+
     .editor :global(code) {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 0.9em;

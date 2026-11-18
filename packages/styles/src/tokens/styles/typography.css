@@ -1,7 +1,7 @@
 @layer rulesets {
     --typography-heading-1 {
         font-family: 'Onest', sans-serif;
-        font-weight: 600;
+        font-weight: 500;
         font-size: var(--text-xxl);
         line-height: var(--leading-xxl);
         letter-spacing: 0;
@@ -9,7 +9,7 @@
 
     --typography-heading-2 {
         font-family: 'Onest', sans-serif;
-        font-weight: 600;
+        font-weight: 500;
         font-size: 1.5rem;
         line-height: 1.75rem;
         letter-spacing: 0;

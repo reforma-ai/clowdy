@@ -1,6 +1,7 @@
 import { Text } from '@clowdy/components/Text';
 import { cn } from '@clowdy/lib';
 
+import { SCREEN_TITLE } from './screenTitle';
 import styles from './SidebarHeading.module.css';
 
 import type { ReactNode } from 'react';
@@ -17,7 +18,7 @@ export interface SidebarHeadingProps {
 export function SidebarHeading({ title, children, className }: SidebarHeadingProps) {
     return (
         <div className={ cn(styles.heading, className) }>
-            <Text variant="heading-3" weight="semibold">{ title }</Text>
+            <Text variant={ SCREEN_TITLE }>{ title }</Text>
             { children && <div className={ styles.actions }>{ children }</div> }
         </div>
     );

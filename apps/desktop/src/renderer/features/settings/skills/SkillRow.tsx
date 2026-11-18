@@ -26,7 +26,7 @@ export function SkillRow({ skill, isPending, onToggle }: SkillRowProps) {
         <SettingsBlock as="li" className={ styles.row } data-off={ !enabled || undefined }>
             <div className={ styles.body }>
                 <div className={ styles.titleLine }>
-                    <Text bold truncate className={ styles.name }>{ name }</Text>
+                    <Text weight="medium" truncate className={ styles.name }>{ name }</Text>
                     <Badge size="xs" color={ source === 'system' ? 'primary' : 'secondary' } textValue={ SOURCE_LABEL[source] }>{ SOURCE_LABEL[source] }</Badge>
                 </div>
                 <Text variant="sm" color="secondary" className={ styles.description }>{ description }</Text>

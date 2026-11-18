@@ -36,7 +36,7 @@ export function ProjectRow({ project, info, onManage, onOpen, onRemove }: Projec
                 <span className={ styles.icon }>{ project.personal ? <Home /> : <Folder /> }</span>
                 <span className={ styles.text }>
                     <span className={ styles.title }>
-                        <Text bold truncate>{ project.name }</Text>
+                        <Text weight="medium" truncate>{ project.name }</Text>
                         { missing && <Badge size="xs" color="warning" textValue="Folder missing">Folder missing</Badge> }
                     </span>
                     <Text variant="sm" color="secondary" truncate title={ project.path }>{ project.path }</Text>

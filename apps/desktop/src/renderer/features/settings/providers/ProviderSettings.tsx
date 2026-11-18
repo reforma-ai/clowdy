@@ -24,7 +24,7 @@ function SettingRow({ setting, isPending, onChange }: { setting: AgentSetting; i
     return (
         <li className={ styles.setting }>
             <div className={ styles.text }>
-                <Text variant="sm" bold>{ setting.label }</Text>
+                <Text variant="sm" weight="medium">{ setting.label }</Text>
                 { setting.description && <Text variant="sm" color="secondary">{ setting.description }</Text> }
             </div>
             <Switch size="sm" isSelected={ setting.value } isPending={ isPending } aria-label={ setting.label } onChange={ onChange } />
@@ -75,7 +75,7 @@ function Advanced({ agent, commands }: SettingsProps) {
             <AdvancedTrigger />
             <AdvancedPanel>
                 <div className={ styles.field }>
-                    <Text variant="sm" bold>Program</Text>
+                    <Text variant="sm" weight="medium">Program</Text>
                     <Text variant="sm" color="secondary" truncate title={ programNote }>{ programNote }</Text>
                     <div className={ styles.inputs }>
                         <Input
@@ -109,7 +109,7 @@ function Advanced({ agent, commands }: SettingsProps) {
                 </div>
 
                 <div className={ styles.field }>
-                    <Text variant="sm" bold>Environment</Text>
+                    <Text variant="sm" weight="medium">Environment</Text>
                     <Text variant="sm" color="secondary">Variables the program starts with, one KEY=VALUE per line. An empty box clears them. They apply to the next run.</Text>
                     <Textarea
                         variant="bordered"
