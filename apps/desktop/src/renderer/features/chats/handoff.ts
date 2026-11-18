@@ -4,7 +4,8 @@ import { MAX_ATTACHMENT_BYTES } from '@clowdy/protocol';
 import { when } from 'mobx';
 
 import { chatProvider } from './chatProvider';
-import { draftOf, messageOf, NEW_CHAT_DRAFT, saveDraft } from './composerDrafts';
+import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
+import { admitFiles, filesOf } from './composerFiles';
 
 import type { Chat, ChatId, Run, StreamItem } from '@clowdy/protocol';
 import type { ProjectUi, RootStore } from '../../stores';
@@ -211,9 +212,13 @@ const handingOff = new Set<ChatId>();
 /**
  * Hands the work of a chat over to a new one: loads the conversation, makes the file, and opens the new-chat page with the file
  * attached and a sentence in the message box. Nothing is sent: the person picks the provider and presses Send. The words go into
- * the new-chat page's draft, which its box reads when it opens; the file waits in `ui.pendingFiles` for the page to attach it, so it
- * is uploaded to the project like a file picked there. Says why and stays where it is when there is nothing to hand over or the
- * conversation cannot be loaded. Resolves to whether the new-chat page was opened.
+ * the new-chat page's draft of this project, which its box reads when it opens; the file waits in `ui.pendingFiles` for the page to
+ * attach it, so it is uploaded to the project like a file picked there. Says why and stays where it is when there is nothing to hand
+ * over, the conversation cannot be loaded, or the new-chat box has no room for the file. Resolves to whether the new-chat page was opened.
+ *
+ * A full box (the files of one message are limited in number and in size, and the daemon refuses a message that carries more) does
+ * not take the file in anyway: the message could not be sent until the person removed something, and a draft that says "attached
+ * as ..." with no file behind it is worse than none. So the person is told plainly, and nothing changes: not the draft, not the page.
  */
 export async function startHandoff({ root, ui, chat, run, stillOpen = () => true }: Handoff): Promise<boolean> {
     if (!chat.orchestratorRunId) {
@@ -255,7 +260,17 @@ export async function startHandoff({ root, ui, chat, run, stillOpen = () => true
         const fileName = handoffFileName(chat.title);
         const file = new File([transcriptOf(chat, turns, { provider, model: chat.model ?? run?.model })], fileName, { type: 'text/markdown' });
 
-        saveDraft(NEW_CHAT_DRAFT, withSentence(draftOf(NEW_CHAT_DRAFT), handoffSentence(chat.title, fileName)));
+        const draftKey = newChatDraftKey(ui.projectId);
+        // A file the box already holds (the same chat handed off twice) is not a refusal: it is attached already.
+        const [refusal] = admitFiles(filesOf(draftKey), [file]).refusals;
+
+        if (refusal) {
+            toast.error({ title: 'The conversation was not handed off', message: `${ refusal } Make room in the message box of the new chat, then hand off again.` });
+
+            return false;
+        }
+
+        saveDraft(draftKey, withSentence(draftOf(draftKey), handoffSentence(chat.title, fileName)));
         ui.openDraft([file]);
 
         return true;

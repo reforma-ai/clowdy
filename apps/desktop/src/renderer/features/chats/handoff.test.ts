@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
 import { emptyComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
 import { toast } from '@clowdy/components/Toast';
-import { MAX_ATTACHMENT_BYTES } from '@clowdy/protocol';
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '@clowdy/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, type FixtureData } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID, type FixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore } from '../../stores';
-import { draftOf, messageOf, NEW_CHAT_DRAFT, saveDraft } from './composerDrafts';
+import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
+import { filesOf, setFiles, type DraftFile } from './composerFiles';
 import { handoffFileName, handoffSentence, startHandoff, transcriptOf, turnsOf } from './handoff';
 
 import type { Chat, StreamItem, StreamItemBody } from '@clowdy/protocol';
@@ -18,6 +19,10 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), warning: v
 const items = (...bodies: StreamItemBody[]): StreamItem[] => bodies.map((body, index) => ({ id: `i-${ index + 1 }`, runId: 'r-1', seq: index + 1, at: 0, body }));
 const chat: Chat = { id: 'c-1', projectId: 'p', title: 'Simplify booking', mode: 'autopilot', engine: 'claude', model: 'claude-sonnet', orchestratorRunId: 'r-1', createdAt: 0, updatedAt: 0 };
 const file = (name: string) => ({ id: name, name, mediaType: 'text/plain', size: 1 });
+/** The new-chat page of the fixture project: where the hand-off writes its sentence and looks at the files. */
+const NEW_CHAT_KEY = newChatDraftKey(FIXTURE_PROJECT_ID);
+/** A file the new-chat box already holds, uploaded and waiting for its message. */
+const held = (name: string, size = 1): DraftFile => ({ key: name, name, mediaType: 'text/plain', size, status: 'ready' });
 
 describe('turnsOf', () => {
     it('keeps the person\'s words and the assistant\'s text, in order, and nothing else', () => {
@@ -287,7 +292,7 @@ describe('startHandoff', () => {
 
     beforeEach(async () => {
         vi.mocked(toast.error).mockClear();
-        saveDraft(NEW_CHAT_DRAFT, emptyComposerDoc());
+        saveDraft(NEW_CHAT_KEY, emptyComposerDoc());
         data = createFixtureData();
         transport = new FixtureTransport({ data });
         root = new RootStore(transport, { storage: memoryStorage() });
@@ -295,7 +300,10 @@ describe('startHandoff', () => {
         await root.refreshAgents();
     });
 
-    afterEach(() => root.dispose());
+    afterEach(() => {
+        root.dispose();
+        setFiles(NEW_CHAT_KEY, []);
+    });
 
     it('opens the new-chat page with the conversation attached as a Markdown file and the draft filled', async () => {
         expect(await handOff('c-1')).toBe(true);
@@ -321,25 +329,25 @@ describe('startHandoff', () => {
         expect(transcript).not.toContain('2 executors started');
         expect(transcript).not.toContain('Typecheck failed');
 
-        expect(messageOf(draftOf(NEW_CHAT_DRAFT)))
+        expect(messageOf(draftOf(NEW_CHAT_KEY)))
             .toBe('Continue the work from the chat "Simplify booking". The conversation so far is attached as simplify-booking-conversation.md.');
         expect(toast.error).not.toHaveBeenCalled();
     });
 
     it('follows words already in the new-chat draft after a blank line, and keeps them', async () => {
-        saveDraft(NEW_CHAT_DRAFT, plainTextToDoc('Also check the footer'));
+        saveDraft(NEW_CHAT_KEY, plainTextToDoc('Also check the footer'));
 
         expect(await handOff('c-1')).toBe(true);
 
-        expect(messageOf(draftOf(NEW_CHAT_DRAFT))).toBe('Also check the footer\n\nContinue the work from the chat "Simplify booking". The conversation so far is attached as simplify-booking-conversation.md.');
+        expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe('Also check the footer\n\nContinue the work from the chat "Simplify booking". The conversation so far is attached as simplify-booking-conversation.md.');
     });
 
     it('does not leave a second blank line after a draft that ends in an empty paragraph', async () => {
-        saveDraft(NEW_CHAT_DRAFT, { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Also check the footer' }] }, { type: 'paragraph' }] });
+        saveDraft(NEW_CHAT_KEY, { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Also check the footer' }] }, { type: 'paragraph' }] });
 
         await handOff('c-1');
 
-        expect(messageOf(draftOf(NEW_CHAT_DRAFT)).startsWith('Also check the footer\n\nContinue')).toBe(true);
+        expect(messageOf(draftOf(NEW_CHAT_KEY)).startsWith('Also check the footer\n\nContinue')).toBe(true);
     });
 
     it('waits for a conversation that is still being fetched, and fetches one that is not', async () => {
@@ -360,7 +368,7 @@ describe('startHandoff', () => {
         expect(toast.error).toHaveBeenCalledWith({ message: 'There is nothing to hand off yet: the chat has no messages' });
         expect(ui().draft).toBe(false);
         expect(ui().pendingFiles).toEqual([]);
-        expect(messageOf(draftOf(NEW_CHAT_DRAFT))).toBe('');
+        expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe('');
     });
 
     it('says so for a chat whose stream holds only tool calls and notes', async () => {
@@ -380,7 +388,7 @@ describe('startHandoff', () => {
         expect(toast.error).toHaveBeenCalledWith({ message: 'The conversation could not be loaded: The daemon cannot be reached' });
         expect(ui().draft).toBe(false);
         expect(ui().pendingFiles).toEqual([]);
-        expect(messageOf(draftOf(NEW_CHAT_DRAFT))).toBe('');
+        expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe('');
     });
 
     it('takes the engine\'s own name from the orchestrator for a chat that does not record one', async () => {
@@ -396,7 +404,7 @@ describe('startHandoff', () => {
 
         expect([first, second]).toEqual([true, false]);
         expect(ui().pendingFiles).toHaveLength(1);
-        expect(messageOf(draftOf(NEW_CHAT_DRAFT)).match(/Continue the work/g)).toHaveLength(1);
+        expect(messageOf(draftOf(NEW_CHAT_KEY)).match(/Continue the work/g)).toHaveLength(1);
 
         // Once it is over, the chat can be handed off again.
         expect(await handOff('c-1')).toBe(true);
@@ -406,7 +414,7 @@ describe('startHandoff', () => {
         await handOff('c-1');
         await handOff('c-1');
 
-        expect(messageOf(draftOf(NEW_CHAT_DRAFT)).match(/Continue the work/g)).toHaveLength(1);
+        expect(messageOf(draftOf(NEW_CHAT_KEY)).match(/Continue the work/g)).toHaveLength(1);
     });
 
     it('does not take the person to the new-chat page when they have left the chat while it loaded', async () => {
@@ -428,8 +436,77 @@ describe('startHandoff', () => {
         expect(handed).toBe(false);
         expect(ui().draft).toBe(false);
         expect(ui().pendingFiles).toEqual([]);
-        expect(messageOf(draftOf(NEW_CHAT_DRAFT))).toBe('');
+        expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe('');
         expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('writes into the draft of its own project and leaves the words of another project alone', async () => {
+        const other = newChatDraftKey(FIXTURE_EMPTY_PROJECT_ID);
+
+        saveDraft(other, plainTextToDoc('Words of the other project'));
+        saveDraft(NEW_CHAT_KEY, plainTextToDoc('Also check the footer'));
+
+        expect(await handOff('c-1')).toBe(true);
+
+        expect(messageOf(draftOf(other))).toBe('Words of the other project');
+        expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe(`Also check the footer\n\n${ handoffSentence('Simplify booking', 'simplify-booking-conversation.md') }`);
+        saveDraft(other, emptyComposerDoc());
+    });
+
+    describe('when the message box of the new chat is full', () => {
+        const fill = (count: number, size = 1) => setFiles(NEW_CHAT_KEY, Array.from({ length: count }, (_, index) => held(`file-${ index }.txt`, size)));
+
+        it('says so and changes nothing when it holds the most files a message takes', async () => {
+            saveDraft(NEW_CHAT_KEY, plainTextToDoc('Also check the footer'));
+            fill(MAX_ATTACHMENTS_PER_MESSAGE);
+
+            expect(await handOff('c-1')).toBe(false);
+
+            expect(toast.error).toHaveBeenCalledTimes(1);
+            expect(vi.mocked(toast.error).mock.calls[0]![0]).toMatchObject({
+                title: 'The conversation was not handed off',
+                message: expect.stringContaining(`a message takes ${ MAX_ATTACHMENTS_PER_MESSAGE } files at most`) as string,
+            });
+            // Not the page, not the file, and not the sentence: the draft says "attached as ..." only when a file is.
+            expect(ui().draft).toBe(false);
+            expect(ui().pendingFiles).toEqual([]);
+            expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe('Also check the footer');
+            expect(filesOf(NEW_CHAT_KEY)).toHaveLength(MAX_ATTACHMENTS_PER_MESSAGE);
+        });
+
+        it('says so when the files in it leave no room for the conversation by size', async () => {
+            // Four files of the most one may weigh come to the most a message may carry.
+            fill(4, MAX_ATTACHMENT_BYTES);
+
+            expect(await handOff('c-1')).toBe(false);
+
+            expect(vi.mocked(toast.error).mock.calls[0]![0]).toMatchObject({ message: expect.stringContaining('of files at most') as string });
+            expect(ui().draft).toBe(false);
+            expect(ui().pendingFiles).toEqual([]);
+        });
+
+        it('lets the hand-off through when the box has the conversation already, which is no new file', async () => {
+            expect(await handOff('c-1')).toBe(true);
+
+            const [attached] = ui().pendingFiles;
+
+            ui().takePendingFiles();
+            setFiles(NEW_CHAT_KEY, [held(attached!.name, attached!.size), ...Array.from({ length: MAX_ATTACHMENTS_PER_MESSAGE - 1 }, (_, index) => held(`file-${ index }.txt`))]);
+            vi.mocked(toast.error).mockClear();
+
+            expect(await handOff('c-1')).toBe(true);
+            expect(toast.error).not.toHaveBeenCalled();
+        });
+
+        it('hands off again once there is room', async () => {
+            fill(MAX_ATTACHMENTS_PER_MESSAGE);
+            expect(await handOff('c-1')).toBe(false);
+
+            fill(MAX_ATTACHMENTS_PER_MESSAGE - 1);
+
+            expect(await handOff('c-1')).toBe(true);
+            expect(ui().pendingFiles.map(pending => pending.name)).toEqual(['simplify-booking-conversation.md']);
+        });
     });
 
     it('hands over a conversation of any length as a file the daemon takes', async () => {

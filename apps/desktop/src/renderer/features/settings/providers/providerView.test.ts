@@ -66,6 +66,18 @@ describe('headlineWindow', () => {
         expect(headlineWindow(agent({ usage: usage([meter('weekly:fable', 99)]) }))).toBeUndefined();
     });
 
+    it('prefers a quota of the plan to spend: Cursor\'s on-demand window is not the headline while its plan window is there, wherever it is listed', () => {
+        const plan = meter('plan', 5);
+        const onDemand = meter('on-demand', 80);
+
+        expect(headlineWindow(agent({ id: 'cursor', usage: usage([plan, onDemand]) }))?.id).toBe('plan');
+        expect(headlineWindow(agent({ id: 'cursor', usage: usage([onDemand, plan]) }))?.id).toBe('plan');
+        // Spend is a figure of the popover; when it is all there is, the badge shows it rather than nothing.
+        expect(headlineWindow(agent({ id: 'cursor', usage: usage([onDemand]) }))?.id).toBe('on-demand');
+        // A scoped window is still left out, and does not stand in for the plan either.
+        expect(headlineWindow(agent({ id: 'cursor', usage: usage([meter('model:x', 99)]) }))).toBeUndefined();
+    });
+
     it('takes the windows of Codex\'s main limit for primary ones, and leaves out the limit of a single model', () => {
         const codex = agent({ id: 'codex', usage: usage([meter('codex:primary', 3), meter('codex:secondary', 18), meter('spark:secondary', 40)]) });
 

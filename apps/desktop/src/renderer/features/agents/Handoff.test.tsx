@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
-import { NEW_CHAT_DRAFT, saveDraft } from '../chats/composerDrafts';
+import { newChatDraftKey, saveDraft } from '../chats/composerDrafts';
 import { filesOf, setFiles } from '../chats/composerFiles';
 import { Screen } from './Screen';
 
@@ -27,8 +27,9 @@ vi.mock('../../stream/Markdown', () => ({ Markdown: ({ text }: { text: string })
  * MobX observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
  */
 
-const FILES_KEY = `${ NEW_CHAT_DRAFT }:${ FIXTURE_PROJECT_ID }`;
-const OTHER_FILES_KEY = `${ NEW_CHAT_DRAFT }:${ FIXTURE_EMPTY_PROJECT_ID }`;
+/** The new-chat page of each project: where the hand-off puts its words, and where the page keeps its files. */
+const DRAFT_KEY = newChatDraftKey(FIXTURE_PROJECT_ID);
+const OTHER_DRAFT_KEY = newChatDraftKey(FIXTURE_EMPTY_PROJECT_ID);
 const FILE_NAME = 'simplify-booking-conversation.md';
 const SENTENCE = `Continue the work from the chat "Simplify booking". The conversation so far is attached as ${ FILE_NAME }.`;
 
@@ -66,9 +67,9 @@ async function handOff() {
 
 beforeEach(async () => {
     strict = false;
-    saveDraft(NEW_CHAT_DRAFT, emptyComposerDoc());
-    setFiles(FILES_KEY, []);
-    setFiles(OTHER_FILES_KEY, []);
+    saveDraft(DRAFT_KEY, emptyComposerDoc());
+    setFiles(DRAFT_KEY, []);
+    setFiles(OTHER_DRAFT_KEY, []);
 
     const data = createFixtureData();
     const claude = data.agents.find(agent => agent.id === 'claude')!;
@@ -92,8 +93,8 @@ afterEach(() => {
     act(() => reactRoot.unmount());
     container.remove();
     store.dispose();
-    setFiles(FILES_KEY, []);
-    setFiles(OTHER_FILES_KEY, []);
+    setFiles(DRAFT_KEY, []);
+    setFiles(OTHER_DRAFT_KEY, []);
 });
 
 describe('handing a read-only chat off', () => {
@@ -116,7 +117,7 @@ describe('handing a read-only chat off', () => {
         expect(container.textContent).toContain(FILE_NAME);
         expect(ui().pendingFiles).toEqual([]);
 
-        const [held, ...others] = filesOf(FILES_KEY);
+        const [held, ...others] = filesOf(DRAFT_KEY);
 
         expect(others).toEqual([]);
         expect(held).toMatchObject({ name: FILE_NAME, mediaType: 'text/markdown', status: 'ready' });
@@ -130,12 +131,12 @@ describe('handing a read-only chat off', () => {
     });
 
     it('appends the sentence after a blank line to words already in the new-chat draft', async () => {
-        saveDraft(NEW_CHAT_DRAFT, plainTextToDoc('Also check the footer'));
+        saveDraft(DRAFT_KEY, plainTextToDoc('Also check the footer'));
 
         await handOff();
 
         expect(field()!.editor.getText()).toBe(`Also check the footer\n\n${ SENTENCE }`);
-        expect(filesOf(FILES_KEY).map(file => file.name)).toEqual([FILE_NAME]);
+        expect(filesOf(DRAFT_KEY).map(file => file.name)).toEqual([FILE_NAME]);
     });
 
     it('leaves the new-chat page empty when it is opened from the list, with no hand-off', async () => {
@@ -143,7 +144,7 @@ describe('handing a read-only chat off', () => {
         await draw();
 
         expect(field()!.editor.getText()).toBe('');
-        expect(filesOf(FILES_KEY)).toEqual([]);
+        expect(filesOf(DRAFT_KEY)).toEqual([]);
     });
 
     it('does not attach the file a second time when the page is opened again', async () => {
@@ -155,7 +156,7 @@ describe('handing a read-only chat off', () => {
         await act(async () => ui().openDraft());
         await draw();
 
-        expect(filesOf(FILES_KEY).map(file => file.name)).toEqual([FILE_NAME]);
+        expect(filesOf(DRAFT_KEY).map(file => file.name)).toEqual([FILE_NAME]);
         // The box keeps a file of the same name and size only once, so the number of uploads is what tells a second attach.
         expect(upload).toHaveBeenCalledTimes(1);
     });
@@ -169,7 +170,7 @@ describe('handing a read-only chat off', () => {
 
         await handOff();
 
-        expect(filesOf(FILES_KEY).map(file => file.name)).toEqual([FILE_NAME]);
+        expect(filesOf(DRAFT_KEY).map(file => file.name)).toEqual([FILE_NAME]);
         expect(upload).toHaveBeenCalledTimes(1);
         expect(ui().pendingFiles).toEqual([]);
     });
@@ -182,9 +183,10 @@ describe('handing a read-only chat off', () => {
         await draw();
         await draw();
 
-        // The other project has no chats, so its page is the new-chat page, and it has nothing attached (its words are the one draft of the app).
+        // The other project has no chats, so its page is the new-chat page, and it has nothing attached and none of the first project's words.
         expect(container.textContent).toContain('What should we work on?');
-        expect(filesOf(OTHER_FILES_KEY)).toEqual([]);
+        expect(filesOf(OTHER_DRAFT_KEY)).toEqual([]);
+        expect(field()!.editor.getText()).toBe('');
         expect(store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).pendingFiles).toEqual([]);
 
         // Back in the first one, the file is on its page, uploaded there and once.
@@ -192,7 +194,8 @@ describe('handing a read-only chat off', () => {
         await draw();
 
         expect(container.textContent).toContain(FILE_NAME);
-        expect(filesOf(FILES_KEY).map(file => file.name)).toEqual([FILE_NAME]);
+        expect(filesOf(DRAFT_KEY).map(file => file.name)).toEqual([FILE_NAME]);
+        expect(field()!.editor.getText()).toBe(SENTENCE);
         expect(upload).toHaveBeenCalledTimes(1);
         expect(upload.mock.calls[0]![0]).toBe(FIXTURE_PROJECT_ID);
     });

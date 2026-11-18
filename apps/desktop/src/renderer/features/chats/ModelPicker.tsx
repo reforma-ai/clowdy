@@ -553,11 +553,10 @@ function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
     const wasPicking = useRef(false);
     const held = holdOf(choice, providers);
 
-    // The lists are read when the popover opens, for the providers that have not been asked yet. A failed one waits for its Retry.
+    // Opening the popover asks every list for its models: a list that has some is left alone, one that has none (not read yet, or the
+    // last read failed or said the agent could not list them) is read again. Between openings only Retry reads, so nothing loops.
     useEffect(() => {
-        for (const provider of providers) {
-            if (provider.list.status === 'idle') void provider.list.load();
-        }
+        for (const provider of providers) void provider.list.load();
     }, [providers]);
 
     // The stage is as tall as the active pane, and follows it as it changes.

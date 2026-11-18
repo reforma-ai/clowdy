@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RootStoreProvider, type RootStore } from '../../stores';
 import { Composer } from './Composer';
-import { saveDraft } from './composerDrafts';
+import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { modelStore } from './modelTestKit';
 
 import type { Chat, CommandResult } from '@clowdy/protocol';
@@ -32,8 +32,8 @@ let root: Root;
 let sent: CommandInput[];
 let started: string[];
 
-/** `answer` says what the daemon answers to each command, in the order they are sent. */
-async function mount(answer: (input: CommandInput) => CommandResult, minLines?: number) {
+/** `answer` says what the daemon answers to each command, in the order they are sent. Drawn again for another `projectId`, it is the same composer on another project's page. */
+async function mount(answer: (input: CommandInput) => CommandResult | Promise<CommandResult>, minLines?: number, projectId = 'p') {
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
 
@@ -44,7 +44,7 @@ async function mount(answer: (input: CommandInput) => CommandResult, minLines?: 
     await act(async () => {
         root.render(
             <RootStoreProvider value={ store as unknown as RootStore }>
-                <Composer chat={ undefined } run={ undefined } minLines={ minLines } start={ { projectId: 'p', onStarted: chatId => started.push(chatId) } } />
+                <Composer chat={ undefined } run={ undefined } minLines={ minLines } start={ { projectId, onStarted: chatId => started.push(chatId) } } />
             </RootStoreProvider>
         );
     });
@@ -66,7 +66,8 @@ const pressEnter = () => act(async () => {
 
 beforeEach(() => {
     // What is typed on the new-chat page is remembered for the whole session, so each test starts it empty.
-    saveDraft('@new-chat', emptyComposerDoc());
+    for (const projectId of ['p', 'p-one', 'p-two']) saveDraft(newChatDraftKey(projectId), emptyComposerDoc());
+
     sent = [];
     started = [];
     container = document.createElement('div');
@@ -150,5 +151,46 @@ describe('Composer without a chat', () => {
         await mount(() => accepted());
 
         expect(field().style.minHeight).toBe('24px');
+    });
+});
+
+describe('the words of the new-chat page', () => {
+    it('are kept per project, as its files are: another project\'s page has none of them', async () => {
+        await mount(() => accepted(), undefined, 'p-one');
+        type('Words of one');
+
+        // The same composer, drawn again for another project.
+        await mount(() => accepted(), undefined, 'p-two');
+
+        expect(text()).toBe('');
+
+        type('Words of two');
+        await mount(() => accepted(), undefined, 'p-one');
+
+        expect(text()).toBe('Words of one');
+        expect(messageOf(draftOf(newChatDraftKey('p-two')))).toBe('Words of two');
+        expect(messageOf(draftOf(newChatDraftKey('p-one')))).toBe('Words of one');
+    });
+
+    it('go back to the project they were typed in when sending them fails after the person has moved on', async () => {
+        let release!: (result: CommandResult) => void;
+
+        await mount(() => new Promise<CommandResult>((resolve) => {
+            release = resolve;
+        }), undefined, 'p-one');
+        type('Build the thing');
+        await pressEnter();
+
+        // The chat is still being made when the person goes to another project.
+        await mount(() => accepted(), undefined, 'p-two');
+        await act(async () => release(refused));
+
+        expect(text()).toBe('');
+        expect(messageOf(draftOf(newChatDraftKey('p-two')))).toBe('');
+        expect(messageOf(draftOf(newChatDraftKey('p-one')))).toBe('Build the thing');
+
+        await mount(() => accepted(), undefined, 'p-one');
+
+        expect(text()).toBe('Build the thing');
     });
 });

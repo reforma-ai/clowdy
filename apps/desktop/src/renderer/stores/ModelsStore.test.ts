@@ -93,6 +93,52 @@ describe('ModelsStore', () => {
         expect(list.models).toMatchObject({ state: 'unavailable', detail: 'Not installed' });
     });
 
+    it('reads a list again when asked after an answer that gave no models, and leaves one that has models alone', async () => {
+        const answers: AgentModels[] = [
+            { state: 'unavailable', models: [], detail: 'Not installed' },
+            { state: 'error', models: [], detail: 'Cursor is not signed in' },
+            answer('opus'),
+        ];
+        const getAgentModels = vi.fn(async () => answers.shift()!);
+        const list = new ModelsStore({ getAgentModels } as unknown as Transport).of('cursor');
+
+        await list.load();
+        expect(list.models).toMatchObject({ state: 'unavailable', detail: 'Not installed' });
+
+        await list.load();
+        expect(list.models).toMatchObject({ state: 'error', detail: 'Cursor is not signed in' });
+
+        await list.load();
+        expect(list).toMatchObject({ status: 'ready', models: { state: 'ok' } });
+
+        await Promise.all([list.load(), list.load()]);
+        expect(getAgentModels).toHaveBeenCalledTimes(3);
+    });
+
+    it('never reads twice at once when several ask after a read that gave no models, and reads nothing on its own', async () => {
+        const { transport, asked } = slowTransport();
+        const list = new ModelsStore(transport).of('cursor');
+        const first = list.load();
+
+        asked[0].release({ state: 'unavailable', models: [], detail: 'Not installed' });
+        await first;
+
+        const second = list.load();
+        const third = list.load();
+
+        expect(asked).toHaveLength(2);
+        expect(await ended(third)).toBe(false);
+
+        asked[1].release(answer('opus'));
+        await Promise.all([second, third]);
+
+        expect(list.models?.models.map(model => model.id)).toEqual(['opus']);
+
+        // Nobody asked again, so nothing was read again: a retry is a question, never a loop.
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(asked).toHaveLength(2);
+    });
+
     it('says what a rejection that is not an Error says', async () => {
         const list = new ModelsStore({ getAgentModels: async () => Promise.reject('offline') } as unknown as Transport).of('codex');
 

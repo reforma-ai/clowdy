@@ -41,17 +41,28 @@ function isScopedWindow(agent: AgentInfo, window: AgentUsageWindow): boolean {
 }
 
 /**
+ * Whether a window is money spent past the plan, not a quota of it: Cursor's `on-demand` (`apps/daemon/src/providers/cursor.ts`), the
+ * spend against a limit the person set. It is a figure worth showing in the popover, but not the one a badge sums the plan up by.
+ */
+function isSpendWindow(window: AgentUsageWindow): boolean {
+    return window.id === 'on-demand';
+}
+
+/**
  * The window a provider is summed up by: its nearest limit, the first of the plan's own windows (not a scoped one, see `isScopedWindow`).
  * The daemon lists a plan's windows shortest first, so this is the session of Claude and the 5-hour window of Codex, shown whatever its
  * percent: a session at zero is still the limit that comes next, and a weekly one that happens to be fuller is not.
- * One model's limit says little about the plan, so a scoped window is left out.
+ * One model's limit says little about the plan, so a scoped window is left out, and so is spend (`isSpendWindow`) unless the plan has
+ * no quota to show, as when Cursor reports no plan percent: spend is then all there is.
  * Nothing when there is no reading to trust: the usage is not `ok` (a failed read keeps the last windows, which are not
  * news), nobody is signed in, or it has no window of the plan.
  */
 export function headlineWindow(agent: AgentInfo): AgentUsageWindow | undefined {
     if (agent.usage?.state !== 'ok' || agent.signIn?.status === 'signed-out') return undefined;
 
-    return agent.usage.windows.find(window => !isScopedWindow(agent, window));
+    const own = agent.usage.windows.filter(window => !isScopedWindow(agent, window));
+
+    return own.find(window => !isSpendWindow(window)) ?? own[0];
 }
 
 /** What the line under a card's title says: who is signed in, or why there is nobody to show. */

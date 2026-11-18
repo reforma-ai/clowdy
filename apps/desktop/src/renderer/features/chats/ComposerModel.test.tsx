@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RootStoreProvider, type RootStore } from '../../stores';
 import { Composer } from './Composer';
-import { saveDraft } from './composerDrafts';
+import { newChatDraftKey, saveDraft } from './composerDrafts';
 import { readRemembered, writeRemembered } from './modelSelection';
 import { modelStore, type ModelStoreOptions } from './modelTestKit';
 
@@ -158,7 +158,7 @@ const runOf = (rest: Partial<Run> = {}) => ({ id: 'r-1', status: 'succeeded', en
 
 beforeEach(() => {
     localStorage.clear();
-    saveDraft('@new-chat', emptyComposerDoc());
+    saveDraft(newChatDraftKey('p'), emptyComposerDoc());
     toasts.error.mockClear();
     sent = [];
     started = [];

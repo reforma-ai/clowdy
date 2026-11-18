@@ -10,7 +10,7 @@ import { useRootStore } from '../../stores';
 import { isRunActive } from './chatRun';
 import { perform } from './commands';
 import styles from './Composer.module.css';
-import { draftOf, messageOf, saveDraft } from './composerDrafts';
+import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { filesOf, releaseFiles, restoreFiles, takeFiles } from './composerFiles';
 import { serializeMention } from './composerMentions';
 import { ComposerSend } from './ComposerSend';
@@ -34,9 +34,6 @@ const CONTROLS = 'button, [role="button"], [role="combobox"], [contenteditable="
 
 /** The height of one line of the field in px, as the card sets it (`--spacing-20`): the field's own minimum is counted in px. */
 const LINE_HEIGHT = 20;
-
-/** Where the words typed on the new-chat page are kept: there is no chat id to keep them under yet. */
-const NEW_CHAT_DRAFT = '@new-chat';
 
 /** What a page around the composer may ask of it. */
 export interface ComposerHandle {
@@ -68,10 +65,12 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
     const field = useRef<RichInputHandle>(null);
     const box = useRef<HTMLDivElement>(null);
     const triggers = useMentionTriggers(box);
-    const key = chat?.id ?? NEW_CHAT_DRAFT;
-    // A file belongs to the project it was uploaded to, so the new-chat page keeps its files per project (its words are one for all).
-    const filesKey = chat?.id ?? `${ NEW_CHAT_DRAFT }:${ start?.projectId }`;
-    const [doc, setDoc] = useState(() => draftOf(key));
+    // The words and the files of a message box live under one key: the chat's id, or the new-chat page of this project.
+    const key = chat?.id ?? newChatDraftKey(start?.projectId);
+    // The new-chat page of another project is this same composer drawn again, with words of its own: the state holds the draft last
+    // edited, with its key, and any other key is read from the store (which every edit writes first).
+    const [shown, setShown] = useState({ key, doc: draftOf(key) });
+    const doc = shown.key === key ? shown.doc : draftOf(key);
     const [isStopping, setIsStopping] = useState(false);
     const [draftMode, setDraftMode] = useState<ChatMode>('autopilot');
     // The chat a first message made, when sending the message then failed. It belongs to the project it was made in: the page of
@@ -81,7 +80,7 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
     const target = chat ?? made;
     const running = isRunActive(run);
     const model = useModelChoice({ chat, made, run });
-    const attach = useComposerFiles(filesKey, chat?.projectId ?? start?.projectId);
+    const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
     const picker = useRef<HTMLInputElement>(null);
     const hasMessage = messageOf(doc) !== '' || attach.files.length > 0;
     // A file still going up, or one that failed, holds the message back until the person has dealt with it.
@@ -92,24 +91,24 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
     useImperativeHandle(ref, () => ({ addFiles: attach.add }), [attach.add]);
 
     const edit = (next: ComposerDoc) => {
-        setDoc(next);
         saveDraft(key, next);
+        setShown({ key, doc: next });
     };
 
     const send = async (from: ComposerDoc) => {
         const message = messageOf(from);
-        const held = filesOf(filesKey);
+        const held = filesOf(key);
 
         if ((!message && held.length === 0) || held.some(file => file.status !== 'ready') || model.noProvider) return;
 
         edit(emptyComposerDoc());
 
-        const files = takeFiles(filesKey);
+        const files = takeFiles(key);
         // Give the words and the files back, unless the person has already started something new.
         const giveBack = () => {
             if (!messageOf(draftOf(key))) edit(from);
 
-            restoreFiles(filesKey, files);
+            restoreFiles(key, files);
         };
         let chatId = target?.id;
 

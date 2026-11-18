@@ -2,6 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { OverlayTriggerStateContext, Popover, PopoverTrigger } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { Text } from '@clowdy/components/Text';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { use, useState } from 'react';
 
 import { useAgents, useRootStore } from '../../stores';
@@ -38,11 +39,20 @@ export function ContextRing({ chat, run }: ContextRingProps) {
     // A chat from before it had a provider of its own takes its orchestrator's.
     const canCompact = agents.find(agent => agent.id === (chat.engine ?? run.engine))?.canCompact === true;
 
+    const label = `Context usage, ${ fill.label }`;
+
     return (
         <PopoverTrigger>
-            <Button variant="filling" size="sm" rounded iconOnly aria-label={ `Context usage, ${ fill.label }` }>
-                <Ring fill={ fill } />
-            </Button>
+            { /*
+               * The ring is only an arc, so a tooltip says what it is and how full. It sits below the ring and goes away at a press
+               * (`shouldCloseOnPress`, which the design system's tooltip leaves off by default): the popover opens above the ring, and a
+               * tooltip left standing, or one still waiting for its delay, would be drawn over it.
+               */ }
+            <Tooltip content={ label } placement="bottom" shouldCloseOnPress>
+                <Button variant="filling" size="sm" rounded iconOnly aria-label={ label }>
+                    <Ring fill={ fill } />
+                </Button>
+            </Tooltip>
             <Popover placement="top" spacing="none" width={ 280 } aria-label="Context usage">
                 <ContextPanel chat={ chat } fill={ fill } running={ isRunActive(run) } canCompact={ canCompact } />
             </Popover>

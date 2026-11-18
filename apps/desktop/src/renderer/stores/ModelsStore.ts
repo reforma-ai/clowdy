@@ -21,11 +21,19 @@ export class AgentModelList {
         makeAutoObservable<AgentModelList, 'transport'>(this, { agentId: false, transport: false, models: observableRef });
     }
 
-    /** Reads the list once; later calls do nothing unless the request failed. A call made while the read is under way ends with it. */
+    /**
+     * Reads the list when there is none to show: the first time, and again for each call after a read that gave no models (the request
+     * failed, or the agent said `unavailable` or `error`: it was not installed or not signed in then, and may be now; the daemon does not
+     * keep such an answer). A list that has models is not read again by this. A call made while a read is under way ends with it, so
+     * a caller asking again (the picker each time it opens) never starts a second read beside one that is running, and nothing here
+     * repeats on its own.
+     */
     async load(): Promise<void> {
-        if (this.status === 'ready') return;
+        if (this.status === 'loading') return await this.#settled();
 
-        await (this.status === 'loading' ? this.#settled() : this.reload());
+        if (this.status === 'ready' && this.models?.state === 'ok') return;
+
+        await this.reload();
     }
 
     /**

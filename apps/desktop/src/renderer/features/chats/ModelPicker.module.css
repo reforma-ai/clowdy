@@ -49,8 +49,11 @@
     flex-shrink: 0;
 }
 
-/* The composer card is the container: a narrow card keeps the model's name and drops its level. */
-@container (max-width: 340px) {
+/*
+ * The composer card is the container: a narrow card keeps the model's name and drops its level. The context ring (about 34px with its
+ * gap) shares the row with the pill, so the card must be that much wider before the level fits: 340px plus the ring is 380px.
+ */
+@container (max-width: 380px) {
     .trigger .level {
         display: none;
     }

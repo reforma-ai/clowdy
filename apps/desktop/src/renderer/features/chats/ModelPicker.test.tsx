@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -720,6 +722,33 @@ describe('when the models are not there', () => {
         expect(options()).toEqual([]);
     });
 
+    it('reads a list again each time it opens while the last read gave no models, and reads nothing else', async () => {
+        let signedIn = false;
+        const read = vi.fn(async (agentId: string, fixture: AgentModels): Promise<AgentModels> => (
+            agentId === 'cursor' && !signedIn ? { state: 'error', models: [], detail: 'Cursor is not signed in' } : fixture
+        ));
+
+        await setup(opus, { read });
+        read.mockClear();
+
+        await open();
+        await settle();
+
+        // The lists that have models are left alone, and an open picker reads the other one once, not in a loop.
+        expect(read.mock.calls.map(call => call[0])).toEqual(['cursor']);
+
+        await key(selectModel(), 'Escape');
+        signedIn = true;
+        await open();
+        await draw();
+        await press(selectModel());
+        await press(tabNamed('Cursor'));
+
+        expect(read.mock.calls.map(call => call[0])).toEqual(['cursor', 'cursor']);
+        expect(store.models.of('cursor').models?.state).toBe('ok');
+        expect(options().filter(option => option.getAttribute('data-engine') === 'cursor').length).toBeGreaterThan(0);
+    });
+
     it('shows a held model that is not in the list by its id, says so, and selects no row', async () => {
         await setup({ engine: 'claude', model: 'claude-sonnet-3-7', effort: 'high' });
 
@@ -772,6 +801,16 @@ describe('when the models are not there', () => {
         await setup({ engine: 'codex', model: 'gpt-6-sol', effort: 'high' }, {}, ['claude']);
 
         expect(trigger().textContent).toBe('gpt-6-sol');
+    });
+});
+
+describe('the pill in a narrow card', () => {
+    // The level is dropped by a container query on the composer card (jsdom-style tests do not lay anything out), so the rule is read from the source.
+    it('drops the level below 380px, because the context ring takes about 34px of the same row as the pill', () => {
+        const pickerCss = readFileSync(join(import.meta.dirname, 'ModelPicker.module.css'), 'utf8');
+        const widths = [...pickerCss.matchAll(/@container \(max-width: (\d+)px\)/g)].map(match => Number(match[1]));
+
+        expect(widths).toEqual([380]);
     });
 });
 

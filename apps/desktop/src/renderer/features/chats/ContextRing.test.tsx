@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RootStoreProvider, type RootStore } from '../../stores';
 import { Composer } from './Composer';
-import { saveDraft } from './composerDrafts';
+import { newChatDraftKey, saveDraft } from './composerDrafts';
 import { modelStore, type ModelStoreOptions } from './modelTestKit';
 
 import type { Chat, CommandResult, Run } from '@clowdy/protocol';
@@ -117,7 +117,7 @@ const withoutCompact = (agentId: string): ModelStoreOptions => ({
 
 beforeEach(() => {
     localStorage.clear();
-    saveDraft('@new-chat', emptyComposerDoc());
+    saveDraft(newChatDraftKey('p'), emptyComposerDoc());
     toasts.error.mockClear();
     sent = [];
     container = document.createElement('div');
@@ -175,6 +175,54 @@ describe('the ring', () => {
         await mount({ chat: chatOn(), run: runOf({ status: 'failed' }) });
 
         expect(ring()).not.toBeNull();
+    });
+});
+
+describe('its tooltip', () => {
+    const tooltip = () => document.querySelector('[role="tooltip"]');
+    /** Moves focus to the ring the way a keyboard does, which shows a tooltip at once (a pointer waits for its delay). */
+    const focusRing = () => act(async () => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+        ring()!.focus();
+    });
+
+    it('says what the ring is and how full, as its label does, since the ring is only an arc', async () => {
+        await mount({ chat: chatOn(), run: runOf() });
+        await focusRing();
+        await settle();
+
+        expect(tooltip()?.textContent).toBe('Context usage, 21% full');
+        expect(ring()!.getAttribute('aria-describedby')).toBe(tooltip()!.id);
+    });
+
+    it('is gone when the popover opens, and does not come back over it', async () => {
+        await mount({ chat: chatOn(), run: runOf() });
+        await focusRing();
+        await settle();
+
+        expect(tooltip()).not.toBeNull();
+
+        await openRing();
+
+        expect(dialog()).not.toBeNull();
+        expect(tooltip()).toBeNull();
+    });
+
+    it('does not open over the popover when the press came before its delay was up', async () => {
+        await mount({ chat: chatOn(), run: runOf() });
+
+        // A pointer arrives on the ring (the tooltip waits half a second), and the press comes before that.
+        await act(async () => {
+            document.dispatchEvent(new PointerEvent('pointermove', pointer));
+            ring()!.dispatchEvent(new PointerEvent('pointerover', pointer));
+        });
+        await openRing();
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 650));
+        });
+
+        expect(dialog()).not.toBeNull();
+        expect(tooltip()).toBeNull();
     });
 });
 
