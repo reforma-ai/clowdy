@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 
 import { AGENT_ID, KNOWN_AGENTS } from './catalog';
 import { Discovery } from './discovery';
+import { buildAgentEnv } from './env';
 
 import type { AgentInfo } from '@clowdy/protocol';
 import type { AgentOverride, AgentSpec, CustomAgent } from './catalog';
@@ -18,6 +19,8 @@ const PACKAGE_RUNNER_ENV = { npm_config_omit: 'optional' };
 export interface ResolvedAgent {
     id: string;
     name: string;
+    /** The user's own program for the agent, as found on this machine (for an adapter, the program the adapter drives). */
+    program: string;
     command: string;
     args: string[];
     /** Variables to start it with, after the user's own environment. */
@@ -108,6 +111,22 @@ export class AgentRegistry {
         const entry = this.entries().find(candidate => candidate.id === id);
 
         return entry ? this.build(entry) : { ok: false, message: `There is no agent called "${ id }"` };
+    }
+
+    /**
+     * What a read of the agent's account needs: its program and the environment a run of it gets (so a probe sees the
+     * `CLAUDE_CONFIG_DIR` or `CODEX_HOME` a run would). `undefined` for an agent that is off or not installed.
+     */
+    async probeTarget(id: string, daemonEnv: Record<string, string | undefined> = process.env): Promise<{ program: string; env: Record<string, string> } | undefined> {
+        const resolution = await this.resolve(id);
+
+        if (!resolution.ok) {
+            return undefined;
+        }
+
+        const { agent } = resolution;
+
+        return { program: agent.program, env: buildAgentEnv({ daemonEnv, path: await this.path(), scrub: agent.scrub, set: agent.env }) };
     }
 
     /* -------------------------------- Changing -------------------------------- */
@@ -218,14 +237,14 @@ export class AgentRegistry {
         }
 
         if (entry.custom) {
-            return { ok: true, agent: { id: entry.id, name: entry.name, command: program, args: entry.agent.args, env: { ...entry.agent.env, ...override.env }, scrub: [] } };
+            return { ok: true, agent: { id: entry.id, name: entry.name, program, command: program, args: entry.agent.args, env: { ...entry.agent.env, ...override.env }, scrub: [] } };
         }
 
         const { spec } = entry;
         const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, sessionMeta: spec.sessionMeta };
 
         if (spec.launch.kind === 'binary') {
-            return { ok: true, agent: { ...base, command: program, args: spec.launch.args, env: { ...spec.env, ...override.env } } };
+            return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: { ...spec.env, ...override.env } } };
         }
 
         const runtime = await this.runtime();
@@ -236,7 +255,7 @@ export class AgentRegistry {
 
         return {
             ok: true,
-            agent: { ...base, command: runtime, args: ['x', '--bun', spec.launch.package], env: { ...PACKAGE_RUNNER_ENV, ...spec.env, [spec.launch.pathEnv]: program, ...override.env } },
+            agent: { ...base, program, command: runtime, args: ['x', '--bun', spec.launch.package], env: { ...PACKAGE_RUNNER_ENV, ...spec.env, [spec.launch.pathEnv]: program, ...override.env } },
         };
     }
 

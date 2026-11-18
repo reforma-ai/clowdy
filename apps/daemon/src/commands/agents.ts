@@ -24,7 +24,7 @@ function change<T>(services: Services, id: string | undefined, apply: () => T): 
     }
 }
 
-export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agent.remove' | 'agents.refresh'> = {
+export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agent.remove' | 'agents.refresh' | 'agent.signIn' | 'agent.cancelSignIn'> = {
     'agent.add': (services, { id, name, command, args, env }) => change(services, id, () => {
         services.agents.add({ id, name, command, args: args ?? [], ...(env && { env }) });
 
@@ -32,6 +32,8 @@ export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agen
     }),
     'agent.update': (services, { id, enabled, path, env, name, command, args }) => change(services, id, () => {
         services.agents.update(id, { enabled, path, env, name, command, args });
+        // Another program, environment or switch can mean another account: read it again.
+        services.providers.forget(id);
 
         return { id };
     }),
@@ -40,8 +42,13 @@ export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agen
 
         return { id };
     }),
+    'agent.signIn': (_services, { id }) => {
+        throw invalid(`Signing in to ${ id } from Clowdy is not available yet`);
+    },
+    'agent.cancelSignIn': (_services, { id }) => ({ id }),
     'agents.refresh': services => change(services, undefined, () => {
         services.agents.refresh();
+        services.providers.refresh();
 
         return {};
     }),

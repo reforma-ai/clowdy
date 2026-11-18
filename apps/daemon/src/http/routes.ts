@@ -198,7 +198,7 @@ export function createRoutes(context: RouteContext): Route[] {
                 return json({ ok: true });
             },
         },
-        { method: 'GET', pattern: /^\/v1\/agents$/, handle: async () => json(await services.agents.list()) },
+        { method: 'GET', pattern: /^\/v1\/agents$/, handle: async () => json(services.providers.decorate(await services.agents.list())) },
         {
             method: 'GET',
             pattern: /^\/v1\/skills$/,
