@@ -141,6 +141,53 @@ export function dependencyCandidates(tasks: readonly Task[], { taskId, taken }: 
     return tasks.filter(task => !dependents.has(task.id) && !taken.includes(task.id));
 }
 
+/**
+ * The tasks that may still start to depend on `taskId`: not itself, none that already does, and none it depends on,
+ * directly or through others, because that would close a loop the other way round.
+ */
+export function blockingCandidates(tasks: readonly Task[], { taskId }: { taskId: TaskId }): Task[] {
+    const byId = new Map(tasks.map(task => [task.id, task]));
+    const upstream = new Set<TaskId>();
+    const pending = [...byId.get(taskId)?.dependsOn ?? []];
+
+    for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+        if (upstream.has(id)) continue;
+
+        upstream.add(id);
+        pending.push(...byId.get(id)?.dependsOn ?? []);
+    }
+
+    return tasks.filter(task => task.id !== taskId && !upstream.has(task.id) && !task.dependsOn.includes(taskId));
+}
+
+/** What the "blocked by" picker lists for a task: the tasks it depends on (to remove) and those it may still depend on (to add), in task order. */
+export function blockedByOptions(tasks: readonly Task[], task: Pick<Task, 'id' | 'dependsOn'>): Task[] {
+    const listed = new Set([...task.dependsOn, ...dependencyCandidates(tasks, { taskId: task.id, taken: task.dependsOn }).map(({ id }) => id)]);
+
+    return tasks.filter(({ id }) => listed.has(id));
+}
+
+/** What the "blocking" picker lists for a task: the tasks that depend on it (to remove) and those that may start to (to add), in task order. */
+export function blockingOptions(tasks: readonly Task[], task: Pick<Task, 'id'>): Task[] {
+    const listed = new Set([...tasks.filter(({ dependsOn }) => dependsOn.includes(task.id)), ...blockingCandidates(tasks, { taskId: task.id })].map(({ id }) => id));
+
+    return tasks.filter(({ id }) => listed.has(id));
+}
+
+/** The dependency list with `id` taken out when it is there and added at the end when it is not. `task.update` replaces the whole list, so this is what to send. */
+export function toggleDependency(dependsOn: readonly TaskId[], id: TaskId): TaskId[] {
+    return dependsOn.includes(id) ? dependsOn.filter(candidate => candidate !== id) : [...dependsOn, id];
+}
+
+/* --------------------------------- Statuses -------------------------------- */
+
+/** The status one step along the workflow from `statusId`, or nothing at either end and for a status the workflow no longer has. */
+export function adjacentStatus(statuses: readonly TaskStatus[], statusId: string, step: 1 | -1): TaskStatus | undefined {
+    const index = statuses.findIndex(status => status.id === statusId);
+
+    return index < 0 ? undefined : statuses[index + step];
+}
+
 /* --------------------------------- Sources -------------------------------- */
 
 const PROVIDER_NAMES: Record<string, string> = { linear: 'Linear' };

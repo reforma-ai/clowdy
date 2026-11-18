@@ -30,6 +30,7 @@
 - Reserved keys for later fields, which nothing else may use: `A`, `I`, `P`, `L`, `Shift+E`, `Shift+D`, `Shift+C`, `Shift+P`, `Shift+S`, `M R`, `M M`, Cmd/Ctrl+K.
 - `Cmd/Ctrl+Enter` starts the task with an agent. It acts on the cursor task only and never on the selection, because it spends subscription quota. A task whose `startBlockedReason` is set does not offer the command or its hint. `O` then `C` opens the task's linked chat, and `O` then `D` opens its newest document result.
 - `Cmd+Backspace` (Windows: `Ctrl+Delete`) deletes with a confirm dialog, one dialog for the whole selection, until a trash exists.
+- Back and forward (added after the first plan, by the owner): every change of what the window shows is a history entry: the selected project, the section, the open chat, task, run or document, and Settings with its page. Cmd/Ctrl+[ goes back and Cmd/Ctrl+] goes forward, and two header buttons do the same. The history is in memory, capped at 100, and a new entry drops the forward entries. Moving the cursor with the panel open replaces the current entry instead of adding one, so holding `J` does not flood the history. An entry whose chat, task or run no longer exists is skipped. View toggles, filters, the cursor and the selection are not entries.
 - Undo is the last stage and best effort. It keeps the previous values in the renderer, shows a toast with Undo, and Cmd/Ctrl+Z reverses the last change by sending the inverse command. It ships only if its go condition holds.
 
 **Reuse:** `packages/components/src/Hotkey` (`Hotkey`, `tooltipWithHotkey`), `@clowdy/components/Popover`, `Autocomplete`, `Tooltip`, `Toast` (`toast`, with an `action`), `Modal.create`, `openConfirmModal` (`packages/components/src/modals/ConfirmModal.tsx`), `sendCommand` (`features/tasks/commands.ts`), `startBlockedReason`, `dependencyCandidates`, `filterTasks` (`features/tasks/taskView.ts`), `ProjectUi.openTask|openChat|openDoc|setTasksView` and `UiStore.showSection` (`stores/UiStore.ts`), `ProjectState.chatsOfTask`, `FixtureTransport` and the `?fixtures` route for checks without a person.
@@ -40,6 +41,7 @@
 - Key rebinding and any settings page for it.
 - New task fields (priority, assignee, labels, estimate, due date, parent) and their keys. Also archive, trash, duplicate, a daemon batch command and daemon-side undo.
 - Shortcuts in the native application menu.
+- Mouse side buttons and Cmd/Ctrl+←/→ for back and forward, and saving the history across restarts.
 - A peek or preview key (`Space`) and a keyboard way to reorder cards inside a column.
 - `Cmd+,` for Settings, and project-switch keys.
 - Windows runtime verification by the agent. Nothing has been run on Windows, so the user runs the Windows manual checks.
@@ -73,6 +75,7 @@ Windows swaps Cmd for Ctrl and Option for Alt unless a row says otherwise. "Conf
 | `tasks.copy.key` `tasks.copy.title` | `Cmd+.` / `Cmd+Shift+'` | tasks | M | 6 |
 | `tasks.chat.open` `tasks.doc.open` | `O` then `C` / `O` then `D` | tasks | Clowdy | 6 |
 | `tasks.undo` | `Cmd+Z` | tasks | H | 7 |
+| `nav.back` `nav.forward` | `Cmd+[` / `Cmd+]` | app | M | 9 |
 
 ## Stage 1 — Retire the dead hotkey engine
 
@@ -243,14 +246,14 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **This stage:** Give the cursor and the selection their actions. A shared searchable picker popover, anchored to the cursor's card or row, drives the status picker and the two dependency pickers. Actions apply to the selection when there is one, else to the cursor, by sending one command per task and showing one toast for any refusals. The keys and hints follow the keymap table. Nothing new is needed from the daemon.
 
-- [ ] Complete
-  - [ ] `PickerPopover`: a search field, a keyboard-navigable list, `Enter` to pick, `Esc` to close, current value marked
-  - [ ] `S` opens the status picker listing every status of the project, and picking sets `statusId` on each target
-  - [ ] `Opt+←` and `Opt+→` move each target to the previous or next status in workflow order (Windows `Ctrl+←` and `Ctrl+→`), and do nothing at the ends
-  - [ ] `M B` picks tasks this one depends on, and `M X` picks tasks that depend on this one, with toggle semantics and the existing cycle protection from `dependencyCandidates`
-  - [ ] `Shift+R` opens the detail panel for the cursor task and focuses its title editor
-  - [ ] `Cmd+Enter` starts the cursor task with `task.start`, and is unavailable, with no hint, when `startBlockedReason` is set
-  - [ ] `Cmd+Backspace` (Windows `Ctrl+Delete`) confirms through `openConfirmModal`, then deletes every target, and moves the cursor to the nearest remaining task
+- [x] Complete
+  - [x] `PickerPopover`: a search field, a keyboard-navigable list, `Enter` to pick, `Esc` to close, current value marked
+  - [x] `S` opens the status picker listing every status of the project, and picking sets `statusId` on each target
+  - [x] `Opt+←` and `Opt+→` move each target to the previous or next status in workflow order (Windows `Ctrl+←` and `Ctrl+→`), and do nothing at the ends
+  - [x] `M B` picks tasks this one depends on, and `M X` picks tasks that depend on this one, with toggle semantics and the existing cycle protection from `dependencyCandidates`
+  - [x] `Shift+R` opens the detail panel for the cursor task and focuses its title editor
+  - [x] `Cmd+Enter` starts the cursor task with `task.start`, and is unavailable, with no hint, when `startBlockedReason` is set
+  - [x] `Cmd+Backspace` (Windows `Ctrl+Delete`) confirms through `openConfirmModal`, then deletes every target, and moves the cursor to the nearest remaining task
 
 **Files**
 
@@ -263,6 +266,20 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 
 **Done when:** with the cursor on a task, `S` then `Enter` changes its status in the fixture daemon, `Opt+→` moves it one column, with three tasks selected `Cmd+Backspace` asks once and deletes three, and every case shows the new state after the `task.upserted` event.
 **Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/desktop` (store-level tests through `FixtureTransport` for each command, including partial refusal)
+**Landed in the stage**
+
+- `PickerPopover` (`shared/`): `{ anchor, options, selectedIds, 'aria-label', placeholder, onPick, onClose }`, anchored to the cursor's card or row, counts as an overlay for the dispatcher, ignores the Enter that ends an IME composition, and hands focus back when it closes.
+- Dependencies, rename and start act on the cursor task only. Status, move and delete act on `targets()`. Windows delete is `$mod+Delete`.
+- `sendEach(root, inputs)` runs the commands in order and shows one toast for refusals. `startTask(root, id)` is shared by the Start button and `Cmd+Enter` with a per-task in-flight guard and a press-time `startBlockedReason` check.
+- `Screen` remembers the card or row that last had focus. After a render, if that element left the DOM and focus fell to `body`, the cursor takes it, so a move, a delete, a drag or a slow daemon event all keep keyboard focus without a timer. Focus never leaves a field the person moved to.
+- `Modal` captures the previously focused element when it is created, so closing a dialog restores focus even when a child autofocused first.
+- `useTaskArtifacts` waits 120 ms before fetching, so a held `J` with the panel open no longer refetches 30 times a second. The first fetch also waits 120 ms because the panel remounts per task.
+
+**Follow-ups**
+
+- `EditableText` blurs on `Esc` and `Enter`, so focus lands on `body` and the next key only reveals the cursor. Returning it to the cursor would make rename smoother. It touches the panel and `EditableText` flow.
+- The design-system `Autocomplete` drops the input `aria-label` when a placeholder is set (pre-existing). `Select showSearch` does the same.
+
 **Commits:** None yet.
 
 ## Stage 6 — View, create and linked-item keys, and hints in the Tasks UI
@@ -346,4 +363,31 @@ Note: `bunx turbo run lint test --filter=@clowdy/components` already fails on fi
 - The help overlay dims every focus-gated command, because `when()` reads `document.activeElement` and the overlay's search field has focus. Fixed in Stage 6 with a separate `focus` gate that the dispatcher checks and the overlay ignores.
 - `focusZoneOf` in `taskCommands.ts` can delegate to `listFocusOf`. One behavior change: focusable elements in the region but outside a task (column header buttons) become `other`.
 
+**Commits:**
+
+- `8a3024c` feat(desktop): J and K in the chats, agents and docs lists
+
+## Stage 9 — Back and forward history
+
+**Depends on:** Stage 3 (the `app` scope commands and the title band hint), and Stage 4 for the cursor-follow rule. It touches different files from Stages 5 and 6, so it can run alongside them. The one-line change in `taskCommands.ts` that makes cursor-follow replace the entry is made by the parent after Stage 6.
+
+**This stage:** The window has no way back. Add a `NavHistory` store that watches the navigation state (selected project, section, open chat, task, run and document, Settings and its page) and records a snapshot whenever it changes, so any action that changes what the window shows is covered without each call site knowing. Going back or forward applies a snapshot, which must not record a new entry (an applied snapshot equals the current entry). Header buttons and `Cmd/Ctrl+[` and `Cmd/Ctrl+]` drive it. The buttons sit at the left of the title band, before the project select, like the reference image the owner gave (chevrons next to the window controls).
+
+- [ ] Complete
+  - [ ] `NavHistory` with `back`, `forward`, `canGoBack`, `canGoForward`, a `replacing(fn)` wrapper for changes that should overwrite the current entry, a cap of 100, and skipping entries whose chat, task or run is gone
+  - [ ] `root.history` owned by `RootStore`, applying a snapshot through `selectProject`, the `ProjectUi` fields and the Settings state
+  - [ ] `nav.back` (`$mod+[`) and `nav.forward` (`$mod+]`) in the `app` scope, available only when there is somewhere to go, with hints
+  - [ ] Back and forward buttons in `TitleBand`, disabled when unavailable, with tooltips showing the keys
+  - [ ] Tests for push, truncate on a new entry, replace, the cap, skipping stale entries, applying snapshots across projects and Settings, and no entry recorded by going back
+
+**Files**
+
+- `apps/desktop/src/renderer/stores/NavHistory.ts`, `NavHistory.test.ts` — create: a store of its own, not part of `UiStore` because it spans projects and Settings
+- `apps/desktop/src/renderer/stores/RootStore.ts`, `index.ts` — `RootStore`: owns and exposes `history`
+- `apps/desktop/src/renderer/stores/UiStore.ts` — a way to apply a snapshot to `ProjectUi` and the Settings state
+- `apps/desktop/src/renderer/shell/shellCommands.ts`, `shellCommands.test.ts` — `nav.back` and `nav.forward`
+- `apps/desktop/src/renderer/shell/TitleBand.tsx`, `TitleBand.module.css` — the two buttons
+
+**Done when:** after opening a chat, a task, then Documents, `Cmd+[` returns through them in reverse and `Cmd+]` forward again, and the buttons do the same and disable at the ends.
+**Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/desktop`
 **Commits:** None yet.

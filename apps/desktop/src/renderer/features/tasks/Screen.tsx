@@ -1,27 +1,53 @@
 import { Button } from '@clowdy/components/Button';
+import { openConfirmModal } from '@clowdy/components/modals';
 import { Text } from '@clowdy/components/Text';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { useCommands, useHotkeyScope } from '../../hotkeys';
 import { ListCursor } from '../../hotkeys/listCursor';
+import { PickerPopover, type PickerRequest } from '../../shared/PickerPopover';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { Board } from './Board';
-import { sendCommand } from './commands';
+import { sendCommand, sendEach, startTask } from './commands';
 import { openCreateTask } from './CreateTaskDialog';
 import { DetailPanel } from './DetailPanel';
 import styles from './Screen.module.css';
 import { focusZoneOf, TASK_CONTROL, taskCommands, TASKS_SCOPE } from './taskCommands';
 import { TaskList } from './TaskList';
 import { TasksHeader } from './TasksHeader';
-import { agentOptions, boardColumns, filterTasks, isFiltering, NO_FILTER, runsByTask, taskGrid, tasksSource } from './taskView';
+import { agentOptions, boardColumns, filterTasks, isFiltering, NO_FILTER, runsByTask, startBlockedReason, taskGrid, tasksSource } from './taskView';
 
 import type { TaskId } from '@clowdy/protocol';
 import type { FocusEvent, MouseEvent, PointerEvent } from 'react';
 
-const taskIdOf = (target: EventTarget | null): TaskId | null => (target instanceof Element ? target.closest<HTMLElement>('[data-task-id]')?.dataset.taskId ?? null : null);
+/** The card or row the target is in or is. */
+const itemAt = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>('[data-task-id]') : null);
+
+const taskIdOf = (target: EventTarget | null): TaskId | null => itemAt(target)?.dataset.taskId ?? null;
 
 /** The agent chips on a card or row do their own thing when pressed; a press there is not a press on the task. */
 const isTaskControl = (target: EventTarget | null) => target instanceof Element && target.closest(TASK_CONTROL) !== null;
+
+const itemOf = (region: Element | null, taskId: TaskId) => region?.querySelector<HTMLElement>(`[data-task-id="${ CSS.escape(taskId) }"]`) ?? null;
+
+/** The card's title button or the row itself holds the DOM focus, so a screen reader and the keys that are not ours follow the cursor. */
+function focusItem(region: Element | null, taskId: TaskId, { scroll }: { scroll: boolean }) {
+    const item = itemOf(region, taskId);
+    const focusable = item?.hasAttribute('tabindex') ? item : item?.querySelector<HTMLElement>('button');
+
+    focusable?.focus({ preventScroll: true });
+
+    if (scroll) item?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+/** Nothing has focus: the page does. */
+const isFocusLost = () => !document.activeElement || document.activeElement === document.body;
+
+/** A picker that is open, and the element it opened beside. */
+interface OpenPicker {
+    request: PickerRequest;
+    anchor: Element | null;
+}
 
 /** Tasks: the project's internal task list as a board or a table, with a detail panel for the open task. */
 export function Screen() {
@@ -30,7 +56,12 @@ export function Screen() {
     const ui = useProjectUi();
     const [filter, setFilter] = useState(NO_FILTER);
     const [cursor] = useState(() => new ListCursor());
+    const [picker, setPicker] = useState<OpenPicker | null>(null);
+    const screen = useRef<HTMLDivElement>(null);
     const region = useRef<HTMLDivElement>(null);
+    const titleField = useRef<HTMLTextAreaElement>(null);
+    // The card or row that last had focus, to notice when it has left the page.
+    const focusedItem = useRef<Element | null>(null);
 
     const runsOfTask = runsByTask(project.runTaskLinks.values(), project.runs);
     const tasks = project.taskList;
@@ -50,19 +81,29 @@ export function Screen() {
         if (ui.taskId !== null) cursor.setCursor(ui.taskId);
     }, [cursor, ui.taskId]);
 
-    const itemOf = (taskId: TaskId) => region.current?.querySelector<HTMLElement>(`[data-task-id="${ CSS.escape(taskId) }"]`) ?? null;
-
-    /** The card's title button or the row itself holds the DOM focus, so a screen reader and the keys that are not ours follow the cursor. */
-    const focusItem = (taskId: TaskId, { scroll }: { scroll: boolean }) => {
-        const item = itemOf(taskId);
-        const focusable = item?.hasAttribute('tabindex') ? item : item?.querySelector<HTMLElement>('button');
-
-        focusable?.focus({ preventScroll: true });
-
-        if (scroll) item?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    };
+    const reveal = (taskId: TaskId, options: { scroll: boolean }) => focusItem(region.current, taskId, options);
 
     const focusZone = () => focusZoneOf(document.activeElement, region.current);
+
+    const revealCursor = () => {
+        if (cursor.cursorId !== null) reveal(cursor.cursorId, { scroll: true });
+    };
+
+    /**
+     * The card or row that had focus is gone (a card rebuilt in another column when its status changes, the row of a deleted task) and focus fell to the page.
+     * The cursor follows the task, or its neighbour when the task is gone, so it is where focus goes next.
+     */
+    const refocusIfRemoved = () => {
+        const item = focusedItem.current;
+
+        if (!item || item.isConnected || !isFocusLost()) return;
+
+        focusedItem.current = null;
+        revealCursor();
+    };
+
+    // After the cursor has its new grid and the board its new cards.
+    useLayoutEffect(refocusIfRemoved);
 
     useHotkeyScope(TASKS_SCOPE);
     useCommands(TASKS_SCOPE, taskCommands({
@@ -72,8 +113,22 @@ export function Screen() {
         view: () => ui.tasksView,
         focusZone,
         isCursorFocused: () => cursor.cursorId !== null && taskIdOf(document.activeElement) === cursor.cursorId,
-        revealCursor: () => {
-            if (cursor.cursorId !== null) focusItem(cursor.cursorId, { scroll: true });
+        revealCursor,
+        // Read from the stores when asked, so a key hint that asks whether Start is available follows the runs.
+        tasks: () => project.taskList,
+        statuses: () => project.statuses,
+        startBlocked: taskId => startBlockedReason(runsByTask(project.runTaskLinks.values(), project.runs).get(taskId)),
+        send: inputs => sendEach(root, inputs),
+        start: taskId => startTask(root, taskId),
+        openPicker: request => setPicker({ request, anchor: (cursor.cursorId === null ? null : itemOf(region.current, cursor.cursorId)) ?? screen.current?.querySelector('aside') ?? null }),
+        // The dialog hands focus back to what had it, which is gone when the daemon's event came in while it was open. That happens after `onClose`.
+        confirm: options => openConfirmModal(options, { onClose: () => setTimeout(refocusIfRemoved) }),
+        focusTitle: () => {
+            // The panel for the task is drawn by the time of the next frame.
+            requestAnimationFrame(() => {
+                titleField.current?.focus({ preventScroll: true });
+                titleField.current?.select();
+            });
         },
     }));
 
@@ -104,18 +159,21 @@ export function Screen() {
         cursor.setCursor(taskId);
 
         // Focus follows the cursor only where it is free to: never out of a search field or the panel.
-        if (focusZone() === 'list') focusItem(taskId, { scroll: false });
+        if (focusZone() === 'list') reveal(taskId, { scroll: false });
     };
 
     // Focus that arrives by Tab, a click or the table's type-ahead puts the cursor there too.
     const onFocus = (event: FocusEvent) => {
-        const taskId = taskIdOf(event.target);
+        const item = itemAt(event.target);
 
-        if (taskId !== null) cursor.setCursor(taskId);
+        if (!item?.dataset.taskId) return;
+
+        focusedItem.current = item;
+        cursor.setCursor(item.dataset.taskId);
     };
 
     return (
-        <div className={ styles.screen }>
+        <div ref={ screen } className={ styles.screen }>
             <div className={ styles.main }>
                 <TasksHeader
                     subtitle={ tasksSource(tasks) }
@@ -149,7 +207,9 @@ export function Screen() {
                 }
             </div>
 
-            { selected && <DetailPanel key={ selected.id } task={ selected } taskRuns={ runsOfTask.get(selected.id) ?? [] } /> }
+            { selected && <DetailPanel key={ selected.id } task={ selected } taskRuns={ runsOfTask.get(selected.id) ?? [] } titleRef={ titleField } /> }
+
+            { picker && <PickerPopover anchor={ picker.anchor } { ...picker.request } onClose={ () => setPicker(null) } /> }
         </div>
     );
 }
