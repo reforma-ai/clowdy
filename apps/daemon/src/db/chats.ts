@@ -1,6 +1,6 @@
 import { clean } from './json';
 
-import type { Chat, ChatTaskLink } from '@clowdy/protocol';
+import type { Chat, ChatTaskLink, Run } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
 
 interface ChatRow {
@@ -55,4 +55,22 @@ export function chatIdsOfTask(db: Database, taskId: string): string[] {
 /** Returns false when the link already existed. */
 export function insertChatTaskLink(db: Database, link: ChatTaskLink): boolean {
     return db.query('INSERT OR IGNORE INTO chat_task_links (chat_id, task_id) VALUES (?, ?)').run(link.chatId, link.taskId).changes > 0;
+}
+
+/** The chat's runs: its orchestrator and everything below it. */
+export function runsOfChat(db: Database, chatId: string): { id: string; status: Run['status'] }[] {
+    return db.query(`
+        SELECT id, status FROM runs
+        WHERE chat_id = ?1 OR root_run_id IN (SELECT id FROM runs WHERE chat_id = ?1)
+        ORDER BY created_at, id
+    `).all(chatId) as { id: string; status: Run['status'] }[];
+}
+
+/**
+ * Deletes the chat and its runs. Streams, run-task links and mailbox rows go with the runs, and chat-task links with the chat.
+ * The runs go in one statement, which SQLite checks at its end, so parents and children may go together.
+ */
+export function deleteChatAndRuns(db: Database, chatId: string): void {
+    db.query('DELETE FROM runs WHERE chat_id = ?1 OR root_run_id IN (SELECT id FROM runs WHERE chat_id = ?1)').run(chatId);
+    db.query('DELETE FROM chats WHERE id = ?').run(chatId);
 }

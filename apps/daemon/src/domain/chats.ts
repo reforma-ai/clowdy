@@ -1,4 +1,6 @@
-import { getChat, upsertChat } from '../db/chats';
+import { isTerminalRunStatus } from '@clowdy/protocol';
+
+import { deleteChatAndRuns, getChat, runsOfChat, upsertChat } from '../db/chats';
 import { getRun } from '../db/runs';
 import { conflict, invalid, notFound } from '../errors';
 import { newId } from '../ids';
@@ -41,6 +43,25 @@ export function createChat(store: Store, input: { projectId: string; title?: str
             createdAt: now,
             updatedAt: now,
         });
+    });
+}
+
+/** Removes the chat and its runs. Their agents must have stopped: a live run would be left without its row. */
+export function deleteChat(store: Store, chatId: string): string[] {
+    return store.tx(() => {
+        const chat = requireChat(store, chatId);
+        const runs = runsOfChat(store.db, chatId);
+
+        if (runs.some(run => !isTerminalRunStatus(run.status))) {
+            throw conflict('The agents of this chat are still working. Stop the chat first.');
+        }
+
+        const runIds = runs.map(run => run.id);
+
+        deleteChatAndRuns(store.db, chatId);
+        store.emit(chat.projectId, { type: 'chat.deleted', chatId, runIds });
+
+        return runIds;
     });
 }
 

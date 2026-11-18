@@ -1,6 +1,6 @@
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
-import { createChat, DEFAULT_CHAT_TITLE, renameChat, requireChat, saveChat, setChatMode } from '../domain/chats';
+import { createChat, DEFAULT_CHAT_TITLE, deleteChat, renameChat, requireChat, saveChat, setChatMode } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
 import { invalid } from '../errors';
@@ -58,12 +58,18 @@ function send({ store, runs, driver }: Services, chatId: string, rawText: string
     return { chatId, runId: run.id };
 }
 
-export const chatHandlers: Pick<Handlers, 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.send'> = {
+export const chatHandlers: Pick<Handlers, 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.delete' | 'chat.send'> = {
     'chat.create': ({ store }, command) => ({ chat: createChat(store, { ...command, mode: command.mode ?? requireProject(store, command.projectId).settings.chatMode }) }),
 
     'chat.rename': ({ store }, command) => ({ chat: renameChat(store, command.chatId, command.title) }),
 
     'chat.setMode': ({ store }, command) => ({ chat: setChatMode(store, command.chatId, command.mode) }),
+
+    'chat.delete': ({ store }, command) => {
+        deleteChat(store, command.chatId);
+
+        return { chatId: command.chatId };
+    },
 
     'chat.send': (services, command) => send(services, command.chatId, command.text),
 };

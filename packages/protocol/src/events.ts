@@ -16,6 +16,8 @@ export type ClowdyEvent = EventBase & { data: EventData };
 export type EventData =
     | { type: 'project.upserted'; project: Project; statuses: TaskStatus[] }
     | { type: 'chat.upserted'; chat: Chat }
+    /** The chat and `runIds` (its orchestrator and every run below it, with their streams and task links) are gone. */
+    | { type: 'chat.deleted'; chatId: string; runIds: string[] }
     | { type: 'task.upserted'; task: Task }
     | { type: 'task.deleted'; taskId: TaskId }
     | { type: 'run.upserted'; run: Run }

@@ -32,6 +32,8 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('chat.create'), projectId: z.string(), title: z.string().optional(), mode: chatMode.optional() }),
     z.object({ ...base, type: z.literal('chat.rename'), chatId: z.string(), title: z.string().min(1) }),
     z.object({ ...base, type: z.literal('chat.setMode'), chatId: z.string(), mode: chatMode }),
+    /** Removes the chat with its orchestrator's conversation and every run below it; the tasks stay. Refused while any of its runs is active. */
+    z.object({ ...base, type: z.literal('chat.delete'), chatId: z.string() }),
     z.object({ ...base, type: z.literal('chat.send'), chatId: z.string(), text: z.string().min(1) }),
 
     /* Tasks */
