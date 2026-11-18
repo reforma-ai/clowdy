@@ -174,11 +174,6 @@
         opacity: 0.5;
     }
 
-    .tip {
-        display: flex;
-        flex-direction: column;
-    }
-
     /* The remove button sits at the end of the row. Centered with margins: a `transform` would be replaced by the button's pressed scale. */
     .removeButton {
         position: absolute;

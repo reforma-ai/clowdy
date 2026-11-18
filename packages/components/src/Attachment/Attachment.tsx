@@ -4,12 +4,10 @@ import { Refresh } from '@clowdy/icons/14';
 import { cn, extractExtension, formatFileSize } from '@clowdy/lib';
 import {
     Children,
-    useRef,
     useState,
     type ComponentProps,
     type HTMLAttributes,
 } from 'react';
-import { mergeProps, useFocusable } from 'react-aria';
 
 import { Button } from '../Button';
 import { FileIcon } from '../FileIcon';
@@ -18,7 +16,6 @@ import { Lightbox } from '../Lightbox';
 import { Show } from '../Show';
 import { Spinner } from '../Spinner';
 import { Text } from '../Text';
-import { Tooltip } from '../Tooltip';
 import styles from './Attachment.module.css';
 
 /** What a card needs to know about a file. Not tied to any transport or storage. */
@@ -125,7 +122,6 @@ export function Attachment({
     const interactive = onPress !== undefined && !loading && !error;
     const removable = onRemove !== undefined && !loading;
     const size = data.size === undefined ? undefined : formatFileSize(data.size);
-    const details = [data.mediaType, size].filter(Boolean).join(' · ');
 
     const content = (
         <>
@@ -170,59 +166,56 @@ export function Attachment({
     );
 
     return (
-        // The card truncates a long name; the tooltip gives it whole, with the type.
-        <Tooltip content={ <AttachmentTip label={ label } details={ details } /> }>
-            <AttachmentTile
-                className={ cn(
-                    styles.attachment,
-                    interactive && styles.pressable,
-                    error && styles.attachmentError,
-                    className
-                ) }
-                role="group"
-                aria-label={ label }
-                aria-busy={ loading || undefined }
-                data-slot="attachment"
-                data-attachment-id={ data.id ?? data.filename }
-                data-interactive={ interactive || undefined }
-                data-removable={ removable || undefined }
-                data-loading={ loading || undefined }
-                data-error={ error || undefined }
-                { ...props }
-            >
-                <Show when={ interactive } fallback={ content }>
-                    <Button
-                        type="button"
-                        variant="transparent"
-                        color="inherit"
-                        size="unset"
-                        fullWidth
-                        truncate
-                        className={ styles.attachmentHit }
-                        aria-label={ label }
-                        onPress={ onPress }
-                    >
-                        { content }
-                    </Button>
-                </Show>
+        <div
+            className={ cn(
+                styles.attachment,
+                interactive && styles.pressable,
+                error && styles.attachmentError,
+                className
+            ) }
+            role="group"
+            aria-label={ label }
+            aria-busy={ loading || undefined }
+            data-slot="attachment"
+            data-attachment-id={ data.id ?? data.filename }
+            data-interactive={ interactive || undefined }
+            data-removable={ removable || undefined }
+            data-loading={ loading || undefined }
+            data-error={ error || undefined }
+            { ...props }
+        >
+            <Show when={ interactive } fallback={ content }>
+                <Button
+                    type="button"
+                    variant="transparent"
+                    color="inherit"
+                    size="unset"
+                    fullWidth
+                    truncate
+                    className={ styles.attachmentHit }
+                    aria-label={ label }
+                    onPress={ onPress }
+                >
+                    { content }
+                </Button>
+            </Show>
 
-                <Show when={ removable }>
-                    <Button
-                        className={ styles.removeButton }
-                        type="button"
-                        variant="filled"
-                        size="unset"
-                        iconOnly
-                        aria-label={ `Remove ${ label }` }
-                        tooltip="Remove"
-                        tooltipPlacement="top"
-                        onPress={ onRemove }
-                    >
-                        <Close />
-                    </Button>
-                </Show>
-            </AttachmentTile>
-        </Tooltip>
+            <Show when={ removable }>
+                <Button
+                    className={ styles.removeButton }
+                    type="button"
+                    variant="filled"
+                    size="unset"
+                    iconOnly
+                    aria-label={ `Remove ${ label }` }
+                    tooltip="Remove"
+                    tooltipPlacement="top"
+                    onPress={ onRemove }
+                >
+                    <Close />
+                </Button>
+            </Show>
+        </div>
     );
 }
 
@@ -239,17 +232,6 @@ export function PreviewableAttachment(props: AttachmentProps) {
             { open => <Attachment { ...props } onPress={ open } /> }
         </Lightbox>
     );
-}
-
-/**
- * The card root. It takes the tooltip trigger's hover and focus handlers as a button would,
- * so the tooltip needs no `Focusable` wrapper, which would make every card a tab stop.
- */
-function AttachmentTile(props: HTMLAttributes<HTMLDivElement>) {
-    const ref = useRef<HTMLDivElement>(null);
-    const { focusableProps } = useFocusable({ excludeFromTabOrder: true }, ref);
-
-    return <div ref={ ref } { ...mergeProps(focusableProps, props) } />;
 }
 
 /** The image when there is one to show, else the file's icon. A source that fails to load falls back to the icon. */
@@ -275,17 +257,6 @@ function AttachmentPreview({ data, label }: { data: AttachmentData; label: strin
                 onError={ () => setFailedSrc(src) }
             />
         </Show>
-    );
-}
-
-function AttachmentTip({ label, details }: { label: string; details: string }) {
-    return (
-        <div className={ styles.tip }>
-            <Text variant="label">{ label }</Text>
-            <Show when={ details }>
-                <Text variant="label" className={ styles.infoDetail }>{ details }</Text>
-            </Show>
-        </div>
     );
 }
 
