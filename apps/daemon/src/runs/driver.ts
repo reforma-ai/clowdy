@@ -234,6 +234,17 @@ export class RunDriver {
         return accepted;
     }
 
+    /**
+     * Whether the run's turn, the one that waits to start or the one in flight, is the agent's compact command (`chat.compact`): asking for another would
+     * only compact what is being compacted.
+     */
+    isCompacting(runId: string): boolean {
+        const command = this.deps.compactCommand(this.deps.runs.require(runId).engine);
+        const live = this.live.get(runId);
+
+        return command !== undefined && ((live?.session !== undefined && live.prompt === command) || getRunWork(this.deps.store.db, runId).nextPrompt === command);
+    }
+
     /** `report_result`: the run's work is over with this outcome. The session gets a moment to end its turn, then is closed. */
     report(runId: string, report: Report): void {
         const live = this.live.get(runId);

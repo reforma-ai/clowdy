@@ -1,4 +1,4 @@
-import { isBusyRunStatus } from '@clowdy/protocol';
+import { isBusyRunStatus, isTerminalRunStatus } from '@clowdy/protocol';
 
 import { toAttachment } from '../attachments/service';
 import { chatIdsWithQueue, getChat } from '../db/chats';
@@ -37,6 +37,11 @@ export interface QueueInput {
 export function isAtRest(run: Run): boolean {
     return !isBusyRunStatus(run.status);
 }
+
+/** What the queue shows for a compact item. */
+const COMPACT_TEXT = 'Compact the conversation';
+
+const isCompact = (item: QueuedMessage) => item.command === 'compact';
 
 /**
  * What the person writes while a chat's orchestrator works waits on the chat (`Chat.queue`), and its bubble reaches the stream only when the agent gets
@@ -86,6 +91,36 @@ export class ChatQueue {
         return item;
     }
 
+    /**
+     * `chat.compact`: the agent's own compact command (`command`) as a turn of the orchestrator, with no `user` item (the person wrote nothing). A finished
+     * orchestrator gets it at once, and a compact item that waited in its queue goes with it. One that works or waits for its children gets it later, as a
+     * compact item at the end of the queue (`QueuedMessage.command`), which runs once it has finished; asked again while one waits, or while the agent is
+     * compacting already, it changes nothing. Call it in the transaction of the command.
+     */
+    compact(chat: Chat, run: Run, command: string): void {
+        const { store, runs, driver } = this.deps;
+        const queue = queueOf(chat);
+
+        if (!isTerminalRunStatus(run.status)) {
+            if (!queue.some(isCompact) && !driver.isCompacting(run.id)) {
+                const item: QueuedMessage = { id: newId('que'), mode: 'queue', command: 'compact', text: COMPACT_TEXT, content: command, createdAt: Date.now() };
+
+                saveChat(store, withQueue(chat, placeQueued(queue, item), chat.queuePaused));
+            }
+
+            return;
+        }
+
+        this.requireCompactable(run);
+
+        if (queue.some(isCompact)) {
+            saveChat(store, withQueue(chat, queue.filter(item => !isCompact(item)), chat.queuePaused));
+        }
+
+        runs.resume(run.id, command);
+        driver.launch(run.id);
+    }
+
     /** Takes a message out of the queue. Its files go with it, or back to the project unsent with `keepFiles`, for a message box that takes them again. */
     remove(chatId: string, itemId: string, keepFiles = false): Chat {
         const { store, attachments } = this.deps;
@@ -125,7 +160,8 @@ export class ChatQueue {
 
     /**
      * Send now. A busy orchestrator gets the message as a steer: it moves to the end of the steers and goes to the running turn when the agent can take it.
-     * One at rest gets it at once as its next turn, and a paused queue flows again.
+     * One at rest gets it at once as its next turn, and a paused queue flows again. A compact item steers nothing: while the orchestrator is busy it keeps its
+     * place, and at rest it runs when the orchestrator can compact and is refused as `chat.compact` is when it cannot.
      */
     sendNow(chatId: string, itemId: string): { chatId: string; runId: string } {
         const { store, runs } = this.deps;
@@ -136,6 +172,10 @@ export class ChatQueue {
             const run = runs.require(chat.orchestratorRunId as string);
 
             if (!isAtRest(run)) {
+                if (isCompact(item)) {
+                    return { chatId, runId: run.id };
+                }
+
                 // Sending a message from a held queue is what lets it flow again, as at rest.
                 if (item.mode !== 'steer' || chat.queuePaused) {
                     saveChat(store, withQueue(chat, placeQueued(queueOf(chat), { ...item, mode: 'steer' }), undefined));
@@ -148,6 +188,14 @@ export class ChatQueue {
 
             if (this.steering.has(item.id)) {
                 throw conflict('The agent is taking this message now');
+            }
+
+            // Like `chat.compact`, it is not activity: the chat keeps its place.
+            if (isCompact(item)) {
+                this.requireCompactable(run);
+                this.dispatch(chat, run, item);
+
+                return { chatId, runId: run.id };
             }
 
             // Writing to a chat brings it back from the archive, as `chat.send` does.
@@ -226,11 +274,15 @@ export class ChatQueue {
                 return;
             }
             const settled = withQueue(chat, settleSteers(queue), paused);
+            // One item per turn, in order. A compact item waits for an orchestrator that can compact (finished, every child result read), and the messages
+            // behind it go first meanwhile: the turn that reads the results comes before the compaction.
+            const next = paused ? undefined : queueOf(settled).find(item => !isCompact(item) || this.canCompact(current));
 
-            if (!paused) {
-                this.dispatch(settled, current, queueOf(settled)[0]);
+            if (next) {
+                this.dispatch(settled, current, next);
             }
-            // A held queue is written only when this changes it (every start of the daemon settles it again): it starts to hold, or steers become next turns.
+            // A queue that does not move is written only when this changes it (every start of the daemon settles it again): it starts to hold, or steers
+            // become next turns.
             else if (paused !== chat.queuePaused || queue.some(item => item.mode === 'steer')) {
                 saveChat(store, settled);
             }
@@ -238,16 +290,39 @@ export class ChatQueue {
     }
 
     /**
-     * Gives the orchestrator a queued message as its next turn, as `chat.send` does for a chat at rest: the person's bubble, then the turn. Sending a message
-     * from the queue is what lets a paused one flow again.
+     * Gives the orchestrator a queued message as its next turn, as `chat.send` does for a chat at rest: the person's bubble, then the turn. A compact item's
+     * turn is the command alone, with no bubble. Sending a message from the queue is what lets a paused one flow again.
      */
     private dispatch(chat: Chat, run: Run, item: QueuedMessage): void {
         const { store, runs, driver } = this.deps;
 
         saveChat(store, withQueue(chat, queueOf(chat).filter(entry => entry.id !== item.id), undefined));
-        appendItem(store, run.id, userItemOf(item));
+
+        if (!isCompact(item)) {
+            appendItem(store, run.id, userItemOf(item));
+        }
+
         runs.resume(run.id, item.content);
         driver.launch(run.id);
+    }
+
+    /**
+     * Whether the orchestrator can take a compact turn now: it has finished, and has read what its children did, because a turn starts with their results and
+     * the command must be the whole prompt.
+     */
+    private canCompact(run: Run): boolean {
+        return isTerminalRunStatus(run.status) && !this.deps.runs.hasUnseenResults(run.id);
+    }
+
+    /** Refuses a compact turn an orchestrator at rest cannot take now (`canCompact`), saying what it waits for. */
+    private requireCompactable(run: Run): void {
+        if (!isTerminalRunStatus(run.status)) {
+            throw conflict('The orchestrator is waiting for its child runs. The chat is compacted once they have finished');
+        }
+
+        if (this.deps.runs.hasUnseenResults(run.id)) {
+            throw conflict('Some child runs finished that the orchestrator has not read yet. Send it a message first, then compact the chat');
+        }
     }
 
     /* -------------------------------- Steering -------------------------------- */

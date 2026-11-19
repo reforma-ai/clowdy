@@ -29,6 +29,12 @@ const KIND_NAMES: { [kind in ToolKind]: string } = {
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** The name every agent's compaction call gets, so the stream draws it as one line whatever agent ran it: Claude's adapter already calls it this. */
+const COMPACT_TOOL = 'compact';
+
+/** The title Claude's and Codex's adapters both give the call that compacts the conversation (a `think` call; Codex names it no other way). */
+const COMPACT_TITLE = 'Compact conversation';
+
 /** The text a tool result holds, from the raw output the agent attached or the content blocks it showed. */
 function outputOf(rawOutput: unknown, content: ToolCallContent[] | null | undefined): string | undefined {
     if (typeof rawOutput === 'string' && rawOutput) {
@@ -321,6 +327,11 @@ export class UpdateMapper {
             if (candidates.some(text => text === tool || (/clowdy/i.test(text) && pattern.test(text)))) {
                 return tool;
             }
+        }
+
+        // A compaction is a `think` call by its title (Codex) or by Claude's tool name; a later update that names nothing of its own keeps the name.
+        if (claude === COMPACT_TOOL || (update.title === COMPACT_TITLE && (!update.kind || update.kind === 'think')) || (previous === COMPACT_TOOL && !claude && !update.name)) {
+            return COMPACT_TOOL;
         }
 
         const kind = update.kind ? KIND_NAMES[update.kind] : '';

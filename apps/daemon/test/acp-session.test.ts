@@ -91,6 +91,8 @@ describe('a turn on an ACP agent', () => {
         await session.close();
 
         expect(events.filter(event => event.type === 'tool').map(event => event.type === 'tool' && [event.name, event.state])).toEqual([['compact', 'running'], ['compact', 'done']]);
+        // The counts reach the stream as the call's output, for the line that says what the compaction saved.
+        expect(events.findLast(event => event.type === 'tool')).toMatchObject({ output: JSON.stringify({ trigger: 'manual', preTokens: 22_062, postTokens: 6111, durationMs: 4200 }) });
         expect(events.filter(event => event.type === 'context')).toEqual([{ type: 'context', used: 6111, size: 1_000_000 }]);
         expect(events.at(-1)).toEqual({ type: 'done', result: undefined });
     });

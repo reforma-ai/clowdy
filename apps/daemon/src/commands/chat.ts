@@ -1,11 +1,9 @@
-import { isTerminalRunStatus } from '@clowdy/protocol';
-
 import { messageWithFiles } from '../attachments/message';
 import { toAttachment } from '../attachments/service';
 import { choiceOf, createChat, DEFAULT_CHAT_TITLE, deleteChat, renameChat, requireChat, saveChat, setChatArchived, setChatMode, setChatModel } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
-import { conflict, invalid, unavailable } from '../errors';
+import { invalid, unavailable } from '../errors';
 import { firstMessage } from '../runs/prompts';
 import { isAtRest } from '../runs/queue';
 
@@ -122,11 +120,11 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
     },
 
     /**
-     * The agent's own compact command, as a turn of the orchestrator: the person's message is not in the stream (they did not write it), a note says
-     * what is happening, and the agent's report of it follows. Only a chat that rests can do it, as `chat.setMode` only changes at rest. Like
-     * `chat.setModel` it is not activity, so the chat's `updatedAt` stays.
+     * The agent's own compact command, as a turn of the orchestrator: the person's message is not in the stream (they did not write it), and the agent's
+     * report of the compaction is what the stream shows. An orchestrator that works or waits for its children gets it once it has finished, through the
+     * chat's queue (`ChatQueue.compact`). Like `chat.setModel` it is not activity, so the chat's `updatedAt` stays.
      */
-    'chat.compact': ({ store, runs, driver, agents }, command) => {
+    'chat.compact': ({ store, runs, agents, queue }, command) => {
         const chat = requireChat(store, command.chatId);
         const run = chat.orchestratorRunId ? runs.require(chat.orchestratorRunId) : undefined;
 
@@ -141,19 +139,7 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
         }
 
         requireEnabled(agents, run.engine);
-
-        if (!isTerminalRunStatus(run.status)) {
-            throw conflict(run.status === 'waiting_children' ? 'The orchestrator is waiting for its child runs. Compact the chat when they have finished' : 'The orchestrator is working on this chat. Compact it when it has finished');
-        }
-
-        // A turn starts with the results of the children the orchestrator has not seen, so the command would not be all of its prompt.
-        if (runs.hasUnseenResults(run.id)) {
-            throw conflict('Some child runs finished that the orchestrator has not read yet. Send it a message first, then compact the chat');
-        }
-
-        appendItem(store, run.id, { kind: 'note', text: 'Compacting the conversation' });
-        runs.resume(run.id, message);
-        driver.launch(run.id);
+        queue.compact(chat, run, message);
 
         return { chatId: chat.id, runId: run.id };
     },

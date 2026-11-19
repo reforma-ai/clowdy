@@ -2,12 +2,14 @@ import { commandSchema } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
+import { getChat } from '../src/db/chats';
 import { openDatabase } from '../src/db/connection';
 import { MIGRATIONS } from '../src/db/migrations';
 import { getRun } from '../src/db/runs';
 import { CONTINUE_MESSAGE } from '../src/runs/prompts';
 import { cleanTempDirs, latch, restartHarness, ScriptEngine, startHarness, tempDir, untilAborted, waitFor } from './helpers';
 
+import type { Chat } from '@clowdy/protocol';
 import type { EngineEvent } from '../src/engine/types';
 import type { Harness, Script } from './helpers';
 
@@ -81,6 +83,8 @@ const turnEnded = (h: Harness, engine: ScriptEngine, runId: string, count: numbe
 const shown = (h: Harness, runId: string) => h.events()
     .flatMap(event => (event.data.type === 'run.upserted' && event.data.run.id === runId && event.data.run.context ? [event.data.run.context.used] : []))
     .filter((used, index, all) => used !== all[index - 1]);
+
+const chatOf = (h: Harness, chatId: string) => getChat(h.store.db, chatId) as Chat;
 
 const storedStream = (h: Harness, runId: string) => h.store.db.query('SELECT body FROM stream_items WHERE run_id = ? ORDER BY seq').all(runId).map(row => JSON.parse((row as { body: string }).body));
 
@@ -267,7 +271,7 @@ describe('the context migration', () => {
 });
 
 describe('chat.compact', () => {
-    test('starts a turn of the orchestrator on the agent\'s own compact command, with a note and without a message of the person, and the chat keeps its place', async () => {
+    test('starts a turn of the orchestrator on the agent\'s own compact command, without a message of the person or a note, and the chat keeps its place', async () => {
         const { h, claude, project } = await setup(async function* (turn) {
             yield session(turn);
             yield context(turn.number === 1 ? 40_000 : 6_000, 200_000);
@@ -287,8 +291,8 @@ describe('chat.compact', () => {
         expect(h.ok('chat.compact', { chatId: chat.id })).toEqual({ chatId: chat.id, runId });
         await turnEnded(h, claude, runId, 2);
         expect(claude.turns[1]).toMatchObject({ prompt: '/compact', resumeSessionId: 's1' });
-        expect(storedStream(h, runId).map(body => body.kind)).toEqual(['user', 'note']);
-        expect(storedStream(h, runId)[1]).toMatchObject({ kind: 'note', text: 'Compacting the conversation' });
+        // The agent's report of the compaction is the stream's line; this script reports none.
+        expect(storedStream(h, runId).map(body => body.kind)).toEqual(['user']);
         // A turn that ends with no words is a success, and the smaller reading replaces the old one.
         expect(h.run(runId)).toMatchObject({ status: 'succeeded', context: { used: 6_000, size: 200_000 } });
         expect(h.run(runId).result).toBeUndefined();
@@ -326,24 +330,11 @@ describe('chat.compact', () => {
         ]);
     });
 
-    test('is refused while the orchestrator works, and for a chat that has not started', async () => {
-        const gate = latch();
-        const { h, project } = await setup(async function* (turn) {
-            yield session(turn);
-            await gate.wait(turn.signal).catch(() => untilAborted(turn.signal));
-            yield { type: 'done', result: 'ok' };
-        });
+    test('is refused for a chat that has not started', async () => {
+        const { h, project } = await setup(finishing);
         const fresh = h.ok('chat.create', { projectId: project.id, engine: 'claude' }).chat;
 
         expect(failure(h.send('chat.compact', { chatId: fresh.id })).code).toBe('invalid');
-
-        const { chat, runId } = await start(h, project.id);
-
-        await waitFor(() => h.run(runId).sessionId !== undefined, 'the session to start');
-        expect(failure(h.send('chat.compact', { chatId: chat.id })).code).toBe('conflict');
-        gate.release();
-        await waitFor(() => h.run(runId).status === 'succeeded', 'the turn to end');
-        expect(h.send('chat.compact', { chatId: chat.id }).ok).toBe(true);
     });
 
     test('is refused for a chat whose first turn never got a session', async () => {
@@ -370,17 +361,6 @@ describe('chat.compact', () => {
         expect(failure(h.send('chat.compact', { chatId: claude.chat.id })).code).toBe('unavailable');
     });
 
-    test('is refused while the orchestrator waits for its children', async () => {
-        const { h, claude, project } = await setup(spawning(holding));
-        const { chat, runId } = await start(h, project.id);
-
-        await waitFor(() => h.run(runId).status === 'waiting_children', 'the orchestrator to park');
-
-        const refused = failure(h.send('chat.compact', { chatId: chat.id }));
-
-        expect(refused.code).toBe('conflict');
-        expect(claude.turns.filter(options => options.prompt === '/compact')).toEqual([]);
-    });
 
     test('waits until the orchestrator has been told what its children did, because their results would join the command', async () => {
         const { h, claude, project } = await setup(spawning(holding, holding));
@@ -396,7 +376,7 @@ describe('chat.compact', () => {
 
         expect(refused.code).toBe('conflict');
         expect(refused.message).toMatch(/child/i);
-        expect(storedStream(h, runId).filter(body => body.kind === 'note' && body.text === 'Compacting the conversation')).toEqual([]);
+        expect(chatOf(h, chat.id).queue).toBeUndefined();
 
         // A message tells it; then the command is the whole prompt.
         h.ok('chat.send', { chatId: chat.id, text: 'carry on' });
@@ -429,7 +409,7 @@ describe('chat.compact', () => {
         expect(engine.turns[0]).toMatchObject({ prompt: '/compact', resumeSessionId: 's1' });
     });
 
-    test('acts once for a repeated request, and a second request while it runs is refused', async () => {
+    test('acts once for a repeated request, and a second request while it runs changes nothing', async () => {
         const { h, claude, project } = await setup(finishing);
         const { chat, runId } = await start(h, project.id);
 
@@ -441,11 +421,149 @@ describe('chat.compact', () => {
 
         expect(first).toEqual({ ok: true, requestId: 'req-compact-once', data: { chatId: chat.id, runId } });
         expect(repeat).toEqual(first);
-        // Another request that arrives before the turn ends finds the orchestrator busy.
-        expect(failure(h.send('chat.compact', { chatId: chat.id })).code).toBe('conflict');
+        // Another request that arrives before the turn ends finds the agent compacting already: nothing joins the queue.
+        expect(h.ok('chat.compact', { chatId: chat.id })).toEqual({ chatId: chat.id, runId });
+        expect(chatOf(h, chat.id).queue).toBeUndefined();
         await turnEnded(h, claude, runId, 2);
         expect(claude.turns.filter(options => options.prompt === '/compact')).toHaveLength(1);
-        expect(storedStream(h, runId).filter(body => body.kind === 'note')).toHaveLength(1);
+    });
+
+    describe('while the orchestrator works', () => {
+        /** Turns the test holds open until it releases them by number. */
+        function held() {
+            const gates: ReturnType<typeof latch>[] = [];
+            const gate = (number: number) => (gates[number - 1] ??= latch());
+            const script: Script = async function* (turn) {
+                yield session(turn);
+                await gate(turn.number).wait(turn.signal).catch(() => untilAborted(turn.signal));
+                yield { type: 'done', result: `turn ${ turn.number }` };
+            };
+
+            return { script, release: (number: number) => gate(number).release() };
+        }
+
+        async function busy() {
+            const turns = held();
+            const { h, claude, project } = await setup(turns.script);
+            const { chat, runId } = await start(h, project.id);
+
+            await waitFor(() => h.run(runId).status === 'running' && h.run(runId).sessionId !== undefined, 'the first turn to run');
+
+            return { h, claude, chat, runId, release: turns.release };
+        }
+
+        test('it joins the queue as a compact item, and is the next turn once the orchestrator has finished: the command alone, with no bubble', async () => {
+            const { h, claude, chat, runId, release } = await busy();
+
+            expect(h.ok('chat.compact', { chatId: chat.id })).toEqual({ chatId: chat.id, runId });
+            expect(chatOf(h, chat.id).queue).toEqual([
+                { id: expect.stringMatching(/^que_/), mode: 'queue', command: 'compact', text: 'Compact the conversation', content: '/compact', createdAt: expect.any(Number) },
+            ]);
+
+            release(1);
+            await waitFor(() => claude.turns.length === 2, 'the compact turn');
+            expect(claude.turns[1]).toMatchObject({ prompt: '/compact', resumeSessionId: 's1' });
+            expect(chatOf(h, chat.id).queue).toBeUndefined();
+            release(2);
+            await turnEnded(h, claude, runId, 2);
+            expect(storedStream(h, runId).filter(body => body.kind === 'user').map(body => body.text)).toEqual(['hello']);
+        });
+
+        test('asked again while one waits, nothing more joins the queue; a message after it waits behind it', async () => {
+            const { h, claude, chat, runId, release } = await busy();
+
+            h.ok('chat.compact', { chatId: chat.id });
+            expect(h.ok('chat.compact', { chatId: chat.id })).toEqual({ chatId: chat.id, runId });
+            h.ok('chat.send', { chatId: chat.id, text: 'then this', mode: 'queue' });
+            expect(chatOf(h, chat.id).queue?.map(item => item.command ?? item.text)).toEqual(['compact', 'then this']);
+
+            release(1);
+            await waitFor(() => claude.turns.length === 2, 'the compact turn');
+            release(2);
+            await waitFor(() => claude.turns.length === 3, 'the queued message');
+            release(3);
+            await turnEnded(h, claude, runId, 3);
+            expect(claude.turns.map(turn => turn.prompt)).toEqual(['Follow clowdy:orchestrate. Mode: autopilot\n\nhello', '/compact', 'then this']);
+        });
+
+        test('Send now on it steers nothing: it keeps its place in the queue', async () => {
+            const { h, claude, chat, release } = await busy();
+
+            h.ok('chat.compact', { chatId: chat.id });
+
+            const [item] = chatOf(h, chat.id).queue ?? [];
+
+            h.ok('chat.sendQueued', { chatId: chat.id, itemId: item.id });
+            await Bun.sleep(20);
+            expect(claude.steered).toEqual([]);
+            expect(chatOf(h, chat.id).queue).toEqual([item]);
+            release(1);
+            await waitFor(() => claude.turns[1]?.prompt === '/compact', 'the compact turn');
+        });
+
+        test('after a Stop it waits in the held queue: Send now runs it as a compact turn, and so does Compact, which takes the item along', async () => {
+            const { h, claude, chat, runId, release } = await busy();
+
+            h.ok('chat.compact', { chatId: chat.id });
+            h.ok('run.cancel', { runId });
+            await waitFor(() => h.run(runId).status === 'cancelled', 'the orchestrator to stop');
+            expect(chatOf(h, chat.id)).toMatchObject({ queuePaused: 'stopped', queue: [{ command: 'compact' }] });
+
+            const [item] = chatOf(h, chat.id).queue ?? [];
+
+            expect(h.ok('chat.sendQueued', { chatId: chat.id, itemId: item.id })).toEqual({ chatId: chat.id, runId });
+            expect(chatOf(h, chat.id).queue).toBeUndefined();
+            await waitFor(() => claude.turns[1]?.prompt === '/compact', 'the compact turn from the queue');
+            release(2);
+            await turnEnded(h, claude, runId, 2);
+
+            // Compact pressed at rest while a compact item waits in a held queue: the item goes with it, and only one turn runs.
+            h.ok('chat.send', { chatId: chat.id, text: 'more', mode: 'queue' });
+            await waitFor(() => claude.turns.length === 3, 'the message');
+            h.ok('chat.compact', { chatId: chat.id });
+            h.ok('run.cancel', { runId });
+            await waitFor(() => h.run(runId).status === 'cancelled', 'the orchestrator to stop again');
+            h.ok('chat.compact', { chatId: chat.id });
+            expect(chatOf(h, chat.id).queue).toBeUndefined();
+            await waitFor(() => claude.turns.length === 4, 'the compact turn');
+            release(4);
+            await turnEnded(h, claude, runId, 4);
+            expect(claude.turns.map(turn => turn.prompt).slice(1)).toEqual(['/compact', 'more', '/compact']);
+            expect(storedStream(h, runId).filter(body => body.kind === 'user').map(body => body.text)).toEqual(['hello', 'more']);
+        });
+    });
+
+    describe('while the orchestrator waits for its children', () => {
+        test('it waits in the queue for the turn that reads their results, and runs after it', async () => {
+            const child = latch();
+            const { h, claude, project } = await setup(spawning(async function* (turn) {
+                yield session(turn);
+                await child.wait(turn.signal);
+                yield { type: 'done', result: 'child done' };
+            }));
+            const { chat, runId } = await start(h, project.id);
+
+            await waitFor(() => h.run(runId).status === 'waiting_children', 'the orchestrator to park');
+            expect(h.ok('chat.compact', { chatId: chat.id })).toEqual({ chatId: chat.id, runId });
+            expect(chatOf(h, chat.id).queue?.map(item => item.command)).toEqual(['compact']);
+
+            // Send now cannot run it before the children have reported.
+            const [item] = chatOf(h, chat.id).queue ?? [];
+            const refused = failure(h.send('chat.sendQueued', { chatId: chat.id, itemId: item.id }));
+
+            expect(refused.code).toBe('conflict');
+            expect(refused.message).toMatch(/child runs/);
+
+            child.release();
+            await waitFor(() => claude.turns.at(-1)?.prompt === '/compact' && h.run(runId).status === 'succeeded', 'the compact turn to end');
+
+            // The orchestrator's turns: the executor's session has no `run_spawn`.
+            const prompts = claude.turns.filter(turn => turn.tools.some(tool => tool.name === 'run_spawn')).map(turn => turn.prompt);
+
+            expect(prompts.at(-2)).toContain('A child run has finished.');
+            expect(prompts.at(-1)).toBe('/compact');
+            expect(chatOf(h, chat.id).queue).toBeUndefined();
+        });
     });
 
     test('an unknown chat is not found', async () => {

@@ -123,6 +123,39 @@ describe('tool calls', () => {
     });
 });
 
+describe('compaction', () => {
+    const facts = { trigger: 'manual', preTokens: 22_062, postTokens: 6_111, durationMs: 4_200 };
+
+    test('Claude\'s compaction call is `compact`, with the counts as its output', () => {
+        const meta = { claudeCode: { toolName: 'compact' } };
+        const { events } = run([
+            { sessionUpdate: 'tool_call', toolCallId: 'c1', title: 'Compact conversation', kind: 'think', status: 'in_progress', _meta: meta },
+            { sessionUpdate: 'tool_call_update', toolCallId: 'c1', status: 'completed', rawOutput: facts, _meta: meta },
+        ]);
+
+        expect(tools(events)).toEqual([
+            { type: 'tool', toolCallId: 'c1', name: 'compact', input: { title: 'Compact conversation' }, state: 'running' },
+            { type: 'tool', toolCallId: 'c1', name: 'compact', input: { title: 'Compact conversation' }, state: 'done', output: JSON.stringify(facts) },
+        ]);
+    });
+
+    test('Codex\'s, a `think` call it names only by its title, is `compact` too, and keeps the name through updates that carry no title', () => {
+        const { events } = run([
+            { sessionUpdate: 'tool_call', toolCallId: 'x1', title: 'Compact conversation', kind: 'think', status: 'in_progress' },
+            { sessionUpdate: 'tool_call_update', toolCallId: 'x1', title: 'Compact conversation', status: 'in_progress', _meta: { note: 'progress' } },
+            { sessionUpdate: 'tool_call_update', toolCallId: 'x1', kind: 'think', status: 'completed' },
+        ]);
+
+        expect(tools(events).map(event => event.type === 'tool' && [event.name, event.state])).toEqual([['compact', 'running'], ['compact', 'done']]);
+    });
+
+    test('another `think` call keeps the name of its kind', () => {
+        const { events } = run([{ sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Reasoning', kind: 'think' }]);
+
+        expect(tools(events).map(event => event.type === 'tool' && event.name)).toEqual(['Think']);
+    });
+});
+
 describe('sub-agents, as Claude\'s adapter reports them without child sessions', () => {
     const stamp = (parentToolUseId: string, toolName?: string) => ({ claudeCode: { parentToolUseId, ...(toolName && { toolName }) } });
     const agentCall = (toolCallId: string, input: unknown = { subagent_type: 'Explore', description: 'Map the router', prompt: 'Find every route.' }): SessionUpdate => ({

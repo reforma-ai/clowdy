@@ -333,11 +333,12 @@ const app = agent({ name: 'fake-acp-agent' })
                         break;
                     }
                     case '/compact': {
-                    // What Claude's adapter reports for its own command: a tool call and a smaller window, and no words.
+                    // What Claude's adapter reports for its own command: a tool call with the counts, a smaller window, and no words.
                         const toolCallId = `k${ session.count }`;
+                        const rawOutput = { trigger: 'manual', preTokens: 22_062, postTokens: 6111, durationMs: 4200 };
 
                         await send({ sessionUpdate: 'tool_call', toolCallId, title: 'Compact conversation', kind: 'think', status: 'in_progress', _meta: { claudeCode: { toolName: 'compact' } } });
-                        await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'completed', _meta: { claudeCode: { toolName: 'compact' } } });
+                        await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'completed', rawOutput, _meta: { claudeCode: { toolName: 'compact' } } });
                         await send({ sessionUpdate: 'usage_update', used: 6111, size: 1_000_000 });
                         break;
                     }
