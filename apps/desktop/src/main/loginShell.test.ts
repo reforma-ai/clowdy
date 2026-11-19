@@ -25,16 +25,17 @@ describe('parseLoginShellPath', () => {
     });
 });
 
+// The separator defaults to this machine's; the macOS PATHs here name theirs.
 describe('isMinimalPath', () => {
     test('recognizes the PATH an app started from Finder gets', () => {
-        expect(isMinimalPath('/usr/bin:/bin:/usr/sbin:/sbin')).toBe(true);
-        expect(isMinimalPath('/usr/bin:/bin')).toBe(true);
+        expect(isMinimalPath('/usr/bin:/bin:/usr/sbin:/sbin', ':')).toBe(true);
+        expect(isMinimalPath('/usr/bin:/bin', ':')).toBe(true);
         expect(isMinimalPath(undefined)).toBe(true);
     });
 
     test('a PATH with any other folder is a real one', () => {
-        expect(isMinimalPath('/usr/bin:/bin:/opt/homebrew/bin')).toBe(false);
-        expect(isMinimalPath('/usr/local/bin:/usr/bin')).toBe(false);
+        expect(isMinimalPath('/usr/bin:/bin:/opt/homebrew/bin', ':')).toBe(false);
+        expect(isMinimalPath('/usr/local/bin:/usr/bin', ':')).toBe(false);
     });
 
     test('takes the separator as a parameter', () => {
@@ -44,11 +45,11 @@ describe('isMinimalPath', () => {
 
 describe('mergePaths', () => {
     test('puts the login shell first and keeps the app\'s own folders after it, once each', () => {
-        expect(mergePaths('/opt/homebrew/bin:/usr/bin:/bin', '/usr/bin:/bin:/sbin')).toBe('/opt/homebrew/bin:/usr/bin:/bin:/sbin');
+        expect(mergePaths('/opt/homebrew/bin:/usr/bin:/bin', '/usr/bin:/bin:/sbin', ':')).toBe('/opt/homebrew/bin:/usr/bin:/bin:/sbin');
     });
 
     test('works without a current PATH', () => {
-        expect(mergePaths('/a:/b', undefined)).toBe('/a:/b');
+        expect(mergePaths('/a:/b', undefined, ':')).toBe('/a:/b');
     });
 });
 

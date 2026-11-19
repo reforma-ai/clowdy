@@ -10,7 +10,7 @@ import { fromOlderBundle, isDaemonSource, keepDaemonFresh, newestSourceTime, res
 import type { DaemonHost } from './daemonHost';
 
 const DATA_DIR = '/data/daemon';
-const INFO_FILE = `${ DATA_DIR }/daemon.json`;
+const INFO_FILE = path.join(DATA_DIR, 'daemon.json');
 
 interface World {
     files: Map<string, string>;

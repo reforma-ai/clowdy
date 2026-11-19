@@ -56,7 +56,9 @@ describe('installBun and installOwnBundle', () => {
             skillsDir: path.join(updates, 'bundles/412/system-skills'),
         });
         expect(await readFile(runtime.entry, 'utf8')).toBe('daemon');
-        expect((await stat(runtime.bun)).mode & 0o111).not.toBe(0);
+
+        // Windows has no executable bit.
+        if (process.platform !== 'win32') expect((await stat(runtime.bun)).mode & 0o111).not.toBe(0);
     });
 
     test('reuses copies that exist, so a running daemon keeps its files', async () => {

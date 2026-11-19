@@ -1,4 +1,5 @@
 import { PROTOCOL_VERSION, type Health } from '@clowdy/protocol';
+import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import { attachDaemon, daemonAddress, daemonEnvironment, DaemonError, ensureDaemon, environmentRuntime, tailLines, type DaemonContext, type DaemonRuntime } from './daemon';
@@ -6,9 +7,12 @@ import { attachDaemon, daemonAddress, daemonEnvironment, DaemonError, ensureDaem
 import type { DaemonExit, DaemonHost, DaemonLaunch } from './daemonHost';
 
 const DATA_DIR = '/data/daemon';
-const INFO_FILE = `${ DATA_DIR }/daemon.json`;
-const LOG_FILE = `${ DATA_DIR }/daemon.log`;
+const INFO_FILE = path.join(DATA_DIR, 'daemon.json');
+const LOG_FILE = path.join(DATA_DIR, 'daemon.log');
 const INFO = { pid: 4242, port: 51000, token: 'secret', protocol: PROTOCOL_VERSION, startedAt: 1_700_000_000_000 };
+
+/** A PATH of these folders, joined the way this machine joins them. */
+const PATH = (...folders: string[]) => folders.join(path.delimiter);
 
 const CHECKOUT: DaemonRuntime = { bun: '/usr/local/bin/bun', entry: '/repo/apps/daemon/src/main.ts' };
 
@@ -82,7 +86,7 @@ function setup(options: {
     const context: DaemonContext = {
         host,
         platform: options.platform ?? 'darwin',
-        env: { PATH: '/opt/bin:/usr/bin', ...options.env },
+        env: { PATH: PATH('/opt/bin', '/usr/bin'), ...options.env },
         dataDir: DATA_DIR,
         runtime: options.runtime === null ? undefined : options.runtime ?? CHECKOUT,
     };
@@ -205,28 +209,28 @@ describe('ensureDaemon: how the daemon is started', () => {
     });
 
     test('resolves the login-shell PATH only for an app started from Finder', async () => {
-        const finder = setup({ env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' }, loginPath: '/opt/homebrew/bin:/usr/bin:/bin', onLaunch: state => void publish(state) });
+        const finder = setup({ env: { PATH: PATH('/usr/bin', '/bin', '/usr/sbin', '/sbin') }, loginPath: PATH('/opt/homebrew/bin', '/usr/bin', '/bin'), onLaunch: state => void publish(state) });
 
         await ensureDaemon(finder.context);
 
         expect(finder.world.logins).toBe(1);
-        expect(finder.world.launches[0].env.PATH).toBe('/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin');
+        expect(finder.world.launches[0].env.PATH).toBe(PATH('/opt/homebrew/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'));
 
         const terminal = setup({ loginPath: '/never', onLaunch: state => void publish(state) });
 
         await ensureDaemon(terminal.context);
 
         expect(terminal.world.logins).toBe(0);
-        expect(terminal.world.launches[0].env.PATH).toBe('/opt/bin:/usr/bin');
+        expect(terminal.world.launches[0].env.PATH).toBe(PATH('/opt/bin', '/usr/bin'));
     });
 
     test('keeps the app\'s PATH when the login shell gives none', async () => {
-        const { world, context } = setup({ env: { PATH: '/usr/bin:/bin' }, onLaunch: state => void publish(state) });
+        const { world, context } = setup({ env: { PATH: PATH('/usr/bin', '/bin') }, onLaunch: state => void publish(state) });
 
         await ensureDaemon(context);
 
         expect(world.logins).toBe(1);
-        expect(world.launches[0].env.PATH).toBe('/usr/bin:/bin');
+        expect(world.launches[0].env.PATH).toBe(PATH('/usr/bin', '/bin'));
     });
 
     test('does not ask a login shell on Windows', async () => {
@@ -331,7 +335,7 @@ describe('daemonEnvironment', () => {
     });
 
     test('puts the login-shell PATH in front of the app\'s', () => {
-        expect(daemonEnvironment({ PATH: '/usr/bin' }, DATA_DIR, '/opt/homebrew/bin:/usr/bin').PATH).toBe('/opt/homebrew/bin:/usr/bin');
+        expect(daemonEnvironment({ PATH: '/usr/bin' }, DATA_DIR, PATH('/opt/homebrew/bin', '/usr/bin')).PATH).toBe(PATH('/opt/homebrew/bin', '/usr/bin'));
     });
 });
 
