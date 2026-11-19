@@ -109,8 +109,8 @@ export interface ProjectSettings {
     model?: string;
     /**
      * The picture the person uploaded for the project, as the app made it: a small square PNG as a `data:image/png;base64,` URL. The project
-     * menu and the project list show it in place of the folder icon. Left out, they show the icon the daemon finds in the main folder
-     * (`GET /v1/projects/:id/icon`), or the folder icon. The personal space has none.
+     * menu and the project list show it in place of the folder icon. `NO_PROJECT_ICON` keeps the folder icon. Left out, they show the icon
+     * the daemon finds in the main folder (`GET /v1/projects/:id/icon`), or the folder icon. The personal space has none.
      */
     icon?: string;
     /** Not used by the daemon: agents decide about branches themselves. Kept so older settings stay valid. */
@@ -125,6 +125,9 @@ export type EngineId = string;
  * what that was, so the daemon reads it as no choice. It cannot be an agent's id, which never starts with `~`.
  */
 export const LAST_USED = '~last-used';
+
+/** `ProjectSettings.icon` of a project the person took the icon from: it shows the folder icon, even with a favicon in its main folder. */
+export const NO_PROJECT_ICON = 'none';
 
 /** The agent a project names for its new chats, leaving out `LAST_USED`, which only the app can resolve. */
 export function projectEngine(settings: ProjectSettings): EngineId | undefined {

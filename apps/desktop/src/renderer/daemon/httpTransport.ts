@@ -133,6 +133,18 @@ export class HttpTransport implements Transport {
         return await response.blob();
     }
 
+    async getProjectIcon(projectId: ProjectId): Promise<Blob | undefined> {
+        const route = ROUTES.projectIcon(projectId);
+        const response = await this.#fetch(this.#base + route, { headers: this.#headers });
+
+        // The daemon's answer for a folder without an icon, and for the personal space.
+        if (response.status === 404) return undefined;
+
+        if (!response.ok) throw await refusal(response, route);
+
+        return await response.blob();
+    }
+
     async deleteAttachment(projectId: ProjectId, attachmentId: string): Promise<void> {
         const route = ROUTES.projectAttachment(projectId, attachmentId);
         const response = await this.#fetch(this.#base + route, { method: 'DELETE', headers: this.#headers });

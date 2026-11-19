@@ -1,3 +1,4 @@
+import { NO_PROJECT_ICON } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -116,6 +117,7 @@ describe('the project icon', () => {
         const set = h.ok('project.update', { projectId: id, settings: { icon: PNG } }).project as Project;
 
         expect(set.settings.icon).toBe(PNG);
+        expect((h.ok('project.update', { projectId: id, settings: { icon: NO_PROJECT_ICON } }).project as Project).settings.icon).toBe(NO_PROJECT_ICON);
         expect((h.ok('project.update', { projectId: id, settings: { icon: null } }).project as Project).settings.icon).toBeUndefined();
 
         const refused = h.send('project.update', { projectId: h.personal.id, settings: { icon: PNG } });
@@ -134,6 +136,8 @@ describe('the project icon', () => {
         })).status;
 
         expect(await send(PNG)).toBe(200);
+        expect(await send(NO_PROJECT_ICON)).toBe(200);
+        expect(await send('default')).toBe(400);
         expect(await send('data:image/svg+xml;base64,PHN2Zy8+')).toBe(400);
         expect(await send('https://example.com/icon.png')).toBe(400);
         expect(await send(`data:image/png;base64,${ 'A'.repeat(64 * 1024) }`)).toBe(400);

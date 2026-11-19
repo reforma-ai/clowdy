@@ -38,6 +38,8 @@ export interface FixtureData {
     docs: Record<string, Record<string, string>>;
     /** Paths of the files of each folder, by the folder's path, relative to it, as the file search would list them. */
     files: Record<string, string[]>;
+    /** The icon the daemon finds in each folder, by the folder's path: an SVG drawing. A folder that is not listed has none. */
+    icons: Record<string, string>;
     /** Files sent with messages, by the fixture's seed data. */
     attachments: FixtureAttachment[];
     /** What the skills catalog lists; `projectId` marks a project's own skill. */
@@ -329,6 +331,9 @@ export function docsTree(paths: string[]): DocNode[] {
 
     return root;
 }
+
+/** The favicon in Car Rental's folder: a car on a blue tile. */
+const CAR_RENTAL_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#2f6fed"/><path d="M9 14.5 11 10h10l2 4.5h1a1 1 0 0 1 1 1V21h-2.2a2.5 2.5 0 0 1-4.6 0h-4.4a2.5 2.5 0 0 1-4.6 0H7v-5.5a1 1 0 0 1 1-1z" fill="#fff"/></svg>';
 
 export function createFixtureData(now = Date.now()): FixtureData {
     const ago = (minutes: number) => now - minutes * MINUTE;
@@ -735,6 +740,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
         // `car-rental-api` belongs to no project yet: add it to Car Rental to see the documents, files and remotes of two folders.
         docs: { '/Users/dev/car-rental': docs, '/Users/dev/car-rental-api': API_DOCS },
         files: { '/Users/dev/car-rental': FIXTURE_FILES, '/Users/dev/car-rental-api': API_FILES },
+        // Car Rental shows a favicon of its own; Clowdy has none, so it keeps the folder icon until one is uploaded.
+        icons: { '/Users/dev/car-rental': CAR_RENTAL_ICON },
         attachments: structuredClone(FIXTURE_ATTACHMENTS),
         skills: fixtureSkills(projectId),
         skillWarnings: ['~/.claude/skills: Skipped "old-notes": it has no description'],

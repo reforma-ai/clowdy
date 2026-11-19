@@ -1,0 +1,6 @@
+/* Rounded in step with its size, like an app icon, for a picture that fills its square; a drawing with a clear background is not cut. */
+.picture {
+    flex-shrink: 0;
+    border-radius: 22%;
+    object-fit: contain;
+}

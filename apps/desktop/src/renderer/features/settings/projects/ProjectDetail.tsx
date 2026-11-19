@@ -1,13 +1,17 @@
+import { Box } from '@clowdy/components/Box';
 import { Button } from '@clowdy/components/Button';
+import { ButtonUpload } from '@clowdy/components/ButtonUpload';
 import { Input } from '@clowdy/components/Input';
 import { Text } from '@clowdy/components/Text';
+import { NO_PROJECT_ICON } from '@clowdy/protocol';
 import { useEffect, useState } from 'react';
 
-import { useRootStore } from '../../../stores';
+import { ProjectIcon } from '../../../shared/ProjectIcon';
+import { useProjectIcon, useRootStore } from '../../../stores';
 import { SettingsCard } from '../ui/SettingsCard';
 import { SettingsRow } from '../ui/SettingsRow';
 import { SettingsSection } from '../ui/SettingsSection';
-import { removeProject, renameProject } from './projectActions';
+import { removeProject, removeProjectIcon, renameProject, restoreFolderIcon, uploadProjectIcon } from './projectActions';
 import { ProjectDefaults } from './ProjectDefaults';
 import styles from './ProjectDetail.module.css';
 import { ProjectFolders } from './ProjectFolders';
@@ -23,7 +27,7 @@ export interface ProjectDetailProps {
 
 /**
  * The blocks of the page of one project in Settings, which opens over the Projects page (its title and the line under it are the layer's,
- * in `ProjectsPage`): its name, its folders with their git remotes, what new chats start with, and removing it. The personal space has its
+ * in `ProjectsPage`): its name and icon, its folders with their git remotes, what new chats start with, and removing it. The personal space has its
  * folder and the new-chat settings only.
  */
 export function ProjectDetail({ project, info, infoFailed }: ProjectDetailProps) {
@@ -33,6 +37,7 @@ export function ProjectDetail({ project, info, infoFailed }: ProjectDetailProps)
                 <SettingsSection title="Project">
                     <SettingsCard>
                         <NameRow project={ project } />
+                        <IconRow project={ project } />
                     </SettingsCard>
                 </SettingsSection>
             ) }
@@ -81,6 +86,42 @@ function NameRow({ project }: { project: Project }) {
                     else if (event.key === 'Escape') setDraft(undefined);
                 } }
             />
+        </SettingsRow>
+    );
+}
+
+/** The pictures an icon can be made of: whatever Chromium shows, an `.ico` and an SVG included. */
+const ICON_FILES = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon,.ico,.svg';
+
+/**
+ * The picture the project shows in the menu and the list: upload one, remove it for the folder icon, and after a removal take the
+ * favicon of the main folder back when it has one.
+ */
+function IconRow({ project }: { project: Project }) {
+    const root = useRootStore();
+    const shown = useProjectIcon(project);
+    const found = root.projectIcons.foundIcon(project);
+    const [uploading, setUploading] = useState(false);
+
+    const upload = async (file: File) => {
+        setUploading(true);
+
+        try {
+            await uploadProjectIcon(root, project, file);
+        }
+        finally {
+            setUploading(false);
+        }
+    };
+
+    return (
+        <SettingsRow title="Icon" description="Shown in the project menu and the list. Clowdy uses the main folder's favicon until you upload another picture.">
+            <Box direction="row" align="center" gap="sm">
+                <span className={ styles.preview }><ProjectIcon project={ project } size={ 24 } /></span>
+                <ButtonUpload variant="bordered" size="sm" accept={ ICON_FILES } isPending={ uploading } onFileSelect={ file => void upload(file) }>Upload…</ButtonUpload>
+                { shown && <Button variant="bordered" size="sm" onPress={ () => void removeProjectIcon(root, project) }>Remove</Button> }
+                { project.settings.icon === NO_PROJECT_ICON && found && <Button variant="bordered" size="sm" onPress={ () => void restoreFolderIcon(root, project) }>Use favicon</Button> }
+            </Box>
         </SettingsRow>
     );
 }

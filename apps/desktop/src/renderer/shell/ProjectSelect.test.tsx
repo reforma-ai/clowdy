@@ -10,8 +10,15 @@ import { FixtureTransport } from '../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../stores';
 import { ProjectSelect } from './ProjectSelect';
 
-// The babel plugin that makes the app's components observers does not run under Vitest.
+// The babel plugin that makes the app's components observers does not run under Vitest: `observer` stands in for it here.
 const Select = observer(ProjectSelect);
+
+vi.mock('../shared/ProjectIcon', async (importOriginal) => {
+    const { ProjectIcon } = await importOriginal<typeof import('../shared/ProjectIcon')>();
+    const mobx = await import('mobx-react-lite');
+
+    return { ProjectIcon: mobx.observer(ProjectIcon) };
+});
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -93,8 +100,8 @@ describe('ProjectSelect', () => {
         await open();
 
         // Every project has its icon; the open one has the check after it.
-        expect(items()[1].querySelectorAll('svg')).toHaveLength(2);
-        expect(items()[2].querySelectorAll('svg')).toHaveLength(1);
+        expect(items()[1].querySelectorAll('svg, img')).toHaveLength(2);
+        expect(items()[2].querySelectorAll('svg, img')).toHaveLength(1);
         expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
 
         await act(async () => items()[2].click());
@@ -106,9 +113,25 @@ describe('ProjectSelect', () => {
         await open();
 
         for (const item of items().slice(0, 3)) {
-            expect(item.querySelector('svg')).not.toBeNull();
+            expect(item.querySelector('svg, img')).not.toBeNull();
             expect(item.getAttribute('data-align')).toBe('center');
         }
+    });
+
+    it('shows a project\'s picture, uploaded or found in its main folder, on the button and in the menu, and the folder icon without one', async () => {
+        const data = createFixtureData();
+        const png = 'data:image/png;base64,iVBORw0KGgo=';
+
+        data.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.settings.icon = png;
+        await open(data);
+
+        const picture = (label: string) => items().find(item => item.textContent?.includes(label))?.querySelector('img')?.getAttribute('src');
+
+        // Car Rental, the open project, has a favicon in its folder; Clowdy has an uploaded picture.
+        expect(container.querySelector('button[aria-label="Project"] img')?.getAttribute('src')).toMatch(/^blob:/);
+        expect(picture('Car Rental')).toMatch(/^blob:/);
+        expect(picture('Clowdy')).toBe(png);
+        expect(picture('Personal')).toBeUndefined();
     });
 
     it('can switch to the personal space', async () => {

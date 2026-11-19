@@ -5,6 +5,7 @@ import { Text } from '@clowdy/components/Text';
 import { Check, ChevronDown, Folder, Home, Plus, Sliders } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
+import { ProjectIcon } from '../shared/ProjectIcon';
 import { useRootStore } from '../stores';
 import { openAddProject } from './projectDialogs';
 import styles from './ProjectSelect.module.css';
@@ -35,7 +36,7 @@ export function ProjectSelect() {
     return (
         <MenuTrigger>
             <Button variant="bordered" className={ styles.trigger } aria-label="Project">
-                { selected?.personal ? <Home /> : <Folder /> }
+                { selected ? <ProjectIcon project={ selected } /> : <Folder /> }
                 <Text weight="medium" truncate>{ selected?.name ?? 'No project' }</Text>
                 <ChevronDown />
             </Button>
@@ -57,7 +58,7 @@ export function ProjectSelect() {
                             id={ project.id }
                             text={ project.name }
                             description={ whereLine(project) }
-                            icon={ <Folder /> }
+                            icon={ <ProjectIcon project={ project } /> }
                             stacked
                             data-align="center"
                             endAffix={ check(project.id) }

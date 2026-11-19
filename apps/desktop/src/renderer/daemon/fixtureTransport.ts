@@ -265,6 +265,14 @@ export class FixtureTransport implements Transport {
         return stored.blob;
     }
 
+    async getProjectIcon(projectId: ProjectId): Promise<Blob | undefined> {
+        const project = this.#data.projects.find(candidate => candidate.id === projectId);
+        // Like the daemon: the main folder's icon, and none for the personal space.
+        const svg = project && !project.personal ? this.#data.icons[mainFolder(project).path] : undefined;
+
+        return svg === undefined ? undefined : new Blob([svg], { type: 'image/svg+xml' });
+    }
+
     async deleteAttachment(projectId: ProjectId, attachmentId: string): Promise<void> {
         const stored = this.#files.get(attachmentId);
 
@@ -516,6 +524,8 @@ export class FixtureTransport implements Transport {
                 const refoldered = nextFolders.map(folder => `${ folder.id }:${ folder.path }`).join('|') !== project.folders.map(folder => `${ folder.id }:${ folder.path }`).join('|');
 
                 if (project.personal && (renamed || refoldered)) return fail('conflict', 'The personal space cannot be renamed or given other folders');
+
+                if (project.personal && command.settings?.icon !== undefined) return fail('conflict', 'The personal space has no icon of its own');
 
                 if (mainFolder({ folders: nextFolders }).id !== mainFolder(project).id && this.#activeRuns(project.id) > 0) return fail('conflict', 'The agents of this project are still working. Stop them first.');
 

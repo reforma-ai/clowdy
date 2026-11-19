@@ -2,6 +2,7 @@ import { makeAutoObservable, observableRef, runInAction } from 'mobx';
 
 import { ModelsStore } from './ModelsStore';
 import { NavHistory } from './NavHistory';
+import { ProjectIconsStore } from './ProjectIconsStore';
 import { ProjectState } from './ProjectState';
 import { browserStorage, readStored, writeStored, type KeyValueStorage } from './storage';
 import { StreamStore } from './StreamStore';
@@ -63,6 +64,8 @@ export class RootStore {
     readonly streams: StreamStore;
     /** The models each agent offers, read when a model picker first asks. */
     readonly models: ModelsStore;
+    /** The pictures the projects show in place of the folder icon. */
+    readonly projectIcons: ProjectIconsStore;
     /** Back and forward through what the window showed. */
     readonly history: NavHistory;
     readonly #states = new Map<ProjectId, ProjectState>();
@@ -81,7 +84,8 @@ export class RootStore {
         this.ui = new UiStore(storage, initialUi);
         this.streams = new StreamStore(transport);
         this.models = new ModelsStore(transport);
-        makeAutoObservable<RootStore, 'transport'>(this, { transport: false, ui: false, streams: false, models: false, history: false, projects: observableRef, agents: observableRef });
+        this.projectIcons = new ProjectIconsStore(transport);
+        makeAutoObservable<RootStore, 'transport'>(this, { transport: false, ui: false, streams: false, models: false, projectIcons: false, history: false, projects: observableRef, agents: observableRef });
         // After `makeAutoObservable`: the history watches `selectedProjectId`, which is not observable before it.
         this.history = new NavHistory(this);
     }

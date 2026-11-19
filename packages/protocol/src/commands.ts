@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { MAX_ATTACHMENTS_PER_MESSAGE, MAX_PROJECT_FOLDERS, MAX_PROJECT_ICON_LENGTH } from './api';
-import { LAST_USED } from './domain';
+import { LAST_USED, NO_PROJECT_ICON } from './domain';
 
 /**
  * Everything a client may ask the daemon to do. Each command carries a `requestId`; sending the same id again
@@ -29,7 +29,7 @@ export const commandSchema = z.discriminatedUnion('type', [
      * `folders` is the project's whole new list, in order: `{ id }` keeps a folder it has, `{ path }` adds one (the checks of `project.add`).
      * A new main folder waits until no run of the project is unfinished. `name`, `folders` and an icon are refused for the personal space. A
      * settings field set to `null` is cleared, so the project follows the daemon's own choice again (and `icon: null` shows the found icon or the
-     * folder icon again).
+     * folder icon again; `NO_PROJECT_ICON` shows the folder icon).
      */
     z.object({
         ...base,
@@ -43,7 +43,7 @@ export const commandSchema = z.discriminatedUnion('type', [
             model: z.string().nullable().optional(),
             chatMode: z.union([chatMode, z.literal(LAST_USED)]).nullable().optional(),
             targetBranch: z.string().nullable().optional(),
-            icon: z.string().max(MAX_PROJECT_ICON_LENGTH).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/, 'The icon must be a PNG data URL').nullable().optional(),
+            icon: z.union([z.literal(NO_PROJECT_ICON), z.string().max(MAX_PROJECT_ICON_LENGTH).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/, 'The icon must be a PNG data URL')]).nullable().optional(),
         }).optional(),
     }),
     /** Removes the project with its chats, tasks, runs, streams and attachments; its folder and the files in it stay. Refused for the personal space and while any run of the project is unfinished. */

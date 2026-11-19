@@ -1,6 +1,7 @@
-export { RootStoreProvider, useAgentModels, useAgents, useChatStream, useProjectState, useProjectUi, useRootStore, useRunStream } from './hooks';
+export { RootStoreProvider, useAgentModels, useAgents, useChatStream, useProjectIcon, useProjectState, useProjectUi, useRootStore, useRunStream } from './hooks';
 export { AgentModelList, ModelsStore } from './ModelsStore';
 export { NavHistory } from './NavHistory';
+export { ProjectIconsStore } from './ProjectIconsStore';
 export { ProjectState } from './ProjectState';
 export { RootStore } from './RootStore';
 export { buildRunTree, type RunNode } from './runTree';
