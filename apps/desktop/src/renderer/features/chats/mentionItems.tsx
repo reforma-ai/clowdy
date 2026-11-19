@@ -109,7 +109,6 @@ export function skillItems(entries: readonly SkillEntry[], query: string): RichI
             value: `skill:${ name }`,
             label: `/${ name }`,
             description: entry.description,
-            icon: mentionIcon({ kind: 'command', data: undefined }, 14),
             kind: 'command',
             displayText: `/${ name }`,
             data: { name },
