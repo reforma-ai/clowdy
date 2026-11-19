@@ -426,7 +426,6 @@ describe('queue rules', () => {
     test('busy is any status but the terminal ones and waiting for children', () => {
         const at = (status: Run['status']) => isAtRest({ status } as Run);
 
-        expect(isAtRest(undefined)).toBe(true);
         expect(['succeeded', 'failed', 'cancelled', 'interrupted', 'waiting_children'].map(status => at(status as Run['status']))).toEqual([true, true, true, true, true]);
         expect(['queued', 'running', 'waiting_user', 'blocked'].map(status => at(status as Run['status']))).toEqual([false, false, false, false]);
     });

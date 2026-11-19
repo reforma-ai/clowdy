@@ -178,6 +178,14 @@ export function isTerminalRunStatus(status: RunStatus): boolean {
     return TERMINAL_RUN_STATUSES.includes(status);
 }
 
+/**
+ * Whether a chat's orchestrator in this status takes a message only later, so the message waits in the chat's queue (`Chat.queue`): it works, or waits
+ * for an answer, a slot or a reset. One that has finished, or only waits for its children, is at rest and takes a message at once.
+ */
+export function isBusyRunStatus(status: RunStatus): boolean {
+    return !isTerminalRunStatus(status) && status !== 'waiting_children';
+}
+
 export interface Run {
     id: RunId;
     projectId: ProjectId;

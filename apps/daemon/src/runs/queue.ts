@@ -1,4 +1,4 @@
-import { isTerminalRunStatus } from '@clowdy/protocol';
+import { isBusyRunStatus } from '@clowdy/protocol';
 
 import { toAttachment } from '../attachments/service';
 import { chatIdsWithQueue, getChat } from '../db/chats';
@@ -33,9 +33,9 @@ export interface QueueInput {
     content: string;
 }
 
-/** Whether a chat's orchestrator takes a message at once: it has not started, its work is over, or it only waits for its children. Any other status is busy. */
-export function isAtRest(run: Run | undefined): boolean {
-    return run === undefined || isTerminalRunStatus(run.status) || run.status === 'waiting_children';
+/** Whether a chat's orchestrator takes a message at once: its work is over, or it only waits for its children (`isBusyRunStatus`). */
+export function isAtRest(run: Run): boolean {
+    return !isBusyRunStatus(run.status);
 }
 
 /**

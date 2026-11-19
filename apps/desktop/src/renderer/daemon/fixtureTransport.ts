@@ -1,4 +1,4 @@
-import { isTerminalRunStatus, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE } from '@clowdy/protocol';
+import { isBusyRunStatus, isTerminalRunStatus, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE } from '@clowdy/protocol';
 
 import {
     catalogTokens,
@@ -76,9 +76,6 @@ const SIGN_IN_DONE_MS = 4000;
 const TURN_MS = 1400;
 const STEER_MS = 800;
 const REPLY = 'Got it. I will split this into tasks, start the independent ones in parallel, and report back here.';
-
-/** The daemon's rule: an orchestrator that works, or waits for an answer, a slot or a reset, gets a message later; any other takes it now. */
-const isBusy = (run: Run): boolean => !isTerminalRunStatus(run.status) && run.status !== 'waiting_children';
 
 /** Puts a message at the end of its own kind (or at `index` in it), the steers before the next turns, as the daemon does. */
 function placeQueued(queue: readonly QueuedMessage[], item: QueuedMessage, index?: number): QueuedMessage[] {
@@ -877,7 +874,7 @@ export class FixtureTransport implements Transport {
         chat.updatedAt = Date.now();
 
         // A busy orchestrator gets the message later: it waits in the chat's queue, and a steer is taken a moment later, as an agent would.
-        if (existing && isBusy(existing)) {
+        if (existing && isBusyRunStatus(existing.status)) {
             const item: QueuedMessage = { id: this.#id('q'), mode, text, ...(attachments.length > 0 && { attachments }), content: text, createdAt: Date.now() };
 
             chat.queue = placeQueued(chat.queue ?? [], item);
@@ -951,7 +948,7 @@ export class FixtureTransport implements Transport {
         const queue = (chat.queue ?? []).map(item => (item.mode === 'steer' ? { ...item, mode: 'queue' as const } : item));
         const [head] = queue;
 
-        if (!run || isBusy(run) || !head) return;
+        if (!run || isBusyRunStatus(run.status) || !head) return;
 
         chat.queue = queue;
 
@@ -1029,7 +1026,7 @@ export class FixtureTransport implements Transport {
 
         if (!chat || !item || !run) return fail('not_found', `Queued message ${ itemId } does not exist`);
 
-        if (isBusy(run)) {
+        if (isBusyRunStatus(run.status)) {
             this.#setQueue(chat, placeQueued(chat.queue ?? [], { ...item, mode: 'steer' }));
             this.#emit(chat.projectId, { type: 'chat.upserted', chat });
             this.#later(STEER_MS, () => this.#takeSteer(chat.id, item.id));

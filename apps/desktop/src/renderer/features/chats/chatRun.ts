@@ -1,4 +1,4 @@
-import { isTerminalRunStatus } from '@clowdy/protocol';
+import { isBusyRunStatus, isTerminalRunStatus } from '@clowdy/protocol';
 
 import type { Run, RunStatus } from '@clowdy/protocol';
 
@@ -7,12 +7,9 @@ export function isRunActive(run: Run | undefined): run is Run {
     return run !== undefined && !isTerminalRunStatus(run.status);
 }
 
-/**
- * The orchestrator takes a message only later, so a message waits in the chat's queue: it works, or waits for an answer, a slot or a reset. One that
- * waits for its children, or has finished, takes a message at once (the daemon's own rule).
- */
+/** The orchestrator takes a message only later, so a message waits in the chat's queue (`isBusyRunStatus`, the daemon's own rule). */
 export function isRunBusy(run: Run | undefined): run is Run {
-    return isRunActive(run) && run.status !== 'waiting_children';
+    return run !== undefined && isBusyRunStatus(run.status);
 }
 
 /**
