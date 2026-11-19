@@ -359,6 +359,7 @@ export class AgentRegistry {
             ...(fetches && { fetches }),
             ...(spec?.login && { login: spec.login }),
             ...(spec?.compact && { canCompact: true }),
+            ...(spec?.steer && { canSteer: true }),
             ...(spec?.settings?.length && { settings: settingsOf(spec, override) }),
             ...((override.path || override.env) && { overrides: { ...(override.path && { path: override.path }), ...(override.env && { env: override.env }) } }),
         };

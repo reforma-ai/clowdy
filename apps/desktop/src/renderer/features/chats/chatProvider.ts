@@ -30,6 +30,18 @@ export function canCompactChat(chat: Chat, run: Run | undefined, agents: readonl
 }
 
 /**
+ * Whether the chat's agent takes a message while it works (`AgentInfo.canSteer`), which is what Send now does for it: the turn reads the message at once. For
+ * one that does not (Cursor) Send now stops what the agent is doing and sends the message as its next turn. An agent the list does not have yet (it is still
+ * loading, or it is the scripted demo agent) counts as one that can: the daemon decides what Send now does, and the button keeps its plain name until the list says otherwise.
+ */
+export function canSteerChat(chat: Chat, run: Run | undefined, agents: readonly AgentInfo[]): boolean {
+    const engine = chatProvider(chat, run);
+    const agent = engine === undefined ? undefined : agents.find(candidate => candidate.id === engine);
+
+    return agent === undefined || agent.canSteer === true;
+}
+
+/**
  * Whether a message can be sent to the chat now, and when not why. The provider is fixed by the first message, so only a chat that
  * has an orchestrator can be stuck on one that cannot run; before that the picker may still change it. Whatever is not known yet
  * counts as writable, so the notice never flashes while the agents load, while an account is still being read, or for a chat

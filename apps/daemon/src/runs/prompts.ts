@@ -116,6 +116,12 @@ export function taskMessage(task: Task): string {
 /** Sent to a run that was cut off by a subscription limit or a passing engine failure, once it can continue. */
 export const CONTINUE_MESSAGE = 'The previous attempt was interrupted by a temporary problem (a usage limit or an overloaded service). Continue where you left off; do not redo finished work.';
 
+/**
+ * Put before the message of a turn that stop and send starts (`ChatQueue.dispatch` after `RunDriver.interrupt`): the agent did not stop its last turn,
+ * the runtime did, to make room for this message, so whatever it was doing may be unfinished. Only the agent reads it; the person's bubble does not have it.
+ */
+export const STOPPED_TURN_MESSAGE = 'Your previous turn was stopped so this message could be sent; what it was doing may be unfinished.';
+
 /** What the person reads of a background item's kind, in a line of the stream ("Background command finished: ...") and in the agent's message. */
 export const BACKGROUND_KINDS: Record<BackgroundItem['kind'], string> = {
     command: 'command',

@@ -36,6 +36,11 @@ export interface AgentInfo {
     canSignIn?: boolean;
     /** Whether the agent has a command that compacts its conversation, which `chat.compact` runs (Claude and Codex have one). */
     canCompact?: boolean;
+    /**
+     * Whether the agent takes a message while it works, so it reads it in the middle of its turn (Claude Code and Codex do). Without it Send now on a queued
+     * message stops the agent's turn first and sends the message as the next one (stop and send), so the app names the button for it before it is pressed.
+     */
+    canSteer?: boolean;
     /** A sign-in the daemon is running or has just finished for this agent. */
     signInSession?: AgentSignInSession;
     /** The agent's own settings Clowdy can control, with their current values. Empty or absent when there are none. */

@@ -278,7 +278,7 @@ export class ScriptEngine implements AgentEngine {
     readonly turns: EngineStartOptions[] = [];
     /** Messages the runtime steered into live sessions, in order, whatever the answer. */
     readonly steered: string[] = [];
-    /** Answers a steer; without it every steer is refused, as by an agent that cannot steer. */
+    /** Answers a steer; without it every steer is refused, and the session says it cannot steer at all (`EngineSession.canSteer`). */
     steerAnswer?: (text: string, turn: Turn) => boolean | Promise<boolean>;
     /** Prompts the runtime handed to `send` of a live session, in order, whatever the answer. */
     readonly sent: string[] = [];
@@ -359,6 +359,10 @@ export class ScriptEngine implements AgentEngine {
         turn.signal.addEventListener('abort', wake, { once: true });
 
         return {
+            // An engine with no `steerAnswer` is one whose agent cannot steer at all, which is what the runtime offers stop and send for.
+            get canSteer() {
+                return engine.steerAnswer !== undefined;
+            },
             steer: async (text) => {
                 engine.steered.push(text);
 

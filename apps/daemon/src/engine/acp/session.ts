@@ -110,6 +110,11 @@ export class AcpSession implements EngineSession {
         return layer.steer(text);
     }
 
+    /** Whether the agent can take a steer at all: what its handshake said, and until then, or over v2, that it can. */
+    get canSteer(): boolean {
+        return this.layer?.canSteer ?? true;
+    }
+
     /** Moves the prompt along and wakes the steers that wait for it. */
     private promptIs(state: Exclude<PromptState, 'before'>): void {
         if (this.prompt === 'over') {

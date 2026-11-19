@@ -47,6 +47,8 @@ export interface ProtocolLayer {
     readonly naming: boolean;
     /** The turn ended with an answer, not a failure. */
     readonly answered: boolean;
+    /** Whether the agent can take a steer at all, once its handshake has told; absent while it has not, and for a protocol whose agents always can (v2). */
+    readonly canSteer?: boolean;
     /**
      * Set when `run` ended without a single event because the handshake showed that the agent speaks another protocol than this layer's (a v2 layer
      * that was answered with version 1, or refused). The session stops the process and starts the agent again on that protocol. A layer that sets it has

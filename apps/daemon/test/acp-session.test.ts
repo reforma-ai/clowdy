@@ -295,6 +295,36 @@ eachProtocol('steering', (protocol) => {
         rmSync(dirname(log), { recursive: true, force: true });
     });
 
+    /** What the session says of steering before it has started and once the agent has answered the handshake (its `session` event). */
+    async function canSteerAround(options?: Parameters<typeof rig>[0]) {
+        const { session } = use(options).start('say hello');
+        const before = session.canSteer;
+
+        for await (const event of session) {
+            if (event.type === 'session') {
+                break;
+            }
+        }
+
+        const after = session.canSteer;
+
+        await session.close();
+
+        return { before, after };
+    }
+
+    test('an agent that says in its handshake that it can steer says so, and is taken to until it has spoken', async () => {
+        expect(await canSteerAround({ agentEnv: { FAKE_ACP_STEERING: '1' } })).toEqual({ before: true, after: true });
+    });
+
+    test.skipIf(protocol === 'v2')('an agent that does not say it can steer cannot, once its handshake is answered', async () => {
+        expect(await canSteerAround()).toEqual({ before: true, after: false });
+    });
+
+    test.skipIf(protocol === 'v1')('an agent over v2 can always steer: a prompt into a running turn is inserted', async () => {
+        expect(await canSteerAround()).toEqual({ before: true, after: true });
+    });
+
     test.skipIf(protocol === 'v1')('a steer is a prompt the agent inserts into the turn: no steering method is asked, and one answer ends the whole turn', async () => {
         const log = join(mkdtempSync(join(tmpdir(), 'clowdy-steer-')), 'requests');
         const { events, taken } = await steerDuring('say first\nsleep 200\nsay last', 'first', 'say steered', { agentEnv: { FAKE_ACP_LOG: log } });

@@ -71,8 +71,8 @@ function isResumeWarningUpdate(update: SessionUpdate): boolean {
 export class V1Layer implements ProtocolLayer {
     private connection?: ClientConnection;
     private sessionId?: string;
-    /** The agent said in `initialize` that it can take a steer. */
-    private steerable = false;
+    /** What the agent said in `initialize` about taking a steer; unknown until it has answered. */
+    private steerable?: boolean;
     /**
      * The agent said in `initialize` that it names sessions (`sessionCapabilities.title`) and this session is new: it takes a title from the client, and
      * may send one. A session that continues is named already.
@@ -81,6 +81,10 @@ export class V1Layer implements ProtocolLayer {
     answered = false;
 
     constructor(private host: LayerHost) {}
+
+    get canSteer(): boolean | undefined {
+        return this.steerable;
+    }
 
     /** Hands `text` to the turn in flight, through the steering extension; any answer but `injected` leaves the message to the runtime. */
     async steer(text: string): Promise<boolean> {

@@ -170,6 +170,49 @@ describe('FixtureTransport', () => {
             expect((await chatOf(transport, 'c-1')).queue).toBeUndefined();
         });
 
+        describe('for an agent that cannot take a steer', () => {
+            /** The orchestrator of c-1 runs on Cursor, which lists no `canSteer`. */
+            async function onCursor() {
+                const data = createFixtureData();
+
+                data.runs.find(run => run.id === 'r-orch-1')!.engine = 'cursor';
+
+                return await connected({ data });
+            }
+
+            it('leaves a steer waiting for the end of the turn, like a message of the next turn', async () => {
+                const { transport } = await onCursor();
+                const before = await people(transport, 'c-1');
+
+                await transport.command({ type: 'chat.send', chatId: 'c-1', text: 'Now', mode: 'steer' });
+                await vi.advanceTimersByTimeAsync(1000);
+
+                expect((await chatOf(transport, 'c-1')).queue?.map(item => [item.mode, item.text])).toEqual([['steer', 'Now']]);
+                expect(await people(transport, 'c-1')).toEqual(before);
+            });
+
+            it('makes Send now stop the running turn and send the message at once, ahead of the rest, with the queue not held', async () => {
+                const { transport } = await onCursor();
+
+                await transport.command({ type: 'chat.send', chatId: 'c-1', text: 'First' });
+                await transport.command({ type: 'chat.send', chatId: 'c-1', text: 'Second' });
+                await transport.command({ type: 'chat.sendQueued', chatId: 'c-1', itemId: (await chatOf(transport, 'c-1')).queue![1].id });
+
+                const chat = await chatOf(transport, 'c-1');
+                const run = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(candidate => candidate.id === 'r-orch-1')!;
+
+                expect((await people(transport, 'c-1')).at(-1)).toBe('Second');
+                expect(chat.queue?.map(item => [item.mode, item.text])).toEqual([['queue', 'First']]);
+                expect(chat.queuePaused).toBeUndefined();
+                expect(run.status).toBe('running');
+
+                // The turn that was sent ends as any, and the rest of the queue is the next one.
+                await vi.advanceTimersByTimeAsync(1500);
+
+                expect((await people(transport, 'c-1')).at(-1)).toBe('First');
+            });
+        });
+
         it('moves a message among its own kind and removes one', async () => {
             const { transport } = await connected();
 

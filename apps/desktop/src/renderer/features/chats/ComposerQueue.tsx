@@ -42,6 +42,10 @@ export interface ComposerQueueProps {
     busy: boolean;
     /** The orchestrator has not finished (it works, or waits for its executors): a compact item cannot go yet. */
     running: boolean;
+    /** The agent takes a message while it works (`canSteerChat`): a steer is read at once. One that does not leaves a steer waiting for the turn's end like any message. */
+    canSteer: boolean;
+    /** Send now stops the turn that runs and sends the message as the next one, because the agent cannot take it meanwhile (the daemon's stop and send). */
+    stops: boolean;
     /** Edit: the message has left the queue, and its words and files go back into the message box. */
     onEdit: (item: QueuedMessage) => void;
 }
@@ -49,11 +53,12 @@ export interface ComposerQueueProps {
 /**
  * What waits for the orchestrator (`Chat.queue`), inside the composer above the text, as Reforma's queue: two lines of each message and its files, and
  * per message Send now, Edit and Remove (the head shows them at rest, the others on hover or focus). A steer says `Steering…` until the agent takes it.
+ * For an agent that takes no steer (`canSteer`), Send now on a running turn reads `Stop and send`: the turn ends, and the message is the next one.
  * A compact item (Compact pressed while the agent worked) reads `Compact the conversation`, has nothing to edit, and its Send now waits until the
  * orchestrator has finished. A drag moves a message among those of its own kind. The queue is the daemon's: every change goes through it and comes
  * back with the chat.
  */
-export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProps) {
+export function ComposerQueue({ chat, busy, running, canSteer, stops, onEdit }: ComposerQueueProps) {
     const root = useRootStore();
     const [dropped, setDropped] = useState<DroppedOrder>();
     // Send now presses still with the daemon: their rows read `Steering…` meanwhile.
@@ -138,8 +143,10 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
                             item={ item }
                             isFirst={ isFirst }
                             isDragging={ isDragging }
-                            steering={ item.mode === 'steer' || sending.has(item.id) }
+                            // A steer of an agent that cannot take one waits for the turn's end, so it is not "steering": it offers Send now like a message of the next turn.
+                            steering={ (item.mode === 'steer' && canSteer) || sending.has(item.id) }
                             busy={ busy }
+                            stops={ stops }
                             draggedRef={ draggedRef }
                             onSendNow={ () => void sendNow(item) }
                             onEdit={ () => void edit(item) }
@@ -158,6 +165,8 @@ interface QueuedRowProps {
     /** The message waits for the agent's next step (a steer), or its Send now is on its way. */
     steering: boolean;
     busy: boolean;
+    /** Send now stops the agent's turn first. */
+    stops: boolean;
     /** Set while a drag runs from this gesture, so the drop does not also open the message for editing. */
     draggedRef: RefObject<boolean>;
     onSendNow: () => void;
@@ -165,7 +174,7 @@ interface QueuedRowProps {
     onRemove: () => void;
 }
 
-function QueuedRow({ item, isFirst, isDragging, steering, busy, draggedRef, onSendNow, onEdit, onRemove }: QueuedRowProps) {
+function QueuedRow({ item, isFirst, isDragging, steering, busy, stops, draggedRef, onSendNow, onEdit, onRemove }: QueuedRowProps) {
     const label = queuedLabel(item);
     const files = item.attachments?.length ?? 0;
 
@@ -212,10 +221,10 @@ function QueuedRow({ item, isFirst, isDragging, steering, busy, draggedRef, onSe
                         size="xs"
                         variant="filling"
                         color="secondary"
-                        tooltip={ busy ? 'Submit without interrupting the model' : undefined }
+                        tooltip={ stops ? 'Stops what the agent is doing now, then sends this message' : busy ? 'Submit without interrupting the model' : undefined }
                         onPress={ onSendNow }
                     >
-                        Send now
+                        { stops ? 'Stop and send' : 'Send now' }
                     </Button>
                 </Show>
                 <Button iconOnly size="xs" variant="filling" color="secondary" aria-label="Edit" tooltip="Edit" onPress={ onEdit }>
