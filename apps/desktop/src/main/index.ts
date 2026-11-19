@@ -1,5 +1,6 @@
 import { PROTOCOL_VERSION } from '@clowdy/protocol';
-import { app, BrowserWindow, ipcMain, Menu, nativeTheme, protocol, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, protocol, session, shell, autoUpdater as squirrel, type MessageBoxOptions } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import { watch } from 'node:fs';
 import { release } from 'node:os';
 import path from 'node:path';
@@ -13,7 +14,9 @@ import { fromOlderBundle, keepDaemonFresh, newestSourceTime, sourcesChangedSince
 import { registerIpc } from './ipc';
 import { createAppMenu } from './menu';
 import { createProtocolHandler } from './protocol';
+import { releaseConfig } from './releaseConfig';
 import { APP_ORIGIN, APP_SCHEME, appScheme, captionSymbolColor, hasLaunchSwitches, lockNavigation, restrictPermissions, windowOptions, windowsBuild } from './security';
+import { createUpdater } from './updater';
 
 /**
  * The renderer's files, served from `app://clowdy` in every run, so a development run has the same origin, the same
@@ -113,7 +116,68 @@ function start(): void {
 
         // A sheet on the visible window: an unparented dialog would block the main process's event loop on macOS.
         if (daemonError) window.once('ready-to-show', () => void showDaemonError(runtimeError ?? daemonError, window));
+
+        // Once the window shows, so the first question (move to Applications) is a sheet on it.
+        void firstWindow.promise.then(() => startShellUpdates());
     });
+}
+
+/**
+ * A message box as a sheet over a visible window. Over a hidden window Electron shows it app-modal, which blocks the main
+ * process's event loop on macOS, as does the unparented fallback when no window is open (macOS keeps the app without one).
+ */
+async function showSheet(options: MessageBoxOptions): Promise<number> {
+    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().find(candidate => candidate.isVisible());
+    const { response } = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options);
+
+    return response;
+}
+
+/**
+ * Shell updates from the GitHub releases a release build names (`releaseConfig.ts`): checked at launch and hourly, and
+ * from "Check for Updates…". A development run and a local build have none.
+ */
+function startShellUpdates(): void {
+    const release = releaseConfig(app.isPackaged);
+
+    if (!release.repo) return;
+
+    const updates = createUpdater({
+        updater: autoUpdater,
+        squirrel,
+        platform: process.platform,
+        // Squirrel.Mac installs only an update signed by the same Developer ID, so an ad-hoc build points to the download.
+        selfUpdates: process.platform !== 'darwin' || release.signed,
+        app,
+        ask: async ({ message, detail, accept, decline }) =>
+            await showSheet({ type: 'info', message, detail, buttons: [accept, decline], defaultId: 0, cancelId: 1 }) === 0,
+        openReleasePage: () => void shell.openExternal(`https://github.com/${ release.repo }/releases/latest`),
+    });
+    const tell = (message: string, detail: string) => showSheet({ type: 'info', message, detail });
+
+    async function checkForUpdates(): Promise<void> {
+        try {
+            const found = await updates.checkNow(version => void tell(`Downloading Clowdy ${ version }…`, 'Clowdy asks you to restart once the download is done'));
+
+            if (!found) await tell('Clowdy is up to date', `Version ${ app.getVersion() }`);
+        }
+        catch (error) {
+            // electron-updater's messages go on with a stack and the response headers; it logs them whole.
+            const [reason] = (error instanceof Error ? error.message : String(error)).split('\n');
+
+            await tell('Couldn\'t update Clowdy', reason.trim());
+        }
+    }
+
+    Menu.setApplicationMenu(createAppMenu({
+        checkForUpdates: (item) => {
+            item.enabled = false;
+            void checkForUpdates().finally(() => {
+                item.enabled = true;
+            });
+        },
+    }));
+    void updates.start();
 }
 
 /**

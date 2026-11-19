@@ -9,9 +9,9 @@ src/main/        Main process: window, menu, security, app:// protocol, IPC, fin
 src/preload/     The bridge exposed as `window.desktop`
 src/shared/      Contract between main, preload, and renderer (bridge type, IPC channel names)
 src/renderer/    React app (index.html, main.tsx), served by Vite; see "The renderer" below
-scripts/         dev.ts, build.ts (+ main-bundle.ts, bundle.ts, bun-runtime.ts), screenshot.ts (+ shoot-main.cjs)
+scripts/         dev.ts, build.ts (+ main-bundle.ts, bundle.ts, bun-runtime.ts), release-shell.ts (+ github.ts), screenshot.ts (+ shoot-main.cjs)
 vite.config.ts   Renderer build (and the dev server the screenshot harness uses)
-vitest.config.ts Unit tests (`src/**/*.test.{ts,tsx}`; node by default, `// @vitest-environment happy-dom` per file)
+vitest.config.ts Unit tests (`src/**/*.test.{ts,tsx}` and `scripts/**/*.test.ts`; node by default, `// @vitest-environment happy-dom` per file)
 electron-builder.ts, build/   Packaging config, icon, macOS entitlements
 ```
 
@@ -25,6 +25,7 @@ electron-builder.ts, build/   Packaging config, icon, macOS entitlements
 | `bun run build:app` | Release build into `app/`: the renderer (`app/renderer`), main and preload (`app/dist`), `bundle.json`, and the packaged app's own `package.json`; the daemon and the system skills into `bundle/`; Bun for this machine into `runtime/<platform>-<arch>/`. `bun scripts/build.ts <target...>` names other Bun targets (`darwin-arm64`, `darwin-x64`, `win32-x64`, `win32-arm64`). Needs the full git history (the bundle version counts commits). |
 | `bun run package` | `build:app`, then an unpacked `Clowdy.app` with an ad-hoc signature, which runs only on the Mac that built it: `release/mac-arm64/` on Apple silicon, `release/mac/` on Intel. Needs a Mac. |
 | `bun run package:win` | `build:app`, then unpacked, unsigned apps in `release/win-unpacked/` (x64) and `release/win-arm64-unpacked/`. Works on any OS. |
+| `bun run release:mac`, `release:win` | After `bun scripts/build.ts <targets>`: the installers and update files of a release (dmg + zip for arm64 and x64; one `nsis-web` installer for x64 and arm64) into `release/`, without publishing. The release workflow runs them; see Releases. |
 
 ## How it fits together
 
@@ -92,6 +93,21 @@ The app starts or attaches to the standalone daemon (`apps/daemon`, a Bun proces
 - **Standalone daemon:** `bun run --cwd apps/daemon start` (`dev` adds `--watch`, which restarts it on every edit; do not use it for the daemon you depend on) with the same `CLOWDY_DATA_DIR`/`CLOWDY_PROFILE` as the app, so the app attaches to it. Use another `CLOWDY_DATA_DIR` for a throwaway one.
 - **Packaged app:** the app carries its own bundle (`scripts/bundle.ts`): the renderer in the ASAR, the daemon (`main.js` and `mcp-stdio.js`, built by `apps/daemon/scripts/bundle.ts`) and the system skills in `Resources/bundle`, and `app/bundle.json` with the bundle's version (first-parent commit count), `minShell` and protocol. `Resources/bun` holds the Bun for the packaged arch (`scripts/bun-runtime.ts`, the version in the root `packageManager`, hashes pinned there). Before `ensureDaemon`, main copies both out of the install folder (`src/main/bundle.ts`, `installRuntime`) into `<updates>/bun/<bun version>-<arch>/` and `<updates>/bundles/<bundle version>/` (`<updates>` sits beside the daemon's data folder) and runs the daemon from there with `CLOWDY_SYSTEM_SKILLS_DIR` set: the daemon outlives the app, so it must never hold files an installer replaces. When the copy fails, the app still joins a daemon that is running, and otherwise shows why the copy failed. The daemon reports the bundle version in `Health.version`. A development run still names its daemon in `CLOWDY_BUN` and `CLOWDY_DAEMON_ENTRY` (`environmentRuntime`); without either, `ensureDaemon` says "Daemon is not bundled in this build".
 
+## Releases
+
+Releases are GitHub Releases in this repository (`kachurun/clowdy`). While the repository is private, people download installers by hand and nothing updates itself; the updater starts working once it is public. Until then `Clowdy-Setup.exe` cannot download its package either: put the `.nsis.7z` for the computer next to it, and the installer uses that one.
+
+- **Cutting one:** raise `version` (`major.minor.patch` only: a prerelease suffix makes electron-builder write a channel feed) and push it to `main`, or run `.github/workflows/release-shell.yml` by hand. `scripts/release-shell.ts decide` releases only a version that changed in the push (any version for a manual run) and is above every published one; a published version is never rewritten. Jobs: `decide`, `macos` (both architectures in one electron-builder run, so one `latest-mac.yml`), `windows` (the desktop tests first, then one `nsis-web` installer for both architectures), and `publish`, which decides again (a re-run never makes an older version Latest), uploads every file to a draft `v<version>`, and only then publishes it as Latest (`release-shell.ts publish`, through `gh`).
+- **What a release holds:** `Clowdy-arm64.dmg`, `Clowdy-x64.dmg`, `Clowdy-Setup.exe` (names without the version, so `releases/latest/download/<name>` always works), the zips and `clowdy-<version>-<arch>.nsis.7z` packages the updater installs, the zips' blockmaps (the packages carry theirs inside), `latest-mac.yml` and `latest.yml`.
+- **Baked in:** `scripts/build.ts` reads `CLOWDY_RELEASE_REPO` (the workflow passes `github.repository`) and `CLOWDY_SIGNED` into `src/main/releaseConfig.ts`; electron-builder writes `app-update.yml` (GitHub provider) only when `CLOWDY_RELEASE_REPO` is set. A local `package` build has neither and never updates. `release:win` needs `CLOWDY_RELEASE_REPO` too: the web installer it builds downloads its package from that release.
+- **Shell updater** (`src/main/updater.ts`, electron-updater's GitHub provider, which follows the release marked Latest): checks at launch and hourly and from "Check for Updates…" (app menu on macOS), downloads in the background, then a sheet offers a restart; otherwise it installs on quit. On macOS it waits for Squirrel.Mac's verdict too, and outside Applications it offers to move the app and does not update. A macOS build signed ad hoc cannot update itself (Squirrel.Mac wants the same Developer ID), so it offers a Download button that opens the latest release page.
+- **Signing:** the `macos` job signs and notarizes when the secrets below open a certificate, and otherwise warns and signs ad hoc (`CLOWDY_SIGNED=false`). Windows builds are unsigned: they update, and SmartScreen names no publisher.
+
+| Secret | What |
+| --- | --- |
+| `CSC_LINK`, `CSC_KEY_PASSWORD` | The Developer ID Application certificate as a base64 `.p12`, and its password |
+| `APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` | The App Store Connect API key (base64 `.p8`), its key ID, and the issuer ID, for notarization |
+
 ## Checking the UI without a person
 
 `bun scripts/screenshot.ts --url <url> --out <png> [--width 1440] [--height 900] [--wait-for <css selector>] [--eval <js>]... [--delay <ms>] [--theme light|dark|system] [--overlay] [--logs]`
@@ -124,4 +140,4 @@ A dev server for it (the one place a Vite server is still used; the app itself d
 
 ## Not verified
 
-macOS (arm64) is built, launched, and checked in dev and packaged form. The Windows apps build, but nothing was run on Windows, so Mica and the caption-button overlay are untested there.
+macOS (arm64) is built, launched, and checked in dev and packaged form. The Windows apps build, but nothing was run on Windows, so Mica and the caption-button overlay are untested there. The release workflow has not run yet: signing and notarization, the Windows web installer, and an update from one release to the next are untested.

@@ -103,16 +103,8 @@ A branch can be checked out in only one worktree. Do not switch another checkout
 
 ## Pull Requests
 
-- one PR = one logical change
-- Description required
-- Direct pushes to `main` are forbidden
-- Merge needs a green `ci-ok` check and a branch that is up to date with `main`. Cursor Bugbot may still comment on a PR, but it is not a required check and does not block the merge.
-
-### CI checks
-
-`.github/workflows/ci.yml` runs on every PR. It runs `build`, `lint`, `typecheck` and `test` through Turbo, but only for the packages your change affects.
-
-Run the same thing locally before you push:
+- One PR is one logical change, with a description.
+- There is no CI on pull requests yet. Before you merge, run the checks for what you changed:
 
 ```
 bunx turbo run build lint typecheck test --affected
@@ -120,4 +112,8 @@ bunx turbo run build lint typecheck test --affected
 
 `lint` only reports problems. `bun run lint:fix` in a package applies the fixes.
 
-A change to a **published** package needs a changeset or CI blocks the PR. Full list, bump rules, and file format: root `AGENTS.md` → Tooling → **Changesets**. Quick check: `bunx @changesets/cli status --since=origin/main`. No release needed: `bunx @changesets/cli add --empty`.
+## Releases
+
+The desktop app is published to GitHub Releases in this repository. Rules and secrets: `apps/desktop/AGENTS.md` → Releases.
+
+- **Shell** (`.github/workflows/release-shell.yml`): raise `version` in `apps/desktop/package.json` and push it to `main`. The workflow builds the macOS and Windows installers and publishes a release `v<version>`, marked Latest; the app's updater follows that release. A push that keeps the version releases nothing, and a version is released once: a bad release is replaced by a higher version.

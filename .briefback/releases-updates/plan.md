@@ -117,18 +117,21 @@ Scope change (review): only a daemon from an **older** bundle (or from sources, 
 
 **This stage:** Adds the release pipeline and the shell updater. Raising the version in `apps/desktop/package.json` on `main` (or a manual run) builds macOS arm64 + x64 (dmg + zip, signed and notarized when the secrets exist, ad hoc otherwise) and Windows `nsis-web` x64 + arm64 (unsigned), then publishes a draft release `v<x.y.z>`, uploads every file, and marks it Latest. The app checks at launch and hourly with electron-updater's GitHub provider, asks before restarting, offers to move itself to Applications on macOS, and on an ad-hoc macOS build offers a Download link instead. Local `./clowdy build` output never self-updates (no `app-update.yml`).
 
-- [ ] Complete
-  - [ ] `electron-updater` added to `apps/desktop`
-  - [ ] Release targets in one list; electron-builder writes the GitHub publish config only for release builds; dmg names without the version for stable links
-  - [ ] Build-time constants: release repo, signed flag
-  - [ ] The shell updater (port of Reforma's `updater.ts`) with the ad-hoc Download path and the menu item Check for Updates…
-  - [ ] `.github/workflows/release-shell.yml`: decide, macOS, Windows, publish
-  - [ ] `GITFLOW.md` describes the real flow; `apps/desktop/AGENTS.md` gets a Releases section with the secrets table
+- [x] Complete
+  - [x] `electron-updater` added to `apps/desktop`
+  - [x] electron-builder writes the GitHub publish config only for release builds; dmg and web installer names without the version for stable links (archs come from the release scripts' flags, so `--dir` builds stay host-only; no separate targets list)
+  - [x] Build-time constants: release repo, signed flag
+  - [x] The shell updater (port of Reforma's `updater.ts`) with the ad-hoc Download path and the menu item Check for Updates…
+  - [x] `.github/workflows/release-shell.yml`: decide, macOS, Windows, publish
+  - [x] `GITFLOW.md` describes the real flow; `apps/desktop/AGENTS.md` gets a Releases section with the secrets table
 
 **Files**
 
 - `apps/desktop/package.json` — `electron-updater` dependency; `release:mac`, `release:win` scripts
-- `apps/desktop/scripts/targets.ts` — create: release OS/arch/installer list read by `electron-builder.ts`, `bun-runtime.ts`, and the workflow (port of Reforma's); cannot live in `electron-builder.ts` because scripts import it without electron-builder's config side effects
+- `apps/desktop/scripts/github.ts` — create: the `gh` calls the release scripts make (Node APIs, so Vitest loads it); Stage 4 reuses it
+- `apps/desktop/scripts/release-shell.ts` — create: `decideShell` (build, skip, fail) and `publish` (draft, upload, then Latest)
+- `apps/desktop/scripts/release-shell.test.ts` — create
+- `apps/desktop/vitest.config.ts` — runs `scripts/**/*.test.ts` too
 - `apps/desktop/electron-builder.ts` — `mac.target` dmg + zip, `win.target` nsis-web, `publish` (GitHub, release builds only), `artifactName`s, `dmg.writeUpdateInfo: false`
 - `apps/desktop/scripts/main-bundle.ts` — `buildMain`: `define` for release constants
 - `apps/desktop/src/main/releaseConfig.ts` — create: baked constants vs development environment (port of Reforma's `config.ts`); cannot live in `index.ts` because `updater.ts` and Stage 5's `ota.ts` read it and tests replace it
@@ -139,6 +142,8 @@ Scope change (review): only a daemon from an **older** bundle (or from sources, 
 - `.github/workflows/release-shell.yml` — create
 - `GITFLOW.md` — remove CI, changesets, Bugbot; add Releases
 - `apps/desktop/AGENTS.md` — Releases section, Traps
+
+Scope change (review): the packaged app's own `package.json` is named `clowdy`, not `@clowdy/desktop`, because electron-builder names the Windows packages after it (`clowdy-<version>-<arch>.nsis.7z`) and GitHub renames assets with special characters. `publish` decides again before it writes, so a re-run never makes an older version Latest. The DMGs are signed (`dmg.sign`), which the workflow's DMG check needs. CI takes Bun from the root `packageManager`.
 
 **Done when:** a push that raises the shell version produces a GitHub release with dmg, zip, nsis-web files, and `latest*.yml`, marked Latest, and a packaged app built by it checks that release.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`; a manual `workflow_dispatch` run once the owner approves (it creates a private release).

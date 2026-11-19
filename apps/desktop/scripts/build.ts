@@ -11,6 +11,12 @@
  *   runtime/<target>/        the Bun that runs the daemon (`Resources/bun`, `bun-runtime.ts`)
  *
  *   bun scripts/build.ts [target...]    the Bun targets to ship; default: this machine's
+ *
+ * A release build (`.github/workflows/release-shell.yml`) bakes in where updates come from:
+ *
+ * - `CLOWDY_RELEASE_REPO`: `owner/name` of the GitHub repository with the releases. Without it the app never updates.
+ * - `CLOWDY_SIGNED`: `true` when the macOS build gets a Developer ID signature, so it can install the next one itself;
+ *   an ad-hoc build offers the release page instead.
  */
 import { $ } from 'bun';
 import { rm } from 'node:fs/promises';
@@ -24,13 +30,15 @@ const desktopRoot = path.resolve(import.meta.dir, '..');
 const repoRoot = path.resolve(desktopRoot, '../..');
 const appDir = path.join(desktopRoot, 'app');
 const bundleDir = path.join(desktopRoot, 'bundle');
-const manifest = await Bun.file(path.join(desktopRoot, 'package.json')).json() as { name: string; version: string; description: string };
+const manifest = await Bun.file(path.join(desktopRoot, 'package.json')).json() as { version: string; description: string };
 
 const targets = runtimeTargets(process.argv.slice(2));
 
 await rm(appDir, { recursive: true, force: true });
 await rm(bundleDir, { recursive: true, force: true });
 
+// Checked before the long steps.
+const constants = releaseConstants();
 const info = await bundleInfo();
 
 // The packages the renderer imports; turbo's cache makes a repeat run cheap.
@@ -38,14 +46,17 @@ await $`bunx turbo run build --filter=${ '@clowdy/desktop^...' }`.cwd(repoRoot);
 await $`bunx vite build --config ${ path.join(desktopRoot, 'vite.config.ts') } --outDir ${ path.join(appDir, 'renderer') } --emptyOutDir`
     .cwd(desktopRoot)
     .env({ ...process.env, NODE_ENV: 'production' });
-await buildMain(path.join(appDir, 'dist'));
+await buildMain(path.join(appDir, 'dist'), constants);
 await layoutDaemonPart(bundleDir, info);
 await Bun.write(path.join(appDir, 'bundle.json'), `${ JSON.stringify(info, null, 4) }\n`);
 await fetchBunRuntimes(targets);
 
-// The packaged app's own manifest: `productName` names its `userData` folder.
+// The packaged app's own manifest: `productName` names its `userData` folder. `name` names the Windows packages
+// (`clowdy-<version>-<arch>.nsis.7z`) and the updater's cache folder. Not the scoped `@clowdy/desktop`: electron-builder
+// would name them `@clowdydesktop-…`, and GitHub renames release assets with special characters, so the web installer
+// and the updater, which ask for the name electron-builder wrote, would not find the package.
 await Bun.write(path.join(appDir, 'package.json'), `${ JSON.stringify({
-    name: manifest.name,
+    name: 'clowdy',
     productName: 'Clowdy',
     version: manifest.version,
     description: manifest.description,
@@ -55,3 +66,15 @@ await Bun.write(path.join(appDir, 'package.json'), `${ JSON.stringify({
 }, null, 4) }\n`);
 
 console.log(`Built ${ appDir } with bundle ${ info.version }`);
+
+/** What `src/main/releaseConfig.ts` reads, from the environment of a release build. */
+function releaseConstants(): Record<string, string> {
+    const repo = process.env.CLOWDY_RELEASE_REPO ?? '';
+
+    if (repo && !/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error(`CLOWDY_RELEASE_REPO must be owner/name, got ${ repo }`);
+
+    return {
+        __CLOWDY_RELEASE_REPO__: JSON.stringify(repo),
+        __CLOWDY_SIGNED__: JSON.stringify(process.env.CLOWDY_SIGNED === 'true'),
+    };
+}

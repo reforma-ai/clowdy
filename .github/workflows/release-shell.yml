@@ -1,0 +1,222 @@
+name: Release shell
+# A shell release is cut by raising `version` in apps/desktop/package.json on main (or by running this by hand).
+# A push that keeps the version (a new dependency, a change to this file) releases nothing.
+# Rules: apps/desktop/AGENTS.md (Releases) and apps/desktop/scripts/release-shell.ts.
+
+on:
+    push:
+        branches:
+            - main
+        paths:
+            - 'apps/desktop/package.json'
+            - '.github/workflows/release-shell.yml'
+    workflow_dispatch: {}
+
+# One release at a time. A newer run never cancels a running one; it replaces only a run still waiting.
+concurrency:
+    group: release-shell
+    cancel-in-progress: false
+
+permissions:
+    contents: read
+
+env:
+    NODE_VERSION: 24
+
+jobs:
+    decide:
+        if: github.ref == 'refs/heads/main'
+        runs-on: ubuntu-latest
+        outputs:
+            decision: ${{ steps.decide.outputs.decision }}
+        steps:
+            # History for the version before the push.
+            - uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: package.json
+            - run: bun install --frozen-lockfile
+            # build, skip (version unchanged, or out already), or fail (not above the newest release).
+            - id: decide
+              run: bun apps/desktop/scripts/release-shell.ts decide
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  BEFORE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
+
+    # Build jobs never publish. Both macOS architectures build in one electron-builder run, so one latest-mac.yml covers both.
+    macos:
+        needs: decide
+        if: needs.decide.outputs.decision == 'build'
+        runs-on: macos-latest
+        steps:
+            # Full history: the bundle version counts first-parent commits.
+            - uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+            # Vite and electron-builder run on the runner's Node.
+            - uses: actions/setup-node@v5
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: package.json
+            - run: bun install --frozen-lockfile
+            # A certificate that does not open only warns: the build goes on ad-hoc signed and not notarized, and the app
+            # then offers its download page instead of updating itself (CLOWDY_SIGNED).
+            # electron-builder gets it as a file, since it reads a short CSC_LINK as a path.
+            # /usr/bin/openssl is LibreSSL, which reads the legacy ciphers of Keychain exports.
+            - name: Check the signing certificate
+              id: signing
+              run: |
+                  cert="$RUNNER_TEMP/developer-id.p12"
+                  if [ -n "$CSC_LINK" ] && base64 --decode <<< "$CSC_LINK" > "$cert" 2>/dev/null \
+                      && /usr/bin/openssl pkcs12 -in "$cert" -passin env:CSC_KEY_PASSWORD -noout 2>/dev/null; then
+                      echo "cert=$cert" >> "$GITHUB_OUTPUT"
+                      echo "signed=true" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "signed=false" >> "$GITHUB_OUTPUT"
+                      echo "::warning title=Unsigned macOS build::CSC_LINK is not a base64 .p12 that CSC_KEY_PASSWORD opens, so the macOS apps are signed ad hoc and not notarized; they cannot update themselves."
+                  fi
+              env:
+                  CSC_LINK: ${{ secrets.CSC_LINK }}
+                  CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+            # No signing secrets here: the renderer's build toolchain never sees them.
+            - name: Build the app
+              run: bun scripts/build.ts darwin-arm64 darwin-x64
+              working-directory: apps/desktop
+              env:
+                  CLOWDY_RELEASE_REPO: ${{ github.repository }}
+                  CLOWDY_SIGNED: ${{ steps.signing.outputs.signed }}
+            # notarytool reads the App Store Connect key from a file.
+            - name: Write the App Store Connect key
+              if: steps.signing.outputs.signed == 'true'
+              run: base64 --decode <<< "$APPLE_API_KEY_BASE64" > "$RUNNER_TEMP/app-store-connect.p8"
+              env:
+                  APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY }}
+            # electron-builder notarizes and staples the apps; the DMGs around them are notarized here.
+            - name: Package, sign, and notarize
+              working-directory: apps/desktop
+              run: |
+                  if [ "$SIGNED" != true ]; then
+                      unset CSC_LINK
+                      # Apple silicon launches only signed code, so ad hoc it is.
+                      bun run release:mac -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false
+                      exit 0
+                  fi
+                  bun run release:mac -c.mac.notarize=true
+                  for dmg in release/*.dmg; do
+                      xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --wait
+                      xcrun stapler staple "$dmg"
+                  done
+              env:
+                  CLOWDY_RELEASE_REPO: ${{ github.repository }}
+                  SIGNED: ${{ steps.signing.outputs.signed }}
+                  CSC_LINK: ${{ steps.signing.outputs.cert }}
+                  CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+                  APPLE_API_KEY: ${{ runner.temp }}/app-store-connect.p8
+                  APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+                  APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+            # An unsigned build checks only its ad-hoc signatures and its fuses.
+            - name: Verify signatures, notarization, and fuses
+              working-directory: apps/desktop/release
+              env:
+                  SIGNED: ${{ steps.signing.outputs.signed }}
+              run: |
+                  set -euo pipefail
+                  fuses=(
+                      "RunAsNode is Disabled"
+                      "EnableNodeOptionsEnvironmentVariable is Disabled"
+                      "EnableNodeCliInspectArguments is Disabled"
+                      "GrantFileProtocolExtraPrivileges is Disabled"
+                      "EnableCookieEncryption is Enabled"
+                      "EnableEmbeddedAsarIntegrityValidation is Enabled"
+                      "OnlyLoadAppFromAsar is Enabled"
+                  )
+                  for app in mac-arm64/Clowdy.app mac/Clowdy.app; do
+                      codesign --verify --deep --strict --verbose=2 "$app"
+                      if [ "$SIGNED" = true ]; then spctl -a -t exec -vv "$app"; fi
+                      read_back="$(../../../node_modules/.bin/electron-fuses read --app "$app")"
+                      for fuse in "${fuses[@]}"; do
+                          grep -qF "$fuse" <<< "$read_back" || { echo "$app: expected \"$fuse\""; exit 1; }
+                      done
+                  done
+                  if [ "$SIGNED" = true ]; then
+                      for dmg in *.dmg; do
+                          spctl -a -t open --context context:primary-signature -vv "$dmg"
+                          xcrun stapler validate "$dmg"
+                      done
+                  fi
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: shell-macos
+                  if-no-files-found: error
+                  retention-days: 3
+                  path: |
+                      apps/desktop/release/*.dmg
+                      apps/desktop/release/*.zip
+                      apps/desktop/release/*.blockmap
+                      apps/desktop/release/latest-mac.yml
+
+    # Unsigned for now, so no secret. Clowdy has no other CI, so the desktop tests run here on Windows first.
+    windows:
+        needs: decide
+        if: needs.decide.outputs.decision == 'build'
+        runs-on: windows-latest
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+            - uses: actions/setup-node@v5
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: package.json
+            - run: bun install --frozen-lockfile
+            # Through turbo, which builds the workspace packages the tests import.
+            - name: Test the desktop app
+              run: bunx turbo run test --filter=@clowdy/desktop
+            - name: Build the app
+              run: bun scripts/build.ts win32-x64 win32-arm64
+              working-directory: apps/desktop
+              env:
+                  CLOWDY_RELEASE_REPO: ${{ github.repository }}
+            # One web installer for both architectures, their packages, and latest.yml.
+            - name: Package
+              run: bun run release:win
+              working-directory: apps/desktop
+              env:
+                  CLOWDY_RELEASE_REPO: ${{ github.repository }}
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: shell-windows
+                  if-no-files-found: error
+                  retention-days: 3
+                  path: |
+                      apps/desktop/release/nsis-web/latest.yml
+                      apps/desktop/release/nsis-web/*.exe
+                      apps/desktop/release/nsis-web/*.7z
+
+    # Runs only after every build job succeeded: a skipped or failed one skips it.
+    publish:
+        needs: [macos, windows]
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - uses: actions/checkout@v5
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: package.json
+            - run: bun install --frozen-lockfile
+            # Every build job's artifact, in one folder.
+            - uses: actions/download-artifact@v4
+              with:
+                  pattern: shell-*
+                  merge-multiple: true
+                  path: apps/desktop/release
+            - run: bun apps/desktop/scripts/release-shell.ts publish
+              env:
+                  GH_TOKEN: ${{ github.token }}
