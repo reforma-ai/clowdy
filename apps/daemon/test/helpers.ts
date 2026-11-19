@@ -64,6 +64,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     return {
         dataDir: join(root, 'data'),
         projectsDir: join(root, 'projects'),
+        personalDir: join(root, 'personal'),
         port: 0,
         token: 'test-token',
         corsOrigins: [],

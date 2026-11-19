@@ -80,7 +80,7 @@ async function busyProject(name: string) {
 describe('the personal space', () => {
     test('a fresh daemon has exactly one personal project, first, in a repository of its own', async () => {
         const h = await setup();
-        const folder = realpathSync.native(join(h.config.dataDir, 'personal'));
+        const folder = realpathSync.native(h.config.personalDir);
         const { projects } = rootSnapshot(h.store);
 
         expect(projects).toEqual([expect.objectContaining({ name: 'Personal', folders: [{ id: expect.any(String), path: folder }], personal: true, position: 0, taskPrefix: 'PER', settings: {} })]);
@@ -154,8 +154,8 @@ describe('the personal space', () => {
             const project = ensurePersonalProject(store, config);
 
             expect(project).toMatchObject({ personal: true, name: 'Personal' });
-            expect(existsSync(join(config.dataDir, 'personal'))).toBe(true);
-            expect(existsSync(join(config.dataDir, 'personal', '.git'))).toBe(false);
+            expect(existsSync(config.personalDir)).toBe(true);
+            expect(existsSync(join(config.personalDir, '.git'))).toBe(false);
             expect(getPersonalProject(store.db)?.id).toBe(project?.id);
             expect(noGit).toHaveBeenCalled();
             expect(warn).toHaveBeenCalled();
@@ -173,8 +173,7 @@ describe('the personal space', () => {
         const warn = spyOn(console, 'warn').mockImplementation(() => {});
 
         // A file where the folder should be.
-        mkdirSync(config.dataDir, { recursive: true });
-        writeFileSync(join(config.dataDir, 'personal'), 'in the way');
+        writeFileSync(config.personalDir, 'in the way');
 
         try {
             expect(ensurePersonalProject(store, config)).toBeUndefined();
@@ -187,7 +186,7 @@ describe('the personal space', () => {
         }
     });
 
-    test('follows the data folder when that moved: the person cannot choose its folder, so the row is pointed at the new one', () => {
+    test('follows its folder when that moved: the person cannot choose it, so the row is pointed at the new one', () => {
         const store = new Store(openDatabase(':memory:'));
         const before = testConfig();
         const after = testConfig();
@@ -196,7 +195,7 @@ describe('the personal space', () => {
             const made = ensurePersonalProject(store, before) as Project;
             const cursor = store.headCursor();
             const moved = ensurePersonalProject(store, after) as Project;
-            const folder = realpathSync.native(join(after.dataDir, 'personal'));
+            const folder = realpathSync.native(after.personalDir);
 
             expect(moved).toMatchObject({ id: made.id, folders: [{ id: made.folders[0].id, path: folder }], personal: true, position: 0 });
             expect(listProjects(store.db)).toEqual([moved]);

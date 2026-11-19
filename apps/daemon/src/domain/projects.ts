@@ -28,7 +28,6 @@ import type { SkillsService } from '../skills/service';
 import type { Store } from '../store';
 
 /** The folder of the personal space inside the daemon's data folder. */
-const PERSONAL_FOLDER = 'personal';
 const PERSONAL_NAME = 'Personal';
 
 const DEFAULT_STATUSES: { name: string; category: TaskStatusCategory }[] = [
@@ -244,14 +243,15 @@ function prepareFolder(folder: string): boolean {
 }
 
 /**
- * The person's own space: a project flagged `personal` in `<dataDir>/personal`, for chats that belong to no repository. Called at every start, so
- * it makes the project the first time and afterwards only makes sure its folder is there (it may have been deleted) and that the project
- * still points at it: the person cannot choose this folder, so a data folder that moved takes the project with it. Never throws.
+ * The person's own space: a project flagged `personal` in `personalDir` (`~/Clowdy/Personal`), for chats that belong to no repository. Called
+ * at every start, so it makes the project the first time and afterwards only makes sure its folder is there (it may have been deleted) and
+ * that the project still points at it: the person cannot choose this folder, so a new `personalDir` takes the project with it, and the old
+ * folder stays where it was. Never throws.
  */
 export function ensurePersonalProject(store: Store, config: Config): Project | undefined {
     try {
         const existing = getPersonalProject(store.db);
-        const folder = join(config.dataDir, PERSONAL_FOLDER);
+        const folder = config.personalDir;
 
         if (!prepareFolder(folder)) {
             return existing;
