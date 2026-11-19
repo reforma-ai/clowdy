@@ -94,6 +94,9 @@ export type QueuedMessageMode = 'steer' | 'queue';
 /** Why a chat's queue holds: the person pressed Stop, or the turn failed (or the daemon restarted under it). */
 export type QueuePause = 'stopped' | 'failed';
 
+/** A request the person made with a button instead of words: `compact` runs the agent's own compact command (`chat.compact`). */
+export type QueuedCommand = 'compact';
+
 /**
  * A message waiting for a busy orchestrator. It reaches the agent as the next turn when the orchestrator rests (one message per turn, steers first),
  * or earlier as a steer of the running turn. The stream shows the person's message only from the moment the agent got it.
@@ -101,6 +104,11 @@ export type QueuePause = 'stopped' | 'failed';
 export interface QueuedMessage {
     id: string;
     mode: QueuedMessageMode;
+    /**
+     * Set on a compact item (`chat.compact` while the orchestrator worked): always a next turn (`queue`), never a steer, and it runs only once the orchestrator
+     * has finished and read its children's results. Its turn is the command alone, with no `user` item; `text` is what the queue shows, `content` the command.
+     */
+    command?: QueuedCommand;
     /** What the person wrote, as the stream's `user` item will show it; may be empty when files are attached. */
     text: string;
     /** The files of the message. The daemon keeps them for it from the moment it was queued. */
@@ -224,6 +232,11 @@ export interface Run {
     /** Final report on success, error message on failure. */
     result?: string;
     error?: string;
+    /**
+     * Why the last turn of a `failed` run failed, when the agent said, as a stable identifier: `context_too_long` (the conversation no longer fits the
+     * model's window, so the chat offers Compact), `not_logged_in`, `usage_limit` and the other codes of the daemon's failure classes. Gone once it works again.
+     */
+    failureCode?: string;
     /** Tokens and cost the engine reported, summed over the run's turns. */
     usage?: RunUsage;
     /** The context window of the engine's session, as of its latest report (written when it moves by a percent, and when a turn ends). */

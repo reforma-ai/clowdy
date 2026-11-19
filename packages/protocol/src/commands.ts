@@ -53,9 +53,10 @@ export const commandSchema = z.discriminatedUnion('type', [
      */
     z.object({ ...base, type: z.literal('chat.setModel'), chatId: z.string(), engine: engine.optional(), model: model.nullable().optional(), effort: effort.nullable().optional() }),
     /**
-     * Asks the chat's agent to compact its context (its own `/compact`) as a turn of the orchestrator, which the stream shows. Refused (`conflict`) while the orchestrator
-     * works or waits for its children, and while it has child results it has not read (a message reads them); refused (`invalid`) for a chat that has not started
-     * or whose agent has no such command. It is not activity: the chat keeps its place in the order.
+     * Asks the chat's agent to compact its context (its own `/compact`) as a turn of the orchestrator, which the stream shows. An orchestrator that works or waits
+     * for its children gets it later: it joins the chat's queue as a compact item (`QueuedMessage.command`), which runs once the orchestrator has finished, and
+     * asking again while one waits or runs does nothing more. Refused (`conflict`) for a finished orchestrator with child results it has not read (a message reads
+     * them), (`invalid`) for a chat that has not started or whose agent has no such command. It is not activity: the chat keeps its place in the order.
      */
     z.object({ ...base, type: z.literal('chat.compact'), chatId: z.string() }),
     /** Hides the chat from the lists without deleting anything (refused while any of its runs is active), or brings it back. */
@@ -77,7 +78,8 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('chat.moveQueued'), chatId: z.string(), itemId: z.string(), index: z.number().int().min(0) }),
     /**
      * Sends a queued message now. While the orchestrator works it becomes a steer of the running turn (it stays a steer when the agent cannot take it, and goes
-     * first when the turn ends); at rest it goes out at once as the next turn and lets a paused queue flow again.
+     * first when the turn ends); at rest it goes out at once as the next turn and lets a paused queue flow again. A compact item cannot steer: while the
+     * orchestrator works it stays where it is, and at rest it is refused like `chat.compact` until the orchestrator can compact.
      */
     z.object({ ...base, type: z.literal('chat.sendQueued'), chatId: z.string(), itemId: z.string() }),
 
