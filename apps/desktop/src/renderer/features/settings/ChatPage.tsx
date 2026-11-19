@@ -9,26 +9,29 @@ import { SettingsSection } from './ui/SettingsSection';
 
 import type { QueuedMessageMode } from '@clowdy/protocol';
 
-const CHOICES: ReadonlyArray<{ id: QueuedMessageMode; label: string }> = [
-    { id: 'steer', label: 'Steer the current turn' },
-    { id: 'queue', label: 'Queue for the next turn' },
+const LABEL = 'Send a message while the agent is working';
+
+/** The other way of sending, which the tip names: Cmd+Enter on macOS, Ctrl+Enter elsewhere. */
+const OTHER_KEY = hotkeys.platform === 'darwin' ? '⌘ Enter' : 'Ctrl+Enter';
+
+const CHOICES: ReadonlyArray<{ id: QueuedMessageMode; label: string; tip: string }> = [
+    { id: 'steer', label: 'Steer', tip: `Steer sends your message as soon as the agent can receive it. Press ${ OTHER_KEY } to add to the queue.` },
+    { id: 'queue', label: 'Queue', tip: `Waits until the agent finishes its current turn. Press ${ OTHER_KEY } to steer.` },
 ];
 
 /** Settings > Chat: how the message box sends on this computer. */
 export function ChatPage() {
+    const selected = CHOICES.find(choice => choice.id === busyEnter.mode) ?? CHOICES[0];
+
     return (
-        <SettingsPage title="Chat" description="How the message box works on this computer">
-            <SettingsSection title="Messages while the agent works">
+        <SettingsPage title="Chat" description="Choose how chats look and behave">
+            <SettingsSection title="Messages">
                 <SettingsCard>
-                    <SettingsRow
-                        title="Enter while the agent works"
-                        description={ `A steer reaches the agent during its turn, when the agent can take one; a queued message waits until the turn ends. ${ hotkeys.platform === 'darwin' ? 'Cmd' : 'Ctrl' }+Enter does the other.` }
-                        stacked
-                    >
+                    <SettingsRow title={ LABEL } description={ selected.tip }>
                         <ToggleButtonGroup
-                            aria-label="Enter while the agent works"
+                            aria-label={ LABEL }
                             size="sm"
-                            selectedKeys={ [busyEnter.mode] }
+                            selectedKeys={ [selected.id] }
                             onSelectionChange={ (keys) => {
                                 const next = CHOICES.find(choice => keys.has(choice.id));
 

@@ -11,7 +11,8 @@ import { ChatPage } from './ChatPage';
 let container: HTMLDivElement;
 let root: Root;
 
-const choice = (label: string) => [...container.querySelectorAll<HTMLElement>('[aria-label="Enter while the agent works"] [role="radio"]')].find(item => item.textContent === label)!;
+const LABEL = 'Send a message while the agent is working';
+const choice = (label: string) => [...container.querySelectorAll<HTMLElement>(`[aria-label="${ LABEL }"] [role="radio"]`)].find(item => item.textContent === label)!;
 
 beforeEach(() => {
     busyEnter.setMode('steer');
@@ -28,20 +29,22 @@ afterEach(() => {
 });
 
 describe('ChatPage', () => {
-    it('offers what Enter does while the agent works, steering by default', () => {
-        expect(container.querySelector('[aria-label="Enter while the agent works"]')).not.toBeNull();
-        expect(choice('Steer the current turn').getAttribute('aria-checked')).toBe('true');
-        expect(choice('Queue for the next turn').getAttribute('aria-checked')).toBe('false');
+    it('offers how a message sent while the agent works goes, steering by default, with the tip of the choice', () => {
+        expect(container.querySelector(`[aria-label="${ LABEL }"]`)).not.toBeNull();
+        expect(choice('Steer').getAttribute('aria-checked')).toBe('true');
+        expect(choice('Queue').getAttribute('aria-checked')).toBe('false');
+        expect(container.textContent).toContain('Steer sends your message as soon as the agent can receive it. Press Ctrl+Enter to add to the queue.');
     });
 
-    it('keeps the choice for the message box', () => {
-        act(() => choice('Queue for the next turn').click());
+    it('keeps the choice for the message box, and tells the other way of sending', () => {
+        act(() => choice('Queue').click());
 
         expect(busyEnter.mode).toBe('queue');
 
         // The app's components observe the store; a test draws again by hand.
         act(() => root.render(<ChatPage />));
 
-        expect(choice('Queue for the next turn').getAttribute('aria-checked')).toBe('true');
+        expect(choice('Queue').getAttribute('aria-checked')).toBe('true');
+        expect(container.textContent).toContain('Waits until the agent finishes its current turn. Press Ctrl+Enter to steer.');
     });
 });
