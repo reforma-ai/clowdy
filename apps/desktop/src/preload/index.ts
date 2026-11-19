@@ -9,7 +9,7 @@ const desktop: DesktopBridge = {
     platform: process.platform as DesktopBridge['platform'],
     material: process.argv.includes(WINDOW_MATERIAL_ARGUMENT),
     setThemeSource: theme => ipcRenderer.invoke(IPC_CHANNELS.setThemeSource, theme),
-    chooseDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.chooseDirectory),
+    chooseDirectories: () => ipcRenderer.invoke(IPC_CHANNELS.chooseDirectories),
     onDaemonChange: (listener) => {
         const handler = (_event: unknown, address: unknown) => {
             if (typeof address === 'object' && address !== null && typeof (address as { url?: unknown }).url === 'string' && typeof (address as { token?: unknown }).token === 'string') {

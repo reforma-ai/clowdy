@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { Modal } from '@clowdy/components/Modal';
 import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -46,9 +47,16 @@ beforeEach(() => {
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
+    // The modal animates by itself, whatever the motion setting; a test that ends while it moves leaves a cancelled animation behind.
+    const create = Modal.create.bind(Modal);
+
+    vi.spyOn(Modal, 'create').mockImplementation(options => create({ ...options, animate: false }));
 });
 
-afterEach(() => {
+afterEach(async () => {
+    for (const modal of Modal.opened) await modal.close(false);
+
+    vi.restoreAllMocks();
     act(() => root.unmount());
     container.remove();
     store.dispose();
@@ -63,12 +71,11 @@ describe('ProjectSelect', () => {
             expect.stringContaining('Personal'),
             expect.stringContaining('Car Rental'),
             expect.stringContaining('Clowdy'),
-            'Create project',
-            'Open existing project…',
+            'Add project…',
             'Manage projects…',
         ]);
         // The menu has a separator between the personal space and the projects, and one before the actions.
-        expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(3);
+        expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(2);
     });
 
     it('marks the open project and switches to the one chosen', async () => {
@@ -108,13 +115,27 @@ describe('ProjectSelect', () => {
         expect([store.ui.settingsOpen, store.ui.settingsPage, store.ui.settingsProjectId]).toEqual([true, 'projects', null]);
     });
 
+    it('opens the Add project form with Add project…', async () => {
+        await open();
+        await act(async () => items().find(item => item.textContent === 'Add project…')!.click());
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 60));
+        });
+
+        const form = document.body.querySelector('form');
+
+        expect(form?.textContent).toContain('Add project');
+        expect(form?.querySelector('[aria-label="Name"]')).not.toBeNull();
+        expect(form?.textContent).toContain('Folders');
+    });
+
     it('lists no separator before the projects when the personal space is all there is', async () => {
         const data = createFixtureData();
 
         data.projects = data.projects.filter(project => project.personal);
         await open(data);
 
-        expect(labels()).toEqual([expect.stringContaining('Personal'), 'Create project', 'Open existing project…', 'Manage projects…']);
-        expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(2);
+        expect(labels()).toEqual([expect.stringContaining('Personal'), 'Add project…', 'Manage projects…']);
+        expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(1);
     });
 });

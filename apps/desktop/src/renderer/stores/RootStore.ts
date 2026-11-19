@@ -28,6 +28,12 @@ function sortProjects(projects: readonly Project[]): Project[] {
     return [...projects].sort((a, b) => Number(b.personal === true) - Number(a.personal === true) || a.position - b.position || a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 }
 
+/** What `project.add` answers: the project added, or the one that already had the same folders (`existing`). */
+export interface AddedProject {
+    project: Project;
+    existing: boolean;
+}
+
 export interface RootStoreOptions {
     storage?: KeyValueStorage;
     /** Shows a daemon notice to the person. */
@@ -187,14 +193,31 @@ export class RootStore {
         }
     }
 
-    /** Creates a project, in a new folder or in the folder at `path`, and switches to it. */
-    createProject(name: string, path?: string): Promise<CommandResult> {
-        return this.#addProject({ type: 'project.add', name, ...(path && { folders: [path] }) });
-    }
+    /**
+     * Adds a project of `folders` (the first is the main one; none makes a new folder named after `name`) and switches to it. The daemon
+     * answers a project that already has exactly these folders instead of adding one, and the window switches to that: `existing` says so.
+     */
+    async addProject(input: { name?: string; folders: string[] }): Promise<CommandResult<AddedProject>> {
+        const result = await this.command({ type: 'project.add', ...(input.name && { name: input.name }), ...(input.folders.length > 0 && { folders: input.folders }) });
 
-    /** Opens the folder at `path` as a project, and switches to it. */
-    openProject(path: string, name?: string): Promise<CommandResult> {
-        return this.#addProject({ type: 'project.add', folders: [path], ...(name && { name }) });
+        if (!result.ok) return result;
+
+        const { project, existing } = result.data as { project: Project; existing?: boolean };
+
+        try {
+            const { projects } = await this.transport.getRootSnapshot();
+
+            runInAction(() => {
+                this.projects = sortProjects(projects);
+
+                if (projects.some(candidate => candidate.id === project.id)) this.selectProject(project.id);
+            });
+        }
+        catch {
+            // The command went through; the `project.upserted` event adds the project.
+        }
+
+        return { ...result, data: { project, existing: existing === true } };
     }
 
     /**
@@ -346,28 +369,5 @@ export class RootStore {
         const next = this.projects[0];
 
         if (next) this.selectProject(next.id);
-    }
-
-    async #addProject(input: CommandInput): Promise<CommandResult> {
-        const result = await this.command(input);
-
-        if (!result.ok) return result;
-
-        const addedId = (result.data as { project?: Project } | undefined)?.project?.id;
-
-        try {
-            const { projects } = await this.transport.getRootSnapshot();
-
-            runInAction(() => {
-                this.projects = sortProjects(projects);
-
-                if (addedId && projects.some(project => project.id === addedId)) this.selectProject(addedId);
-            });
-        }
-        catch {
-            // The command went through; the `project.upserted` event adds the project.
-        }
-
-        return result;
     }
 }

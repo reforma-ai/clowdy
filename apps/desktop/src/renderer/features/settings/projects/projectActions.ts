@@ -3,7 +3,7 @@ import { toast } from '@clowdy/components/Toast';
 import { mainFolder } from '@clowdy/protocol';
 import { runInAction } from 'mobx';
 
-import { pickFolder } from '../../../shell/projectDialogs';
+import { pickFolders } from '../../../shell/projectDialogs';
 import { perform } from '../../chats/commands';
 import { removalMessage } from './projectView';
 
@@ -39,7 +39,8 @@ export async function reorderProjects(root: RootStore, projects: readonly Projec
  * and refuses while agents of the project are working; its reason is shown in the dialog.
  */
 export async function changeFolder(root: RootStore, project: Project): Promise<void> {
-    const path = await pickFolder();
+    // The dialog lets several folders be chosen; the main folder is one, so the first is taken.
+    const [path] = await pickFolders();
 
     if (!path || path === mainFolder(project).path) return;
 
