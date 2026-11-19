@@ -78,12 +78,30 @@ Auto-compaction by Clowdy (the agents compact themselves), Reforma's edit lock, 
 
 **Depends on:** Stage 1 (compact joins the queue).
 
-- [ ] Complete
-  - [ ] The mapper names compaction calls `compact`; the stream draws the compaction line with counts
-  - [ ] Compact while busy queues a compact item; the queue row reads `Compact the conversation`
-  - [ ] A context overflow keeps its reason and the failed chat offers Compact
-  - [ ] Tests
+- [x] Complete
+  - [x] The mapper names compaction calls `compact`; the stream draws the compaction line with counts
+  - [x] Compact while busy queues a compact item; the queue row reads `Compact the conversation`
+  - [x] A context overflow keeps its reason (`Run.failureCode`, migration 10) and the failed chat offers Compact
+  - [x] Calls a turn left running end with it (Stop, failure, a lost turn after a restart, a stopped sub-agent), so no line shimmers after Stop
+  - [x] Tests
 
 **Done when:** a compaction reads as one line with its result, and Compact works while the agent is busy.
 **Verify:** as Stage 1
-**Commits:** None yet.
+**Commits:**
+
+- `6728d88` feat(protocol): add compact items to the chat queue and the failure code of a run
+- `1582c35` feat(daemon): keep why a run failed and close the calls a turn left running
+- `f661a0c` feat(daemon): name every agent's compaction call compact and queue Compact while the orchestrator works
+- `e206d3a` feat(desktop): draw a compaction as one line, queue Compact while the agent works, and offer it when the context overflowed
+- `0b206bd` test(daemon): let the early steer's retry land inside the turn of the steering test (review)
+- `8b9ef92` fix(daemon): end the calls of a stopped sub-agent and of a turn the daemon lost (review)
+- `a14507f` fix(daemon): keep a compact turn to the command when children finish before it starts (review)
+- `dab4cae` fix(daemon): offer compaction in the message of a context that overflowed (review)
+- `039adb7` fix(desktop): say that a compact item in a held queue waits to be sent by hand (review)
+- `e4d0ee5` fix(desktop): read a compaction the person stopped as stopped, and word the compact refusal for a held queue (review follow-up)
+
+**Implementation choices:** the "Compacting the conversation" note is gone (the line replaces it); Compact also queues while the orchestrator waits for its children, and a compact item runs only once the run is terminal with every child result read, so messages behind it go first; a second Compact while one is queued or running does nothing; Compact at rest drops a compact item still waiting in a held queue. **Not checked live:** Codex's compaction naming and Claude's counts come from reading the adapters (claude-agent-acp 0.107.0, codex-acp 2.6.0).
+
+## After the three stages
+
+Nothing of the three stages was run against a real agent. The first live check, by the owner: in a Claude chat, send a message while it works (steer, then Cmd+Enter to queue), press Stop with a queue, ask it for a task that uses its own `Agent` tool (a card with a child), ask the orchestrator to `run_spawn` (a card with a link), and press Compact while it works.
