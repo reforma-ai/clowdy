@@ -37,7 +37,7 @@ Axes are independent (different elements or element + remote).
 <Scrollable horizontal vertical={false} style={{ width: 320, height: 120 }}>{wideRow}</Scrollable>
 ```
 
-Props: `alwaysShowScrollbar`, `gap`, `edgeFade`, `onScroll`, `stickToBottom`, `containerClass` / `contentClass`.
+Props: `alwaysShowScrollbar`, `scrollbar` (`false` draws no thumb; wheel and `edgeFade` stay), `gap`, `edgeFade`, `onScroll`, `stickToBottom`, `containerClass` / `contentClass`.
 
 Root edge attrs when an axis is enabled: `data-scroll-v-start|end`, `data-scroll-h-start|end`, `data-scroll-show-v|h`.
 

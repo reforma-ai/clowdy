@@ -1,0 +1,105 @@
+/* Turns, centred on the right of the stream. At most 420px; past that it scrolls inside. */
+.frame {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    right: var(--spacing-10);
+    translate: 0 -50%;
+    width: 2.5rem;
+    max-height: 420px;
+}
+
+.rail {
+    width: 100%;
+    max-height: 420px;
+}
+
+.lane {
+    flex: none;
+    width: 100%;
+    max-height: 420px;
+}
+
+.ticks {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tick {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    height: 8px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.tick:focus-visible .mark {
+    outline: 1px solid var(--color-text);
+    outline-offset: 1px;
+}
+
+/* Short at rest. The one in view, and the ones near the pointer, grow. ease-out so the move starts at once. */
+.mark {
+    height: 2px;
+    border-radius: var(--radius-full);
+    background-color: var(--color-text);
+    opacity: calc(0.34 + max(var(--lift, 0), var(--rest, 0)) * 0.66);
+    width: calc(0.625rem + max(var(--lift, 0), var(--rest, 0)) * 1rem);
+    transition-property: width, opacity;
+    transition-duration: 0.12s;
+    transition-timing-function: ease-out;
+}
+
+.tick[data-current] .mark {
+    --rest: 1;
+}
+
+/* One card for every tick. It stays mounted while the pointer moves, and only `top` eases. */
+.card {
+    position: fixed;
+    z-index: var(--z-popover);
+    width: min(18rem, calc(100vw - 4rem));
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
+    padding: var(--spacing-10) var(--spacing-12);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background: var(--color-surface-float);
+    color: var(--color-text);
+    border: var(--spacing-1) solid var(--color-surface-border);
+    box-shadow: var(--shadow-xl);
+    overflow-wrap: anywhere;
+    pointer-events: none;
+    transition: top 0.16s ease-out;
+}
+
+.title,
+.reply {
+    margin: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.title {
+    -webkit-line-clamp: 2;
+}
+
+.reply {
+    -webkit-line-clamp: 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mark,
+    .card {
+        transition-duration: 0.01ms;
+    }
+}

@@ -59,16 +59,18 @@ export interface UserBubbleProps {
     at: number;
     /** The message came in while the stream was on screen: it rises into place. */
     animate?: boolean;
+    /** The stream item this message is, so the turn rail can scroll to it. */
+    turn?: string;
 }
 
 /** What the person wrote: a tinted bubble on the right, the time under it. The text is Markdown, as the message box writes it; files and tasks it mentions are chips. */
-export function UserBubble({ text, attachments, at, animate }: UserBubbleProps) {
+export function UserBubble({ text, attachments, at, animate, turn }: UserBubbleProps) {
     const { taskOfKey } = use(StreamLinksContext);
     const previews = useAttachmentPreviews(attachments);
     const body = <Markdown text={ personMarkdown(text, taskOfKey) } fromPerson />;
 
     return (
-        <div className={ styles.row } data-animate={ animate || undefined }>
+        <div className={ styles.row } data-animate={ animate || undefined } data-turn={ turn }>
             <Show when={ attachments?.length }>
                 <Attachments size="sm" className={ styles.files }>
                     { attachments?.map(attachment => (

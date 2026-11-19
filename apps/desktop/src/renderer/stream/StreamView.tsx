@@ -2,7 +2,8 @@ import { Button } from '@clowdy/components/Button';
 import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { useStickToBottom } from '@clowdy/components/hooks';
 import { ArrowDown } from '@clowdy/icons/14';
-import { Fragment, useMemo, useState } from 'react';
+import { mergeRefs } from '@clowdy/lib';
+import { Fragment, useMemo, useRef, useState } from 'react';
 
 import { AssistantMessage } from './AssistantMessage';
 import { COMPACT_TOOL } from './compaction';
@@ -15,6 +16,8 @@ import styles from './StreamView.module.css';
 import { SpawnCard, SubagentCard } from './SubagentCard';
 import { isSubagentTool, RUN_SPAWN } from './subagents';
 import { ToolCard } from './ToolCard';
+import { turnMarks } from './turnMarks';
+import { TurnRail } from './TurnRail';
 import { foldFinishedWork } from './turns';
 import { UserBubble } from './UserBubble';
 import { Worked } from './Worked';
@@ -47,7 +50,13 @@ export interface StreamViewProps {
  * "Worked for" line.
  */
 export function StreamView({ items, active = false, working, onAnswer, emptyState, decorate, links = NO_LINKS, errorAction }: StreamViewProps) {
-    const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
+    const scroller = useRef<HTMLDivElement>(null);
+    const { scrollRef: stickScrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
+    const scrollRef = useMemo(
+        () => mergeRefs<HTMLDivElement>(scroller, node => stickScrollRef(node)),
+        [stickScrollRef]
+    );
+    const marks = useMemo(() => turnMarks(items), [items]);
     // What was there when the stream first showed is not news: only a message that comes later rises into place.
     const [shown] = useState(() => new Set(items.map(item => item.id)));
     const blocks = useMemo(() => foldFinishedWork(items, active), [items, active]);
@@ -61,7 +70,7 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
 
         switch (body.kind) {
             case 'user':
-                return <UserBubble text={ body.text } attachments={ body.attachments } at={ item.at } animate={ !shown.has(item.id) } />;
+                return <UserBubble turn={ item.id } text={ body.text } attachments={ body.attachments } at={ item.at } animate={ !shown.has(item.id) } />;
             case 'assistant':
                 return <AssistantMessage text={ body.text } streaming={ !body.done } />;
             case 'tool':
@@ -101,6 +110,8 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
                         { showWorking && <WorkingLine text={ typeof working === 'string' ? working : undefined } /> }
                     </ContentColumn>
                 </div>
+
+                <TurnRail marks={ marks } scroller={ scroller } />
 
                 <Button
                     variant="bordered"
