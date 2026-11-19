@@ -944,14 +944,15 @@ describe('the provider strip', () => {
         expect(options().filter(option => option.hasAttribute('data-engine')).every(option => option.getAttribute('data-engine') === 'codex')).toBe(true);
     });
 
-    it('sits under the head row, above the list', async () => {
+    it('sits at the end of the head row, after the title, above the list', async () => {
         await setup(opus);
         await openList();
 
         const strip = listLayer().querySelector('[role="tablist"]')!;
 
         expect(strip.previousElementSibling!.textContent).toBe('Select model');
-        expect(strip.nextElementSibling!.contains(options()[0]!)).toBe(true);
+        expect(strip.nextElementSibling).toBeNull();
+        expect(strip.parentElement!.nextElementSibling!.contains(options()[0]!)).toBe(true);
     });
 
     it('turns the list to another provider and picks nothing', async () => {

@@ -331,7 +331,7 @@ interface ListProps {
 }
 
 /**
- * The second pane: a strip of the providers when there are several, then the main models of the one the strip shows and a "More models"
+ * The second pane: a head row (back, the title and, when there are several providers, their strip at its end), then the main models of the one the strip shows and a "More models"
  * row that opens a flyout with the rest, or what that provider says instead (it is being read, or why it gives no models).
  */
 function ModelList({ choice, held, providers, active, onBack, onPickModel }: ListProps) {
@@ -429,16 +429,16 @@ function ModelList({ choice, held, providers, active, onBack, onPickModel }: Lis
 
     return (
         <div className={ styles.models }>
-            <span className={ styles.listHead }>
+            <div className={ styles.listHead }>
                 <Button size="sm" iconOnly variant="filling" color="secondary" aria-label="Back" onPress={ onBack }>
                     <ChevronLeft aria-hidden="true" />
                 </Button>
                 <Text className={ styles.listTitle }>Select model</Text>
-            </span>
 
-            <Show when={ providers.length > 1 && shown }>
-                { current => <ProviderStrip providers={ providers } value={ current.id } active={ active } onChange={ setViewed } /> }
-            </Show>
+                <Show when={ providers.length > 1 && shown }>
+                    { current => <ProviderStrip providers={ providers } value={ current.id } active={ active } onChange={ setViewed } /> }
+                </Show>
+            </div>
 
             <Scrollable className={ styles.modelScroll } onKeyDown={ onRowsKeyDown }>
                 <Show when={ shown && rows.length > 0 }>
