@@ -33,6 +33,12 @@ export function findQuestion(db: Database, runId: string, questionId: string): S
     return row ? toItem(row) : undefined;
 }
 
+/** The tool calls of a run whose item still says they run. */
+export function listRunningTools(db: Database, runId: string): StreamItem[] {
+    return (db.query('SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, \'$.kind\') = \'tool\' AND json_extract(body, \'$.state\') = \'running\' ORDER BY seq')
+        .all(runId) as ItemRow[]).map(toItem);
+}
+
 export function insertItem(db: Database, item: StreamItem): void {
     db.query('INSERT INTO stream_items (id, run_id, seq, at, body) VALUES (?, ?, ?, ?, ?)')
         .run(item.id, item.runId, item.seq, item.at, JSON.stringify(item.body));

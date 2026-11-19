@@ -414,9 +414,11 @@ export class RunDriver {
         }
         finally {
             clearTimeout(live.reportTimer);
-            // Whatever the agent left running ends with the turn: a Stop or a failure mid-call would otherwise leave the call shimmering.
-            writer.finish(signal.aborted ? STOPPED_TOOL : UNFINISHED_TOOL);
-            live.native.finish();
+            // Whatever the agent and its sub-agents left running ends with the turn: a Stop or a failure mid-call would otherwise leave the call shimmering.
+            const reason = signal.aborted ? STOPPED_TOOL : UNFINISHED_TOOL;
+
+            writer.finish(reason);
+            live.native.finish(reason);
             live.session = undefined;
             live.writer = undefined;
             live.pausedUntil = undefined;

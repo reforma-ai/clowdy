@@ -1,8 +1,10 @@
+import { Database } from 'bun:sqlite';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
 
 import { listItems } from '../src/db/items';
 import { getRun } from '../src/db/runs';
-import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
+import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
 
 import type { StreamItemBody } from '@clowdy/protocol';
 import type { EngineEvent } from '../src/engine/types';
@@ -63,6 +65,26 @@ describe('a turn that ends with calls still running', () => {
         expect(states(tools(runId))).toEqual([['c1', 'done', undefined], ['c2', 'error', 'Stopped before it finished']]);
     });
 
+    test('Stop also fails the calls of a sub-agent, which the Stop ended before the turn did', async () => {
+        const started = latch();
+        const { h, runId, tools } = await setup(async function* ({ signal }) {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'running' };
+            yield call('c1', 'running', 'a1');
+            started.release();
+            await untilAborted(signal);
+        });
+        const childOf = () => h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ?').get(runId) as { id: string } | null;
+
+        await started.wait();
+        await waitFor(() => childOf() && tools(childOf()!.id).length === 1, 'the sub-agent\'s call in its stream');
+        h.ok('run.cancel', { runId });
+        await waitFor(() => tools(childOf()!.id).every(body => body.state !== 'running'), 'the sub-agent\'s call to be closed');
+
+        expect(h.run(childOf()!.id).status).toBe('cancelled');
+        expect(states(tools(childOf()!.id))).toEqual([['c1', 'error', 'Stopped before it finished']]);
+    });
+
     test('a failure does the same, and the run keeps the class of the failure until it works again', async () => {
         const { h, chat, runId, tools } = await setup(async function* ({ number }) {
             yield { type: 'session', sessionId: 's1' };
@@ -119,5 +141,34 @@ describe('a turn that ends with calls still running', () => {
             [['c1', 'error', 'The turn ended before this finished']],
             [['c2', 'error', 'The turn ended before this finished']],
         ]);
+    });
+
+    test('a daemon that went down mid-turn leaves none running either: the next start fails them with the run', async () => {
+        const started = latch();
+        const { h, runId, tools } = await setup(async function* ({ signal }) {
+            yield { type: 'session', sessionId: 's1' };
+            yield call('c1', 'running');
+            started.release();
+            await untilAborted(signal);
+        });
+
+        await started.wait();
+        await waitFor(() => tools(runId).length === 1, 'the call in the stream');
+        await h.stop();
+
+        // What a crash leaves behind: the run still `running`, and its call too, since the turn never got to close it.
+        const db = new Database(join(h.config.dataDir, 'clowdy.db'));
+
+        db.query('UPDATE stream_items SET body = json_remove(json_set(body, \'$.state\', \'running\'), \'$.error\') WHERE run_id = ? AND json_extract(body, \'$.kind\') = \'tool\'').run(runId);
+        db.query('UPDATE runs SET status = \'running\' WHERE id = ?').run(runId);
+        db.close();
+
+        const next = await restartHarness(h, { engines: scriptEngines(new ScriptEngine(async function* () {
+            yield { type: 'done' };
+        })) });
+
+        harnesses.push(next);
+        expect(next.run(runId).status).toBe('interrupted');
+        expect(states(listItems(next.store.db, runId, 0).flatMap(item => (item.body.kind === 'tool' ? [item.body] : [])))).toEqual([['c1', 'error', 'Stopped before it finished']]);
     });
 });

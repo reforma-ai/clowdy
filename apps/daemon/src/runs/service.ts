@@ -1,7 +1,7 @@
 import { ACTIVE_RUN_STATUSES, isTerminalRunStatus } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
-import { findQuestion } from '../db/items';
+import { findQuestion, listRunningTools } from '../db/items';
 import { getProject } from '../db/projects';
 import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, insertMailbox, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, pendingMailbox, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
 import { getTask } from '../db/tasks';
@@ -13,6 +13,7 @@ import { EngineLimits } from './limits';
 import { killSurvivor, signalProcess } from './processes';
 import { QUEUE_REASON, Scheduler } from './scheduler';
 import { canTransition, NEEDS_REASON } from './transitions';
+import { STOPPED_TOOL } from './writer';
 
 import type { ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunRole, RunStatus, RunUsage, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
@@ -586,8 +587,9 @@ export class RunService {
 
     /**
      * At startup nothing is running any more. Engine processes that outlived the daemon are killed (when their pid still
-     * belongs to the process that was recorded), and runs that were mid-turn come back `interrupted`. Runs that only
-     * wait (queued, blocked, waiting for children) keep waiting; the driver starts them again.
+     * belongs to the process that was recorded), and runs that were mid-turn come back `interrupted`, the calls their turn left running failed as
+     * `TurnWriter.finish` would have done (a crash never got to it). Runs that only wait (queued, blocked, waiting for children) keep waiting; the
+     * driver starts them again.
      */
     async recover(): Promise<number> {
         for (const { process: survivor } of listRunsWithProcess(this.store.db)) {
@@ -601,6 +603,12 @@ export class RunService {
             for (const run of dead) {
                 setRunWork(this.store.db, run.id, { process: null });
                 this.setStatus(run.id, 'interrupted', { reason: 'Daemon restarted' });
+
+                for (const { seq, body } of listRunningTools(this.store.db, run.id)) {
+                    if (body.kind === 'tool') {
+                        updateItem(this.store, run.id, seq, { ...body, state: 'error', error: STOPPED_TOOL });
+                    }
+                }
             }
 
             for (const projectId of new Set(dead.map(run => run.projectId))) {

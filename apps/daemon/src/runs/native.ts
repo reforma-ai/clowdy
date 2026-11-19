@@ -46,12 +46,15 @@ export class NativeAgents {
         this.push(() => this.applyStream(event));
     }
 
-    /** The parent's turn ended: whatever still runs ends with it. */
-    finish(): void {
+    /**
+     * The parent's turn ended: whatever still runs ends with it, and so does a call a sub-agent left running (`reason` says why), also in a sub-agent
+     * that a Stop of the parent has ended already.
+     */
+    finish(reason?: string): void {
         this.flush();
         this.store.tx(() => {
             for (const agent of this.agents.values()) {
-                agent.writer.end();
+                agent.writer.finish(reason);
                 this.close(agent, 'cancelled', 'The parent run ended its turn');
             }
 
