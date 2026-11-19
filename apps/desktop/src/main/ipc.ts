@@ -1,7 +1,7 @@
 import { THEMES, type Theme } from '@clowdy/constants';
 import { BrowserWindow, dialog } from 'electron';
 
-import { IPC_CHANNELS, type DesktopBridge } from '../shared/bridge';
+import { IPC_CHANNELS, type DesktopBridge, type FindOptions, type FindResult } from '../shared/bridge';
 import { isTrustedUrl } from './security';
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
@@ -77,5 +77,78 @@ export function registerIpc(
         const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
 
         return result.canceled ? [] : result.filePaths;
+    });
+
+    ipcMain.handle(IPC_CHANNELS.findInPage, (event, text: unknown, options: unknown) => {
+        assertTrustedSender(event, trustedOrigin);
+
+        return findInPage(event.sender, text, options);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.stopFind, (event) => {
+        assertTrustedSender(event, trustedOrigin);
+        event.sender.stopFindInPage('clearSelection');
+    });
+}
+
+/** How long a search may run before the page gives up on a result that never arrives. */
+const FIND_TIMEOUT_MS = 5000;
+
+interface FoundInPage {
+    requestId: number;
+    matches: number;
+    activeMatchOrdinal: number;
+    finalUpdate: boolean;
+}
+
+/** The slice of `WebContents` the search uses. */
+interface FindTarget {
+    findInPage: (text: string, options: FindOptions) => number;
+    stopFindInPage: (action: 'clearSelection' | 'keepSelection' | 'activateSelection') => void;
+    on: (event: 'found-in-page', listener: (event: unknown, result: FoundInPage) => void) => void;
+    removeListener: (event: 'found-in-page', listener: (event: unknown, result: FoundInPage) => void) => void;
+}
+
+function findOptions(value: unknown): FindOptions {
+    if (typeof value !== 'object' || value === null) throw new Error('Bad find options');
+
+    const { forward, findNext } = value as { forward?: unknown; findNext?: unknown };
+
+    if (typeof forward !== 'boolean' || typeof findNext !== 'boolean') throw new Error('Bad find options');
+
+    return { forward, findNext };
+}
+
+/**
+ * Chromium's own search of the text drawn in the window. The count arrives on `found-in-page` once the pass is done.
+ * An empty query is refused: `findInPage` cannot take one, and clearing is `stopFindInPage`.
+ */
+function findInPage(contents: FindTarget, text: unknown, options: unknown): Promise<FindResult> {
+    if (typeof text !== 'string' || text.length === 0) throw new Error('Empty find');
+
+    const parsed = findOptions(options);
+    const requestId = contents.findInPage(text, parsed);
+
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = (result: FindResult) => {
+            if (settled) return;
+
+            settled = true;
+            clearTimeout(timer);
+            contents.removeListener('found-in-page', onFound);
+            resolve(result);
+        };
+        const onFound = (_event: unknown, result: FoundInPage) => {
+            if (result.requestId !== requestId || !result.finalUpdate) return;
+
+            finish({
+                matches: Number.isInteger(result.matches) ? result.matches : 0,
+                activeMatchOrdinal: Number.isInteger(result.activeMatchOrdinal) ? result.activeMatchOrdinal : 0,
+            });
+        };
+        const timer = setTimeout(() => finish({ matches: 0, activeMatchOrdinal: 0 }), FIND_TIMEOUT_MS);
+
+        contents.on('found-in-page', onFound);
     });
 }

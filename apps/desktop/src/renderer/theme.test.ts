@@ -47,6 +47,9 @@ describe('theme', () => {
             ready: async () => undefined,
             onUpdateReady: () => () => undefined,
             restartToUpdate: async () => undefined,
+            findInPage: async () => ({ matches: 0, activeMatchOrdinal: 0 }),
+            stopFind: async () => undefined,
+            onFindCommand: () => () => undefined,
         };
         setTheme('dark');
 

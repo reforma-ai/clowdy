@@ -6,6 +6,7 @@ import { installDispatcher } from '../hotkeys/dispatcher';
 import { commandHint } from '../hotkeys/react';
 import { createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
 import { UiStore } from '../stores';
+import { findCommands } from './findCommands';
 import { navCommandId, NEW_CHAT_COMMAND, shellCommands, type ShellCommandsRoot } from './shellCommands';
 
 let registry: HotkeyRegistry;
@@ -290,8 +291,10 @@ describe('the keymap', () => {
 
         for (const command of shellCommands(root, openHelp)) probe.defineCommand({ ...command, scope: 'app' });
 
+        for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
+
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'nav.back', 'nav.forward']);
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
         expect(navCommandId('tasks')).toBe('nav.tasks');
     });
 });
