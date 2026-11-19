@@ -1,0 +1,35 @@
+name: Gate
+# The checks a change has to pass to reach main: build, lint, typecheck and test of every package, then lint and typecheck of the root scripts.
+# ci.yml calls it on a pull request into main. Nothing runs it again after the merge. Rules: GITFLOW.md (Pull Requests).
+
+on:
+    workflow_call: {}
+
+permissions:
+    contents: read
+
+jobs:
+    gate:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        steps:
+            - uses: actions/checkout@v5
+            # Vite and Vitest run on the runner's Node.
+            - uses: actions/setup-node@v5
+              with:
+                  node-version: 24
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: package.json
+            - run: bun install --frozen-lockfile
+            # `--continue` lets every package report, and `!cancelled()` runs each step even after an earlier one failed, so one run shows all that fails.
+            - run: bunx turbo run build typecheck --continue
+            - if: ${{ !cancelled() }}
+              run: bunx turbo run lint --continue
+            # One package at a time: the daemon's tests wait on timers, and the other packages' workers starve them on a small runner.
+            - if: ${{ !cancelled() }}
+              run: bunx turbo run test --continue --concurrency=1
+            - if: ${{ !cancelled() }}
+              run: bunx eslint scripts
+            - if: ${{ !cancelled() }}
+              run: bunx tsc --noEmit -p scripts
