@@ -269,7 +269,7 @@ describe('AgentRegistry', () => {
 
             const reg = registry();
 
-            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: false, subagents: true, longContext: true });
+            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: false, subagents: true, longContext: true, chatTitle: true });
             expect((await byId(reg, 'claude'))?.settings?.[0]).toMatchObject({ id: 'memory', default: false, label: expect.any(String), description: expect.any(String) });
 
             const agent = await start(reg);
@@ -287,7 +287,7 @@ describe('AgentRegistry', () => {
 
             reg.update('claude', { settings: { memory: true, connectors: true, subagents: false, longContext: false } });
 
-            expect(await settingsOf(reg)).toEqual({ memory: true, connectors: true, subagents: false, longContext: false });
+            expect(await settingsOf(reg)).toEqual({ memory: true, connectors: true, subagents: false, longContext: false, chatTitle: true });
 
             const agent = await start(reg);
 
@@ -299,7 +299,28 @@ describe('AgentRegistry', () => {
             // A change names only what it changes.
             reg.update('claude', { settings: { memory: false } });
 
-            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: true, subagents: false, longContext: false });
+            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: true, subagents: false, longContext: false, chatTitle: true });
+        });
+
+        test('the chat titles of Claude Code and Codex are on, are read by the daemon alone, and an agent without them has none to read', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+            program('codex', 'codex-cli 0.166.0');
+
+            const reg = registry();
+
+            expect(reg.setting('claude', 'chatTitle')).toBe(true);
+            expect(reg.setting('codex', 'chatTitle')).toBe(true);
+            expect(reg.setting('cursor', 'chatTitle')).toBeUndefined();
+            expect(reg.setting('nobody', 'chatTitle')).toBeUndefined();
+            expect((await byId(reg, 'codex'))?.settings).toEqual([{ id: 'chatTitle', label: 'Chat titles', description: 'Let Codex name a new chat from its first message', value: true, default: true }]);
+
+            const before = await start(reg);
+
+            reg.update('claude', { settings: { chatTitle: false } });
+            expect(reg.setting('claude', 'chatTitle')).toBe(false);
+            expect(reg.setting('codex', 'chatTitle')).toBe(true);
+            // Nothing about it reaches the agent: it starts as it did.
+            expect(await start(reg)).toEqual(before);
         });
 
         test('are kept in agents.json, refuse a setting the agent does not have, and give way to the variables the person set', async () => {

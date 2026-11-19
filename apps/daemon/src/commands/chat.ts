@@ -2,7 +2,7 @@ import { projectChatMode } from '@clowdy/protocol';
 
 import { messageWithFiles } from '../attachments/message';
 import { toAttachment } from '../attachments/service';
-import { choiceOf, createChat, DEFAULT_CHAT_TITLE, deleteChat, renameChat, requireChat, saveChat, setChatArchived, setChatMode, setChatModel } from '../domain/chats';
+import { choiceOf, createChat, DEFAULT_CHAT_TITLE, deleteChat, firstWords, renameChat, requireChat, saveChat, setChatArchived, setChatMode, setChatModel } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
 import { invalid, unavailable } from '../errors';
@@ -12,14 +12,6 @@ import { isAtRest } from '../runs/queue';
 import type { QueuedMessageMode } from '@clowdy/protocol';
 import type { AgentRegistry } from '../engine/acp/registry';
 import type { Handlers, Services } from './context';
-
-const TITLE_LENGTH = 60;
-
-export function titleFrom(text: string): string {
-    const line = text.split('\n')[0].trim();
-
-    return line.length > TITLE_LENGTH ? `${ line.slice(0, TITLE_LENGTH - 1) }…` : line;
-}
 
 /** Says now, with the agent's name, that it is switched off: a run that failed on it later would only show a failed chat. */
 export function requireEnabled(agents: AgentRegistry, engine: string): void {
@@ -58,7 +50,7 @@ function send({ store, runs, driver, attachments, agents, queue }: Services, cha
     const now = Date.now();
 
     if (!chat.orchestratorRunId) {
-        const title = chat.title === DEFAULT_CHAT_TITLE ? titleFrom(text || files[0].name) : chat.title;
+        const title = chat.title === DEFAULT_CHAT_TITLE ? firstWords({ text, attachments: body.attachments }) : chat.title;
         const run = runs.createRun({ project, role: 'orchestrator', chatId, summary: title, engine: chat.engine, model: chat.model, effort: chat.effort, nextPrompt: firstMessage('orchestrator', chat.mode, content) });
 
         attachments.markSent(files, chatId, run.id);

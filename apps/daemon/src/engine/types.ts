@@ -44,11 +44,28 @@ export interface EngineStartOptions {
     model?: string;
     /** The reasoning level, in the agent's own spelling; applied after `model`, since a model decides which levels exist. */
     effort?: string;
+    /** What to do about the title the agent gives its session; absent leaves the agent to name it and the runtime to ignore the name. */
+    title?: SessionTitle;
     /** Tools the runtime executes itself. The engine exposes them to the model and calls `execute`. */
     tools: ToolDefinition[];
     /** Aborted when the run is cancelled or the daemon stops. The session must end promptly. */
     signal: AbortSignal;
 }
+
+/**
+ * An agent names its own session after the first message (Claude Code and Codex do, and tell a client by `session_info_update`), and does not
+ * once the client has named it. Either way a session of the runtime's own chat has one of these; only a new session uses it, since one that
+ * continues has its name already.
+ */
+export type SessionTitle =
+    /**
+     * Wants the agent's name. Called with each title the agent gives, which may come after the turn's last event: an engine whose agent has not
+     * named the new session by then keeps it alive a few seconds for the name. Answers `true` for a title it took, which ends that wait, and `false`
+     * for one it did not (an agent may first give the text of the message as a title).
+     */
+    | { onTitle: (title: string) => boolean }
+    /** Names the session `keep` before the first message, so the agent keeps that title and spends no model call on one of its own. */
+    | { keep: string };
 
 export interface EngineSession extends AsyncIterable<EngineEvent> {
     /**

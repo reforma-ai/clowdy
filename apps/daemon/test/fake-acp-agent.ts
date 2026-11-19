@@ -18,8 +18,11 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
  *   fail <code> <message>       fails the prompt with a JSON-RPC error
  *   sleep <ms>                  waits; a cancel ends the prompt with `cancelled`
  *   crash                       writes to stderr and exits with code 3
+ *   title <text>                a `session_info_update` that names the session (FAKE_ACP_TITLES=1 gives the agent `sessionCapabilities.title` and `session/set_title`)
+ *   echo                        at the end of the prompt, a title that is the whole text of the prompt, as Codex gives until its own is ready
+ *   late <ms> <text>            a title <ms> after the prompt is answered, as Codex names a session when its turn is over
  *
- * FAKE_ACP_LOG is a file that gets a line for every `session/cancel` the agent receives, and one for every `_session/steering` request.
+ * FAKE_ACP_LOG is a file that gets a line for every `session/cancel` the agent receives, one for every `_session/steering` request, and `title <session> <title>` for every `session/set_title`.
  * FAKE_ACP_STEERING=1 says in `initialize` that the agent can steer (`_meta.steering.supported`, where both pinned adapters put it): a steer that comes
  * while a prompt runs is `injected`, and its lines run as directives of that same prompt, after the line in progress; with no prompt running it is
  * `promptRequired`. Without the switch the agent still answers the method, so a test can see that the client did not ask.
@@ -55,6 +58,8 @@ interface FakeSession {
     prompting: boolean;
     /** Steers taken and not yet run, as the text of their prompts. */
     steers: string[];
+    /** The title the client gave with `session/set_title`; the agent names the session only while it has none. */
+    title?: string;
 }
 
 const sessions = new Map<string, FakeSession>();
@@ -136,6 +141,7 @@ const app = agent({ name: 'fake-acp-agent' })
                     ...(resumeMode === 'resume' && { resume: {} }),
                     ...(process.env.FAKE_ACP_SYSTEM_PROMPT !== '0' && { systemPrompt: {} }),
                     ...(process.env.FAKE_ACP_DIRECTORIES === '1' && { additionalDirectories: {} }),
+                    ...(process.env.FAKE_ACP_TITLES === '1' && { title: {} }),
                 },
                 ...(process.env.FAKE_ACP_ECHO_CLIENT === '1' && { _meta: { client: params.clientCapabilities } }),
             },
@@ -208,6 +214,22 @@ const app = agent({ name: 'fake-acp-agent' })
 
         return { configOptions: modelOptions(session?.model ?? 'fast', session?.effort) };
     })
+    .onRequest(methods.agent.session.setTitle, async ({ params, client }) => {
+        const session = sessions.get(params.sessionId);
+
+        if (!session) {
+            throw new RequestError(-32002, 'Resource not found');
+        }
+
+        if (process.env.FAKE_ACP_LOG) {
+            appendFileSync(process.env.FAKE_ACP_LOG, `title ${ params.sessionId } ${ params.title }\n`);
+        }
+
+        session.title = params.title;
+        await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'session_info_update', title: params.title } });
+
+        return { title: params.title };
+    })
     .onNotification(methods.agent.session.cancel, ({ params }) => {
         if (process.env.FAKE_ACP_LOG) {
             appendFileSync(process.env.FAKE_ACP_LOG, `cancel ${ params.sessionId }\n`);
@@ -240,6 +262,8 @@ const app = agent({ name: 'fake-acp-agent' })
         const text = params.prompt.map(block => (block.type === 'text' ? block.text : '')).join('\n');
         let usage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined;
         let calls = 0;
+        let echoed = false;
+        const later: { ms: number; title: string }[] = [];
         const lines = text.split('\n');
 
         session.prompting = true;
@@ -352,8 +376,21 @@ const app = agent({ name: 'fake-acp-agent' })
                         await send({ sessionUpdate: 'usage_update', used: 1, size: 200_000, _meta: { '_claude/rateLimit': { status, rateLimitType: 'five_hour', utilization: 0.95, resetsAt: Number(resetsAt) } } });
                         break;
                     }
+                    case 'title':
+                        // An agent names a session only when the client has not.
+                        if (session.title === undefined) {
+                            await send({ sessionUpdate: 'session_info_update', title: argument });
+                        }
+
+                        break;
+                    case 'echo':
+                        echoed = true;
+                        break;
+                    case 'late':
+                        later.push({ ms: Number(rest[0]), title: rest.slice(1).join(' ') });
+                        break;
                     case 'info':
-                        await say(JSON.stringify({ cwd: session.cwd, directories: session.directories, servers: session.mcpServers.map(server => server.name), systemPrompt: session.systemPrompt, meta: session.meta, model: session.model, prompts: session.count }));
+                        await say(JSON.stringify({ title: session.title, cwd: session.cwd, directories: session.directories, servers: session.mcpServers.map(server => server.name), systemPrompt: session.systemPrompt, meta: session.meta, model: session.model, prompts: session.count }));
                         break;
                     case 'capabilities':
                         await say(JSON.stringify(clientCapabilities));
@@ -403,6 +440,17 @@ const app = agent({ name: 'fake-acp-agent' })
         }
         finally {
             session.prompting = false;
+        }
+
+        // What an agent gives once the prompt is answered: its first message as the title, then a name of its own a moment later.
+        if (session.title === undefined) {
+            if (echoed) {
+                setTimeout(() => void send({ sessionUpdate: 'session_info_update', title: text.replace(/\s+/g, ' ').trim() }), 5);
+            }
+
+            for (const { ms, title } of later) {
+                setTimeout(() => void send({ sessionUpdate: 'session_info_update', title }), ms);
+            }
         }
 
         return { stopReason: 'end_turn' as const, ...(usage && { usage }) };

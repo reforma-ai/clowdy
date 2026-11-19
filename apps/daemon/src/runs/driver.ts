@@ -12,6 +12,7 @@ import { NativeAgents } from './native';
 import { describeProcess, killSurvivor } from './processes';
 import { CONTINUE_MESSAGE, firstMessage, skillPrompt, systemPrompt } from './prompts';
 import { childReport, wakeMessage } from './reports';
+import { sessionTitle } from './titles';
 import { ASK_USER } from './tools';
 import { TurnWriter, UNFINISHED_TOOL } from './writer';
 
@@ -37,6 +38,8 @@ export interface DriverDeps {
     tools(run: Run, mode: ChatMode): ToolDefinition[];
     /** The message that makes the engine's agent compact its conversation, or `undefined` for an agent with no such command. */
     compactCommand(engine: EngineId): string | undefined;
+    /** Whether the person left the agent's chat titles on, or `undefined` for an agent that has no such switch: a chat of it keeps the first words of its message. */
+    namesChats(engine: EngineId): boolean | undefined;
 }
 
 export interface SpawnInput {
@@ -107,6 +110,8 @@ export class RunDriver {
     private flights = new Map<string, Promise<void>>();
     /** Engine sessions started and not yet closed. */
     private sessions = 0;
+    /** Aborted when the daemon stops. A session may run on after its turn (`EngineStartOptions.title`), when its run's own signal is gone. */
+    private stopping = new AbortController();
 
     constructor(private deps: DriverDeps) {}
 
@@ -295,6 +300,7 @@ export class RunDriver {
         const { runs, config, store } = this.deps;
 
         runs.abortAll();
+        this.stopping.abort();
         await Promise.race([Promise.allSettled([...this.flights.values()]), Bun.sleep(2 * config.timings.killGraceMs)]);
 
         for (const { process } of listRunsWithProcess(store.db)) {
@@ -402,8 +408,9 @@ export class RunDriver {
             ...(run.sessionId && { history: () => conversationRecord(listItems(store.db, runId, 0).filter(item => item.seq <= told), incoming) }),
             model: run.model,
             effort: run.effort,
+            title: sessionTitle(store, run, this.deps.namesChats(run.engine), prompt),
             tools: this.deps.tools(run, mode),
-            signal: AbortSignal.any([signal, turnAbort.signal]),
+            signal: AbortSignal.any([signal, turnAbort.signal, this.stopping.signal]),
         });
 
         this.sessions++;

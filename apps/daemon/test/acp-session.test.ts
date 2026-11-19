@@ -664,3 +664,164 @@ describe('probing an agent', () => {
         await expect(probeAgent(broken.registry, broken.bridge, 'fake-acp', { cwd: process.cwd(), timeoutMs: 5000 })).rejects.toThrow('The agent wrote: not an agent');
     });
 });
+
+describe('the title an agent gives its session', () => {
+    const named = { FAKE_ACP_TITLES: '1' };
+    const logPath = () => join(mkdtempSync(join(tmpdir(), 'clowdy-titles-')), 'agent.log');
+
+    /** What a runtime that wants the name does: takes the first title that is not the message again, and says so. */
+    const wanting = (message = 'a message that is no title') => {
+        const given: string[] = [];
+
+        return { given, title: { onTitle: (title: string) => given.push(title) > 0 && title !== message } };
+    };
+
+    const pidOf = (events: EngineEvent[]) => {
+        const process = events.find(event => event.type === 'process');
+
+        return process?.type === 'process' ? process.pid : -1;
+    };
+
+    test('a title the runtime keeps is given to the agent before the first message, and the agent names nothing over it', async () => {
+        const log = logPath();
+        const { session } = use({ agentEnv: { ...named, FAKE_ACP_LOG: log } }).start('title Made by the agent\ninfo', { title: { keep: 'Fix the login form' } });
+        const events = await collect(session);
+
+        await session.close();
+
+        expect(JSON.parse(textOf(events))).toMatchObject({ title: 'Fix the login form' });
+        expect(readFileSync(log, 'utf8')).toBe('title fake-1 Fix the login form\n');
+        rmSync(dirname(log), { recursive: true, force: true });
+    });
+
+    test('an agent that does not name sessions is not asked to keep one', async () => {
+        const log = logPath();
+        const { session } = use({ agentEnv: { FAKE_ACP_LOG: log } }).start('info', { title: { keep: 'Fix the login form' } });
+        const events = await collect(session);
+
+        await session.close();
+
+        expect(JSON.parse(textOf(events))).not.toHaveProperty('title');
+        expect(() => readFileSync(log, 'utf8')).toThrow();
+        rmSync(dirname(log), { recursive: true, force: true });
+    });
+
+    test('a title the agent gives during the turn goes to the runtime, and the agent stops with the turn', async () => {
+        const { given, title } = wanting();
+        const { session } = use({ agentEnv: named }).start('title Dark mode toggle\nsay done', { title });
+        const events = await collect(session);
+
+        await session.close();
+
+        expect(given).toEqual(['Dark mode toggle']);
+        await until(() => !alive(pidOf(events)), 'the agent to stop');
+    });
+
+    test('an agent that names its session after the turn keeps running for the name, and stops when the runtime has it', async () => {
+        const message = 'echo\nlate 300 Dark mode toggle\nsay done';
+        const { given, title } = wanting(message.replace(/\s+/g, ' '));
+        const { session } = use({ agentEnv: named }).start(message, { title });
+        const events = await collect(session);
+        const pid = pidOf(events);
+
+        // The turn is over, and the run does not wait for the agent.
+        await session.close();
+        expect(events.at(-1)).toMatchObject({ type: 'done' });
+        expect(alive(pid)).toBe(true);
+
+        await until(() => given.includes('Dark mode toggle'), 'the name');
+        // The message as a title came first and was not taken.
+        expect(given).toEqual([message.replace(/\s+/g, ' '), 'Dark mode toggle']);
+        await until(() => !alive(pid), 'the agent to stop');
+    });
+
+    test('an agent that never names its session is stopped when the wait is over', async () => {
+        const { given, title } = wanting();
+        const { session } = use({ agentEnv: named, titleWaitMs: 200 }).start('late 5000 Too late\nsay done', { title });
+        const events = await collect(session);
+
+        await session.close();
+        expect(alive(pidOf(events))).toBe(true);
+        await until(() => !alive(pidOf(events)), 'the agent to stop');
+        expect(given).toEqual([]);
+    });
+
+    test('cancelling the run ends the wait', async () => {
+        const { title } = wanting();
+        const { session, abort } = use({ agentEnv: named }).start('late 5000 Too late\nsay done', { title });
+        const events = await collect(session);
+
+        await session.close();
+        expect(alive(pidOf(events))).toBe(true);
+        abort.abort();
+        await until(() => !alive(pidOf(events)), 'the agent to stop');
+    });
+
+    test('a title the runtime fails to take does not end the turn', async () => {
+        const warn = spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        try {
+            const onTitle = (): boolean => {
+                throw new Error('the store is closed');
+            };
+            const { session } = use({ agentEnv: named, titleWaitMs: 200 }).start('title Dark mode toggle\nsay done', { title: { onTitle } });
+            const events = await collect(session);
+
+            await session.close();
+            expect(events.at(-1)).toMatchObject({ type: 'done', result: 'done' });
+            expect(warn).toHaveBeenCalledWith(expect.stringContaining('the store is closed'));
+            await until(() => !alive(pidOf(events)), 'the agent to stop');
+        }
+        finally {
+            warn.mockRestore();
+        }
+    });
+
+    test('a session that continues has its title already: it is given none to keep and is not waited for', async () => {
+        const log = logPath();
+        const { given, title } = wanting();
+        const wants = use({ agentEnv: named }).start('late 5000 Too late\nsay done', { resumeSessionId: 'earlier-7', title });
+        const events = await collect(wants.session);
+
+        await wants.session.close();
+        // The agent stops with the turn, as one that is not waited for, not after the ten seconds of the wait.
+        await until(() => !alive(pidOf(events)), 'the agent to stop');
+        expect(given).toEqual([]);
+        current?.stop();
+
+        const keeps = use({ agentEnv: { ...named, FAKE_ACP_LOG: log } }).start('say done', { resumeSessionId: 'earlier-7', title: { keep: 'Fix the login form' } });
+
+        await collect(keeps.session);
+        await keeps.session.close();
+        expect(() => readFileSync(log, 'utf8')).toThrow();
+        rmSync(dirname(log), { recursive: true, force: true });
+    });
+
+    test('a session that was to continue and starts a new one is named like any new session', async () => {
+        const log = logPath();
+        const { session } = use({ agentEnv: { ...named, FAKE_ACP_LOST: '1', FAKE_ACP_LOG: log } }).start('say done', { resumeSessionId: 'earlier-7', title: { keep: 'Fix the login form' } });
+
+        await collect(session);
+        await session.close();
+        expect(readFileSync(log, 'utf8')).toMatch(/^title fake-\d+ Fix the login form\n$/);
+        rmSync(dirname(log), { recursive: true, force: true });
+    });
+
+    test('an agent that does not name sessions is not waited for, and a turn that failed is not either', async () => {
+        const quiet = wanting();
+        const first = use().start('say done', { title: quiet.title });
+        const done = await collect(first.session);
+
+        await first.session.close();
+        await until(() => !alive(pidOf(done)), 'the agent to stop');
+        current?.stop();
+
+        const failing = wanting();
+        const second = use({ agentEnv: named }).start('fail -32000 broken', { title: failing.title });
+        const failed = await collect(second.session);
+
+        await second.session.close();
+        expect(failed.at(-1)).toMatchObject({ type: 'error' });
+        await until(() => !alive(pidOf(failed)), 'the agent to stop');
+    });
+});

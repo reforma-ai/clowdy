@@ -31,6 +31,8 @@ export interface RigOptions {
     command?: string;
     args?: string[];
     initializeTimeoutMs?: number;
+    /** How long an agent that has not named its session by the end of the turn keeps running for the name. */
+    titleWaitMs?: number;
     /** The options an adapter reads, as the built-in catalog gives them to Claude Code. */
     sessionMeta?: Record<string, unknown>;
     /** What the agent is told it can do in `initialize`, as the built-in catalog gives it to Cursor. */
@@ -54,7 +56,7 @@ export function rig(options: RigOptions = {}): Rig {
 
     registry.add({ id: 'fake-acp', name: 'Fake ACP', command: options.command ?? process.execPath, args: options.args ?? [FAKE_AGENT], env: options.agentEnv });
 
-    const engine = new AcpEngine('fake-acp', { registry, bridge, env, permissions: options.permissions, initializeTimeoutMs: options.initializeTimeoutMs });
+    const engine = new AcpEngine('fake-acp', { registry, bridge, env, permissions: options.permissions, initializeTimeoutMs: options.initializeTimeoutMs, titleWaitMs: options.titleWaitMs });
 
     return {
         engine,

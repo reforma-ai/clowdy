@@ -1,12 +1,12 @@
 import { projectChatMode } from '@clowdy/protocol';
 
-import { choiceOf, createChat, saveChat } from '../domain/chats';
+import { choiceOf, createChat, saveChat, titleFrom } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
 import { createTask, deleteTask, linkChatTask, requireTask, updateTask } from '../domain/tasks';
 import { CommandError } from '../errors';
 import { firstMessage, taskMessage } from '../runs/prompts';
-import { requireEnabled, titleFrom } from './chat';
+import { requireEnabled } from './chat';
 
 import type { Handlers } from './context';
 

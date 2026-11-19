@@ -101,6 +101,13 @@ export class AgentRegistry {
         return this.stored.overrides[id]?.enabled !== false;
     }
 
+    /** The value of a switch of the agent as the person left it, or `undefined` for an agent that has no such switch (a custom one has none). */
+    setting(id: string, settingId: string): boolean | undefined {
+        const setting = this.spec(id)?.settings?.find(candidate => candidate.id === settingId);
+
+        return setting && settingValue(setting, this.stored.overrides[id] ?? {});
+    }
+
     /** The message that makes the agent compact its conversation, or `undefined` for an agent with no such command. */
     compactCommand(id: string): string | undefined {
         return this.spec(id)?.compact;
@@ -465,7 +472,7 @@ function appliedSettings(spec: AgentSpec, override: AgentOverride): Required<Set
     const applied: Required<SettingEffect> = { env: {}, disallowedTools: [] };
 
     for (const setting of spec.settings ?? []) {
-        const effect = setting.effect(settingValue(setting, override));
+        const effect = setting.effect?.(settingValue(setting, override)) ?? {};
 
         Object.assign(applied.env, effect.env);
         applied.disallowedTools.push(...effect.disallowedTools ?? []);

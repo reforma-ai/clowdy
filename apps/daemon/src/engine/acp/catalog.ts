@@ -15,14 +15,28 @@ export interface SettingEffect {
     disallowedTools?: string[];
 }
 
-/** A switch of an agent that Clowdy can turn by itself: it only changes the environment or the session options the agent starts with. */
+/** A switch of an agent that Clowdy can turn by itself: it changes the environment or the session options the agent starts with, or is read by the daemon alone. */
 export interface AgentSettingSpec {
     id: string;
     label: string;
     description: string;
     default: boolean;
-    effect: (on: boolean) => SettingEffect;
+    /** What the agent is started with for a value; absent for a switch only the daemon reads (it does nothing to the agent). */
+    effect?: (on: boolean) => SettingEffect;
 }
+
+/**
+ * The switch of an agent that names a chat after its first message by itself (Claude Code and Codex send the name as `session_info_update`). An agent without it
+ * is not known to name a chat well, and a chat of it keeps the first words of its first message. Off, the first words are the name the agent is told to keep.
+ */
+export const CHAT_TITLE_SETTING = 'chatTitle';
+
+const chatTitleSetting = (agent: string): AgentSettingSpec => ({
+    id: CHAT_TITLE_SETTING,
+    label: 'Chat titles',
+    description: `Let ${ agent } name a new chat from its first message`,
+    default: true,
+});
 
 /** A built-in agent: what finds it, how it starts, and what to tell the user about it. */
 export interface AgentSpec {
@@ -101,6 +115,7 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
                 default: true,
                 effect: on => ({ env: { CLAUDE_CODE_DISABLE_1M_CONTEXT: on ? null : '1' } }),
             },
+            chatTitleSetting('Claude Code'),
         ],
         // A stray key in the daemon's environment would move billing off the user's subscription; a key the user wants goes in the agent's `env`.
         scrub: [/^ANTHROPIC_API_KEY$/, /^ANTHROPIC_AUTH_TOKEN$/, /^CLAUDE_CODE_OAUTH_TOKEN$/],
@@ -114,6 +129,7 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         programs: ['codex'],
         launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.6.0', pathEnv: 'CODEX_PATH' },
         compact: '/compact',
+        settings: [chatTitleSetting('Codex')],
         scrub: [/^OPENAI_API_KEY$/, /^CODEX_API_KEY$/],
         login: 'codex login',
     },
