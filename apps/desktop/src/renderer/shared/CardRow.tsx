@@ -23,7 +23,7 @@ export interface CardRowProps extends Omit<ComponentPropsWithoutRef<'div'>, 'tit
 }
 
 /**
- * A row that is a card of its own, as the projects of Settings > Projects and the folders of a project are: an icon in a box of its own,
+ * A row that is a card of its own, as the projects of Settings > Projects are: an icon in a box of its own,
  * the title with its marks and the lines under it, and the actions at the end.
  */
 export function CardRow({ icon, title, marks, children, actions, onPress, pressProps, className, ...props }: CardRowProps) {

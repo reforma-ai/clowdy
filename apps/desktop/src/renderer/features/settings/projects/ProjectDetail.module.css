@@ -3,22 +3,78 @@
     overflow-wrap: anywhere;
 }
 
-.nameInput {
-    width: 16rem;
+.nameField {
+    width: 18rem;
     max-width: 100%;
 }
 
-/* The icon as the menu shows it, larger, on a tile of its own so a clear background reads as one. */
-.preview {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    width: var(--spacing-32);
-    height: var(--spacing-32);
-    margin-inline-end: var(--spacing-xs);
-    border: 1px solid var(--color-secondary-muted-border);
-    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
+/* The whole left side of the name field: one hit target, a hairline before the text. The field clips it to the outer corners. */
+.iconSlot {
+    position: relative;
+    align-self: stretch;
+    width: var(--spacing-36);
+    margin-inline-start: calc(var(--spacing-10) * -1);
+    border-inline-end: 1px solid var(--color-secondary-muted-border);
+}
+
+.choose {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
     color: var(--color-secondary-muted-text);
+    cursor: pointer;
+}
+
+.choose:hover {
+    background: var(--color-secondary-muted);
+}
+
+.choose:focus-visible {
+    outline: 2px solid var(--color-focus-ring, currentcolor);
+    outline-offset: -2px;
+}
+
+.choose:disabled {
+    cursor: default;
+}
+
+.file {
+    display: none;
+}
+
+/* A small cross on the icon's corner, only while the pointer or the keyboard is on it. */
+.reset {
+    position: absolute;
+    top: var(--spacing-2);
+    right: var(--spacing-2);
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: var(--spacing-16);
+    height: var(--spacing-16);
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--color-surface-float);
+    color: var(--color-secondary-text);
+    box-shadow: 0 0 0 1px var(--color-secondary-muted-border);
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.iconSlot:hover .reset,
+.iconSlot:focus-within .reset {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.reset:focus-visible {
+    outline: 2px solid var(--color-focus-ring, currentcolor);
+    outline-offset: 1px;
 }

@@ -1,5 +1,4 @@
 import { Button } from '@clowdy/components/Button';
-import { Card } from '@clowdy/components/Card';
 import { Input } from '@clowdy/components/Input';
 import { SortableList, type SortableListDropContext } from '@clowdy/components/SortableList';
 import { Text } from '@clowdy/components/Text';
@@ -36,9 +35,9 @@ export interface FolderListProps<T> {
 }
 
 /**
- * The folders of a project in one filled card, in the Add project form and on the project's page in Settings: a row for each, dragged into
- * another order by the whole row (a grip outside its edge would stick out of the card) and removed one by one, and Add folders… across the
- * bottom of the card.
+ * The folders of a project in one card, in the Add project form and on the project's page in Settings: a row for each, a hairline between
+ * them, dragged into another order by the whole row (a grip outside its edge would stick out of the card) and removed one by one, and Add
+ * folders… as the last row.
  */
 export function FolderList<T>({ items, getKey, getPath, getName, renderDetails, renderActions, onRemove, isRemoveDisabled, onReorder, canDrop, onAdd, empty }: FolderListProps<T>) {
     const card = useRef<HTMLDivElement>(null);
@@ -86,7 +85,7 @@ export function FolderList<T>({ items, getKey, getPath, getName, renderDetails, 
                 items={ items as T[] }
                 gap="sm"
                 handle={ false }
-                className={ styles.sortable }
+                className={ `${ styles.list } ${ styles.draggable }` }
                 getKey={ getKey }
                 getTextValue={ getName }
                 canDrop={ canDrop }
@@ -95,13 +94,13 @@ export function FolderList<T>({ items, getKey, getPath, getName, renderDetails, 
                 { (item, { index }) => row(item, index) }
             </SortableList>
         )
-        : <div className={ styles.rows }>{ items.map((item, index) => <div key={ getKey(item) }>{ row(item, index) }</div>) }</div>;
+        : <div className={ styles.list }>{ items.map((item, index) => <div key={ getKey(item) }>{ row(item, index) }</div>) }</div>;
 
     return (
-        <Card ref={ card } variant="filled" size="lg" padding="md" gap="sm" className={ styles.card }>
+        <div ref={ card } className={ styles.card }>
             { items.length > 0 ? rows : empty && <Text variant="sm" color="secondary" align="center" className={ styles.empty }>{ empty }</Text> }
             { onAdd && <FolderAdder onAdd={ onAdd } /> }
-        </Card>
+        </div>
     );
 }
 
@@ -123,7 +122,7 @@ function FolderAdder({ onAdd }: { onAdd: (paths: string[]) => void }) {
     if (choose) {
         return (
             <div data-folder-adder>
-                <Button variant="bordered" size="sm" fullWidth onPress={ () => void choose().then(onAdd) }><Plus />Add folders…</Button>
+                <button type="button" className={ styles.add } onClick={ () => void choose().then(onAdd) }><Plus />Add folders…</button>
             </div>
         );
     }
