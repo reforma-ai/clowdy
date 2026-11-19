@@ -66,6 +66,34 @@ export function parseClaudeModels(stdout: string): AgentModel[] | undefined {
     return undefined;
 }
 
+/** What Claude Code answered to the request when it did not list models: the text of its `control_response` error. */
+export function claudeModelsError(stdout: string): string | undefined {
+    for (const line of stdout.split('\n')) {
+        const object = line.trim().startsWith('{') ? jsonObject(line) : undefined;
+        const response = object?.type === 'control_response' ? object.response as { subtype?: unknown; error?: unknown } | undefined : undefined;
+
+        if (response?.subtype === 'error' && text(response.error)) {
+            return text(response.error);
+        }
+    }
+
+    return undefined;
+}
+
+/** Why no models came back, in the program's own words, and for a Claude Code that does not know the request, which one it is and that it needs an update. */
+function claudeModelsFailure(run: { stdout: string; stderr: string }, program: string): string {
+    const said = claudeModelsError(run.stdout);
+
+    // An older Claude Code answers an unknown request with an error and exit code 0.
+    if (said && /unsupported control request/i.test(said)) {
+        return `Claude Code at ${ program } is too old to list its models. Update it, then try again`;
+    }
+
+    const reason = said ?? run.stderr.trim().split('\n')[0]?.slice(0, 160);
+
+    return reason ? `Claude Code could not list its models: ${ reason }` : 'Claude Code listed no models';
+}
+
 async function claudeModels(context: ProbeContext): Promise<AgentModels> {
     const run = await runProgram(context.program, CLAUDE_ARGS, { env: context.env, cwd: context.cwd, timeoutMs: CLAUDE_TIMEOUT_MS, input: CLAUDE_REQUEST, signal: context.signal });
 
@@ -75,10 +103,9 @@ async function claudeModels(context: ProbeContext): Promise<AgentModels> {
 
     const models = parseClaudeModels(run.stdout);
 
-    // An older Claude Code answers an unknown request with an error and exit code 0.
     return models && models.length > 0
         ? { state: 'ok', models, fetchedAt: context.now() }
-        : { state: 'error', models: [], detail: 'Claude Code did not list its models (is it up to date?)' };
+        : { state: 'error', models: [], detail: claudeModelsFailure(run, context.program) };
 }
 
 /* ------------------------------------- Codex ------------------------------------ */

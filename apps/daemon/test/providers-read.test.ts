@@ -161,6 +161,26 @@ describe('Claude Code', () => {
         expect(parseClaudeUsage('')).toMatchObject({ state: 'error' });
     });
 
+    test('says that the program is too old when it takes /usage for a skill that is not there, and what it said when it failed otherwise', () => {
+        const unknown = [JSON.stringify({ type: 'system', subtype: 'init' }), JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'Unknown skill: usage' })].join('\n');
+
+        expect(parseClaudeUsage(unknown, '/opt/homebrew/bin/claude')).toEqual({ state: 'error', windows: [], detail: 'Claude Code at /opt/homebrew/bin/claude is too old to report its limits. Update it, then try again' });
+        expect(parseClaudeUsage(unknown)).toMatchObject({ detail: 'Claude Code is too old to report its limits. Update it, then try again' });
+        expect(parseClaudeUsage(JSON.stringify({ type: 'result', result: 'Something else went wrong' }))).toEqual({ state: 'error', windows: [], detail: 'Claude Code did not report its limits: Something else went wrong' });
+        expect(parseClaudeUsage(JSON.stringify({ type: 'result' }))).toEqual({ state: 'error', windows: [], detail: 'Claude Code did not report its limits' });
+    });
+
+    test('names the program in the detail when an old Claude Code does not have /usage', async () => {
+        writeFileSync(join(root, 'status.json'), JSON.stringify(signedIn));
+        writeFileSync(join(root, 'usage.jsonl'), JSON.stringify({ type: 'result', is_error: false, result: 'Unknown skill: usage' }));
+
+        const old = program('claude-old', `if [ "$1" = auth ]; then cat '${ join(root, 'status.json') }'; else cat '${ join(root, 'usage.jsonl') }'; fi`);
+        const read = await claude.read(context({ program: old }));
+
+        expect(read.signIn.status).toBe('signed-in');
+        expect(read.usage).toEqual({ state: 'error', windows: [], detail: `Claude Code at ${ old } is too old to report its limits. Update it, then try again` });
+    });
+
     test('reads the account and then the usage of a subscription from the program, and only the account for an API key', async () => {
         const stream = JSON.stringify({ type: 'assistant', usage_report: { rate_limits: { limits: [{ kind: 'weekly_all', percent: 20, resets_at: '2026-11-24T15:00:00+00:00' }] } } });
         writeFileSync(join(root, 'status.json'), JSON.stringify(signedIn));
