@@ -27,6 +27,13 @@ export function getItem(db: Database, runId: string, seq: number): StreamItem | 
     return row ? toItem(row) : undefined;
 }
 
+/** The first thing the person wrote in a run's stream, which is the message that started a chat's orchestrator. */
+export function firstUserItem(db: Database, runId: string): StreamItem | undefined {
+    const row = db.query('SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, \'$.kind\') = \'user\' ORDER BY seq LIMIT 1').get(runId) as ItemRow | null;
+
+    return row ? toItem(row) : undefined;
+}
+
 export function findQuestion(db: Database, runId: string, questionId: string): StreamItem | undefined {
     const row = db.query('SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, \'$.questionId\') = ?').get(runId, questionId) as ItemRow | null;
 

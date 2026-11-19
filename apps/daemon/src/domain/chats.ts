@@ -12,6 +12,23 @@ import type { Store } from '../store';
 
 export const DEFAULT_CHAT_TITLE = 'New chat';
 
+const TITLE_LENGTH = 60;
+
+/** A title from a text: its first line, cut at `TITLE_LENGTH` characters. */
+export function titleFrom(text: string): string {
+    const line = text.split('\n')[0].trim();
+
+    return line.length > TITLE_LENGTH ? `${ line.slice(0, TITLE_LENGTH - 1) }…` : line;
+}
+
+/**
+ * The title a chat gets from its first message, before an agent names it: the first words of what the person wrote, or the name of the first file
+ * when they wrote nothing. A chat whose title is still this has not been named by anybody.
+ */
+export function firstWords({ text, attachments }: { text: string; attachments?: readonly { name: string }[] }): string {
+    return titleFrom(text || attachments?.[0]?.name || '');
+}
+
 export function requireChat(store: Store, chatId: string): Chat {
     const chat = getChat(store.db, chatId);
 

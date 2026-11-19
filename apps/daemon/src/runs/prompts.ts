@@ -92,9 +92,12 @@ export function skillPrompt(role: RunRole, skillsDir: string | undefined): strin
     ].filter(Boolean).join('\n\n');
 }
 
+/** What every first message of a run starts with, whatever the role. */
+export const FIRST_MESSAGE_START = 'Follow clowdy:';
+
 /** The first message of a run: the entry skill, the mode and the content (the user's message, or what an orchestrator wrote for a child). */
 export function firstMessage(role: RunRole, mode: ChatMode, content: string): string {
-    return `Follow clowdy:${ ENTRY_SKILL[role] }. Mode: ${ modeLabel(mode) }\n\n${ content }`;
+    return `${ FIRST_MESSAGE_START }${ ENTRY_SKILL[role] }. Mode: ${ modeLabel(mode) }\n\n${ content }`;
 }
 
 /** What a task started from the task list says to its new chat's orchestrator. */

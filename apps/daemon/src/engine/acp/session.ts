@@ -17,6 +17,12 @@ import type { AgentRegistry, ResolvedAgent } from './registry';
 /** How long `close()` waits for the agent's process to be gone. */
 const CLOSE_WAIT_MS = 10_000;
 
+/**
+ * How long an agent that has not named its session by the end of the turn keeps running for the name. Codex names a session after the turn is over,
+ * about five seconds on, with a call to a small model.
+ */
+const TITLE_WAIT_MS = 10_000;
+
 /** After `session/cancel` and a closed input, the agent has this long to leave by itself before its group is stopped. */
 const CANCEL_GRACE_MS = 1000;
 
@@ -46,6 +52,8 @@ export interface SessionDeps {
     clientVersion: string;
     /** How long to wait for the agent's answer to `initialize`; two minutes by default. */
     initializeTimeoutMs?: number;
+    /** How long an agent that has not named its session by the end of the turn keeps running for the name; ten seconds by default. */
+    titleWaitMs?: number;
     log?: (line: string) => void;
 }
 
@@ -195,6 +203,21 @@ export class AcpSession implements EngineSession {
     private prompt: PromptState = 'before';
     /** Wake the steers that wait for the prompt to be with the agent (or for the session to end before it is). */
     private promptWaiters: (() => void)[] = [];
+    /**
+     * The agent said in `initialize` that it names sessions (`sessionCapabilities.title`) and this session is new: it takes a title from the client, and
+     * may send one. A session that continues is named already.
+     */
+    private naming = false;
+    /** The runtime took a title the agent gave. */
+    private titled = false;
+    private tookTitle: () => void = () => undefined;
+    private titleTaken = new Promise<void>((resolve) => {
+        this.tookTitle = resolve;
+    });
+    /** The turn ended with an answer, not a failure. */
+    private answered = false;
+    /** The turn is over and the agent runs on for its title; `close()` leaves it to leave by itself. */
+    private lingering = false;
 
     constructor(private options: EngineStartOptions, private deps: SessionDeps) {
         this.signal = AbortSignal.any([options.signal, this.closing.signal]);
@@ -267,13 +290,59 @@ export class AcpSession implements EngineSession {
         }
     }
 
-    /** Stops the session and waits until its process is gone. */
+    /** Stops the session and waits until its process is gone, except one that runs on for its title: that leaves by itself, so the run does not wait for it. */
     async close(): Promise<void> {
         this.closing.abort();
         this.promptIs('over');
         // The token is useless once the session is over, even when nobody reads the generator to its end.
         this.access?.dispose();
+
+        if (this.lingering) {
+            return;
+        }
+
         await Promise.race([this.exited, wait(CLOSE_WAIT_MS)]);
+    }
+
+    /** Passes a title the agent gave to the runtime, which says whether it took it; the first one it takes ends the wait for a title. */
+    private offerTitle(update: SessionUpdate): void {
+        const { title } = this.options;
+
+        if (update.sessionUpdate !== 'session_info_update' || typeof update.title !== 'string' || !title || !('onTitle' in title) || this.titled) {
+            return;
+        }
+
+        try {
+            if (title.onTitle(update.title)) {
+                this.titled = true;
+                this.tookTitle();
+            }
+        }
+        catch (error) {
+            console.warn(`[clowdy] the title ${ JSON.stringify(update.title) } was not taken: ${ errorMessage(error) }`);
+        }
+    }
+
+    /** Whether a turn that is over leaves the agent running: the runtime wants a title, the agent names this new session and has not yet. */
+    private awaitsTitle(): boolean {
+        const { title } = this.options;
+
+        return this.answered && this.naming && !this.titled && Boolean(title && 'onTitle' in title);
+    }
+
+    /** Keeps the agent running until the runtime took its title, the time is up, the signal of the turn is aborted (a cancel, the daemon stopping) or the agent leaves; then stops it. */
+    private async linger(proc: AgentProcess): Promise<void> {
+        const { signal } = this.options;
+        const cancelled = new Promise<void>((resolve) => {
+            signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+
+        try {
+            await Promise.race([this.titleTaken, cancelled, proc.exited, wait(this.deps.titleWaitMs ?? TITLE_WAIT_MS)]);
+        }
+        finally {
+            proc.stop();
+        }
     }
 
     [Symbol.asyncIterator](): AsyncIterator<EngineEvent> {
@@ -378,7 +447,13 @@ export class AcpSession implements EngineSession {
 
             // A cancelled run is stopped by `stopAgent`, which gives the agent its moment first.
             if (!this.signal.aborted) {
-                proc.stop();
+                if (this.awaitsTitle()) {
+                    this.lingering = true;
+                    void this.linger(proc);
+                }
+                else {
+                    proc.stop();
+                }
             }
 
             void proc.exited.then(() => this.connection?.close());
@@ -396,6 +471,7 @@ export class AcpSession implements EngineSession {
         const app = client({ name: 'clowdy' })
             .onNotification(methods.client.session.update, ({ params }) => {
                 if (!replaying && params.sessionId === current && !isResumeWarning(params.update)) {
+                    this.offerTitle(params.update);
                     channel.push({ kind: 'update', update: params.update });
                 }
             })
@@ -522,6 +598,7 @@ export class AcpSession implements EngineSession {
 
             const id = current as string;
 
+            this.naming = Boolean(capabilities.sessionCapabilities?.title) && !resumed;
             this.sessionId = id;
             yield { type: 'session', sessionId: id };
 
@@ -547,6 +624,23 @@ export class AcpSession implements EngineSession {
                 }
                 else if (!choice.unchanged) {
                     await request(connection.agent.request(methods.agent.session.setConfigOption, { sessionId: id, configId: choice.configId, value: choice.value }));
+                }
+            }
+
+            const { title } = options;
+
+            // The agent keeps a title the client gave and makes none of its own (ACP says so, and both adapters do).
+            if (title && 'keep' in title && this.naming) {
+                try {
+                    await request(connection.agent.request(methods.agent.session.setTitle, { sessionId: id, title: title.keep }));
+                }
+                catch (error) {
+                    if (signal.aborted || error instanceof ProcessEnded) {
+                        throw error;
+                    }
+
+                    // Not fatal: the agent names the session as it would have, and the runtime ignores the name.
+                    console.warn(`[clowdy] ${ agent.name } would not take a title for its session: ${ errorMessage(error) }`);
                 }
             }
 
@@ -601,7 +695,10 @@ export class AcpSession implements EngineSession {
                     deps.costs.set(id, mapper.cost);
                 }
 
-                yield this.stopFailure(item.response.stopReason, agent.name) ?? { type: 'done', result: mapper.result() };
+                const failure = this.stopFailure(item.response.stopReason, agent.name);
+
+                this.answered = !failure;
+                yield failure ?? { type: 'done', result: mapper.result() };
 
                 return;
             }

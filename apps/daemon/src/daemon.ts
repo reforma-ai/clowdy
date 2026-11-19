@@ -8,6 +8,7 @@ import { listProjects } from './db/projects';
 import { DocsService } from './docs/service';
 import { ensurePersonalProject } from './domain/projects';
 import { createEngines } from './engine';
+import { CHAT_TITLE_SETTING } from './engine/acp/catalog';
 import { AgentRegistry } from './engine/acp/registry';
 import { FilesService } from './files/service';
 import { startServer } from './http/server';
@@ -73,7 +74,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         }
 
         const runs = new RunService(store, config, engines);
-        const driver: RunDriver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, driver }, run, mode), compactCommand: engine => agents.compactCommand(engine) });
+        const driver: RunDriver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, driver }, run, mode), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
         const wakes = new Wakeups(store, runs, driver, config.timings.wakeWindowMs);
         const docs = new DocsService(store);
         const attachments = new AttachmentsService(store, config.dataDir);
