@@ -11,7 +11,7 @@ import type { QueuedMessageMode } from '@clowdy/protocol';
 
 const LABEL = 'Send a message while the agent is working';
 
-/** The other way of sending, which the tip names: Cmd+Enter on macOS, Ctrl+Enter elsewhere. */
+/** The other way of sending, which each choice's tip names: Cmd+Enter on macOS, Ctrl+Enter elsewhere. */
 const OTHER_KEY = hotkeys.platform === 'darwin' ? '⌘ Enter' : 'Ctrl+Enter';
 
 const CHOICES: ReadonlyArray<{ id: QueuedMessageMode; label: string; tip: string }> = [
@@ -21,24 +21,26 @@ const CHOICES: ReadonlyArray<{ id: QueuedMessageMode; label: string; tip: string
 
 /** Settings > Chat: how the message box sends on this computer. */
 export function ChatPage() {
-    const selected = CHOICES.find(choice => choice.id === busyEnter.mode) ?? CHOICES[0];
-
     return (
         <SettingsPage title="Chat" description="Choose how chats look and behave">
             <SettingsSection title="Messages">
                 <SettingsCard>
-                    <SettingsRow title={ LABEL } description={ selected.tip }>
+                    <SettingsRow title={ LABEL } stacked>
                         <ToggleButtonGroup
                             aria-label={ LABEL }
                             size="sm"
-                            selectedKeys={ [selected.id] }
+                            selectedKeys={ [busyEnter.mode] }
                             onSelectionChange={ (keys) => {
                                 const next = CHOICES.find(choice => keys.has(choice.id));
 
                                 if (next) busyEnter.setMode(next.id);
                             } }
                         >
-                            { CHOICES.map(choice => <ToggleButtonGroupItem key={ choice.id } value={ choice.id }>{ choice.label }</ToggleButtonGroupItem>) }
+                            { CHOICES.map(choice => (
+                                <ToggleButtonGroupItem key={ choice.id } value={ choice.id } tooltip={ choice.tip }>
+                                    { choice.label }
+                                </ToggleButtonGroupItem>
+                            )) }
                         </ToggleButtonGroup>
                     </SettingsRow>
                 </SettingsCard>

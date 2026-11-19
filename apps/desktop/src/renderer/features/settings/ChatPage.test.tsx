@@ -29,14 +29,15 @@ afterEach(() => {
 });
 
 describe('ChatPage', () => {
-    it('offers how a message sent while the agent works goes, steering by default, with the tip of the choice', () => {
+    it('offers how a message sent while the agent works goes, steering by default', () => {
         expect(container.querySelector(`[aria-label="${ LABEL }"]`)).not.toBeNull();
         expect(choice('Steer').getAttribute('aria-checked')).toBe('true');
         expect(choice('Queue').getAttribute('aria-checked')).toBe('false');
-        expect(container.textContent).toContain('Steer sends your message as soon as the agent can receive it. Press Ctrl+Enter to add to the queue.');
+        // The tips are tooltips on the choices, not a description under the row.
+        expect(container.textContent).not.toContain('Steer sends your message');
     });
 
-    it('keeps the choice for the message box, and tells the other way of sending', () => {
+    it('keeps the choice for the message box', () => {
         act(() => choice('Queue').click());
 
         expect(busyEnter.mode).toBe('queue');
@@ -45,6 +46,5 @@ describe('ChatPage', () => {
         act(() => root.render(<ChatPage />));
 
         expect(choice('Queue').getAttribute('aria-checked')).toBe('true');
-        expect(container.textContent).toContain('Waits until the agent finishes its current turn. Press Ctrl+Enter to steer.');
     });
 });
