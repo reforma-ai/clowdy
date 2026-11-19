@@ -265,7 +265,9 @@ describe('steering', () => {
     });
 
     test('a steer that comes before the prompt waits for it, and one after the turn is refused', async () => {
-        const { session } = use({ agentEnv: { FAKE_ACP_STEERING: '1' } }).start('say first\nsleep 100');
+        // The steer goes out right behind the prompt, and the agent may answer it before its turn has begun (the fake one does: its steering handler comes
+        // first in its dispatch), so the session asks again 100 ms later. The turn outlasts that retry by far, or the turn could end before it.
+        const { session } = use({ agentEnv: { FAKE_ACP_STEERING: '1' } }).start('say first\nsleep 1000');
         // Nothing runs until the session is read: the agent is not even started yet.
         const early = session.steer!('say early');
         const events = await collect(session);
