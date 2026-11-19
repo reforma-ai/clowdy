@@ -310,6 +310,65 @@ describe('steering', () => {
         expect(queue().map(brief)).toEqual([['queue', 'queued first']]);
     });
 
+    describe('a steer still with the agent when the turn ends', () => {
+        /** Steers `steer me` behind a queued message and ends the turn while the agent has not answered the steer yet. */
+        async function steerOutAtTurnEnd() {
+            const harness = await setup();
+            const { h, engine, chat, send, queue, start, release } = harness;
+            let answer!: (taken: boolean) => void;
+
+            engine.steerAnswer = () => new Promise<boolean>((resolve) => {
+                answer = resolve;
+            });
+
+            const runId = await start();
+
+            send('queued');
+            send('steer me', { mode: 'steer' });
+            await waitFor(() => engine.steered.length === 1, 'the steer to reach the agent');
+
+            const removal = h.send('chat.removeQueued', { chatId: chat.id, itemId: queue()[0].id });
+
+            expect(removal.ok ? undefined : removal.error.code).toBe('conflict');
+
+            release(1);
+            await waitFor(() => h.run(runId).status === 'succeeded', 'the turn to end');
+            await Bun.sleep(30);
+
+            // The queue waits for the agent's answer: the steer must not go out twice, nor overtake it.
+            expect(engine.turns).toHaveLength(1);
+
+            return { ...harness, runId, answer };
+        }
+
+        test('taken, it leaves the queue and the next turn is the queued message', async () => {
+            const { engine, queue, people, runId, answer } = await steerOutAtTurnEnd();
+
+            answer(true);
+            await waitFor(() => engine.turns.length === 2, 'the queued turn');
+
+            expect(engine.turns[1].prompt).toBe('queued');
+            expect(people(runId)).toEqual(['Start', 'steer me', 'queued']);
+            expect(queue()).toEqual([]);
+        });
+
+        test('refused, it is the next turn, ahead of the queued message', async () => {
+            const { engine, queue, people, runId, answer, release } = await steerOutAtTurnEnd();
+
+            answer(false);
+            await waitFor(() => engine.turns.length === 2, 'the steer as the next turn');
+
+            expect(engine.turns[1].prompt).toBe('steer me');
+            expect(queue().map(brief)).toEqual([['queue', 'queued']]);
+
+            release(2);
+            await waitFor(() => engine.turns.length === 3, 'the queued turn');
+
+            expect(engine.turns[2].prompt).toBe('queued');
+            expect(people(runId)).toEqual(['Start', 'steer me', 'queued']);
+        });
+    });
+
     test('a steer while the orchestrator waits for an answer reaches its turn once the answer puts it back to work', async () => {
         const gate = latch();
         const engine = new ScriptEngine(async function* (turn) {
