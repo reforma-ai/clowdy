@@ -27,7 +27,7 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
  * while a prompt runs is `injected`, and its lines run as directives of that same prompt, after the line in progress; with no prompt running it is
  * `promptRequired`. Without the switch the agent still answers the method, so a test can see that the client did not ask.
  * FAKE_ACP_RESUME is `resume` (default), `load` (replays two messages first) or `none` (FAKE_ACP_LOST=1 refuses either with "Session not found"); FAKE_ACP_SYSTEM_PROMPT=0 drops
- * the system prompt capability; FAKE_ACP_DIRECTORIES=1 advertises `sessionCapabilities.additionalDirectories` (the `info` directive shows the list a
+ * the system prompt capability; FAKE_ACP_REFUSE_V2=1 answers an `initialize` that asks for a version above 1 with an error, as a strict v1 agent may, instead of with version 1; FAKE_ACP_DIRECTORIES=1 advertises `sessionCapabilities.additionalDirectories` (the `info` directive shows the list a
  * session got either way, so a test sees what was sent unasked); FAKE_ACP_AUTH=1 makes `session/new` ask for authentication; FAKE_ACP_EFFORT is `1` (a reasoning
  * option that follows the model) or `thinking` (the same, behind an option of another kind); FAKE_ACP_ECHO_CLIENT=1 puts what the client
  * said in `initialize` into the agent's own capabilities (`_meta.client`), for a caller that sends no prompt, such as the probe.
@@ -130,6 +130,10 @@ const modelOptions = (model: string, effort = 'high') => [
 
 const app = agent({ name: 'fake-acp-agent' })
     .onRequest(methods.agent.initialize, ({ params }) => {
+        if (process.env.FAKE_ACP_REFUSE_V2 === '1' && params.protocolVersion > PROTOCOL_VERSION) {
+            throw new RequestError(-32602, `Unsupported protocol version ${ params.protocolVersion }`);
+        }
+
         clientCapabilities = params.clientCapabilities;
 
         return {

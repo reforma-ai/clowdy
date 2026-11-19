@@ -1,6 +1,7 @@
 import type { AgentProcess } from '../process';
 import type { EngineEvent, EngineStartOptions } from '../types';
 import type { BridgeAccess } from './bridge';
+import type { AgentProtocol } from './catalog';
 import type { ResolvedAgent } from './registry';
 import type { SessionDeps } from './session';
 
@@ -46,6 +47,12 @@ export interface ProtocolLayer {
     readonly naming: boolean;
     /** The turn ended with an answer, not a failure. */
     readonly answered: boolean;
+    /**
+     * Set when `run` ended without a single event because the handshake showed that the agent speaks another protocol than this layer's (a v2 layer
+     * that was answered with version 1, or refused). The session stops the process and starts the agent again on that protocol. A layer that sets it has
+     * done nothing the runtime could see: no session, no tool bridge, no title taken.
+     */
+    readonly restartOn?: AgentProtocol;
     /** The conversation, from the handshake to the last event of the turn. It does not throw: a failure is an `error` event. */
     run(): AsyncGenerator<EngineEvent>;
     /** Hands `text` to the turn in flight. Answers whether the agent took it. Called while the prompt is with the agent. */

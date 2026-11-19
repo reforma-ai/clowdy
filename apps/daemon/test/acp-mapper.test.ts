@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
 import { UpdateMapper } from '../src/engine/acp/mapper';
+import { UpdateMapperV2 } from '../src/engine/acp/mapper-v2';
 
+import type { SessionUpdate as SessionUpdateV2, Usage } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import type { PromptResponse, SessionUpdate } from '@agentclientprotocol/sdk/unstable';
 import type { EngineEvent } from '../src/engine/types';
 
@@ -360,5 +362,163 @@ describe('the context window', () => {
         const { events } = run([fill(5, 0), fill(-1, 100), fill(Number.NaN, 100), fill(5, Number.POSITIVE_INFINITY)]);
 
         expect(contexts(events)).toEqual([]);
+    });
+});
+
+describe('updates of ACP v2', () => {
+    const chunk2 = (text: string, messageId = 'm1'): SessionUpdateV2 => ({ sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text } });
+    const whole = (text: string, messageId = 'm1'): SessionUpdateV2 => ({ sessionUpdate: 'agent_message', messageId, content: [{ type: 'text', text }] });
+    const call = (update: Omit<Extract<SessionUpdateV2, { sessionUpdate: 'tool_call_update' }>, 'sessionUpdate'>): SessionUpdateV2 => ({ sessionUpdate: 'tool_call_update', ...update });
+
+    function run2(updates: SessionUpdateV2[], options: Partial<ConstructorParameters<typeof UpdateMapperV2>[0]> = {}, usage?: Usage) {
+        const mapper = new UpdateMapperV2({ toolNames: ['task_create', 'run_spawn', 'ask_user'], costBefore: 0, ...options });
+        const events: EngineEvent[] = [];
+
+        for (const update of updates) {
+            events.push(...mapper.update(update));
+        }
+
+        events.push(...mapper.stop(usage));
+
+        return { mapper, events };
+    }
+
+    describe('messages', () => {
+        test('chunks of a message append, and a message with another id is another message', () => {
+            const { events, mapper } = run2([chunk2('Hel'), chunk2('lo'), chunk2('Bye', 'm2')]);
+
+            expect(events.map(event => event.type === 'text' && [event.delta, event.done])).toEqual([['Hel', false], ['lo', false], ['', true], ['Bye', false], ['', true]]);
+            expect(mapper.result()).toBe('Bye');
+        });
+
+        test('a message sent whole shows what the stream lacks of it, and one it showed already shows nothing again', () => {
+            const { events, mapper } = run2([chunk2('Hel'), whole('Hello'), whole('Hello'), whole('Other', 'm2'), whole('Other', 'm2')]);
+
+            expect(events.map(event => event.type === 'text' && [event.delta, event.done])).toEqual([['Hel', false], ['lo', false], ['', true], ['Other', false], ['', true]]);
+            expect(mapper.result()).toBe('Other');
+        });
+
+        test('a whole message that was closed and comes again, or that rewrites what was shown, adds nothing', () => {
+            const { events } = run2([chunk2('Hello'), call({ toolCallId: 'a', title: 'Read file' }), whole('Hello'), chunk2('Hi there', 'm2'), whole('Howdy there', 'm2')]);
+
+            expect(events.filter(event => event.type === 'text').map(event => event.type === 'text' && event.delta)).toEqual(['Hello', '', 'Hi there', '']);
+        });
+
+        test('a message with no content, thoughts, plans, user messages and unknown kinds are not shown', () => {
+            const { events } = run2([
+                { sessionUpdate: 'agent_message', messageId: 'm1' },
+                { sessionUpdate: 'agent_thought_chunk', messageId: 't1', content: { type: 'text', text: 'hmm' } },
+                { sessionUpdate: 'user_message', messageId: 'u1', content: [{ type: 'text', text: 'hi' }] },
+                { sessionUpdate: 'plan_update', planId: 'p', plan: { type: 'items', entries: [] } },
+                { sessionUpdate: 'state_update', state: 'running' },
+                { sessionUpdate: '_vendor_thing', anything: 1 },
+            ] as SessionUpdateV2[]);
+
+            expect(events).toEqual([]);
+        });
+    });
+
+    describe('tool calls', () => {
+        test('the first update of an id is the call, and it ends the message before it', () => {
+            const { events, mapper } = run2([chunk2('Let me look.'), call({ toolCallId: 'a', title: 'Read file', kind: 'read', status: 'in_progress', rawInput: { file_path: 'x' } }), chunk2('Found it.', 'm2')]);
+
+            expect(events.map(event => event.type)).toEqual(['text', 'text', 'tool', 'text', 'text']);
+            expect(tools(events)).toEqual([{ type: 'tool', toolCallId: 'a', name: 'Read', input: { file_path: 'x' }, state: 'running' }]);
+            expect(mapper.result()).toBe('Found it.');
+        });
+
+        test('an update patches the call: what it leaves out is what an earlier one said, and null clears it', () => {
+            const { events } = run2([
+                call({ toolCallId: 'a', title: 'List files', kind: 'execute', status: 'in_progress', rawInput: { command: 'ls' }, rawOutput: 'a.ts\nb.ts' }),
+                // Nothing but the status: the input, the name and the output it said before stay.
+                call({ toolCallId: 'a', status: 'completed' }),
+            ]);
+
+            expect(tools(events)).toEqual([
+                { type: 'tool', toolCallId: 'a', name: 'Bash', input: { command: 'ls' }, state: 'running' },
+                { type: 'tool', toolCallId: 'a', name: 'Bash', input: { command: 'ls' }, state: 'done', output: 'a.ts\nb.ts' },
+            ]);
+        });
+
+        test('the name comes from Claude\'s tool name kept from the first update, the runtime\'s own tools keep their bare name', () => {
+            const { events } = run2([
+                call({ toolCallId: 'a', title: 'Tool: clowdy/task_create', kind: 'other', status: 'in_progress', rawInput: { title: 'x' } }),
+                call({ toolCallId: 'b', title: 'git status', kind: 'execute', status: 'in_progress', _meta: { claudeCode: { toolName: 'Bash' } } }),
+                call({ toolCallId: 'b', status: 'completed', _meta: { other: 1 } }),
+            ]);
+
+            expect(tools(events).map(event => event.type === 'tool' && [event.toolCallId, event.name, event.state])).toEqual([['a', 'task_create', 'running'], ['b', 'Bash', 'running'], ['b', 'Bash', 'done']]);
+        });
+
+        test('content chunks add to what the call showed, and a call shows the output of the terminal it displays', () => {
+            const { events } = run2([
+                call({ toolCallId: 'a', title: 'Run tests', kind: 'execute', status: 'in_progress', content: [{ type: 'terminal', terminalId: 't1' }] }),
+                { sessionUpdate: 'terminal_output_chunk', terminalId: 't1', data: Buffer.from('ok 1\n').toString('base64') },
+                { sessionUpdate: 'terminal_output_chunk', terminalId: 't1', data: Buffer.from('ok 2\n').toString('base64') },
+                call({ toolCallId: 'a', status: 'completed' }),
+                call({ toolCallId: 'b', title: 'Edit', kind: 'edit', status: 'in_progress' }),
+                { sessionUpdate: 'tool_call_content_chunk', toolCallId: 'b', content: { type: 'diff', changes: [{ operation: 'modify', path: '/work/a.ts' }] } },
+                { sessionUpdate: 'tool_call_content_chunk', toolCallId: 'b', content: { type: 'content', content: { type: 'text', text: 'done' } } },
+                call({ toolCallId: 'b', status: 'completed' }),
+            ] as SessionUpdateV2[]);
+
+            expect(tools(events).filter(event => event.type === 'tool' && event.state === 'done').map(event => event.type === 'tool' && event.output)).toEqual(['ok 1\nok 2\n', 'Changed /work/a.ts\ndone']);
+        });
+
+        test('a failed call carries its text as the error, a cancelled one reads as stopped, and a paused one is still running', () => {
+            const { events } = run2([
+                call({ toolCallId: 'a', title: 'Run', status: 'failed', rawOutput: 'exit 1' }),
+                call({ toolCallId: 'b', title: 'Run', status: 'cancelled' }),
+                call({ toolCallId: 'c', title: 'Run', status: 'paused' }),
+            ]);
+
+            expect(tools(events).map(event => event.type === 'tool' && [event.state, event.error])).toEqual([['error', 'exit 1'], ['error', 'Stopped before it finished'], ['running', undefined]]);
+        });
+
+        test('a compaction is `compact` however the agent reports it: a call, or a compaction update', () => {
+            const { events } = run2([
+                call({ toolCallId: 'k', title: 'Compact conversation', kind: 'think', status: 'in_progress', _meta: { claudeCode: { toolName: 'compact' } } }),
+                call({ toolCallId: 'k', status: 'completed', rawOutput: { trigger: 'manual', preTokens: 100, postTokens: 10, durationMs: 5 } }),
+                { sessionUpdate: 'compaction_update', compactionId: 'c1', status: 'in_progress' },
+                { sessionUpdate: 'compaction_update', compactionId: 'c1', status: 'completed', summary: [{ type: 'text', text: 'a long summary' }] },
+                { sessionUpdate: 'compaction_update', compactionId: 'c2', status: 'failed', error: 'too short' },
+            ]);
+
+            expect(tools(events).map(event => event.type === 'tool' && [event.toolCallId, event.name, event.state, event.output ?? event.error])).toEqual([
+                ['k', 'compact', 'running', undefined],
+                ['k', 'compact', 'done', JSON.stringify({ trigger: 'manual', preTokens: 100, postTokens: 10, durationMs: 5 })],
+                ['compaction-c1', 'compact', 'running', undefined],
+                ['compaction-c1', 'compact', 'done', undefined],
+                ['compaction-c2', 'compact', 'error', 'too short'],
+            ]);
+        });
+    });
+
+    describe('numbers', () => {
+        test('tokens come from the idle update and cost is the rise over the session\'s earlier total', () => {
+            const { events } = run2([{ sessionUpdate: 'usage_update', used: 10, size: 1000, cost: { amount: 0.75, currency: 'USD' } }], { costBefore: 0.25 }, { inputTokens: 100, outputTokens: 20, totalTokens: 150, cachedReadTokens: 25, cachedWriteTokens: 5 });
+
+            expect(events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 130, outputTokens: 20, costUsd: 0.5 }]);
+        });
+
+        test('nothing is reported when the agent reports nothing, and a session this daemon never measured reports tokens without a cost', () => {
+            expect(run2([chunk2('hi')]).events.map(event => event.type)).toEqual(['text', 'text']);
+            expect(run2([{ sessionUpdate: 'usage_update', used: 1, size: 10, cost: { amount: 5, currency: 'USD' } }], { costBefore: undefined }, { inputTokens: 3, outputTokens: 4, totalTokens: 7 }).events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 3, outputTokens: 4 }]);
+        });
+
+        test('the window\'s fill becomes a context event once per reading, and a rate limit signal a limit event', () => {
+            const { events } = run2([
+                { sessionUpdate: 'usage_update', used: 21269, size: 1_000_000 },
+                { sessionUpdate: 'usage_update', used: 21269, size: 1_000_000 },
+                { sessionUpdate: 'usage_update', used: 0, size: 0 },
+                { sessionUpdate: 'usage_update', used: 22062, size: 1_000_000, _meta: { '_claude/rateLimit': { status: 'rejected', rateLimitType: 'five_hour', utilization: 0.95, resetsAt: 1_900_000_000 } } },
+            ]);
+
+            expect(events).toEqual([
+                { type: 'context', used: 21269, size: 1_000_000 },
+                { type: 'context', used: 22062, size: 1_000_000 },
+                { type: 'limit', status: 'rejected', kind: 'five_hour', utilization: 0.95, resetsAt: 1_900_000_000 },
+            ]);
+        });
     });
 });

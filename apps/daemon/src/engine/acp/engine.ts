@@ -23,6 +23,8 @@ export interface AcpEngineDeps {
 export class AcpEngine implements AgentEngine {
     /** What each session has cost so far, by session id: agents report running totals, the runtime wants each turn's share. */
     private costs = new Map<string, number>();
+    /** The launches that were asked for ACP v2 and speak v1; every session of this agent shares it (see `SessionDeps.downgraded`). */
+    private downgraded = new Set<string>();
 
     constructor(readonly id: string, private deps: AcpEngineDeps) {}
 
@@ -36,6 +38,7 @@ export class AcpEngine implements AgentEngine {
             env: deps.env ?? process.env,
             permissions: deps.permissions ?? 'allow',
             costs: this.costs,
+            downgraded: this.downgraded,
             clientVersion: deps.clientVersion ?? '0.0.0',
             initializeTimeoutMs: deps.initializeTimeoutMs,
             titleWaitMs: deps.titleWaitMs,
