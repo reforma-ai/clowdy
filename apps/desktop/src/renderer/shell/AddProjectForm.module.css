@@ -11,45 +11,6 @@
     gap: var(--spacing-xs);
 }
 
-/* The list's drag grip shows outside a row's left edge, in the form's padding. */
-.folder {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    min-width: 0;
-    padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) var(--spacing-md);
-    border: 1px solid var(--color-secondary-muted-border);
-    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-    background-color: var(--color-surface-float);
-    transition: border-color var(--transition-duration-fast);
-}
-
-.folder:hover {
-    border-color: var(--color-secondary-border);
-}
-
-.icon {
-    display: inline-flex;
-    flex-shrink: 0;
-    color: var(--color-secondary-muted-text);
-}
-
-.text {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: var(--spacing-xxs);
-    min-width: 0;
-}
-
-.title {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    min-width: 0;
-}
-
 .add {
     align-self: flex-start;
 }

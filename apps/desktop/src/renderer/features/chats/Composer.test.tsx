@@ -275,6 +275,23 @@ describe('Composer', () => {
             expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Read @/work/api/.clowdy/docs/endpoints.md', mode: 'steer' }]);
         });
 
+        it('lists the files of every folder, sends another folder\'s by its absolute path, and names the folder in the suggestion', async () => {
+            transport.getProjectFiles.mockImplementation(async () => [{ folderId: 'fld_api', path: 'src/routes/price.ts' }, { folderId: 'fld_p', path: 'src/booking/price.ts' }]);
+            await mount(accepted, undefined, [...FOLDERS, { id: 'fld_api', path: '/work/api' }]);
+            await open('Compare @price');
+
+            expect(optionTexts()).toEqual([expect.stringMatching(/price\.ts.*api\/src\/routes/), expect.stringMatching(/price\.ts.*p\/src\/booking/)]);
+
+            await choose('api/src/routes');
+            // A chosen mention is followed by a space.
+            type('and ');
+            await open('@');
+            await choose('p/src/booking');
+            await press('Enter');
+
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Compare @/work/api/src/routes/price.ts and @src/booking/price.ts', mode: 'steer' }]);
+        });
+
         it('still lists the rest when one source is down', async () => {
             transport.getProjectFiles.mockRejectedValue(new Error('offline'));
             await mount(accepted);

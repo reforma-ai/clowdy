@@ -21,8 +21,8 @@ import type {
 /** Everything the fixture daemon holds. Plain data: the transport mutates it and announces the changes. */
 export interface FixtureData {
     projects: Project[];
-    /** What `git` says in each project's folder: the `origin` address; a project without an entry has no remote. */
-    git: Record<ProjectId, { remoteUrl?: string }>;
+    /** What `git` says in each folder, by the folder's path: the `origin` address; a folder without an entry has no remote. */
+    git: Record<string, { remoteUrl?: string }>;
     statuses: Record<string, TaskStatus[]>;
     chats: Chat[];
     tasks: Task[];
@@ -36,7 +36,7 @@ export interface FixtureData {
      * docs folder yet. Keyed by folder, as on disk: a folder several projects have shares its documents with all of them.
      */
     docs: Record<string, Record<string, string>>;
-    /** Paths of each project's files, relative to its folder, as the file search would list them. */
+    /** Paths of the files of each folder, by the folder's path, relative to it, as the file search would list them. */
     files: Record<string, string[]>;
     /** Files sent with messages, by the fixture's seed data. */
     attachments: FixtureAttachment[];
@@ -287,6 +287,15 @@ const FIXTURE_FILES = [
     'src/api/availability.ts',
     'src/mail/confirmation.ts',
     'src/db/schema.ts',
+];
+
+const API_FILES = [
+    'README.md',
+    'package.json',
+    'src/routes/availability.ts',
+    'src/routes/bookings.ts',
+    'src/booking/price.ts',
+    'src/limits.ts',
 ];
 
 /** The docs tree as the daemon builds it: directories first, then files, each by name. */
@@ -706,8 +715,9 @@ export function createFixtureData(now = Date.now()): FixtureData {
     return {
         projects,
         git: {
-            [projectId]: { remoteUrl: 'git@github.com:acme/car-rental.git' },
-            [FIXTURE_EMPTY_PROJECT_ID]: { remoteUrl: 'https://github.com/acme/clowdy.git' },
+            '/Users/dev/car-rental': { remoteUrl: 'git@github.com:acme/car-rental.git' },
+            '/Users/dev/clowdy': { remoteUrl: 'https://github.com/acme/clowdy.git' },
+            '/Users/dev/car-rental-api': { remoteUrl: 'git@github.com:acme/car-rental-api.git' },
         },
         statuses: { [projectId]: DEFAULT_STATUSES, [FIXTURE_EMPTY_PROJECT_ID]: DEFAULT_STATUSES, [FIXTURE_PERSONAL_PROJECT_ID]: DEFAULT_STATUSES },
         // As the daemon's migration leaves them: a chat that has an orchestrator records the engine and model it runs on.
@@ -722,9 +732,9 @@ export function createFixtureData(now = Date.now()): FixtureData {
         runTaskLinks,
         items,
         artifacts,
-        // `car-rental-api` belongs to no project yet: add it to Car Rental to see the documents of two folders.
+        // `car-rental-api` belongs to no project yet: add it to Car Rental to see the documents, files and remotes of two folders.
         docs: { '/Users/dev/car-rental': docs, '/Users/dev/car-rental-api': API_DOCS },
-        files: { [projectId]: FIXTURE_FILES, [FIXTURE_EMPTY_PROJECT_ID]: [], [FIXTURE_PERSONAL_PROJECT_ID]: [] },
+        files: { '/Users/dev/car-rental': FIXTURE_FILES, '/Users/dev/car-rental-api': API_FILES },
         attachments: structuredClone(FIXTURE_ATTACHMENTS),
         skills: fixtureSkills(projectId),
         skillWarnings: ['~/.claude/skills: Skipped "old-notes": it has no description'],

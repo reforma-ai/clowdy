@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { docItems, docPaths, skillItems, skillName, taskItems } from './mentionItems';
+import { docItems, docPaths, fileItems, skillItems, skillName, taskItems } from './mentionItems';
 
 import type { DocNode, ProjectFolder, SkillEntry, Task } from '@clowdy/protocol';
 
@@ -68,6 +68,41 @@ describe('docs', () => {
         const tree = [{ folderId: 'fld_app', nodes: [] }, { folderId: 'fld_win', nodes: [{ path: 'notes/a.md', name: 'a.md', kind: 'file' as const }] }];
 
         expect(docItems(tree, [folders[0]!, { id: 'fld_win', path: 'C:\\work\\api' }], '')[0]?.data).toEqual({ path: 'C:\\work\\api\\.clowdy\\docs\\notes\\a.md' });
+    });
+});
+
+describe('fileItems', () => {
+    const folders: ProjectFolder[] = [{ id: 'fld_app', path: '/work/app' }, { id: 'fld_api', path: '/work/api' }];
+    const view = (items: ReturnType<typeof fileItems>) => items.map(item => [item.value, item.label, item.description, (item.data as { path: string }).path]);
+
+    it('offers a file of a project of one folder by its path from there, as the daemon ranked it', () => {
+        expect(view(fileItems([{ folderId: 'fld_app', path: 'src/booking/price.ts' }, { folderId: 'fld_app', path: 'README.md' }], folders.slice(0, 1)))).toEqual([
+            ['file:fld_app:src/booking/price.ts', 'price.ts', 'src/booking', 'src/booking/price.ts'],
+            ['file:fld_app:README.md', 'README.md', undefined, 'README.md'],
+        ]);
+    });
+
+    it('offers the files of every folder, another folder\'s by its absolute path, each under its folder\'s name', () => {
+        const matches = [{ folderId: 'fld_api', path: 'src/price.ts' }, { folderId: 'fld_app', path: 'src/booking/price.ts' }, { folderId: 'fld_api', path: 'README.md' }];
+
+        expect(view(fileItems(matches, folders))).toEqual([
+            ['file:fld_api:src/price.ts', 'price.ts', 'api/src', '/work/api/src/price.ts'],
+            ['file:fld_app:src/booking/price.ts', 'price.ts', 'app/src/booking', 'src/booking/price.ts'],
+            ['file:fld_api:README.md', 'README.md', 'api', '/work/api/README.md'],
+        ]);
+    });
+
+    it('writes another folder\'s path with the separator of a Windows folder', () => {
+        const windows: ProjectFolder[] = [{ id: 'fld_app', path: 'C:\\work\\app' }, { id: 'fld_api', path: 'C:\\work\\api\\' }];
+
+        expect(fileItems([{ folderId: 'fld_api', path: 'src/routes/a.ts' }, { folderId: 'fld_app', path: 'src/b.ts' }], windows).map(item => item.data)).toEqual([
+            { path: 'C:\\work\\api\\src\\routes\\a.ts' },
+            { path: 'src/b.ts' },
+        ]);
+    });
+
+    it('leaves out a file of a folder the project no longer has', () => {
+        expect(fileItems([{ folderId: 'fld_gone', path: 'a.ts' }], folders)).toEqual([]);
     });
 });
 

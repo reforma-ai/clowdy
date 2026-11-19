@@ -78,6 +78,17 @@ describe('ProjectSelect', () => {
         expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(2);
     });
 
+    it('shows where each project is: its main folder, and +N for the folders it has besides', async () => {
+        const data = createFixtureData();
+
+        data.projects.find(project => project.id === FIXTURE_PROJECT_ID)!.folders.push({ id: 'fld_api', path: '/Users/dev/car-rental-api' }, { id: 'fld_web', path: '/Users/dev/car-rental-web' });
+        await open(data);
+
+        expect(items()[1].textContent).toContain('/Users/dev/car-rental +2');
+        expect(items()[2].textContent).toContain('/Users/dev/clowdy');
+        expect(items()[2].textContent).not.toContain('+');
+    });
+
     it('marks the open project and switches to the one chosen', async () => {
         await open();
 

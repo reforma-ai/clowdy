@@ -1,4 +1,4 @@
-import { isBusyRunStatus, isTerminalRunStatus, mainFolder, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, STOPPED_TOOL } from '@clowdy/protocol';
+import { folderNames, isBusyRunStatus, isTerminalRunStatus, mainFolder, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, STOPPED_TOOL } from '@clowdy/protocol';
 
 import {
     catalogTokens,
@@ -145,8 +145,7 @@ export class FixtureTransport implements Transport {
 
         return structuredClone(this.#listed().map(project => ({
             projectId: project.id,
-            // The fixtures know the remote of the main folder only.
-            folders: project.folders.map((folder, index) => ({ folderId: folder.id, exists: true, ...(index === 0 && git[project.id]) })),
+            folders: project.folders.map(folder => ({ folderId: folder.id, exists: true, ...git[folder.path] })),
             chats: chats.filter(chat => chat.projectId === project.id).length,
             tasks: tasks.filter(task => task.projectId === project.id).length,
             activeRuns: this.#activeRuns(project.id),
@@ -238,10 +237,12 @@ export class FixtureTransport implements Transport {
 
         if (!project) return [];
 
-        // The fixture files are the main folder's.
-        const folderId = mainFolder(project).id;
+        // Like the daemon: every folder's files, the folder's name counting as part of the path when there are several.
+        const names = folderNames(project.folders);
+        const several = project.folders.length > 1;
+        const found = project.folders.flatMap((folder, index) => (this.#data.files[folder.path] ?? []).map(path => ({ folderId: folder.id, path, searched: several ? `${ names[index] }/${ path }` : path })));
 
-        return (this.#data.files[projectId] ?? []).filter(path => words.every(word => path.toLowerCase().includes(word))).slice(0, limit).map(path => ({ folderId, path }));
+        return found.filter(file => words.every(word => file.searched.toLowerCase().includes(word))).slice(0, limit).map(({ folderId, path }) => ({ folderId, path }));
     }
 
     async uploadAttachment(projectId: ProjectId, file: File): Promise<Attachment> {
@@ -553,8 +554,7 @@ export class FixtureTransport implements Transport {
                 data.artifacts = data.artifacts.filter(artifact => artifact.projectId !== project.id);
                 runIds.forEach(runId => delete data.items[runId]);
                 delete data.statuses[project.id];
-                delete data.files[project.id];
-                // Not the documents: as with the daemon, they live in the folders, which stay (and another project may have them).
+                // Not the documents and files: as with the daemon, they live in the folders, which stay (and another project may have them).
                 this.#emit(project.id, { type: 'project.deleted' });
 
                 return ok({ projectId: project.id });
