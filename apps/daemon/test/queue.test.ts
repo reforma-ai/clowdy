@@ -231,6 +231,18 @@ describe('Stop and failure', () => {
         harnesses.push(restarted);
 
         expect(getChat(restarted.store.db, chat.id)).toMatchObject({ queuePaused: 'failed', queue: [{ text: 'after the restart' }] });
+
+        // A queue that holds already is not written again by the next start.
+        const head = restarted.store.headCursor();
+
+        await restarted.stop();
+
+        const again = await restartHarness(restarted, { engines: scriptEngines(new ScriptEngine(gatedTurns().script)) });
+
+        harnesses.push(again);
+
+        expect(again.store.eventsAfter(head, undefined, 100).filter(event => event.data.type === 'chat.upserted')).toEqual([]);
+        expect(getChat(again.store.db, chat.id)).toMatchObject({ queuePaused: 'failed', queue: [{ text: 'after the restart' }] });
     });
 });
 

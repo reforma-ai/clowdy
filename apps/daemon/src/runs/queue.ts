@@ -216,13 +216,13 @@ export class ChatQueue {
             const paused = chat.queuePaused ?? (current.status === 'failed' || current.status === 'interrupted' ? 'failed' : undefined);
             const settled = withQueue(chat, settleSteers(queue), paused);
 
-            if (paused) {
-                saveChat(store, settled);
-
-                return;
+            if (!paused) {
+                this.dispatch(settled, current, queueOf(settled)[0]);
             }
-
-            this.dispatch(settled, current, queueOf(settled)[0]);
+            // A held queue is written only when this changes it (every start of the daemon settles it again): it starts to hold, or steers become next turns.
+            else if (paused !== chat.queuePaused || queue.some(item => item.mode === 'steer')) {
+                saveChat(store, settled);
+            }
         });
     }
 
