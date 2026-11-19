@@ -212,15 +212,15 @@ describe('the personal space', () => {
         }
     });
 
-    test('the system prompt calls it a personal space instead of a repository', async () => {
+    test('the system prompt calls it a personal space, and a project of one folder the folder at its path even when it is a repository', async () => {
         const h = await setup();
         const repo = h.openRepo('shop');
         const personal = systemPrompt('orchestrator', 'autopilot', h.personal);
         const regular = systemPrompt('orchestrator', 'autopilot', projectsOf(h).find(project => project.id === repo.id) as Project);
 
         expect(personal).toContain(`Project: Personal, the person's personal space, a folder at ${ pathOf(h.personal) } that belongs to no repository, task keys PER-<number>, project documents in .clowdy/docs/.`);
-        expect(personal).not.toContain('repository at');
-        expect(regular).toContain(`Project: shop, repository at ${ repo.path }, task keys SHO-<number>`);
+        expect(regular).toContain(`Project: shop, folder at ${ repo.path }, task keys SHO-<number>`);
+        expect(regular).not.toContain('repository');
     });
 });
 

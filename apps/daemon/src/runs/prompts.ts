@@ -19,18 +19,45 @@ const ROLE_INTRO: Record<RunRole, string> = {
 
 const modeLabel = (mode: ChatMode) => (mode === 'semi' ? 'semi-manual' : 'autopilot');
 
-/** The system prompt: where the system skills are, the mode and the facts about the project. Everything else is in the skills. */
-export function systemPrompt(role: RunRole, mode: ChatMode, project: Project): string {
-    const folder = mainFolder(project).path;
-    const where = project.personal
-        ? `the person's personal space, a folder at ${ folder } that belongs to no repository`
-        : `repository at ${ folder }`;
+/**
+ * What the agent is told about the project. No folder is called a repository: any folder can be a project's. Several folders are each named by
+ * absolute path: an agent that takes no additional folders reaches the others only that way, and none reads another folder's instructions unless
+ * told to. The folder the run works in is marked, which is not the main one for a child that `run_spawn` started elsewhere.
+ */
+function projectFacts(project: Project, cwd: string): string {
+    const keys = `task keys ${ project.taskPrefix }-<number>`;
 
+    if (project.folders.length === 1) {
+        const folder = mainFolder(project).path;
+        const where = project.personal ? `the person's personal space, a folder at ${ folder } that belongs to no repository` : `folder at ${ folder }`;
+
+        return `Project: ${ project.name }, ${ where }, ${ keys }, project documents in .clowdy/docs/.`;
+    }
+
+    const folders = project.folders.map(({ path }, index) => {
+        const marks = [index === 0 && 'main', path === cwd && 'you work here'].filter(Boolean);
+
+        return marks.length > 0 ? `- ${ path } (${ marks.join(', ') })` : `- ${ path }`;
+    });
+
+    return [
+        `Project: ${ project.name }, ${ keys }, folders (use absolute paths outside the folder you work in):`,
+        ...folders,
+        'Each folder may have its own AGENTS.md or CLAUDE.md; read it before you change files in that folder.',
+        'Documents: each folder has its own .clowdy/docs/. A document about one folder goes into that folder\'s; one about several folders or the whole project goes into the main folder\'s.',
+    ].join('\n');
+}
+
+/**
+ * The system prompt: where the system skills are, the mode and the facts about the project. Everything else is in the skills. `cwd` is the folder
+ * the run works in.
+ */
+export function systemPrompt(role: RunRole, mode: ChatMode, project: Project, cwd = mainFolder(project).path): string {
     return [
         'Clowdy is a desktop app where a person who manages software work chats with an orchestrator and watches tasks, agents and documents while agents do the engineering.',
         ROLE_INTRO[role],
         `Mode: ${ modeLabel(mode) }.`,
-        `Project: ${ project.name }, ${ where }, task keys ${ project.taskPrefix }-<number>, project documents in .clowdy/docs/.`,
+        projectFacts(project, cwd),
     ].join('\n');
 }
 

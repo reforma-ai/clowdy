@@ -123,14 +123,14 @@
 
 **This stage:** a run works in the main folder and gets the others: through ACP `additionalDirectories` when the agent advertises them, and always in the system prompt, which lists the folders, marks the main one, tells the agent to read each folder's `AGENTS.md` or `CLAUDE.md` before changing files there, and says where documents go. Claude also reads the other folders' `CLAUDE.md`. Whatever Stage 1 found that an agent needs (a flag, a `_meta` field) and whatever the person decided for agents that cannot reach the folders lands here.
 
-- [ ] Complete
-  - [ ] `EngineStartOptions.additionalDirectories`: the project's existing folders except the run's working directory
-  - [ ] The ACP session sends `additionalDirectories` on `session/new`, `session/load` and `session/resume` when the agent advertises the capability, and never otherwise
-  - [ ] Claude's catalog entry sets `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1`
-  - [ ] `systemPrompt`: the folders with the main one marked, the instructions line, and the documents rule (one folder's documents in its `.clowdy/docs`, shared ones in the main folder's)
-  - [ ] The `clowdy:docs` system skill says the same about where documents go
-  - [ ] Per-agent changes from Stage 1 and the person's decision for agents that cannot reach the folders
-  - [ ] Tests with the fake ACP agent: the list is sent when advertised, left out when not, and changes on resume without a new session
+- [x] Complete
+  - [x] `EngineStartOptions.additionalDirectories`: the project's existing folders except the run's working directory
+  - [x] The ACP session sends `additionalDirectories` on `session/new`, `session/load` and `session/resume` when the agent advertises the capability, and never otherwise
+  - [x] Claude's catalog entry sets `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1`
+  - [x] `systemPrompt`: the folders with the main one marked, the instructions line, and the documents rule (one folder's documents in its `.clowdy/docs`, shared ones in the main folder's)
+  - [x] The `clowdy:docs` system skill says the same about where documents go
+  - [x] Per-agent changes from Stage 1 and the person's decision for agents that cannot reach the folders
+  - [x] Tests with the fake ACP agent: the list is sent when advertised, left out when not, and changes on resume without a new session
 
 **Files**
 
@@ -146,7 +146,7 @@
 
 **Done when:** a run in a project of three folders starts in the main folder, an agent that advertises the capability receives the other two in `additionalDirectories`, and the prompt names all three.
 **Verify:** `bun run --cwd apps/daemon test`, `bun run typecheck`, `bun run lint`
-**Commits:** None yet.
+**Commits:** None yet. Reviewed: one-folder projects are told as `folder at <path>`; `systemPrompt` marks the folder the run works in (`you work here`) apart from the main one; `clowdy:docs` keeps one `index.md` per docs folder.
 
 ## Stage 4 — Docs in every folder
 

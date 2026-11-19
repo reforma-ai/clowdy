@@ -15,7 +15,7 @@ import { childReport, wakeMessage } from './reports';
 import { ASK_USER } from './tools';
 import { TurnWriter, UNFINISHED_TOOL } from './writer';
 
-import type { ChatMode, EngineId, Run, RunContext, RunRole, Task } from '@clowdy/protocol';
+import type { ChatMode, EngineId, Project, Run, RunContext, RunRole, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunOutcome } from '../db/runs';
 import type { EngineRegistry, EngineSession, ToolDefinition } from '../engine/types';
@@ -74,6 +74,24 @@ interface LiveRun {
 
 type Retry = { kind: 'limit'; until: number } | { kind: 'transient'; delayMs: number; message: string };
 
+/** Synchronous, because `spawn` reads it in its transaction and a turn between counting the live sessions and starting its own: nothing may wait there. */
+function isFolder(path: string): boolean {
+    try {
+        return statSync(path).isDirectory();
+    }
+    catch {
+        return false;
+    }
+}
+
+/**
+ * The project's folders a turn hands the agent besides the one it works in, in the project's order. A folder that is gone is left out rather than
+ * risk an agent that refuses to start on a path that does not exist; `ProjectInfo` reports it missing to the app.
+ */
+function additionalFolders(project: Project, cwd: string): string[] {
+    return project.folders.flatMap(folder => folder.path !== cwd && isFolder(folder.path) ? [folder.path] : []);
+}
+
 const firstLine = (text: string) => text.split('\n')[0].trim().slice(0, 300);
 
 /**
@@ -126,7 +144,7 @@ export class RunDriver {
                 throw conflict(`${ parent.name } already started ${ config.maxChildren } runs, the most one orchestrator may start over the life of its chat (finished ones count too); continue the work in a new chat`);
             }
 
-            if (input.cwd !== undefined && !(isAbsolute(input.cwd) && statSync(input.cwd, { throwIfNoEntry: false })?.isDirectory())) {
+            if (input.cwd !== undefined && !(isAbsolute(input.cwd) && isFolder(input.cwd))) {
                 throw invalid(`cwd must be the absolute path of an existing folder: ${ input.cwd }`);
             }
 
@@ -374,10 +392,12 @@ export class RunDriver {
 
         // The message this turn sends is in the stream already; the record leaves it out, as the agent gets it in the prompt.
         const incoming = [prompt];
+        const cwd = work.cwd ?? mainFolder(project).path;
         const session = engine.start({
-            cwd: work.cwd ?? mainFolder(project).path,
+            cwd,
+            additionalDirectories: additionalFolders(project, cwd),
             prompt,
-            systemPrompt: [systemPrompt(run.role, mode, project), skillPrompt(run.role, config.systemSkillsDir)].filter(Boolean).join('\n\n'),
+            systemPrompt: [systemPrompt(run.role, mode, project, cwd), skillPrompt(run.role, config.systemSkillsDir)].filter(Boolean).join('\n\n'),
             resumeSessionId: run.sessionId,
             ...(run.sessionId && { history: () => conversationRecord(listItems(store.db, runId, 0).filter(item => item.seq <= told), incoming) }),
             model: run.model,
