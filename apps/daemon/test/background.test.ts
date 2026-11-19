@@ -229,6 +229,38 @@ describe('a run that waits for background work', () => {
         expect(h.run(runId).context).toEqual({ used: 50_000, size: 200_000 });
     });
 
+    test('keeps a workflow call that is a background task running while the run waits, and fails the calls left open that are not', async () => {
+        const finished = latch();
+        const workflow: BackgroundItem = { id: 'wf-1', kind: 'task', title: 'Workflow' };
+        const { runId, bodies, waits } = await setup(async function* (turn) {
+            yield { type: 'session', sessionId: 's-1' };
+            yield { type: 'tool', toolCallId: 'wf-1', name: 'Workflow', input: {}, state: 'running' };
+            yield { type: 'tool', toolCallId: 'lost-1', name: 'Bash', input: {}, state: 'running' };
+            yield { type: 'text', delta: 'Started it', done: true };
+            yield { type: 'background', items: [workflow] };
+            yield { type: 'done', result: 'Started it' };
+
+            if (!await turn.hold(finished)) {
+                return;
+            }
+
+            yield { type: 'tool', toolCallId: 'wf-1', name: 'Workflow', input: {}, state: 'done', output: 'ok' };
+            yield { type: 'background', items: [] };
+            yield { type: 'text', delta: 'The workflow finished', done: true };
+            yield { type: 'done', result: 'The workflow finished' };
+        });
+
+        await waits();
+
+        const tools = () => bodies().flatMap(body => (body.kind === 'tool' ? [body] : []));
+
+        expect(tools().find(tool => tool.toolCallId === 'wf-1')).toMatchObject({ state: 'running' });
+        expect(tools().find(tool => tool.toolCallId === 'lost-1')).toMatchObject({ state: 'error' });
+
+        finished.release();
+        await waitFor(() => tools().find(tool => tool.toolCallId === 'wf-1')?.state === 'done', 'the workflow call to finish');
+    });
+
     test('ends when its engine cannot take a prompt after a turn, as every session did before: at the first done', async () => {
         const { h, runId, status } = await setup(async function* () {
             yield { type: 'session', sessionId: 's-1' };

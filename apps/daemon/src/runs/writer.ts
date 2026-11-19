@@ -62,14 +62,14 @@ export class TurnWriter {
 
     /**
      * The turn is over (an answer, a failure, a Stop): closes the open message, and a call the agent never reported finished is failed with `reason`, so the
-     * stream does not show it running for ever. One transaction for all of it.
+     * stream does not show it running for ever. The calls in `keep` go on: they are background work the session still waits for. One transaction for all of it.
      */
-    finish(reason = UNFINISHED_TOOL): void {
+    finish(reason = UNFINISHED_TOOL, keep?: ReadonlySet<string>): void {
         this.store.tx(() => {
             this.end();
 
-            for (const tool of this.tools.values()) {
-                if (tool.body.state === 'running') {
+            for (const [toolCallId, tool] of this.tools) {
+                if (tool.body.state === 'running' && !keep?.has(toolCallId)) {
                     tool.body = { ...tool.body, state: 'error', error: reason };
                     updateItem(this.store, this.runId, tool.seq, tool.body);
                 }

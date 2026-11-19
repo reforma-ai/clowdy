@@ -900,7 +900,7 @@ export class RunDriver {
         writer.end();
 
         if (live.lingering && !live.sent) {
-            writer.finish();
+            writer.finish(undefined, this.openTasks(live));
 
             // The agent's own turn may have started children or read what they reported, which decides what the run waits for now. A message on its way
             // holds the run in `queued` or `running`: its answer decides.
@@ -942,9 +942,14 @@ export class RunDriver {
             return false;
         }
 
-        writer.finish();
+        writer.finish(undefined, this.openTasks(live));
 
         return true;
+    }
+
+    /** The calls of the turn that are background tasks the session waits for (a `Workflow`): they run on after the turn, so the turn's end does not fail them. */
+    private openTasks(live: LiveRun): ReadonlySet<string> {
+        return new Set((live.background ?? []).filter(item => item.kind === 'task').map(item => item.id));
     }
 
     /* ----------------------------- Limits and retries ---------------------------- */
