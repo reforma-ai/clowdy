@@ -83,7 +83,7 @@
 
 **Done when:** `./clowdy build mac` produces `Clowdy.app` that starts its own daemon from `~/Library/Application Support/Clowdy/updates` with no environment variables set.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`; `bun test` and `bun run typecheck` in `apps/daemon`; `./clowdy build mac`, launch the app, check `daemon.json`, the daemon's command line, and a chat.
-**Commits:** None yet.
+**Commits:** `59f65fb` — ship the daemon and a pinned Bun in the packaged app and run them from copies outside the install folder
 
 ## Stage 2 — A packaged app replaces an older daemon
 
@@ -109,7 +109,7 @@ Scope change (review): only a daemon from an **older** bundle (or from sources, 
 
 **Done when:** a packaged app that finds a daemon from an older bundle replaces it when idle, and asks with the run count when busy.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`.
-**Commits:** None yet.
+**Commits:** `d608d47` — replace a daemon left by an older bundle, asking first when it has runs in progress
 
 ## Stage 3 — Shell releases on GitHub
 
@@ -147,7 +147,7 @@ Scope change (review): the packaged app's own `package.json` is named `clowdy`, 
 
 **Done when:** a push that raises the shell version produces a GitHub release with dmg, zip, nsis-web files, and `latest*.yml`, marked Latest, and a packaged app built by it checks that release.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`; a manual `workflow_dispatch` run once the owner approves (it creates a private release).
-**Commits:** None yet.
+**Commits:** `9f3d1eb` — release the shell on GitHub when its version rises, and update it with electron-updater; `8c4ddee` — stop a daemon with its own protocol in the header
 
 ## Stage 4 — OTA bundles: format, build, publish
 
@@ -184,7 +184,7 @@ Scope change (review): a change to `PROTOCOL_VERSION`, the daemon's data folder 
 
 **Done when:** a dry run produces a signed manifest and archive that `openManifest` and `readTar` accept, and the workflow publishes to the `ota` prerelease on a qualifying push.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`; `bun apps/desktop/scripts/publish-ota.ts --dry-run`.
-**Commits:** None yet.
+**Commits:** `e6becf6` — build signed OTA bundles and publish them to the ota prerelease
 
 ## Stage 5 — OTA in the app
 
@@ -222,7 +222,7 @@ Scope change (implementation and review): a bundle must speak the shell's `PROTO
 
 **Done when:** a development run pointed at the local feed downloads a newer bundle, offers Restart, starts on it, and falls back when the new renderer never calls `ready()`.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`; `bun apps/desktop/scripts/ota-local.ts` plus `CLOWDY_UPDATE_FEED=… CLOWDY_UPDATE_PUBLIC_KEY=… ./clowdy dev`.
-**Commits:** None yet.
+**Commits:** `e6eb2a4` — install OTA bundles and run the newest verified one, rolling back a renderer that never gets ready
 
 ## Stage 6 — Daemon trial and rollback
 
@@ -245,7 +245,7 @@ Scope change (implementation and review): the keeper reports a failed replacemen
 
 **Done when:** a bundle whose daemon cannot start leaves the person on the previous bundle with their database as it was before that launch.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`.
-**Commits:** None yet.
+**Commits:** `447357b` — reject an OTA bundle whose daemon fails its first start, putting back the database it migrated
 
 ## Stage 7 — First launch fetches the newest bundle
 
@@ -269,4 +269,4 @@ Scope change (review): progress 0 (the boot window) comes before the archive req
 
 **Done when:** a fresh install with network starts directly on the newest published bundle, and without network starts on its own copy within a few seconds.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`; local feed run with an empty updates folder.
-**Commits:** None yet.
+**Commits:** `b906b58` — install the newest OTA bundle behind a boot window on the first launch of a shell version

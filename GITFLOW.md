@@ -114,7 +114,7 @@ bunx turbo run build lint typecheck test --affected
 
 ## Releases
 
-The desktop app is published to GitHub Releases in this repository. Rules and secrets: `apps/desktop/AGENTS.md` → Releases.
+The desktop app is published to GitHub Releases in this repository. One-time setup (secrets, variables, signing): `apps/desktop/RELEASING.md`. Rules: `apps/desktop/AGENTS.md` → Releases.
 
 - **Shell** (`.github/workflows/release-shell.yml`): raise `version` in `apps/desktop/package.json` and push it to `main`. The workflow builds the macOS and Windows installers and publishes a release `v<version>`, marked Latest; the app's updater follows that release. A push that keeps the version releases nothing, and a version is released once: a bad release is replaced by a higher version.
 - **OTA bundle** (`.github/workflows/release-ota.yml`): every push to `main` that touches the desktop app, the daemon, or the shared packages builds a bundle (renderer, daemon, system skills) and publishes it to the `ota` prerelease; installed apps pick it up without a new shell. When the push also changed what the shell ships since the last shell release, the bundle waits: raise the shell version, and its release carries the bundle.
