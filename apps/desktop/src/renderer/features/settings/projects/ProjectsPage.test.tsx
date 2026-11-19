@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { LAST_USED } from '@clowdy/protocol';
 import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -201,15 +202,15 @@ describe('ProjectsPage project', () => {
         expect(input.value).toBe('Clowdy');
     });
 
-    it('saves the agent and the mode of new chats, and clears each with Last used', async () => {
+    it('saves the agent and the mode of new chats, keeps Last used as a choice of its own, and follows the app with Default', async () => {
         await open(FIXTURE_EMPTY_PROJECT_ID);
 
         const settings = () => store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.settings;
         const radio = (group: string, label: string) => [...container.querySelectorAll<HTMLElement>(`[aria-label="${ group }"] [role="radio"]`)].find(item => item.textContent === label)!;
         const checked = (group: string) => container.querySelector(`[aria-label="${ group }"] [role="radio"][aria-checked="true"]`)?.textContent;
 
-        // Nothing saved is Last used, for the agent and for the mode.
-        expect([checked('Agent for new chats'), checked('Mode for new chats')]).toEqual(['Last used', 'Last used']);
+        // Nothing saved is Default, for the agent and for the mode: the project follows Settings > Chat.
+        expect([checked('Agent for new chats'), checked('Mode for new chats')]).toEqual(['Default', 'Default']);
 
         await click(radio('Agent for new chats', 'Codex'));
         await flush();
@@ -221,13 +222,19 @@ describe('ProjectsPage project', () => {
 
         await click(radio('Agent for new chats', 'Last used'));
         await flush();
-        expect(settings()).not.toHaveProperty('engine');
+        expect(settings().engine).toBe(LAST_USED);
         expect(settings().chatMode).toBe('semi');
 
         await click(radio('Mode for new chats', 'Last used'));
         await flush();
-        expect(settings()).not.toHaveProperty('chatMode');
+        expect(settings().chatMode).toBe(LAST_USED);
         expect([checked('Agent for new chats'), checked('Mode for new chats')]).toEqual(['Last used', 'Last used']);
+
+        await click(radio('Agent for new chats', 'Default'));
+        await click(radio('Mode for new chats', 'Default'));
+        await flush();
+        expect(settings()).not.toHaveProperty('engine');
+        expect(settings()).not.toHaveProperty('chatMode');
     });
 
     it('confirms with the counts before removing, and leaves the page when the project is gone', async () => {

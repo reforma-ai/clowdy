@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 import { useProjectState, useProjectUi } from '../../stores';
 import { ChatDropZone } from '../chats/ChatDropZone';
 import { Composer, type ComposerHandle } from '../chats/Composer';
+import { newChatDefaults, startingChoice } from '../chats/newChatDefaults';
 import styles from './DraftChat.module.css';
 
 /**
@@ -15,8 +16,8 @@ import styles from './DraftChat.module.css';
 export function DraftChat() {
     const project = useProjectState();
     const ui = useProjectUi();
-    // What the project asks a new chat to start with; what it leaves out starts where the last chat left off.
-    const { settings } = project.project;
+    // What the project asks a new chat to start with, or the app's choice where it follows the app; what neither names starts where the last chat left off.
+    const defaults = startingChoice(project.project.settings, newChatDefaults);
     const composer = useRef<ComposerHandle>(null);
     const pending = ui.pendingFiles;
 
@@ -37,7 +38,7 @@ export function DraftChat() {
                     <Text variant="heading-3">What should we work on?</Text>
 
                     <ContentColumn className={ styles.composerSlot }>
-                        <Composer ref={ composer } chat={ undefined } run={ undefined } minLines={ 3 } start={ { projectId: project.id, onStarted: chatId => ui.openChat(chatId), defaults: { engine: settings.engine, mode: settings.chatMode } } } />
+                        <Composer ref={ composer } chat={ undefined } run={ undefined } minLines={ 3 } start={ { projectId: project.id, onStarted: chatId => ui.openChat(chatId), defaults } } />
                     </ContentColumn>
                 </div>
             </div>

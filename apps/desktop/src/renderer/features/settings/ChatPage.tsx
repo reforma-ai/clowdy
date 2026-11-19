@@ -1,13 +1,14 @@
 import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/ToggleButtonGroup';
+import { LAST_USED, type QueuedMessageMode } from '@clowdy/protocol';
 
 import { hotkeys } from '../../hotkeys/registry';
 import { busyEnter } from '../chats/busyEnter';
+import { newChatDefaults } from '../chats/newChatDefaults';
+import { modeOf, NewChatChoices } from './NewChatChoices';
 import { SettingsCard } from './ui/SettingsCard';
 import { SettingsPage } from './ui/SettingsPage';
 import { SettingsRow } from './ui/SettingsRow';
 import { SettingsSection } from './ui/SettingsSection';
-
-import type { QueuedMessageMode } from '@clowdy/protocol';
 
 const LABEL = 'Send a message while the agent is working';
 
@@ -19,7 +20,7 @@ const CHOICES: ReadonlyArray<{ id: QueuedMessageMode; label: string; tip: string
     { id: 'queue', label: 'Queue', tip: 'Waits until the agent finishes its current turn' },
 ];
 
-/** Settings > Chat: how the message box sends on this computer. */
+/** Settings > Chat: how the message box sends, and what a new chat starts with where its project follows the app, on this computer. */
 export function ChatPage() {
     return (
         <SettingsPage title="Chat" description="Choose how chats look and behave">
@@ -45,6 +46,13 @@ export function ChatPage() {
                     </SettingsRow>
                 </SettingsCard>
             </SettingsSection>
+
+            <NewChatChoices
+                engine={ newChatDefaults.engine ?? LAST_USED }
+                mode={ newChatDefaults.mode ?? LAST_USED }
+                onEngineChange={ next => newChatDefaults.setEngine(next === LAST_USED ? undefined : next) }
+                onModeChange={ next => newChatDefaults.setMode(modeOf(next)) }
+            />
         </SettingsPage>
     );
 }
