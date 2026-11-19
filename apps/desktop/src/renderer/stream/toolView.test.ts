@@ -27,6 +27,17 @@ describe('describeTool', () => {
         expect(describeTool('Bash', { command: 'bun run typecheck' })).toEqual({ icon: 'terminal', verb: '', target: 'bun run typecheck' });
     });
 
+    it('titles a command with what the agent says it does and keeps the command beside it', () => {
+        expect(describeTool('Bash', { command: 'bun install', description: 'Install package dependencies' })).toEqual({ icon: 'terminal', verb: 'Install package dependencies', target: 'bun install' });
+        expect(describeTool('shell', { cmd: 'ls', description: 'List files' })).toMatchObject({ verb: 'List files', target: 'ls' });
+    });
+
+    it('keeps one line of a description, and none when it is blank or only repeats the command', () => {
+        expect(describeTool('Bash', { command: 'make', description: 'Build the app\nthen test it' }).verb).toBe('Build the app');
+        expect(describeTool('Bash', { command: 'make', description: '   ' }).verb).toBe('');
+        expect(describeTool('Bash', { command: 'make test', description: 'make test' }).verb).toBe('');
+    });
+
     it('searches by pattern and finds files by glob', () => {
         expect(describeTool('Grep', { pattern: 'BookingStep', path: 'src' })).toMatchObject({ icon: 'search', verb: 'Searching', target: 'BookingStep' });
         expect(describeTool('Glob', { pattern: 'src/**/mail*' })).toMatchObject({ icon: 'search', verb: 'Finding files', target: 'src/**/mail*' });

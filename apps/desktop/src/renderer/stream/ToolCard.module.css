@@ -63,6 +63,14 @@
     white-space: nowrap;
 }
 
+/* The description an agent gives a command: as long as it likes, so it is cut with an ellipsis instead of pushing the command out of the row. */
+.shrinks {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .chip {
     @ruleset typography-text-code-sm;
 
