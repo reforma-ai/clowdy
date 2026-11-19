@@ -123,7 +123,7 @@ describe('the Add project form', () => {
         desktop();
         await open();
 
-        expect(form()?.textContent).toContain('A new folder is made when none is added');
+        expect(form()?.textContent).toContain('Without folders, Clowdy creates one named after the project');
         expect(paths()).toEqual([]);
         expect(button('Add project')?.disabled).toBe(true);
 
@@ -147,7 +147,7 @@ describe('the Add project form', () => {
         expect(choose).toHaveBeenCalledTimes(2);
         expect(paths()).toEqual(['/Users/dev/web', '/Users/dev/api', '/Users/dev/docs']);
         expect(marked()).toEqual(['/Users/dev/web']);
-        expect(form()?.textContent).not.toContain('A new folder is made');
+        expect(form()?.textContent).not.toContain('Without folders');
 
         // A dialog closed without a choice changes nothing.
         await press(button('Add folders…'));

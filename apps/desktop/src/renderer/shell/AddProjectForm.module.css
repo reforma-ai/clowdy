@@ -8,14 +8,21 @@
 .field {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs);
+    gap: var(--spacing-md);
 }
 
-.add {
-    align-self: flex-start;
+/* The list has no grip: a row is what the person takes to drag it. */
+.folders [data-folder-path] {
+    cursor: grab;
 }
 
 .path {
     display: flex;
     gap: var(--spacing-md);
+}
+
+/* Two even lines rather than one word alone on the second, where the card is narrower than the line. */
+.empty {
+    padding: var(--spacing-lg) var(--spacing-md);
+    text-wrap: balance;
 }

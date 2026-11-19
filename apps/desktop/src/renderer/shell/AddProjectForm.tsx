@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { Card } from '@clowdy/components/Card';
 import { FormField } from '@clowdy/components/FormField';
 import { Input } from '@clowdy/components/Input';
 import { useModalContext } from '@clowdy/components/Modal';
@@ -107,24 +108,29 @@ export function AddProjectForm({ root }: { root: RootStore }) {
             <div ref={ group } className={ styles.field } role="group" aria-labelledby={ foldersId }>
                 <Text id={ foldersId } variant="heading-5">Folders</Text>
 
-                { entries.length > 0 && (
-                    <SortableList
-                        aria-label="Folders"
-                        items={ entries }
-                        gap="sm"
-                        getKey={ entry => entry.path }
-                        getTextValue={ entry => entry.name }
-                        onChange={ next => changeFolders(() => next.map(entry => entry.path)) }
-                    >
-                        { (entry, { isFirst }) => (
-                            <FolderRow name={ entry.name } path={ entry.path } isMain={ isFirst } onRemove={ () => remove(entry.path) } />
-                        ) }
-                    </SortableList>
-                ) }
+                <Card variant="filled" size="lg" padding="md" gap="sm">
+                    {/* The whole row drags: a grip outside its edge would stick out of the card. */}
+                    { entries.length > 0
+                        ? (
+                            <SortableList
+                                aria-label="Folders"
+                                items={ entries }
+                                gap="sm"
+                                handle={ false }
+                                className={ styles.folders }
+                                getKey={ entry => entry.path }
+                                getTextValue={ entry => entry.name }
+                                onChange={ next => changeFolders(() => next.map(entry => entry.path)) }
+                            >
+                                { (entry, { isFirst }) => (
+                                    <FolderRow name={ entry.name } path={ entry.path } isMain={ isFirst } onRemove={ () => remove(entry.path) } />
+                                ) }
+                            </SortableList>
+                        )
+                        : <Text variant="sm" color="secondary" align="center" className={ styles.empty }>Without folders, Clowdy creates one named after the project</Text> }
 
-                <FolderAdder onAdd={ added => changeFolders(current => withFolders(current, added)) } />
-
-                { entries.length === 0 && <Text variant="sm" color="secondary">A new folder is made when none is added</Text> }
+                    <FolderAdder onAdd={ added => changeFolders(current => withFolders(current, added)) } />
+                </Card>
             </div>
 
             { error && <Text color="danger" role="alert">{ error }</Text> }
@@ -144,11 +150,7 @@ function FolderAdder({ onAdd }: { onAdd: (paths: string[]) => void }) {
     const choose = window.desktop?.chooseDirectories;
 
     if (choose) {
-        return (
-            <Button variant="bordered" size="sm" className={ styles.add } onPress={ () => void choose().then(onAdd) }>
-                <Plus />Add folders…
-            </Button>
-        );
+        return <Button variant="bordered" size="sm" fullWidth onPress={ () => void choose().then(onAdd) }><Plus />Add folders…</Button>;
     }
 
     const add = () => {
