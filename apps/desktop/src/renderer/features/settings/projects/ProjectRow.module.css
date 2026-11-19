@@ -1,64 +1,10 @@
-@reference '@clowdy/styles/rulesets';
-
-.row {
+/* The main folder's path gives way to the count of the others, which always shows. */
+.where {
     display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    transition: border-color var(--transition-duration-fast);
-}
-
-.row:hover {
-    border-color: var(--color-secondary-border);
-}
-
-/* The whole row but its menu is one button: a click anywhere opens the project's page. */
-.open {
-    display: flex;
-    flex: 1;
-    align-items: center;
-    gap: var(--spacing-lg);
+    gap: var(--spacing-xs);
     min-width: 0;
-    padding: var(--settings-inset) var(--spacing-md) var(--settings-inset) var(--settings-inset);
-    border: 0;
-    border-radius: inherit;
-    background: none;
-    color: inherit;
-    font: inherit;
-    text-align: start;
-    cursor: pointer;
 }
 
-.open:focus-visible {
-    outline: 2px solid var(--color-focus-ring, currentcolor);
-    outline-offset: -2px;
-}
-
-.icon {
-    display: inline-flex;
+.more {
     flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    width: var(--spacing-24);
-    height: var(--spacing-24);
-    color: var(--color-secondary-muted-text);
-}
-
-.text {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: var(--spacing-xxs);
-    min-width: 0;
-}
-
-.title {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    min-width: 0;
-}
-
-.menu {
-    flex-shrink: 0;
-    margin-inline-end: var(--spacing-md);
 }

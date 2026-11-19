@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { folderViews, holdingsLine, missingFolderNote, newMainMessage, remoteLink, removalMessage } from './projectView';
+import { folderViews, holdingsLine, missingFolderNote, newMainMessage, remoteLink, removalMessage, siteName } from './projectView';
+
+describe('siteName', () => {
+    it('names the sites it knows and gives the host of the others', () => {
+        expect(siteName('https://github.com/acme/app')).toBe('GitHub');
+        expect(siteName('https://gitlab.com/acme/app')).toBe('GitLab');
+        expect(siteName('https://git.example.com:8443/acme/app')).toBe('git.example.com:8443');
+    });
+});
 
 describe('remoteLink', () => {
     it.each([

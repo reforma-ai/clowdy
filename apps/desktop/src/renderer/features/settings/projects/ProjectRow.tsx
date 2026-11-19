@@ -6,9 +6,9 @@ import { Text } from '@clowdy/components/Text';
 import { Folder, Home, More, Sliders, Trash } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
-import { SettingsCard } from '../ui/SettingsCard';
+import { CardRow } from '../../../shared/CardRow';
 import styles from './ProjectRow.module.css';
-import { holdingsLine } from './projectView';
+import { holdingsLine, plural } from './projectView';
 
 import type { Project, ProjectInfo } from '@clowdy/protocol';
 
@@ -27,47 +27,52 @@ export interface ProjectRowProps {
     onRemove?: () => void;
 }
 
-/** One project of the list: where it is and what it holds. A click opens its page in Settings, and its menu configures the project, opens it or removes it. */
+/**
+ * One project of the list: where it is (its main folder, and how many it has besides) and what it holds. A click opens its page in
+ * Settings, and its menu configures the project, opens it or removes it.
+ */
 export function ProjectRow({ project, info, onManage, onOpen, onRemove }: ProjectRowProps) {
     const holdings = holdingsLine(info);
     const missing = info?.folders[0]?.exists === false;
     const path = mainFolder(project).path;
+    const more = project.folders.length - 1;
 
     return (
-        <SettingsCard className={ styles.row }>
-            <button type="button" className={ styles.open } data-project-id={ project.id } onClick={ onManage }>
-                <span className={ styles.icon }>{ project.personal ? <Home /> : <Folder /> }</span>
-                <span className={ styles.text }>
-                    <span className={ styles.title }>
-                        <Text weight="medium" truncate>{ project.name }</Text>
-                        { missing && <Badge size="xs" color="warning" textValue="Folder missing">Folder missing</Badge> }
-                    </span>
-                    <Text variant="sm" color="secondary" truncate title={ path }>{ path }</Text>
-                    { holdings && <Text variant="xs" color="secondary">{ holdings }</Text> }
-                </span>
-            </button>
-
-            <MenuTrigger>
-                <Button variant="filling" color="secondary" size="sm" iconOnly className={ styles.menu } aria-label={ `${ project.name } actions` }>
-                    <More />
-                </Button>
-                <Popover placement="bottom end" width={ 200 }>
-                    <Menu
-                        aria-label={ `${ project.name } actions` }
-                        size="md"
-                        onAction={ (key) => {
-                            if (key === CONFIGURE) onManage();
-                            else if (key === OPEN) onOpen();
-                            else if (key === REMOVE) onRemove?.();
-                        } }
-                    >
-                        <MenuItem id={ CONFIGURE } text="Configure" icon={ <Sliders /> } />
-                        <MenuItem id={ OPEN } text="Open project" icon={ <Folder /> } />
-                        { onRemove && <MenuSeparator /> }
-                        { onRemove && <MenuItem id={ REMOVE } text="Remove…" icon={ <Trash /> } isDanger isDisabled={ (info?.activeRuns ?? 0) > 0 } /> }
-                    </Menu>
-                </Popover>
-            </MenuTrigger>
-        </SettingsCard>
+        <CardRow
+            onPress={ onManage }
+            pressProps={ { 'data-project-id': project.id } }
+            icon={ project.personal ? <Home /> : <Folder /> }
+            title={ <Text weight="medium" truncate>{ project.name }</Text> }
+            marks={ missing && <Badge size="xs" color="warning" textValue="Folder missing">Folder missing</Badge> }
+            actions={ (
+                <MenuTrigger>
+                    <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `${ project.name } actions` }>
+                        <More />
+                    </Button>
+                    <Popover placement="bottom end" width={ 200 }>
+                        <Menu
+                            aria-label={ `${ project.name } actions` }
+                            size="md"
+                            onAction={ (key) => {
+                                if (key === CONFIGURE) onManage();
+                                else if (key === OPEN) onOpen();
+                                else if (key === REMOVE) onRemove?.();
+                            } }
+                        >
+                            <MenuItem id={ CONFIGURE } text="Configure" icon={ <Sliders /> } />
+                            <MenuItem id={ OPEN } text="Open project" icon={ <Folder /> } />
+                            { onRemove && <MenuSeparator /> }
+                            { onRemove && <MenuItem id={ REMOVE } text="Remove…" icon={ <Trash /> } isDanger isDisabled={ (info?.activeRuns ?? 0) > 0 } /> }
+                        </Menu>
+                    </Popover>
+                </MenuTrigger>
+            ) }
+        >
+            <span className={ styles.where } title={ more > 0 ? project.folders.map(folder => folder.path).join('\n') : path }>
+                <Text variant="sm" color="secondary" truncate>{ path }</Text>
+                { more > 0 && <Text variant="sm" color="secondary" className={ styles.more }>{ `+${ plural(more, 'folder') }` }</Text> }
+            </span>
+            { holdings && <Text variant="xs" color="secondary">{ holdings }</Text> }
+        </CardRow>
     );
 }

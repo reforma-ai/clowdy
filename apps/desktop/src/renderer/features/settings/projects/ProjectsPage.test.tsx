@@ -157,7 +157,7 @@ afterEach(async () => {
 
 describe('ProjectsPage list', () => {
     it('lists the personal space first, then the projects, with where they are and what they hold', async () => {
-        await open();
+        await open(undefined, {}, withFolders(FIXTURE_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
 
         const rows = [...container.querySelectorAll('button[data-project-id]')].map(item => item.textContent);
 
@@ -166,8 +166,10 @@ describe('ProjectsPage list', () => {
             expect.stringContaining('Car Rental'),
             expect.stringContaining('Clowdy'),
         ]);
-        expect(rows[1]).toContain('/Users/dev/car-rental');
+        // The main folder, and how many the project has besides.
+        expect(rows[1]).toContain('/Users/dev/car-rental+2 folders');
         expect(rows[1]).toContain('4 chats · 11 tasks');
+        expect(rows[2]).not.toContain('folder');
         expect(rows[2]).toContain('No chats or tasks yet');
     });
 
@@ -254,13 +256,13 @@ describe('ProjectsPage list', () => {
 });
 
 describe('ProjectsPage project', () => {
-    it('shows the folders, the first marked Main, each with its git remote as a link', async () => {
+    it('shows the folders, the first marked Main, each with a button that opens its git remote', async () => {
         await open(FIXTURE_PROJECT_ID, {}, withFolders(FIXTURE_PROJECT_ID, '/Users/dev/car-rental-api'));
 
         expect(rowPaths()).toEqual(['/Users/dev/car-rental', '/Users/dev/car-rental-api']);
         expect(marked()).toEqual(['/Users/dev/car-rental']);
-        expect(rows()[0]!.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental"]')?.textContent).toContain('github.com/acme/car-rental');
-        expect(rows()[1]!.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental-api"]')?.textContent).toContain('github.com/acme/car-rental-api');
+        expect(rows()[0]!.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental"]')?.textContent).toBe('Open in GitHub');
+        expect(rows()[1]!.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental-api"]')?.textContent).toBe('Open in GitHub');
         expect(container.textContent).not.toContain('Branch');
         expect(container.textContent).not.toContain('Change folder');
     });

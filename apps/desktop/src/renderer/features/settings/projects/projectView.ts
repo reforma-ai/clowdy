@@ -18,6 +18,15 @@ function webAddress(host: string, path: string): RemoteLink | undefined {
     return { text: `${ host }/${ repository }`, href: `https://${ host }/${ repository }` };
 }
 
+const SITES: Record<string, string> = { 'github.com': 'GitHub', 'gitlab.com': 'GitLab', 'bitbucket.org': 'Bitbucket', 'codeberg.org': 'Codeberg' };
+
+/** The site a repository link opens, for its button: `GitHub` for github.com, the host itself for a site Clowdy has no name for. */
+export function siteName(href: string): string {
+    const { host } = new URL(href);
+
+    return SITES[host] ?? host;
+}
+
 /**
  * A git remote as a person reads it, with a link when it names a repository on a web host: `git@github.com:acme/app.git`, `ssh://git@host/acme/app.git`
  * and `https://host/acme/app.git` all become `https://host/acme/app`. Credentials in the address (`https://user:token@host/…`) are never shown or linked.
@@ -96,7 +105,8 @@ export function newMainMessage(projectName: string, next: string, removed?: stri
     return `${ move } ${ disk } An agent that worked in the old main folder starts a new conversation, so what it remembered may not carry over.`;
 }
 
-const plural = (count: number, one: string) => `${ count } ${ count === 1 ? one : `${ one }s` }`;
+/** `1 chat`, `2 chats`. */
+export const plural = (count: number, one: string) => `${ count } ${ count === 1 ? one : `${ one }s` }`;
 
 /** What a project holds, for its row: `12 chats · 5 tasks`. */
 export function holdingsLine(info: Pick<ProjectInfo, 'chats' | 'tasks'> | undefined): string | undefined {

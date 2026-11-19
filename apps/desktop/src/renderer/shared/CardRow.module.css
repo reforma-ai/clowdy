@@ -1,0 +1,79 @@
+/* The surface of a Settings card (border, squircle, float background), padded by the same inset on every side but the one with actions. */
+.row {
+    --card-row-inset: var(--spacing-xl);
+
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+    transition: border-color var(--transition-duration-fast);
+}
+
+.row:hover {
+    border-color: var(--color-secondary-border);
+}
+
+.body {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--spacing-lg);
+    min-width: 0;
+    padding: var(--card-row-inset);
+}
+
+.row[data-actions] > .body {
+    padding-inline-end: var(--spacing-md);
+}
+
+button.body {
+    border: 0;
+    border-radius: inherit;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+button.body:focus-visible {
+    outline: 2px solid var(--color-focus-ring, currentcolor);
+    outline-offset: -2px;
+}
+
+.icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-24);
+    height: var(--spacing-24);
+    color: var(--color-secondary-muted-text);
+}
+
+.text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    min-width: 0;
+}
+
+.title {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-inline-end: var(--spacing-md);
+}

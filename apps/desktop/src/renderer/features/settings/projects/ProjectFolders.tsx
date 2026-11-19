@@ -1,6 +1,8 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { ArrowUpRight } from '@clowdy/icons/14';
+import { Github } from '@clowdy/icons/logo';
 import { useMemo, useState } from 'react';
 
 import { FolderList } from '../../../shell/FolderList';
@@ -8,7 +10,7 @@ import { useRootStore } from '../../../stores';
 import { SettingsSection } from '../ui/SettingsSection';
 import { addFolders, removeFolder, reorderFolders } from './projectActions';
 import styles from './ProjectDetail.module.css';
-import { folderViews, missingFolderNote, type FolderView, type RemoteLink } from './projectView';
+import { folderViews, missingFolderNote, siteName, type FolderView, type RemoteLink } from './projectView';
 
 import type { SortableListDropContext } from '@clowdy/components/SortableList';
 import type { Project, ProjectFolder, ProjectInfo } from '@clowdy/protocol';
@@ -28,9 +30,9 @@ interface DraggedOrder {
 
 /**
  * The Folders block of a project's page, in the `FolderList` the Add project form has too: the folders in order, the first marked Main,
- * dragged into another order, removed one by one, and more added with Add folders…. Each shows that it is missing, or its git remote. A
- * new main folder asks first and waits while agents of the project work; anything else applies at once. The personal space shows its one
- * folder, which nobody changes.
+ * dragged into another order, removed one by one, and more added with Add folders…. Each shows that it is missing, and opens its git
+ * remote's page (Open in GitHub). A new main folder asks first and waits while agents of the project work; anything else applies at once.
+ * The personal space shows its one folder, which nobody changes.
  */
 export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProps) {
     const root = useRootStore();
@@ -77,6 +79,7 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
                 getPath={ view => view.folder.path }
                 getName={ view => view.name }
                 renderDetails={ view => <FolderState project={ project } view={ view } /> }
+                renderActions={ view => view.remote && <RemoteButton remote={ view.remote } /> }
                 // A project has at least one folder.
                 onRemove={ views.length > 1 ? view => removeFolder(root, project, view.folder) : undefined }
                 isRemoveDisabled={ view => view.isMain && working }
@@ -101,25 +104,31 @@ function PersonalFolder({ project, views }: { project: Project; views: FolderVie
                 getPath={ view => view.folder.path }
                 getName={ view => view.name }
                 renderDetails={ view => <FolderState project={ project } view={ view } /> }
+                renderActions={ view => view.remote && <RemoteButton remote={ view.remote } /> }
             />
         </SettingsSection>
     );
 }
 
-/** Under a folder's path: that it is missing, or else its git remote. */
+/** Under a folder's path: that it is missing, or else a git remote that has no page to open. */
 function FolderState({ project, view }: { project: Project; view: FolderView }) {
     if (view.missing) return <Text variant="sm" color="warning">{ missingFolderNote(project, view.isMain) }</Text>;
 
-    return view.remote ? <Remote remote={ view.remote } /> : null;
+    return view.remote && !view.remote.href ? <Text variant="sm" color="secondary" className={ styles.value }>{ view.remote.text }</Text> : null;
 }
 
-/** The `origin` remote, a link when it names a repository on a web host. */
-function Remote({ remote }: { remote: RemoteLink }) {
+/** The `origin` remote's page, when it names a repository on a web host: Open in GitHub, with the repository on hover. */
+function RemoteButton({ remote }: { remote: RemoteLink }) {
+    if (!remote.href) return null;
+
+    const site = siteName(remote.href);
+
     return (
-        <Text variant="sm" className={ styles.value }>
-            { remote.href
-                ? <Button variant="inline" color="primary" href={ remote.href } target="_blank" rel="noreferrer" className={ styles.value }>{ remote.text }<ArrowUpRight aria-hidden /></Button>
-                : remote.text }
-        </Text>
+        <Tooltip content={ remote.text }>
+            <Button variant="filling" color="secondary" size="sm" href={ remote.href } target="_blank" rel="noreferrer">
+                { site === 'GitHub' ? <Github size={ 14 } /> : <ArrowUpRight /> }
+                { `Open in ${ site }` }
+            </Button>
+        </Tooltip>
     );
 }
