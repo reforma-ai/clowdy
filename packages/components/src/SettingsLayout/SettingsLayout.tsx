@@ -1,4 +1,3 @@
-import { MOTION_EASE_UI } from '@clowdy/constants';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
@@ -11,6 +10,7 @@ import { Breadcrumb } from '../Breadcrumb';
 import { Button } from '../Button';
 import { For } from '../For';
 import { tooltipWithHotkey } from '../Hotkey';
+import { layerRest, paneTransition, SECTION_RISE, SECTION_START_OPACITY, sectionTransition, SLIDE_IN } from '../LayerStack/motion';
 import { ListBox, ListBoxItem } from '../List';
 import { ModalContext } from '../Modal/hooks/useModalProvider';
 import { confirmDiscardChanges } from '../modals/ConfirmModal';
@@ -24,9 +24,6 @@ import type { ReactNode, RefObject } from 'react';
 
 const MotionScrollable = motion.create(Scrollable);
 
-const PANE_DURATION_S = 0.35;
-const SLIDE_IN = 32;
-const SLIDE_OUT = -12;
 const SAVE_HOTKEY = ['mod', 's'] as const;
 
 function isSaveHotkey(event: KeyboardEvent): boolean {
@@ -35,22 +32,6 @@ function isSaveHotkey(event: KeyboardEvent): boolean {
     }
 
     return event.key === 's' || event.key === 'S';
-}
-
-function paneTransition(reducedMotion: boolean | null) {
-    return { duration: reducedMotion ? 0 : PANE_DURATION_S, ease: MOTION_EASE_UI };
-}
-
-function tabEnterTransition(reducedMotion: boolean | null) {
-    return { duration: reducedMotion ? 0 : PANE_DURATION_S, ease: 'easeOut' as const };
-}
-
-function layerRest(covered: boolean, reducedMotion: boolean | null) {
-    return {
-        opacity: covered ? 0 : 1,
-        x: (covered && !reducedMotion) ? SLIDE_OUT : 0,
-        y: 0,
-    };
 }
 
 export interface SettingsNavItem {
@@ -370,11 +351,11 @@ function Shell({
                         key={ selectedId }
                         className={ styles.scroll }
                         contentClass={ styles.scrollContent }
-                        initial={ reducedMotion ? false : { opacity: 0.6, y: 8 } }
+                        initial={ reducedMotion ? false : { opacity: SECTION_START_OPACITY, y: SECTION_RISE } }
                         animate={ animate }
                         transition={ covered
                             ? paneTransition(reducedMotion)
-                            : tabEnterTransition(reducedMotion) }
+                            : sectionTransition(reducedMotion) }
                         inert={ covered }
                     >
                         { children }

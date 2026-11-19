@@ -1,0 +1,15 @@
+@layer components {
+    /* The room the layers share. It is as big as its parent gives it, and each layer scrolls inside it. */
+    .stack {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .layer {
+        position: absolute;
+        inset: 0;
+    }
+}

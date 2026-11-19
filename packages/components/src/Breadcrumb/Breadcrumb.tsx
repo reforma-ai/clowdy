@@ -80,6 +80,7 @@ function Page({ className, children }: BreadcrumbPageProps) {
             className={ styles.item }
             initial={ reducedMotion ? false : { opacity: 0.6, x: -10 } }
             animate={ { opacity: 1, x: 0 } }
+            exit={ reducedMotion ? undefined : { opacity: 0, x: -10 } }
             transition={ { duration: reducedMotion ? 0 : ENTER_DURATION_S, ease: MOTION_EASE_UI } }
         >
             <Sep />
