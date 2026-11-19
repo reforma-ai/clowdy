@@ -3,6 +3,7 @@
  *
  *   ./clowdy dev [electron args]   Run the desktop app, rebuilding and reloading as you edit.
  *   ./clowdy build [mac|win]       Build the unpacked desktop app for an OS (default: this one).
+ *   ./clowdy sync icons [...]      Pull the icon packs from Figma into `packages/icons`.
  *   ./clowdy worktree add|remove   Extra checkout for work that should not share this branch.
  *
  * `bun run clowdy <command>` does the same where `./clowdy` cannot run, such as Windows.
@@ -19,6 +20,7 @@ const HELP = `Usage: ./clowdy <command>
 Commands:
   dev [electron args]   Run the desktop app; the renderer is rebuilt and the window reloads as you edit, main and preload restart the app
   build [mac|win]       Build the unpacked desktop app into apps/desktop/release (default: this OS; mac needs a Mac)
+  sync icons [pack ...]  Pull icon packs from Figma into packages/icons (--list, --json, auth, --help)
   worktree add <slug>   New checkout at ../clowdy-<slug> on <nickname>/<slug> from origin/main
   worktree remove <slug>  Remove that checkout. Refuses uncommitted work
   help                  Show this help
@@ -27,6 +29,8 @@ Examples:
   ./clowdy dev
   ./clowdy build
   ./clowdy build win
+  ./clowdy sync icons
+  ./clowdy sync icons 16
   ./clowdy worktree add auth-refresh
 `;
 
@@ -36,6 +40,9 @@ switch (command) {
         break;
     case 'build':
         await build(args);
+        break;
+    case 'sync':
+        await sync(args);
         break;
     case 'worktree':
         await worktreeCommand(root, args);
@@ -69,10 +76,19 @@ async function build([os, ...rest]: string[]): Promise<void> {
     await run(target === 'mac' ? 'package' : 'package:win', []);
 }
 
-/** Runs a script of `apps/desktop` in the foreground and exits with its code. */
-async function run(script: string, args: string[]): Promise<void> {
+async function sync([resource, ...rest]: string[]): Promise<void> {
+    if (resource !== 'icons') {
+        console.error('Usage: ./clowdy sync icons [options] [pack ...]');
+        process.exit(1);
+    }
+
+    await run('sync', rest, 'packages/icons');
+}
+
+/** Runs a script of a workspace (`apps/desktop` unless told otherwise) in the foreground and exits with its code. */
+async function run(script: string, args: string[], workspace = 'apps/desktop'): Promise<void> {
     const child = Bun.spawn(['bun', 'run', script, ...args], {
-        cwd: path.join(root, 'apps/desktop'),
+        cwd: path.join(root, workspace),
         stdio: ['inherit', 'inherit', 'inherit'],
     });
 

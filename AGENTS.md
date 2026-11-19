@@ -23,8 +23,8 @@ UI text that is a phrase or a single sentence ends without a period: a label, de
 ## Tooling
 
 - **Bun only**, never npm/pnpm. Node >=22.12. TypeScript 7 (`typescript` package). Build orchestration: Turborepo.
-- `./clowdy dev` runs the app, rebuilding the renderer and reloading the window as you edit; `./clowdy build [mac|win]` builds the unpacked app into `apps/desktop/release/`. Where `./clowdy` cannot run (Windows), use `bun run clowdy <command>`.
+- `./clowdy dev` runs the app, rebuilding the renderer and reloading the window as you edit; `./clowdy build [mac|win]` builds the unpacked app into `apps/desktop/release/`; `./clowdy sync icons` pulls the icons from Figma. Where `./clowdy` cannot run (Windows), use `bun run clowdy <command>`.
 - Tests: `bun run test` (Vitest), never bare `bun test`; the exception is `apps/daemon`, whose tests run with `bun test` because they need Bun's runtime (`bun:sqlite`). Lint: `bun run lint`; fix with `bun run lint:fix` in a package. Types: `bun run typecheck`. Both also check the root `scripts/`.
 - Root `bunfig.toml` blocks resolving versions under 3 days old (`minimumReleaseAge`). For an urgent fix use `bun add <pkg>@<version> --minimum-release-age 0` and say so in the PR.
 - Electron 45 downloads its binary on first use (`./clowdy dev` imports it), not at install time.
-- Design system, icons, and components were forked from Reforma. There is no Figma sync here: edit tokens and icons by hand (see `packages/styles/AGENTS.md`).
+- Design system, icons, and components were forked from Reforma. Icons come from Reforma's Figma file: draw them there and run `./clowdy sync icons` (see `packages/icons/README.md`; the token is shared with Reforma's `./reforma sync icons auth`). There is no Figma sync for tokens: edit them by hand (see `packages/styles/AGENTS.md`).
