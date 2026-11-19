@@ -8,7 +8,7 @@
  * (a new dependency, say) releases nothing; a manual run releases the current version if it is not out yet. A version
  * is released once: a bad release is replaced by a higher version, never rewritten.
  */
-import { isVersionAheadOf, parseVersion } from '@clowdy/lib/semver';
+import { isVersionAheadOf } from '@clowdy/lib/semver';
 import { execFile } from 'node:child_process';
 import { appendFile, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -36,6 +36,17 @@ export interface ShellDecisionInput {
 
 export const shellTag = (version: string) => `v${ version }`;
 
+/** A published shell release: not a draft or a prerelease (the `ota` one is), tagged `v<major.minor.patch>`. */
+const isShellRelease = (release: Release) => !release.isDraft && !release.isPrerelease && /^v\d+\.\d+\.\d+$/.test(release.tagName);
+
+/** The newest published shell version; null before the first release. */
+export function newestShell(releases: readonly Release[]): string | null {
+    return releases
+        .filter(isShellRelease)
+        .map(release => release.tagName.slice(1))
+        .reduce<string | null>((best, version) => (best === null || isVersionAheadOf(version, best) ? version : best), null);
+}
+
 export function decideShell({ version, previous, releases }: ShellDecisionInput): ShellDecision {
     const verdict = (decision: ShellDecision['decision'], reason: string): ShellDecision => ({ decision, reason });
 
@@ -45,16 +56,11 @@ export function decideShell({ version, previous, releases }: ShellDecisionInput)
 
     if (previous !== undefined && previous === version) return verdict('skip', `The shell version stays ${ version }`);
 
-    const published = releases.filter(release => !release.isDraft && !release.isPrerelease && release.tagName.startsWith('v'));
+    if (releases.some(release => isShellRelease(release) && release.tagName === shellTag(version))) return verdict('skip', `Clowdy ${ version } is out already`);
 
-    if (published.some(release => release.tagName === shellTag(version))) return verdict('skip', `Clowdy ${ version } is out already`);
+    const newest = newestShell(releases);
 
-    const newest = published
-        .map(release => release.tagName.slice(1))
-        .filter(tag => parseVersion(tag))
-        .reduce<string | undefined>((best, tag) => (best === undefined || isVersionAheadOf(tag, best) ? tag : best), undefined);
-
-    if (newest !== undefined && !isVersionAheadOf(version, newest)) {
+    if (newest !== null && !isVersionAheadOf(version, newest)) {
         return verdict('fail', `The shell version ${ version } is not above the newest release, ${ newest }`);
     }
 

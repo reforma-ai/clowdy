@@ -17,17 +17,17 @@
  * - `CLOWDY_RELEASE_REPO`: `owner/name` of the GitHub repository with the releases. Without it the app never updates.
  * - `CLOWDY_SIGNED`: `true` when the macOS build gets a Developer ID signature, so it can install the next one itself;
  *   an ad-hoc build offers the release page instead.
+ * - `CLOWDY_OTA_PUBLIC_KEY`: the Ed25519 key OTA bundles are signed with (SPKI PEM). Without it the app ignores them.
  */
-import { $ } from 'bun';
+import { createPublicKey } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import { fetchBunRuntimes, runtimeTargets } from './bun-runtime';
-import { bundleInfo, layoutDaemonPart } from './bundle';
+import { buildRenderer, bundleInfo, layoutDaemonPart } from './bundle';
 import { buildMain } from './main-bundle';
 
 const desktopRoot = path.resolve(import.meta.dir, '..');
-const repoRoot = path.resolve(desktopRoot, '../..');
 const appDir = path.join(desktopRoot, 'app');
 const bundleDir = path.join(desktopRoot, 'bundle');
 const manifest = await Bun.file(path.join(desktopRoot, 'package.json')).json() as { version: string; description: string };
@@ -41,11 +41,7 @@ await rm(bundleDir, { recursive: true, force: true });
 const constants = releaseConstants();
 const info = await bundleInfo();
 
-// The packages the renderer imports; turbo's cache makes a repeat run cheap.
-await $`bunx turbo run build --filter=${ '@clowdy/desktop^...' }`.cwd(repoRoot);
-await $`bunx vite build --config ${ path.join(desktopRoot, 'vite.config.ts') } --outDir ${ path.join(appDir, 'renderer') } --emptyOutDir`
-    .cwd(desktopRoot)
-    .env({ ...process.env, NODE_ENV: 'production' });
+await buildRenderer(path.join(appDir, 'renderer'));
 await buildMain(path.join(appDir, 'dist'), constants);
 await layoutDaemonPart(bundleDir, info);
 await Bun.write(path.join(appDir, 'bundle.json'), `${ JSON.stringify(info, null, 4) }\n`);
@@ -76,5 +72,22 @@ function releaseConstants(): Record<string, string> {
     return {
         __CLOWDY_RELEASE_REPO__: JSON.stringify(repo),
         __CLOWDY_SIGNED__: JSON.stringify(process.env.CLOWDY_SIGNED === 'true'),
+        __CLOWDY_OTA_PUBLIC_KEY__: JSON.stringify(otaPublicKey()),
     };
+}
+
+/**
+ * The key OTA bundles are checked with, as SPKI PEM. Exported again from the parsed key, so a private key set by mistake
+ * never ships: only its public half would.
+ */
+function otaPublicKey(): string {
+    const pem = process.env.CLOWDY_OTA_PUBLIC_KEY ?? '';
+
+    if (!pem) return '';
+
+    const key = createPublicKey(pem);
+
+    if (key.asymmetricKeyType !== 'ed25519') throw new Error(`CLOWDY_OTA_PUBLIC_KEY must be an Ed25519 key, got ${ key.asymmetricKeyType }`);
+
+    return key.export({ type: 'spki', format: 'pem' }).toString();
 }

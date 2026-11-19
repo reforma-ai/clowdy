@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { decideShell } from './release-shell';
+import { decideShell, newestShell } from './release-shell';
 
 import type { Release } from './github';
 
@@ -43,4 +43,9 @@ describe('decideShell', () => {
     test('a version with a prerelease suffix fails', () => {
         expect(decideShell({ version: '0.2.0-beta.1', releases: [] }).decision).toBe('fail');
     });
+});
+
+test('newestShell counts published shell releases only, by version', () => {
+    expect(newestShell([release('v0.3.0', { isDraft: true }), release('v0.4.0', { isPrerelease: true }), release('ota', { isPrerelease: true }), release('v0.2.0'), release('v0.10.0')])).toBe('0.10.0');
+    expect(newestShell([release('ota', { isPrerelease: true })])).toBeNull();
 });

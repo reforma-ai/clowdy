@@ -1,0 +1,52 @@
+name: Release OTA bundle
+# Every push to main that may change the renderer, the daemon, or the system skills builds this commit's bundle and
+# publishes it to the `ota` prerelease, unless it should not go out yet (apps/desktop/scripts/publish-ota.ts says why).
+# Rules: apps/desktop/AGENTS.md (Releases).
+
+on:
+    push:
+        branches:
+            - main
+        paths:
+            - 'apps/desktop/**'
+            - 'apps/daemon/**'
+            - 'packages/**'
+            - 'package.json'
+            - 'bun.lock'
+            - '.github/workflows/release-ota.yml'
+    workflow_dispatch: {}
+
+# A newer push makes the running publish moot. Cancelling it is safe: the manifest that points to a bundle is written
+# after the bundle, and an archive nothing names yet is pruned later. A run stopped while it replaces the manifest (gh
+# deletes the old one, then uploads) leaves none, which apps read as no update until the next publish.
+concurrency:
+    group: release-ota
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+
+jobs:
+    publish:
+        if: github.ref == 'refs/heads/main'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            # Full history and tags: the bundle version counts first-parent commits, and the shell's files are compared with its release tag.
+            - uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+            # Vite runs on the runner's Node.
+            - uses: actions/setup-node@v5
+              with:
+                  node-version: 24
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: package.json
+            - run: bun install --frozen-lockfile
+            - run: bun apps/desktop/scripts/publish-ota.ts
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  CLOWDY_OTA_SIGNING_KEY: ${{ secrets.CLOWDY_OTA_SIGNING_KEY }}
+                  CLOWDY_OTA_PUBLIC_KEY: ${{ vars.CLOWDY_OTA_PUBLIC_KEY }}

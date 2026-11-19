@@ -89,6 +89,7 @@ jobs:
               env:
                   CLOWDY_RELEASE_REPO: ${{ github.repository }}
                   CLOWDY_SIGNED: ${{ steps.signing.outputs.signed }}
+                  CLOWDY_OTA_PUBLIC_KEY: ${{ vars.CLOWDY_OTA_PUBLIC_KEY }}
             # notarytool reads the App Store Connect key from a file.
             - name: Write the App Store Connect key
               if: steps.signing.outputs.signed == 'true'
@@ -183,6 +184,7 @@ jobs:
               working-directory: apps/desktop
               env:
                   CLOWDY_RELEASE_REPO: ${{ github.repository }}
+                  CLOWDY_OTA_PUBLIC_KEY: ${{ vars.CLOWDY_OTA_PUBLIC_KEY }}
             # One web installer for both architectures, their packages, and latest.yml.
             - name: Package
               run: bun run release:win

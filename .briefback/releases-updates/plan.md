@@ -155,14 +155,14 @@ Scope change (review): the packaged app's own `package.json` is named `clowdy`, 
 
 **This stage:** Defines the signed bundle and publishes it. A manifest `{ version, minShell, protocol, archive: { name, sha256, size }, files: { path: { sha256, size } } }` is signed with Ed25519 as `{ body, signature }` (port of Reforma's `front-manifest.ts`). The bundle build reuses Stage 1's layout (renderer, daemon, system skills) and packs a `.tar.gz` with our own tar writer and reader. The publish script decides from GitHub: the Latest shell tag must be `v<minShell>` or newer, shell files must not have changed since `v<minShell>` without a bump, and the published manifest must be older; then it uploads the archive to the `ota` prerelease (creating it once), replaces `manifest.json`, and prunes to three bundles. The workflow runs on pushes to `main` under the bundle's paths and on manual dispatch, on Linux.
 
-- [ ] Complete
-  - [ ] Manifest module: parse with path safety, sign, open with a pinned key, hash a folder
-  - [ ] Tar writer and reader (ustar regular files and folders) over `zlib`
-  - [ ] Bundle build into a folder plus archive and manifest
-  - [ ] Publish decision and upload via `gh`; dry-run mode for local use
-  - [ ] Build-time OTA public key; the release build writes the bundled copy's manifest data
-  - [ ] `.github/workflows/release-ota.yml`
-  - [ ] Releases docs: key generation, secret `CLOWDY_OTA_SIGNING_KEY`, variable `CLOWDY_OTA_PUBLIC_KEY`, `GITFLOW.md` OTA paragraph
+- [x] Complete
+  - [x] Manifest module: parse with path safety, sign, open with a pinned key, hash a folder
+  - [x] Tar writer and reader (ustar regular files and folders) over `zlib`
+  - [x] Bundle build into a folder plus archive and manifest
+  - [x] Publish decision and upload via `gh`; dry-run mode for local use
+  - [x] Build-time OTA public key; the release build writes the bundled copy's manifest data
+  - [x] `.github/workflows/release-ota.yml`
+  - [x] Releases docs: key generation, secret `CLOWDY_OTA_SIGNING_KEY`, variable `CLOWDY_OTA_PUBLIC_KEY`, `GITFLOW.md` OTA paragraph
 
 **Files**
 
@@ -174,10 +174,13 @@ Scope change (review): the packaged app's own `package.json` is named `clowdy`, 
 - `apps/desktop/scripts/publish-ota.ts` — create: `decide`, `publish`, `prune`
 - `apps/desktop/scripts/publish-ota.test.ts` — create: decisions over a faked GitHub and git
 - `apps/desktop/scripts/build.ts` — use `bundle.ts` for the bundled copy
-- `apps/desktop/scripts/main-bundle.ts` — `define` for the OTA public key
+- `apps/desktop/scripts/github.ts` — the asset calls (`releaseAssets`, `createPrerelease`, `uploadAssets`, `deleteAsset`, `downloadAsset`), telling a missing release from a failed call
+- `apps/desktop/scripts/build.ts` — bakes `CLOWDY_OTA_PUBLIC_KEY` (re-exported from the parsed key)
 - `apps/desktop/src/main/releaseConfig.ts` — OTA public key
 - `.github/workflows/release-ota.yml` — create
 - `apps/desktop/AGENTS.md`, `GITFLOW.md` — OTA release docs
+
+Scope change (review): a change to `PROTOCOL_VERSION`, the daemon's data folder (`packages/protocol/src/paths.ts`), or the themes main accepts counts as a shell change, because main inlines them; `newestShell` lives once in `release-shell.ts`; `hashFolder` refuses links; `rendererFiles` waits for Stage 5. Publishing also skips when `CLOWDY_OTA_PUBLIC_KEY` is unset, since shells built without it ignore bundles.
 
 **Done when:** a dry run produces a signed manifest and archive that `openManifest` and `readTar` accept, and the workflow publishes to the `ota` prerelease on a qualifying push.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`; `bun apps/desktop/scripts/publish-ota.ts --dry-run`.
