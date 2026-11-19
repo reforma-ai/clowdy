@@ -3,7 +3,7 @@ import { statusOptions, taskOptions } from './pickerOptions';
 import { adjacentStatus, blockedByOptions, blockingOptions, newestChat, toggleDependency } from './taskView';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
-import type { Chat, CommandResult, Task, TaskId, TaskStatus } from '@clowdy/protocol';
+import type { Chat, ChatId, CommandResult, Task, TaskId, TaskStatus } from '@clowdy/protocol';
 import type { CommandInput } from '../../daemon/transport';
 import type { Command } from '../../hotkeys';
 import type { Direction, ListCursor } from '../../hotkeys/listCursor';
@@ -41,7 +41,9 @@ export function focusZoneOf(active: Element | null, region: Element | null): Foc
 
 export interface TaskCommandDeps {
     cursor: ListCursor;
-    ui: Pick<ProjectUi, 'taskId' | 'openTask' | 'openChat' | 'openDoc' | 'setTasksView'>;
+    ui: Pick<ProjectUi, 'taskId' | 'openTask' | 'openDoc' | 'setTasksView'>;
+    /** Shows a chat in the Agents section, bringing it out of the archive first when it is in it. */
+    openChat: (chatId: ChatId) => void;
     /** Whether the task still exists. The open task can be one that is gone, and then there is no panel to follow with. */
     hasTask: (taskId: TaskId) => boolean;
     view: () => TasksView;
@@ -502,7 +504,7 @@ async function openLatestDoc({ ui, docPathOf, notify }: TaskCommandDeps, task: T
  * Both exist for every task and say so when there is nothing to open: a `O` that waited for a `C` which then fell through to "New task" would be worse than a toast.
  */
 function linkedCommands(deps: TaskCommandDeps): Command[] {
-    const { ui, chatsOf, notify } = deps;
+    const { chatsOf, notify } = deps;
 
     return [
         {
@@ -520,7 +522,7 @@ function linkedCommands(deps: TaskCommandDeps): Command[] {
 
                 const chat = newestChat(chatsOf(task.id));
 
-                if (chat) ui.openChat(chat.id);
+                if (chat) deps.openChat(chat.id);
                 else notify(`${ task.key } has no chat yet`);
             }),
         },

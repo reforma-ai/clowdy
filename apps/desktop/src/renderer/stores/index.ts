@@ -6,4 +6,4 @@ export { ProjectState } from './ProjectState';
 export { RootStore } from './RootStore';
 export { buildRunTree, type RunNode } from './runTree';
 export { RunStream, StreamStore } from './StreamStore';
-export { initialUiFromSearch, ProjectUi, SECTIONS, SETTINGS_PAGES, UiStore, type InitialProjectUi, type Section, type SettingsPage, type TasksView } from './UiStore';
+export { initialUiFromSearch, ProjectUi, SECTIONS, SETTINGS_PAGES, UiStore, type ChatSort, type InitialProjectUi, type Section, type SettingsPage, type TasksView } from './UiStore';

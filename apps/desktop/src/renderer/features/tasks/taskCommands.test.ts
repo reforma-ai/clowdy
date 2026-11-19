@@ -159,6 +159,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
         create: () => void asked.created++,
         openFilter: () => void asked.filter++,
         focusSearch: () => void asked.search++,
+        openChat: chatId => ui.openChat(chatId),
         chatsOf: id => state.chats.get(id) ?? [],
         docPathOf: async (id) => {
             if (state.docsFail) throw new Error('No answer');

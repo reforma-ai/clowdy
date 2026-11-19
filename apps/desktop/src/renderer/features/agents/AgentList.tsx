@@ -1,10 +1,10 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
-import { GridList, GridListHeader, GridListItem, GridListSection, listBoxItemDataShow, Menu, MenuItem, useCellEditMode } from '@clowdy/components/List';
+import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem, MenuSection, MenuSeparator, useCellEditMode } from '@clowdy/components/List';
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Check, Message, More, Plus } from '@clowdy/icons/14';
+import { Archive, Check, Message, More, Plus } from '@clowdy/icons/14';
 import { ChevronDown, ChevronRight } from '@clowdy/icons/8';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 
@@ -22,11 +22,9 @@ import { PROVIDER_IDS } from '../settings/providers/providerView';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
 import { agentRows, ancestorIds, chatDotTone, countActiveChildren, describeRun, listedRunId, type AgentRow, type AgentSelection } from './agentTree';
+import { ArchiveButton } from './ArchiveButton';
 
 import type { Chat, ChatId, Run } from '@clowdy/protocol';
-
-/** The id of the first row, the one that starts a chat. Chat and run ids never look like it. */
-export const NEW_CHAT_ROW = '@new-chat';
 
 /**
  * The icon of a chat's row: the mark of the provider it runs on once it has started (the chat's own, else its orchestrator's), a speech bubble before and for an agent that has no mark.
@@ -57,9 +55,9 @@ interface ChatActions {
 }
 
 /**
- * The project's agents as a tree: the row that starts a chat, then the chats it is given (newest activity first), each with
- * the runs its orchestrator started below it (its subthreads), and a `⋯` menu with what to show. Archived chats, when
- * shown, are a group of their own at the bottom, headed Archived, with their subthreads still below them.
+ * The project's agents: the New chat button with the archive beside it, then the chats in use (in the order the menu of the
+ * heading's `⋯` asks for), each with the runs its orchestrator started below it (its subthreads). Archived chats are not
+ * here, they are in the archive's list, and take their subthreads with them.
  */
 export function AgentList({ selection, chats }: { selection: AgentSelection; chats: readonly Chat[] }) {
     const root = useRootStore();
@@ -74,18 +72,15 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     const actions: ChatActions = {
         // The popover hands focus back to its trigger as it closes: starting at once would have that blur end the rename.
         rename: chat => void setTimeout(() => setRenamingId(chat.id), 150),
-        archive: chat => void archiveChat(root, ui, chat, chat.archivedAt === undefined, selection.chat?.id === chat.id),
+        archive: chat => void archiveChat(root, ui, chat, selection.chat?.id === chat.id),
         remove: chat => deleteChat(root, chat, runOf(chat) !== undefined),
     };
 
-    // Archived chats are a group of their own below the rest; their subthreads stay below them, as everywhere.
     const forest = ui.showSubthreads ? project.runTree(ui.showFinished) : [];
-    const rows = agentRows(chats.filter(chat => chat.archivedAt === undefined), forest, collapsed);
-    const archivedRows = agentRows(chats.filter(chat => chat.archivedAt !== undefined), forest, collapsed);
-    const isGrouped = archivedRows.length > 0;
+    const rows = agentRows(chats, forest, collapsed);
     const activeChildren = countActiveChildren(project.runs.values());
-    // A native sub-agent has no row: the run it lives in, or the chat, stays selected while its page is open.
-    const selectedId = selection.draft ? NEW_CHAT_ROW : ((selection.run && listedRunId(project.runs, selection.run)) ?? selection.chat?.id);
+    // A native sub-agent has no row: the run it lives in, or the chat, stays selected while its page is open. The new-chat page has none.
+    const selectedId = selection.draft ? undefined : ((selection.run && listedRunId(project.runs, selection.run)) ?? selection.chat?.id);
 
     // A run opened from elsewhere may sit below a fold: open the folds above it.
     useEffect(() => {
@@ -107,7 +102,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     useHotkeyScope(AGENTS_SCOPE);
     useCommands(AGENTS_SCOPE, agentCommands({
         list: () => list.current,
-        ids: () => [NEW_CHAT_ROW, ...rows.map(row => row.id), ...archivedRows.map(row => row.id)],
+        ids: () => rows.map(row => row.id),
         openId: () => selectedId,
     }));
 
@@ -139,8 +134,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     };
 
     const select = (id: string) => {
-        if (id === NEW_CHAT_ROW) ui.openDraft();
-        else if (project.chats.has(id)) ui.openChat(id);
+        if (project.chats.has(id)) ui.openChat(id);
         else ui.openRun(id);
     };
 
@@ -192,10 +186,29 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                 <FilterMenu />
             </SidebarHeading>
 
+            {/* Two buttons in a line: the one that starts a chat takes the width, the archive is a square. */}
+            <div className={ styles.start }>
+                <Button
+                    variant="filling"
+                    color="secondary"
+                    size="sm"
+                    className={ styles.newChat }
+                    contentClassName={ styles.newChatContent }
+                    isPressed={ selection.draft }
+                    onPress={ () => ui.openDraft() }
+                >
+                    <Plus aria-hidden />
+                    <span className={ styles.title }>New chat</span>
+                    {/* The shortcut is a hint for the pointer on its way to the button, not a label it wears at rest. */}
+                    <span className={ styles.hint }><CommandHotkey id={ NEW_CHAT_COMMAND } size="xs" /></span>
+                </Button>
+                <ArchiveButton />
+            </div>
+
             <PanelContent contentClass={ styles.content }>
                 <div ref={ list } onContextMenu={ openContextMenu } onKeyDown={ onKeyDown }>
                     <GridList
-                        aria-label="Agents"
+                        aria-label="Chats"
                         size="md"
                         selectionMode="single"
                         disallowEmptySelection
@@ -206,35 +219,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                             if (id !== undefined) select(String(id));
                         } }
                     >
-                        <GridListSection aria-label={ isGrouped ? 'New chat' : 'Chats' }>
-                            <GridListItem
-                                id={ NEW_CHAT_ROW }
-                                text="New chat"
-                                icon={ <Plus /> }
-                                // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
-                                endAffix={ (
-                                    <span className={ styles.end } data-show={ listBoxItemDataShow.itemHover }>
-                                        <CommandHotkey id={ NEW_CHAT_COMMAND } size="xs" />
-                                    </span>
-                                ) }
-                            >
-                                <span className={ styles.title }>New chat</span>
-                            </GridListItem>
-                            { !isGrouped && rows.map(renderRow) }
-                        </GridListSection>
-                        {/* Once there is an Archived group the others need a name too, or the first reads as the list and the second as an afterthought. */}
-                        { isGrouped && rows.length > 0 && (
-                            <GridListSection>
-                                <GridListHeader>Active</GridListHeader>
-                                { rows.map(renderRow) }
-                            </GridListSection>
-                        ) }
-                        { isGrouped && (
-                            <GridListSection>
-                                <GridListHeader>Archived</GridListHeader>
-                                { archivedRows.map(renderRow) }
-                            </GridListSection>
-                        ) }
+                        { rows.map(renderRow) }
                     </GridList>
                 </div>
             </PanelContent>
@@ -244,7 +229,6 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                     <Popover { ...contextMenu.popoverProps } placement="bottom start" spacing="xs">
                         <ChatMenu
                             isBusy={ isRunActive(runOf(chat)) }
-                            isArchived={ chat.archivedAt !== undefined }
                             onClose={ contextMenu.close }
                             onRename={ () => actions.rename(chat) }
                             onArchive={ () => actions.archive(chat) }
@@ -257,11 +241,11 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     );
 }
 
-/** The header's `⋯`: what the list shows. Checked entries are on. */
+/** The header's `⋯`: what the list shows (checked entries are on) and the order it comes in (the checked one). */
 function FilterMenu() {
     const ui = useProjectUi();
     const [isOpen, setIsOpen] = useState(false);
-    const on = new Set<string>([ui.showSubthreads && 'subthreads', ui.showFinished && 'finished', ui.showArchived && 'archived'].filter((key): key is string => Boolean(key)));
+    const on = new Set<string>([ui.showSubthreads && 'subthreads', ui.showFinished && 'finished'].filter((key): key is string => Boolean(key)));
 
     return (
         <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
@@ -270,24 +254,38 @@ function FilterMenu() {
             </Button>
             <Popover placement="bottom end" spacing="xs" width={ 240 }>
                 <PopoverScroll>
-                    <Menu
-                        aria-label="Filters"
-                        size="sm"
-                        selectionMode="multiple"
-                        selectedKeys={ on }
-                        onSelectionChange={ (keys) => {
-                            const next = keys === 'all' ? new Set(['subthreads', 'finished', 'archived']) : new Set(keys);
+                    <Menu aria-label="Filters" size="sm">
+                        <MenuSection
+                            selectionMode="multiple"
+                            selectedKeys={ on }
+                            onSelectionChange={ (keys) => {
+                                const next = keys === 'all' ? new Set(['subthreads', 'finished']) : new Set(keys);
 
-                            ui.setShowSubthreads(next.has('subthreads'));
-                            ui.setShowFinished(next.has('finished'));
-                            ui.setShowArchived(next.has('archived'));
-                        } }
-                    >
-                        <MenuItem id="subthreads" textValue="Show subthreads" endAffix={ on.has('subthreads') ? <Check /> : undefined }>Show subthreads</MenuItem>
-                        <MenuItem id="finished" textValue="Show finished subthreads" isDisabled={ !ui.showSubthreads } endAffix={ on.has('finished') ? <Check /> : undefined }>
-                            Show finished subthreads
-                        </MenuItem>
-                        <MenuItem id="archived" textValue="Show archived" endAffix={ on.has('archived') ? <Check /> : undefined }>Show archived</MenuItem>
+                                ui.setShowSubthreads(next.has('subthreads'));
+                                ui.setShowFinished(next.has('finished'));
+                            } }
+                        >
+                            <MenuHeader>Show</MenuHeader>
+                            <MenuItem id="subthreads" textValue="Show subthreads" endAffix={ on.has('subthreads') ? <Check /> : undefined }>Show subthreads</MenuItem>
+                            <MenuItem id="finished" textValue="Show finished subthreads" isDisabled={ !ui.showSubthreads } endAffix={ on.has('finished') ? <Check /> : undefined }>
+                                Show finished subthreads
+                            </MenuItem>
+                        </MenuSection>
+                        <MenuSeparator />
+                        <MenuSection
+                            selectionMode="single"
+                            disallowEmptySelection
+                            selectedKeys={ [ui.chatSort] }
+                            onSelectionChange={ (keys) => {
+                                const [sort] = keys === 'all' ? [] : keys;
+
+                                if (sort === 'activity' || sort === 'created') ui.setChatSort(sort);
+                            } }
+                        >
+                            <MenuHeader>Sort by</MenuHeader>
+                            <MenuItem id="activity" textValue="Last activity" endAffix={ ui.chatSort === 'activity' ? <Check /> : undefined }>Last activity</MenuItem>
+                            <MenuItem id="created" textValue="Created" endAffix={ ui.chatSort === 'created' ? <Check /> : undefined }>Created</MenuItem>
+                        </MenuSection>
                     </Menu>
                 </PopoverScroll>
             </Popover>
@@ -323,48 +321,60 @@ function Fold({ row, onToggle }: { row: AgentRow; onToggle: () => void }) {
     );
 }
 
-/** The `⋯` menu button, on hover. */
+/** The end of a chat's row, on hover: Archive as a quick action, and the `⋯` menu button. */
 function RowEnd({ chat, actions }: { chat: Chat; actions: ChatActions }) {
     const project = useProjectState();
     const [isOpen, setIsOpen] = useState(false);
-    const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
+    const busy = isRunActive(chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined);
     const close = () => setIsOpen(false);
 
     return (
-        <span className={ styles.end }>
-            {/* The popover is a React child of the row, so its clicks and keys would reach the row through the tree. */}
-            <span
-                onClick={ event => event.stopPropagation() }
-                onDoubleClick={ event => event.stopPropagation() }
-                onPointerDown={ event => event.stopPropagation() }
-                onKeyDown={ event => event.stopPropagation() }
-                onContextMenu={ event => event.stopPropagation() }
+        // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
+        <span
+            className={ styles.end }
+            onClick={ event => event.stopPropagation() }
+            onDoubleClick={ event => event.stopPropagation() }
+            onPointerDown={ event => event.stopPropagation() }
+            onKeyDown={ event => event.stopPropagation() }
+            onContextMenu={ event => event.stopPropagation() }
+        >
+            <Button
+                variant="filling"
+                color="secondary"
+                size="xs"
+                iconOnly
+                aria-label="Archive"
+                tooltip={ busy ? 'Stop the chat first' : 'Archive' }
+                isDisabled={ busy }
+                preventFocusOnPress
+                data-show={ listBoxItemDataShow.itemBoth }
+                onPress={ () => actions.archive(chat) }
             >
-                <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
-                    <Button
-                        variant="filling"
-                        color="secondary"
-                        size="xs"
-                        iconOnly
-                        aria-label="Chat actions"
-                        preventFocusOnPress
-                        // Kept while the menu is open, though the pointer has left the row.
-                        data-show={ isOpen ? undefined : listBoxItemDataShow.itemBoth }
-                    >
-                        <More />
-                    </Button>
-                    <Popover placement="bottom end" spacing="xs">
-                        <ChatMenu
-                            isBusy={ isRunActive(run) }
-                            isArchived={ chat.archivedAt !== undefined }
-                            onClose={ close }
-                            onRename={ () => actions.rename(chat) }
-                            onArchive={ () => actions.archive(chat) }
-                            onDelete={ () => actions.remove(chat) }
-                        />
-                    </Popover>
-                </PopoverTrigger>
-            </span>
+                <Archive />
+            </Button>
+            <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
+                <Button
+                    variant="filling"
+                    color="secondary"
+                    size="xs"
+                    iconOnly
+                    aria-label="Chat actions"
+                    preventFocusOnPress
+                    // Kept while the menu is open, though the pointer has left the row.
+                    data-show={ isOpen ? undefined : listBoxItemDataShow.itemBoth }
+                >
+                    <More />
+                </Button>
+                <Popover placement="bottom end" spacing="xs">
+                    <ChatMenu
+                        isBusy={ busy }
+                        onClose={ close }
+                        onRename={ () => actions.rename(chat) }
+                        onArchive={ () => actions.archive(chat) }
+                        onDelete={ () => actions.remove(chat) }
+                    />
+                </Popover>
+            </PopoverTrigger>
         </span>
     );
 }

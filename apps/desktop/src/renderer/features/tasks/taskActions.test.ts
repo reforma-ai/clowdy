@@ -123,6 +123,7 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         create: () => undefined,
         openFilter: () => undefined,
         focusSearch: () => undefined,
+        openChat: chatId => ui().openChat(chatId),
         chatsOf: id => project().chatsOfTask(id),
         docPathOf: async id => newestDocPath((await root.transport.getTaskDetail(id)).artifacts),
         copy: (text, message) => copied.push({ text, message }),

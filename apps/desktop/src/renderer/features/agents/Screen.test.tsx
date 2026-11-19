@@ -47,6 +47,19 @@ const draw = (before?: () => void) => act(async () => {
 const rowKeys = () => [...container.querySelectorAll('[role="row"]')].map(row => row.getAttribute('data-key'));
 const rowOf = (key: string) => container.querySelector<HTMLElement>(`[role="row"][data-key="${ key }"]`)!;
 const isSelected = (key: string) => rowOf(key).hasAttribute('data-selected');
+const newChatButton = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.startsWith('New chat'))!;
+const isNewChatOpen = () => newChatButton().getAttribute('aria-pressed') === 'true';
+const buttonNamed = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`)!;
+
+/** A press with a mouse: what React Aria opens a menu on, and picks an item with. */
+const press = async (target: HTMLElement) => act(async () => {
+    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+    target.click();
+});
+const menuItem = (name: string) => [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent?.includes(name))!;
 
 beforeEach(async () => {
     container = document.createElement('div');
@@ -64,10 +77,11 @@ afterEach(() => {
 });
 
 describe('the list', () => {
-    it('starts with the new-chat row, then the chats, and nests the runs of a chat below it', () => {
+    it('has the chats, and nests the runs of a chat below each, and the new-chat button is no row of it', () => {
         const keys = rowKeys();
 
-        expect(keys[0]).toBe('@new-chat');
+        expect(keys[0]).toBe('c-1');
+        expect(keys).not.toContain('@new-chat');
         expect(keys.filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-4', 'c-3', 'c-2']);
 
         // The orchestrator is the chat, so it has no row; its runs follow the chat, and a run's own runs follow it.
@@ -99,6 +113,31 @@ describe('the list', () => {
             project().chats.set('c-1', { ...project().chats.get('c-1')!, engine: 'fake' });
         });
         expect(providerOf('c-1')).toBeUndefined();
+    });
+
+    it('sorts the chats by last activity until the Filters menu asks for the order they were made in', async () => {
+        const chatKeys = () => rowKeys().filter(key => key?.startsWith('c-'));
+
+        expect(chatKeys()).toEqual(['c-1', 'c-4', 'c-3', 'c-2']);
+
+        await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
+
+        // The menu has the two groups: what to show, and the order.
+        expect(document.body.textContent).toContain('Show');
+        expect(document.body.textContent).toContain('Sort by');
+        expect(menuItem('Last activity').getAttribute('aria-checked')).toBe('true');
+        expect(menuItem('Created').getAttribute('aria-checked')).toBe('false');
+
+        await press(menuItem('Created'));
+        expect(ui().chatSort).toBe('created');
+        await draw();
+        expect(chatKeys()).toEqual(['c-4', 'c-3', 'c-1', 'c-2']);
+
+        // A message in a chat does not move it now.
+        await draw(() => {
+            project().chats.set('c-2', { ...project().chats.get('c-2')!, updatedAt: Date.now() });
+        });
+        expect(chatKeys()).toEqual(['c-4', 'c-3', 'c-1', 'c-2']);
     });
 
     it('selects the first chat when nothing was opened', () => {
@@ -198,7 +237,8 @@ describe('the new-chat row', () => {
 
         await draw(() => ui().openDraft());
 
-        expect(isSelected('@new-chat')).toBe(true);
+        expect(isNewChatOpen()).toBe(true);
+        expect(rowKeys().some(key => isSelected(key!))).toBe(false);
         expect(container.querySelector('[data-testid="chat"]')).toBeNull();
         expect(field()).not.toBeNull();
         expect(container.textContent).toContain('What should we work on?');
@@ -245,13 +285,38 @@ describe('the new-chat row', () => {
         await vi.waitFor(() => expect(store.selectedProject?.status).toBe('ready'));
         await draw();
 
-        expect(rowKeys()).toEqual(['@new-chat']);
-        expect(isSelected('@new-chat')).toBe(true);
+        expect(rowKeys()).toEqual([]);
+        expect(isNewChatOpen()).toBe(true);
         expect(field()).not.toBeNull();
     });
 });
 
-describe('archived chats', () => {
+describe('the new-chat button', () => {
+    it('opens the new-chat page, and looks pressed only while it is open', async () => {
+        expect(isNewChatOpen()).toBe(false);
+
+        await press(newChatButton());
+
+        expect(ui().draft).toBe(true);
+
+        // The test build has no observer, so the screen is drawn again by hand.
+        await draw();
+
+        expect(isNewChatOpen()).toBe(true);
+
+        await draw(() => ui().openChat('c-3'));
+
+        expect(isNewChatOpen()).toBe(false);
+    });
+
+    it('shares its line with the archive, which is a square icon button that comes after it', () => {
+        const line = newChatButton().parentElement!;
+
+        expect([...line.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? button.textContent?.trim().slice(0, 8))).toEqual(['New chat', 'Archive']);
+    });
+});
+
+describe('the archive', () => {
     async function archive(chatId: string, archived: boolean) {
         await act(async () => {
             await store.command({ type: 'chat.setArchived', chatId, archived });
@@ -261,89 +326,93 @@ describe('archived chats', () => {
         await draw();
     }
 
-    it('are left out of the list until they are asked for, and listed again, unchanged, when they are', async () => {
-        await archive('c-4', true);
+    // The rows of the archive's list, which is in a popover beside the screen and not in it.
+    const archiveRows = () => [...document.body.querySelectorAll<HTMLElement>('[role="row"]')].filter(row => !container.contains(row));
+    const titles = () => archiveRows().map(row => row.textContent);
+    const archiveRow = (title: string) => archiveRows().find(row => row.textContent?.startsWith(title))!;
 
-        expect(rowKeys()).not.toContain('c-4');
-        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-3', 'c-2']);
-
-        await draw(() => ui().setShowArchived(true));
-
-        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-3', 'c-2', 'c-4']);
-
-        await archive('c-4', false);
-        await draw(() => ui().setShowArchived(false));
-
-        expect(rowKeys()).toContain('c-4');
-    });
-
-    it('are a group of their own, headed Archived, below every other chat, and with no header when there are none', async () => {
-        await draw(() => ui().setShowArchived(true));
-
-        expect(container.textContent).not.toContain('Archived');
-
-        await archive('c-4', true);
-        await draw(() => ui().setShowArchived(true));
-
-        const text = container.textContent ?? '';
-        const keys = rowKeys();
-
-        expect(text).toContain('Archived');
-        expect(keys.at(-1)).toBe('c-4');
-        expect(keys.indexOf('c-4')).toBeGreaterThan(keys.indexOf('c-2'));
-        // The header sits between the two groups, not above the new-chat row.
-        expect(container.querySelector('[role="row"][data-key="c-4"]')?.closest('[role="rowgroup"]')?.textContent).toContain('Archived');
-        expect(rowOf('c-2').closest('[role="rowgroup"]')?.textContent).not.toContain('Archived');
-    });
-
-    it('give the other chats a header of their own, Active, once the Archived group is there, below the new-chat row', async () => {
-        const headers = () => [...container.querySelectorAll('[role="rowgroup"]')].map(group => group.textContent?.startsWith('Active') ? 'Active' : group.textContent?.startsWith('Archived') ? 'Archived' : 'none');
-
-        await draw(() => ui().setShowArchived(true));
-
-        expect(container.textContent).not.toContain('Active');
-        expect(headers()).toEqual(['none']);
-
-        await archive('c-4', true);
-        await draw(() => ui().setShowArchived(true));
-
-        expect(headers()).toEqual(['none', 'Active', 'Archived']);
-        expect(rowOf('c-2').closest('[role="rowgroup"]')?.textContent).toContain('Active');
-        expect(rowOf('c-2').closest('[role="rowgroup"]')).not.toBe(rowOf('@new-chat').closest('[role="rowgroup"]'));
-    });
-
-    it('keep their subthreads below them, inside the group', async () => {
+    it('takes a chat out of the list, with its subthreads, and lists it, last put away first, with how long ago', async () => {
         await archive('c-2', true);
-        await draw(() => ui().setShowArchived(true));
+        await archive('c-4', true);
 
-        const keys = rowKeys();
+        expect(rowKeys()).toEqual(expect.not.arrayContaining(['c-2', 'c-4', 'r-ex-15']));
+        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-3']);
 
-        expect(keys.indexOf('c-2')).toBeGreaterThan(keys.indexOf('c-3'));
-        expect(keys[keys.indexOf('c-2') + 1]).toBe('r-ex-15');
-        expect(rowOf('r-ex-15').closest('[role="rowgroup"]')).toBe(rowOf('c-2').closest('[role="rowgroup"]'));
+        await press(buttonNamed('Archive'));
+
+        expect(titles()).toEqual([expect.stringMatching(/^New chat/), expect.stringMatching(/^First version/)]);
+        expect(titles()[0]).toMatch(/now$/);
     });
 
-    it('still show their page, and their row, when one is opened from elsewhere', async () => {
+    it('says so when there is nothing in it', async () => {
+        await press(buttonNamed('Archive'));
+
+        expect(titles()).toEqual([]);
+        expect(document.body.textContent).toContain('No archived chats');
+    });
+
+    it('brings a chat back into the list and opens it when it is picked', async () => {
         await archive('c-4', true);
-        await draw(() => ui().openChat('c-4'));
+        await press(buttonNamed('Archive'));
+        await press(archiveRow('New chat'));
+        await vi.waitFor(() => expect(project().chats.get('c-4')?.archivedAt).toBeUndefined());
+        await draw();
 
         expect(rowKeys()).toContain('c-4');
+        expect(ui().chatId).toBe('c-4');
         expect(isSelected('c-4')).toBe(true);
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-4');
+    });
 
-        await draw(() => ui().openChat('c-3'));
+    it('has a menu in each row, with Unarchive and Delete', async () => {
+        await archive('c-4', true);
+        await press(buttonNamed('Archive'));
+        await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
+
+        expect([...document.body.querySelectorAll('[role="menuitem"]')].map(row => row.textContent)).toEqual(['Unarchive', 'Delete']);
+    });
+
+    it('puts a chat back in the list from its menu, without opening it', async () => {
+        await archive('c-4', true);
+        await press(buttonNamed('Archive'));
+        await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
+        await press(menuItem('Unarchive'));
+        await vi.waitFor(() => expect(project().chats.get('c-4')?.archivedAt).toBeUndefined());
+        await draw();
+
+        expect(rowKeys()).toContain('c-4');
+        expect(ui().chatId).not.toBe('c-4');
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
+    });
+
+    it('deletes an archived chat from its menu', async () => {
+        await archive('c-4', true);
+        await press(buttonNamed('Archive'));
+        await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
+        await press(menuItem('Delete'));
+        // The chat never ran, so nothing asks first.
+        await vi.waitFor(() => expect(project().chats.has('c-4')).toBe(false));
+        await draw();
 
         expect(rowKeys()).not.toContain('c-4');
     });
 
-    it('keep the runs of an archived chat opening below it', async () => {
-        await archive('c-2', true);
-        await draw(() => ui().openRun('r-orch-2'));
+    it('is put away from the row, and the page moves on to the first chat that is left', async () => {
+        await draw(() => ui().openChat('c-4'));
+        await press(rowOf('c-4').querySelector<HTMLElement>('button[aria-label="Archive"]')!);
+        await vi.waitFor(() => expect(project().chats.get('c-4')?.archivedAt).toBeDefined());
+        await draw();
 
-        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-2');
+        expect(rowKeys()).not.toContain('c-4');
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
     });
 
-    it('cannot be archived while an agent of the chat works, and the list says so', async () => {
+    it('is not offered from the row while an agent of the chat works', () => {
+        expect(rowOf('c-1').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(true);
+        expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('cannot be asked of a chat whose agents work, and the list keeps it', async () => {
         const result = await store.command({ type: 'chat.setArchived', chatId: 'c-1', archived: true });
 
         expect(result.ok).toBe(false);
@@ -353,11 +422,21 @@ describe('archived chats', () => {
         expect(rowKeys()).toContain('c-1');
     });
 
-    it('fall back to the first listed chat when the one that was open is archived and nothing asks for it', async () => {
+    it('moves the page on to the first listed chat when the one that was open is put away elsewhere', async () => {
         await draw(() => ui().openChat('c-2'));
         await archive('c-2', true);
-        await draw(() => ui().openChat(null));
 
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
+        expect(rowKeys()).not.toContain('c-2');
+    });
+
+    it('has the Archive icon, in the row, the button and the menu, and none of them is the cube', async () => {
+        const archiveIcon = buttonNamed('Archive').innerHTML;
+
+        expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.innerHTML).toBe(archiveIcon);
+
+        await press(rowOf('c-4').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+
+        expect(menuItem('Archive').querySelector('svg')?.outerHTML).toBe(buttonNamed('Archive').querySelector('svg')?.outerHTML);
     });
 });

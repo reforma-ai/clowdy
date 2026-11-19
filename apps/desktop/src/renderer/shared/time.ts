@@ -38,6 +38,29 @@ export function formatRemaining(milliseconds: number): string {
     return hours % 24 === 0 ? `${ days }d` : `${ days }d ${ hours % 24 }h`;
 }
 
+/** How long ago, in the fewest characters: `now` under a minute, then `28m`, `3h`, `2d`, `5w`, `4mo`, `2y`. Rounded down. */
+export function formatElapsed(milliseconds: number): string {
+    const minutes = Math.floor(milliseconds / 60_000);
+
+    if (minutes < 1) return 'now';
+
+    if (minutes < 60) return `${ minutes }m`;
+
+    const hours = Math.floor(minutes / 60);
+
+    if (hours < 24) return `${ hours }h`;
+
+    const days = Math.floor(hours / 24);
+
+    if (days < 7) return `${ days }d`;
+
+    if (days < 30) return `${ Math.floor(days / 7) }w`;
+
+    if (days < 365) return `${ Math.floor(days / 30) }mo`;
+
+    return `${ Math.floor(days / 365) }y`;
+}
+
 const plural = (count: number, unit: string) => `${ count } ${ unit }${ count === 1 ? '' : 's' }`;
 
 /** What `formatRemaining` says, in words for a screen reader: `less than a minute`, `28 minutes`, `1 hour 32 minutes`, `6 days 2 hours`. */

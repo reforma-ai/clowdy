@@ -13,6 +13,8 @@ export const SETTINGS_PAGES = ['appearance', 'chat', 'projects', 'providers', 's
 
 export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
+/** The order of the chats in the Agents list, newest first: by the last thing that happened in the chat, or by when it was made. */
+export type ChatSort = 'activity' | 'created';
 
 /** Where a project's window is: the section and what is open in it. History walks these; the view options of a section are not places. */
 export interface ProjectView {
@@ -42,7 +44,7 @@ interface StoredProjectUi {
     docFolderId: FolderId | null;
     showFinished: boolean;
     showSubthreads: boolean;
-    showArchived: boolean;
+    chatSort: ChatSort;
     tasksView: TasksView;
 }
 
@@ -51,7 +53,7 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'showFinished' | 'showSubthreads' | 'showArchived' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'showFinished' | 'showSubthreads' | 'chatSort' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -75,7 +77,7 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
 
     if (params.has('subthreads')) initial.showSubthreads = params.get('subthreads') !== '0';
 
-    if (params.has('archived')) initial.showArchived = params.get('archived') !== '0';
+    if (params.get('sort') === 'activity' || params.get('sort') === 'created') initial.chatSort = params.get('sort') as ChatSort;
 
     if (view === 'board' || view === 'list') initial.tasksView = view;
 
@@ -97,8 +99,8 @@ export class ProjectUi {
     showSubthreads = true;
     /** Agents: list a subthread that has finished. */
     showFinished = true;
-    /** Agents: list the chats that were archived. */
-    showArchived = false;
+    /** Agents: the order of the chats. Last activity, which is where a chat that just got a message goes up to the top, until the person picks the order they were made in. */
+    chatSort: ChatSort = 'activity';
     tasksView: TasksView = 'board';
     /** Agents: files that a hand-off from another chat left for the new-chat page, which takes them once it is open. Not kept between sessions. */
     pendingFiles: readonly File[] = [];
@@ -116,7 +118,7 @@ export class ProjectUi {
             this.docFolderId = idOrNull(stored.docFolderId);
             this.showFinished = stored.showFinished !== false;
             this.showSubthreads = stored.showSubthreads !== false;
-            this.showArchived = stored.showArchived === true;
+            this.chatSort = stored.chatSort === 'created' ? 'created' : 'activity';
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';
         }
 
@@ -132,7 +134,7 @@ export class ProjectUi {
                 docFolderId: this.docFolderId,
                 showFinished: this.showFinished,
                 showSubthreads: this.showSubthreads,
-                showArchived: this.showArchived,
+                chatSort: this.chatSort,
                 tasksView: this.tasksView,
             }),
             value => writeStored(storage, key, value)
@@ -212,8 +214,8 @@ export class ProjectUi {
         this.showSubthreads = show;
     }
 
-    setShowArchived(show: boolean): void {
-        this.showArchived = show;
+    setChatSort(sort: ChatSort): void {
+        this.chatSort = sort;
     }
 
     setTasksView(view: TasksView): void {

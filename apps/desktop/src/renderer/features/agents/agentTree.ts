@@ -1,6 +1,7 @@
 import { ACTIVE_RUN_STATUSES, type Chat, type ChatId, type Run, type RunId } from '@clowdy/protocol';
 
 import type { StatusTone } from '../../shared';
+import type { ChatSort } from '../../stores';
 import type { RunNode } from '../../stores/runTree';
 
 /** One line of the Agents list: a chat, or a run nested under the chat that started it. */
@@ -54,14 +55,25 @@ export function agentRows(chats: readonly Chat[], forest: readonly RunNode[], co
 }
 
 /**
- * The chats the list shows: archived ones only when asked for, and the one that is open, so the page beside the list
- * always has its row. The archived ones come last, in the order they are given, as the list shows them in a group of
- * their own.
+ * The chats the list shows: the ones in use. A chat is either here, with its row, or in the archive, which has its own list;
+ * there is no chat that is open and archived. `chatList` comes by last activity; `sort` `created` puts the newest chat first instead.
  */
-export function visibleChats(chatList: readonly Chat[], showArchived: boolean, openId?: ChatId): Chat[] {
-    const listed = chatList.filter(chat => chat.archivedAt === undefined || showArchived || chat.id === openId);
+export function visibleChats(chatList: readonly Chat[], sort: ChatSort = 'activity'): Chat[] {
+    const ordered = sort === 'created' ? [...chatList].sort((a, b) => b.createdAt - a.createdAt) : chatList;
 
-    return [...listed.filter(chat => chat.archivedAt === undefined), ...listed.filter(chat => chat.archivedAt !== undefined)];
+    return ordered.filter(chat => chat.archivedAt === undefined);
+}
+
+/** The chats in the archive, the one put away last first. */
+export function archivedChats(chatList: readonly Chat[]): (Chat & { archivedAt: number })[] {
+    return chatList
+        .filter((chat): chat is Chat & { archivedAt: number } => chat.archivedAt !== undefined)
+        .sort((a, b) => b.archivedAt - a.archivedAt);
+}
+
+/** The chat a run belongs to: the one whose orchestrator is the root of the run's tree. */
+export function chatOfRun(chats: Iterable<Chat>, run: Pick<Run, 'rootRunId'>): Chat | undefined {
+    return [...chats].find(chat => chat.orchestratorRunId === run.rootRunId);
 }
 
 /** What the main pane shows: a chat, and a run of that chat when the person opened one below it, or the new-chat row. */
@@ -75,20 +87,20 @@ export interface AgentSelection {
 
 /**
  * The selection the screen shows, from what the UI remembers. A remembered run wins when its chat is known (a run is
- * opened from a chip or from the list), and a root run is its chat. Anything gone falls back to the chat that was
- * selected (archived or not: it was asked for), and then to the first chat of `chatList`, the chats the list shows;
- * with no chat at all the new-chat row is what shows.
+ * opened from a chip or from the list), and a root run is its chat. Anything gone, and a chat that is in the archive (it has
+ * no page: opening one brings it back first, `openChat`), falls back to the chat that was selected, and then to the first
+ * chat of `chatList`, the chats the list shows; with no chat at all the new-chat page is what shows.
  */
 export function resolveSelection(chats: ReadonlyMap<ChatId, Chat>, chatList: readonly Chat[], runs: ReadonlyMap<RunId, Run>, chatId: ChatId | null, runId: RunId | null, draft = false): AgentSelection {
     if (draft) return { chat: undefined, run: undefined, draft: true };
 
     const run = runId === null ? undefined : runs.get(runId);
-    // Whose run it is does not depend on what the list shows: a run of an archived chat still opens below its chat.
-    const owner = run ? [...chats.values()].find(chat => chat.orchestratorRunId === run.rootRunId) : undefined;
+    const owner = run ? chatOfRun(chats.values(), run) : undefined;
 
-    if (run && owner) return { chat: owner, run: run.parentRunId === undefined ? undefined : run, draft: false };
+    if (run && owner && owner.archivedAt === undefined) return { chat: owner, run: run.parentRunId === undefined ? undefined : run, draft: false };
 
-    const chat = (chatId === null ? undefined : chats.get(chatId)) ?? chatList[0];
+    const remembered = chatId === null ? undefined : chats.get(chatId);
+    const chat = (remembered?.archivedAt === undefined ? remembered : undefined) ?? chatList[0];
 
     return { chat, run: undefined, draft: chat === undefined };
 }

@@ -1,12 +1,10 @@
 import { Menu, MenuItem, MenuSeparator } from '@clowdy/components/List';
 import { PopoverScroll } from '@clowdy/components/Popover';
-import { Box, EditPen, Trash } from '@clowdy/icons/14';
+import { Archive, EditPen, Trash } from '@clowdy/icons/14';
 
 export interface ChatMenuProps {
     /** A chat whose agents are working can be neither archived nor deleted. */
     isBusy: boolean;
-    /** The chat is archived: the entry brings it back instead of putting it away. */
-    isArchived: boolean;
     /** Closes the popover the menu is in. Called before the action runs. */
     onClose: () => void;
     onRename: () => void;
@@ -14,8 +12,8 @@ export interface ChatMenuProps {
     onDelete: () => void;
 }
 
-/** What can be done to a chat: the content of its `⋯` popover and of its right-click menu. */
-export function ChatMenu({ isBusy, isArchived, onClose, onRename, onArchive, onDelete }: ChatMenuProps) {
+/** What can be done to a chat in the list: the content of its `⋯` popover and of its right-click menu. */
+export function ChatMenu({ isBusy, onClose, onRename, onArchive, onDelete }: ChatMenuProps) {
     return (
         <PopoverScroll>
             <Menu
@@ -32,12 +30,12 @@ export function ChatMenu({ isBusy, isArchived, onClose, onRename, onArchive, onD
                 <MenuItem id="rename" icon={ <EditPen /> } textValue="Rename">Rename</MenuItem>
                 <MenuItem
                     id="archive"
-                    icon={ <Box /> }
-                    textValue={ isArchived ? 'Unarchive' : 'Archive' }
-                    isDisabled={ isBusy && !isArchived }
-                    description={ isBusy && !isArchived ? 'Stop the chat first' : undefined }
+                    icon={ <Archive /> }
+                    textValue="Archive"
+                    isDisabled={ isBusy }
+                    description={ isBusy ? 'Stop the chat first' : undefined }
                 >
-                    { isArchived ? 'Unarchive' : 'Archive' }
+                    Archive
                 </MenuItem>
                 <MenuSeparator />
                 <MenuItem

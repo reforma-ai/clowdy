@@ -1,0 +1,132 @@
+import { Button } from '@clowdy/components/Button';
+import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuItem, MenuSeparator } from '@clowdy/components/List';
+import { Popover, PopoverScroll, PopoverTrigger } from '@clowdy/components/Popover';
+import { Text } from '@clowdy/components/Text';
+import { Archive, More, Trash } from '@clowdy/icons/14';
+import { useState } from 'react';
+
+import { formatElapsed } from '../../shared';
+import { useProjectState, useProjectUi, useRootStore } from '../../stores';
+import { openChat, unarchiveChat } from '../chats/archiveChat';
+import { deleteChat } from '../chats/deleteChat';
+import { archivedChats } from './agentTree';
+import styles from './ArchiveButton.module.css';
+
+import type { Chat } from '@clowdy/protocol';
+
+/**
+ * The archive, beside New chat: a button that drops down the chats that were put away, the last one first, each with how long ago and a `⋯`
+ * with Unarchive and Delete. Picking a row brings the chat back into the list and opens it, so a chat is either in the list or here, never both.
+ */
+export function ArchiveButton() {
+    const root = useRootStore();
+    const project = useProjectState();
+    const ui = useProjectUi();
+    const [isOpen, setIsOpen] = useState(false);
+    const archived = archivedChats(project.chatList);
+    const now = Date.now();
+
+    return (
+        <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
+            <Button variant="filling" color="secondary" size="sm" iconOnly aria-label="Archive" tooltip="Archive">
+                <Archive />
+            </Button>
+            <Popover placement="bottom end" spacing="xs" width={ 300 }>
+                { archived.length === 0
+                    ? <Text variant="sm" color="secondary" className={ styles.empty }>No archived chats</Text>
+                    : (
+                        <PopoverScroll maxHeight={ 360 }>
+                            <GridList
+                                aria-label="Archived chats"
+                                size="sm"
+                                onAction={ (key) => {
+                                    setIsOpen(false);
+                                    void openChat(root, project, ui, String(key));
+                                } }
+                            >
+                                { archived.map(chat => (
+                                    <GridListItem
+                                        key={ chat.id }
+                                        id={ chat.id }
+                                        text={ chat.title }
+                                        endAffix={ (
+                                            <ArchivedEnd
+                                                chat={ chat }
+                                                ago={ formatElapsed(now - chat.archivedAt) }
+                                                onUnarchive={ () => void unarchiveChat(root, chat) }
+                                                onDelete={ () => {
+                                                    // A chat that ran asks first, and the dialog should not open over the list.
+                                                    setIsOpen(false);
+                                                    deleteChat(root, chat, chat.orchestratorRunId !== undefined && project.runs.has(chat.orchestratorRunId));
+                                                } }
+                                            />
+                                        ) }
+                                    >
+                                        <span className={ styles.title }>{ chat.title }</span>
+                                    </GridListItem>
+                                )) }
+                            </GridList>
+                        </PopoverScroll>
+                    ) }
+            </Popover>
+        </PopoverTrigger>
+    );
+}
+
+interface ArchivedEndProps {
+    chat: Chat;
+    ago: string;
+    onUnarchive: () => void;
+    onDelete: () => void;
+}
+
+/** The end of an archived chat's row: how long ago it was put away, and the `⋯` menu, on hover, with what can be done to it. */
+function ArchivedEnd({ chat, ago, onUnarchive, onDelete }: ArchivedEndProps) {
+    const [isOpen, setIsOpen] = useState(false);
+
+    return (
+        // The button and its popover are React children of the row, so their clicks and keys would reach the row through the tree.
+        <span
+            className={ styles.end }
+            onClick={ event => event.stopPropagation() }
+            onDoubleClick={ event => event.stopPropagation() }
+            onPointerDown={ event => event.stopPropagation() }
+            onKeyDown={ event => event.stopPropagation() }
+            onContextMenu={ event => event.stopPropagation() }
+        >
+            <Text variant="xs" color="secondary">{ ago }</Text>
+            <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
+                <Button
+                    variant="filling"
+                    color="secondary"
+                    size="xs"
+                    iconOnly
+                    aria-label={ `Actions of ${ chat.title }` }
+                    preventFocusOnPress
+                    // Kept while the menu is open, though the pointer has left the row.
+                    data-show={ isOpen ? undefined : listBoxItemDataShow.itemBoth }
+                >
+                    <More />
+                </Button>
+                <Popover placement="bottom end" spacing="xs">
+                    <PopoverScroll>
+                        <Menu
+                            aria-label="Archived chat actions"
+                            size="sm"
+                            onAction={ (key) => {
+                                setIsOpen(false);
+
+                                if (key === 'unarchive') onUnarchive();
+                                else if (key === 'delete') onDelete();
+                            } }
+                        >
+                            <MenuItem id="unarchive" icon={ <Archive /> } textValue="Unarchive">Unarchive</MenuItem>
+                            <MenuSeparator />
+                            <MenuItem id="delete" icon={ <Trash /> } textValue="Delete" isDanger>Delete</MenuItem>
+                        </Menu>
+                    </PopoverScroll>
+                </Popover>
+            </PopoverTrigger>
+        </span>
+    );
+}

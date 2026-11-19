@@ -9,6 +9,7 @@ import { ListCursor } from '../../hotkeys/listCursor';
 import { undoStack } from '../../hotkeys/undo';
 import { PickerPopover, type PickerRequest } from '../../shared/PickerPopover';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
+import { openChat } from '../chats/archiveChat';
 import { Board } from './Board';
 import { copyWithToast, startTask } from './commands';
 import { openCreateTask } from './CreateTaskDialog';
@@ -193,6 +194,7 @@ export function Screen() {
             searchField.current?.focus();
             searchField.current?.select();
         },
+        openChat: chatId => void openChat(root, project, ui, chatId),
         chatsOf: taskId => project.chatsOfTask(taskId),
         docPathOf: async taskId => newestDocPath((await root.transport.getTaskDetail(taskId)).artifacts),
         copy: copyWithToast,

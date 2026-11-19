@@ -8,6 +8,7 @@ import { useState, type Ref } from 'react';
 
 import { commandTooltip } from '../../hotkeys';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
+import { openChat, openRun } from '../chats/archiveChat';
 import { sendCommand, startTask } from './commands';
 import { DependencyList } from './DependencyList';
 import styles from './DetailPanel.module.css';
@@ -100,7 +101,7 @@ export function DetailPanel({ task, taskRuns, titleRef }: DetailPanelProps) {
                     />
                 </div>
 
-                <Executors taskRuns={ taskRuns } onOpen={ runId => ui.openRun(runId) } />
+                <Executors taskRuns={ taskRuns } onOpen={ runId => void openRun(root, project, ui, runId) } />
 
                 <Section title="Dependencies" count={ task.dependsOn.length }>
                     <DependencyList
@@ -114,7 +115,7 @@ export function DetailPanel({ task, taskRuns, titleRef }: DetailPanelProps) {
                     />
                 </Section>
 
-                <RelatedChats chats={ project.chatsOfTask(task.id) } onOpen={ chatId => ui.openChat(chatId) } />
+                <RelatedChats chats={ project.chatsOfTask(task.id) } onOpen={ chatId => void openChat(root, project, ui, chatId) } />
 
                 <Results taskId={ task.id } expectChecks={ activeExecutors(taskRuns).length > 0 } onOpenDoc={ path => ui.openDoc(path) } />
 

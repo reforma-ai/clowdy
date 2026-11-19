@@ -7,6 +7,44 @@
     padding: var(--spacing-md);
 }
 
+/* New chat takes the width and the archive is a square beside it, on the list's own inset. */
+.start {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0 var(--spacing-md);
+}
+
+/* Aligned with the icon of a row: the row's inset, less the border of the button. */
+.newChat {
+    flex: 1 1 0;
+    justify-content: flex-start;
+    min-width: 0;
+    padding-inline: calc(var(--spacing-lg) - 1px);
+}
+
+.newChatContent {
+    justify-content: flex-start;
+    min-width: 0;
+}
+
+.newChatContent .title {
+    flex: 1 1 auto;
+    text-align: start;
+}
+
+.hint {
+    flex: none;
+    opacity: 0;
+    transition: opacity var(--transition-duration-fast) ease;
+}
+
+.newChat[data-hovered='true'] .hint,
+.newChat[data-focus-visible='true'] .hint {
+    opacity: 1;
+}
+
 /* The icon of a chat's row, with the status dot on its top right corner. */
 .icon {
     position: relative;

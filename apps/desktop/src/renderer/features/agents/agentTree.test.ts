@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildRunTree } from '../../stores/runTree';
-import { agentRows, ancestorIds, chatDotTone, countActiveChildren, describeRun, listedRunId, resolveSelection, visibleChats } from './agentTree';
+import { agentRows, ancestorIds, archivedChats, chatDotTone, chatOfRun, countActiveChildren, describeRun, listedRunId, resolveSelection, visibleChats } from './agentTree';
 
 import type { Chat, Run, RunStatus } from '@clowdy/protocol';
 
@@ -66,20 +66,35 @@ describe('agentRows', () => {
 describe('visibleChats', () => {
     const list = [chats[0], { ...chats[1], archivedAt: 5 }, chats[2]];
 
-    it('leaves archived chats out unless they are asked for', () => {
-        expect(visibleChats(list, false).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
-        expect(visibleChats(list, true).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3', 'chat-2']);
+    it('leaves the archived chats out, they are in the archive', () => {
+        expect(visibleChats(list).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
     });
 
-    it('puts the archived chats last, each group in the order it was given', () => {
-        const more = [{ ...chats[0], archivedAt: 5 }, chats[1], { ...chats[2], archivedAt: 6 }];
-
-        expect(visibleChats(more, true).map(candidate => candidate.id)).toEqual(['chat-2', 'chat-1', 'chat-3']);
+    it('leaves the chats in the order they are given, which is by last activity', () => {
+        expect(visibleChats([chats[2], chats[0], chats[1]]).map(candidate => candidate.id)).toEqual(['chat-3', 'chat-1', 'chat-2']);
     });
 
-    it('keeps the open chat in the list, archived or not, so its page has a row', () => {
-        expect(visibleChats(list, false, 'chat-2').map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3', 'chat-2']);
-        expect(visibleChats(list, false, 'chat-1').map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
+    it('puts the newest chat first when the list is sorted by creation', () => {
+        const made = [{ ...chats[0], createdAt: 10 }, { ...chats[1], createdAt: 30, archivedAt: 5 }, { ...chats[2], createdAt: 20 }];
+
+        expect(visibleChats(made, 'created').map(candidate => candidate.id)).toEqual(['chat-3', 'chat-1']);
+        expect(visibleChats(made, 'activity').map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
+    });
+});
+
+describe('archivedChats', () => {
+    it('lists only the archived chats, the one put away last first', () => {
+        const list = [{ ...chats[0], archivedAt: 5 }, chats[1], { ...chats[2], archivedAt: 9 }];
+
+        expect(archivedChats(list).map(candidate => candidate.id)).toEqual(['chat-3', 'chat-1']);
+        expect(archivedChats([chats[1]])).toEqual([]);
+    });
+});
+
+describe('chatOfRun', () => {
+    it('finds the chat whose orchestrator is the root of the run', () => {
+        expect(chatOfRun(chats, run('a1', 'running', { rootRunId: 'orch' }))?.id).toBe('chat-1');
+        expect(chatOfRun(chats, run('x', 'running', { rootRunId: 'ghost' }))).toBeUndefined();
     });
 });
 
@@ -112,12 +127,12 @@ describe('resolveSelection', () => {
         expect(resolveSelection(byChat, chats, orphan, 'chat-2', 'x')).toEqual({ chat: byChat.get('chat-2'), run: undefined, draft: false });
     });
 
-    it('opens an archived chat that was asked for, and a run of an archived chat below it, though the list does not show it', () => {
+    it('opens no chat that is in the archive, nor a run of one: the first listed chat stands in', () => {
         const archived = new Map([...byChat, ['chat-1', { ...chats[0], archivedAt: 5 }]]);
         const shown = chats.filter(candidate => candidate.id !== 'chat-1');
 
-        expect(resolveSelection(archived, shown, byRun, 'chat-1', null)).toEqual({ chat: archived.get('chat-1'), run: undefined, draft: false });
-        expect(resolveSelection(archived, shown, byRun, null, 'a1')).toEqual({ chat: archived.get('chat-1'), run: byRun.get('a1'), draft: false });
+        expect(resolveSelection(archived, shown, byRun, 'chat-1', null)).toEqual({ chat: shown[0], run: undefined, draft: false });
+        expect(resolveSelection(archived, shown, byRun, null, 'a1')).toEqual({ chat: shown[0], run: undefined, draft: false });
         expect(resolveSelection(archived, shown, byRun, null, null)).toEqual({ chat: shown[0], run: undefined, draft: false });
     });
 
