@@ -534,10 +534,10 @@ describe('the advanced settings', () => {
         await type('nonsense');
 
         expect(card('Claude Code').textContent).toContain('Line 1 is not KEY=VALUE');
-        expect(button(card('Claude Code'), 'Save the environment')!.hasAttribute('disabled')).toBe(true);
+        expect(button(card('Claude Code'), 'Save')!.hasAttribute('disabled')).toBe(true);
 
         await type('HTTPS_PROXY=http://proxy:3128');
-        await press(button(card('Claude Code'), 'Save the environment'));
+        await press(button(card('Claude Code'), 'Save'));
 
         expect(command).toHaveBeenCalledWith({ type: 'agent.update', id: 'claude', env: { HTTPS_PROXY: 'http://proxy:3128' } });
     });
@@ -559,7 +559,7 @@ describe('the advanced settings', () => {
         await openAdvanced();
         await typeEnv('TZ=UTC\n# the proxy\nHTTPS_PROXY=http://proxy:3128');
 
-        const save = () => button(card('Claude Code'), 'Save the environment')!;
+        const save = () => button(card('Claude Code'), 'Save')!;
 
         expect(save().hasAttribute('disabled')).toBe(false);
 
@@ -580,7 +580,7 @@ describe('the advanced settings', () => {
 
         const command = vi.spyOn(store, 'command');
 
-        await press(button(card('Claude Code'), 'Save the environment'));
+        await press(button(card('Claude Code'), 'Save'));
 
         expect(command).toHaveBeenCalledWith({ type: 'agent.update', id: 'claude', env: {} });
         await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.overrides?.env).toEqual({}));
@@ -607,23 +607,36 @@ describe('the advanced settings', () => {
         expect(card('Claude Code').querySelector('textarea')!.value).toBe('TZ=UTC\nMINE=1');
     });
 
-    it('keeps the program the person chose in its box, and clears the box when it goes back to looking', async () => {
+    it('saves the program on Enter or blur, puts the box back on Escape, and goes back to looking on Reset', async () => {
         await start();
         await openAdvanced();
 
         const field = () => card('Claude Code').querySelector<HTMLInputElement>('input[type="text"]')!;
-
-        expect(button(card('Claude Code'), 'Use it')!.hasAttribute('disabled')).toBe(true);
-
-        await act(async () => {
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field(), '/opt/claude');
+        const savedPath = () => store.agents.find(agent => agent.id === 'claude')?.overrides?.path;
+        const type = (text: string) => act(async () => {
+            field().focus();
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field(), text);
             field().dispatchEvent(new Event('input', { bubbles: true }));
         });
-        await press(button(card('Claude Code'), 'Use it'));
-        await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.overrides?.path).toBe('/opt/claude'));
+        const key = (name: string) => act(async () => field().dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true })));
+
+        expect(button(card('Claude Code'), 'Use it')).toBeUndefined();
+
+        await type('/opt/escaped');
+        await key('Escape');
+
+        expect(field().value).toBe('');
+
+        await type('/opt/claude');
+        await key('Enter');
+        await vi.waitFor(() => expect(savedPath()).toBe('/opt/claude'));
         await draw();
 
         expect(field().value).toBe('/opt/claude');
+
+        await type('/opt/other');
+        await act(async () => field().blur());
+        await vi.waitFor(() => expect(savedPath()).toBe('/opt/other'));
 
         await press(button(card('Claude Code'), 'Reset'));
         await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.overrides).toBeUndefined());
@@ -632,6 +645,23 @@ describe('the advanced settings', () => {
         expect(field().value).toBe('');
         expect(field().placeholder).toBe('/Users/dev/.local/bin/claude');
         expect(button(card('Claude Code'), 'Reset')!.hasAttribute('disabled')).toBe(true);
+    });
+
+    it('goes back to looking when the box is emptied and left', async () => {
+        await start(withAgent('claude', (agent) => {
+            agent.overrides = { path: '/opt/claude' };
+        }));
+        await openAdvanced();
+
+        const field = () => card('Claude Code').querySelector<HTMLInputElement>('input[type="text"]')!;
+
+        await act(async () => {
+            field().focus();
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field(), '  ');
+            field().dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await act(async () => field().blur());
+        await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.overrides).toBeUndefined());
     });
 
     it('drops a path that was typed and not saved on Reset, without asking the daemon', async () => {

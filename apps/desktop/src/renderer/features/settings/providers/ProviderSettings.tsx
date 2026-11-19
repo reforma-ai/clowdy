@@ -88,6 +88,28 @@ export function ProviderAdvanced({ agent, commands }: SettingsProps) {
     const programNote = programNoteOf(savedPath, agent.path);
     const canReset = Boolean(savedPath) || pathDraft !== undefined;
 
+    // Saved on blur or Enter, as a project's name is. An empty box goes back to the program Clowdy finds. A refused path stays in the box.
+    const commitPath = async () => {
+        const next = pathDraft?.trim();
+
+        if (next === undefined) return;
+
+        // Nothing to save: the same path, or an empty box when none is saved.
+        if (next === savedPath) {
+            setPathDraft(undefined);
+
+            return;
+        }
+
+        if (await commands.setPath(next || null)) setPathDraft(undefined);
+    };
+
+    const reset = async () => {
+        if (savedPath && !await commands.setPath(null)) return;
+
+        setPathDraft(undefined);
+    };
+
     return (
         <Collapsible>
             <AdvancedTrigger />
@@ -104,21 +126,19 @@ export function ProviderAdvanced({ agent, commands }: SettingsProps) {
                             placeholder={ (!savedPath && agent.path) || '/path/to/program' }
                             value={ path }
                             onChange={ text => setPathDraft(text === savedPath ? undefined : text) }
+                            onBlur={ () => void commitPath() }
+                            onKeyDown={ (event) => {
+                                if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
+                                else if (event.key === 'Escape') setPathDraft(undefined);
+                            } }
                         />
+                        {/* A press keeps the focus in the box, so the box does not save what Reset is about to throw away. */}
                         <Button
                             variant="bordered"
                             size="sm"
-                            isDisabled={ pathDraft === undefined || !path.trim() }
-                            isPending={ commands.pending.has('path') }
-                            onPress={ () => void commands.setPath(path.trim()).then(ok => ok && setPathDraft(undefined)) }
-                        >
-                            Use it
-                        </Button>
-                        <Button
-                            variant="bordered"
-                            size="sm"
+                            preventFocusOnPress
                             isDisabled={ !canReset || commands.pending.has('path') }
-                            onPress={ () => (savedPath ? void commands.setPath(null).then(ok => ok && setPathDraft(undefined)) : setPathDraft(undefined)) }
+                            onPress={ () => void reset() }
                         >
                             Reset
                         </Button>
@@ -147,7 +167,7 @@ export function ProviderAdvanced({ agent, commands }: SettingsProps) {
                             isPending={ commands.pending.has('env') }
                             onPress={ () => parsed.ok && void commands.setEnv(parsed.env).then(ok => ok && setEnvDraft(undefined)) }
                         >
-                            Save the environment
+                            Save
                         </Button>
                     </div>
                 </div>
