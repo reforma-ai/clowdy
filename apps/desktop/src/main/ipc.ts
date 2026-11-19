@@ -23,12 +23,16 @@ export interface IpcActions {
     setThemeSource: (theme: Theme) => void;
     /** Where the daemon is, or `undefined` when none answers. */
     getDaemon: () => Promise<DesktopBridge['daemon']>;
+    /** The page rendered: an OTA bundle on its first launch stays. */
+    ready: () => Promise<void>;
+    /** Restarts into the OTA bundle installed during this run; without one, nothing happens. */
+    restartToUpdate: () => void;
 }
 
 export function registerIpc(
     ipcMain: Pick<IpcMain, 'handle' | 'on'>,
     trustedOrigin: string,
-    { setThemeSource, getDaemon }: IpcActions
+    { setThemeSource, getDaemon, ready, restartToUpdate }: IpcActions
 ): void {
     // The preload asks while the page loads and cannot wait for a promise, so this one is synchronous for it.
     // The reply may come later: the renderer blocks until `returnValue` is set. Anyone else gets `null`.
@@ -52,6 +56,16 @@ export function registerIpc(
         }
 
         setThemeSource(theme as Theme);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.ready, async (event) => {
+        assertTrustedSender(event, trustedOrigin);
+        await ready();
+    });
+
+    ipcMain.handle(IPC_CHANNELS.restartToUpdate, (event) => {
+        assertTrustedSender(event, trustedOrigin);
+        restartToUpdate();
     });
 
     ipcMain.handle(IPC_CHANNELS.chooseDirectories, async (event): Promise<string[]> => {

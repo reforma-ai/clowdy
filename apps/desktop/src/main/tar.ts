@@ -65,10 +65,14 @@ function header(entry: TarEntry): Uint8Array {
 
 const padding = (size: number) => (BLOCK - (size % BLOCK)) % BLOCK;
 
+/** The size of the tar `writeTar` makes of files of these sizes: a header and padded data each, then the end marker. */
+export function tarSize(sizes: readonly number[]): number {
+    return sizes.reduce((sum, size) => sum + BLOCK + size + padding(size), 2 * BLOCK);
+}
+
 /** The entries as one tar, in the order given. */
 export function writeTar(entries: readonly TarEntry[]): Uint8Array {
-    const size = entries.reduce((sum, { data }) => sum + BLOCK + data.length + padding(data.length), 0) + 2 * BLOCK;
-    const out = new Uint8Array(size);
+    const out = new Uint8Array(tarSize(entries.map(({ data }) => data.length)));
     let offset = 0;
 
     for (const entry of entries) {

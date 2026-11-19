@@ -38,7 +38,16 @@ describe('theme', () => {
     it('tells the window, so the native material follows', () => {
         const setThemeSource = vi.fn(async () => undefined);
 
-        window.desktop = { platform: 'darwin', material: true, setThemeSource, chooseDirectories: async () => [], onDaemonChange: () => () => undefined };
+        window.desktop = {
+            platform: 'darwin',
+            material: true,
+            setThemeSource,
+            chooseDirectories: async () => [],
+            onDaemonChange: () => () => undefined,
+            ready: async () => undefined,
+            onUpdateReady: () => () => undefined,
+            restartToUpdate: async () => undefined,
+        };
         setTheme('dark');
 
         expect(setThemeSource).toHaveBeenCalledWith('dark');

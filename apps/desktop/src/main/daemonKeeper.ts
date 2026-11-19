@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, type DaemonInfo } from '@clowdy/protocol';
+import { PROTOCOL_VERSION, type DaemonInfo, type Health } from '@clowdy/protocol';
 import { watch as fsWatch, type FSWatcher } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -36,22 +36,29 @@ export async function newestSourceTime(dirs: readonly string[]): Promise<number>
 /** Whether the running daemon should give way to a new one. */
 export type Staleness = (running: RunningDaemon) => boolean | Promise<boolean>;
 
-/** A development run: the daemon started before the newest change to its sources. */
+/** The bundle a daemon was built into, by its health answer; undefined for one run from its sources (a package version). */
+export function daemonBundle({ version }: Health): number | undefined {
+    const bundle = Number(version);
+
+    return Number.isSafeInteger(bundle) ? bundle : undefined;
+}
+
+/** A development run: the daemon started before the newest change to its sources, or runs a bundle (the test feed's). */
 export function sourcesChangedSince(newestTime: () => Promise<number>): Staleness {
-    return async ({ health }) => await newestTime() > health.startedAt;
+    return async ({ health }) => daemonBundle(health) !== undefined || await newestTime() > health.startedAt;
 }
 
 /**
- * A packaged app: the daemon comes from an older bundle than the one the app runs (what a shell or OTA update leaves
- * behind), or from this bundle but speaking another protocol. A newer daemon (a newer copy of the app started it) stays:
- * it may have migrated the database past what this bundle's daemon can open.
+ * The app runs a bundle: the daemon comes from an older one (what a shell or OTA update leaves behind), or from this
+ * bundle but speaking another protocol. A newer daemon (a newer copy of the app started it, or a bundle that was rolled
+ * back) stays: it may have migrated the database past what this bundle's daemon can open.
  */
 export function fromOlderBundle(version: number): Staleness {
     return ({ health }) => {
-        const running = Number(health.version);
+        const running = daemonBundle(health);
 
-        // A version that is no bundle number is a daemon run from its sources.
-        if (!Number.isSafeInteger(running)) return true;
+        // A daemon run from its sources is no bundle's.
+        if (running === undefined) return true;
 
         return running < version || (running === version && health.protocol !== PROTOCOL_VERSION);
     };

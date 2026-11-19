@@ -192,15 +192,15 @@ Scope change (review): a change to `PROTOCOL_VERSION`, the daemon's data folder 
 
 **This stage:** The app picks, fetches, installs, and serves bundles (port of Reforma's `ota.ts`). At start it chooses the newest installed bundle that verifies (signature, `minShell`, every file's hash) and is not rejected, otherwise its own copy; the renderer root and the daemon runtime both come from that choice, and Stage 2's keeper swaps the daemon to it. It checks at launch and hourly, downloads the archive from `https://github.com/kachurun/clowdy/releases/download/ota/` without forwarding auth headers, verifies, extracts into staging, renames atomically, writes `state.json` (`current`, `previous`, `unconfirmed`, `rejected`), prunes (never the bundle the running daemon uses), and tells the page. The page shows a "New version ready" toast with Restart and calls `ready()` after its first render; a bundle that does not within 30 s is rejected and the previous one runs. A development run uses the test feed only when both variables are set; a script serves signed test bundles.
 
-- [ ] Complete
-  - [ ] Choice at start, before `protocol.handle`; daemon runtime from the chosen bundle
-  - [ ] Check, download, verify, install, state, prune
-  - [ ] Per-file hash check when serving an installed bundle's renderer
-  - [ ] Bridge `ready`, `onUpdateReady`, `restartToUpdate`; preload; IPC
-  - [ ] Renderer calls `ready()` and shows the restart toast
-  - [ ] Renderer trial and rollback
-  - [ ] Development test feed and the local feed script
-  - [ ] Check for Updates… also checks OTA
+- [x] Complete
+  - [x] Choice at start, before `protocol.handle`; daemon runtime from the chosen bundle
+  - [x] Check, download, verify, install, state, prune
+  - [x] Per-file hash check when serving an installed bundle's renderer
+  - [x] Bridge `ready`, `onUpdateReady`, `restartToUpdate`; preload; IPC
+  - [x] Renderer calls `ready()` and shows the restart toast
+  - [x] Renderer trial and rollback
+  - [x] Development test feed and the local feed script
+  - [x] Check for Updates… also checks OTA
 
 **Files**
 
@@ -217,6 +217,8 @@ Scope change (review): a change to `PROTOCOL_VERSION`, the daemon's data folder 
 - `apps/desktop/src/renderer/root.ts` — subscribe to `onUpdateReady`, restart toast
 - `apps/desktop/src/renderer/main.tsx` — `ready()` after the first render
 - `apps/desktop/scripts/ota-local.ts` — create: builds a bundle signed with a local test key and serves it on localhost for the development feed
+
+Scope change (implementation and review): a bundle must speak the shell's `PROTOCOL_VERSION` (Stage 4 made a protocol change a shell change, so main keeps its compile-time constant). Bun copies are pruned too, only once the daemon is one this app started. A development run on the feed runs the bundle's daemon with the checkout's Bun, and its keeper treats a bundle's daemon as stale when it is back on its checkout. `state.json` is written inside the install's exclusive section, so a prune during a download cannot delete it; a prune is skipped while a daemon holds its lock without answering. "Check for Updates…" still checks bundles when the shell cannot update. The page's storage is flushed before every relaunch. Pages that load after an install get the toast too, and a new offer replaces the open toast.
 
 **Done when:** a development run pointed at the local feed downloads a newer bundle, offers Restart, starts on it, and falls back when the new renderer never calls `ready()`.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`; `bun apps/desktop/scripts/ota-local.ts` plus `CLOWDY_UPDATE_FEED=… CLOWDY_UPDATE_PUBLIC_KEY=… ./clowdy dev`.

@@ -100,6 +100,13 @@ export function sha256(bytes: Uint8Array): string {
     return createHash('sha256').update(bytes).digest('hex');
 }
 
+/** The renderer's files, by their path inside the renderer folder, for the protocol handler's checks. */
+export function rendererFiles(files: BundleFiles): BundleFiles {
+    const prefix = `${ RENDERER_DIR }/`;
+
+    return Object.fromEntries(Object.entries(files).filter(([file]) => file.startsWith(prefix)).map(([file, entry]) => [file.slice(prefix.length), entry]));
+}
+
 /** A relative `/`-separated path that stays inside the bundle's folder on every OS. */
 export function isBundlePath(file: string): boolean {
     return file.length > 0

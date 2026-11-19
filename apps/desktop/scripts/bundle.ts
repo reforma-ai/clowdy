@@ -59,18 +59,15 @@ export async function buildRenderer(outdir: string): Promise<void> {
         .env({ ...process.env, NODE_ENV: 'production' });
 }
 
-/**
- * An OTA bundle of this commit in `outdir`: the bundle folder (`outdir/bundle`), its archive `bundle-<version>.tar.gz`,
- * and its manifest, unsigned (`publish-ota.ts` signs it).
- */
-export async function buildOtaBundle(outdir: string): Promise<{ manifest: BundleManifest; archive: string }> {
-    const info = await bundleInfo();
-    const folder = path.join(outdir, 'bundle');
-
+/** Lays out an OTA bundle of this checkout in `folder`: renderer, daemon, and system skills. */
+export async function layoutOtaBundle(folder: string, info: BundleInfo): Promise<void> {
     await rm(folder, { recursive: true, force: true });
     await buildRenderer(path.join(folder, RENDERER_DIR));
     await layoutDaemonPart(folder, info);
+}
 
+/** Packs a laid-out bundle folder into `outdir/bundle-<version>.tar.gz` and describes it in an unsigned manifest. */
+export async function packOtaBundle(folder: string, outdir: string, info: BundleInfo): Promise<{ manifest: BundleManifest; archive: string }> {
     const files = await hashFolder(folder);
     const entries = await Promise.all(Object.keys(files).map(async file => ({ path: file, data: await readFile(path.join(folder, file)) })));
     const bytes = gzipSync(writeTar(entries), { level: 9 });
@@ -80,4 +77,17 @@ export async function buildOtaBundle(outdir: string): Promise<{ manifest: Bundle
     await writeFile(archive, bytes);
 
     return { manifest: { ...info, archive: { name, sha256: sha256(bytes), size: bytes.length }, files }, archive };
+}
+
+/**
+ * An OTA bundle of this commit in `outdir`: the bundle folder (`outdir/bundle`), its archive `bundle-<version>.tar.gz`,
+ * and its manifest, unsigned (`publish-ota.ts` signs it).
+ */
+export async function buildOtaBundle(outdir: string): Promise<{ manifest: BundleManifest; archive: string }> {
+    const info = await bundleInfo();
+    const folder = path.join(outdir, 'bundle');
+
+    await layoutOtaBundle(folder, info);
+
+    return packOtaBundle(folder, outdir, info);
 }

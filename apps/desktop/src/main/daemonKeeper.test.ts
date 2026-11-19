@@ -82,6 +82,13 @@ describe('restartIfStale', () => {
         expect([world.stops, world.launches]).toEqual([0, 0]);
     });
 
+    test('replaces a bundle\'s daemon, which a run on the test feed left, with one from the sources', async () => {
+        const { world, context } = setup({ startedAt: 1000, version: '412' });
+
+        expect(await restartIfStale(context, sourcesChangedSince(async () => 0))).toMatchObject({ kind: 'restarted' });
+        expect([world.stops, world.launches]).toEqual([1, 1]);
+    });
+
     test('waits while the stale daemon has runs in progress, so nothing is interrupted', async () => {
         const { world, context } = setup({ startedAt: 1000, activeRuns: 2 });
 

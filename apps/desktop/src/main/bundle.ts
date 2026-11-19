@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { access, chmod, cp, readFile, rename, rm } from 'node:fs/promises';
+import { access, chmod, cp, readdir, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { DaemonRuntime } from './daemon';
@@ -63,7 +63,8 @@ async function copyFolder(source: string, dest: string, executable?: string): Pr
 /** How long a rename waits for a virus scanner to let go of a file it opened (Windows answers EPERM or EBUSY meanwhile). */
 const RENAME_RETRY_MS = [100, 250, 500, 1000, 2000];
 
-async function renameWhenFree(from: string, to: string): Promise<void> {
+/** `rename`, retried while Windows answers that a file in it is busy. */
+export async function renameWhenFree(from: string, to: string): Promise<void> {
     for (const delay of [...RENAME_RETRY_MS, undefined]) {
         try {
             await rename(from, to);
@@ -80,35 +81,57 @@ async function renameWhenFree(from: string, to: string): Promise<void> {
     }
 }
 
-export interface InstallRuntimeOptions {
+export interface InstallBunOptions {
     /** `process.resourcesPath`: holds `bun/` (the executable and its `VERSION`) and `bundle/` (daemon and system skills). */
     resources: string;
     /** `updatesDir(dataDir)`. */
     updates: string;
-    /** The app's own bundle. */
-    bundle: BundleInfo;
     platform?: NodeJS.Platform;
     arch?: string;
 }
 
 /**
- * The daemon of the app's own bundle, run from copies outside the install folder: `<updates>/bun/<bun version>-<arch>/` and
- * `<updates>/bundles/<bundle version>/`. A daemon outlives the app, and it must never hold files an installer replaces
+ * The Bun the app ships, copied to `<updates>/bun/<bun version>-<arch>/`; resolves to the executable. The daemon runs
+ * from copies outside the install folder: it outlives the app, and it must never hold files an installer replaces
  * (Windows refuses to overwrite a running `bun.exe`, and a macOS update swaps the whole app). A copy that exists is
  * reused; it is complete, because it appears in one rename.
  */
-export async function installRuntime({ resources, updates, bundle, platform = process.platform, arch = process.arch }: InstallRuntimeOptions): Promise<DaemonRuntime> {
+export async function installBun({ resources, updates, platform = process.platform, arch = process.arch }: InstallBunOptions): Promise<string> {
     const exe = platform === 'win32' ? 'bun.exe' : 'bun';
-    const bunVersion = (await readFile(path.join(resources, 'bun/VERSION'), 'utf8')).trim();
+    const version = (await readFile(path.join(resources, 'bun/VERSION'), 'utf8')).trim();
     // Per arch too: a folder moved from an Intel Mac to Apple silicon must not hand over its x64 Bun.
-    const bunDir = path.join(updates, 'bun', `${ bunVersion }-${ arch }`);
-    const bundleDir = path.join(updates, 'bundles', String(bundle.version));
-    const bun = path.join(bunDir, exe);
-    const entry = path.join(bundleDir, 'daemon/main.js');
+    const dir = path.join(updates, 'bun', `${ version }-${ arch }`);
+    const bun = path.join(dir, exe);
 
-    if (!await exists(bun)) await copyFolder(path.join(resources, 'bun'), bunDir, exe);
+    if (!await exists(bun)) await copyFolder(path.join(resources, 'bun'), dir, exe);
 
-    if (!await exists(entry)) await copyFolder(path.join(resources, 'bundle'), bundleDir);
+    return bun;
+}
 
-    return { bun, entry, skillsDir: path.join(bundleDir, 'system-skills') };
+/** The app's own bundle (its daemon and system skills), copied to `<updates>/bundles/<version>/` like Bun; resolves to that folder. */
+export async function installOwnBundle({ resources, updates, version }: { resources: string; updates: string; version: number }): Promise<string> {
+    const dir = path.join(updates, 'bundles', String(version));
+
+    if (!await exists(path.join(dir, 'daemon/main.js'))) await copyFolder(path.join(resources, 'bundle'), dir);
+
+    return dir;
+}
+
+/** The daemon of a bundle folder (the app's own copy or an installed OTA bundle), run by `bun`. */
+export function bundleRuntime(bun: string, dir: string): DaemonRuntime {
+    return { bun, entry: path.join(dir, 'daemon/main.js'), skillsDir: path.join(dir, 'system-skills') };
+}
+
+/**
+ * Deletes the Bun copies other than `bun`'s, left by older shells. Only once the running daemon is one this app started
+ * from `bun`: a daemon still running on an older Bun starts its MCP bridge with that executable.
+ */
+export async function pruneBunCopies(updates: string, bun: string): Promise<void> {
+    const parent = path.join(updates, 'bun');
+    const keep = path.basename(path.dirname(bun));
+
+    for (const entry of await readdir(parent).catch(() => [] as string[])) {
+        // Windows refuses to delete a running executable; the next launch tries again.
+        if (entry !== keep) await rm(path.join(parent, entry), { recursive: true, force: true }).catch(() => undefined);
+    }
 }

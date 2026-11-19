@@ -11,17 +11,28 @@ const ADDRESS = { url: 'http://127.0.0.1:51000', token: 'secret' };
 
 type Listener = (event: { sender: unknown; senderFrame: unknown; returnValue?: unknown }) => void;
 
-/** Registers the IPC handlers on a fake `ipcMain` and returns the listener of the synchronous daemon call. */
-function setup(getDaemon: () => Promise<typeof ADDRESS | undefined>) {
+type Handler = (event: { sender: unknown; senderFrame: unknown }, ...args: unknown[]) => unknown;
+
+/** Registers the IPC handlers on a fake `ipcMain`. */
+function register(actions: Partial<Parameters<typeof registerIpc>[2]> = {}) {
     const listeners = new Map<string, Listener>();
+    const handlers = new Map<string, Handler>();
 
     registerIpc(
-        { handle: vi.fn(), on: (channel: string, listener: Listener) => void listeners.set(channel, listener) } as never,
+        {
+            handle: (channel: string, handler: Handler) => void handlers.set(channel, handler),
+            on: (channel: string, listener: Listener) => void listeners.set(channel, listener),
+        } as never,
         TRUSTED,
-        { setThemeSource: vi.fn(), getDaemon }
+        { setThemeSource: vi.fn(), getDaemon: async () => undefined, ready: async () => undefined, restartToUpdate: vi.fn(), ...actions }
     );
 
-    return listeners.get(IPC_CHANNELS.getDaemon) as Listener;
+    return { listeners, handlers };
+}
+
+/** The listener of the synchronous daemon call. */
+function setup(getDaemon: () => Promise<typeof ADDRESS | undefined>) {
+    return register({ getDaemon }).listeners.get(IPC_CHANNELS.getDaemon) as Listener;
 }
 
 /** The event of a call from `frame`; the page's top-level frame is `mainFrame`. */
@@ -83,17 +94,9 @@ describe('the daemon address for the preload', () => {
 });
 
 describe('the folder dialog', () => {
-    /** Registers the IPC handlers on a fake `ipcMain` and returns the handler of the folder dialog. */
+    /** The handler of the folder dialog. */
     function chooser() {
-        const handlers = new Map<string, (event: unknown) => Promise<unknown>>();
-
-        registerIpc(
-            { handle: (channel: string, handler: (event: unknown) => Promise<unknown>) => void handlers.set(channel, handler), on: vi.fn() } as never,
-            TRUSTED,
-            { setThemeSource: vi.fn(), getDaemon: async () => undefined }
-        );
-
-        return handlers.get(IPC_CHANNELS.chooseDirectories)!;
+        return register().handlers.get(IPC_CHANNELS.chooseDirectories)! as (event: unknown) => Promise<unknown>;
     }
 
     test('opens over the window that asked with several folders selectable, and answers every folder chosen, or none on cancel', async () => {
@@ -114,5 +117,32 @@ describe('the folder dialog', () => {
 
     test('refuses a page of another origin', async () => {
         await expect(chooser()(callFrom({ url: 'https://example.com/' }))).rejects.toThrow('Untrusted sender');
+    });
+});
+
+describe('OTA updates', () => {
+    test('the app\'s own page can say it is ready and restart into an update', async () => {
+        const ready = vi.fn(async () => undefined);
+        const restartToUpdate = vi.fn();
+        const { handlers } = register({ ready, restartToUpdate });
+        const event = callFrom({ url: `${ TRUSTED }/` });
+
+        await handlers.get(IPC_CHANNELS.ready)!(event);
+        await handlers.get(IPC_CHANNELS.restartToUpdate)!(event);
+
+        expect(ready).toHaveBeenCalledOnce();
+        expect(restartToUpdate).toHaveBeenCalledOnce();
+    });
+
+    test('another page can do neither', async () => {
+        const ready = vi.fn(async () => undefined);
+        const restartToUpdate = vi.fn();
+        const { handlers } = register({ ready, restartToUpdate });
+        const event = callFrom({ url: 'https://example.com/' });
+
+        await expect(async () => handlers.get(IPC_CHANNELS.ready)!(event)).rejects.toThrow('Untrusted sender');
+        expect(() => handlers.get(IPC_CHANNELS.restartToUpdate)!(event)).toThrow('Untrusted sender');
+        expect(ready).not.toHaveBeenCalled();
+        expect(restartToUpdate).not.toHaveBeenCalled();
     });
 });

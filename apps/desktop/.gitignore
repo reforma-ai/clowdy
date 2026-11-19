@@ -2,5 +2,7 @@
 /release/
 /bundle/
 /runtime/
+# scripts/ota-local.ts: its test key and feed
+/.ota-local/
 # electron-builder's resources (icon, entitlements); the root ignores every `build`.
 !/build/

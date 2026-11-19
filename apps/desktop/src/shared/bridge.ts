@@ -10,6 +10,10 @@ export const IPC_CHANNELS = {
     getDaemon: 'desktop:get-daemon',
     /** Main to renderer: the daemon was replaced and listens elsewhere now. */
     daemonChanged: 'desktop:daemon-changed',
+    ready: 'desktop:ready',
+    restartToUpdate: 'desktop:restart-to-update',
+    /** Main to renderer: an OTA bundle is installed and runs from the next launch. */
+    updateReady: 'desktop:update-ready',
 } as const;
 
 /**
@@ -28,4 +32,10 @@ export interface DesktopBridge {
     onDaemonChange: (listener: (daemon: { url: string; token: string }) => void) => () => void;
     /** Asks the person for one or more folders with the system dialog. Resolves an empty list when they cancel. */
     chooseDirectories: () => Promise<string[]>;
+    /** Says the page has rendered. An update on its first launch that never says so within 30 seconds is rolled back. */
+    ready: () => Promise<void>;
+    /** Called with its version when an update is installed and waits for a restart. Returns a function that stops listening. */
+    onUpdateReady: (listener: (version: number) => void) => () => void;
+    /** Restarts the app into the installed update. */
+    restartToUpdate: () => Promise<void>;
 }

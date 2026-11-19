@@ -1,6 +1,7 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 
+import { sha256, type BundleFiles } from './bundleManifest';
 import { APP_HOST } from './security';
 
 export const CONTENT_SECURITY_POLICY = [
@@ -41,8 +42,11 @@ const CONTENT_TYPES: Record<string, string> = {
     '.woff2': 'font/woff2',
 };
 
-/** Handler for `app://clowdy`: every path is a file under `root`, and unknown routes get its `index.html`. */
-export function createProtocolHandler(root: string) {
+/**
+ * Handler for `app://clowdy`: every path is a file under `root`, and unknown routes get its `index.html`. `files`, an
+ * installed bundle's renderer files from its signed manifest, makes every read match its hash; the app's own copy has none.
+ */
+export function createProtocolHandler(root: string, files: BundleFiles | null = null) {
     return async (request: Request): Promise<Response> => {
         const url = new URL(request.url);
 
@@ -52,17 +56,22 @@ export function createProtocolHandler(root: string) {
 
         if (!file) return respond('Not found', 404);
 
-        const type = CONTENT_TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+        const body = await readFile(file.path);
 
-        return respond(await readFile(file), 200, new Headers({ 'content-type': type }));
+        // A file altered after the bundle was checked at launch is not served.
+        if (files && files[file.name]?.sha256 !== sha256(body)) return respond('Not found', 404);
+
+        const type = CONTENT_TYPES[path.extname(file.path).toLowerCase()] ?? 'application/octet-stream';
+
+        return respond(body, 200, new Headers({ 'content-type': type }));
     };
 }
 
 /**
- * A file under the root: the path itself, its `index.html`, or the root `index.html`
- * for an app route. Refuses anything that resolves outside the root.
+ * A file under the root: the path itself, its `index.html`, or the root `index.html` for an app route, with its
+ * `/`-separated name under the root. Refuses anything that resolves outside the root.
  */
-async function resolveFile(root: string, pathname: string): Promise<string | null> {
+async function resolveFile(root: string, pathname: string): Promise<{ path: string; name: string } | null> {
     const decoded = decodePath(pathname);
     const realRoot = await realpath(root).catch(() => null);
 
@@ -79,7 +88,7 @@ async function resolveFile(root: string, pathname: string): Promise<string | nul
     const relative = path.relative(realRoot, real);
     const inside = relative !== '' && relative !== '..' && !relative.startsWith(`..${ path.sep }`) && !path.isAbsolute(relative);
 
-    return inside ? real : null;
+    return inside ? { path: real, name: relative.split(path.sep).join('/') } : null;
 }
 
 /** The decoded path; undefined for a malformed escape. */

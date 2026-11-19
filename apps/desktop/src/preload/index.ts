@@ -21,6 +21,17 @@ const desktop: DesktopBridge = {
 
         return () => void ipcRenderer.removeListener(IPC_CHANNELS.daemonChanged, handler);
     },
+    ready: () => ipcRenderer.invoke(IPC_CHANNELS.ready),
+    restartToUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.restartToUpdate),
+    onUpdateReady: (listener) => {
+        const handler = (_event: unknown, version: unknown) => {
+            if (Number.isSafeInteger(version)) listener(version as number);
+        };
+
+        ipcRenderer.on(IPC_CHANNELS.updateReady, handler);
+
+        return () => void ipcRenderer.removeListener(IPC_CHANNELS.updateReady, handler);
+    },
     ...daemon && { daemon },
 };
 

@@ -1,5 +1,5 @@
 import { PROTOCOL_VERSION } from '@clowdy/protocol';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, protocol, session, shell, autoUpdater as squirrel, type MessageBoxOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, session, shell, autoUpdater as squirrel, type MessageBoxOptions } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { watch } from 'node:fs';
 import { release } from 'node:os';
@@ -7,26 +7,33 @@ import path from 'node:path';
 
 import { IPC_CHANNELS } from '../shared/bridge';
 import { DEV_BUILD_MARKER } from '../shared/dev';
-import { installRuntime, readBundleInfo, updatesDir, type BundleInfo } from './bundle';
-import { attachDaemon, currentContext, daemonAddress, ensureDaemon, environmentRuntime, type DaemonContext, type DaemonRuntime } from './daemon';
+import { bundleRuntime, installBun, installOwnBundle, pruneBunCopies, readBundleInfo, updatesDir, type BundleInfo } from './bundle';
+import { attachDaemon, currentContext, daemonAddress, ensureDaemon, environmentRuntime, findRunning, type DaemonContext, type DaemonRuntime } from './daemon';
 import { askToReplaceDaemon, showDaemonError } from './daemonDialog';
-import { fromOlderBundle, keepDaemonFresh, newestSourceTime, sourcesChangedSince, type DaemonKeeper, type KeeperOptions } from './daemonKeeper';
+import { daemonHoldsLock } from './daemonFiles';
+import { daemonBundle, fromOlderBundle, keepDaemonFresh, newestSourceTime, sourcesChangedSince, type DaemonKeeper, type KeeperOptions } from './daemonKeeper';
 import { registerIpc } from './ipc';
 import { createAppMenu } from './menu';
+import { createOta, type Ota, type RunningBundle } from './ota';
 import { createProtocolHandler } from './protocol';
-import { releaseConfig } from './releaseConfig';
+import { releaseConfig, type ReleaseConfig } from './releaseConfig';
 import { APP_ORIGIN, APP_SCHEME, appScheme, captionSymbolColor, hasLaunchSwitches, lockNavigation, restrictPermissions, windowOptions, windowsBuild } from './security';
 import { createUpdater } from './updater';
 
+const OTA_CHECK_INTERVAL_MS = 60 * 60_000;
+
 /**
  * The renderer's files, served from `app://clowdy` in every run, so a development run has the same origin, the same
- * CSP and no open port, as the packaged app. A packaged app carries them in `renderer`; a development run
- * (`scripts/dev.ts` rebuilds them on every change) names the folder in `CLOWDY_RENDERER_DIR`.
+ * CSP and no open port, as the packaged app. A packaged app carries its own copy in `renderer`; a development run
+ * (`scripts/dev.ts` rebuilds them on every change) names the folder in `CLOWDY_RENDERER_DIR`. An installed OTA bundle
+ * brings its own (`ota.ts`).
  */
-const rendererRoot = app.isPackaged
+const ownRendererRoot = app.isPackaged
     ? path.join(app.getAppPath(), 'renderer')
     : process.env.CLOWDY_RENDERER_DIR ?? path.join(app.getAppPath(), 'dist/renderer');
 const trustedOrigin = APP_ORIGIN;
+/** The OTA bundle installed during this run, which every page that loads is told about. */
+let updateReady: number | undefined;
 
 if (app.isPackaged && hasLaunchSwitches(process.argv.slice(1))) {
     console.error('Clowdy does not start with command-line switches.');
@@ -79,46 +86,106 @@ function start(): void {
 
     void app.whenReady().then(async () => {
         restrictPermissions(session.defaultSession, trustedOrigin);
+        Menu.setApplicationMenu(createAppMenu());
 
-        protocol.handle(APP_SCHEME, createProtocolHandler(rendererRoot));
+        const release = releaseConfig(app.isPackaged, process.env);
+        const updates = updatesDir(currentContext().dataDir);
+        let runtimeError: unknown;
+        // A development run's own bundle is its checkout: version 0, so a bundle from the test feed is newer.
+        const own = app.isPackaged
+            ? await readBundleInfo(path.join(app.getAppPath(), 'bundle.json')).catch((error: unknown) => {
+                runtimeError = error;
 
-        if (!app.isPackaged) reloadAfterRendererBuilds(rendererRoot);
+                return undefined;
+            })
+            : undefined;
+        const ota = createOta({
+            updates,
+            own: { version: own?.version ?? 0, rendererRoot: ownRendererRoot, dir: null, rendererFiles: null },
+            shellVersion: app.getVersion(),
+            protocol: PROTOCOL_VERSION,
+            publicKey: release.otaPublicKey,
+            feed: release.otaFeed,
+            fetch: url => net.fetch(url),
+            daemonVersion: async () => {
+                const context = currentContext();
+                const running = await findRunning(context);
+
+                if (running) return daemonBundle(running.health);
+
+                // Busy past its health check's timeout, or still starting: it may run from any bundle.
+                if (await daemonHoldsLock(context.dataDir)) throw new Error('A daemon runs but does not answer');
+
+                return undefined;
+            },
+            relaunch: () => {
+                // `app.exit` skips the shutdown that writes the page's recent storage (what the UI remembers) to disk.
+                session.defaultSession.flushStorageData();
+                app.relaunch();
+                app.exit(0);
+            },
+            onInstalled: (version) => {
+                updateReady = version;
+                BrowserWindow.getAllWindows().forEach(window => window.webContents.send(IPC_CHANNELS.updateReady, version));
+            },
+            log: message => console.info(message),
+        });
+        // Fixed for the life of the process, so the renderer's lazy chunks never mix bundles.
+        const bundle = await ota.choose();
+
+        // macOS shows it after the shell version: "Version 0.2.0 (Bundle 1234)".
+        if (bundle.version) app.setAboutPanelOptions({ version: `Bundle ${ bundle.version }` });
+
+        protocol.handle(APP_SCHEME, createProtocolHandler(bundle.rendererRoot, bundle.rendererFiles));
+
+        if (!app.isPackaged && !bundle.dir) reloadAfterRendererBuilds(bundle.rendererRoot);
+
+        const runtime = await daemonRuntime(bundle, own, updates).catch((error: unknown) => {
+            console.error('The daemon cannot be prepared:', error);
+            runtimeError ??= error;
+
+            return undefined;
+        });
+        const context = currentContext(runtime);
 
         registerIpc(ipcMain, trustedOrigin, {
-            setThemeSource: theme => {
+            setThemeSource: (theme) => {
                 nativeTheme.themeSource = theme;
             },
             // Asked on every page load, so a daemon the person restarted is found again by reloading the window.
             getDaemon: async () => {
-                const info = await attachDaemon();
+                const info = await attachDaemon(context);
 
                 return info && daemonAddress(info);
             },
+            ready: () => ota.ready(),
+            restartToUpdate: () => ota.restart(),
         });
-        Menu.setApplicationMenu(createAppMenu());
 
-        let runtimeError: unknown;
-        const prepared = await daemonRuntime().catch((error: unknown) => {
-            console.error('The daemon cannot be prepared:', error);
-            runtimeError = error;
+        /** The daemon may have moved to this app's runtime: copies nothing runs from any more can go. */
+        const cleanUp = (ours: boolean) => {
+            ota.prune().catch((error: unknown) => console.warn('Could not delete old bundles:', error));
 
-            return undefined;
-        });
-        const context = currentContext(prepared?.runtime);
+            // A development run's Bun is the checkout's.
+            if (ours && app.isPackaged && runtime) void pruneBunCopies(updates, runtime.bun);
+        };
         const firstWindow = Promise.withResolvers<BrowserWindow>();
-        const keeper = startKeeper(context, prepared?.bundle, firstWindow.promise);
+        const keeper = startKeeper(context, bundle, firstWindow.promise, () => cleanUp(true));
         // Without a runtime the app still joins a daemon that is running; when it cannot, the runtime's failure is the reason shown.
-        const daemonError = await connectDaemon(context, keeper);
+        const { error: daemonError, ours } = await connectDaemon(context, keeper);
         const window = openWindow();
 
         firstWindowOpen = true;
+        cleanUp(ours);
+        // From the first window's load: an OTA bundle on its first launch has 30 seconds to render.
+        ota.watchReady();
         window.once('ready-to-show', () => firstWindow.resolve(window));
 
         // A sheet on the visible window: an unparented dialog would block the main process's event loop on macOS.
         if (daemonError) window.once('ready-to-show', () => void showDaemonError(runtimeError ?? daemonError, window));
 
         // Once the window shows, so the first question (move to Applications) is a sheet on it.
-        void firstWindow.promise.then(() => startShellUpdates());
+        void firstWindow.promise.then(() => startUpdates(release, ota, bundle));
     });
 }
 
@@ -134,39 +201,59 @@ async function showSheet(options: MessageBoxOptions): Promise<number> {
 }
 
 /**
- * Shell updates from the GitHub releases a release build names (`releaseConfig.ts`): checked at launch and hourly, and
- * from "Check for Updates…". A development run and a local build have none.
+ * Updates: shell releases from the GitHub releases a release build names (`releaseConfig.ts`), and OTA bundles from its
+ * `ota` release (or a development run's test feed), both checked at launch and hourly, and from "Check for Updates…".
+ * A development run and a local build have neither, unless a development run names a test feed.
  */
-function startShellUpdates(): void {
-    const release = releaseConfig(app.isPackaged);
+function startUpdates(release: ReleaseConfig, ota: Ota, bundle: RunningBundle): void {
+    const updates = release.repo
+        ? createUpdater({
+            updater: autoUpdater,
+            squirrel,
+            platform: process.platform,
+            // Squirrel.Mac installs only an update signed by the same Developer ID, so an ad-hoc build points to the download.
+            selfUpdates: process.platform !== 'darwin' || release.signed,
+            app,
+            ask: async ({ message, detail, accept, decline }) =>
+                await showSheet({ type: 'info', message, detail, buttons: [accept, decline], defaultId: 0, cancelId: 1 }) === 0,
+            openReleasePage: () => void shell.openExternal(`https://github.com/${ release.repo }/releases/latest`),
+        })
+        : undefined;
 
-    if (!release.repo) return;
+    if (!updates && !ota.enabled) return;
 
-    const updates = createUpdater({
-        updater: autoUpdater,
-        squirrel,
-        platform: process.platform,
-        // Squirrel.Mac installs only an update signed by the same Developer ID, so an ad-hoc build points to the download.
-        selfUpdates: process.platform !== 'darwin' || release.signed,
-        app,
-        ask: async ({ message, detail, accept, decline }) =>
-            await showSheet({ type: 'info', message, detail, buttons: [accept, decline], defaultId: 0, cancelId: 1 }) === 0,
-        openReleasePage: () => void shell.openExternal(`https://github.com/${ release.repo }/releases/latest`),
-    });
     const tell = (message: string, detail: string) => showSheet({ type: 'info', message, detail });
+    const checkBundles = () => ota.check().catch((error: unknown) => console.warn('OTA update check failed:', error instanceof Error ? error.message : error));
+
+    /** A newer shell wins; otherwise a newly installed or waiting bundle gets the page's restart offer. */
+    // electron-updater's messages go on with a stack and the response headers; it logs them whole.
+    const reason = (error: unknown) => (error instanceof Error ? error.message : String(error)).split('\n')[0]!.trim();
 
     async function checkForUpdates(): Promise<void> {
-        try {
-            const found = await updates.checkNow(version => void tell(`Downloading Clowdy ${ version }…`, 'Clowdy asks you to restart once the download is done'));
+        // A shell that cannot update (outside Applications, say) still takes bundles.
+        let shellProblem: string | undefined;
 
-            if (!found) await tell('Clowdy is up to date', `Version ${ app.getVersion() }`);
+        try {
+            if (await updates?.checkNow(version => void tell(`Downloading Clowdy ${ version }…`, 'Clowdy asks you to restart once the download is done'))) return;
         }
         catch (error) {
-            // electron-updater's messages go on with a stack and the response headers; it logs them whole.
-            const [reason] = (error instanceof Error ? error.message : String(error)).split('\n');
-
-            await tell('Couldn\'t update Clowdy', reason.trim());
+            shellProblem = reason(error);
         }
+
+        try {
+            await ota.check();
+        }
+        catch (error) {
+            await tell('Couldn\'t update Clowdy', shellProblem ?? reason(error));
+
+            return;
+        }
+
+        const pending = ota.pending();
+
+        if (pending !== null) BrowserWindow.getAllWindows().forEach(window => window.webContents.send(IPC_CHANNELS.updateReady, pending));
+        else if (shellProblem) await tell('Couldn\'t update Clowdy', shellProblem);
+        else await tell('Clowdy is up to date', `Version ${ app.getVersion() }${ bundle.version ? ` (bundle ${ bundle.version })` : '' }`);
     }
 
     Menu.setApplicationMenu(createAppMenu({
@@ -177,43 +264,58 @@ function startShellUpdates(): void {
             });
         },
     }));
-    void updates.start();
+    void updates?.start();
+    void checkBundles();
+    setInterval(() => void checkBundles(), OTA_CHECK_INTERVAL_MS);
 }
 
 /**
- * What runs the daemon. A packaged app copies the Bun and the daemon it ships out of its install folder and runs those
- * (`bundle.ts`); a development run takes the Bun and the checkout `./clowdy dev` names.
+ * What runs the daemon of the chosen bundle. A packaged app copies the Bun it ships out of its install folder, and runs
+ * an installed OTA bundle's daemon from its folder, or its own bundle's from a copy (`bundle.ts`). A development run
+ * takes the Bun and the checkout `./clowdy dev` names, or that Bun and a bundle from the test feed.
  */
-async function daemonRuntime(): Promise<{ runtime?: DaemonRuntime; bundle?: BundleInfo }> {
-    if (!app.isPackaged) return { runtime: environmentRuntime(process.env) };
+async function daemonRuntime(bundle: RunningBundle, own: BundleInfo | undefined, updates: string): Promise<DaemonRuntime | undefined> {
+    if (!app.isPackaged) {
+        const checkout = environmentRuntime(process.env);
 
-    const bundle = await readBundleInfo(path.join(app.getAppPath(), 'bundle.json'));
+        return checkout && bundle.dir ? bundleRuntime(checkout.bun, bundle.dir) : checkout;
+    }
 
-    return { runtime: await installRuntime({ resources: process.resourcesPath, updates: updatesDir(currentContext().dataDir), bundle }), bundle };
+    const resources = process.resourcesPath;
+    const bun = await installBun({ resources, updates });
+
+    if (bundle.dir) return bundleRuntime(bun, bundle.dir);
+
+    if (!own) throw new Error('The app\'s own bundle is unreadable');
+
+    return bundleRuntime(bun, await installOwnBundle({ resources, updates, version: own.version }));
 }
 
 /**
  * Finds the daemon or starts one before the window opens, so the page loads with its address. Resolves with the
- * reason when there is none, and the window opens anyway. Quitting never stops the daemon: it outlives the app, and
- * only the keeper replaces a stale one (see `startKeeper`).
+ * reason when there is none (the window opens anyway), and whether the daemon is one this app started. Quitting never
+ * stops the daemon: it outlives the app, and only the keeper replaces a stale one (see `startKeeper`).
  */
-async function connectDaemon(context: DaemonContext, keeper: DaemonKeeper | undefined): Promise<unknown> {
+async function connectDaemon(context: DaemonContext, keeper: DaemonKeeper | undefined): Promise<{ error?: unknown; ours: boolean }> {
     try {
         // A stale daemon (another bundle's, or one older than its sources) is replaced now, while no window depends on it.
         const outcome = await keeper?.checkNow();
 
         // A busy one this app cannot talk to stays until the keeper swaps it; the window shows that it cannot reach a daemon
         // and reloads on the swap.
-        if (outcome?.kind === 'busy' && outcome.protocol !== PROTOCOL_VERSION) return undefined;
+        if (outcome?.kind === 'busy' && outcome.protocol !== PROTOCOL_VERSION) return { ours: false };
 
         const { pid, port } = await ensureDaemon(context);
 
         console.info(`Using the daemon with pid ${ pid } on port ${ port }.`);
+
+        // With none running, `ensureDaemon` started this one.
+        return { ours: outcome?.kind === 'restarted' || outcome?.kind === 'none' };
     }
     catch (error) {
         console.error('No daemon:', error);
 
-        return error;
+        return { error, ours: false };
     }
 }
 
@@ -221,12 +323,13 @@ async function connectDaemon(context: DaemonContext, keeper: DaemonKeeper | unde
  * Keeps the daemon the one this app wants, replacing a stale one once it has no runs in progress. The windows are told
  * where the new one is, and their event feed resumes from its cursor.
  *
- * - A packaged app wants the daemon of the bundle it runs: one from another bundle (left by the previous version) is
- *   replaced, and when it is busy a sheet asks whether to interrupt its runs or wait for them.
- * - A development run (`CLOWDY_DAEMON_WATCH` names the daemon's source folders, `scripts/dev.ts` sets it) replaces the
- *   daemon when its sources change.
+ * - An app that runs a bundle (a packaged app, or a development run on the test feed) wants that bundle's daemon: one
+ *   from an older bundle (left by the previous version) is replaced, and when it is busy a sheet asks whether to
+ *   interrupt its runs or wait for them.
+ * - A development run on its checkout (`CLOWDY_DAEMON_WATCH` names the daemon's source folders, `scripts/dev.ts` sets
+ *   it) replaces the daemon when its sources change, or when it runs a bundle.
  */
-function startKeeper(context: DaemonContext, bundle: BundleInfo | undefined, firstWindow: Promise<BrowserWindow>): DaemonKeeper | undefined {
+function startKeeper(context: DaemonContext, bundle: RunningBundle, firstWindow: Promise<BrowserWindow>, onReplaced: () => void): DaemonKeeper | undefined {
     // The sheet about a busy daemon; it closes when that daemon is replaced without an answer (its runs finished first).
     let question: AbortController | undefined;
     const common: Pick<KeeperOptions, 'context' | 'log' | 'onRestarted'> = {
@@ -237,12 +340,12 @@ function startKeeper(context: DaemonContext, bundle: BundleInfo | undefined, fir
 
             question?.abort();
             BrowserWindow.getAllWindows().forEach(window => window.webContents.send(IPC_CHANNELS.daemonChanged, address));
+            onReplaced();
         },
     };
 
-    if (app.isPackaged) {
-        if (!bundle) return undefined;
-
+    // A bundle: a packaged app's, or one a development run took from the test feed.
+    if (bundle.version > 0) {
         const keeper: DaemonKeeper = keepDaemonFresh({
             ...common,
             isStale: fromOlderBundle(bundle.version),
@@ -261,6 +364,9 @@ function startKeeper(context: DaemonContext, bundle: BundleInfo | undefined, fir
 
         return keeper;
     }
+
+    // A packaged app whose own bundle is unreadable cannot tell which daemon it wants.
+    if (app.isPackaged) return undefined;
 
     const dirs = (process.env.CLOWDY_DAEMON_WATCH ?? '').split(path.delimiter).filter(Boolean);
 
@@ -296,6 +402,10 @@ function openWindow(): BrowserWindow {
     ));
 
     window.once('ready-to-show', () => window.show());
+    // A page that loads after an OTA bundle was installed still offers the restart.
+    window.webContents.on('did-finish-load', () => {
+        if (updateReady !== undefined) window.webContents.send(IPC_CHANNELS.updateReady, updateReady);
+    });
     window.loadURL(`${ APP_ORIGIN }/`).catch((error: unknown) => console.error('The window did not load:', error));
 
     if (process.platform === 'win32') {
