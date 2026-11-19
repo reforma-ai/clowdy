@@ -99,7 +99,7 @@ function GitSection({ info, failed }: { info: ProjectInfo | undefined; failed: b
                 { remote && (
                     <SettingsRow title="Remote">
                         { remote.href
-                            ? <Button variant="filled" color="secondary" size="sm" href={ remote.href } target="_blank" rel="noreferrer" className={ styles.value }>{ remote.text }<ArrowUpRight /></Button>
+                            ? <Button variant="inline" color="primary" href={ remote.href } target="_blank" rel="noreferrer" className={ styles.value }>{ remote.text }<ArrowUpRight aria-hidden /></Button>
                             : <Text className={ styles.value }>{ remote.text }</Text> }
                     </SettingsRow>
                 ) }
