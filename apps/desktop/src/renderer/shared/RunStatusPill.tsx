@@ -15,7 +15,7 @@ export interface RunStatusPillProps {
     className?: string;
 }
 
-/** A run's status as a small pill: Working, Waiting, Blocked, Done, Failed, Cancelled, Interrupted. */
+/** A run's status as a small pill: Working, Waiting, Background, Blocked, Done, Failed, Cancelled, Interrupted. */
 export function RunStatusPill({ status, reason, plain, className }: RunStatusPillProps) {
     const { label, tone } = RUN_STATUS_VIEW[status];
 

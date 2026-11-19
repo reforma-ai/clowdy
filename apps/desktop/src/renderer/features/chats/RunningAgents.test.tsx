@@ -16,7 +16,8 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), warning: v
 
 /*
  * The strip above the message box of c-1, whose orchestrator r-orch-1 has Executor 07 working, Executor 08 waiting for the person and the
- * native Explore sub-agent r-na-02 searching. The test build has no MobX observer plugin, so the view is drawn again by hand after a change.
+ * native Explore sub-agent r-na-02 searching, and of c-5, whose orchestrator r-orch-5 waits for two commands it started in the background.
+ * The test build has no MobX observer plugin, so the view is drawn again by hand after a change.
  */
 
 const memoryStorage = (): KeyValueStorage => {
@@ -43,7 +44,9 @@ afterEach(() => {
 });
 
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
-const rows = () => [...container.querySelectorAll('[aria-label="Agents at work"] > div')];
+const rows = () => [...container.querySelectorAll('[aria-label="Work in progress"] > div')];
+const runs = () => store.selectedProject!.runs;
+const background = (...titles: string[]) => titles.map((title, index) => ({ id: `bg-${ index + 1 }`, kind: 'command' as const, title }));
 const render = (chatId: string) => act(async () => reactRoot.render(<RootStoreProvider value={ store }><RunningAgents chat={ store.selectedProject!.chats.get(chatId)! } /></RootStoreProvider>));
 
 /** Draws the strip, then again once the streams of the agents at work have been fetched. */
@@ -79,6 +82,74 @@ describe('RunningAgents', () => {
 
     it('draws nothing while no agent of the chat works', async () => {
         await draw('c-2');
+
+        expect(container.innerHTML).toBe('');
+    });
+});
+
+describe('RunningAgents, the background row', () => {
+    it('counts what the orchestrator has open in the background, with Stop', async () => {
+        await draw('c-5');
+
+        expect(rows().map(row => row.textContent)).toEqual(['2 background tasks runningStop']);
+    });
+
+    it('says it in the singular for one item', async () => {
+        runs().set('r-orch-5', { ...runs().get('r-orch-5')!, background: background('bun run test') });
+        await draw('c-5');
+
+        expect(rows().map(row => row.textContent)).toEqual(['Background task runningStop']);
+    });
+
+    it('stops the orchestrator, which ends the background work with it', async () => {
+        await draw('c-5');
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => rows()[0].querySelector('button')!.click());
+        expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-orch-5' });
+
+        // The daemon clears the list with the run, and the row goes with it.
+        await vi.waitFor(() => expect(runs().get('r-orch-5')?.status).toBe('cancelled'));
+        await draw('c-5');
+        expect(container.innerHTML).toBe('');
+    });
+
+    it('comes after the agents at work', async () => {
+        runs().set('r-orch-1', { ...runs().get('r-orch-1')!, background: background('bun run test') });
+        await draw();
+
+        expect(rows().map(row => row.textContent)).toEqual([
+            expect.stringContaining('Executor 07'),
+            expect.stringContaining('Executor 08'),
+            expect.stringContaining('Explore agent'),
+            'Background task runningStop',
+        ]);
+    });
+
+    it('is drawn while the session works on a message too, not only while it waits', async () => {
+        runs().set('r-orch-5', { ...runs().get('r-orch-5')!, status: 'running' });
+        await draw('c-5');
+
+        expect(rows().map(row => row.textContent)).toEqual(['2 background tasks runningStop']);
+    });
+
+    it('is not drawn with nothing open, whether the list is empty or absent', async () => {
+        const bare = { ...runs().get('r-orch-5')! };
+
+        delete bare.background;
+        runs().set('r-orch-5', { ...bare, background: [] });
+        await draw('c-5');
+        expect(container.innerHTML).toBe('');
+
+        runs().set('r-orch-5', bare);
+        await draw('c-5');
+        expect(container.innerHTML).toBe('');
+    });
+
+    it('is not drawn for a chat at rest, whatever a stale list says', async () => {
+        runs().set('r-orch-5', { ...runs().get('r-orch-5')!, status: 'succeeded' });
+        await draw('c-5');
 
         expect(container.innerHTML).toBe('');
     });

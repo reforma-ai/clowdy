@@ -29,7 +29,7 @@ describe('FixtureTransport', () => {
         const transport = new FixtureTransport();
         const snapshot = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
 
-        expect(new Set(snapshot.runs.map(run => run.status))).toEqual(new Set(['queued', 'running', 'waiting_user', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']));
+        expect(new Set(snapshot.runs.map(run => run.status))).toEqual(new Set(['queued', 'running', 'waiting_background', 'waiting_user', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']));
         expect(new Set(snapshot.tasks.map(task => task.statusId))).toEqual(new Set(snapshot.statuses.map(status => status.id)));
         expect(snapshot.tasks.some(task => task.dependsOn.length > 0)).toBe(true);
         expect(snapshot.runs.some(run => run.parentRunId && snapshot.runs.some(parent => parent.id === run.parentRunId && parent.parentRunId))).toBe(true);
@@ -182,6 +182,48 @@ describe('FixtureTransport', () => {
 
             expect((await chatOf(transport, 'c-1')).queue?.map(item => item.text)).toEqual(['three', 'one']);
             expect(await transport.command({ type: 'chat.removeQueued', chatId: 'c-1', itemId: 'q-missing' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        });
+    });
+
+    describe('a chat whose orchestrator waits for background work', () => {
+        const orchestrator = async (transport: FixtureTransport) => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === 'r-orch-5')!;
+
+        it('is c-5, with two open items and no slot or queue', async () => {
+            const { transport } = await connected();
+            const chat = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(candidate => candidate.id === 'c-5');
+
+            expect(chat?.orchestratorRunId).toBe('r-orch-5');
+            expect(await orchestrator(transport)).toMatchObject({
+                status: 'waiting_background',
+                statusReason: 'Waiting for background work',
+                background: [{ id: 'bg-1', kind: 'command', title: 'bun run test' }, { id: 'bg-2', kind: 'command', title: 'bun run typecheck' }],
+            });
+            expect(chat?.queue).toBeUndefined();
+        });
+
+        it('takes a message at once, answers it, and goes back to waiting while the work is open', async () => {
+            const { transport } = await connected();
+
+            await transport.command({ type: 'chat.send', chatId: 'c-5', text: 'How is it going?', mode: 'steer' });
+
+            expect((await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(candidate => candidate.id === 'c-5')?.queue).toBeUndefined();
+            expect(await orchestrator(transport)).toMatchObject({ status: 'running', background: [{ id: 'bg-1' }, { id: 'bg-2' }] });
+
+            await vi.advanceTimersByTimeAsync(1500);
+
+            expect(await orchestrator(transport)).toMatchObject({ status: 'waiting_background', statusReason: 'Waiting for background work', background: [{ id: 'bg-1' }, { id: 'bg-2' }] });
+            expect((await transport.getItems({ chatId: 'c-5' })).at(-1)?.body).toMatchObject({ kind: 'assistant', done: true });
+        });
+
+        it('ends the work with the run when it is stopped', async () => {
+            const { transport } = await connected();
+
+            await transport.command({ type: 'run.cancel', runId: 'r-orch-5' });
+
+            const run = await orchestrator(transport);
+
+            expect(run.status).toBe('cancelled');
+            expect(run.background).toBeUndefined();
         });
     });
 

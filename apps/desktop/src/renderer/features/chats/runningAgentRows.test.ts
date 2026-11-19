@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { agentRowLabel, agentRowText, runningAgents } from './runningAgentRows';
+import { agentRowLabel, agentRowText, backgroundRowText, openBackground, runningAgents } from './runningAgentRows';
 
 import type { Run, RunStatus } from '@clowdy/protocol';
 
@@ -40,5 +40,31 @@ describe('a row\'s words', () => {
         expect(agentRowText(explore, 'Reading form.tsx', 1)).toBe('Explore agent · Reading form.tsx · 1 call');
         expect(agentRowText(explore, undefined, 0)).toBe('Explore agent working');
         expect(agentRowText({ name: 'Executor 08', origin: 'spawned', status: 'waiting_user' }, 'Reading a.ts', 7)).toBe('Executor 08 · Waiting for you');
+    });
+});
+
+describe('the background row', () => {
+    const open = [{ id: 'bg-1', kind: 'command' as const, title: 'bun run test' }, { id: 'bg-2', kind: 'subagent' as const, title: 'Explore' }];
+
+    it('lists what a live orchestrator has open, whatever the kind of the item', () => {
+        for (const status of ['queued', 'running', 'waiting_children', 'waiting_background', 'waiting_user', 'blocked'] as const) {
+            expect(openBackground(run('orch', status, { background: open })), status).toEqual(open);
+        }
+    });
+
+    it('lists nothing for no run, nothing open, or a run that ended with a stale list', () => {
+        expect(openBackground(undefined)).toEqual([]);
+        expect(openBackground(run('orch', 'waiting_background'))).toEqual([]);
+        expect(openBackground(run('orch', 'waiting_background', { background: [] }))).toEqual([]);
+
+        for (const status of ['succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
+            expect(openBackground(run('orch', status, { background: open })), status).toEqual([]);
+        }
+    });
+
+    it('counts the items in the singular and the plural', () => {
+        expect(backgroundRowText(1)).toBe('Background task running');
+        expect(backgroundRowText(2)).toBe('2 background tasks running');
+        expect(backgroundRowText(12)).toBe('12 background tasks running');
     });
 });
