@@ -135,10 +135,10 @@ describe('Composer without a chat', () => {
         expect(started).toEqual(['c-new']);
     });
 
-    it('starts the chat in the mode it offers: Autopilot', async () => {
+    it('starts the chat in the mode it offers: Hands-off', async () => {
         await mount(input => (input.type === 'chat.create' ? accepted({ chat: made }) : accepted()));
 
-        expect(container.textContent).toContain('Autopilot');
+        expect(container.textContent).toContain('Hands-off');
     });
 
     it('is as tall as the page asks while empty, and one line otherwise', async () => {

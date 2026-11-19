@@ -109,7 +109,7 @@ function EmptyChat() {
         <div className={ styles.empty }>
             <Text variant="heading-4">What are we working on?</Text>
             <Text color="secondary">
-                Describe what you want built, or ask a question. Autopilot plans and runs the work on its own; Semi-manual stops to ask you at the big decisions.
+                Describe what you want built, or ask a question. In Hands-off mode Clowdy plans and runs the work on its own; in Hands-on mode it stops to ask you at the big decisions.
             </Text>
         </div>
     );

@@ -11,8 +11,8 @@ import styles from './ModePicker.module.css';
 import type { ChatMode } from '@clowdy/protocol';
 
 const MODES: ReadonlyArray<{ id: ChatMode; label: string; description: string }> = [
-    { id: 'autopilot', label: 'Autopilot', description: 'Decides on its own and tells you only what blocks it.' },
-    { id: 'semi', label: 'Semi-manual', description: 'Asks you before a significant fork, then carries on.' },
+    { id: 'autopilot', label: 'Hands-off', description: 'Decides on its own, asks only when stuck' },
+    { id: 'semi', label: 'Hands-on', description: 'Asks you at key decisions, then carries on' },
 ];
 
 export interface ModePickerProps {

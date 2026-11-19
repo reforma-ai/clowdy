@@ -191,16 +191,16 @@ describe('where a new chat starts', () => {
         await pressEnter();
     }
 
-    it('starts in Autopilot when the project asks for no mode and none was picked before', async () => {
+    it('starts in Hands-off when the project asks for no mode and none was picked before', async () => {
         await mount();
 
-        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Autopilot');
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Hands-off');
     });
 
     it('starts in the mode its project asks for', async () => {
         await mount({ defaults: { mode: 'semi' } });
 
-        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Semi-manual');
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Hands-on');
 
         await send('Build the thing');
 
@@ -210,15 +210,15 @@ describe('where a new chat starts', () => {
     it('remembers the mode that was picked, and the next new chat starts in it', async () => {
         await mount();
 
-        await pickMode('Semi-manual');
+        await pickMode('Hands-on');
         expect(readRememberedMode()).toBe('semi');
-        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Semi-manual');
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Hands-on');
 
         act(() => root.unmount());
         root = createRoot(container);
         await mount();
 
-        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Semi-manual');
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Hands-on');
 
         await send('Build the thing');
 
@@ -229,17 +229,17 @@ describe('where a new chat starts', () => {
         writeRememberedMode('semi');
         await mount({ defaults: { mode: 'autopilot' } });
 
-        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Autopilot');
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Hands-off');
     });
 
     it('keeps a mode picked on the page of one project off the page of another', async () => {
         const page = await mount({ projectId: 'p', defaults: { mode: 'autopilot' } });
 
-        await pickMode('Semi-manual');
+        await pickMode('Hands-on');
         saveDraft(newChatDraftKey('q'), emptyComposerDoc());
         await page.update({ projectId: 'q', defaults: { mode: 'autopilot' } });
 
-        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Autopilot');
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Hands-off');
     });
 
     it('starts on the provider its project asks for, even when another was picked last', async () => {

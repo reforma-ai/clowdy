@@ -44,10 +44,10 @@ describe('ModePicker', () => {
     it('is a pill that names the mode', async () => {
         await draw('autopilot');
 
-        expect(pill().textContent).toBe('Autopilot');
+        expect(pill().textContent).toBe('Hands-off');
 
         await draw('semi');
-        expect(pill().textContent).toBe('Semi-manual');
+        expect(pill().textContent).toBe('Hands-on');
     });
 
     it('opens both modes, each with what it does, the chosen one ticked', async () => {
@@ -55,11 +55,11 @@ describe('ModePicker', () => {
         await open(pill());
 
         expect(rows().map(row => row.textContent)).toEqual([
-            expect.stringContaining('Autopilot'),
-            expect.stringContaining('Semi-manual'),
+            expect.stringContaining('Hands-off'),
+            expect.stringContaining('Hands-on'),
         ]);
         expect(rows()[0].textContent).toContain('Decides on its own');
-        expect(rows()[1].textContent).toContain('Asks you before a significant fork');
+        expect(rows()[1].textContent).toContain('Asks you at key decisions');
         expect(rows().map(row => row.getAttribute('aria-checked'))).toEqual(['false', 'true']);
         expect(rows()[1].querySelector('svg')).not.toBeNull();
         expect(rows()[0].querySelector('svg')).toBeNull();

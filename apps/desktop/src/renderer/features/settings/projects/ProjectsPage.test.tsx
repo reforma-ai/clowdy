@@ -215,7 +215,7 @@ describe('ProjectsPage project', () => {
         await flush();
         expect(settings().engine).toBe('codex');
 
-        await click(radio('Mode for new chats', 'Semi-manual'));
+        await click(radio('Mode for new chats', 'Hands-on'));
         await flush();
         expect(settings().chatMode).toBe('semi');
 

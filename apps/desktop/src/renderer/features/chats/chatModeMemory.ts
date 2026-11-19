@@ -17,7 +17,7 @@ export function writeRememberedMode(mode: ChatMode, storage: KeyValueStorage | u
     writeStored(storage, STORAGE_KEY, mode);
 }
 
-/** The mode a new chat starts in: the one its project asks for, else the one last picked, else Autopilot. */
+/** The mode a new chat starts in: the one its project asks for, else the one last picked, else Hands-off (`autopilot`). */
 export function startingMode(projectMode: ChatMode | undefined, remembered: ChatMode | undefined): ChatMode {
     return projectMode ?? remembered ?? 'autopilot';
 }

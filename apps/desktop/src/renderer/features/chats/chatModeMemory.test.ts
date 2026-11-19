@@ -41,7 +41,7 @@ describe('chatModeMemory', () => {
         } })).toBeUndefined();
     });
 
-    it('starts a chat in the mode its project asks for, else the last one picked, else Autopilot', () => {
+    it('starts a chat in the mode its project asks for, else the last one picked, else Hands-off', () => {
         expect(startingMode('semi', 'autopilot')).toBe('semi');
         expect(startingMode(undefined, 'semi')).toBe('semi');
         expect(startingMode(undefined, undefined)).toBe('autopilot');

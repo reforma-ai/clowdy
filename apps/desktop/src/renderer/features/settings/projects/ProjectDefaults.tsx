@@ -13,8 +13,8 @@ import type { ChatMode, Project } from '@clowdy/protocol';
 const LAST_USED = '~last-used';
 
 const MODES: ReadonlyArray<{ id: ChatMode; label: string }> = [
-    { id: 'autopilot', label: 'Autopilot' },
-    { id: 'semi', label: 'Semi-manual' },
+    { id: 'autopilot', label: 'Hands-off' },
+    { id: 'semi', label: 'Hands-on' },
 ];
 
 /**
