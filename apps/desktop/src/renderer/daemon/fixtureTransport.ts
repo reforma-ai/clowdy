@@ -25,6 +25,7 @@ import type {
     DocsTree,
     ErrorCode,
     EventData,
+    FolderId,
     Project,
     ProjectFileMatch,
     ProjectId,
@@ -215,11 +216,16 @@ export class FixtureTransport implements Transport {
     }
 
     async getDocsTree(projectId: ProjectId): Promise<DocsTree> {
-        return docsTree(Object.keys(this.#data.docs[projectId] ?? {}));
+        // Every fixture folder exists; one without a docs folder has no documents, and reading does not make one.
+        return this.#project(projectId).folders.map(folder => ({ folderId: folder.id, nodes: docsTree(Object.keys(this.#data.docs[folder.path] ?? {})) }));
     }
 
-    async getDocFile(projectId: ProjectId, path: string): Promise<DocFile> {
-        const content = this.#data.docs[projectId]?.[path];
+    async getDocFile(projectId: ProjectId, folderId: FolderId, path: string): Promise<DocFile> {
+        const folder = this.#project(projectId).folders.find(candidate => candidate.id === folderId);
+
+        if (!folder) throw new TransportError(`No such folder: ${ folderId }`, 404);
+
+        const content = this.#data.docs[folder.path]?.[path];
 
         if (content === undefined) throw new TransportError(`No such file: ${ path }`, 404);
 
@@ -547,8 +553,8 @@ export class FixtureTransport implements Transport {
                 data.artifacts = data.artifacts.filter(artifact => artifact.projectId !== project.id);
                 runIds.forEach(runId => delete data.items[runId]);
                 delete data.statuses[project.id];
-                delete data.docs[project.id];
                 delete data.files[project.id];
+                // Not the documents: as with the daemon, they live in the folders, which stay (and another project may have them).
                 this.#emit(project.id, { type: 'project.deleted' });
 
                 return ok({ projectId: project.id });
@@ -841,7 +847,12 @@ export class FixtureTransport implements Transport {
                 return ok();
             }
             case 'docs.write': {
-                const files = data.docs[command.projectId] ??= {};
+                const folder = data.projects.find(project => project.id === command.projectId)?.folders.find(candidate => candidate.id === command.folderId);
+
+                if (!folder) return fail('not_found', `Folder ${ command.folderId } does not exist`);
+
+                // The first document of a folder makes its docs folder.
+                const files = data.docs[folder.path] ??= {};
                 const existing = files[command.path];
 
                 if (command.baseHash === null && existing !== undefined) return fail('conflict', 'The file already exists', { hash: docHash(existing), content: existing });
@@ -853,7 +864,13 @@ export class FixtureTransport implements Transport {
                 }
 
                 files[command.path] = command.content;
-                this.#emit(command.projectId, { type: 'docs.changed', path: command.path, change: existing === undefined ? 'created' : 'modified' });
+
+                // Like the daemon: every project that has the folder hears of it, with the id the folder has there.
+                for (const project of data.projects) {
+                    const shared = project.folders.find(candidate => candidate.path === folder.path);
+
+                    if (shared) this.#emit(project.id, { type: 'docs.changed', folderId: shared.id, path: command.path, change: existing === undefined ? 'created' : 'modified' });
+                }
 
                 return ok({ hash: docHash(command.content) });
             }
@@ -878,7 +895,6 @@ export class FixtureTransport implements Transport {
 
         this.#data.projects.push(project);
         this.#data.statuses[project.id] = DEFAULT_STATUSES;
-        this.#data.docs[project.id] = {};
         this.#emit(project.id, { type: 'project.upserted', project, statuses: DEFAULT_STATUSES });
 
         // Like the daemon: `{ project }`.

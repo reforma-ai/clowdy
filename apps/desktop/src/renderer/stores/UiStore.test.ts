@@ -24,6 +24,18 @@ describe('UiStore', () => {
         expect([ui.section, ui.docPath]).toEqual(['docs', 'decisions/pricing.md']);
     });
 
+    it('keeps the folder of the open document, the main one when none is named, across a restart', () => {
+        const storage = memoryStorage();
+        const ui = new UiStore(storage).forProject('p1');
+
+        ui.openDoc('endpoints.md', 'fld_api');
+        expect([ui.docPath, ui.docFolderId, ui.view.docFolderId]).toEqual(['endpoints.md', 'fld_api', 'fld_api']);
+        expect(new UiStore(storage).forProject('p1')).toMatchObject({ docPath: 'endpoints.md', docFolderId: 'fld_api' });
+
+        ui.openDoc('decisions/pricing.md');
+        expect([ui.docPath, ui.docFolderId]).toEqual(['decisions/pricing.md', null]);
+    });
+
     it('keeps a chat and one of its runs apart: opening one clears the other, and so does the new-chat row', () => {
         const ui = new UiStore().forProject('p1');
 
@@ -145,10 +157,10 @@ describe('UiStore', () => {
     });
 
     it('starts from what the page URL preselects, ahead of the stored state', () => {
-        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&finished=1&subthreads=0&archived=1&chat=c-1&run=r-1&doc=a.md');
+        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&finished=1&subthreads=0&archived=1&chat=c-1&run=r-1&doc=a.md&docFolder=fld-2');
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","tasksView":"board"}' }), initial).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', showFinished: true, showSubthreads: false, showArchived: true, chatId: 'c-1', runId: 'r-1', docPath: 'a.md' });
+        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', showFinished: true, showSubthreads: false, showArchived: true, chatId: 'c-1', runId: 'r-1', docPath: 'a.md', docFolderId: 'fld-2' });
     });
 
     it('ignores URL values that name no section or view', () => {

@@ -3,7 +3,8 @@ import { dirname, join, sep } from 'node:path';
 
 import { invalid } from '../errors';
 
-export const DOCS_DIR = '.clowdy/docs';
+export const CLOWDY_DIR = '.clowdy';
+export const DOCS_DIR = `${ CLOWDY_DIR }/docs`;
 export const MAX_DOC_BYTES = 5 * 1024 * 1024;
 
 const DOC_EXTENSION = /\.(md|markdown)$/i;
@@ -49,6 +50,21 @@ export function normalizeDocPath(input: string): string {
 
 function isInside(root: string, path: string): boolean {
     return path === root || path.startsWith(root.endsWith(sep) ? root : root + sep);
+}
+
+/**
+ * The real path of `path` when, its links followed, it lies below `folder` (never the folder itself); `undefined` when it leads elsewhere or
+ * cannot be resolved. A folder's `.clowdy` and `.clowdy/docs` must pass this before anything is read, listed or made in them.
+ */
+export function realPathBelow(folder: string, path: string): string | undefined {
+    try {
+        const real = realpathSync.native(path);
+
+        return real.startsWith(realpathSync.native(folder) + sep) ? real : undefined;
+    }
+    catch {
+        return undefined;
+    }
 }
 
 /**

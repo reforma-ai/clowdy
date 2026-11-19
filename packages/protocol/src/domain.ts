@@ -416,6 +416,15 @@ export interface DocNode {
     children?: DocNode[];
 }
 
+/**
+ * The documents of one folder of a project: Markdown files under its `.clowdy/docs`. A folder whose docs folder does not exist yet has no nodes;
+ * the first document written there makes it.
+ */
+export interface DocsFolder {
+    folderId: FolderId;
+    nodes: DocNode[];
+}
+
 export interface DocFile {
     path: string;
     content: string;

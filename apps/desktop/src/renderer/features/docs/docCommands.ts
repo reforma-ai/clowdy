@@ -5,15 +5,15 @@ import type { DocsStore } from './DocsStore';
 
 export const DOCS_SCOPE = 'docs';
 
-/** A row of the tree is a `treeitem` with the document's path, a folder's too. A row's own keys and the editor are not the tree. */
-const treeItemPath = (element: Element) => (element.getAttribute('role') === 'treeitem' ? (element as HTMLElement).dataset.path ?? null : null);
+/** A row of the tree is a `treeitem` with the key of its document or folder. A row's own keys and the editor are not the tree. */
+const treeItemKey = (element: Element) => (element.getAttribute('role') === 'treeitem' ? (element as HTMLElement).dataset.key ?? null : null);
 
 export interface DocTreeCommandDeps {
     /** The element with `role="tree"`. */
     tree: () => Element | null;
-    /** The paths of the rows in the order the tree shows them. */
+    /** The keys of the rows in the order the tree shows them. */
     ids: () => readonly string[];
-    /** The open document's path. */
+    /** The open document's key. */
     openId: () => string | null;
 }
 
@@ -27,9 +27,9 @@ export function docTreeCommands({ tree, ids, openId }: DocTreeCommandDeps): Comm
         prefix: 'docs',
         group: 'Documents',
         ids,
-        focus: () => listFocusOf(tree(), treeItemPath),
+        focus: () => listFocusOf(tree(), treeItemKey),
         openId,
-        focusItem: path => tree()?.querySelector<HTMLElement>(`[role="treeitem"][data-path="${ CSS.escape(path) }"]`)?.focus(),
+        focusItem: key => tree()?.querySelector<HTMLElement>(`[role="treeitem"][data-key="${ CSS.escape(key) }"]`)?.focus(),
     });
 }
 

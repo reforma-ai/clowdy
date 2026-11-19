@@ -8,7 +8,7 @@ import { busyEnter } from './busyEnter';
 import { Composer } from './Composer';
 import { modelStore } from './modelTestKit';
 
-import type { Chat, CommandResult, DocNode, Run, SkillEntry, Task } from '@clowdy/protocol';
+import type { Chat, CommandResult, DocsTree, ProjectFolder, Run, SkillEntry, Task } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { CommandInput } from '../../daemon/transport';
 
@@ -20,7 +20,8 @@ const accepted: CommandResult = { ok: true, requestId: 'request-1', data: {} };
 const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'unavailable', message: 'The daemon cannot be reached' } };
 
 const tasks = [{ id: 't-24', number: 24, key: 'CAR-24', title: 'Rebuild the form as one view' }] as Task[];
-const docs: DocNode[] = [{ path: 'decisions', name: 'decisions', kind: 'dir', children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }] }];
+const FOLDERS: ProjectFolder[] = [{ id: 'fld_p', path: '/work/p' }];
+const docs: DocsTree = [{ folderId: 'fld_p', nodes: [{ path: 'decisions', name: 'decisions', kind: 'dir', children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }] }] }];
 const skill = (name: string, source: SkillEntry['source']): SkillEntry => ({ id: `${ source }:${ name }`, name, source, description: `${ name } skill`, enabled: true, tokens: 20, engines: [] });
 const skills = [skill('clowdy:orchestrate', 'system'), skill('user:review', 'user')];
 
@@ -34,18 +35,18 @@ let chatNumber = 0;
 /** What the pick lists read: the project's tasks, and the daemon's documents, files and skills. */
 const findFiles = async (_projectId: string, query: string) => ['src/booking/index.tsx', 'src/booking/price.ts'].filter(path => path.includes(query)).map(path => ({ folderId: 'fld_p', path }));
 const transport = {
-    getDocsTree: vi.fn(async () => docs),
+    getDocsTree: vi.fn(async (): Promise<DocsTree> => docs),
     getProjectFiles: vi.fn(findFiles),
     getSkills: vi.fn(async () => ({ entries: skills, tokens: 0, warnings: [] })),
 };
 
-async function mount(result: CommandResult | Promise<CommandResult>, run?: Run) {
+async function mount(result: CommandResult | Promise<CommandResult>, run?: Run, folders = FOLDERS) {
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
 
         return result;
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'fld_p', path: '/work/p' }] }, taskList: tasks }, ...await modelStore() };
+    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders }, taskList: tasks }, ...await modelStore() };
 
     await act(async () => {
         root.render(
@@ -75,6 +76,7 @@ async function press(key: string, shiftKey = false, metaKey = false) {
 
 beforeEach(() => {
     transport.getProjectFiles.mockImplementation(findFiles);
+    transport.getDocsTree.mockImplementation(async () => docs);
     sent = [];
     chat = newChat(`c-${ ++chatNumber }`);
     container = document.createElement('div');
@@ -258,6 +260,19 @@ describe('Composer', () => {
             await press('Enter');
 
             expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Follow @.clowdy/docs/decisions/pricing.md', mode: 'steer' }]);
+        });
+
+        it('sends a document of another folder by its absolute path, and names the folder in the suggestion', async () => {
+            transport.getDocsTree.mockImplementation(async () => [...docs, { folderId: 'fld_api', nodes: [{ path: 'endpoints.md', name: 'endpoints.md', kind: 'file' }] }]);
+            await mount(accepted, undefined, [...FOLDERS, { id: 'fld_api', path: '/work/api' }]);
+            await open('Read @endpoints');
+
+            expect(optionTexts()).toEqual([expect.stringMatching(/endpoints\.md.*api/)]);
+
+            await choose('endpoints.md');
+            await press('Enter');
+
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Read @/work/api/.clowdy/docs/endpoints.md', mode: 'steer' }]);
         });
 
         it('still lists the rest when one source is down', async () => {

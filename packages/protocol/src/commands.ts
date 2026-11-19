@@ -125,6 +125,8 @@ export const commandSchema = z.discriminatedUnion('type', [
         ...base,
         type: z.literal('docs.write'),
         projectId: z.string(),
+        /** The folder of the project whose `.clowdy/docs` holds the document; the first write there makes that docs folder. */
+        folderId: z.string().min(1),
         path: z.string().min(1),
         content: z.string(),
         /** Hash of the version the edit started from; `null` creates a new file. A mismatch answers `conflict`. */

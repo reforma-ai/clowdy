@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { docItems, docPaths, skillItems, skillName, taskItems } from './mentionItems';
 
-import type { DocNode, SkillEntry, Task } from '@clowdy/protocol';
+import type { DocNode, ProjectFolder, SkillEntry, Task } from '@clowdy/protocol';
 
 const task = (number: number, title: string): Task => ({ id: `t-${ number }`, number, key: `CAR-${ number }`, title }) as Task;
 const skill = (name: string, source: SkillEntry['source'], fields: Partial<SkillEntry> = {}): SkillEntry => ({
@@ -35,17 +35,39 @@ describe('taskItems', () => {
 });
 
 describe('docs', () => {
-    const tree: DocNode[] = [
+    const nodes: DocNode[] = [
         { path: 'decisions', name: 'decisions', kind: 'dir', children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }] },
         { path: 'README.md', name: 'README.md', kind: 'file' },
     ];
+    const folders: ProjectFolder[] = [{ id: 'fld_app', path: '/work/app' }, { id: 'fld_api', path: '/work/api' }];
 
     it('flattens a tree to the paths of its files', () => {
-        expect(docPaths(tree)).toEqual(['decisions/pricing.md', 'README.md']);
+        expect(docPaths(nodes)).toEqual(['decisions/pricing.md', 'README.md']);
     });
 
-    it('offers a document by the path from the project folder, under its docs folder', () => {
-        expect(docItems(docPaths(tree), 'pric')).toMatchObject([{ label: 'pricing.md', description: 'decisions', kind: 'doc', section: 'Documents', data: { path: '.clowdy/docs/decisions/pricing.md' } }]);
+    it('offers a document of one folder by the path from that folder, under its docs folder', () => {
+        expect(docItems([{ folderId: 'fld_app', nodes }], folders.slice(0, 1), 'pric')).toMatchObject([
+            { value: 'doc:fld_app:decisions/pricing.md', label: 'pricing.md', description: 'decisions', kind: 'doc', section: 'Documents', data: { path: '.clowdy/docs/decisions/pricing.md' } },
+        ]);
+        expect(docItems([{ folderId: 'fld_app', nodes }], folders.slice(0, 1), 'readme')[0]?.description).toBeUndefined();
+    });
+
+    it('offers the documents of every folder, another folder\'s by its absolute path, each with its folder\'s name', () => {
+        const tree = [{ folderId: 'fld_app', nodes }, { folderId: 'fld_api', nodes: [{ path: 'README.md', name: 'README.md', kind: 'file' as const }] }];
+
+        expect(docItems(tree, folders, 'readme').map(item => [item.value, item.description, (item.data as { path: string }).path])).toEqual([
+            ['doc:fld_app:README.md', 'app', '.clowdy/docs/README.md'],
+            ['doc:fld_api:README.md', 'api', '/work/api/.clowdy/docs/README.md'],
+        ]);
+        // The folder's name is searched with the path.
+        expect(docItems(tree, folders, 'api readme').map(item => item.value)).toEqual(['doc:fld_api:README.md']);
+        expect(docItems(tree, folders, 'pric')[0]?.description).toBe('app/decisions');
+    });
+
+    it('writes another folder\'s path with the separator of a Windows folder', () => {
+        const tree = [{ folderId: 'fld_app', nodes: [] }, { folderId: 'fld_win', nodes: [{ path: 'notes/a.md', name: 'a.md', kind: 'file' as const }] }];
+
+        expect(docItems(tree, [folders[0]!, { id: 'fld_win', path: 'C:\\work\\api' }], '')[0]?.data).toEqual({ path: 'C:\\work\\api\\.clowdy\\docs\\notes\\a.md' });
     });
 });
 

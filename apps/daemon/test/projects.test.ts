@@ -409,6 +409,7 @@ describe('project.delete', () => {
         const docs = join(project.path, '.clowdy', 'docs');
 
         // The first request for the documents starts their watcher.
+        mkdirSync(docs, { recursive: true });
         expect((await h.fetch(`/v1/projects/${ project.id }/docs`)).status).toBe(200);
         await h.fetch(`/v1/skills?projectId=${ project.id }`);
 
@@ -606,6 +607,29 @@ describe('project.update', () => {
 
         expect(announced).toContain('fresh.md');
         expect(announced).not.toContain('ignored.md');
+    });
+
+    test('a folder another project still has keeps its documents announced to that project after this one lets it go', async () => {
+        const h = await setup();
+        const shared = makeRepo(h.config.projectsDir, 'shared');
+        const docs = join(realpathSync.native(shared), '.clowdy', 'docs');
+        const { project: keeper } = h.ok('project.add', { folders: [shared] });
+        const { project: leaver } = h.ok('project.add', { folders: [makeRepo(h.config.projectsDir, 'own'), shared] });
+
+        // Both read their trees: the shared folder has one watcher, waiting for its docs folder.
+        await h.fetch(`/v1/projects/${ keeper.id }/docs`);
+        expect(await (await h.fetch(`/v1/projects/${ leaver.id }/docs`)).json()).toEqual([{ folderId: leaver.folders[0].id, nodes: [] }, { folderId: leaver.folders[1].id, nodes: [] }]);
+        h.ok('project.update', { projectId: leaver.id, folders: [{ id: leaver.folders[0].id }] });
+        await Bun.sleep(150);
+
+        const cursor = h.store.headCursor();
+
+        mkdirSync(docs, { recursive: true });
+        writeFileSync(join(docs, 'note.md'), '# Note');
+        await waitFor(() => h.events(cursor).some(event => event.data.type === 'docs.changed' && event.projectId === keeper.id), 'the change for the project that kept the folder');
+        await Bun.sleep(200);
+
+        expect(h.events(cursor).filter(event => event.data.type === 'docs.changed').every(event => event.projectId === keeper.id)).toBe(true);
     });
 
     test('a project works in its new main folder, and the old folder can be added as a project of its own', async () => {

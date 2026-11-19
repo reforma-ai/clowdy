@@ -1,6 +1,8 @@
 import { makeAutoObservable } from 'mobx';
 
-import type { DocFile } from '@clowdy/protocol';
+import { docKey, type DocRef } from './tree';
+
+import type { DocFile, FolderId } from '@clowdy/protocol';
 
 /** A version of the file as it is on disk. */
 export interface DiskVersion {
@@ -20,7 +22,7 @@ export type BufferStatus = 'loading' | 'ready' | 'failed';
  *   while the text is edited becomes a `conflict`, and the text stays as it is until the person chooses.
  * - A file that vanishes leaves the text in place; `baseHash` is `null`, and a save creates the file again.
  */
-export class DocBuffer {
+export class DocBuffer implements DocRef {
     status: BufferStatus = 'loading';
     error = '';
     /** What the person sees and edits. */
@@ -36,8 +38,13 @@ export class DocBuffer {
     saving = false;
     saveError = '';
 
-    constructor(readonly path: string) {
-        makeAutoObservable(this, { path: false });
+    /** Which of the project's documents this is: `docKey` of its folder and path. */
+    readonly key: string;
+
+    /** `path` is under the docs folder of `folderId`. */
+    constructor(readonly folderId: FolderId, readonly path: string) {
+        this.key = docKey({ folderId, path });
+        makeAutoObservable(this, { folderId: false, path: false, key: false });
     }
 
     /** The text has changes that exist nowhere else. */

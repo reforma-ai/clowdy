@@ -8,6 +8,7 @@ import type {
     ChatTaskLink,
     ClowdyEvent,
     EventData,
+    FolderId,
     Project,
     ProjectId,
     ProjectSnapshot,
@@ -57,8 +58,8 @@ export class ProjectState {
     error = '';
     /** Cursor of the last event this project has taken in: the snapshot's, then each applied event's. */
     cursor = 0;
-    /** The newest change to the docs folder; screens that show it refetch what the change touches. */
-    lastDocsChange: { path: string; change: 'created' | 'modified' | 'removed'; cursor: number } | null = null;
+    /** The newest change to the docs folder of one of the project's folders; screens that show it refetch what the change touches. */
+    lastDocsChange: { folderId: FolderId; path: string; change: 'created' | 'modified' | 'removed'; cursor: number } | null = null;
     /** Counts `artifact.added` events; a task detail that shows artifacts refetches when it changes. */
     artifactsRevision = 0;
     /** Events that arrived while the first snapshot was loading. */
@@ -188,7 +189,7 @@ export class ProjectState {
 
                 break;
             case 'docs.changed':
-                this.lastDocsChange = { path: data.path, change: data.change, cursor };
+                this.lastDocsChange = { folderId: data.folderId, path: data.path, change: data.change, cursor };
                 break;
             case 'artifact.added':
                 this.artifactsRevision++;

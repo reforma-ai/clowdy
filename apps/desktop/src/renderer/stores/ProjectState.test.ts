@@ -176,10 +176,10 @@ describe('ProjectState', () => {
     it('notes docs changes and artifacts for the screens that show them', async () => {
         const { state } = await loadedProject();
 
-        state.applyEvent(event(1001, { type: 'docs.changed', path: 'decisions/pricing.md', change: 'modified' }));
+        state.applyEvent(event(1001, { type: 'docs.changed', folderId: 'fld_car_rental', path: 'decisions/pricing.md', change: 'modified' }));
         state.applyEvent(event(1002, { type: 'artifact.added', artifact: { id: 'a', projectId: FIXTURE_PROJECT_ID, kind: 'diff', title: 'Diff', ref: {}, createdAt: 0 } }));
 
-        expect(state.lastDocsChange).toEqual({ path: 'decisions/pricing.md', change: 'modified', cursor: 1001 });
+        expect(state.lastDocsChange).toEqual({ folderId: 'fld_car_rental', path: 'decisions/pricing.md', change: 'modified', cursor: 1001 });
         expect(state.artifactsRevision).toBe(1);
     });
 

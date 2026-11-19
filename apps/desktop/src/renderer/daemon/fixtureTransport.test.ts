@@ -188,20 +188,61 @@ describe('FixtureTransport', () => {
     it('rejects a document write that started from an old version, and a create over an existing file', async () => {
         const { transport } = await connected();
         const path = 'decisions/pricing.md';
-        const file = await transport.getDocFile(FIXTURE_PROJECT_ID, path);
+        const write = { type: 'docs.write', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path, content: 'mine' } as const;
+        const file = await transport.getDocFile(FIXTURE_PROJECT_ID, 'fld_car_rental', path);
 
-        expect(await transport.command({ type: 'docs.write', projectId: FIXTURE_PROJECT_ID, path, content: 'mine', baseHash: 'fx-old' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
-        expect(await transport.command({ type: 'docs.write', projectId: FIXTURE_PROJECT_ID, path, content: 'mine', baseHash: null })).toMatchObject({ ok: false, error: { code: 'conflict' } });
-        expect(await transport.command({ type: 'docs.write', projectId: FIXTURE_PROJECT_ID, path, content: 'mine', baseHash: file.hash })).toMatchObject({ ok: true, data: { hash: docHash('mine') } });
-        expect((await transport.getDocFile(FIXTURE_PROJECT_ID, path)).content).toBe('mine');
+        expect(await transport.command({ ...write, baseHash: 'fx-old' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(await transport.command({ ...write, baseHash: null })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(await transport.command({ ...write, baseHash: file.hash })).toMatchObject({ ok: true, data: { hash: docHash('mine') } });
+        expect((await transport.getDocFile(FIXTURE_PROJECT_ID, 'fld_car_rental', path)).content).toBe('mine');
+        expect(await transport.command({ ...write, folderId: 'fld_nope', baseHash: null })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        await expect(transport.getDocFile(FIXTURE_PROJECT_ID, 'fld_nope', path)).rejects.toMatchObject({ status: 404 });
     });
 
-    it('serves the docs folder as a tree, directories first', async () => {
+    it('serves each folder\'s docs as a tree, directories first', async () => {
         const transport = new FixtureTransport();
         const tree = await transport.getDocsTree(FIXTURE_PROJECT_ID);
 
-        expect(tree.map(node => `${ node.kind }:${ node.path }`)).toEqual(['dir:decisions', 'dir:specs', 'file:README.md']);
-        expect(tree[0].children?.map(node => node.path)).toEqual(['decisions/booking-flow.md', 'decisions/pricing.md']);
+        expect(tree.map(folder => folder.folderId)).toEqual(['fld_car_rental']);
+        expect(tree[0].nodes.map(node => `${ node.kind }:${ node.path }`)).toEqual(['dir:decisions', 'dir:specs', 'file:README.md']);
+        expect(tree[0].nodes[0].children?.map(node => node.path)).toEqual(['decisions/booking-flow.md', 'decisions/pricing.md']);
+    });
+
+    it('serves the documents of every folder, an empty one too, and the first write into a folder makes its docs', async () => {
+        const { transport, events } = await connected();
+
+        await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/car-rental-api' }, { path: '/Users/dev/notes' }] });
+
+        const tree = await transport.getDocsTree(FIXTURE_PROJECT_ID);
+        const [, api, notes] = tree.map(folder => folder.folderId);
+
+        expect(tree.map(folder => folder.nodes.map(node => node.path))).toEqual([['decisions', 'specs', 'README.md'], ['decisions', 'endpoints.md'], []]);
+        expect((await transport.getDocFile(FIXTURE_PROJECT_ID, api, 'endpoints.md')).content).toContain('# Endpoints');
+
+        events.length = 0;
+        expect(await transport.command({ type: 'docs.write', projectId: FIXTURE_PROJECT_ID, folderId: notes, path: 'plan.md', content: '# Plan', baseHash: null })).toMatchObject({ ok: true });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect((await transport.getDocsTree(FIXTURE_PROJECT_ID))[2].nodes.map(node => node.path)).toEqual(['plan.md']);
+        expect(events.map(event => event.data)).toEqual([{ type: 'docs.changed', folderId: notes, path: 'plan.md', change: 'created' }]);
+    });
+
+    it('shares the documents of a folder two projects have, and tells both of a change', async () => {
+        const { transport, events } = await connected();
+        const added = await transport.command({ type: 'project.add', folders: ['/Users/dev/web', '/Users/dev/car-rental'] });
+        const other = (added as { data: { project: { id: string; folders: { id: string }[] } } }).data.project;
+
+        expect((await transport.getDocsTree(other.id))[1].nodes.map(node => node.path)).toEqual(['decisions', 'specs', 'README.md']);
+
+        events.length = 0;
+        await transport.command({ type: 'docs.write', projectId: other.id, folderId: other.folders[1].id, path: 'shared.md', content: '# Shared', baseHash: null });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(events.map(event => [event.projectId, event.data])).toEqual([
+            [FIXTURE_PROJECT_ID, { type: 'docs.changed', folderId: 'fld_car_rental', path: 'shared.md', change: 'created' }],
+            [other.id, { type: 'docs.changed', folderId: other.folders[1].id, path: 'shared.md', change: 'created' }],
+        ]);
+        expect((await transport.getDocFile(FIXTURE_PROJECT_ID, 'fld_car_rental', 'shared.md')).content).toBe('# Shared');
     });
 
     it('plays the timeline once, after the first subscription: a tool finishes and text streams in', async () => {
