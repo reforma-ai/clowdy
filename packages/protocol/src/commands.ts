@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { MAX_ATTACHMENTS_PER_MESSAGE } from './api';
+import { LAST_USED } from './domain';
 
 /**
  * Everything a client may ask the daemon to do. Each command carries a `requestId`; sending the same id again
@@ -33,7 +34,7 @@ export const commandSchema = z.discriminatedUnion('type', [
             maxParallelRuns: z.number().int().min(1).max(1000).nullable().optional(),
             engine: engine.nullable().optional(),
             model: z.string().nullable().optional(),
-            chatMode: chatMode.nullable().optional(),
+            chatMode: z.union([chatMode, z.literal(LAST_USED)]).nullable().optional(),
             targetBranch: z.string().nullable().optional(),
         }).optional(),
     }),

@@ -1,3 +1,5 @@
+import { projectChatMode } from '@clowdy/protocol';
+
 import { choiceOf, createChat, saveChat } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
@@ -35,7 +37,7 @@ export const taskHandlers: Pick<Handlers, 'task.create' | 'task.update' | 'task.
         requireEnabled(agents, runs.resolveEngine(project, command.engine));
 
         const title = titleFrom(task.title);
-        const chat = createChat(store, { projectId: project.id, title, mode: project.settings.chatMode });
+        const chat = createChat(store, { projectId: project.id, title, mode: projectChatMode(project.settings) });
         const text = taskMessage(task);
         const run = runs.createRun({
             project,

@@ -1,3 +1,4 @@
+import { LAST_USED } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -71,6 +72,18 @@ describe('task.start', () => {
         expect(engine.turns[0].tools.map(tool => tool.name)).toContain('ask_user');
         expect(h.ok('chat.create', { projectId: project.id }).chat.mode).toBe('semi');
         expect(h.ok('chat.create', { projectId: project.id, mode: 'autopilot' }).chat.mode).toBe('autopilot');
+    });
+
+    test('a project that keeps the last used agent and mode names neither to the daemon, which only the app can resolve', async () => {
+        const { h, engine, project, task } = await setup();
+
+        h.ok('project.update', { projectId: project.id, settings: { engine: LAST_USED, chatMode: LAST_USED } });
+
+        const { chatId } = h.ok('task.start', { taskId: task('A').id });
+
+        await waitFor(() => engine.turns.length === 1, 'the orchestrator to start');
+        expect((h.store.db.query('SELECT mode FROM chats WHERE id = ?').get(chatId) as { mode: string }).mode).toBe('autopilot');
+        expect(h.ok('chat.create', { projectId: project.id }).chat.mode).toBe('autopilot');
     });
 
     test('refuses a task that already has an active run unless forced, and then opens a second chat', async () => {

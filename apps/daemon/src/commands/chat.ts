@@ -1,3 +1,5 @@
+import { projectChatMode } from '@clowdy/protocol';
+
 import { messageWithFiles } from '../attachments/message';
 import { toAttachment } from '../attachments/service';
 import { choiceOf, createChat, DEFAULT_CHAT_TITLE, deleteChat, renameChat, requireChat, saveChat, setChatArchived, setChatMode, setChatModel } from '../domain/chats';
@@ -97,7 +99,7 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
             runs.resolveEngine(project, command.engine);
         }
 
-        return { chat: createChat(store, { ...command, mode: command.mode ?? project.settings.chatMode }) };
+        return { chat: createChat(store, { ...command, mode: command.mode ?? projectChatMode(project.settings) }) };
     },
 
     'chat.rename': ({ store }, command) => ({ chat: renameChat(store, command.chatId, command.title) }),

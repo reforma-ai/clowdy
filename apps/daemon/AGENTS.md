@@ -127,7 +127,7 @@ The system prompt of every turn is short: the role (`Follow clowdy:orchestrate`,
 
 ### Chat per task
 
-`task.start` creates a chat titled after the task (mode `settings.chatMode`, else autopilot), links it to the task (`ChatTaskLink`), creates an orchestrator run bound to it (`RunTaskLink` assigned) and sends the task message ("Complete task CLW-3: ...", the description, "This chat is bound to CLW-3; read it with task_get..."). A task with an active run is refused with `already_running` unless `force`.
+`task.start` creates a chat titled after the task (mode `settings.chatMode`, else autopilot; a project's `LAST_USED`, which only the app can resolve, counts as none, through `projectChatMode` and `projectEngine`), links it to the task (`ChatTaskLink`), creates an orchestrator run bound to it (`RunTaskLink` assigned) and sends the task message ("Complete task CLW-3: ...", the description, "This chat is bound to CLW-3; read it with task_get..."). A task with an active run is refused with `already_running` unless `force`.
 
 ### Fake engine
 

@@ -1,4 +1,4 @@
-import { ACTIVE_RUN_STATUSES, isTerminalRunStatus, STOPPED_TOOL } from '@clowdy/protocol';
+import { ACTIVE_RUN_STATUSES, isTerminalRunStatus, projectEngine, STOPPED_TOOL } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
 import { findQuestion, listRunningTools } from '../db/items';
@@ -104,7 +104,7 @@ export class RunService {
 
     /** The engine a new run uses: an explicit choice, then the project's setting, then the daemon's default. */
     resolveEngine(project: Project, preferred?: EngineId): EngineId {
-        const engine = preferred ?? project.settings.engine ?? this.config.engine;
+        const engine = preferred ?? projectEngine(project.settings) ?? this.config.engine;
 
         if (!this.engines.has(engine)) {
             throw unavailable(`The ${ engine } engine is not available in this daemon`);

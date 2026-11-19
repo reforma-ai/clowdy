@@ -49,9 +49,16 @@ export interface ProjectInfo {
 export interface ProjectSettings {
     /** Concurrent runs for this project; the daemon also applies a global cap. */
     maxParallelRuns?: number;
-    engine?: EngineId;
-    /** The mode of chats the daemon opens itself (a started task) and of new chats that name none. Defaults to autopilot. */
-    chatMode?: ChatMode;
+    /**
+     * The agent of a new chat in this project, or `LAST_USED`. Left out, the project follows the app's own choice (Settings > Chat). The daemon reads an
+     * agent only (`projectEngine`), for a chat that names none.
+     */
+    engine?: EngineId | typeof LAST_USED;
+    /**
+     * The mode of a new chat in this project, or `LAST_USED`; left out, the app's own choice. The daemon reads a mode only (`projectChatMode`): for the
+     * chats it opens itself (a started task) and for `chat.create` without one, which then default to autopilot.
+     */
+    chatMode?: ChatMode | typeof LAST_USED;
     model?: string;
     /** Not used by the daemon: agents decide about branches themselves. Kept so older settings stay valid. */
     targetBranch?: string;
@@ -59,6 +66,22 @@ export interface ProjectSettings {
 
 /** The id of an agent the daemon can run: `claude`, `codex`, `cursor`, a custom agent's id, or `fake` (the scripted demo engine). */
 export type EngineId = string;
+
+/**
+ * A project's choice for its new chats that keeps what the person picked last on their computer, in place of an agent or a mode. Only the app knows
+ * what that was, so the daemon reads it as no choice. It cannot be an agent's id, which never starts with `~`.
+ */
+export const LAST_USED = '~last-used';
+
+/** The agent a project names for its new chats, leaving out `LAST_USED`, which only the app can resolve. */
+export function projectEngine(settings: ProjectSettings): EngineId | undefined {
+    return settings.engine === LAST_USED ? undefined : settings.engine;
+}
+
+/** The mode a project names for its new chats, leaving out `LAST_USED`, which only the app can resolve. */
+export function projectChatMode(settings: ProjectSettings): ChatMode | undefined {
+    return settings.chatMode === LAST_USED ? undefined : settings.chatMode;
+}
 
 export interface Chat {
     id: ChatId;
