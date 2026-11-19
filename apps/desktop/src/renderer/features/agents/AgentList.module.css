@@ -1,68 +1,13 @@
-/* The same inset as the heading of Documents; the list below has its own 8px, and the rows their own padding. */
+/*
+ * The same inset as the heading of Documents; the list below has its own 8px, and the rows their own padding. A margin and not padding, so
+ * the heading's box is the title's line and its buttons' edges: the archive's list opens under it, as wide as it, close to the buttons.
+ */
 .heading {
-    padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-lg);
+    margin: var(--spacing-xl) var(--spacing-xl) var(--spacing-lg);
 }
 
 .content {
     padding: var(--spacing-md);
-}
-
-/* New chat takes the width and the archive is a square beside it, on the list's own inset. */
-.start {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: var(--spacing-xs);
-    padding: 0 var(--spacing-md);
-}
-
-/* Aligned with the icon of a row: the row's inset, less the border of the button. */
-.newChat {
-    flex: 1 1 0;
-    justify-content: flex-start;
-    min-width: 0;
-    padding-inline: calc(var(--spacing-lg) - 1px);
-}
-
-.newChatContent {
-    justify-content: flex-start;
-    min-width: 0;
-}
-
-.newChatContent .title {
-    flex: 1 1 auto;
-    text-align: start;
-}
-
-.hint {
-    flex: none;
-    opacity: 0;
-    transition: opacity var(--transition-duration-fast) ease;
-}
-
-.newChat[data-hovered='true'] .hint,
-.newChat[data-focus-visible='true'] .hint {
-    opacity: 1;
-}
-
-/* The icon of a chat's row, with the status dot on its top right corner. */
-.icon {
-    position: relative;
-    display: inline-flex;
-    flex-shrink: 0;
-}
-
-.dot {
-    position: absolute;
-    top: calc(var(--spacing-xxs) * -1);
-    right: calc(var(--spacing-xs) * -1);
-    display: flex;
-}
-
-/* Doubled so it outranks the dot's own size. */
-.dotMark.dotMark {
-    width: var(--spacing-sm);
-    height: var(--spacing-sm);
 }
 
 .title {
