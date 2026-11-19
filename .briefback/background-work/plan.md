@@ -28,6 +28,7 @@ Confirmed by the owner in chat (2026-11-19):
 - A run that ended has no open background work: `setStatus` clears `Run.background` on every terminal status. Startup recovery therefore reads the list before it interrupts the run and keeps the lost items in the run's work record for the next turn's message. `RunService.setBackground` bounds what it stores (50 items, 200 characters a title).
 - One `done` ends the whole activity that an accepted `send` leads to: when the agent is working on a turn of its own, the prompt joins or follows it, and the engine holds back the `done` of that turn until the sent prompt has been answered. The driver counts one `done` per `send`.
 - The chat shows what happens: each agent-started turn is an ordinary assistant message with no `user` item, a note names each background item when it finishes, and the strip above the message box gets one row ("2 background tasks running", shimmering, with Stop) in the pattern of Reforma's `ComposerBanner`.
+- `ask_user` during a turn the agent started by itself (semi-manual chats) answers the agent with an error for now (`waiting_background → waiting_user` is not a transition); Stage 7's real check shows how often it happens.
 - The progress of background sub-agents as child runs is its own stage (Stage 8).
 - As a fallback for an agent that cannot steer (Cursor), Send now on a queued message becomes stop and send: the orchestrator's running turn is ended on purpose, without cancelling its spawned children and without pausing the queue, and the message is the next turn of the same session, told that the previous turn was stopped for it. The button says so. An ordinary queued message still waits for the turn's end. The last stage, after the rest of the plan.
 
@@ -79,14 +80,14 @@ Confirmed by the owner in chat (2026-11-19):
 
 **This stage:** `RunDriver.turn` treats `done` as the end of the session: it settles the run and closes the session. With open background work the run must instead wait without a slot, keep reading the same session, write each agent-started turn into the stream, and take the user's next message into the live session. This stage is the lifecycle change; it also decides how a cancel, a daemon stop, a child's wake-up and a restart behave while the session waits. It is tested with `ScriptEngine`, with no ACP in the loop.
 
-- [ ] Complete
-  - [ ] At `done`, a run whose last snapshot has open items goes `running → waiting_background`, releases its slot, leaves `maxProcesses` and keeps its process recorded; with no open items it settles as before
-  - [ ] Events after `done` are written as an agent-started turn: a new assistant message, tool items, usage and context, no `user` item; the iterator ending settles the run (`succeeded`, or what `settle` decides)
-  - [ ] A message to a waiting run (`chat.send`, a queued item, a wake-up) goes to `session.send` through `waiting_background → queued → running`, takes a slot, and returns to waiting or settles at its `done`; when the session cannot take it, the existing resume path runs
-  - [ ] Cancel, a daemon stop and the process exiting close the session and leave the statuses the tests name; `recover` (which already interrupts a `waiting_background` run) keeps the items it had open in the run's work record before `setStatus` clears them, and the next message tells the agent that background tasks from before were lost
-  - [ ] An orchestrator with both active `run_spawn` children and open background work shows `waiting_children`, keeps its session, and its wake-up goes through the same live-session path; no double close, no lost mailbox rows
-  - [ ] `NativeAgents.finish` does not cancel sub-agents that are still in the snapshot; each ends when it leaves it or with the run
-  - [ ] A note per item that left the snapshot ("Background command finished: …" style, no trailing period), and `ChatQueue` treats `waiting_background` as at rest
+- [x] Complete
+  - [x] At `done`, a run whose last snapshot has open items goes `running → waiting_background`, releases its slot, leaves `maxProcesses` and keeps its process recorded; with no open items it settles as before
+  - [x] Events after `done` are written as an agent-started turn: a new assistant message, tool items, usage and context, no `user` item; the iterator ending settles the run (`succeeded`, or what `settle` decides)
+  - [x] A message to a waiting run (`chat.send`, a queued item, a wake-up) goes to `session.send` through `waiting_background → queued → running`, takes a slot, and returns to waiting or settles at its `done`; when the session cannot take it, the existing resume path runs
+  - [x] Cancel, a daemon stop and the process exiting close the session and leave the statuses the tests name; `recover` (which already interrupts a `waiting_background` run) keeps the items it had open in the run's work record before `setStatus` clears them, and the next message tells the agent that background tasks from before were lost
+  - [x] An orchestrator with both active `run_spawn` children and open background work shows `waiting_children`, keeps its session, and its wake-up goes through the same live-session path; no double close, no lost mailbox rows
+  - [x] `NativeAgents.finish` does not cancel sub-agents that are still in the snapshot; each ends when it leaves it or with the run
+  - [x] A note per item that left the snapshot ("Background command finished: …" style, no trailing period), and `ChatQueue` treats `waiting_background` as at rest
 
 **Files**
 
@@ -100,7 +101,7 @@ Confirmed by the owner in chat (2026-11-19):
 
 **Done when:** in a daemon test, a run whose turn ended with open background work shows `waiting_background` with no slot held, an agent-started turn appears as stream items, a user message reaches the same session and runs after it, and cancel, a daemon stop and a restart each end the session with the status the tests name.
 **Verify:** `cd apps/daemon && bun test && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Commits:** `0110851` feat(daemon): keep a chat's agent session while it has background work and hand the next message to it
 
 ## Stage 3 — ACP protocol layers: the seam and the `protocol` setting
 
@@ -132,16 +133,16 @@ Confirmed by the owner in chat (2026-11-19):
 
 **This stage:** The v2 layer reaches parity with what the v1 layer does for Claude Code and Codex today: a turn, its text, tools, usage and context, model and effort, titles, additional folders, the system prompt, resume, cancel, steering and the compact command. It does not yet look at background work. In v2 `session/prompt` only acknowledges a message (`{ messageId }`); the turn is `state_update` `running` until `idle` with a `stopReason`, and a prompt sent while a turn runs is inserted and behaves as a steer, so `steer` is a prompt, not `_session/steering`.
 
-- [ ] Complete
-  - [ ] The handshake rule: `v2` asks for version 2; an answer of 1 or a refused `initialize` stops the process and restarts the agent once on v1, remembered for the daemon's life per agent program and version
-  - [ ] v2 handshake (`info`, `capabilities`; no `fs`, no `terminal`), session creation and `session/resume` with `replayFrom` and `replay_complete`; the existing fallback to a new session with the conversation record when a session cannot be continued
-  - [ ] The turn loop: prompt acknowledgement by `messageId`, `running` and `idle` with `stopReason` as `done` or `error`, `requires_action` as a pause; a session that never reaches `idle` is ended by cancel and process exit as in v1
-  - [ ] A v2 update mapper that produces the same `EngineEvent`s as the v1 one: messages by `messageId` (chunks append, whole messages replace), a tool call created by its first `tool_call_update`, terminals, plans dropped, usage on the idle `state_update` and in `usage_update`, the context window
-  - [ ] Model, effort (config options with the v2 `type` discriminator), title (`session/set_title`, `session_info_update`), `additionalDirectories`, `systemPrompt`, the tool bridge's MCP server, permission requests answered by the daemon, the compact command
-  - [ ] `steer(text)` is a prompt inserted into the running turn; it answers whether the agent took it
-  - [ ] Updates that belong to another session than the main one (sub-agent children) are dropped for now
-  - [ ] `test/fake-acp-agent-v2.ts` speaks v2 and the same directives as the v1 fake agent where they apply, and the session tests run against both layers for the scenarios they share
-  - [ ] Claude Code and Codex are switched to `protocol: 'v2'` only when this stage's checks pass against the real adapters (a handshake, a one-line prompt, a steer, a resume, a cancel in a scratch daemon)
+- [x] Complete
+  - [x] The handshake rule: `v2` asks for version 2; an answer of 1 or a refused `initialize` stops the process and restarts the agent once on v1, remembered for the daemon's life per agent program and version
+  - [x] v2 handshake (`info`, `capabilities`; no `fs`, no `terminal`), session creation and `session/resume` with `replayFrom` and `replay_complete`; the existing fallback to a new session with the conversation record when a session cannot be continued
+  - [x] The turn loop: prompt acknowledgement by `messageId`, `running` and `idle` with `stopReason` as `done` or `error`, `requires_action` as a pause; a session that never reaches `idle` is ended by cancel and process exit as in v1
+  - [x] A v2 update mapper that produces the same `EngineEvent`s as the v1 one: messages by `messageId` (chunks append, whole messages replace), a tool call created by its first `tool_call_update`, terminals, plans dropped, usage on the idle `state_update` and in `usage_update`, the context window
+  - [x] Model, effort (config options with the v2 `type` discriminator), title (`session/set_title`, `session_info_update`), `additionalDirectories`, `systemPrompt`, the tool bridge's MCP server, permission requests answered by the daemon, the compact command
+  - [x] `steer(text)` is a prompt inserted into the running turn; it answers whether the agent took it
+  - [x] Updates that belong to another session than the main one (sub-agent children) are dropped for now
+  - [x] `test/fake-acp-agent-v2.ts` speaks v2 and the same directives as the v1 fake agent where they apply, and the session tests run against both layers for the scenarios they share
+  - [ ] Claude Code and Codex are switched to `protocol: 'v2'` only after the real-adapter checks pass (a handshake, a one-line prompt, a steer, a resume, a cancel in a scratch daemon); those checks and the switch run after Stage 5, because Stage 5 changes how a turn ends and Stage 7 owns the real runs
 
 **Files**
 
@@ -154,7 +155,7 @@ Confirmed by the owner in chat (2026-11-19):
 
 **Done when:** the shared ACP session tests pass on the v1 and the v2 layer, and a scratch daemon on its own data folder runs one chat turn, a steer, a resume and a cancel through the real Claude Code adapter and the real Codex adapter on v2.
 **Verify:** `cd apps/daemon && bun test test/acp-session.test.ts test/acp-mapper.test.ts test/acp-runtime.test.ts test/agents-api.test.ts && bun run typecheck && bun run lint`, plus the scratch-daemon check above
-**Commits:** None yet.
+**Commits:** `e956c0a` feat(daemon): add an ACP v2 protocol layer with its own mapper, a restart on v1 for agents that answer 1, and a v2 scripted agent
 
 ## Stage 5 — ACP v2 layer: background work
 
@@ -167,6 +168,7 @@ Confirmed by the owner in chat (2026-11-19):
   - [ ] After `done` the session stays alive while the last snapshot has items or a turn runs; events that come with no prompt open an agent-started turn that ends at the next `idle`
   - [ ] When the snapshot is empty and the session is `idle`, a 2 s handoff guard (a named constant) starts; a `running` or a new item cancels it; at its end the session closes its process and ends the iterator
   - [ ] `send(text)`: a prompt on the live session; while an agent-started turn runs, the agent inserts it into that turn (a steer) and the prompt is not lost; one `done` follows an accepted `send`, and the `done` of an agent-started turn that was running is held back until the sent prompt has been answered
+  - [ ] A steer that lands in Claude's v2 adapter comes back as two turns (an `idle` with zero usage, a `running`, the same answer again as a whole message under a new id, an `idle` with the real usage): the `running` that follows a landed steer is that steer's own turn, its usage folds into the same `done`, and a whole message identical to the one before is not written twice
   - [ ] The process stays recorded (`process` event) for the whole wait; cancel, abort and process exit end the wait at once
   - [ ] The fake v2 agent has directives that start background work, end the prompt, and later emit a report turn; tests cover the guard, a `running` that arrives inside it, `send` during a report turn, cancel while waiting and the process exiting while waiting
   - [ ] Probes repeated through the real adapters in a scratch daemon: a background command, a background sub-agent and a workflow each finish after the turn and produce a report turn
@@ -189,10 +191,10 @@ Confirmed by the owner in chat (2026-11-19):
 
 **This stage:** The new status and `Run.background` must read correctly in the app. The strip above the message box already lists the agents that work (`RunningAgents`, from Reforma's `ChatComposerSubagents`); a chat that waits for background work gets one more row in the same pattern: a shimmering line that counts the open items, with Stop. Read `apps/desktop/AGENTS.md` and `packages/components/AGENTS.md` first; the root `AGENTS.md` UI text rule applies (no trailing period on a phrase).
 
-- [ ] Complete
-  - [ ] `RUN_STATUS_VIEW` has a label and tone for `waiting_background`; every branch on `waiting_children` in the chat, the agent tree and the run detail takes the new status into account
-  - [ ] One row above the message box while `Run.background` is not empty: "Background task running", "2 background tasks running", shimmering, with Stop (`run.cancel` of the orchestrator); the composer stays usable and a message sent from it reaches the live session
-  - [ ] The fixture transport shows a chat in the new status for development and tests
+- [x] Complete
+  - [x] `RUN_STATUS_VIEW` has a label and tone for `waiting_background`; every branch on `waiting_children` in the chat, the agent tree and the run detail takes the new status into account
+  - [x] One row above the message box while `Run.background` is not empty: "Background task running", "2 background tasks running", shimmering, with Stop (`run.cancel` of the orchestrator); the composer stays usable and a message sent from it reaches the live session
+  - [x] The fixture transport shows a chat in the new status for development and tests
 
 **Files**
 
@@ -205,7 +207,7 @@ Confirmed by the owner in chat (2026-11-19):
 
 **Done when:** the fixture chat shows the status in the run list, the row above the message box with the right count and a working Stop, and the existing renderer tests pass.
 **Verify:** `cd apps/desktop && bun run test && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Commits:** `2455817` feat(desktop): show a run that waits for background work, with a row above the message box that counts what is open
 
 ## Stage 7 — Real check and documents
 
