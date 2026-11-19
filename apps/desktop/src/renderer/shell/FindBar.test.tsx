@@ -174,6 +174,35 @@ describe('Find in page', () => {
         expect(stopFind).not.toHaveBeenCalled();
     });
 
+    it('steps from the last page match, not from the caret in the field', async () => {
+        await draw();
+        await act(async () => press('f', { mod: true }));
+        await type('booking');
+
+        expect(document.activeElement).toBe(field());
+        field()!.setSelectionRange(1, 4);
+
+        let focusedDuringFind = true;
+
+        findInPage.mockImplementation(() => {
+            focusedDuringFind = document.activeElement === field();
+
+            return Promise.resolve({ matches: 19, activeMatchOrdinal: 2 });
+        });
+
+        await act(async () => {
+            press('Enter', {}, field()!);
+
+            for (let step = 0; step < 5; step++) await Promise.resolve();
+        });
+
+        expect(focusedDuringFind).toBe(false);
+        expect(document.activeElement).toBe(field());
+        expect(count()).toBe('2 of 18');
+        expect(field()!.selectionStart).toBe(1);
+        expect(field()!.selectionEnd).toBe(4);
+    });
+
     it('says when nothing matches, and Escape closes the bar and clears the highlights', async () => {
         findInPage.mockResolvedValue({ matches: 0, activeMatchOrdinal: 0 });
         await draw();

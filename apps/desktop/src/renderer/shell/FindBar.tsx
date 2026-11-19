@@ -51,6 +51,27 @@ function pageOrdinal(fieldOrdinal: number, nextOrdinal: number, matches: number)
 }
 
 /**
+ * Chromium starts a follow-up search at the caret. While the field is focused that caret sits in the query,
+ * so the next step wraps to the first hit and the previous step lands on the last one. Park it until the search has run.
+ */
+function releaseFieldCaret(input: HTMLInputElement | null): () => void {
+    if (!input || document.activeElement !== input) return () => {};
+
+    const start = input.selectionStart ?? 0;
+    const end = input.selectionEnd ?? 0;
+
+    input.blur();
+    window.getSelection()?.removeAllRanges();
+
+    return () => {
+        if (!input.isConnected) return;
+
+        input.focus({ preventScroll: true });
+        input.setSelectionRange(start, end);
+    };
+}
+
+/**
  * Chromium's search of the text drawn in the window: a chat, a settings page, whatever is on screen, including what is scrolled out of view.
  * The query in the field is not a match. `Cmd/Ctrl+F` opens it, Enter and `Cmd/Ctrl+G` go to the next match, Shift+Enter and `Cmd/Ctrl+Shift+G` to the previous, Escape closes it.
  */
@@ -95,45 +116,53 @@ export function FindBar() {
         closed.current = false;
 
         const id = ++generation.current;
-        const found = await desktop.findInPage(text, { forward, findNext });
+        // A new session may start in the field; the step off it handles that. A follow-up must not.
+        const restoreCaret = findNext ? null : releaseFieldCaret(field.current);
 
-        // A newer search owns the highlights. One that finished after a clear would draw them back, so clear them again.
-        if (id !== generation.current) {
-            if (closed.current) await desktop.stopFind();
+        try {
+            const found = await desktop.findInPage(text, { forward, findNext });
 
-            return;
-        }
+            // A newer search owns the highlights. One that finished after a clear would draw them back, so clear them again.
+            if (id !== generation.current) {
+                if (closed.current) await desktop.stopFind();
 
-        // The field contains the query, so one of Chromium's matches is the bar itself.
-        const matches = Math.max(0, found.matches - 1);
-
-        if (matches === 0) {
-            if (found.matches > 0 && id === generation.current) {
-                await desktop.stopFind();
-
-                if (id !== generation.current) return;
+                return;
             }
 
-            setResult({ matches: 0, activeMatchOrdinal: 0 });
+            // The field contains the query, so one of Chromium's matches is the bar itself.
+            const matches = Math.max(0, found.matches - 1);
 
-            return;
+            if (matches === 0) {
+                if (found.matches > 0 && id === generation.current) {
+                    await desktop.stopFind();
+
+                    if (id !== generation.current) return;
+                }
+
+                setResult({ matches: 0, activeMatchOrdinal: 0 });
+
+                return;
+            }
+
+            if (!matchInField(found, field.current)) {
+                setResult({ matches, activeMatchOrdinal: Math.min(matches, Math.max(1, found.activeMatchOrdinal)) });
+
+                return;
+            }
+
+            const stepped = await desktop.findInPage(text, { forward, findNext: false });
+
+            if (id !== generation.current) {
+                if (closed.current) await desktop.stopFind();
+
+                return;
+            }
+
+            setResult({ matches, activeMatchOrdinal: pageOrdinal(found.activeMatchOrdinal, stepped.activeMatchOrdinal, matches) });
         }
-
-        if (!matchInField(found, field.current)) {
-            setResult({ matches, activeMatchOrdinal: Math.min(matches, Math.max(1, found.activeMatchOrdinal)) });
-
-            return;
+        finally {
+            if (restoreCaret && id === generation.current) restoreCaret();
         }
-
-        const stepped = await desktop.findInPage(text, { forward, findNext: false });
-
-        if (id !== generation.current) {
-            if (closed.current) await desktop.stopFind();
-
-            return;
-        }
-
-        setResult({ matches, activeMatchOrdinal: pageOrdinal(found.activeMatchOrdinal, stepped.activeMatchOrdinal, matches) });
     };
 
     const close = () => {
@@ -144,7 +173,8 @@ export function FindBar() {
     const step = (forward: boolean) => {
         const starting = !open;
 
-        show(false);
+        // Focusing the field puts the caret back in the query. Do that only when the bar is opening, not on each step.
+        if (starting || query === '') show(false);
 
         if (query === '') return;
 
