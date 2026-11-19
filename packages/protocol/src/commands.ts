@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { MAX_ATTACHMENTS_PER_MESSAGE } from './api';
+import { MAX_ATTACHMENTS_PER_MESSAGE, MAX_PROJECT_FOLDERS } from './api';
 import { LAST_USED } from './domain';
 
 /**
@@ -18,18 +18,24 @@ const queuedMode = z.enum(['steer', 'queue']);
 
 export const commandSchema = z.discriminatedUnion('type', [
     /* Projects */
-    z.object({ ...base, type: z.literal('project.open'), path: z.string().min(1), name: z.string().min(1).optional() }),
-    z.object({ ...base, type: z.literal('project.create'), name: z.string().min(1), path: z.string().min(1).optional() }),
     /**
-     * `name` and `path` (the folder moves to another one; the same checks as `project.open`, and not while the project has unfinished runs) are
-     * refused for the personal space. A settings field set to `null` is cleared, so the project follows the daemon's own choice again.
+     * Adds a project of `folders`: absolute paths of existing folders, repositories or not, the first being the main one. Without folders a new
+     * folder `<projectsDir>/<kebab-name>` is made with `git init`, and `name` is required; with them `name` defaults to the main folder's name.
+     * The same set of folders as a project already has, in any order, answers that project with `existing: true` and adds nothing.
+     * A folder cannot be listed twice or inside another listed folder. Answers `{ project, existing? }`.
+     */
+    z.object({ ...base, type: z.literal('project.add'), name: z.string().min(1).optional(), folders: z.array(z.string().min(1)).max(MAX_PROJECT_FOLDERS).optional() }),
+    /**
+     * `folders` is the project's whole new list, in order: `{ id }` keeps a folder it has, `{ path }` adds one (the checks of `project.add`).
+     * A new main folder waits until no run of the project is unfinished. `name` and `folders` are refused for the personal space. A settings
+     * field set to `null` is cleared, so the project follows the daemon's own choice again.
      */
     z.object({
         ...base,
         type: z.literal('project.update'),
         projectId: z.string(),
         name: z.string().min(1).optional(),
-        path: z.string().min(1).optional(),
+        folders: z.array(z.union([z.object({ id: z.string().min(1) }).strict(), z.object({ path: z.string().min(1) }).strict()])).min(1).max(MAX_PROJECT_FOLDERS).optional(),
         settings: z.object({
             maxParallelRuns: z.number().int().min(1).max(1000).nullable().optional(),
             engine: engine.nullable().optional(),

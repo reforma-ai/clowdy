@@ -5,7 +5,7 @@ import { delimiter, join } from 'node:path';
 
 export interface Config {
     dataDir: string;
-    /** Parent folder of projects created by `project.create` when no path is given. */
+    /** Parent folder of the new folder `project.add` makes for a project without folders. */
     projectsDir: string;
     /** 0 picks a random free port. */
     port: number;

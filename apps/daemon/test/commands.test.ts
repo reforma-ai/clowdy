@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { cleanTempDirs, git, Harness, makeRepo, startHarness, tempDir } from './helpers';
 
@@ -59,13 +59,14 @@ describe('idempotency', () => {
 });
 
 describe('projects', () => {
-    test('project.open derives the name and prefix, creates default statuses, and is idempotent per path', () => {
-        const path = makeRepo(h.config.projectsDir, 'car-rental');
-        const { project } = h.ok('project.open', { path });
-        const again = h.ok('project.open', { path });
+    test('project.add names the project after its main folder, creates default statuses, and answers the same folders with that project', () => {
+        const path = realpathSync.native(makeRepo(h.config.projectsDir, 'car-rental'));
+        const { project, existing } = h.ok('project.add', { folders: [path] });
+        const again = h.ok('project.add', { folders: [path] });
 
-        expect(project).toMatchObject({ name: 'car-rental', taskPrefix: 'CAR', settings: {} });
-        expect(again.project.id).toBe(project.id);
+        expect(project).toMatchObject({ name: 'car-rental', taskPrefix: 'CAR', settings: {}, folders: [{ id: expect.stringMatching(/^fld_/), path }] });
+        expect(existing).toBeUndefined();
+        expect(again).toMatchObject({ project: { id: project.id }, existing: true });
 
         const created = h.events().filter(event => event.data.type === 'project.upserted' && event.projectId === project.id);
 
@@ -75,59 +76,76 @@ describe('projects', () => {
         ]);
     });
 
-    test('project.open takes an explicit name and rejects folders that are not repository roots', () => {
-        const path = makeRepo(h.config.projectsDir, 'named');
-
-        expect(h.ok('project.open', { path, name: 'Fancy Name' }).project).toMatchObject({ name: 'Fancy Name', taskPrefix: 'FAN' });
-
+    test('project.add takes any folder, a repository or not, with an explicit name, and leaves it as it is', () => {
+        const repo = makeRepo(h.config.projectsDir, 'named');
         const plain = join(tempDir(), 'plain');
 
         mkdirSync(plain);
-        expect(failure(h.send('project.open', { path: plain }))).toMatchObject({ code: 'invalid' });
-        expect(failure(h.send('project.open', { path: join(path, 'missing') })).code).toBe('invalid');
-        expect(failure(h.send('project.open', { path: 'relative/path' })).code).toBe('invalid');
+        mkdirSync(join(repo, 'src'));
 
-        mkdirSync(join(path, 'src'));
-        expect(failure(h.send('project.open', { path: join(path, 'src') })).message).toContain('repository root');
+        expect(h.ok('project.add', { folders: [repo], name: 'Fancy Name' }).project).toMatchObject({ name: 'Fancy Name', taskPrefix: 'FAN' });
+        expect(h.ok('project.add', { folders: [plain] }).project.name).toBe('plain');
+        expect(existsSync(join(plain, '.git'))).toBe(false);
+        expect(h.ok('project.add', { folders: [join(repo, 'src')] }).project.name).toBe('src');
+
+        expect(failure(h.send('project.add', { folders: [join(repo, 'missing')] })).code).toBe('invalid');
+        expect(failure(h.send('project.add', { folders: ['relative/path'] })).message).toContain('absolute');
     });
 
-    test('project.create makes a kebab-case folder, a main branch, and a first empty commit', () => {
-        const { project } = h.ok('project.create', { name: 'My New App!' });
+    test('project.add keeps the order of several folders, finds the same set in any order, and refuses a folder twice or inside another', () => {
+        const web = realpathSync.native(makeRepo(h.config.projectsDir, 'web'));
+        const api = realpathSync.native(makeRepo(h.config.projectsDir, 'api'));
 
-        expect(project.path).toEndWith(join('projects', 'my-new-app'));
+        mkdirSync(join(web, 'src'));
+
+        const { project } = h.ok('project.add', { folders: [web, api], name: 'Shop' });
+
+        expect(project.folders.map((folder: { path: string }) => folder.path)).toEqual([web, api]);
+        expect(h.ok('project.add', { folders: [api, web] })).toMatchObject({ project: { id: project.id }, existing: true });
+        // A folder can be in several projects.
+        expect(h.ok('project.add', { folders: [web] }).project.id).not.toBe(project.id);
+
+        expect(failure(h.send('project.add', { folders: [web, web] })).message).toContain('twice');
+        expect(failure(h.send('project.add', { folders: [web, join(web, 'src')] })).message).toContain('inside');
+        expect(failure(h.send('project.add', { folders: [join(web, 'src'), web] })).message).toContain('inside');
+    });
+
+    test('project.add without folders makes a kebab-case folder, a main branch, and a first empty commit', () => {
+        const { project } = h.ok('project.add', { name: 'My New App!' });
+        const path = project.folders[0].path;
+
+        expect(project.folders).toHaveLength(1);
+        expect(path).toEndWith(join('projects', 'my-new-app'));
         expect(project.name).toBe('My New App!');
-        expect(git(project.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
-        expect(git(project.path, 'rev-list', '--count', 'HEAD')).toBe('1');
-        expect(git(project.path, 'log', '-1', '--format=%s')).toBe('Initial commit');
+        expect(git(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
+        expect(git(path, 'rev-list', '--count', 'HEAD')).toBe('1');
+        expect(git(path, 'log', '-1', '--format=%s')).toBe('Initial commit');
     });
 
-    test('project.create reuses an empty folder, accepts a full path, and never touches a non-empty one', () => {
-        const empty = join(tempDir(), 'empty');
+    test('project.add without folders reuses an empty folder, never touches a non-empty one, and needs a name', () => {
+        mkdirSync(join(h.config.projectsDir, 'empty-one'), { recursive: true });
+        expect(h.ok('project.add', { name: 'Empty One' }).project.folders[0].path).toEndWith('empty-one');
 
-        mkdirSync(empty);
-        expect(h.ok('project.create', { name: 'x', path: empty }).project.path).toEndWith('empty');
-
-        const occupied = join(tempDir(), 'occupied');
+        const occupied = join(h.config.projectsDir, 'occupied');
 
         mkdirSync(occupied);
         writeFileSync(join(occupied, 'keep.txt'), 'precious');
-        expect(failure(h.send('project.create', { name: 'y', path: occupied })).code).toBe('conflict');
+        expect(failure(h.send('project.add', { name: 'Occupied' })).code).toBe('conflict');
         expect(readFileSync(join(occupied, 'keep.txt'), 'utf8')).toBe('precious');
         expect(existsSync(join(occupied, '.git'))).toBe(false);
 
-        expect(failure(h.send('project.create', { name: 'x', path: empty })).code).toBe('conflict');
+        expect(failure(h.send('project.add', {})).message).toContain('needs a name');
+        expect(failure(h.send('project.add', { folders: [] })).message).toContain('needs a name');
     });
 
-    test('project.create takes absolute paths only and a name that is not blank; project.update and project.open keep the name non-blank too', () => {
-        expect(failure(h.send('project.create', { name: 'Rel', path: 'relative-project' })).message).toContain('absolute');
-        expect(existsSync(resolve('relative-project'))).toBe(false);
-        expect(failure(h.send('project.create', { name: '   ' })).code).toBe('invalid');
+    test('project.add and project.update keep the name non-blank', () => {
+        expect(failure(h.send('project.add', { name: '   ' })).code).toBe('invalid');
         expect(existsSync(h.config.projectsDir)).toBe(false);
 
         const { id } = h.openRepo();
 
         expect(failure(h.send('project.update', { projectId: id, name: '  ' })).code).toBe('invalid');
-        expect(failure(h.send('project.open', { path: makeRepo(h.config.projectsDir, 'unopened'), name: ' ' })).code).toBe('invalid');
+        expect(failure(h.send('project.add', { folders: [makeRepo(h.config.projectsDir, 'unopened')], name: ' ' })).code).toBe('invalid');
     });
 
     test('project.update renames and merges settings', () => {

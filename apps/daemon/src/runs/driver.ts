@@ -1,4 +1,4 @@
-import { isTerminalRunStatus, STOPPED_TOOL } from '@clowdy/protocol';
+import { isTerminalRunStatus, mainFolder, STOPPED_TOOL } from '@clowdy/protocol';
 import { statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 
@@ -375,7 +375,7 @@ export class RunDriver {
         // The message this turn sends is in the stream already; the record leaves it out, as the agent gets it in the prompt.
         const incoming = [prompt];
         const session = engine.start({
-            cwd: work.cwd ?? project.path,
+            cwd: work.cwd ?? mainFolder(project).path,
             prompt,
             systemPrompt: [systemPrompt(run.role, mode, project), skillPrompt(run.role, config.systemSkillsDir)].filter(Boolean).join('\n\n'),
             resumeSessionId: run.sessionId,

@@ -43,18 +43,18 @@ describe('FixtureTransport projects', () => {
         const info = await new FixtureTransport().getProjectsInfo();
 
         expect(info.map(entry => entry.projectId)).toEqual([FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID]);
-        expect(info[0]).toMatchObject({ folderExists: true, chats: 0, tasks: 0, activeRuns: 0 });
-        expect(info[0].remoteUrl).toBeUndefined();
-        expect(info[1]).toMatchObject({ remoteUrl: 'git@github.com:acme/car-rental.git' });
+        expect(info[0]).toMatchObject({ folders: [{ folderId: 'fld_personal', exists: true }], chats: 0, tasks: 0, activeRuns: 0 });
+        expect(info[0].folders[0].remoteUrl).toBeUndefined();
+        expect(info[1].folders).toEqual([{ folderId: 'fld_car_rental', exists: true, remoteUrl: 'git@github.com:acme/car-rental.git' }]);
         expect(info[1].chats).toBeGreaterThan(0);
         expect(info[1].activeRuns).toBeGreaterThan(0);
     });
 
-    it('refuses to rename or move the personal space, and takes its settings', async () => {
+    it('refuses to rename the personal space or give it other folders, and takes its settings', async () => {
         const { transport } = await connected();
 
         expect(await transport.command({ type: 'project.update', projectId: FIXTURE_PERSONAL_PROJECT_ID, name: 'Mine' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
-        expect(await transport.command({ type: 'project.update', projectId: FIXTURE_PERSONAL_PROJECT_ID, path: '/elsewhere' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(await transport.command({ type: 'project.update', projectId: FIXTURE_PERSONAL_PROJECT_ID, folders: [{ path: '/elsewhere' }] })).toMatchObject({ ok: false, error: { code: 'conflict' } });
         expect(await transport.command({ type: 'project.update', projectId: FIXTURE_PERSONAL_PROJECT_ID, settings: { chatMode: 'semi' } })).toMatchObject({ ok: true, data: { project: { settings: { chatMode: 'semi' } } } });
     });
 
@@ -66,12 +66,26 @@ describe('FixtureTransport projects', () => {
         expect((result as { data: { project: { settings: object } } }).data.project.settings).not.toHaveProperty('engine');
     });
 
-    it('moves a folder only when nothing runs and no other project has it', async () => {
+    it('takes a new main folder only when nothing runs, adds others at any time, and lets two projects share a folder', async () => {
         const { transport } = await connected();
 
-        expect(await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, path: '/Users/dev/moved' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
-        expect(await transport.command({ type: 'project.update', projectId: FIXTURE_EMPTY_PROJECT_ID, path: '/Users/dev/car-rental' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
-        expect(await transport.command({ type: 'project.update', projectId: FIXTURE_EMPTY_PROJECT_ID, path: '/Users/dev/moved' })).toMatchObject({ ok: true, data: { project: { path: '/Users/dev/moved' } } });
+        expect(await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ path: '/Users/dev/moved' }] })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/api' }] }))
+            .toMatchObject({ ok: true, data: { project: { folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/api' }] } } });
+        expect(await transport.command({ type: 'project.update', projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ id: 'fld_clowdy' }, { path: '/Users/dev/car-rental' }] })).toMatchObject({ ok: true });
+        expect(await transport.command({ type: 'project.update', projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ path: '/Users/dev/moved' }] })).toMatchObject({ ok: true, data: { project: { folders: [{ path: '/Users/dev/moved' }] } } });
+    });
+
+    it('adds a project of several folders, and answers the same folders with the project that has them', async () => {
+        const { transport } = await connected();
+        const added = await transport.command({ type: 'project.add', folders: ['/Users/dev/web', '/Users/dev/api'] });
+
+        expect(added).toMatchObject({ ok: true, data: { project: { name: 'web', folders: [{ path: '/Users/dev/web' }, { path: '/Users/dev/api' }] } } });
+        expect((added as { data: object }).data).not.toHaveProperty('existing');
+        expect(await transport.command({ type: 'project.add', folders: ['/Users/dev/api', '/Users/dev/web'] }))
+            .toMatchObject({ ok: true, data: { project: { id: (added as { data: { project: { id: string } } }).data.project.id }, existing: true } });
+        expect(await transport.command({ type: 'project.add', name: 'Fresh' })).toMatchObject({ ok: true, data: { project: { name: 'Fresh', folders: [{ path: '/Users/dev/fresh' }] } } });
+        expect(await transport.command({ type: 'project.add' })).toMatchObject({ ok: false, error: { code: 'invalid' } });
     });
 
     it('removes a project with what it holds and announces it, and refuses the personal space and a project with agents at work', async () => {

@@ -2,13 +2,12 @@ import { TERMINAL_RUN_STATUSES } from '@clowdy/protocol';
 
 import { parseJson } from './json';
 
-import type { Project, ProjectSettings, TaskStatus } from '@clowdy/protocol';
+import type { Project, ProjectFolder, ProjectSettings, TaskStatus } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
 
 interface ProjectRow {
     id: string;
     name: string;
-    path: string;
     task_prefix: string;
     settings: string;
     created_at: number;
@@ -22,10 +21,16 @@ interface StatusRow {
     category: TaskStatus['category'];
 }
 
-const toProject = (row: ProjectRow): Project => ({
+interface FolderRow {
+    id: string;
+    project_id: string;
+    path: string;
+}
+
+const toProject = (row: ProjectRow, folders: ProjectFolder[]): Project => ({
     id: row.id,
     name: row.name,
-    path: row.path,
+    folders,
     taskPrefix: row.task_prefix,
     settings: parseJson<ProjectSettings>(row.settings) ?? {},
     createdAt: row.created_at,
@@ -42,34 +47,59 @@ export interface ProjectCounts {
     activeRuns: number;
 }
 
-export function getProject(db: Database, id: string): Project | undefined {
-    const row = db.query('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | null;
+const toFolder = (row: FolderRow): ProjectFolder => ({ id: row.id, path: row.path });
 
-    return row ? toProject(row) : undefined;
+function foldersOf(db: Database, projectId: string): ProjectFolder[] {
+    return (db.query('SELECT * FROM project_folders WHERE project_id = ? ORDER BY position').all(projectId) as FolderRow[]).map(toFolder);
 }
 
-export function getProjectByPath(db: Database, path: string): Project | undefined {
-    const row = db.query('SELECT * FROM projects WHERE path = ?').get(path) as ProjectRow | null;
+function withFolders(db: Database, row: ProjectRow | null): Project | undefined {
+    return row ? toProject(row, foldersOf(db, row.id)) : undefined;
+}
 
-    return row ? toProject(row) : undefined;
+export function getProject(db: Database, id: string): Project | undefined {
+    return withFolders(db, db.query('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | null);
+}
+
+/** The project whose folders are exactly `paths`, in any order (a project lists a path once, so equal counts and every path found is the same set). */
+export function getProjectByFolders(db: Database, paths: readonly string[]): Project | undefined {
+    const wanted = [...new Set(paths)];
+    const row = db.query(`
+        SELECT project_id FROM project_folders
+        GROUP BY project_id
+        HAVING COUNT(*) = ? AND SUM(path IN (SELECT value FROM json_each(?))) = ?
+        LIMIT 1
+    `).get(wanted.length, JSON.stringify(wanted), wanted.length) as { project_id: string } | null;
+
+    return row ? getProject(db, row.project_id) : undefined;
 }
 
 export function getPersonalProject(db: Database): Project | undefined {
-    const row = db.query('SELECT * FROM projects WHERE personal = 1').get() as ProjectRow | null;
-
-    return row ? toProject(row) : undefined;
+    return withFolders(db, db.query('SELECT * FROM projects WHERE personal = 1').get() as ProjectRow | null);
 }
 
 export function listProjects(db: Database): Project[] {
-    return (db.query('SELECT * FROM projects ORDER BY personal DESC, position, created_at, id').all() as ProjectRow[]).map(toProject);
+    const rows = db.query('SELECT * FROM projects ORDER BY personal DESC, position, created_at, id').all() as ProjectRow[];
+    const folders = new Map<string, ProjectFolder[]>();
+
+    for (const row of db.query('SELECT * FROM project_folders ORDER BY position').all() as FolderRow[]) {
+        folders.set(row.project_id, [...(folders.get(row.project_id) ?? []), toFolder(row)]);
+    }
+
+    return rows.map(row => toProject(row, folders.get(row.id) ?? []));
 }
 
-/** `personal` is set when the row is made and never changes. */
+/** Writes the project and its folders, which replace the ones it had. `personal` is set when the row is made and never changes. */
 export function upsertProject(db: Database, project: Project): void {
     db.query(`
-        INSERT INTO projects (id, name, path, task_prefix, settings, created_at, personal, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET name = excluded.name, path = excluded.path, settings = excluded.settings, position = excluded.position
-    `).run(project.id, project.name, project.path, project.taskPrefix, JSON.stringify(project.settings), project.createdAt, project.personal ? 1 : 0, project.position);
+        INSERT INTO projects (id, name, task_prefix, settings, created_at, personal, position) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, settings = excluded.settings, position = excluded.position
+    `).run(project.id, project.name, project.taskPrefix, JSON.stringify(project.settings), project.createdAt, project.personal ? 1 : 0, project.position);
+    db.query('DELETE FROM project_folders WHERE project_id = ?').run(project.id);
+
+    const insert = db.query('INSERT INTO project_folders (id, project_id, path, position) VALUES (?, ?, ?, ?)');
+
+    project.folders.forEach((folder, position) => insert.run(folder.id, project.id, folder.path, position));
 }
 
 /** The place after the last project the person ordered; the personal space is not in the line. */

@@ -1,4 +1,4 @@
-import { isBusyRunStatus, isTerminalRunStatus, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, STOPPED_TOOL } from '@clowdy/protocol';
+import { isBusyRunStatus, isTerminalRunStatus, mainFolder, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, STOPPED_TOOL } from '@clowdy/protocol';
 
 import {
     catalogTokens,
@@ -26,6 +26,7 @@ import type {
     ErrorCode,
     EventData,
     Project,
+    ProjectFileMatch,
     ProjectId,
     ProjectInfo,
     ProjectSnapshot,
@@ -143,8 +144,8 @@ export class FixtureTransport implements Transport {
 
         return structuredClone(this.#listed().map(project => ({
             projectId: project.id,
-            folderExists: true,
-            ...git[project.id],
+            // The fixtures know the remote of the main folder only.
+            folders: project.folders.map((folder, index) => ({ folderId: folder.id, exists: true, ...(index === 0 && git[project.id]) })),
             chats: chats.filter(chat => chat.projectId === project.id).length,
             tasks: tasks.filter(task => task.projectId === project.id).length,
             activeRuns: this.#activeRuns(project.id),
@@ -225,10 +226,16 @@ export class FixtureTransport implements Transport {
         return { path, content, hash: docHash(content) };
     }
 
-    async getProjectFiles(projectId: ProjectId, query: string, limit = 40): Promise<string[]> {
+    async getProjectFiles(projectId: ProjectId, query: string, limit = 40): Promise<ProjectFileMatch[]> {
         const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+        const project = this.#data.projects.find(candidate => candidate.id === projectId);
 
-        return (this.#data.files[projectId] ?? []).filter(path => words.every(word => path.toLowerCase().includes(word))).slice(0, limit);
+        if (!project) return [];
+
+        // The fixture files are the main folder's.
+        const folderId = mainFolder(project).id;
+
+        return (this.#data.files[projectId] ?? []).filter(path => words.every(word => path.toLowerCase().includes(word))).slice(0, limit).map(path => ({ folderId, path }));
     }
 
     async uploadAttachment(projectId: ProjectId, file: File): Promise<Attachment> {
@@ -468,26 +475,42 @@ export class FixtureTransport implements Transport {
         const data = this.#data;
 
         switch (command.type) {
-            case 'project.create':
-                return this.#addProject(command.name, command.path ?? `/Users/dev/${ command.name.toLowerCase().replace(/\W+/g, '-') }`);
-            case 'project.open': {
-                const known = data.projects.find(project => project.path === command.path);
+            case 'project.add': {
+                const paths = command.folders ?? [];
 
-                return known ? ok(structuredClone(known)) : this.#addProject(command.name ?? command.path.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Project', command.path);
+                if (paths.length === 0 && command.name === undefined) return fail('invalid', 'A project without folders needs a name: its new folder is named after it');
+
+                if (new Set(paths).size !== paths.length) return fail('invalid', 'A folder is listed twice');
+
+                const known = paths.length > 0 && data.projects.find(project => project.folders.length === paths.length && project.folders.every(folder => paths.includes(folder.path)));
+
+                if (known) return ok({ project: structuredClone(known), existing: true });
+
+                const name = command.name ?? paths[0]?.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Project';
+
+                return this.#addProject(name, paths.length > 0 ? paths : [`/Users/dev/${ name.toLowerCase().replace(/\W+/g, '-') }`]);
             }
             case 'project.update': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
 
                 if (!project) return fail('not_found', 'No such project');
 
+                if (command.folders?.length === 0) return fail('invalid', 'A project needs at least one folder');
+
+                const folders = command.folders?.map(entry => ('id' in entry ? project.folders.find(folder => folder.id === entry.id) : (project.folders.find(folder => folder.path === entry.path) ?? { id: this.#id('fld'), path: entry.path })));
+
+                if (folders?.some(folder => folder === undefined)) return fail('invalid', 'A folder is not one of the project\'s');
+
+                const nextFolders = (folders as Project['folders'] | undefined) ?? project.folders;
+
+                if (new Set(nextFolders.map(folder => folder.path)).size !== nextFolders.length) return fail('invalid', 'A folder is listed twice');
+
                 const renamed = command.name !== undefined && command.name !== project.name;
-                const moved = command.path !== undefined && command.path !== project.path;
+                const refoldered = nextFolders.map(folder => `${ folder.id }:${ folder.path }`).join('|') !== project.folders.map(folder => `${ folder.id }:${ folder.path }`).join('|');
 
-                if (project.personal && (renamed || moved)) return fail('conflict', 'The personal space cannot be renamed or moved');
+                if (project.personal && (renamed || refoldered)) return fail('conflict', 'The personal space cannot be renamed or given other folders');
 
-                if (moved && this.#activeRuns(project.id) > 0) return fail('conflict', 'The agents of this project are still working. Stop them first.');
-
-                if (moved && data.projects.some(other => other.id !== project.id && other.path === command.path)) return fail('conflict', `${ command.path } is already a project`);
+                if (mainFolder({ folders: nextFolders }).id !== mainFolder(project).id && this.#activeRuns(project.id) > 0) return fail('conflict', 'The agents of this project are still working. Stop them first.');
 
                 const settings: Project['settings'] = { ...project.settings };
 
@@ -496,8 +519,11 @@ export class FixtureTransport implements Transport {
                     else Object.assign(settings, { [key]: value });
                 }
 
-                Object.assign(project, { name: command.name ?? project.name, path: command.path ?? project.path, settings });
+                Object.assign(project, { name: command.name ?? project.name, folders: nextFolders, settings });
                 this.#emit(project.id, { type: 'project.upserted', project, statuses: data.statuses[project.id] ?? DEFAULT_STATUSES });
+
+                // Like the daemon: the project's skills come from its folders.
+                if (refoldered) this.#emit(project.id, { type: 'skills.changed' });
 
                 // Like the daemon: `{ project }`.
                 return ok({ project: structuredClone(project) });
@@ -844,17 +870,19 @@ export class FixtureTransport implements Transport {
         return this.#data.runs.filter(run => run.projectId === projectId && !isTerminalRunStatus(run.status)).length;
     }
 
-    #addProject(name: string, path: string): Outcome {
+    #addProject(name: string, paths: readonly string[]): Outcome {
         const prefix = name.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase() || 'TSK';
         const position = Math.max(0, ...this.#data.projects.map(candidate => candidate.position)) + 1;
-        const project: Project = { id: this.#id('p'), name, path, taskPrefix: prefix, settings: {}, createdAt: Date.now(), position };
+        const folders = paths.map(path => ({ id: this.#id('fld'), path }));
+        const project: Project = { id: this.#id('p'), name, folders, taskPrefix: prefix, settings: {}, createdAt: Date.now(), position };
 
         this.#data.projects.push(project);
         this.#data.statuses[project.id] = DEFAULT_STATUSES;
         this.#data.docs[project.id] = {};
         this.#emit(project.id, { type: 'project.upserted', project, statuses: DEFAULT_STATUSES });
 
-        return ok(structuredClone(project));
+        // Like the daemon: `{ project }`.
+        return ok({ project: structuredClone(project) });
     }
 
     #sendMessage(chatId: string, rawText: string, attachmentIds: string[], mode: QueuedMessageMode): Outcome {

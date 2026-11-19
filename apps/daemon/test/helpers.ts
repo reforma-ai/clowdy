@@ -137,9 +137,9 @@ export class Harness {
 
     openRepo(name?: string): { id: string; path: string } {
         const path = makeRepo(this.config.projectsDir, name);
-        const { project } = this.ok('project.open', { path });
+        const { project } = this.ok('project.add', { folders: [path] });
 
-        return { id: project.id, path: project.path };
+        return { id: project.id, path: project.folders[0].path };
     }
 
     async stop(): Promise<void> {

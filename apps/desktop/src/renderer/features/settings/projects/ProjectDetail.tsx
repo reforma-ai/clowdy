@@ -87,14 +87,15 @@ function NameRow({ project }: { project: Project }) {
 }
 
 function GitSection({ info, failed }: { info: ProjectInfo | undefined; failed: boolean }) {
-    const remote = remoteLink(info?.remoteUrl);
+    const main = info?.folders[0];
+    const remote = remoteLink(main?.remoteUrl);
 
     return (
         <SettingsSection title="Git">
             <SettingsCard divided>
                 { !info && <SettingsRow title="Repository" description={ failed ? 'Couldn\'t read the repository' : 'Reading the repository…' } /> }
                 { info && !remote && (
-                    <SettingsRow title="Remote" description={ info.folderExists ? 'This repository has no origin remote' : 'The folder is missing, so there is nothing to read' } />
+                    <SettingsRow title="Remote" description={ main?.exists ? 'This repository has no origin remote' : 'The folder is missing, so there is nothing to read' } />
                 ) }
                 { remote && (
                     <SettingsRow title="Remote">

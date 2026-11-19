@@ -1,3 +1,4 @@
+import { folderNames } from '@clowdy/protocol';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -16,8 +17,10 @@ import type { Store } from '../store';
 import type { LabeledScan, ProjectScan } from './catalog';
 import type { RootScan } from './scan';
 
-/** A project's skill folders, relative to the project, and the engine that reads each. */
+/** A project's skill folders, relative to each of its folders, and the engine that reads each. */
 const PROJECT_ROOTS = [{ dir: '.claude/skills', engine: 'claude' }, { dir: '.agents/skills', engine: 'codex' }] as const;
+
+const skillDirs = (project: Project) => project.folders.flatMap(folder => PROJECT_ROOTS.map(({ dir }) => join(folder.path, dir)));
 
 const fingerprintOf = (scans: readonly { scan: RootScan }[]) => scans.map(({ scan }) => scan.fingerprint).join('|');
 
@@ -51,11 +54,11 @@ export class SkillsService {
     }
 
     /**
-     * Lets go of a project's skill folders: it was removed, or its folder was replaced. The watchers and the fingerprint are
-     * rebuilt for whatever folder the project has when its catalog is asked for next.
+     * Lets go of a project's skill folders: it was removed, or its folders changed. The watchers and the fingerprint are
+     * rebuilt for whatever folders the project has when its catalog is asked for next.
      */
     forgetProject(project: Project): void {
-        PROJECT_ROOTS.forEach(({ dir }) => this.watchers.unwatch(join(project.path, dir)));
+        skillDirs(project).forEach(dir => this.watchers.unwatch(project.id, dir));
         this.projectFingerprints.delete(project.id);
     }
 
@@ -118,8 +121,15 @@ export class SkillsService {
         }));
     }
 
+    /** Every skill folder of every project folder; with several folders the label starts with the folder's name (`web/.claude/skills`). */
     private projectScans(project: Project): ProjectScan[] {
-        return PROJECT_ROOTS.map(({ dir, engine }) => ({ label: dir, engine, scan: this.scanner.scan(join(project.path, dir)) }));
+        const names = folderNames(project.folders);
+
+        return project.folders.flatMap((folder, index) => PROJECT_ROOTS.map(({ dir, engine }) => ({
+            label: project.folders.length === 1 ? dir : `${ names[index] }/${ dir }`,
+            engine,
+            scan: this.scanner.scan(join(folder.path, dir)),
+        })));
     }
 
     /** Rebuilds the `user` plugin when the folders changed since the last look. Returns whether they did. */
@@ -159,8 +169,8 @@ export class SkillsService {
             this.projectFingerprints.set(project.id, fingerprintOf(this.projectScans(project)));
         }
 
-        for (const { dir } of PROJECT_ROOTS) {
-            this.watchers.watch(project.id, join(project.path, dir), () => this.refreshProject(project.id));
+        for (const dir of skillDirs(project)) {
+            this.watchers.watch(project.id, dir, () => this.refreshProject(project.id));
         }
     }
 

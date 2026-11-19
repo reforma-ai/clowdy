@@ -4,6 +4,7 @@
  */
 
 export type ProjectId = string;
+export type FolderId = string;
 export type ChatId = string;
 export type TaskId = string;
 export type RunId = string;
@@ -15,8 +16,11 @@ export type ChatMode = 'autopilot' | 'semi';
 export interface Project {
     id: ProjectId;
     name: string;
-    /** Absolute path of the repository's working copy. */
-    path: string;
+    /**
+     * The folders the project works in, at least one, in the person's order. The first is the main folder: agents work in it, and its own
+     * `AGENTS.md` or `CLAUDE.md` is theirs; the others reach them as additional folders. A folder may be in other projects too.
+     */
+    folders: ProjectFolder[];
     /** Task prefix shown on cards, e.g. `CLW` gives `CLW-12`. */
     taskPrefix: string;
     settings: ProjectSettings;
@@ -30,20 +34,63 @@ export interface Project {
     personal?: boolean;
 }
 
+/** One folder of a project: any folder on the machine, a git repository or not. */
+export interface ProjectFolder {
+    /** Stays while the folder belongs to the project, whatever its place in the list. */
+    id: FolderId;
+    /** Absolute, with symbolic links resolved. */
+    path: string;
+}
+
+/** The main folder of a project: the first of its folders, where its agents work. */
+export function mainFolder(project: Pick<Project, 'folders'>): ProjectFolder {
+    return project.folders[0] as ProjectFolder;
+}
+
+/**
+ * A short name for each folder, in the same order, to tell the folders of one project apart: the last part of the path, with `-2`, `-3`… after
+ * a name an earlier folder already has. No two names are the same, even when a folder is itself called `app-2`.
+ */
+export function folderNames(folders: readonly Pick<ProjectFolder, 'path'>[]): string[] {
+    const taken = new Set<string>();
+
+    return folders.map(({ path }) => {
+        const base = path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+        let name = base;
+
+        for (let count = 2; taken.has(name); count++) {
+            name = `${ base }-${ count }`;
+        }
+
+        taken.add(name);
+
+        return name;
+    });
+}
+
 /**
  * What the daemon reads about a project when it is asked (`GET /v1/projects/info`): things that change outside the app or that no
  * snapshot carries, for the page that manages projects.
  */
 export interface ProjectInfo {
     projectId: ProjectId;
-    /** False when the folder is gone (moved or deleted): the project cannot work until its folder is chosen again. */
-    folderExists: boolean;
-    /** The `origin` remote as git prints it (`git@github.com:acme/app.git`); absent without a remote, or when the folder is not a repository. */
-    remoteUrl?: string;
+    /** One entry per folder, in the project's order. */
+    folders: ProjectFolderInfo[];
     chats: number;
     tasks: number;
-    /** Runs that are not finished. Removing the project or choosing another folder waits until there are none. */
+    /** Runs that are not finished. Removing the project or choosing another main folder waits until there are none. */
     activeRuns: number;
+}
+
+export interface ProjectFolderInfo {
+    folderId: FolderId;
+    /**
+     * False when the folder is gone (moved or deleted). Without its main folder the project cannot work until the folders change; another
+     * missing folder is left out of what the agents get.
+     */
+    exists: boolean;
+    /** The `origin` remote as git prints it (`git@github.com:acme/app.git`); absent without a remote, or when the folder is not a repository. */
+    remoteUrl?: string;
 }
 
 export interface ProjectSettings {

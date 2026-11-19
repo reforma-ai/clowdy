@@ -4,6 +4,7 @@ import { Popover } from '@clowdy/components/Popover';
 import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { Folder, Home, More, Sliders, Trash } from '@clowdy/icons/14';
+import { mainFolder } from '@clowdy/protocol';
 
 import { SettingsCard } from '../ui/SettingsCard';
 import styles from './ProjectRow.module.css';
@@ -29,7 +30,8 @@ export interface ProjectRowProps {
 /** One project of the list: where it is and what it holds. A click opens its page in Settings, and its menu configures the project, opens it or removes it. */
 export function ProjectRow({ project, info, onManage, onOpen, onRemove }: ProjectRowProps) {
     const holdings = holdingsLine(info);
-    const missing = info !== undefined && !info.folderExists;
+    const missing = info?.folders[0]?.exists === false;
+    const path = mainFolder(project).path;
 
     return (
         <SettingsCard className={ styles.row }>
@@ -40,7 +42,7 @@ export function ProjectRow({ project, info, onManage, onOpen, onRemove }: Projec
                         <Text weight="medium" truncate>{ project.name }</Text>
                         { missing && <Badge size="xs" color="warning" textValue="Folder missing">Folder missing</Badge> }
                     </span>
-                    <Text variant="sm" color="secondary" truncate title={ project.path }>{ project.path }</Text>
+                    <Text variant="sm" color="secondary" truncate title={ path }>{ path }</Text>
                     { holdings && <Text variant="xs" color="secondary">{ holdings }</Text> }
                 </span>
             </button>

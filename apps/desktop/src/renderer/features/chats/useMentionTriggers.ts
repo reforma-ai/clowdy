@@ -1,3 +1,4 @@
+import { mainFolder } from '@clowdy/protocol';
 import { useMemo, useRef, type RefObject } from 'react';
 
 import { useProjectState, useRootStore } from '../../stores';
@@ -44,9 +45,11 @@ export function useMentionTriggers(box: RefObject<HTMLElement | null>): readonly
             accessibilityLabel: 'Mention a task, document or file',
             ...menu,
             onSearch: async (query): Promise<RichInputTriggerItem[]> => {
+                const main = mainFolder(project.project).id;
                 const [docs, files] = await Promise.all([
                     orNothing(root.transport.getDocsTree(projectId).then(docPaths)),
-                    orNothing(root.transport.getProjectFiles(projectId, query, FILES_SHOWN)),
+                    // Only the main folder's files can be mentioned by a path the agent reads from its own folder.
+                    orNothing(root.transport.getProjectFiles(projectId, query, FILES_SHOWN).then(found => found.filter(match => match.folderId === main).map(match => match.path))),
                 ]);
 
                 return [...taskItems(project.taskList, query), ...docItems(docs, query), ...fileItems(files)];

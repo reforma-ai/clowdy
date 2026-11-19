@@ -1,3 +1,5 @@
+import type { FolderId } from './domain';
+
 /** Version of this contract. The daemon refuses clients that send a different major in `x-clowdy-protocol`. */
 export const PROTOCOL_VERSION = 1;
 
@@ -9,8 +11,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/health                         -> Health
  * GET  /v1/snapshot                       -> RootSnapshot
  * GET  /v1/projects/:id/snapshot          -> ProjectSnapshot
- * GET  /v1/projects/info                  -> ProjectInfo[] (one per project, in the order of the snapshot: whether its folder exists, its git remote and
- *                                            how many chats, tasks and unfinished runs it has; read when asked, never announced)
+ * GET  /v1/projects/info                  -> ProjectInfo[] (one per project, in the order of the snapshot: whether each of its folders exists and its
+ *                                            git remote, and how many chats, tasks and unfinished runs it has; read when asked, never announced)
  * GET  /v1/events?cursor=N                -> text/event-stream of ClowdyEvent (frame name `clowdy`, id = cursor); without a
  *                                            cursor the stream is live only; `Last-Event-ID` also resumes; `&projectId=ID`
  *                                            limits it to one project. 410 when the cursor is ahead of the log (the log is not pruned
@@ -21,9 +23,10 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/tasks/:id/detail               -> TaskDetail
  * GET  /v1/projects/:id/docs              -> DocsTree
  * GET  /v1/projects/:id/docs/file?path=   -> DocFile
- * GET  /v1/projects/:id/files?query=&limit= -> string[] (paths below the project folder that contain every word of `query`,
- *                                            best match first, at most `limit` (default 40, most 100); git's tracked and
- *                                            unignored files, or a walk outside a repository; never the project's `.clowdy` folder)
+ * GET  /v1/projects/:id/files?query=&limit= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
+ *                                            the folder's name counting as part of the path when there are several; best match first,
+ *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside
+ *                                            a repository; never a `.clowdy` folder). A missing main folder is `unavailable`; another is skipped
  * POST /v1/projects/:id/attachments?name= -> Attachment (the raw request body is the file, `Content-Type` its media type; the daemon keeps
  *                                            it until the message it is sent with is deleted. Refused above `MAX_ATTACHMENT_BYTES`.
  *                                            A file that is never sent is removed after a day)
@@ -57,6 +60,15 @@ export const ROUTES = {
     agentModels: (agentId: string) => `/v1/agents/${ encodeURIComponent(agentId) }/models`,
     shutdown: '/v1/shutdown',
 } as const;
+
+/** How many folders one project may have. */
+export const MAX_PROJECT_FOLDERS = 50;
+
+/** A file `GET /v1/projects/:id/files` found: the folder of the project it is in, and its path below that folder with `/` separators. */
+export interface ProjectFileMatch {
+    folderId: FolderId;
+    path: string;
+}
 
 /** What one message may carry. The composer checks these before it uploads; the daemon refuses what is over. */
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;

@@ -140,7 +140,7 @@ describe('the record of a conversation for an agent that lost its session', () =
 });
 
 describe('the prompts of a run', () => {
-    const project = { id: 'prj_1', name: 'Car Rental', path: '/work/cars', taskPrefix: 'CAR', settings: {}, createdAt: 1 } as Project;
+    const project: Project = { id: 'prj_1', name: 'Car Rental', folders: [{ id: 'fld_1', path: '/work/cars' }], taskPrefix: 'CAR', settings: {}, createdAt: 1, position: 1 };
 
     test('the first message names the entry skill and the mode, then the content', () => {
         expect(firstMessage('orchestrator', 'autopilot', 'Add dark mode')).toBe('Follow clowdy:orchestrate. Mode: autopilot\n\nAdd dark mode');

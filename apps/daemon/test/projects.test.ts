@@ -39,6 +39,9 @@ const failure = (result: ReturnType<Harness['send']>) => {
 };
 
 const projectsOf = (h: Harness) => listProjects(h.store.db);
+const projectOf = (h: Harness, id: string) => projectsOf(h).find(project => project.id === id) as Project;
+const pathOf = (project: Project) => project.folders[0].path;
+const pathsOf = (project: Project) => project.folders.map(folder => folder.path);
 const count = (h: Harness, table: string) => (h.store.db.query(`SELECT COUNT(*) AS n FROM ${ table }`).get() as { n: number }).n;
 const activeRuns = (h: Harness, projectId: string) => projectCounts(h.store.db).get(projectId)?.activeRuns;
 
@@ -80,7 +83,7 @@ describe('the personal space', () => {
         const folder = realpathSync.native(join(h.config.dataDir, 'personal'));
         const { projects } = rootSnapshot(h.store);
 
-        expect(projects).toEqual([expect.objectContaining({ name: 'Personal', path: folder, personal: true, position: 0, taskPrefix: 'PER', settings: {} })]);
+        expect(projects).toEqual([expect.objectContaining({ name: 'Personal', folders: [{ id: expect.any(String), path: folder }], personal: true, position: 0, taskPrefix: 'PER', settings: {} })]);
         expect(git(folder, 'rev-parse', '--show-toplevel')).toBe(folder);
         expect(git(folder, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
         expect(git(folder, 'rev-list', '--count', 'HEAD')).toBe('1');
@@ -95,7 +98,8 @@ describe('the personal space', () => {
 
     test('a second start keeps it, and makes the folder again when it was deleted', async () => {
         const first = await setup();
-        const { id, path } = first.personal;
+        const { id } = first.personal;
+        const path = pathOf(first.personal);
 
         writeFileSync(join(path, 'notes.txt'), 'kept');
         await first.stop();
@@ -119,7 +123,7 @@ describe('the personal space', () => {
 
     test('a folder that exists but is not a repository becomes one', async () => {
         const first = await setup();
-        const { path } = first.personal;
+        const path = pathOf(first.personal);
 
         await first.stop();
         rmSync(join(path, '.git'), { recursive: true });
@@ -194,7 +198,7 @@ describe('the personal space', () => {
             const moved = ensurePersonalProject(store, after) as Project;
             const folder = realpathSync.native(join(after.dataDir, 'personal'));
 
-            expect(moved).toMatchObject({ id: made.id, path: folder, personal: true, position: 0 });
+            expect(moved).toMatchObject({ id: made.id, folders: [{ id: made.folders[0].id, path: folder }], personal: true, position: 0 });
             expect(listProjects(store.db)).toEqual([moved]);
             expect(git(folder, 'rev-parse', '--show-toplevel')).toBe(folder);
             expect(store.eventsAfter(cursor, undefined, 10).map(event => [event.projectId, event.data.type])).toEqual([[made.id, 'project.upserted']]);
@@ -214,26 +218,26 @@ describe('the personal space', () => {
         const personal = systemPrompt('orchestrator', 'autopilot', h.personal);
         const regular = systemPrompt('orchestrator', 'autopilot', projectsOf(h).find(project => project.id === repo.id) as Project);
 
-        expect(personal).toContain(`Project: Personal, the person's personal space, a folder at ${ h.personal.path } that belongs to no repository, task keys PER-<number>, project documents in .clowdy/docs/.`);
+        expect(personal).toContain(`Project: Personal, the person's personal space, a folder at ${ pathOf(h.personal) } that belongs to no repository, task keys PER-<number>, project documents in .clowdy/docs/.`);
         expect(personal).not.toContain('repository at');
         expect(regular).toContain(`Project: shop, repository at ${ repo.path }, task keys SHO-<number>`);
     });
 });
 
 describe('the order of projects', () => {
-    test('open and create hand out increasing positions', async () => {
+    test('adding hands out increasing positions', async () => {
         const h = await setup();
         const first = h.openRepo('first');
 
         h.openRepo('second');
 
-        const created = h.ok('project.create', { name: 'Third' }).project as Project;
+        const created = h.ok('project.add', { name: 'Third' }).project as Project;
 
         expect(created.position).toBe(3);
         expect(projectsOf(h).map(project => [project.name, project.position])).toEqual([['Personal', 0], ['first', 1], ['second', 2], ['Third', 3]]);
 
-        // Opening a project again changes nothing, and a removed place is not handed out twice.
-        h.ok('project.open', { path: first.path });
+        // Adding the same folders again changes nothing, and a removed place is not handed out twice.
+        h.ok('project.add', { folders: [first.path] });
         h.ok('project.delete', { projectId: first.id });
         h.openRepo('fourth');
         expect(projectsOf(h).map(project => [project.name, project.position])).toEqual([['Personal', 0], ['second', 2], ['Third', 3], ['fourth', 4]]);
@@ -363,16 +367,16 @@ describe('project.delete', () => {
         expect(failure(h.send('project.delete', { projectId: doomed.project.id })).code).toBe('not_found');
     });
 
-    test('the folder can be opened again as a new project', async () => {
+    test('the folder can be added again as a new project', async () => {
         const h = await setup();
         const project = h.openRepo('again');
 
         h.ok('project.delete', { projectId: project.id });
 
-        const reopened = h.ok('project.open', { path: project.path }).project as Project;
+        const reopened = h.ok('project.add', { folders: [project.path] }).project as Project;
 
         expect(reopened.id).not.toBe(project.id);
-        expect(reopened.path).toBe(project.path);
+        expect(pathsOf(reopened)).toEqual([project.path]);
         expect(count(h, 'chats')).toBe(0);
     });
 
@@ -420,20 +424,20 @@ describe('project.delete', () => {
 });
 
 describe('project.update', () => {
-    test('the personal space cannot be renamed or moved, but keeps its settings', async () => {
+    test('the personal space cannot be renamed or given other folders, but keeps its settings', async () => {
         const h = await setup();
-        const { id, path } = h.personal;
+        const { id, folders } = h.personal;
         const elsewhere = makeRepo(h.config.projectsDir, 'elsewhere');
 
         expect(failure(h.send('project.update', { projectId: id, name: 'Mine' })).code).toBe('conflict');
-        expect(failure(h.send('project.update', { projectId: id, path: elsewhere })).code).toBe('conflict');
-        expect(failure(h.send('project.update', { projectId: id, name: 'Other', path: elsewhere })).code).toBe('conflict');
-        expect(h.personal).toMatchObject({ name: 'Personal', path });
+        expect(failure(h.send('project.update', { projectId: id, folders: [{ path: elsewhere }] })).code).toBe('conflict');
+        expect(failure(h.send('project.update', { projectId: id, folders: [{ id: folders[0].id }, { path: elsewhere }] })).code).toBe('conflict');
+        expect(h.personal).toMatchObject({ name: 'Personal', folders });
 
         // Saying what it already is does no harm, and the settings are the person's.
-        const updated = h.ok('project.update', { projectId: id, name: 'Personal', path, settings: { engine: 'claude', chatMode: 'semi' } }).project as Project;
+        const updated = h.ok('project.update', { projectId: id, name: 'Personal', folders: [{ id: folders[0].id }], settings: { engine: 'claude', chatMode: 'semi' } }).project as Project;
 
-        expect(updated).toMatchObject({ name: 'Personal', path, personal: true, position: 0, settings: { engine: 'claude', chatMode: 'semi' } });
+        expect(updated).toMatchObject({ name: 'Personal', folders, personal: true, position: 0, settings: { engine: 'claude', chatMode: 'semi' } });
     });
 
     test('renames and keeps its place in the order', async () => {
@@ -473,39 +477,98 @@ describe('project.update', () => {
         expect(await response.json()).toMatchObject({ ok: true, data: { project: { id, settings: {} } } });
     });
 
-    test('a folder is checked like the one of project.open', async () => {
+    test('keeps the folders it is told by id, adds the ones it is told by path, and keeps the order given', async () => {
+        const h = await setup();
+        const project = h.openRepo('web');
+        const main = projectOf(h, project.id).folders[0];
+        const api = realpathSync.native(makeRepo(h.config.projectsDir, 'api'));
+        const notes = join(tempDir(), 'notes');
+
+        mkdirSync(notes);
+
+        const added = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: api }] }).project as Project;
+
+        expect(added.folders[0]).toEqual(main);
+        expect(added.folders[1]).toEqual({ id: expect.stringMatching(/^fld_/), path: api });
+
+        // A folder that is not a repository is welcome, and a path the project has already keeps its folder.
+        const grown = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: notes }, { path: api }] }).project as Project;
+
+        expect(grown.folders.map(folder => folder.id)).toEqual([main.id, expect.stringMatching(/^fld_/), added.folders[1].id]);
+        expect(pathsOf(grown)).toEqual([project.path, realpathSync.native(notes), api]);
+        expect(existsSync(join(notes, '.git'))).toBe(false);
+
+        // Removing a folder other than the main one.
+        const shrunk = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: added.folders[1].id }] }).project as Project;
+
+        expect(pathsOf(shrunk)).toEqual([project.path, api]);
+        expect(pathsOf(projectSnapshot(h.store, project.id).project)).toEqual([project.path, api]);
+    });
+
+    test('new folders are checked like the ones of project.add, and another project\'s folder is fine', async () => {
         const h = await setup();
         const project = h.openRepo('home');
         const other = h.openRepo('other');
-        const plain = join(tempDir(), 'plain');
+        const main = projectOf(h, project.id).folders[0];
         const cursor = h.store.headCursor();
 
-        mkdirSync(plain);
         mkdirSync(join(project.path, 'src'));
 
-        expect(failure(h.send('project.update', { projectId: project.id, path: plain }))).toMatchObject({ code: 'invalid', message: expect.stringContaining('not a git repository') });
-        expect(failure(h.send('project.update', { projectId: project.id, path: join(project.path, 'src') }))).toMatchObject({ code: 'invalid', message: expect.stringContaining('repository root') });
-        expect(failure(h.send('project.update', { projectId: project.id, path: join(plain, 'missing') })).code).toBe('invalid');
-        expect(failure(h.send('project.update', { projectId: project.id, path: 'relative/path' })).code).toBe('invalid');
-        expect(failure(h.send('project.update', { projectId: project.id, path: other.path }))).toMatchObject({ code: 'conflict', message: expect.stringContaining('other') });
-        expect(projectsOf(h).find(candidate => candidate.id === project.id)?.path).toBe(project.path);
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: join(project.path, 'src') }] })).message).toContain('inside');
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: main.id }] })).message).toContain('twice');
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: join(project.path, 'missing') }] })).code).toBe('invalid');
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ path: 'relative/path' }] })).code).toBe('invalid');
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: 'fld_nope' }] })).message).toContain('not one of the project');
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [] })).code).toBe('invalid');
+        expect(projectOf(h, project.id).folders).toEqual([main]);
         expect(h.store.headCursor()).toBe(cursor);
+
+        expect(pathsOf(h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: other.path }] }).project)).toEqual([project.path, other.path]);
     });
 
-    test('a folder is refused while an agent of the project is working, but the same folder is not a move', async () => {
+    test('refuses to give a project exactly the folders another project has, in any order', async () => {
+        const h = await setup();
+        const shop = h.openRepo('shop');
+        const api = h.openRepo('api');
+        const both = h.ok('project.add', { folders: [shop.path, api.path], name: 'Both' }).project as Project;
+
+        expect(failure(h.send('project.update', { projectId: api.id, folders: [{ path: api.path }, { path: shop.path }] }))).toMatchObject({ code: 'conflict', message: 'Both has these folders already' });
+        expect(failure(h.send('project.update', { projectId: shop.id, folders: [{ path: api.path }] }))).toMatchObject({ code: 'conflict', message: 'api has these folders already' });
+        // Its own set, reordered, is no clash.
+        expect(pathsOf(h.ok('project.update', { projectId: both.id, folders: [{ id: both.folders[1].id }, { id: both.folders[0].id }] }).project)).toEqual([api.path, shop.path]);
+    });
+
+    test('over HTTP an entry is a folder to keep or a path to add, never both', async () => {
+        const h = await setup();
+        const project = h.openRepo('both');
+        const main = projectOf(h, project.id).folders[0];
+        const body = command('project.update', { projectId: project.id, folders: [{ id: main.id, path: project.path }] });
+        const response = await h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(body) });
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    });
+
+    test('a new main folder waits for the agents, while other folders, a rename and the same list do not', async () => {
         const { h, gate, project, task } = await busyProject('busy');
-        const next = makeRepo(h.config.projectsDir, 'next');
+        const main = projectOf(h, project.id).folders[0];
+        const next = realpathSync.native(makeRepo(h.config.projectsDir, 'next'));
+        const working = { code: 'conflict', message: 'The agents of this project are still working. Stop them first.' };
 
-        expect(failure(h.send('project.update', { projectId: project.id, path: next }))).toMatchObject({ code: 'conflict', message: 'The agents of this project are still working. Stop them first.' });
-        expect(projectsOf(h).find(candidate => candidate.id === project.id)?.path).toBe(project.path);
+        const { project: grown } = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: next }] });
+        const second = grown.folders[1].id;
 
-        // The same folder, and a rename or a setting, do not wait for the agents.
-        expect(h.ok('project.update', { projectId: project.id, path: project.path, name: 'Busy' }).project).toMatchObject({ name: 'Busy', path: project.path });
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: second }, { id: main.id }] }))).toMatchObject(working);
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: second }] }))).toMatchObject(working);
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ path: makeRepo(h.config.projectsDir, 'third') }] }))).toMatchObject(working);
+        expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, next]);
+
+        expect(h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }], name: 'Busy' }).project).toMatchObject({ name: 'Busy', folders: [main] });
 
         gate.release(task.key);
     });
 
-    test('moves to another repository: the docs and the project follow, the old folder is let go', async () => {
+    test('a new main folder: the docs and the project follow, the old folder is let go', async () => {
         const h = await setup();
         const project = h.openRepo('before');
         const next = makeRepo(h.config.projectsDir, 'after');
@@ -522,13 +585,13 @@ describe('project.update', () => {
         expect(await tree()).toContain('old.md');
 
         const cursor = h.store.headCursor();
-        const { project: moved } = h.ok('project.update', { projectId: project.id, path: next });
+        const { project: moved } = h.ok('project.update', { projectId: project.id, folders: [{ path: next }] });
 
-        expect(moved).toMatchObject({ id: project.id, name: 'before', path: realpathSync.native(next), position: 1 });
-        expect(upserted(h.events(cursor)).map(event => (event.data as { project: Project }).project.path)).toEqual([realpathSync.native(next)]);
+        expect(moved).toMatchObject({ id: project.id, name: 'before', folders: [{ path: realpathSync.native(next) }], position: 1 });
+        expect(upserted(h.events(cursor)).map(event => pathsOf((event.data as { project: Project }).project))).toEqual([[realpathSync.native(next)]]);
         expect(await tree()).toContain('new.md');
         expect(await tree()).not.toContain('old.md');
-        expect(projectSnapshot(h.store, project.id).project.path).toBe(realpathSync.native(next));
+        expect(pathsOf(projectSnapshot(h.store, project.id).project)).toEqual([realpathSync.native(next)]);
 
         // Documents of the new folder are announced, those of the old one are not.
         const afterMove = h.store.headCursor();
@@ -545,16 +608,17 @@ describe('project.update', () => {
         expect(announced).not.toContain('ignored.md');
     });
 
-    test('a moved project works in the new folder, and the old folder can be opened as a project of its own', async () => {
+    test('a project works in its new main folder, and the old folder can be added as a project of its own', async () => {
         const h = await setup();
         const project = h.openRepo('before');
         const next = makeRepo(h.config.projectsDir, 'after');
 
-        h.ok('project.update', { projectId: project.id, path: next });
+        h.ok('project.update', { projectId: project.id, folders: [{ path: next }] });
 
-        const reopened = h.ok('project.open', { path: project.path }).project as Project;
+        const reopened = h.ok('project.add', { folders: [project.path] });
 
-        expect(reopened.id).not.toBe(project.id);
+        expect(reopened.existing).toBeUndefined();
+        expect(reopened.project.id).not.toBe(project.id);
 
         const { chat } = h.ok('chat.create', { projectId: project.id });
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Say hello' });
@@ -572,12 +636,16 @@ describe('GET /v1/projects/info', () => {
         expect((await h.fetch(`/v1/projects/${ project.id }/snapshot`)).status).toBe(200);
     });
 
-    test('lists every project in list order with its folder, remote and counts', async () => {
+    test('lists every project in list order with each folder, its remote, and the counts', async () => {
         const h = await setup();
         const repo = h.openRepo('repo');
         const bare = h.openRepo('bare');
         const gone = h.openRepo('gone');
+        const plain = join(tempDir(), 'plain');
+        const folderIds = (id: string) => projectOf(h, id).folders.map(folder => folder.id);
 
+        mkdirSync(plain);
+        h.ok('project.update', { projectId: bare.id, folders: [{ id: folderIds(bare.id)[0] }, { path: plain }] });
         git(repo.path, 'remote', 'add', 'origin', 'git@github.com:acme/app.git');
         rmSync(gone.path, { recursive: true, force: true });
         h.ok('chat.create', { projectId: repo.id });
@@ -585,12 +653,16 @@ describe('GET /v1/projects/info', () => {
         h.ok('task.create', { projectId: repo.id, title: 'One' });
 
         const projects = await info(h);
+        const [personalFolder] = folderIds(h.personal.id);
+        const [repoFolder] = folderIds(repo.id);
+        const [bareMain, bareNotes] = folderIds(bare.id);
+        const [goneFolder] = folderIds(gone.id);
 
         expect(projects.map(entry => entry.projectId)).toEqual(rootSnapshot(h.store).projects.map(project => project.id));
-        expect(projects[0]).toEqual({ projectId: h.personal.id, folderExists: true, chats: 0, tasks: 0, activeRuns: 0 });
-        expect(projects[1]).toEqual({ projectId: repo.id, folderExists: true, remoteUrl: 'git@github.com:acme/app.git', chats: 2, tasks: 1, activeRuns: 0 });
-        expect(projects[2]).toEqual({ projectId: bare.id, folderExists: true, chats: 0, tasks: 0, activeRuns: 0 });
-        expect(projects[3]).toEqual({ projectId: gone.id, folderExists: false, chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects[0]).toEqual({ projectId: h.personal.id, folders: [{ folderId: personalFolder, exists: true }], chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects[1]).toEqual({ projectId: repo.id, folders: [{ folderId: repoFolder, exists: true, remoteUrl: 'git@github.com:acme/app.git' }], chats: 2, tasks: 1, activeRuns: 0 });
+        expect(projects[2]).toEqual({ projectId: bare.id, folders: [{ folderId: bareMain, exists: true }, { folderId: bareNotes, exists: true }], chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects[3]).toEqual({ projectId: gone.id, folders: [{ folderId: goneFolder, exists: false }], chats: 0, tasks: 0, activeRuns: 0 });
     });
 
     test('a path that is a file and not a folder does not count as one', async () => {
@@ -600,7 +672,7 @@ describe('GET /v1/projects/info', () => {
         rmSync(project.path, { recursive: true, force: true });
         writeFileSync(project.path, 'not a folder');
 
-        expect((await info(h)).find(entry => entry.projectId === project.id)).toEqual({ projectId: project.id, folderExists: false, chats: 0, tasks: 0, activeRuns: 0 });
+        expect((await info(h)).find(entry => entry.projectId === project.id)?.folders).toEqual([{ folderId: projectOf(h, project.id).folders[0].id, exists: false }]);
     });
 
     test.skipIf(process.platform === 'win32')('reads the folders without stopping the daemon while git is slow', async () => {
@@ -642,18 +714,40 @@ describe('GET /v1/projects/info', () => {
     });
 });
 
-describe('FolderWatchers.unwatch', () => {
-    test('stops calling back for a folder, and the folder can be watched again', async () => {
+/**
+ * Writes a new file into `dir` every 50 ms until `heard` holds: the file system may not report a change made right after a watch began, and a
+ * test should not depend on that moment.
+ */
+async function writeUntil(dir: string, heard: () => boolean, what: string): Promise<void> {
+    let last = 0;
+    let written = 0;
+
+    await waitFor(() => {
+        if (heard()) {
+            return true;
+        }
+
+        if (Date.now() - last >= 50) {
+            last = Date.now();
+            writeFileSync(join(dir, `change-${ written++ }.txt`), 'x');
+        }
+
+        return false;
+    }, what);
+}
+
+describe('FolderWatchers', () => {
+    test('unwatch stops calling back for a folder, and the folder can be watched again', async () => {
         const watchers = new FolderWatchers(20);
         const dir = tempDir('watched');
         let calls = 0;
 
         try {
             watchers.watch('key', dir, () => calls++);
-            writeFileSync(join(dir, 'a.txt'), 'a');
-            await waitFor(() => calls > 0, 'the first change');
+            await writeUntil(dir, () => calls > 0, 'the first change');
 
-            watchers.unwatch(dir);
+            watchers.unwatch('key', dir);
+            await Bun.sleep(100);
 
             const seen = calls;
 
@@ -662,11 +756,34 @@ describe('FolderWatchers.unwatch', () => {
             expect(calls).toBe(seen);
 
             watchers.watch('key', dir, () => calls++);
-            writeFileSync(join(dir, 'c.txt'), 'c');
-            await waitFor(() => calls > seen, 'a change after watching again');
+            await writeUntil(dir, () => calls > seen, 'a change after watching again');
 
             // Unwatching what is not watched is harmless.
-            watchers.unwatch(join(dir, 'nothing'));
+            watchers.unwatch('key', join(dir, 'nothing'));
+        }
+        finally {
+            watchers.stop();
+        }
+    });
+
+    test('a folder two keys watch calls back both, and keeps calling the one left after the other unwatched', async () => {
+        const watchers = new FolderWatchers(20);
+        const dir = tempDir('shared');
+        const calls = { one: 0, two: 0 };
+
+        try {
+            watchers.watch('one', dir, () => calls.one++);
+            watchers.watch('two', dir, () => calls.two++);
+            await writeUntil(dir, () => calls.one > 0 && calls.two > 0, 'both to hear the change');
+
+            watchers.unwatch('one', dir);
+            await Bun.sleep(100);
+
+            const seen = { ...calls };
+
+            await writeUntil(dir, () => calls.two > seen.two, 'the one left to hear the change');
+            await Bun.sleep(100);
+            expect(calls.one).toBe(seen.one);
         }
         finally {
             watchers.stop();

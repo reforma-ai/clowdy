@@ -8,6 +8,7 @@ import type {
     CommandResult,
     DocFile,
     DocsTree,
+    ProjectFileMatch,
     ProjectId,
     ProjectInfo,
     ProjectSnapshot,
@@ -53,8 +54,8 @@ export interface Transport {
     getTaskDetail: (taskId: TaskId) => Promise<TaskDetail>;
     getDocsTree: (projectId: ProjectId) => Promise<DocsTree>;
     getDocFile: (projectId: ProjectId, path: string) => Promise<DocFile>;
-    /** Files of the project folder whose path contains every word of `query`, best match first, as paths relative to the folder. */
-    getProjectFiles: (projectId: ProjectId, query: string, limit?: number) => Promise<string[]>;
+    /** Files of the project's folders whose path contains every word of `query`, best match first, each with its folder and its path relative to that folder. */
+    getProjectFiles: (projectId: ProjectId, query: string, limit?: number) => Promise<ProjectFileMatch[]>;
     /** Stores a file in the project, to go with the next message of one of its chats. Rejects with a `TransportError` that carries the daemon's reason when it refuses. */
     uploadAttachment: (projectId: ProjectId, file: File) => Promise<Attachment>;
     /** The bytes of an attachment, to show it. */
