@@ -7,13 +7,3 @@
     width: 16rem;
     max-width: 100%;
 }
-
-.folders {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-}
-
-.add {
-    align-self: flex-start;
-}

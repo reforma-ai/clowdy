@@ -3,7 +3,6 @@ import { toast } from '@clowdy/components/Toast';
 import { folderNames, mainFolder } from '@clowdy/protocol';
 import { runInAction } from 'mobx';
 
-import { pickFolders } from '../../../shell/projectDialogs';
 import { perform } from '../../chats/commands';
 import { newMainMessage, removalMessage } from './projectView';
 
@@ -40,11 +39,10 @@ function folderEntries(folders: readonly ProjectFolder[], added: readonly string
 }
 
 /**
- * Adds the folders the person picks after the project's own, with no dialog: the main folder stays, so the agents go on where they are.
+ * Adds the folders the person picked after the project's own, with no dialog: the main folder stays, so the agents go on where they are.
  * A folder the project has already is skipped. The daemon checks the rest, and a refusal is a toast.
  */
-export async function addFolders(root: RootStore, project: Project): Promise<void> {
-    const picked = await pickFolders();
+export async function addFolders(root: RootStore, project: Project, picked: readonly string[]): Promise<void> {
     // The picker stays open as long as the person likes: the list may have changed meanwhile, in this window or another one.
     const current = root.projects.find(candidate => candidate.id === project.id);
 

@@ -453,6 +453,7 @@ describe('ProjectsPage project', () => {
     });
 
     it('removes another folder at once, and moves the focus to the folder that takes its place', async () => {
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => [] };
         await open(FIXTURE_EMPTY_PROJECT_ID, {}, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
         await click(button('Remove car-rental-api'));
         await flush();
