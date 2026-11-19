@@ -24,6 +24,15 @@
 }
 
 /*
+ * The shortcut's capsule is as far from the row's right edge as from its top and bottom. The list's own rule for a hotkey in a row is for a
+ * 30px row; the rows here are 36px, so the capsule (an xs hotkey: a line of `--leading-xs` and its padding) has more room above and below.
+ * Doubled so it outranks the list's rule.
+ */
+.newChat.newChat {
+    padding-inline-end: calc((var(--clowdy-listbox-item-height) - (var(--leading-xs) + 2 * var(--spacing-2))) / 2);
+}
+
+/*
  * The chevron sits in the row's own left padding, so it takes no room from the row: the icon of every row stays where the
  * list puts it. A nested row's padding grows by one level (`--depth`), and the chevron moves with it.
  */

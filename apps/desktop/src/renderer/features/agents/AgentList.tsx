@@ -194,6 +194,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                             id={ NEW_CHAT_ROW }
                             text="New chat"
                             icon={ <Plus /> }
+                            className={ styles.newChat }
                             // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
                             endAffix={ (
                                 <span className={ styles.end } data-show={ listBoxItemDataShow.itemHover }>
