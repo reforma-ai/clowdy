@@ -10,34 +10,48 @@ const DEBOUNCE_MS = 300;
  * folders rather than files follows Reforma's `skills-sync.ts` (a recursive watch, 300 ms).
  */
 export class FolderWatchers {
-    private watchers = new Map<string, FSWatcher>();
+    /** One watcher per folder, with whoever listens to it: a folder can be in several projects. */
+    private watchers = new Map<string, { watcher: FSWatcher; listeners: Map<string, () => void> }>();
     private timers = new Map<string, ReturnType<typeof setTimeout>>();
 
     constructor(private debounceMs = DEBOUNCE_MS) {}
 
     /**
-     * Calls `onChange` after changes under `dir`. Does nothing when `dir` is watched already, and when it does not
+     * Calls `onChange` after changes under `dir`. Does nothing when `key` listens to `dir` already, and when it does not
      * exist or cannot be watched; the caller asks again later (the next request for the catalog).
      */
     watch(key: string, dir: string, onChange: () => void): void {
-        if (this.watchers.has(dir)) {
+        const known = this.watchers.get(dir);
+
+        if (known) {
+            if (!known.listeners.has(key)) {
+                known.listeners.set(key, onChange);
+            }
+
             return;
         }
 
         try {
-            const watcher = watch(dir, { recursive: true }, () => this.schedule(key, onChange));
+            const listeners = new Map([[key, onChange]]);
+            const watcher = watch(dir, { recursive: true }, () => listeners.forEach((listener, listenerKey) => this.schedule(listenerKey, listener)));
 
             watcher.on('error', () => this.drop(dir));
-            this.watchers.set(dir, watcher);
+            this.watchers.set(dir, { watcher, listeners });
         }
         catch {
             // Missing or unwatchable.
         }
     }
 
-    /** Stops watching `dir`; a later `watch` of it starts afresh. */
-    unwatch(dir: string): void {
-        this.drop(dir);
+    /** Stops `key` listening to `dir`, and watching `dir` once nobody listens; a later `watch` of it starts afresh. */
+    unwatch(key: string, dir: string): void {
+        const known = this.watchers.get(dir);
+
+        known?.listeners.delete(key);
+
+        if (known?.listeners.size === 0) {
+            this.drop(dir);
+        }
     }
 
     stop(): void {
@@ -53,7 +67,7 @@ export class FolderWatchers {
     }
 
     private drop(dir: string): void {
-        this.watchers.get(dir)?.close();
+        this.watchers.get(dir)?.watcher.close();
         this.watchers.delete(dir);
     }
 

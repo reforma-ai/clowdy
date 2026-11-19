@@ -321,7 +321,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         {
             id: projectId,
             name: 'Car Rental',
-            path: '/Users/dev/car-rental',
+            folders: [{ id: 'fld_car_rental', path: '/Users/dev/car-rental' }],
             taskPrefix: 'CAR',
             settings: { maxParallelRuns: 4, engine: 'claude', targetBranch: 'main' },
             createdAt: ago(60 * 24 * 12),
@@ -330,7 +330,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         {
             id: FIXTURE_EMPTY_PROJECT_ID,
             name: 'Clowdy',
-            path: '/Users/dev/clowdy',
+            folders: [{ id: 'fld_clowdy', path: '/Users/dev/clowdy' }],
             taskPrefix: 'CLW',
             settings: {},
             createdAt: ago(60 * 24 * 3),
@@ -339,7 +339,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         {
             id: FIXTURE_PERSONAL_PROJECT_ID,
             name: 'Personal',
-            path: '/Users/dev/Library/Application Support/Clowdy/daemon/personal',
+            folders: [{ id: 'fld_personal', path: '/Users/dev/Library/Application Support/Clowdy/daemon/personal' }],
             taskPrefix: 'PER',
             settings: {},
             createdAt: ago(60 * 24 * 30),

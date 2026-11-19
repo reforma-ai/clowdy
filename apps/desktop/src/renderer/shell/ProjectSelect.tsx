@@ -3,6 +3,7 @@ import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@clowdy/components/L
 import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { Check, ChevronDown, Folder, Home, Plus, Sliders } from '@clowdy/icons/14';
+import { mainFolder } from '@clowdy/protocol';
 
 import { useRootStore } from '../stores';
 import { openCreateProject, openExistingProject } from './projectDialogs';
@@ -48,7 +49,7 @@ export function ProjectSelect() {
                             key={ project.id }
                             id={ project.id }
                             text={ project.name }
-                            description={ project.path }
+                            description={ mainFolder(project).path }
                             icon={ <Folder /> }
                             stacked
                             data-align="center"

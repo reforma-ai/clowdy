@@ -68,7 +68,7 @@ describe('auth', () => {
     });
 
     test('an unauthorized command gets a CommandResult-shaped error and does nothing', async () => {
-        const body = JSON.stringify(command('project.create', { name: 'Nope' }));
+        const body = JSON.stringify(command('project.add', { name: 'Nope' }));
         const before = h.store.headCursor();
         const response = await fetch(`${ h.url }/v1/commands`, { method: 'POST', body, headers: { authorization: 'Bearer wrong' } });
 
@@ -200,10 +200,10 @@ describe('commands endpoint', () => {
 
     test('answers a CommandResult for success and for caller errors, with matching statuses', async () => {
         const { path } = { path: h.openRepo().path };
-        const ok = await post(JSON.stringify({ requestId: 'req-http-open-1', type: 'project.open', path }));
+        const ok = await post(JSON.stringify({ requestId: 'req-http-open-1', type: 'project.add', folders: [path] }));
 
         expect(ok.status).toBe(200);
-        expect(await ok.json()).toMatchObject({ ok: true, requestId: 'req-http-open-1', data: { project: { path } } });
+        expect(await ok.json()).toMatchObject({ ok: true, requestId: 'req-http-open-1', data: { project: { folders: [{ path }] }, existing: true } });
 
         const missing = await post(JSON.stringify({ requestId: 'req-http-chat-1', type: 'chat.create', projectId: 'prj_nope' }));
 

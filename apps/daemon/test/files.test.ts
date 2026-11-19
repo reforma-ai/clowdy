@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:tes
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { getProject } from '../src/db/projects';
 import { searchPaths } from '../src/files/rank';
 import { FilesService } from '../src/files/service';
 import { cleanTempDirs, git, Harness, startHarness, tempDir } from './helpers';
@@ -42,7 +43,16 @@ describe('searchPaths', () => {
 
 describe('FilesService', () => {
     const service = new FilesService();
-    const project = (path: string): Project => ({ id: 'prj_files', name: 'Files', path, taskPrefix: 'FIL', settings: {}, createdAt: 1, position: 1 });
+    const project = (...paths: string[]): Project => ({
+        id: 'prj_files',
+        name: 'Files',
+        folders: paths.map((path, index) => ({ id: `fld_${ index }`, path })),
+        taskPrefix: 'FIL',
+        settings: {},
+        createdAt: 1,
+        position: 1,
+    });
+    const found = async (of: Project, query: string, limit: number) => (await service.search(of, query, limit)).map(match => match.path);
 
     test('in a repository offers tracked and new files, not ignored or deleted ones, and none of .clowdy', async () => {
         const root = tempDir('repo');
@@ -54,7 +64,7 @@ describe('FilesService', () => {
         rmSync(join(root, 'src/removed.ts'));
         put(root, { 'src/fresh.ts': '3', 'dist/out.js': '4', '.clowdy/docs/plan.md': '5' });
 
-        expect((await service.search(project(root), '', 50)).sort()).toEqual(['.gitignore', 'src/fresh.ts', 'src/kept.ts']);
+        expect((await found(project(root), '', 50)).sort()).toEqual(['.gitignore', 'src/fresh.ts', 'src/kept.ts']);
     });
 
     test('in a folder of a repository offers its own files, named from that folder', async () => {
@@ -65,7 +75,7 @@ describe('FilesService', () => {
         git(repo, 'add', '.');
         git(repo, 'commit', '-q', '-m', 'Start');
 
-        expect((await service.search(project(join(repo, 'app')), '', 50)).sort()).toEqual(['main.ts', 'ui/view.tsx']);
+        expect((await found(project(join(repo, 'app')), '', 50)).sort()).toEqual(['main.ts', 'ui/view.tsx']);
     });
 
     test('offers a repository inside the folder as a folder, with no trailing slash', async () => {
@@ -75,7 +85,7 @@ describe('FilesService', () => {
         put(root, { 'a.ts': '1', 'inner/b.ts': '2' });
         git(join(root, 'inner'), 'init', '-q', '-b', 'main');
 
-        expect((await service.search(project(root), '', 50)).sort()).toEqual(['a.ts', 'inner']);
+        expect((await found(project(root), '', 50)).sort()).toEqual(['a.ts', 'inner']);
     });
 
     test.skipIf(process.platform === 'win32')('keeps names with accents and spaces and leaves out one a message cannot carry', async () => {
@@ -84,7 +94,7 @@ describe('FilesService', () => {
         git(root, 'init', '-q', '-b', 'main');
         put(root, { 'ünï cödé.txt': '1', 'plain.txt': '2', 'two\nlines.txt': '3' });
 
-        expect((await service.search(project(root), '', 50)).sort()).toEqual(['plain.txt', 'ünï cödé.txt']);
+        expect((await found(project(root), '', 50)).sort()).toEqual(['plain.txt', 'ünï cödé.txt']);
     });
 
     test('outside a repository walks the folder and skips node_modules, .git, .clowdy and links', async () => {
@@ -98,15 +108,34 @@ describe('FilesService', () => {
             symlinkSync(outside, join(root, 'link'));
         }
 
-        expect((await service.search(project(root), '', 50)).sort()).toEqual(['a.txt', 'deep/er/b.txt']);
+        expect((await found(project(root), '', 50)).sort()).toEqual(['a.txt', 'deep/er/b.txt']);
     });
 
-    test('a missing project folder is unavailable', async () => {
+    test('with several folders offers the files of each, matched with the folder name in front, and skips a missing one', async () => {
+        const web = tempDir('web');
+        const api = tempDir('api');
+        const gone = tempDir('gone');
+
+        put(web, { 'src/app.ts': '1' });
+        put(api, { 'src/app.ts': '2', 'routes.ts': '3' });
+        rmSync(gone, { recursive: true });
+
+        const shop = project(web, api, gone);
+        const [webName, apiName] = [web, api].map(path => path.split(/[\\/]/).at(-1) as string);
+
+        expect((await service.search(shop, 'app', 10)).map(match => match.folderId).sort()).toEqual(['fld_0', 'fld_1']);
+        expect(await service.search(shop, `${ apiName } app`, 10)).toEqual([{ folderId: 'fld_1', path: 'src/app.ts' }]);
+        expect(await found(shop, webName, 10)).toEqual(['src/app.ts']);
+    });
+
+    test('a missing main folder is unavailable', async () => {
         const root = tempDir('gone');
+        const other = tempDir('other');
 
         rmSync(root, { recursive: true });
 
         await expect(service.search(project(root), 'a', 5)).rejects.toMatchObject({ code: 'unavailable' });
+        await expect(service.search(project(root, other), 'a', 5)).rejects.toMatchObject({ code: 'unavailable' });
     });
 });
 
@@ -123,8 +152,10 @@ describe('GET /v1/projects/:id/files', () => {
 
         put(path, { 'src/booking/BookingForm.tsx': '1', 'lib/rebook.ts': '2', 'docs/other.md': '3' });
 
-        expect(await (await h.fetch(`/v1/projects/${ id }/files?query=book`)).json()).toEqual(['src/booking/BookingForm.tsx', 'lib/rebook.ts']);
-        expect(await (await h.fetch(`/v1/projects/${ id }/files?query=book&limit=1`)).json()).toEqual(['src/booking/BookingForm.tsx']);
+        const folderId = h.store.read(() => getProject(h.store.db, id))?.folders[0].id;
+
+        expect(await (await h.fetch(`/v1/projects/${ id }/files?query=book`)).json()).toEqual([{ folderId, path: 'src/booking/BookingForm.tsx' }, { folderId, path: 'lib/rebook.ts' }]);
+        expect(await (await h.fetch(`/v1/projects/${ id }/files?query=book&limit=1`)).json()).toEqual([{ folderId, path: 'src/booking/BookingForm.tsx' }]);
     });
 
     test('refuses a limit that is not a number and an unknown project', async () => {

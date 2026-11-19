@@ -54,9 +54,26 @@ function migrate(db: Database, migrations: Migration[], path: string): void {
     }
 
     for (const migration of pending) {
-        db.transaction(() => {
-            migration.up(db);
-            db.run(`PRAGMA user_version = ${ migration.version }`);
-        })();
+        // The pragma does nothing inside a transaction.
+        if (migration.rebuildsTables) {
+            db.run('PRAGMA foreign_keys = OFF');
+        }
+
+        try {
+            db.transaction(() => {
+                migration.up(db);
+
+                if (migration.rebuildsTables && db.query('PRAGMA foreign_key_check').all().length > 0) {
+                    throw new Error(`Migration ${ migration.version } left rows that point at nothing`);
+                }
+
+                db.run(`PRAGMA user_version = ${ migration.version }`);
+            })();
+        }
+        finally {
+            if (migration.rebuildsTables) {
+                db.run('PRAGMA foreign_keys = ON');
+            }
+        }
     }
 }

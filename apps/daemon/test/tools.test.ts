@@ -227,7 +227,7 @@ describe('run_spawn', () => {
 
         await exec(orchestrator, 'run_spawn', { taskIds: [b.key], prompt: 'Goal: do B', idempotencyKey: 'REP-2-executor-1' });
         await waitFor(() => engine.turns.length === 2, 'the second child to start');
-        expect(engine.turns[1].cwd).toBe(entity.path);
+        expect(engine.turns[1].cwd).toBe(entity.folders[0].path);
     });
 
     test('never offers the fake engine to a model: a child on it would report work nobody did', async () => {

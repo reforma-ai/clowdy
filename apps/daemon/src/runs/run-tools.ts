@@ -51,7 +51,7 @@ export function orchestratorRunTools({ store, runs, driver }: ToolDeps, run: Run
             role: z.enum(['executor', 'verifier']).optional().describe('Default executor'),
             engine: engine.optional().describe('The id of an installed agent (claude, codex, cursor, ...). Leave unset unless the manager asked or you have a reason'),
             model: z.string().optional(),
-            cwd: z.string().optional().describe('Absolute path of the folder the run works in (for example a git worktree you made); default the project folder'),
+            cwd: z.string().optional().describe('Absolute path of the folder the run works in (for example a git worktree you made); default the main folder of the project'),
             idempotencyKey: z.string().min(1),
         }), (input) => {
             const { run: child, duplicate } = driver.spawn({

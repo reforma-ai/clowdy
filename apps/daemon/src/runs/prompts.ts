@@ -1,3 +1,4 @@
+import { mainFolder } from '@clowdy/protocol';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -20,9 +21,10 @@ const modeLabel = (mode: ChatMode) => (mode === 'semi' ? 'semi-manual' : 'autopi
 
 /** The system prompt: where the system skills are, the mode and the facts about the project. Everything else is in the skills. */
 export function systemPrompt(role: RunRole, mode: ChatMode, project: Project): string {
+    const folder = mainFolder(project).path;
     const where = project.personal
-        ? `the person's personal space, a folder at ${ project.path } that belongs to no repository`
-        : `repository at ${ project.path }`;
+        ? `the person's personal space, a folder at ${ folder } that belongs to no repository`
+        : `repository at ${ folder }`;
 
     return [
         'Clowdy is a desktop app where a person who manages software work chats with an orchestrator and watches tasks, agents and documents while agents do the engineering.',

@@ -36,7 +36,7 @@ beforeEach(() => {
     fx = {
         store,
         docs: new DocsService(store),
-        project: { id: 'prj_docs', name: 'Docs', path, taskPrefix: 'DOC', settings: {}, createdAt: 1, position: 1 },
+        project: { id: 'prj_docs', name: 'Docs', folders: [{ id: 'fld_docs', path }], taskPrefix: 'DOC', settings: {}, createdAt: 1, position: 1 },
         root: join(path, '.clowdy', 'docs'),
         outside,
     };
@@ -65,16 +65,16 @@ describe('docs folder', () => {
 
         expect(readFileSync(join(fx.root, 'keep.md'), 'utf8')).toBe('mine');
 
-        const fresh = { ...fx.project, id: 'prj_fresh', path: tempDir('fresh') };
+        const fresh: Project = { ...fx.project, id: 'prj_fresh', folders: [{ id: 'fld_fresh', path: tempDir('fresh') }] };
 
         expect(fx.docs.tree(fresh)).toEqual([]);
-        expect(statSync(join(fresh.path, '.clowdy', 'docs')).isDirectory()).toBe(true);
+        expect(statSync(join(fresh.folders[0].path, '.clowdy', 'docs')).isDirectory()).toBe(true);
     });
 
     test('a missing project folder is not recreated', () => {
-        rmSync(fx.project.path, { recursive: true });
+        rmSync(fx.project.folders[0].path, { recursive: true });
         fails(() => fx.docs.root(fx.project), 'unavailable');
-        expect(existsSync(fx.project.path)).toBe(false);
+        expect(existsSync(fx.project.folders[0].path)).toBe(false);
     });
 
     test('the tree lists Markdown files and folders only, folders first, in natural order', () => {
@@ -169,7 +169,7 @@ describe('paths', () => {
     });
 
     symlinks('a docs folder that is a link out of the project is refused', () => {
-        mkdirSync(join(fx.project.path, '.clowdy'), { recursive: true });
+        mkdirSync(join(fx.project.folders[0].path, '.clowdy'), { recursive: true });
         symlinkSync(fx.outside, fx.root);
 
         fails(() => fx.docs.root(fx.project), 'invalid');

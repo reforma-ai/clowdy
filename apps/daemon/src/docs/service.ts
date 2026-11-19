@@ -1,3 +1,4 @@
+import { mainFolder } from '@clowdy/protocol';
 import { createHash, randomBytes } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeSync } from 'node:fs';
 import { basename, dirname, join, sep } from 'node:path';
@@ -37,19 +38,21 @@ export class DocsService {
 
     /** The real path of the docs folder, created on first use and never over existing files. */
     root(project: Project): string {
-        if (!existsSync(project.path)) {
-            throw unavailable(`The project folder ${ project.path } is missing`);
+        const folder = mainFolder(project).path;
+
+        if (!existsSync(folder)) {
+            throw unavailable(`The project folder ${ folder } is missing`);
         }
 
         try {
-            mkdirSync(join(project.path, DOCS_DIR), { recursive: true });
+            mkdirSync(join(folder, DOCS_DIR), { recursive: true });
         }
         catch (error) {
             throw unavailable(`The docs folder cannot be created: ${ (error as Error).message }`);
         }
 
-        const root = realpathSync.native(join(project.path, DOCS_DIR));
-        const projectRoot = realpathSync.native(project.path);
+        const root = realpathSync.native(join(folder, DOCS_DIR));
+        const projectRoot = realpathSync.native(folder);
 
         if (!root.startsWith(projectRoot + sep)) {
             throw invalid('The docs folder leaves the project');
@@ -128,7 +131,7 @@ export class DocsService {
     /** Starts watching the docs folders that already exist, for projects known at startup. */
     watchExisting(projects: Project[]): void {
         for (const project of projects) {
-            const folder = join(project.path, DOCS_DIR);
+            const folder = join(mainFolder(project).path, DOCS_DIR);
 
             if (existsSync(folder)) {
                 this.root(project);

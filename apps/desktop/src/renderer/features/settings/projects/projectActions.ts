@@ -1,5 +1,6 @@
 import { openConfirmModal } from '@clowdy/components/modals';
 import { toast } from '@clowdy/components/Toast';
+import { mainFolder } from '@clowdy/protocol';
 import { runInAction } from 'mobx';
 
 import { pickFolder } from '../../../shell/projectDialogs';
@@ -40,14 +41,16 @@ export async function reorderProjects(root: RootStore, projects: readonly Projec
 export async function changeFolder(root: RootStore, project: Project): Promise<void> {
     const path = await pickFolder();
 
-    if (!path || path === project.path) return;
+    if (!path || path === mainFolder(project).path) return;
 
     openConfirmModal({
         title: 'Use another folder?',
         message: `${ project.name } will work in ${ path } from now on. Nothing is moved or copied. An agent that worked in the old folder starts a new conversation there, so what it remembered may not carry over.`,
         confirmLabel: 'Use this folder',
         onConfirm: async () => {
-            const result = await root.command({ type: 'project.update', projectId: project.id, path });
+            // The new folder takes the main one's place; the others stay.
+            const folders = [{ path }, ...project.folders.slice(1).map(folder => ({ id: folder.id }))];
+            const result = await root.command({ type: 'project.update', projectId: project.id, folders });
 
             // The dialog shows a thrown message as an error and stays open.
             if (!result.ok) throw new Error(result.error.message);
@@ -59,7 +62,7 @@ export async function changeFolder(root: RootStore, project: Project): Promise<v
 export function removeProject(root: RootStore, project: Project, info: ProjectInfo | undefined): void {
     openConfirmModal({
         title: `Remove ${ project.name }?`,
-        message: removalMessage(project.name, project.path, info),
+        message: removalMessage(project.name, mainFolder(project).path, info),
         confirmLabel: 'Remove project',
         destructive: true,
         onConfirm: async () => {

@@ -187,14 +187,14 @@ export class RootStore {
         }
     }
 
-    /** Creates a project, in a new folder or at `path`, and switches to it. */
+    /** Creates a project, in a new folder or in the folder at `path`, and switches to it. */
     createProject(name: string, path?: string): Promise<CommandResult> {
-        return this.#addProject({ type: 'project.create', name, path }, path);
+        return this.#addProject({ type: 'project.add', name, ...(path && { folders: [path] }) });
     }
 
-    /** Opens the repository at `path` as a project, and switches to it. */
+    /** Opens the folder at `path` as a project, and switches to it. */
     openProject(path: string, name?: string): Promise<CommandResult> {
-        return this.#addProject({ type: 'project.open', path, name }, path);
+        return this.#addProject({ type: 'project.add', folders: [path], ...(name && { name }) });
     }
 
     /**
@@ -348,11 +348,12 @@ export class RootStore {
         if (next) this.selectProject(next.id);
     }
 
-    async #addProject(input: CommandInput, path: string | undefined): Promise<CommandResult> {
-        const known = new Set(this.projects.map(project => project.id));
+    async #addProject(input: CommandInput): Promise<CommandResult> {
         const result = await this.command(input);
 
         if (!result.ok) return result;
+
+        const addedId = (result.data as { project?: Project } | undefined)?.project?.id;
 
         try {
             const { projects } = await this.transport.getRootSnapshot();
@@ -360,9 +361,7 @@ export class RootStore {
             runInAction(() => {
                 this.projects = sortProjects(projects);
 
-                const added = projects.find(project => !known.has(project.id)) ?? projects.find(project => project.path === path);
-
-                if (added) this.selectProject(added.id);
+                if (addedId && projects.some(project => project.id === addedId)) this.selectProject(addedId);
             });
         }
         catch {

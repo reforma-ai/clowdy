@@ -1,12 +1,13 @@
+import { mainFolder } from '@clowdy/protocol';
 import { existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { basename, isAbsolute, join, resolve } from 'node:path';
+import { basename, isAbsolute, join, sep } from 'node:path';
 
 import {
     deleteProjectRow,
     getPersonalProject,
     getProject,
-    getProjectByPath,
+    getProjectByFolders,
     hasUnfinishedRuns,
     insertStatus,
     listProjects,
@@ -19,7 +20,7 @@ import { conflict, invalid, notFound, unavailable } from '../errors';
 import { newId } from '../ids';
 import { git, gitLine } from './git';
 
-import type { Project, ProjectInfo, ProjectSettings, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
+import type { Project, ProjectFolder, ProjectFolderInfo, ProjectInfo, ProjectSettings, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
 import type { DocsService } from '../docs/service';
@@ -73,12 +74,12 @@ function publishProject(store: Store, project: Project): void {
     store.emit(project.id, { type: 'project.upserted', project, statuses: listStatuses(store.db, project.id) });
 }
 
-function insertProject(store: Store, input: { name: string; path: string; personal?: boolean }): Project {
+function insertProject(store: Store, input: { name: string; folders: readonly string[]; personal?: boolean }): Project {
     return store.tx(() => {
         const project: Project = {
             id: newId('prj'),
             name: input.name,
-            path: input.path,
+            folders: input.folders.map(path => ({ id: newId('fld'), path })),
             taskPrefix: deriveTaskPrefix(input.name),
             settings: {},
             createdAt: Date.now(),
@@ -111,48 +112,69 @@ function realDirectory(path: string): string {
     return realpathSync.native(path);
 }
 
-/** Refuses a folder (as `realDirectory` returned it) that is not the top of a git repository. */
-function requireRepositoryRoot(path: string): void {
-    const top = git(path, ['rev-parse', '--show-toplevel']);
+/**
+ * Refuses a list (of `realDirectory` paths) where a folder repeats or lies inside another: the agent would get the same files twice, and a
+ * change in one would show up in both.
+ */
+function requireSeparateFolders(paths: readonly string[]): void {
+    paths.forEach((path, index) => {
+        for (const other of paths.slice(index + 1)) {
+            if (path === other) {
+                throw invalid(`${ path } is listed twice`);
+            }
 
-    if (!top.ok) {
-        throw invalid(`${ path } is not a git repository`);
-    }
+            const [outer, inner] = path.length < other.length ? [path, other] : [other, path];
 
-    if (realpathSync.native(top.stdout) !== path) {
-        throw invalid(`${ path } is inside the repository ${ top.stdout }; open the repository root`);
-    }
+            if (inner.startsWith(outer.endsWith(sep) ? outer : outer + sep)) {
+                throw invalid(`${ inner } is inside ${ outer }, which the project has already`);
+            }
+        }
+    });
 }
 
-/** Opens an existing repository as a project. Opening the same folder again returns the same project. */
-export function openProject(store: Store, input: { path: string; name?: string }): Project {
-    const path = realDirectory(input.path);
-    const existing = getProjectByPath(store.db, path);
+const nameOf = (path: string) => basename(path) || path;
 
-    if (existing) {
-        return existing;
-    }
-
-    requireRepositoryRoot(path);
-
-    return insertProject(store, { name: input.name === undefined ? basename(path) : cleanName(input.name), path });
+/** What `project.add` answers: the project, and whether it was there already. */
+export interface AddedProject {
+    project: Project;
+    existing: boolean;
 }
 
 /**
- * Creates a repository (`git init -b main` plus an empty first commit so worktrees work) and opens it.
- * `path` is the project folder itself; without it the folder is `<projectsDir>/<kebab-name>`.
- * An existing empty folder is reused; a non-empty one is never touched.
+ * Adds a project of `folders`, the first being the main one: any existing folders, repositories or not, never changed. Without folders a new
+ * folder is made for it (`newFolderProject`). The same set of folders as a project already has, in any order, answers that project.
  */
-export function createProject(store: Store, config: Config, input: { name: string; path?: string }): Project {
-    const name = cleanName(input.name);
-    const wanted = input.path === undefined ? join(config.projectsDir, kebabCase(name)) : input.path;
-
-    // A relative path would land wherever the daemon was started.
-    if (!isAbsolute(wanted)) {
-        throw invalid(`The path must be absolute: ${ wanted }`);
+export function addProject(store: Store, config: Config, input: { name?: string; folders?: readonly string[] }): AddedProject {
+    if (!input.folders?.length) {
+        return newFolderProject(store, config, input.name);
     }
 
-    const target = resolve(wanted);
+    const paths = input.folders.map(realDirectory);
+
+    requireSeparateFolders(paths);
+
+    const existing = getProjectByFolders(store.db, paths);
+
+    if (existing) {
+        return { project: existing, existing: true };
+    }
+
+    const name = input.name === undefined ? nameOf(paths[0] as string) : cleanName(input.name);
+
+    return { project: insertProject(store, { name, folders: paths }), existing: false };
+}
+
+/**
+ * A project in a new folder `<projectsDir>/<kebab-name>`, made a repository (`git init -b main` plus an empty first commit) so worktrees work.
+ * An existing empty folder is reused; a non-empty one is never touched.
+ */
+function newFolderProject(store: Store, config: Config, name: string | undefined): AddedProject {
+    if (name === undefined) {
+        throw invalid('A project without folders needs a name: its new folder is named after it');
+    }
+
+    const clean = cleanName(name);
+    const target = join(config.projectsDir, kebabCase(clean));
 
     if (existsSync(target)) {
         if (!statSync(target).isDirectory() || readdirSync(target).length > 0) {
@@ -163,9 +185,16 @@ export function createProject(store: Store, config: Config, input: { name: strin
         mkdirSync(target, { recursive: true });
     }
 
-    initRepository(target);
+    const path = realpathSync.native(target);
+    const existing = getProjectByFolders(store.db, [path]);
 
-    return insertProject(store, { name, path: realpathSync.native(target) });
+    if (existing) {
+        return { project: existing, existing: true };
+    }
+
+    initRepository(path);
+
+    return { project: insertProject(store, { name: clean, folders: [path] }), existing: false };
 }
 
 /** `git init -b main` plus an empty first commit, so worktrees work. */
@@ -231,15 +260,17 @@ export function ensurePersonalProject(store: Store, config: Config): Project | u
         const path = realpathSync.native(folder);
 
         if (!existing) {
-            return insertProject(store, { name: PERSONAL_NAME, path, personal: true });
+            return insertProject(store, { name: PERSONAL_NAME, folders: [path], personal: true });
         }
 
-        if (existing.path === path) {
+        const main = mainFolder(existing);
+
+        if (main.path === path && existing.folders.length === 1) {
             return existing;
         }
 
         return store.tx(() => {
-            const moved = { ...existing, path };
+            const moved = { ...existing, folders: [{ ...main, path }] };
 
             upsertProject(store.db, moved);
             publishProject(store, moved);
@@ -257,9 +288,13 @@ export function ensurePersonalProject(store: Store, config: Config): Project | u
 /** A settings field set to `null` is cleared. */
 type SettingsPatch = { [K in keyof ProjectSettings]?: ProjectSettings[K] | null };
 
+/** An entry of a project's new folder list: `{ id }` keeps a folder the project has, `{ path }` adds one. */
+export type FolderEntry = { id: string } | { path: string };
+
 export interface ProjectPatch {
     name?: string;
-    path?: string;
+    /** The whole new list, in order. */
+    folders?: readonly FolderEntry[];
     settings?: SettingsPatch;
 }
 
@@ -286,49 +321,77 @@ function mergeSettings(current: ProjectSettings, patch: SettingsPatch = {}): Pro
 
 const stillWorking = () => conflict('The agents of this project are still working. Stop them first.');
 
+/** The folders `entries` describe: the project's own for an id, a new folder for a path (the one it has when it has that path already). */
+function nextFolders(current: Project, entries: readonly FolderEntry[]): ProjectFolder[] {
+    if (entries.length === 0) {
+        throw invalid('A project needs at least one folder');
+    }
+
+    const folders = entries.map((entry) => {
+        if ('id' in entry) {
+            const folder = current.folders.find(candidate => candidate.id === entry.id);
+
+            if (!folder) {
+                throw invalid(`Folder ${ entry.id } is not one of the project's`);
+            }
+
+            return folder;
+        }
+
+        const path = realDirectory(entry.path);
+
+        return current.folders.find(candidate => candidate.path === path) ?? { id: newId('fld'), path };
+    });
+
+    requireSeparateFolders(folders.map(folder => folder.path));
+
+    return folders;
+}
+
+const sameFolders = (a: readonly ProjectFolder[], b: readonly ProjectFolder[]) => a.length === b.length && a.every((folder, index) => folder.id === b[index]?.id && folder.path === b[index]?.path);
+
 /**
- * Renames the project, moves it to another folder, or changes its settings. A move takes the checks of `openProject`, refuses a
- * folder another project has, and waits until no agent of the project is working in the old one. The personal space keeps its name and folder.
+ * Renames the project, gives it another list of folders, or changes its settings. New folders take the checks of `addProject`; a new main
+ * folder waits until no agent of the project is working, as the agents work in it. The personal space keeps its name and its one folder.
  */
 export function updateProject(store: Store, projectId: string, patch: ProjectPatch, { docs, skills }: ProjectWatchers): Project {
     return store.tx(() => {
         const current = requireProject(store, projectId);
         const name = patch.name === undefined ? current.name : cleanName(patch.name);
-        let path = current.path;
+        const folders = patch.folders === undefined ? current.folders : nextFolders(current, patch.folders);
+        const foldersChanged = !sameFolders(folders, current.folders);
 
-        if (current.personal && (name !== current.name || (patch.path !== undefined && patch.path !== current.path))) {
-            throw conflict('The personal space cannot be renamed or moved');
+        if (current.personal && (name !== current.name || foldersChanged)) {
+            throw conflict('The personal space cannot be renamed or given other folders');
         }
 
-        if (patch.path !== undefined) {
-            const target = realDirectory(patch.path);
+        // `project.add` answers a set of folders with the project that has it, so two projects never share the whole set.
+        const twin = foldersChanged ? getProjectByFolders(store.db, folders.map(folder => folder.path)) : undefined;
 
-            if (target !== current.path) {
-                const other = getProjectByPath(store.db, target);
-
-                if (other) {
-                    throw conflict(`${ target } is already the folder of the project ${ other.name }`);
-                }
-
-                requireRepositoryRoot(target);
-
-                if (hasUnfinishedRuns(store.db, projectId)) {
-                    throw stillWorking();
-                }
-
-                path = target;
-            }
+        if (twin && twin.id !== projectId) {
+            throw conflict(`${ twin.name } has these folders already`);
         }
 
-        const next: Project = { ...current, name, path, settings: mergeSettings(current.settings, patch.settings) };
+        const mainChanged = mainFolder({ folders }).id !== mainFolder(current).id;
+
+        if (mainChanged && hasUnfinishedRuns(store.db, projectId)) {
+            throw stillWorking();
+        }
+
+        const next: Project = { ...current, name, folders, settings: mergeSettings(current.settings, patch.settings) };
 
         upsertProject(store.db, next);
         publishProject(store, next);
 
-        if (path !== current.path) {
-            // The watchers hold the old folder; the next request for docs or skills watches the new one.
+        if (foldersChanged) {
+            // The project's skills come from its folders, so a catalog read before is out of date.
+            store.emit(projectId, { type: 'skills.changed' });
+            // The watchers hold the old folders; the next request for docs or skills watches the new ones.
             store.afterCommit(() => {
-                docs.forget(projectId);
+                if (mainChanged) {
+                    docs.forget(projectId);
+                }
+
                 skills.forgetProject(current);
             });
         }
@@ -406,7 +469,7 @@ async function isFolder(path: string): Promise<boolean> {
 }
 
 /**
- * What the page that manages projects shows besides the snapshot: whether each folder is there, its remote, and what it holds.
+ * What the page that manages projects shows besides the snapshot: whether each folder is there and its remote, and what the project holds.
  * The page asks again every few seconds, so nothing here may stop the daemon: the folders are read asynchronously, one project after
  * another, so a long list never starts a crowd of processes.
  */
@@ -415,15 +478,16 @@ export async function projectsInfo(store: Store): Promise<ProjectInfo[]> {
     const info: ProjectInfo[] = [];
 
     for (const project of projects) {
-        const folderExists = await isFolder(project.path);
-        const remoteUrl = folderExists ? await gitLine(project.path, ['remote', 'get-url', 'origin']) : undefined;
+        const folders: ProjectFolderInfo[] = [];
 
-        info.push({
-            projectId: project.id,
-            folderExists,
-            ...(remoteUrl && { remoteUrl }),
-            ...(counts.get(project.id) ?? { chats: 0, tasks: 0, activeRuns: 0 }),
-        });
+        for (const folder of project.folders) {
+            const exists = await isFolder(folder.path);
+            const remoteUrl = exists ? await gitLine(folder.path, ['remote', 'get-url', 'origin']) : undefined;
+
+            folders.push({ folderId: folder.id, exists, ...(remoteUrl && { remoteUrl }) });
+        }
+
+        info.push({ projectId: project.id, folders, ...(counts.get(project.id) ?? { chats: 0, tasks: 0, activeRuns: 0 }) });
     }
 
     return info;

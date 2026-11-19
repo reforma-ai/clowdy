@@ -1,8 +1,15 @@
+import { newId } from '../ids';
+
 import type { Database } from 'bun:sqlite';
 
 export interface Migration {
     /** Becomes `PRAGMA user_version` once applied. Versions are consecutive from 1. */
     version: number;
+    /**
+     * Runs with foreign keys off, for a migration that rebuilds a table (create a new one, copy, drop the old, rename): with them on, dropping
+     * the old table would delete every row that references it. The keys are checked before the migration commits.
+     */
+    rebuildsTables?: boolean;
     up(db: Database): void;
 }
 
@@ -261,6 +268,48 @@ export const MIGRATIONS: Migration[] = [
         up(db) {
             // Why a failed run failed, as the engine classed it (see `Run.failureCode`).
             db.run('ALTER TABLE runs ADD COLUMN failure_code TEXT');
+        },
+    },
+    {
+        version: 11,
+        rebuildsTables: true,
+        up(db) {
+            // A project is a list of folders (see `Project.folders`), and a folder may be in several projects: the folders get a table of their own,
+            // each project's folder becomes its first, and `projects` is rebuilt without its unique `path`, which SQLite cannot drop in place.
+            db.run(`
+                CREATE TABLE project_folders (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                    path TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    UNIQUE (project_id, path)
+                );
+                CREATE INDEX project_folders_path ON project_folders(path);
+            `);
+
+            const insert = db.query('INSERT INTO project_folders (id, project_id, path, position) VALUES (?, ?, ?, 0)');
+
+            for (const { id, path } of db.query('SELECT id, path FROM projects').all() as { id: string; path: string }[]) {
+                insert.run(newId('fld'), id, path);
+            }
+
+            db.run(`
+                CREATE TABLE projects_rebuilt (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    task_prefix TEXT NOT NULL,
+                    settings TEXT NOT NULL DEFAULT '{}',
+                    next_task_number INTEGER NOT NULL DEFAULT 1,
+                    created_at INTEGER NOT NULL,
+                    personal INTEGER NOT NULL DEFAULT 0,
+                    position INTEGER NOT NULL DEFAULT 0
+                );
+                INSERT INTO projects_rebuilt (id, name, task_prefix, settings, next_task_number, created_at, personal, position)
+                    SELECT id, name, task_prefix, settings, next_task_number, created_at, personal, position FROM projects;
+                DROP TABLE projects;
+                ALTER TABLE projects_rebuilt RENAME TO projects;
+                CREATE UNIQUE INDEX projects_personal ON projects(personal) WHERE personal = 1;
+            `);
         },
     },
 ];

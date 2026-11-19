@@ -2,6 +2,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { getProject } from '../src/db/projects';
 import { cleanTempDirs, command, Harness, restartHarness, startHarness, tempDir, waitFor } from './helpers';
 import { writeSkill } from './skill-helpers';
 
@@ -346,6 +347,69 @@ describe('watching the skill folders', () => {
         expect(events.map(event => event.projectId)).toEqual([watched.id]);
         expect(skillEvents(h, before).some(event => event.projectId === other.id)).toBe(false);
         expect((await catalogOf(h, watched.id)).entries.some(entry => entry.name === 'review')).toBe(true);
+    });
+
+    test('with several folders the skills of each are listed, the folder name in front of their folder', async () => {
+        const h = await start();
+        const web = h.openRepo('web');
+        const api = h.openRepo('api');
+        const main = h.store.read(() => getProject(h.store.db, web.id))?.folders[0].id;
+
+        h.ok('project.update', { projectId: web.id, folders: [{ id: main }, { path: api.path }] });
+        writeSkill(join(web.path, '.claude', 'skills'), 'review');
+        writeSkill(join(api.path, '.agents', 'skills'), 'triage');
+
+        const entries = (await catalogOf(h, web.id)).entries.filter(entry => entry.source === 'project');
+
+        expect(entries.map(entry => [entry.id, entry.engines])).toEqual([['project:web/.claude/skills/review', ['claude']], ['project:api/.agents/skills/triage', ['codex']]]);
+        expect(entries[1].path).toBe(join(api.path, '.agents', 'skills', 'triage'));
+    });
+
+    test('a project told other folders is told to read its catalog again, which then follows the folders', async () => {
+        const h = await start();
+        const web = h.openRepo('web');
+        const api = h.openRepo('api');
+        const main = h.store.read(() => getProject(h.store.db, web.id))?.folders[0].id;
+        const projectSkills = async () => (await catalogOf(h, web.id)).entries.filter(entry => entry.source === 'project').map(entry => entry.name);
+
+        writeSkill(join(api.path, '.agents', 'skills'), 'triage');
+        expect(await projectSkills()).toEqual([]);
+
+        const before = h.store.headCursor();
+
+        h.ok('project.update', { projectId: web.id, folders: [{ id: main }, { path: api.path }] });
+        expect(skillEvents(h, before).map(event => event.projectId)).toEqual([web.id]);
+        expect(await projectSkills()).toEqual(['triage']);
+
+        // A rename or the same list leaves the catalog as it was, and says nothing.
+        const unchanged = h.store.headCursor();
+
+        h.ok('project.update', { projectId: web.id, name: 'Web', folders: [{ id: main }, { path: api.path }] });
+        expect(skillEvents(h, unchanged)).toEqual([]);
+
+        h.ok('project.update', { projectId: web.id, folders: [{ id: main }] });
+        expect(skillEvents(h, unchanged).map(event => event.projectId)).toEqual([web.id]);
+        expect(await projectSkills()).toEqual([]);
+    });
+
+    test('a project skill in a folder two projects share is announced to both', async () => {
+        const h = await start();
+        const shared = h.openRepo('shared');
+        const other = h.openRepo('other');
+        const both = h.ok('project.add', { folders: [other.path, shared.path] }).project as { id: string };
+
+        mkdirSync(join(shared.path, '.claude', 'skills'), { recursive: true });
+        await h.fetch(`/v1/skills?projectId=${ shared.id }`);
+        await h.fetch(`/v1/skills?projectId=${ both.id }`);
+
+        const before = h.store.headCursor();
+
+        writeSkill(join(shared.path, '.claude', 'skills'), 'review');
+
+        const events = await waitFor(() => skillEvents(h, before).length >= 2 && skillEvents(h, before), 'skills.changed for both projects');
+
+        expect(events.map(event => event.projectId).sort()).toEqual([shared.id, both.id].sort());
+        expect(skillEvents(h, before).some(event => event.projectId === other.id)).toBe(false);
     });
 
     test('touching a file without changing the skills announces nothing', async () => {

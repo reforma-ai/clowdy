@@ -10,11 +10,11 @@ describe('HttpTransport.getProjectFiles', () => {
         const fetchImpl = (async (input: RequestInfo | URL) => {
             urls.push(String(input));
 
-            return new Response(JSON.stringify(['src/a b.ts']), { status: 200 });
+            return new Response(JSON.stringify([{ folderId: 'fld_1', path: 'src/a b.ts' }]), { status: 200 });
         }) as typeof fetch;
         const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
 
-        expect(await transport.getProjectFiles('prj 1', 'a b&c', 20)).toEqual(['src/a b.ts']);
+        expect(await transport.getProjectFiles('prj 1', 'a b&c', 20)).toEqual([{ folderId: 'fld_1', path: 'src/a b.ts' }]);
         await transport.getProjectFiles('prj 1', '');
 
         expect(urls).toEqual([
@@ -28,7 +28,10 @@ describe('FixtureTransport.getProjectFiles', () => {
     it('lists the files that hold every word, up to the limit, and none for a project without files', async () => {
         const transport = new FixtureTransport();
 
-        expect(await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'price booking')).toEqual(['src/booking/price.ts', 'src/booking/price.test.ts']);
+        expect(await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'price booking')).toEqual([
+            { folderId: 'fld_car_rental', path: 'src/booking/price.ts' },
+            { folderId: 'fld_car_rental', path: 'src/booking/price.test.ts' },
+        ]);
         expect(await transport.getProjectFiles(FIXTURE_PROJECT_ID, '', 3)).toHaveLength(3);
         expect(await transport.getProjectFiles(FIXTURE_EMPTY_PROJECT_ID, '')).toEqual([]);
     });

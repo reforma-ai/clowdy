@@ -22,7 +22,7 @@ describe('migrations', () => {
         const db = openDatabase(path);
 
         expect(tables(db)).toEqual(expect.arrayContaining([
-            'artifacts', 'chat_task_links', 'chats', 'commands', 'events', 'projects', 'run_task_links', 'runs', 'stream_items', 'task_deps', 'task_statuses', 'tasks',
+            'artifacts', 'chat_task_links', 'chats', 'commands', 'events', 'project_folders', 'projects', 'run_task_links', 'runs', 'stream_items', 'task_deps', 'task_statuses', 'tasks',
         ]));
         expect(version(db)).toBe(MIGRATIONS.length);
         expect((db.query('PRAGMA journal_mode').get() as { journal_mode: string }).journal_mode).toBe('wal');
@@ -35,7 +35,7 @@ describe('migrations', () => {
         const path = join(tempDir(), 'clowdy.db');
         const first = openDatabase(path);
 
-        first.query('INSERT INTO projects (id, name, path, task_prefix, created_at) VALUES (?, ?, ?, ?, ?)').run('prj_1', 'Old', '/old', 'OLD', 1);
+        first.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
         first.close();
 
         const latest = MIGRATIONS.length;
@@ -53,6 +53,38 @@ describe('migrations', () => {
         expect(backup.query('SELECT name FROM projects').all()).toEqual([{ name: 'Old' }]);
         backup.close();
         upgraded.close();
+    });
+
+    test('version 11 moves each project\'s folder into project_folders and keeps everything that points at the project', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 11));
+
+        before.query('INSERT INTO projects (id, name, path, task_prefix, created_at, personal, position) VALUES (?, ?, ?, ?, ?, ?, ?)').run('prj_1', 'Shop', '/work/shop', 'SHO', 1, 0, 3);
+        before.query('INSERT INTO projects (id, name, path, task_prefix, created_at, personal, position) VALUES (?, ?, ?, ?, ?, ?, ?)').run('prj_2', 'Personal', '/data/personal', 'PER', 2, 1, 0);
+        before.query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
+        before.close();
+
+        const db = openDatabase(path);
+
+        expect(db.query('SELECT project_id, path, position FROM project_folders ORDER BY project_id').all()).toEqual([
+            { project_id: 'prj_1', path: '/work/shop', position: 0 },
+            { project_id: 'prj_2', path: '/data/personal', position: 0 },
+        ]);
+        expect((db.query('SELECT id FROM project_folders').all() as { id: string }[]).every(row => row.id.startsWith('fld_'))).toBe(true);
+        expect((db.query('PRAGMA table_info(projects)').all() as { name: string }[]).map(column => column.name)).not.toContain('path');
+        expect(db.query('SELECT id, name, position, personal FROM projects ORDER BY id').all()).toEqual([
+            { id: 'prj_1', name: 'Shop', position: 3, personal: 0 },
+            { id: 'prj_2', name: 'Personal', position: 0, personal: 1 },
+        ]);
+        expect(db.query('SELECT id FROM chats').all()).toEqual([{ id: 'cht_1' }]);
+        expect((db.query('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys).toBe(1);
+        expect(() => db.query('INSERT INTO projects (id, name, task_prefix, created_at, personal) VALUES (?, ?, ?, ?, ?)').run('prj_3', 'Again', 'AGA', 3, 1)).toThrow();
+
+        // The foreign keys still hold: a project's removal takes its chats and folders along.
+        db.query('DELETE FROM projects WHERE id = ?').run('prj_1');
+        expect(db.query('SELECT COUNT(*) AS n FROM chats').get()).toEqual({ n: 0 });
+        expect(db.query('SELECT COUNT(*) AS n FROM project_folders WHERE project_id = ?').get('prj_1')).toEqual({ n: 0 });
+        db.close();
     });
 
     test('a failing migration rolls back, keeps the version, and leaves the backup', () => {
@@ -75,6 +107,38 @@ describe('migrations', () => {
 
         expect(version(db)).toBe(MIGRATIONS.length);
         expect(tables(db)).not.toContain('half');
+        db.close();
+    });
+
+    test('a table rebuild that leaves rows pointing at nothing rolls back instead of losing or orphaning them', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const first = openDatabase(path);
+
+        first.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        first.query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
+        first.close();
+
+        // Rebuilds `projects` but forgets to copy its rows: with foreign keys on, the drop would take the chat along; off, the chat points at nothing.
+        const careless: Migration = {
+            version: MIGRATIONS.length + 1,
+            rebuildsTables: true,
+            up(db) {
+                db.run(`
+                    CREATE TABLE projects_rebuilt (id TEXT PRIMARY KEY, name TEXT NOT NULL, task_prefix TEXT NOT NULL, settings TEXT NOT NULL DEFAULT '{}',
+                        next_task_number INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, personal INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0);
+                    DROP TABLE projects;
+                    ALTER TABLE projects_rebuilt RENAME TO projects;
+                `);
+            },
+        };
+
+        expect(() => openDatabase(path, [...MIGRATIONS, careless])).toThrow('point at nothing');
+
+        const db = openDatabase(path);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(db.query('SELECT id FROM projects').all()).toEqual([{ id: 'prj_1' }]);
+        expect(db.query('SELECT id, project_id FROM chats').all()).toEqual([{ id: 'cht_1', project_id: 'prj_1' }]);
         db.close();
     });
 

@@ -1,11 +1,13 @@
-import { createProject, deleteProject, openProject, reorderProjects, updateProject } from '../domain/projects';
+import { addProject, deleteProject, reorderProjects, updateProject } from '../domain/projects';
 
 import type { Handlers } from './context';
 
-export const projectHandlers: Pick<Handlers, 'project.open' | 'project.create' | 'project.update' | 'project.delete' | 'project.reorder'> = {
-    'project.open': ({ store }, command) => ({ project: openProject(store, command) }),
+export const projectHandlers: Pick<Handlers, 'project.add' | 'project.update' | 'project.delete' | 'project.reorder'> = {
+    'project.add': ({ store, config }, command) => {
+        const { project, existing } = addProject(store, config, command);
 
-    'project.create': ({ store, config }, command) => ({ project: createProject(store, config, command) }),
+        return { project, ...(existing && { existing: true }) };
+    },
 
     'project.update': ({ store, runs, docs, skills }, command) => {
         const project = updateProject(store, command.projectId, command, { docs, skills });

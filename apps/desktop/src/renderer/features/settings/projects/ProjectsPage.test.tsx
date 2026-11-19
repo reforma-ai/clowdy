@@ -263,17 +263,17 @@ describe('ProjectsPage project', () => {
         await act(async () => lastConfirm().onConfirm());
         await flush();
 
-        expect(store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)?.path).toBe('/Users/dev/moved');
+        expect(store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)?.folders[0].path).toBe('/Users/dev/moved');
         expect(container.textContent).toContain('/Users/dev/moved');
     });
 
     it('shows the daemon\'s reason in the dialog when it refuses the folder', async () => {
-        (window as { desktop?: unknown }).desktop = { chooseDirectory: async () => '/Users/dev/car-rental' };
-        await open(FIXTURE_EMPTY_PROJECT_ID);
+        (window as { desktop?: unknown }).desktop = { chooseDirectory: async () => '/Users/dev/elsewhere' };
+        await open(FIXTURE_EMPTY_PROJECT_ID, { command: async () => ({ ok: false, requestId: 'r', error: { code: 'invalid', message: '/Users/dev/elsewhere does not exist' } }) });
         await click(named('Change folder…'));
         await flush();
 
-        await expect(lastConfirm().onConfirm()).rejects.toThrow('already a project');
+        await expect(lastConfirm().onConfirm()).rejects.toThrow('does not exist');
     });
 
     it('does nothing when the folder dialog is closed without a choice', async () => {
@@ -311,7 +311,7 @@ describe('ProjectsPage project', () => {
     });
 
     it('warns when the folder is gone', async () => {
-        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [{ projectId: FIXTURE_EMPTY_PROJECT_ID, folderExists: false, chats: 0, tasks: 0, activeRuns: 0 }] });
+        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [{ projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: false }], chats: 0, tasks: 0, activeRuns: 0 }] });
 
         expect(container.textContent).toContain('This folder no longer exists');
         expect(named('Choose folder…')).toBeDefined();

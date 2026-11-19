@@ -32,7 +32,7 @@ let chat: Chat;
 let chatNumber = 0;
 
 /** What the pick lists read: the project's tasks, and the daemon's documents, files and skills. */
-const findFiles = async (_projectId: string, query: string) => ['src/booking/index.tsx', 'src/booking/price.ts'].filter(path => path.includes(query));
+const findFiles = async (_projectId: string, query: string) => ['src/booking/index.tsx', 'src/booking/price.ts'].filter(path => path.includes(query)).map(path => ({ folderId: 'fld_p', path }));
 const transport = {
     getDocsTree: vi.fn(async () => docs),
     getProjectFiles: vi.fn(findFiles),
@@ -45,7 +45,7 @@ async function mount(result: CommandResult | Promise<CommandResult>, run?: Run) 
 
         return result;
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: tasks }, ...await modelStore() };
+    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'fld_p', path: '/work/p' }] }, taskList: tasks }, ...await modelStore() };
 
     await act(async () => {
         root.render(
