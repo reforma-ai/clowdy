@@ -16,7 +16,7 @@ import { providerAgents } from './providerView';
 /** How often the page asks for the agents while it is open; the daemon reads again only what is older than its own freshness. */
 const POLL_MS = 60_000;
 
-const INTRO = 'The agents Clowdy runs: who is signed in to each, what is left of its plan, and how it starts. Clowdy uses the login the program already has on this computer.';
+const INTRO = 'The agents Clowdy can run. Each one uses the account you\'re already signed in with on this computer.';
 
 /** Settings > Providers: one card per provider, with its account, its usage and its settings. */
 export function ProvidersPage() {

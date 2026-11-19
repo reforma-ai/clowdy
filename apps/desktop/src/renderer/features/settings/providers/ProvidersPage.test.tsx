@@ -507,7 +507,7 @@ describe('the advanced settings', () => {
 
         expect(card('Claude Code').querySelector('textarea')!.value).toBe('HTTPS_PROXY=http://proxy:3128\nTZ=UTC');
         expect(card('Claude Code').querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe('/opt/claude/bin/claude');
-        expect(card('Claude Code').textContent).toContain('Using /opt/claude/bin/claude');
+        expect(button(card('Claude Code'), 'Reset')!.hasAttribute('disabled')).toBe(false);
     });
 
     it('keeps the program path and the environment out of sight until asked, and checks the environment before it sends it', async () => {
@@ -527,7 +527,9 @@ describe('the advanced settings', () => {
         });
         const command = vi.spyOn(store, 'command');
 
-        expect(card('Claude Code').textContent).toContain('Found at /Users/dev/.local/bin/claude');
+        // The program Clowdy found is the box's placeholder, and there is nothing to reset.
+        expect(card('Claude Code').querySelector<HTMLInputElement>('input[type="text"]')!.placeholder).toBe('/Users/dev/.local/bin/claude');
+        expect(button(card('Claude Code'), 'Reset')!.hasAttribute('disabled')).toBe(true);
 
         await type('nonsense');
 
@@ -622,13 +624,31 @@ describe('the advanced settings', () => {
         await draw();
 
         expect(field().value).toBe('/opt/claude');
-        expect(card('Claude Code').textContent).toContain('Using /opt/claude');
 
-        await press(button(card('Claude Code'), 'Find it again'));
+        await press(button(card('Claude Code'), 'Reset'));
         await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.overrides).toBeUndefined());
         await draw();
 
         expect(field().value).toBe('');
-        expect(card('Claude Code').textContent).toContain('Found at /Users/dev/.local/bin/claude');
+        expect(field().placeholder).toBe('/Users/dev/.local/bin/claude');
+        expect(button(card('Claude Code'), 'Reset')!.hasAttribute('disabled')).toBe(true);
+    });
+
+    it('drops a path that was typed and not saved on Reset, without asking the daemon', async () => {
+        await start();
+        await press(button(card('Claude Code'), 'Advanced'));
+        await vi.waitFor(() => expect(card('Claude Code').querySelector('textarea')).not.toBeNull());
+
+        const field = () => card('Claude Code').querySelector<HTMLInputElement>('input[type="text"]')!;
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field(), '/tmp/other');
+            field().dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await press(button(card('Claude Code'), 'Reset'));
+
+        expect(field().value).toBe('');
+        expect(command).not.toHaveBeenCalled();
     });
 });

@@ -56,6 +56,22 @@ function AdvancedPanel({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * The line under Program: which program Clowdy starts, and what the box is for. The path itself is in the box (the one the person chose)
+ * or its placeholder (the one Clowdy found), so the line does not repeat it.
+ */
+function programNoteOf(savedPath: string, foundPath: string | undefined): { text: string; tone?: 'warning' } {
+    if (savedPath) {
+        return foundPath
+            ? { text: 'Clowdy uses this one instead of the one it found. Reset to go back.' }
+            : { text: 'There\'s no program at this path. Fix it, or reset to the one Clowdy finds.', tone: 'warning' };
+    }
+
+    return foundPath
+        ? { text: 'Clowdy uses the one it found on this computer. Enter a path to use another.' }
+        : { text: 'Clowdy couldn\'t find it on this computer. Enter the path to the program.', tone: 'warning' };
+}
+
+/**
  * Advanced, folded until asked: where the program is, and the environment it starts with. The boxes show what the daemon saved
  * (`agent.overrides`) and follow it when it changes; what the person has typed and not saved is a draft that stays until it is saved or
  * typed away.
@@ -69,7 +85,8 @@ export function ProviderAdvanced({ agent, commands }: SettingsProps) {
     const env = envDraft ?? savedEnv;
     const parsed = parseEnv(env);
     const envError = env.trim() && !parsed.ok ? parsed.message : undefined;
-    const programNote = savedPath ? `Using ${ savedPath }` : agent.path ? `Found at ${ agent.path }` : 'Not found on this computer.';
+    const programNote = programNoteOf(savedPath, agent.path);
+    const canReset = Boolean(savedPath) || pathDraft !== undefined;
 
     return (
         <Collapsible>
@@ -77,14 +94,14 @@ export function ProviderAdvanced({ agent, commands }: SettingsProps) {
             <AdvancedPanel>
                 <div className={ styles.field }>
                     <Text variant="sm" weight="medium">Program</Text>
-                    <Text variant="sm" color="secondary" truncate title={ programNote }>{ programNote }</Text>
+                    <Text variant="sm" color={ programNote.tone ?? 'secondary' }>{ programNote.text }</Text>
                     <div className={ styles.inputs }>
                         <Input
                             type="text"
                             variant="bordered"
                             size="sm"
                             aria-label={ `Path to the ${ agent.name } program` }
-                            placeholder="Use another program: /path/to/program"
+                            placeholder={ (!savedPath && agent.path) || '/path/to/program' }
                             value={ path }
                             onChange={ text => setPathDraft(text === savedPath ? undefined : text) }
                         />
@@ -98,13 +115,12 @@ export function ProviderAdvanced({ agent, commands }: SettingsProps) {
                             Use it
                         </Button>
                         <Button
-                            variant="inline"
-                            color="secondary"
+                            variant="bordered"
                             size="sm"
-                            isDisabled={ commands.pending.has('path') }
-                            onPress={ () => void commands.setPath(null).then(ok => ok && setPathDraft(undefined)) }
+                            isDisabled={ !canReset || commands.pending.has('path') }
+                            onPress={ () => (savedPath ? void commands.setPath(null).then(ok => ok && setPathDraft(undefined)) : setPathDraft(undefined)) }
                         >
-                            Find it again
+                            Reset
                         </Button>
                     </div>
                 </div>
