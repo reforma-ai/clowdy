@@ -14,7 +14,7 @@ import { archivedChats } from './agentTree';
 import styles from './ArchiveButton.module.css';
 import { ChatIcon } from './ChatIcon';
 
-import type { Chat } from '@clowdy/protocol';
+import type { Chat, ChatId } from '@clowdy/protocol';
 
 /**
  * The archive, in the heading beside the filters: a button (the history mark) that drops down the chats that were put away, the last one first, each with how long
@@ -26,6 +26,8 @@ export function ArchiveButton({ anchor }: { anchor: RefObject<HTMLElement | null
     const project = useProjectState();
     const ui = useProjectUi();
     const [isOpen, setIsOpen] = useState(false);
+    // The chat whose `⋯` menu is open: its row keeps the hover plate while the pointer is in the menu.
+    const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
     const archived = archivedChats(project.chatList);
     const now = Date.now();
 
@@ -52,10 +54,13 @@ export function ArchiveButton({ anchor }: { anchor: RefObject<HTMLElement | null
                                         key={ chat.id }
                                         id={ chat.id }
                                         text={ chat.title }
+                                        data-open={ menuOpenId === chat.id || undefined }
                                         icon={ <ChatIcon chat={ chat } run={ chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined } /> }
                                         endAffix={ (
                                             <ArchivedEnd
                                                 chat={ chat }
+                                                isOpen={ menuOpenId === chat.id }
+                                                onOpenChange={ open => setMenuOpenId(open ? chat.id : null) }
                                                 ago={ formatElapsed(now - chat.archivedAt) }
                                                 onUnarchive={ () => void unarchiveChat(root, chat) }
                                                 onDelete={ () => {
@@ -79,15 +84,15 @@ export function ArchiveButton({ anchor }: { anchor: RefObject<HTMLElement | null
 
 interface ArchivedEndProps {
     chat: Chat;
+    isOpen: boolean;
+    onOpenChange: (isOpen: boolean) => void;
     ago: string;
     onUnarchive: () => void;
     onDelete: () => void;
 }
 
 /** The end of an archived chat's row: how long ago it was put away, and the `⋯` menu, on hover, with what can be done to it. */
-function ArchivedEnd({ chat, ago, onUnarchive, onDelete }: ArchivedEndProps) {
-    const [isOpen, setIsOpen] = useState(false);
-
+function ArchivedEnd({ chat, isOpen, onOpenChange, ago, onUnarchive, onDelete }: ArchivedEndProps) {
     return (
         // The button and its popover are React children of the row, so their clicks and keys would reach the row through the tree.
         <span
@@ -99,7 +104,7 @@ function ArchivedEnd({ chat, ago, onUnarchive, onDelete }: ArchivedEndProps) {
             onContextMenu={ event => event.stopPropagation() }
         >
             <Text variant="xs" color="secondary">{ ago }</Text>
-            <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
+            <PopoverTrigger isOpen={ isOpen } onOpenChange={ onOpenChange }>
                 <Button
                     variant="filling"
                     color="secondary"
@@ -118,7 +123,7 @@ function ArchivedEnd({ chat, ago, onUnarchive, onDelete }: ArchivedEndProps) {
                             aria-label="Archived chat actions"
                             size="sm"
                             onAction={ (key) => {
-                                setIsOpen(false);
+                                onOpenChange(false);
 
                                 if (key === 'unarchive') onUnarchive();
                                 else if (key === 'delete') onDelete();

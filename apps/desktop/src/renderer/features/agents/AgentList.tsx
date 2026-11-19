@@ -48,6 +48,8 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     const ui = useProjectUi();
     const [renamingId, setRenamingId] = useState<ChatId | null>(null);
     const [menuChat, setMenuChat] = useState<Chat | null>(null);
+    // The chat whose `⋯` menu is open: its row keeps the hover plate while the pointer is in the menu.
+    const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
     const list = useRef<HTMLDivElement>(null);
     const heading = useRef<HTMLDivElement>(null);
@@ -137,7 +139,9 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                     text={ chat.title }
                     startAffix={ fold }
                     icon={ <ChatIcon chat={ chat } run={ runOf(chat) } /> }
-                    endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } /> }
+                    endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } isOpen={ menuOpenId === chat.id } onOpenChange={ open => setMenuOpenId(open ? chat.id : null) } /> }
+                    // The row of an open menu, from its button or the right click, stays as if hovered: the pointer is in the menu, not on the row.
+                    data-open={ menuOpenId === chat.id || (contextMenu.isOpen && menuChat?.id === chat.id) || undefined }
                 >
                     { renamingId === chat.id
                         ? <RenameField chat={ chat } onDone={ () => setRenamingId(null) } />
@@ -302,11 +306,10 @@ function Fold({ row, onToggle }: { row: AgentRow; onToggle: () => void }) {
 }
 
 /** The end of a chat's row, on hover: Archive as a quick action, and the `⋯` menu button. */
-function RowEnd({ chat, actions }: { chat: Chat; actions: ChatActions }) {
+function RowEnd({ chat, actions, isOpen, onOpenChange }: { chat: Chat; actions: ChatActions; isOpen: boolean; onOpenChange: (isOpen: boolean) => void }) {
     const project = useProjectState();
-    const [isOpen, setIsOpen] = useState(false);
     const busy = isRunActive(chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined);
-    const close = () => setIsOpen(false);
+    const close = () => onOpenChange(false);
 
     return (
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
@@ -332,7 +335,7 @@ function RowEnd({ chat, actions }: { chat: Chat; actions: ChatActions }) {
             >
                 <Archive />
             </Button>
-            <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
+            <PopoverTrigger isOpen={ isOpen } onOpenChange={ onOpenChange }>
                 <Button
                     variant="filling"
                     color="secondary"

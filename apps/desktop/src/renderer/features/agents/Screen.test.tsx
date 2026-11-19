@@ -137,6 +137,23 @@ describe('the list', () => {
         expect(chatKeys()).toEqual(['c-4', 'c-3', 'c-1', 'c-2']);
     });
 
+    it('keeps the row of an open `⋯` menu as if hovered, since the pointer is in the menu and not on the row', async () => {
+        const menuButton = () => rowOf('c-4').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!;
+
+        expect(rowOf('c-4').hasAttribute('data-open')).toBe(false);
+
+        await press(menuButton());
+
+        expect(rowOf('c-4').hasAttribute('data-open')).toBe(true);
+        expect(rowOf('c-3').hasAttribute('data-open')).toBe(false);
+
+        await act(async () => {
+            document.body.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        });
+
+        expect(rowOf('c-4').hasAttribute('data-open')).toBe(false);
+    });
+
     it('selects the first chat when nothing was opened', () => {
         expect(isSelected('c-1')).toBe(true);
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
@@ -376,6 +393,17 @@ describe('the archive', () => {
         expect(ui().chatId).toBe('c-4');
         expect(isSelected('c-4')).toBe(true);
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-4');
+    });
+
+    it('keeps the row of an open menu as if hovered here too', async () => {
+        await archive('c-4', true);
+        await press(buttonNamed('Archive'));
+
+        expect(archiveRow('New chat').hasAttribute('data-open')).toBe(false);
+
+        await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
+
+        expect(archiveRow('New chat').hasAttribute('data-open')).toBe(true);
     });
 
     it('has a menu in each row, with Unarchive and Delete', async () => {
