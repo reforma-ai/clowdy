@@ -240,7 +240,7 @@ describe('ProjectsPage list', () => {
         });
 
         expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(0);
-        expect(document.body.querySelector('form')?.textContent).toContain('A new folder is made when none is added');
+        expect(document.body.querySelector('form')?.textContent).toContain('Without folders, Clowdy creates one named after the project');
     });
 
     it('does not offer removal while agents work in the project', async () => {
