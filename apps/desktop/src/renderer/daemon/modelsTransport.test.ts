@@ -208,7 +208,7 @@ describe('the fixture daemon\'s chat model', () => {
     describe('compacting a chat', () => {
         const orchestrator = (changed: ClowdyEvent['data'][]) => changed.find((data): data is { type: 'run.upserted'; run: Run } => data.type === 'run.upserted')?.run;
 
-        it('refuses a chat that is unknown, has no conversation yet, has an agent with no compact command, or is still working, and changes nothing', async () => {
+        it('refuses a chat that is unknown, has no conversation yet, or has an agent with no compact command, and changes nothing', async () => {
             const { run, chat } = await connected();
             const none = chat((await run({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID })).result)!;
             const cursor = chat((await run({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, engine: 'cursor' })).result)!;
@@ -219,34 +219,77 @@ describe('the fixture daemon\'s chat model', () => {
                 run({ type: 'chat.compact', chatId: 'c-none' }),
                 run({ type: 'chat.compact', chatId: none.id }),
                 run({ type: 'chat.compact', chatId: cursor.id }),
-                // The first fixture chat's orchestrator is working, the third one waits for the person.
-                run({ type: 'chat.compact', chatId: 'c-1' }),
-                run({ type: 'chat.compact', chatId: 'c-3' }),
             ]);
 
-            expect(refusals.map(refusal => (refusal.result.ok ? 'ok' : refusal.result.error.code))).toEqual(['not_found', 'invalid', 'invalid', 'conflict', 'conflict']);
+            expect(refusals.map(refusal => (refusal.result.ok ? 'ok' : refusal.result.error.code))).toEqual(['not_found', 'invalid', 'invalid']);
             expect(refusals[1].result).toMatchObject({ error: { message: 'This chat has no conversation to compact yet' } });
             expect(refusals[2].result).toMatchObject({ error: { message: 'Cursor has no command to compact its conversation' } });
-            expect(refusals[3].result).toMatchObject({ error: { message: 'The orchestrator is working on this chat. Compact it when it has finished' } });
             expect(refusals.flatMap(refusal => refusal.events)).toEqual([]);
         });
 
-        it('notes it in the stream and lowers the context reading of an orchestrator that has finished', async () => {
+        it('plays a compact turn for an orchestrator that has finished: the compaction call, then what it saved and a lower reading', async () => {
             const data = createFixtureData();
             const finished = data.runs.find(candidate => candidate.id === 'r-orch-2')!;
 
-            finished.context = { used: 53_001, size: 250_000 };
+            finished.context = { used: 53_000, size: 250_000 };
 
             const { run, transport } = await connected({ data });
+            const before = (await transport.getItems({ runId: 'r-orch-2' })).length;
             const compacted = await run({ type: 'chat.compact', chatId: 'c-2' });
 
             expect(compacted.result).toMatchObject({ ok: true, data: { chatId: 'c-2', runId: 'r-orch-2' } });
-            expect(orchestrator(compacted.events)).toMatchObject({ id: 'r-orch-2', context: { used: 26_501, size: 250_000 } });
+            expect(orchestrator(compacted.events)).toMatchObject({ id: 'r-orch-2', status: 'running' });
 
-            const items = await transport.getItems({ runId: 'r-orch-2' });
+            const running = await transport.getItems({ runId: 'r-orch-2' });
 
-            expect(items.at(-1)?.body).toEqual({ kind: 'note', text: 'Compacting the conversation' });
-            expect(compacted.events.map(event => event.type)).toEqual(['stream.item', 'run.upserted']);
+            // No bubble: the person wrote nothing.
+            expect(running).toHaveLength(before + 1);
+            expect(running.at(-1)?.body).toMatchObject({ kind: 'tool', name: 'compact', state: 'running' });
+
+            await vi.advanceTimersByTimeAsync(1500);
+
+            const done = (await transport.getItems({ runId: 'r-orch-2' })).at(-1)?.body;
+
+            expect(done).toMatchObject({ kind: 'tool', name: 'compact', state: 'done' });
+            expect(JSON.parse(String(done?.kind === 'tool' && done.output))).toMatchObject({ preTokens: 53_000, postTokens: 13_250 });
+
+            const after = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(candidate => candidate.id === 'r-orch-2');
+
+            expect(after).toMatchObject({ status: 'succeeded', context: { used: 13_250, size: 250_000 } });
+        });
+
+        it('queues a compact item for an orchestrator that works, once, and runs it when the orchestrator has finished', async () => {
+            const { run, transport } = await connected();
+            const chatOf = async () => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(candidate => candidate.id === 'c-1')!;
+
+            expect((await run({ type: 'chat.compact', chatId: 'c-1' })).result).toMatchObject({ ok: true, data: { chatId: 'c-1', runId: 'r-orch-1' } });
+            expect((await run({ type: 'chat.compact', chatId: 'c-1' })).events).toEqual([]);
+            expect((await chatOf()).queue).toEqual([{ id: expect.any(String), mode: 'queue', command: 'compact', text: 'Compact the conversation', content: '/compact', createdAt: expect.any(Number) }]);
+
+            const [item] = (await chatOf()).queue!;
+
+            // Send now steers nothing while the orchestrator works.
+            expect((await run({ type: 'chat.sendQueued', chatId: 'c-1', itemId: item.id })).events).toEqual([]);
+
+            // Stop holds it; Send now then runs it as a compact turn.
+            await run({ type: 'run.cancel', runId: 'r-orch-1' });
+            expect((await chatOf()).queuePaused).toBe('stopped');
+            await run({ type: 'chat.sendQueued', chatId: 'c-1', itemId: item.id });
+            expect((await chatOf()).queue).toBeUndefined();
+            expect((await transport.getItems({ runId: 'r-orch-1' })).at(-1)?.body).toMatchObject({ kind: 'tool', name: 'compact', state: 'running' });
+        });
+
+        it('ends the calls a stopped orchestrator left running', async () => {
+            const { run, transport } = await connected();
+
+            expect((await transport.getItems({ runId: 'r-orch-1' })).some(item => item.body.kind === 'tool' && item.body.state === 'running')).toBe(true);
+
+            await run({ type: 'run.cancel', runId: 'r-orch-1' });
+
+            const tools = (await transport.getItems({ runId: 'r-orch-1' })).flatMap(item => (item.body.kind === 'tool' ? [item.body] : []));
+
+            expect(tools.filter(body => body.state === 'running')).toEqual([]);
+            expect(tools.find(body => body.toolCallId === 'tc-agent-2')).toMatchObject({ state: 'error', error: 'Stopped before it finished' });
         });
 
         it('leaves a run that has no reading without one', async () => {

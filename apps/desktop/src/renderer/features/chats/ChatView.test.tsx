@@ -295,3 +295,53 @@ describe('a chat that can be written to', () => {
         expect(field()).not.toBeNull();
     });
 });
+
+describe('a chat whose conversation outgrew the context window', () => {
+    const OVERFLOW = 'The conversation no longer fits the model\'s context window. Start a new chat.';
+
+    /** The second fixture chat's orchestrator failed its last turn with `failure`, and its stream ends on the error. */
+    const failed = (failure?: string) => (fixture: FixtureData) => {
+        const run = fixture.runs.find(candidate => candidate.id === 'r-orch-2')!;
+        const items = fixture.items['r-orch-2']!;
+
+        run.status = 'failed';
+        run.error = OVERFLOW;
+
+        if (failure) run.failureCode = failure;
+
+        items.push({ id: 'r-orch-2-overflow', runId: 'r-orch-2', seq: items.length + 1, at: Date.now(), body: { kind: 'error', text: OVERFLOW } });
+    };
+    const alertOf = () => [...container.querySelectorAll<HTMLElement>('[role="alert"]')].find(candidate => candidate.textContent?.includes('no longer fits'));
+
+    it('offers Compact on the failure, which compacts the chat', async () => {
+        await start(undefined, failed('context_too_long'));
+        await draw('c-2');
+
+        const compact = [...alertOf()!.querySelectorAll('button')].find(candidate => candidate.textContent === 'Compact');
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => compact!.click());
+
+        expect(command).toHaveBeenCalledWith({ type: 'chat.compact', chatId: 'c-2' });
+
+        // The compact turn starts, and the failure no longer offers it.
+        await draw('c-2');
+
+        expect(alertOf()?.querySelector('button')).toBeFalsy();
+    });
+
+    it('offers nothing for another failure, or for an agent that cannot compact', async () => {
+        await start(undefined, failed());
+        await draw('c-2');
+
+        expect(alertOf()).toBeDefined();
+        expect(alertOf()!.querySelector('button')).toBeNull();
+
+        await start((agents) => {
+            delete agents.find(agent => agent.id === 'claude')!.canCompact;
+        }, failed('context_too_long'));
+        await draw('c-2');
+
+        expect(alertOf()!.querySelector('button')).toBeNull();
+    });
+});

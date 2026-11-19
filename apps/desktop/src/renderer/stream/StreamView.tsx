@@ -5,6 +5,8 @@ import { ArrowDown } from '@clowdy/icons/14';
 import { Fragment, useMemo, useState } from 'react';
 
 import { AssistantMessage } from './AssistantMessage';
+import { COMPACT_TOOL } from './compaction';
+import { CompactionLine } from './CompactionLine';
 import { ErrorLine } from './ErrorLine';
 import { NoteLine } from './NoteLine';
 import { QuestionCard } from './QuestionCard';
@@ -35,6 +37,8 @@ export interface StreamViewProps {
     decorate?: (item: StreamItem) => ReactNode;
     /** What the text may point at in the app: a task key becomes a chip that opens the task. */
     links?: StreamLinks;
+    /** A button at the end of an error, for what fixes it: a chat whose context overflowed offers Compact on its failure. */
+    errorAction?: (item: StreamItem) => ReactNode;
 }
 
 /**
@@ -42,14 +46,15 @@ export interface StreamViewProps {
  * while it is there. A turn that is over shows what was asked and the answer, and the work between them under one
  * "Worked for" line.
  */
-export function StreamView({ items, active = false, working, onAnswer, emptyState, decorate, links = NO_LINKS }: StreamViewProps) {
+export function StreamView({ items, active = false, working, onAnswer, emptyState, decorate, links = NO_LINKS, errorAction }: StreamViewProps) {
     const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
     // What was there when the stream first showed is not news: only a message that comes later rises into place.
     const [shown] = useState(() => new Set(items.map(item => item.id)));
     const blocks = useMemo(() => foldFinishedWork(items, active), [items, active]);
     const last = items.at(-1)?.body;
-    // A message that is still arriving carries its own marker.
-    const showWorking = Boolean(working) && !(last?.kind === 'assistant' && !last.done);
+    // A message that is still arriving carries its own marker, and so does a compaction that runs (Reforma hides its pending line the same way).
+    const live = (last?.kind === 'assistant' && !last.done) || (last?.kind === 'tool' && last.name === COMPACT_TOOL && last.state === 'running');
+    const showWorking = Boolean(working) && !live;
 
     const renderItem = (item: StreamItem): ReactNode => {
         const { body } = item;
@@ -60,8 +65,10 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
             case 'assistant':
                 return <AssistantMessage text={ body.text } streaming={ !body.done } />;
             case 'tool':
-                // A call that started another agent is that agent's card; every other call is a line.
+                // A call that started another agent is that agent's card, a compaction is a quiet line of its own; every other call is a tool line.
                 if (body.name === RUN_SPAWN) return <SpawnCard call={ body } />;
+
+                if (body.name === COMPACT_TOOL) return <CompactionLine call={ body } active={ active } />;
 
                 return isSubagentTool(body.name) ? <SubagentCard call={ body } active={ active } /> : <ToolCard call={ body } />;
             case 'note':
@@ -69,7 +76,7 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
             case 'question':
                 return <QuestionCard question={ body } onAnswer={ onAnswer && (answer => onAnswer(body.questionId, answer)) } />;
             case 'error':
-                return <ErrorLine text={ body.text } />;
+                return <ErrorLine text={ body.text } action={ errorAction?.(item) } />;
         }
     };
 

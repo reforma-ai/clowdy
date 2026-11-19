@@ -1,0 +1,8 @@
+/* A quiet line of the stream, as a note is: the agent compacted its context. */
+.line {
+    padding-inline: var(--spacing-sm);
+}
+
+.failed {
+    color: var(--color-danger-text);
+}

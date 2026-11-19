@@ -670,6 +670,15 @@ export function createFixtureData(now = Date.now()): FixtureData {
         [60 * 24 * 5 - 9, { kind: 'tool', toolCallId: 'tc-o2-2', name: 'create_task', state: 'done', input: { title: 'Fleet list' }, output: { key: 'CAR-15' } }],
         [60 * 24 * 5 - 12, { kind: 'note', text: '1 executor started' }],
         [60 * 24 * 5 - 14, { kind: 'assistant', done: true, text: 'The booking page, the fleet list and the price calculation are in.' }],
+        // Compact, pressed once the work was done: the agent's call with what it saved, as Claude reports it.
+        [60 * 24 * 4 + 5, {
+            kind: 'tool',
+            toolCallId: 'tc-o2-compact',
+            name: 'compact',
+            state: 'done',
+            input: { title: 'Compact conversation' },
+            output: JSON.stringify({ trigger: 'manual', preTokens: 41_503, postTokens: 9_870, durationMs: 5_200 }),
+        }],
     ]);
 
     const docs: Record<string, string> = {

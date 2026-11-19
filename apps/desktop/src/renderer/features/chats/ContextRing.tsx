@@ -3,19 +3,20 @@ import { OverlayTriggerStateContext, Popover, PopoverTrigger } from '@clowdy/com
 import { Show } from '@clowdy/components/Show';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
-import { use, useState } from 'react';
+import { use } from 'react';
 
-import { useAgents, useRootStore } from '../../stores';
+import { useAgents } from '../../stores';
+import { canCompactChat } from './chatProvider';
 import { isRunActive } from './chatRun';
-import { perform } from './commands';
 import styles from './ContextRing.module.css';
 import { contextFill, type ContextFill } from './contextUsage';
 import { Unavailable } from './Unavailable';
+import { useCompact } from './useCompact';
 
 import type { Chat, Run } from '@clowdy/protocol';
 
-/** Why Compact is off while the orchestrator works: the agent's command is a turn of its own, which the daemon refuses to start on a busy chat. */
-const BUSY_HINT = 'Wait until the agent has finished';
+/** Why Compact is off: the person asked for it already, and it waits in the chat's queue for the agent to finish. */
+const QUEUED_HINT = 'Compact is in the queue';
 
 export interface ContextRingProps {
     /** The chat the composer writes to. The new-chat page has none, and no context to show. */
@@ -36,8 +37,6 @@ export function ContextRing({ chat, run }: ContextRingProps) {
     if (!chat || !run?.context) return null;
 
     const fill = contextFill(run.context);
-    // A chat from before it had a provider of its own takes its orchestrator's.
-    const canCompact = agents.find(agent => agent.id === (chat.engine ?? run.engine))?.canCompact === true;
 
     const label = `Context usage, ${ fill.label }`;
 
@@ -54,7 +53,7 @@ export function ContextRing({ chat, run }: ContextRingProps) {
                 </Button>
             </Tooltip>
             <Popover placement="top" spacing="none" width={ 280 } aria-label="Context usage">
-                <ContextPanel chat={ chat } fill={ fill } running={ isRunActive(run) } canCompact={ canCompact } />
+                <ContextPanel chat={ chat } fill={ fill } running={ isRunActive(run) } canCompact={ canCompactChat(chat, run, agents) } />
             </Popover>
         </PopoverTrigger>
     );
@@ -83,29 +82,17 @@ function Ring({ fill }: { fill: ContextFill }) {
 interface PanelProps {
     chat: Chat;
     fill: ContextFill;
-    /** The orchestrator works: Compact would be refused. */
+    /** The orchestrator has not finished: Compact joins the chat's queue and runs once it has. */
     running: boolean;
     canCompact: boolean;
 }
 
 /** The popover: one total (no split into instructions, tools and conversation) and the way to shrink it. */
 function ContextPanel({ chat, fill, running, canCompact }: PanelProps) {
-    const root = useRootStore();
     const overlay = use(OverlayTriggerStateContext);
-    const [isPending, setIsPending] = useState(false);
-
-    // The daemon's refusal (busy, unread results from the executors) is the usual toast; the popover closes either way, the toast says what happened.
-    const compact = async () => {
-        setIsPending(true);
-
-        try {
-            await perform(root, { type: 'chat.compact', chatId: chat.id });
-        }
-        finally {
-            setIsPending(false);
-            overlay?.close();
-        }
-    };
+    const { compact, isPending } = useCompact(chat.id);
+    // Asked for while the agent worked: it waits in the queue, and asking again would change nothing.
+    const queued = chat.queue?.some(item => item.command === 'compact') === true;
 
     return (
         <div className={ styles.panel }>
@@ -123,12 +110,27 @@ function ContextPanel({ chat, fill, running, canCompact }: PanelProps) {
             </div>
 
             <Show when={ canCompact }>
-                { /* The hint opens below the button: above it would cover the readout. */ }
-                <Unavailable label="Compact" hint={ running ? BUSY_HINT : undefined } placement="bottom">
-                    <Button variant="bordered" color="secondary" size="sm" fullWidth isDisabled={ running } isPending={ isPending } onPress={ () => void compact() }>
-                        Compact
-                    </Button>
-                </Unavailable>
+                <div className={ styles.compact }>
+                    { /* The hint opens below the button: above it would cover the readout. */ }
+                    <Unavailable label="Compact" hint={ queued ? QUEUED_HINT : undefined } placement="bottom">
+                        { /* The daemon's refusal (unread results from the executors) is the usual toast; the popover closes either way. */ }
+                        <Button
+                            variant="bordered"
+                            color="secondary"
+                            size="sm"
+                            fullWidth
+                            isDisabled={ queued }
+                            isPending={ isPending }
+                            onPress={ () => void compact().finally(() => overlay?.close()) }
+                        >
+                            Compact
+                        </Button>
+                    </Unavailable>
+
+                    <Show when={ running && !queued }>
+                        <Text variant="xs" color="secondary" align="center">Waits in the queue until the agent finishes.</Text>
+                    </Show>
+                </div>
             </Show>
         </div>
     );

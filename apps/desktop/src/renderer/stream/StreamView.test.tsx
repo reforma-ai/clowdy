@@ -53,6 +53,39 @@ describe('StreamView', () => {
         expect(container.textContent).toContain('src/form.tsx');
     });
 
+    it('draws a compaction as its own line, not as a tool line, after the answer it followed', async () => {
+        const compact = item(4, { kind: 'tool', toolCallId: 'k1', name: 'compact', input: { title: 'Compact conversation' }, state: 'done', output: JSON.stringify({ preTokens: 22_062, postTokens: 6_111 }) });
+
+        await act(async () => root.render(<StreamView items={ [...items, compact] } active={ false } />));
+
+        expect(container.textContent).toContain('Context compacted · 22.1K → 6.1K');
+        // A tool line would read the humanized name with the title as its chip.
+        expect(container.textContent).not.toContain('Compact conversation');
+    });
+
+    it('ends on the compaction alone while it runs, without the working line under it', async () => {
+        const compacting = item(4, { kind: 'tool', toolCallId: 'k1', name: 'compact', input: { title: 'Compact conversation' }, state: 'running' });
+
+        await act(async () => root.render(<StreamView items={ [...items, compacting] } active working />));
+
+        expect(container.textContent).toContain('Compacting context');
+        expect(container.textContent).not.toContain('Working…');
+
+        await act(async () => root.render(<StreamView items={ [...items, { ...compacting, body: { ...compacting.body, state: 'done' } as StreamItemBody }] } active working />));
+
+        expect(container.textContent).toContain('Working…');
+    });
+
+    it('puts the action it is given at the end of an error', async () => {
+        const failed = [...items, item(4, { kind: 'error', text: 'The conversation no longer fits the model\'s context window. Start a new chat.' })];
+
+        await act(async () => root.render(<StreamView items={ failed } errorAction={ entry => (entry.id === 'i-4' ? <button type="button">Compact</button> : null) } />));
+
+        const alert = container.querySelector('[role="alert"]') ?? [...container.querySelectorAll('div')].find(div => div.textContent?.startsWith('The conversation no longer fits'));
+
+        expect(alert?.textContent).toContain('Compact');
+    });
+
     it('shows all of it while the run is going', async () => {
         await draw({ active: true });
 

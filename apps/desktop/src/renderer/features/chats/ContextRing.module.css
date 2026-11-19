@@ -67,6 +67,13 @@
     gap: var(--spacing-md);
 }
 
+/* Compact, and under it why it waits while the agent works. */
+.compact {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
 .bar {
     height: var(--spacing-6);
     border-radius: var(--radius-full);

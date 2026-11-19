@@ -1,5 +1,6 @@
 import { basename } from '@clowdy/lib';
 
+import { COMPACT_TOOL } from './compaction';
 import { describeTool, firstString, isRecord } from './toolView';
 
 import type { Run, StreamItem, StreamItemBody } from '@clowdy/protocol';
@@ -51,6 +52,8 @@ const ACTIVITY_VERBS: Record<string, string> = {
 
 /** One tool call as a line of activity: `Reading form.tsx`, `Searching useBookingPrice`, `Running bun test`, `Using Task get`. */
 export function toolActivity(name: string, input: unknown): string {
+    if (name === COMPACT_TOOL) return 'Compacting context';
+
     const view = describeTool(name, input);
     const target = view.target && (view.icon === 'file' || view.icon === 'code') ? basename(view.target) : view.target;
 

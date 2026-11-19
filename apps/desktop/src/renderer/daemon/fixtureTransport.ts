@@ -75,6 +75,11 @@ const SIGN_IN_DONE_MS = 4000;
 /** How long a turn the fixture starts lasts, and how long its agent takes to take a steer. */
 const TURN_MS = 1400;
 const STEER_MS = 800;
+/** How long the fixture's agent takes to compact its context, and what the queue shows for a Compact pressed while it works. */
+const COMPACT_MS = 1200;
+const COMPACT_TEXT = 'Compact the conversation';
+
+const isCompact = (item: QueuedMessage) => item.command === 'compact';
 const REPLY = 'Got it. I will split this into tasks, start the independent ones in parallel, and report back here.';
 
 /** Puts a message at the end of its own kind (or at `index` in it), the steers before the next turns, as the daemon does. */
@@ -639,14 +644,23 @@ export class FixtureTransport implements Transport {
                     return fail('invalid', `${ data.agents.find(agent => agent.id === run.engine)?.name ?? run.engine } has no command to compact its conversation`);
                 }
 
-                if (!isTerminalRunStatus(run.status)) return fail('conflict', 'The orchestrator is working on this chat. Compact it when it has finished');
+                // While the orchestrator works, Compact waits in the queue until it has finished; asking again changes nothing.
+                if (!isTerminalRunStatus(run.status)) {
+                    if (!chat.queue?.some(isCompact)) {
+                        chat.queue = placeQueued(chat.queue ?? [], { id: this.#id('q'), mode: 'queue', command: 'compact', text: COMPACT_TEXT, content: '/compact', createdAt: Date.now() });
+                        this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+                    }
 
-                this.#appendItem(run, { kind: 'note', text: 'Compacting the conversation' });
+                    return ok({ chatId: chat.id, runId: run.id });
+                }
 
-                // The agent reports a lower reading once it has compacted.
-                if (run.context) run.context = { ...run.context, used: Math.round(run.context.used / 2) };
+                // A compact item that waited in a held queue is this same request.
+                if (chat.queue?.some(isCompact)) {
+                    this.#setQueue(chat, chat.queue.filter(item => !isCompact(item)));
+                    this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+                }
 
-                this.#saveRun(run);
+                this.#startCompact(chat, run);
 
                 return ok({ chatId: chat.id, runId: run.id });
             }
@@ -942,23 +956,62 @@ export class FixtureTransport implements Transport {
         });
     }
 
-    /** The orchestrator rests: steers it did not take go first as next turns, and a queue that is not paused gives it its head. */
+    /**
+     * A compact turn: the agent's compaction call, running, then done with what it saved and a lower reading (Claude's report), and the end of the turn,
+     * after which the queue gives the next one. No bubble: the person wrote nothing.
+     */
+    #startCompact(chat: Chat, run: Run): void {
+        const turn = (this.#turns.get(run.id) ?? 0) + 1;
+        const before = run.context?.used;
+        const toolCallId = this.#id('tc-compact');
+        const input = { title: 'Compact conversation' };
+
+        this.#turns.set(run.id, turn);
+        run.status = 'running';
+        run.statusReason = undefined;
+        delete run.finishedAt;
+        this.#saveRun(run);
+
+        const item = this.#appendItem(run, { kind: 'tool', toolCallId, name: 'compact', input, state: 'running' });
+
+        this.#later(COMPACT_MS, () => {
+            if (this.#turns.get(run.id) !== turn || run.status !== 'running') return;
+
+            const after = before === undefined ? undefined : Math.round(before / 4);
+            const output = JSON.stringify({ trigger: 'manual', ...(before !== undefined && { preTokens: before, postTokens: after }), durationMs: COMPACT_MS });
+
+            this.#saveItem(run, { ...item, body: { kind: 'tool', toolCallId, name: 'compact', input, state: 'done', output } });
+
+            if (run.context && after !== undefined) run.context = { ...run.context, used: after };
+
+            run.status = 'succeeded';
+            run.finishedAt = Date.now();
+            this.#saveRun(run);
+            this.#settleQueue(chat);
+        });
+    }
+
+    /**
+     * The orchestrator rests: steers it did not take go first as next turns, and a queue that is not paused gives it its head. A compact item waits for
+     * an orchestrator that has finished, and the messages behind it go first meanwhile.
+     */
     #settleQueue(chat: Chat): void {
         const run = this.#data.runs.find(candidate => candidate.id === chat.orchestratorRunId);
         const queue = (chat.queue ?? []).map(item => (item.mode === 'steer' ? { ...item, mode: 'queue' as const } : item));
-        const [head] = queue;
 
-        if (!run || isBusyRunStatus(run.status) || !head) return;
+        if (!run || isBusyRunStatus(run.status) || queue.length === 0) return;
 
         chat.queue = queue;
 
-        if (chat.queuePaused) {
+        const next = chat.queuePaused ? undefined : queue.find(item => !isCompact(item) || isTerminalRunStatus(run.status));
+
+        if (!next) {
             this.#emit(chat.projectId, { type: 'chat.upserted', chat });
 
             return;
         }
 
-        this.#dispatch(chat, run, head);
+        this.#dispatch(chat, run, next);
     }
 
     /** Takes a message out of the queue and makes it the orchestrator's next turn; sending a message from the queue lets a paused one flow again. */
@@ -966,7 +1019,9 @@ export class FixtureTransport implements Transport {
         this.#setQueue(chat, (chat.queue ?? []).filter(entry => entry.id !== item.id));
         delete chat.queuePaused;
         this.#emit(chat.projectId, { type: 'chat.upserted', chat });
-        this.#startTurn(chat, run, { kind: 'user', text: item.text, ...(item.attachments && { attachments: item.attachments }) });
+
+        if (isCompact(item)) this.#startCompact(chat, run);
+        else this.#startTurn(chat, run, { kind: 'user', text: item.text, ...(item.attachments && { attachments: item.attachments }) });
     }
 
     /** The agent took a steer: it leaves the queue, and its bubble goes where the agent got it. */
@@ -1025,6 +1080,17 @@ export class FixtureTransport implements Transport {
         const run = this.#data.runs.find(candidate => candidate.id === chat?.orchestratorRunId);
 
         if (!chat || !item || !run) return fail('not_found', `Queued message ${ itemId } does not exist`);
+
+        // A compact item steers nothing: it keeps its place while the orchestrator works, and goes only once it has finished.
+        if (isCompact(item)) {
+            if (isBusyRunStatus(run.status)) return ok({ chatId: chat.id, runId: run.id });
+
+            if (!isTerminalRunStatus(run.status)) return fail('conflict', 'The orchestrator is waiting for its child runs. The chat is compacted once they have finished');
+
+            this.#dispatch(chat, run, item);
+
+            return ok({ chatId: chat.id, runId: run.id });
+        }
 
         if (isBusyRunStatus(run.status)) {
             this.#setQueue(chat, placeQueued(chat.queue ?? [], { ...item, mode: 'steer' }));
@@ -1116,6 +1182,11 @@ export class FixtureTransport implements Transport {
             run.statusReason = undefined;
             run.finishedAt = Date.now();
             this.#saveRun(run);
+
+            // A call it left running ends with it, as the daemon ends them.
+            for (const item of data.items[run.id] ?? []) {
+                if (item.body.kind === 'tool' && item.body.state === 'running') this.#saveItem(run, { ...item, body: { ...item.body, state: 'error', error: 'Stopped before it finished' } });
+            }
 
             // Stop holds the queue of the chat whose orchestrator it stopped.
             const chat = data.chats.find(candidate => candidate.orchestratorRunId === run.id);

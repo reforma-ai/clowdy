@@ -5,12 +5,13 @@ import { Scrollable } from '@clowdy/components/Scrollable';
 import { Show } from '@clowdy/components/Show';
 import { SortableList } from '@clowdy/components/SortableList';
 import { Text } from '@clowdy/components/Text';
-import { Clip, EditPen, Trash } from '@clowdy/icons/14';
+import { Clip, Collapse, EditPen, Trash } from '@clowdy/icons/14';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 
 import { useRootStore } from '../../stores';
 import { perform } from './commands';
 import styles from './ComposerQueue.module.css';
+import { Unavailable } from './Unavailable';
 
 import type { Chat, QueuedMessage, QueuePause } from '@clowdy/protocol';
 
@@ -39,6 +40,8 @@ export interface ComposerQueueProps {
     chat: Chat;
     /** The orchestrator works, so Send now steers its turn; at rest Send now sends the message as the next turn. */
     busy: boolean;
+    /** The orchestrator has not finished (it works, or waits for its executors): a compact item cannot go yet. */
+    running: boolean;
     /** Edit: the message has left the queue, and its words and files go back into the message box. */
     onEdit: (item: QueuedMessage) => void;
 }
@@ -46,9 +49,11 @@ export interface ComposerQueueProps {
 /**
  * What waits for the orchestrator (`Chat.queue`), inside the composer above the text, as Reforma's queue: two lines of each message and its files, and
  * per message Send now, Edit and Remove (the head shows them at rest, the others on hover or focus). A steer says `Steering…` until the agent takes it.
- * A drag moves a message among those of its own kind. The queue is the daemon's: every change goes through it and comes back with the chat.
+ * A compact item (Compact pressed while the agent worked) reads `Compact the conversation`, has nothing to edit, and its Send now waits until the
+ * orchestrator has finished. A drag moves a message among those of its own kind. The queue is the daemon's: every change goes through it and comes
+ * back with the chat.
  */
-export function ComposerQueue({ chat, busy, onEdit }: ComposerQueueProps) {
+export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProps) {
     const root = useRootStore();
     const [dropped, setDropped] = useState<DroppedOrder>();
     // Send now presses still with the daemon: their rows read `Steering…` meanwhile.
@@ -114,19 +119,30 @@ export function ComposerQueue({ chat, busy, onEdit }: ComposerQueueProps) {
                 canDrop={ ({ items: [moving], target }) => moving !== undefined && (!target || target.mode === moving.mode) }
                 onChange={ (next, { item }) => void reorder(next, item) }
             >
-                { (item, { isFirst, isDragging }) => (
-                    <QueuedRow
-                        item={ item }
-                        isFirst={ isFirst }
-                        isDragging={ isDragging }
-                        steering={ item.mode === 'steer' || sending.has(item.id) }
-                        busy={ busy }
-                        draggedRef={ draggedRef }
-                        onSendNow={ () => void sendNow(item) }
-                        onEdit={ () => void edit(item) }
-                        onRemove={ () => remove(item) }
-                    />
-                ) }
+                { (item, { isFirst, isDragging }) => (item.command === 'compact'
+                    ? (
+                        <CompactRow
+                            label={ queuedLabel(item) }
+                            isFirst={ isFirst }
+                            sending={ sending.has(item.id) }
+                            running={ running }
+                            onSendNow={ () => void sendNow(item) }
+                            onRemove={ () => remove(item) }
+                        />
+                    )
+                    : (
+                        <QueuedRow
+                            item={ item }
+                            isFirst={ isFirst }
+                            isDragging={ isDragging }
+                            steering={ item.mode === 'steer' || sending.has(item.id) }
+                            busy={ busy }
+                            draggedRef={ draggedRef }
+                            onSendNow={ () => void sendNow(item) }
+                            onEdit={ () => void edit(item) }
+                            onRemove={ () => remove(item) }
+                        />
+                    )) }
             </SortableList>
         </Scrollable>
     );
@@ -202,6 +218,41 @@ function QueuedRow({ item, isFirst, isDragging, steering, busy, draggedRef, onSe
                 <Button iconOnly size="xs" variant="filling" color="secondary" aria-label="Edit" tooltip="Edit" onPress={ onEdit }>
                     <EditPen />
                 </Button>
+                <Button iconOnly size="xs" variant="filling" color="secondary" aria-label="Remove" tooltip="Remove" onPress={ onRemove }>
+                    <Trash />
+                </Button>
+            </Box>
+        </div>
+    );
+}
+
+interface CompactRowProps {
+    label: string;
+    isFirst: boolean;
+    /** Its Send now is with the daemon. */
+    sending: boolean;
+    running: boolean;
+    onSendNow: () => void;
+    onRemove: () => void;
+}
+
+/** A compact item: what it does, Send now once the orchestrator has finished (it cannot steer a turn), and Remove; there are no words to edit. */
+function CompactRow({ label, isFirst, sending, running, onSendNow, onRemove }: CompactRowProps) {
+    return (
+        <div className={ styles.item } data-first={ isFirst || undefined }>
+            <div className={ styles.preview } data-command>
+                <span className={ styles.command }>
+                    <Collapse aria-hidden />
+                    <span className={ styles.text }>{ label }</span>
+                </span>
+            </div>
+
+            <Box direction="row" className={ styles.actions }>
+                <Unavailable label="Send now" hint={ running ? 'Runs when the agent finishes' : undefined }>
+                    <Button size="xs" variant="filling" color="secondary" isDisabled={ running } isPending={ sending } onPress={ onSendNow }>
+                        Send now
+                    </Button>
+                </Unavailable>
                 <Button iconOnly size="xs" variant="filling" color="secondary" aria-label="Remove" tooltip="Remove" onPress={ onRemove }>
                     <Trash />
                 </Button>

@@ -62,6 +62,24 @@
     -webkit-box-orient: vertical;
 }
 
+/* A compact item is not a message: nothing to press, and its mark before the words. */
+.preview[data-command] {
+    cursor: default;
+}
+
+.command {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
+}
+
+.command :global(svg) {
+    display: block;
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
 .files {
     display: flex;
     align-items: center;

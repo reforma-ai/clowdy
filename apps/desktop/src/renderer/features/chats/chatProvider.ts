@@ -22,6 +22,13 @@ export function chatProvider(chat: Chat, run: Run | undefined): EngineId | undef
     return chat.engine ?? run?.engine;
 }
 
+/** Whether the chat's agent has a command that compacts its conversation (`AgentInfo.canCompact`), which is what Compact is offered for. */
+export function canCompactChat(chat: Chat, run: Run | undefined, agents: readonly AgentInfo[]): boolean {
+    const engine = chatProvider(chat, run);
+
+    return engine !== undefined && agents.some(agent => agent.id === engine && agent.canCompact === true);
+}
+
 /**
  * Whether a message can be sent to the chat now, and when not why. The provider is fixed by the first message, so only a chat that
  * has an orchestrator can be stuck on one that cannot run; before that the picker may still change it. Whatever is not known yet

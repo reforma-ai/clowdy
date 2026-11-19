@@ -211,7 +211,7 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
 
     return (
         <div ref={ box } className={ styles.surface }>
-            { chat && <ComposerQueue chat={ chat } busy={ busy } onEdit={ editQueued } /> }
+            { chat && <ComposerQueue chat={ chat } busy={ busy } running={ running } onEdit={ editQueued } /> }
 
             { /* The field is the keyboard way in; this only gives the mouse the whole card. */ }
             <div className={ styles.main } onMouseDown={ focusField }>

@@ -10,7 +10,7 @@ import { Composer } from './Composer';
 import { newChatDraftKey, saveDraft } from './composerDrafts';
 import { modelStore, type ModelStoreOptions } from './modelTestKit';
 
-import type { Chat, CommandResult, Run } from '@clowdy/protocol';
+import type { Chat, CommandResult, QueuedMessage, Run } from '@clowdy/protocol';
 import type { CommandInput } from '../../daemon/transport';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -25,7 +25,7 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
  */
 
 const accepted: CommandResult = { ok: true, requestId: 'request-1', data: {} };
-const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'conflict', message: 'The orchestrator is working on this chat. Compact it when it has finished' } };
+const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'conflict', message: 'Some child runs finished that the orchestrator has not read yet. Send it a message first, then compact the chat' } };
 
 const transport = {
     getDocsTree: vi.fn(async () => []),
@@ -393,23 +393,46 @@ describe('Compact', () => {
     });
 
     describe('while the orchestrator works', () => {
-        it.each(ACTIVE_RUN_STATUSES)('is off with its reason when the run is %s', async (status) => {
-            await mount({ chat: chatOn(), run: runOf({ status }) });
+        const caption = 'Waits in the queue until the agent finishes.';
+
+        it.each(ACTIVE_RUN_STATUSES)('is on when the run is %s, and says it waits in the queue until the agent finishes', async (status) => {
+            const chat = chatOn();
+
+            await mount({ chat, run: runOf({ status }) });
             await openRing();
 
-            // The disabled button sits under a stand-in that can be focused, and so can say why.
-            expect(stand()!.getAttribute('aria-label')).toBe('Compact');
-            expect(compactButton()!.disabled).toBe(true);
+            expect(stand()).toBeNull();
+            expect(compactButton()!.disabled).toBe(false);
+            expect(dialog()!.textContent).toContain(caption);
 
             await press(compactButton());
             await settle();
 
-            expect(sent).toEqual([]);
+            expect(sent).toEqual([{ type: 'chat.compact', chatId: chat.id }]);
+            expect(dialog()).toBeNull();
         });
 
-        it('says "Wait until the agent has finished" when the stand-in has the focus', async () => {
-            await mount({ chat: chatOn(), run: runOf({ status: 'running' }) });
+        it('says nothing of the queue once the orchestrator has finished', async () => {
+            const { update } = await mount({ chat: chatOn(), run: runOf({ status: 'running' }) });
             await openRing();
+
+            expect(dialog()!.textContent).toContain(caption);
+
+            await update({ run: runOf({ status: 'succeeded' }) });
+
+            expect(dialog()!.textContent).not.toContain(caption);
+            expect(compactButton()!.disabled).toBe(false);
+        });
+
+        it('is off while a compact item waits in the queue, and says so when the stand-in has the focus', async () => {
+            const queued: QueuedMessage = { id: 'q-1', mode: 'queue', command: 'compact', text: 'Compact the conversation', content: '/compact', createdAt: 0 };
+
+            await mount({ chat: chatOn({ queue: [queued] }), run: runOf({ status: 'running' }) });
+            await openRing();
+
+            expect(stand()!.getAttribute('aria-label')).toBe('Compact');
+            expect(compactButton()!.disabled).toBe(true);
+            expect(dialog()!.textContent).not.toContain(caption);
 
             await act(async () => {
                 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
@@ -417,19 +440,12 @@ describe('Compact', () => {
             });
             await settle();
 
-            expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Wait until the agent has finished');
-        });
+            expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Compact is in the queue');
 
-        it('is on again once the orchestrator has finished, with the popover still open', async () => {
-            const { update } = await mount({ chat: chatOn(), run: runOf({ status: 'running' }) });
-            await openRing();
+            await press(compactButton());
+            await settle();
 
-            expect(compactButton()!.disabled).toBe(true);
-
-            await update({ run: runOf({ status: 'succeeded' }) });
-
-            expect(stand()).toBeNull();
-            expect(compactButton()!.disabled).toBe(false);
+            expect(sent).toEqual([]);
         });
 
         it('still has the readout', async () => {

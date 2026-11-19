@@ -49,6 +49,7 @@ describe('a working agent\'s activity', () => {
         expect(toolActivity('Bash', { command: 'bun run typecheck' })).toBe('Running bun run typecheck');
         expect(toolActivity('Bash', {})).toBe('Running a command');
         expect(toolActivity('task_get', { taskId: 'CAR-1' })).toBe('Using Task get');
+        expect(toolActivity('compact', { title: 'Compact conversation' })).toBe('Compacting context');
     });
 
     it('says the agent writes or thinks without printing its words, and waits on an open question', () => {

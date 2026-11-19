@@ -130,4 +130,48 @@ describe('the queue in the composer', () => {
 
         expect(fieldText()).toBe('Queued words\n\ntyped since');
     });
+
+    describe('a compact item', () => {
+        const compact = queued('q-c', 'Compact the conversation', { command: 'compact', content: '/compact' });
+        const compactRow = () => [...container.querySelectorAll<HTMLElement>('[data-first], [class*="item"]')].find(row => row.textContent?.startsWith('Compact the conversation'))!;
+        const sendNow = () => buttonIn(compactRow(), 'Send now')!;
+
+        it('reads "Compact the conversation", with nothing to edit, and can be removed', async () => {
+            const chat = chatWith([compact, queued('q-1', 'Then this')]);
+
+            await mount(chat);
+
+            expect(compactRow()).toBeDefined();
+            expect(container.querySelector('[aria-label="Edit: Compact the conversation"]')).toBeNull();
+            expect(buttonIn(compactRow(), 'Edit')).toBeUndefined();
+            expect(compactRow().textContent).not.toContain('Steering…');
+
+            await act(async () => buttonIn(compactRow(), 'Remove')!.click());
+
+            expect(sent).toEqual([{ type: 'chat.removeQueued', chatId: chat.id, itemId: 'q-c' }]);
+        });
+
+        it.each(['running', 'waiting_children'] as const)('cannot be sent now while the orchestrator is %s, and says when it runs', async (status) => {
+            await mount(chatWith([compact]), status);
+
+            expect(sendNow().disabled).toBe(true);
+            expect(compactRow().querySelector('[role="button"][aria-disabled]')?.getAttribute('aria-label')).toBe('Send now');
+
+            await act(async () => sendNow().click());
+
+            expect(sent).toEqual([]);
+        });
+
+        it('is sent now from a held queue once the orchestrator has finished', async () => {
+            const chat = chatWith([compact], { queuePaused: 'stopped' });
+
+            await mount(chat, 'cancelled');
+
+            expect(sendNow().disabled).toBe(false);
+
+            await act(async () => sendNow().click());
+
+            expect(sent).toEqual([{ type: 'chat.sendQueued', chatId: chat.id, itemId: 'q-c' }]);
+        });
+    });
 });
