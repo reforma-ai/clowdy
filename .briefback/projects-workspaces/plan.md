@@ -80,7 +80,7 @@
 
 **Done when:** every agent in the catalog has a recorded answer, and the person has decided what happens with agents that cannot reach additional folders.
 **Verify:** the research file covers every `id` in `KNOWN_AGENTS`; the decision is in **Decisions**.
-**Commits:** None yet.
+**Commits:** `docs: research how each agent takes the folders of a project beyond its working directory` (PR #3).
 
 ## Stage 2 — Contract and daemon: projects made of folders
 
@@ -122,7 +122,7 @@
 
 **Done when:** a daemon accepts `project.add` with several folders (git or not), returns the existing project for the same set, refuses duplicates, nesting and a new main folder during a run, and reports info, files and skills for every folder.
 **Verify:** `bun run --cwd apps/daemon test`, `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`
-**Commits:** None yet.
+**Commits:** `feat(daemon): let a project be a list of folders, any folder, added with one project.add` (PR #3).
 
 ## Stage 3 — Agents see every folder
 
@@ -153,7 +153,7 @@
 
 **Done when:** a run in a project of three folders starts in the main folder, an agent that advertises the capability receives the other two in `additionalDirectories`, and the prompt names all three.
 **Verify:** `bun run --cwd apps/daemon test`, `bun run typecheck`, `bun run lint`
-**Commits:** None yet. Reviewed: one-folder projects are told as `folder at <path>`; `systemPrompt` marks the folder the run works in (`you work here`) apart from the main one; `clowdy:docs` keeps one `index.md` per docs folder.
+**Commits:** `feat(daemon): give agents every folder of a project through ACP additionalDirectories and the prompt` (PR #3). Reviewed: one-folder projects are told as `folder at <path>`; `systemPrompt` marks the folder the run works in (`you work here`) apart from the main one; `clowdy:docs` keeps one `index.md` per docs folder.
 
 ## Stage 4 — Docs in every folder
 
@@ -188,7 +188,7 @@
 
 **Done when:** in a project of two folders the tree shows both, a document created under the second lands in its `.clowdy/docs` (made at that moment), and a project of one folder shows the tree as before.
 **Verify:** `bun run --cwd apps/daemon test`, `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`, a screenshot of the docs tree in fixtures mode with two folders
-**Commits:** None yet. Reviewed: a `.clowdy` or docs folder that links out of its folder is refused before anything is made; a non-main folder whose documents cannot be read is left out of the tree; the folder rows' New document button is reachable by keyboard; `ProjectUi.docFolderId` (`?docFolder=`) remembers the open document's folder. The fixtures screenshot of a two-folder tree was not taken.
+**Commits:** `feat: keep documents in every folder of a project` (PR #3). Reviewed: a `.clowdy` or docs folder that links out of its folder is refused before anything is made; a non-main folder whose documents cannot be read is left out of the tree; the folder rows' New document button is reachable by keyboard; `ProjectUi.docFolderId` (`?docFolder=`) remembers the open document's folder. The fixtures screenshot of a two-folder tree was not taken.
 
 ## Stage 5 — Add project
 
@@ -219,7 +219,7 @@
 
 **Done when:** from the select a person adds a project of two folders picked in one dialog, reorders them, and lands in it; adding the same two folders again opens it with the toast.
 **Verify:** `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`, screenshots of the form in fixtures mode (empty and with folders)
-**Commits:** None yet. Reviewed: removing a folder moves focus to its neighbour; a typed drive root keeps its separator; dialog tests turn off the Modal's animation instead of mocking `motion`. Screenshots: the form empty, with two folders, and after a real drag in Electron.
+**Commits:** `feat(desktop): add a project of several folders with one Add project form` (PR #3). Reviewed: removing a folder moves focus to its neighbour; a typed drive root keeps its separator; dialog tests turn off the Modal's animation instead of mocking `motion`. Screenshots: the form empty, with two folders, and after a real drag in Electron.
 
 ## Stage 6 — A project's folders in Settings, the select and `@`
 
@@ -248,4 +248,4 @@
 
 **Done when:** on a project's page a person adds a second folder, drags it to the top after confirming, and `@` in a chat of that project suggests files from both folders.
 **Verify:** `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`, screenshots in fixtures mode of the Folders block and of `@` suggestions from two folders
-**Commits:** None yet. Reviewed: the new-main dialog applies its change to the folders the project has when the person confirms, so a folder added meanwhile is kept; the Danger zone copy speaks of folders; the guard that keeps the main row in place while agents work is tested. The rows of Settings > Projects still show only the main folder's path.
+**Commits:** `feat(desktop): manage the folders of a project in Settings and mention files of every folder` (PR #3). Reviewed: the new-main dialog applies its change to the folders the project has when the person confirms, so a folder added meanwhile is kept; the Danger zone copy speaks of folders; the guard that keeps the main row in place while agents work is tested. The rows of Settings > Projects still show only the main folder's path.
