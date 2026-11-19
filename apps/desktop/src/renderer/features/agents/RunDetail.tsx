@@ -132,7 +132,7 @@ function RunStream({ run }: { run: Run }) {
         <StreamView
             items={ stream.items }
             active={ !isTerminalRunStatus(run.status) }
-            working={ run.status === 'running' || (run.status === 'waiting_children' && 'Waiting for sub-agents…') }
+            working={ run.status === 'running' || (run.status === 'waiting_children' && 'Waiting for sub-agents…') || (run.status === 'waiting_background' && 'Waiting for background work…') }
             onAnswer={ run.status === 'waiting_user' ? answer : undefined }
             emptyState={ <Text color="secondary">This run has not written anything yet.</Text> }
         />

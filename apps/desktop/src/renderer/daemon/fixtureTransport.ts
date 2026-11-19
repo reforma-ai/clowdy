@@ -1003,11 +1003,26 @@ export class FixtureTransport implements Transport {
         this.#later(TURN_MS, () => {
             if (this.#turns.get(run.id) !== turn || run.status !== 'running') return;
 
+            this.#endTurn(chat, run);
+        });
+    }
+
+    /**
+     * The turn is over. A session that has background work open stays alive and waits for it, as the daemon's driver does, so a message
+     * sent meanwhile reaches the same orchestrator; otherwise the run is done. The queue gives the next message in both cases.
+     */
+    #endTurn(chat: Chat, run: Run): void {
+        if ((run.background?.length ?? 0) > 0) {
+            run.status = 'waiting_background';
+            run.statusReason = 'Waiting for background work';
+        }
+        else {
             run.status = 'succeeded';
             run.finishedAt = Date.now();
-            this.#saveRun(run);
-            this.#settleQueue(chat);
-        });
+        }
+
+        this.#saveRun(run);
+        this.#settleQueue(chat);
     }
 
     /**
@@ -1038,10 +1053,7 @@ export class FixtureTransport implements Transport {
 
             if (run.context && after !== undefined) run.context = { ...run.context, used: after };
 
-            run.status = 'succeeded';
-            run.finishedAt = Date.now();
-            this.#saveRun(run);
-            this.#settleQueue(chat);
+            this.#endTurn(chat, run);
         });
     }
 
@@ -1234,6 +1246,8 @@ export class FixtureTransport implements Transport {
         for (const run of data.runs.filter(candidate => cancelled.has(candidate.id) && !isTerminalRunStatus(candidate.status))) {
             run.status = 'cancelled';
             run.statusReason = undefined;
+            // A run that ended has nothing open in the background: stopping it ends that work too.
+            delete run.background;
             run.finishedAt = Date.now();
             this.#saveRun(run);
 

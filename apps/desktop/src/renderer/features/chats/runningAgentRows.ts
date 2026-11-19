@@ -1,6 +1,8 @@
+import { isTerminalRunStatus } from '@clowdy/protocol';
+
 import { subagentLabel } from '../../stream/subagents';
 
-import type { Run, RunId } from '@clowdy/protocol';
+import type { BackgroundItem, Run, RunId } from '@clowdy/protocol';
 
 /** The rows the strip above the message box lists at most; the rest are counted on one line. */
 export const MAX_AGENT_ROWS = 5;
@@ -15,6 +17,19 @@ export function runningAgents(runs: Iterable<Run>, orchestratorRunId: RunId | un
     return [...runs]
         .filter(run => run.rootRunId === orchestratorRunId && run.id !== orchestratorRunId && (run.status === 'running' || run.status === 'waiting_user'))
         .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+}
+
+/**
+ * What the orchestrator has open in the background (a command, a sub-agent, a workflow its session still waits for). The daemon clears the list
+ * once the run is over; a run that ended never counts here, whatever a stale snapshot says.
+ */
+export function openBackground(run: Run | undefined): BackgroundItem[] {
+    return run === undefined || isTerminalRunStatus(run.status) ? [] : run.background ?? [];
+}
+
+/** The words of the background row: `Background task running`, `2 background tasks running`. Items of every kind are tasks to the person. */
+export function backgroundRowText(count: number): string {
+    return count === 1 ? 'Background task running' : `${ count } background tasks running`;
 }
 
 /** How a row names its agent: a spawned run by its own name (`Executor 07`), a native one by its type (`Explore agent`). */

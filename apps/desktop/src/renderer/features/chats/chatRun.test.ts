@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isRunActive, liveLine } from './chatRun';
+import { isRunActive, isRunBusy, liveLine } from './chatRun';
 
 import type { Run, RunStatus } from '@clowdy/protocol';
 
@@ -18,7 +18,7 @@ const run = (status: RunStatus): Run => ({
 
 describe('isRunActive', () => {
     it('is true for every status that has not ended', () => {
-        for (const status of ['queued', 'running', 'waiting_children', 'waiting_user', 'blocked'] as const) {
+        for (const status of ['queued', 'running', 'waiting_children', 'waiting_background', 'waiting_user', 'blocked'] as const) {
             expect(isRunActive(run(status)), status).toBe(true);
         }
     });
@@ -32,11 +32,28 @@ describe('isRunActive', () => {
     });
 });
 
+describe('isRunBusy', () => {
+    it('is true while a message to the orchestrator waits for it', () => {
+        for (const status of ['queued', 'running', 'waiting_user', 'blocked'] as const) {
+            expect(isRunBusy(run(status)), status).toBe(true);
+        }
+    });
+
+    it('is false while it only waits for its executors or for background work, which take a message at once, and once it has ended', () => {
+        for (const status of ['waiting_children', 'waiting_background', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
+            expect(isRunBusy(run(status)), status).toBe(false);
+        }
+
+        expect(isRunBusy(undefined)).toBe(false);
+    });
+});
+
 describe('liveLine', () => {
     it('shows the default line while working and names what a waiting or queued run waits for', () => {
         expect(liveLine('running')).toBe(true);
         expect(liveLine('queued')).toMatch(/free slot/);
         expect(liveLine('waiting_children')).toMatch(/executors/);
+        expect(liveLine('waiting_background')).toBe('Waiting for background work…');
     });
 
     it('shows no line when the run waits for the person (its question is in the stream), is blocked, or has ended', () => {
