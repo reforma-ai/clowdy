@@ -18,6 +18,15 @@
     margin-inline: calc(var(--spacing-md) * -1);
 }
 
+.searchHint {
+    pointer-events: none;
+}
+
+/* The key is for finding the field; once it has the keyboard the hint has done its job. */
+.search:focus-within .searchHint {
+    display: none;
+}
+
 .note {
     display: flex;
     flex-direction: column;

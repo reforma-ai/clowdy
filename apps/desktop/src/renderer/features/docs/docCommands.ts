@@ -34,6 +34,21 @@ export function docTreeCommands({ tree, ids, openId }: DocTreeCommandDeps): Comm
 }
 
 /**
+ * `/` puts the keyboard in the search field. It belongs to the screen, not to a row,
+ * so it works wherever the key is not a character of a text field, which the dispatcher already keeps out.
+ */
+export function docSearchCommand(focusSearch: () => void): Command {
+    return {
+        id: 'docs.search',
+        title: 'Find document',
+        group: 'Documents',
+        keys: '/',
+        scope: DOCS_SCOPE,
+        handler: () => focusSearch(),
+    };
+}
+
+/**
  * Save the open document with `Mod+S`, also from inside the editor. It is live only while there is something to save,
  * which is when the Save button is enabled, so its hint shows exactly then.
  */

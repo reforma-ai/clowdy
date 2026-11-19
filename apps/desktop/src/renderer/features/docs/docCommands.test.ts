@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { installDispatcher } from '../../hotkeys/dispatcher';
 import { createRegistry } from '../../hotkeys/registry';
-import { DOCS_SCOPE, docSaveCommand, docTreeCommands } from './docCommands';
+import { DOCS_SCOPE, docSaveCommand, docSearchCommand, docTreeCommands } from './docCommands';
 
 import type { HotkeyRegistry, Platform } from '../../hotkeys/registry';
 
@@ -194,5 +194,45 @@ describe('save', () => {
 
         expect(press('s', element('editor'), { metaKey: true })).toBe(false);
         expect(store.save).not.toHaveBeenCalled();
+    });
+});
+
+describe('find document', () => {
+    function setupSearch() {
+        mount();
+        registry = createRegistry('darwin');
+        registry.pushScope(DOCS_SCOPE);
+        registry.defineCommand(docSearchCommand(() => {
+            const field = element('search') as HTMLInputElement;
+
+            field.focus();
+            field.select();
+        }));
+        uninstall = installDispatcher(registry);
+    }
+
+    it('is / in the Documents group', () => {
+        setupSearch();
+
+        expect(registry.listCommands().all.map(({ id, title, group, keys, scope }) => [id, title, group, keys, scope])).toEqual([
+            ['docs.search', 'Find document', 'Documents', '/', DOCS_SCOPE],
+        ]);
+    });
+
+    it('puts the keyboard in the search field, and a slash typed there is a character', () => {
+        setupSearch();
+
+        expect(press('/')).toBe(true);
+        expect(focused()).toBe('search');
+        expect(press('/', element('search'))).toBe(false);
+        expect(focused()).toBe('search');
+    });
+
+    it('does not take the key from the editor', () => {
+        setupSearch();
+        element('editor').focus();
+
+        expect(press('/', element('editor'))).toBe(false);
+        expect(focused()).toBe('editor');
     });
 });
