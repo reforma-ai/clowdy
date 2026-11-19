@@ -253,10 +253,10 @@ Scope change (implementation and review): the keeper reports a failed replacemen
 
 **This stage:** When the chosen bundle is the app's own copy, the app checks the manifest with a ~3 s budget before opening any window. A newer compatible bundle is downloaded behind a small boot window with progress (an inline HTML page loaded as a `data:` URL, progress pushed from main), installed, and chosen; offline, a timeout, a failure, or 60 s without progress starts the app's own copy and the regular background check continues.
 
-- [ ] Complete
-  - [ ] Bounded manifest check before the first window
-  - [ ] Boot window with progress
-  - [ ] Install and re-choose before `protocol.handle`; fallback on every failure
+- [x] Complete
+  - [x] Bounded manifest check before the first window
+  - [x] Boot window with progress
+  - [x] Install and re-choose before `protocol.handle`; fallback on every failure
 
 **Files**
 
@@ -264,6 +264,8 @@ Scope change (implementation and review): the keeper reports a failed replacemen
 - `apps/desktop/src/main/ota.ts` — `check` with a time budget and progress callback
 - `apps/desktop/src/main/ota.test.ts` — budget and fallback cases
 - `apps/desktop/src/main/index.ts` — first-launch path before `protocol.handle`
+
+Scope change (review): progress 0 (the boot window) comes before the archive request, so a stalled request is never an invisible wait; a later launch on the app's own copy does not rewrite `state.json`.
 
 **Done when:** a fresh install with network starts directly on the newest published bundle, and without network starts on its own copy within a few seconds.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`; local feed run with an empty updates folder.

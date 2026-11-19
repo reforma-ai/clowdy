@@ -7,6 +7,7 @@ import path from 'node:path';
 
 import { IPC_CHANNELS } from '../shared/bridge';
 import { DEV_BUILD_MARKER } from '../shared/dev';
+import { showBootWindow, type BootWindow } from './bootWindow';
 import { bundleRuntime, installBun, installOwnBundle, pruneBunCopies, readBundleInfo, updatesDir, type BundleInfo } from './bundle';
 import { attachDaemon, currentContext, daemonAddress, ensureDaemon, environmentRuntime, findRunning, type DaemonContext, type DaemonRuntime } from './daemon';
 import { askToReplaceDaemon, showDaemonError } from './daemonDialog';
@@ -108,7 +109,7 @@ function start(): void {
             protocol: PROTOCOL_VERSION,
             publicKey: release.otaPublicKey,
             feed: release.otaFeed,
-            fetch: url => net.fetch(url),
+            fetch: (url, init) => net.fetch(url, init),
             daemonVersion: async () => {
                 const context = currentContext();
                 const running = await findRunning(context);
@@ -133,7 +134,12 @@ function start(): void {
             log: message => console.info(message),
         });
         // Fixed for the life of the process, so the renderer's lazy chunks never mix bundles.
-        const bundle = await ota.choose();
+        let bundle = await ota.choose();
+        let boot: BootWindow | undefined;
+
+        // The first launch of a shell version installs the newest bundle before any window, so a fresh install does not
+        // open on a bundle weeks old and offer a restart a moment later. The boot window shows once a download begins.
+        if (await ota.catchUp(fraction => (boot ??= showBootWindow()).progress(fraction))) bundle = await ota.choose();
 
         // macOS shows it after the shell version: "Version 0.2.0 (Bundle 1234)".
         if (bundle.version) app.setAboutPanelOptions({ version: `Bundle ${ bundle.version }` });
@@ -212,7 +218,11 @@ function start(): void {
         firstWindowOpen = true;
         // From the first window's load: an OTA bundle on its first launch has 30 seconds to render.
         ota.watchReady();
-        window.once('ready-to-show', () => firstWindow.resolve(window));
+        window.once('ready-to-show', () => {
+            firstWindow.resolve(window);
+            // Not before: on Windows closing the only window quits the app.
+            boot?.close();
+        });
 
         // A sheet on the visible window: an unparented dialog would block the main process's event loop on macOS.
         if (daemonError) window.once('ready-to-show', () => void showDaemonError(runtimeError ?? daemonError, window));

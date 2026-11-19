@@ -48,11 +48,11 @@ interface Publish {
 }
 
 /** One machine: the updates folder, the feed it checks, and the app's own copy. */
-function machine({ ownVersion = 100, shellVersion = '0.2.0' } = {}) {
+function machine({ ownVersion = 100, shellVersion = '0.2.0', catchUpMs = { manifest: 3000, install: 60_000 } } = {}) {
     const updates = path.join(base, 'updates');
     const dataDir = path.join(base, 'daemon');
     const feed = new Map<string, Uint8Array>();
-    const fetch = vi.fn(async (url: string) => {
+    const fetch = vi.fn(async (url: string, _init?: { signal?: AbortSignal }) => {
         const body = feed.get(url);
 
         return body ? new Response(Buffer.from(body)) : new Response(null, { status: 404 });
@@ -91,6 +91,7 @@ function machine({ ownVersion = 100, shellVersion = '0.2.0' } = {}) {
                 relaunch,
                 onInstalled,
                 readyTimeoutMs: 20,
+                catchUpMs,
             });
 
             return { ota, bundle: await ota.choose() };
@@ -188,7 +189,7 @@ describe('check', () => {
         expect(ota.pending()).toBe(101);
         expect(app.onInstalled).toHaveBeenCalledWith(101);
         expect(await app.installed()).toEqual(['101']);
-        expect(await app.state()).toEqual({ current: 101, previous: null, unconfirmed: true, rejected: [], proven: [] });
+        expect(await app.state()).toEqual({ current: 101, previous: null, unconfirmed: true, rejected: [], proven: [], shell: null });
         expect(await readFile(path.join(app.updates, 'bundles/101/renderer/index.html'), 'utf8')).toBe('page 101');
         expect(JSON.parse(await readFile(path.join(app.updates, 'bundles/101', MANIFEST_FILE), 'utf8'))).toHaveProperty('signature');
     });
@@ -317,7 +318,7 @@ describe('trial', () => {
         ota.watchReady();
         await vi.waitFor(() => expect(app.relaunch).toHaveBeenCalledOnce());
 
-        expect(await app.state()).toEqual({ current: 101, previous: null, unconfirmed: true, rejected: [102], proven: [] });
+        expect(await app.state()).toEqual({ current: 101, previous: null, unconfirmed: true, rejected: [102], proven: [], shell: null });
 
         const back = await app.launch();
 
@@ -337,7 +338,7 @@ describe('trial', () => {
         (await app.launch()).ota.watchReady();
         await vi.waitFor(() => expect(app.relaunch).toHaveBeenCalledOnce());
 
-        expect(await app.state()).toEqual({ current: null, previous: null, unconfirmed: false, rejected: [101], proven: [] });
+        expect(await app.state()).toEqual({ current: null, previous: null, unconfirmed: false, rejected: [101], proven: [], shell: null });
         expect((await app.launch()).bundle).toBe(app.own);
     });
 
@@ -450,7 +451,7 @@ describe('daemon trial', () => {
         await ota.daemonUp(100);
         await ota.daemonUp(undefined);
 
-        expect(await app.state()).toMatchObject({ proven: [] });
+        expect(await app.state()).toMatchObject({ proven: [], shell: null });
     });
 
     test('a database a live daemon still holds is left alone, and the bundle is rejected all the same', async () => {
@@ -475,6 +476,127 @@ describe('daemon trial', () => {
 
         await expect(ota.daemonFailed()).resolves.toBe(false);
         expect(app.relaunch).not.toHaveBeenCalled();
+    });
+});
+
+/** A request that hangs until it is aborted, as one on a blackholed network does. */
+const hangs = (init?: { signal?: AbortSignal }) => new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+});
+
+describe('catchUp', () => {
+    /** A first launch: the bundle is chosen, then the catch-up runs and chooses again when it installed one. */
+    async function firstLaunch(app: Machine) {
+        const { ota } = await app.launch();
+        const progress = vi.fn();
+        const installed = await ota.catchUp(progress);
+
+        return { ota, installed, progress, bundle: installed ? await ota.choose() : null };
+    }
+
+    test('installs the published bundle before the first window and runs it on trial', async () => {
+        const app = machine();
+
+        app.publish(101);
+
+        const { ota, installed, progress, bundle } = await firstLaunch(app);
+
+        expect(installed).toBe(true);
+        expect(bundle).toMatchObject({ version: 101, dir: path.join(app.updates, 'bundles/101') });
+        expect(progress.mock.calls[0]).toEqual([0]);
+        expect(progress.mock.lastCall).toEqual([1]);
+        // It runs now, so nothing waits for a restart.
+        expect(app.onInstalled).not.toHaveBeenCalled();
+        expect(ota.pending()).toBeNull();
+
+        // A renderer that never gets ready is rolled back to the app's own copy, as any other.
+        ota.watchReady();
+        await vi.waitFor(() => expect(app.relaunch).toHaveBeenCalledOnce());
+        expect((await app.launch()).bundle).toBe(app.own);
+    });
+
+    test('waits only on the first launch of a shell version', async () => {
+        const app = machine();
+
+        app.publish(101);
+        await firstLaunch(app);
+        app.fetch.mockClear();
+
+        await expect((await app.launch()).ota.catchUp(vi.fn())).resolves.toBe(false);
+        expect(app.fetch).not.toHaveBeenCalled();
+
+        // A new shell version waits again, whatever the last one saw.
+        const updated = machine({ ownVersion: 110, shellVersion: '0.2.1' });
+
+        updated.publish(111);
+        expect((await firstLaunch(updated)).bundle?.version).toBe(111);
+    });
+
+    test('leaves an installed bundle to the background check', async () => {
+        const app = machine();
+
+        await installAndConfirm(app, 101);
+        app.publish(102);
+        app.fetch.mockClear();
+
+        expect((await firstLaunch(app)).installed).toBe(false);
+        expect(app.fetch).not.toHaveBeenCalled();
+    });
+
+    test.each<[string, number, Publish]>([
+        ['nothing newer than the app\'s own copy', 100, {}],
+        ['a bundle for a newer shell', 101, { minShell: '0.3.0' }],
+        ['a manifest signed with another key', 101, { key: stranger.privateKey }],
+        ['an archive that does not match', 101, { corrupt: true }],
+    ])('starts the app\'s own copy for %s, and does not wait again', async (_name, version, published) => {
+        const app = machine();
+
+        app.publish(version, published);
+
+        expect((await firstLaunch(app)).installed).toBe(false);
+        expect(await app.installed()).toEqual([]);
+        await expect((await app.launch()).ota.catchUp(vi.fn())).resolves.toBe(false);
+    });
+
+    test('starts the app\'s own copy when the feed is down, then installs in the background', async () => {
+        const app = machine();
+        const serve = app.fetch.getMockImplementation()!;
+
+        app.fetch.mockRejectedValue(new TypeError('fetch failed'));
+
+        const { ota, installed, progress } = await firstLaunch(app);
+
+        expect(installed).toBe(false);
+        expect(progress).not.toHaveBeenCalled();
+
+        app.fetch.mockImplementation(serve);
+        app.publish(101);
+        await ota.check();
+
+        expect(ota.pending()).toBe(101);
+    });
+
+    test('gives up on a feed that does not answer', async () => {
+        const app = machine({ catchUpMs: { manifest: 20, install: 20 } });
+
+        app.fetch.mockImplementation((_url, init) => hangs(init));
+
+        expect((await firstLaunch(app)).installed).toBe(false);
+    });
+
+    test('gives up on a download that stalls, and leaves nothing behind', async () => {
+        const app = machine({ catchUpMs: { manifest: 1000, install: 20 } });
+        const serve = app.fetch.getMockImplementation()!;
+
+        app.publish(101);
+        app.fetch.mockImplementation((url, init) => (url.endsWith('.tar.gz') ? hangs(init) : serve(url)));
+
+        const { installed, progress } = await firstLaunch(app);
+
+        expect(installed).toBe(false);
+        // The boot window showed while it waited.
+        expect(progress).toHaveBeenCalledWith(0);
+        expect(await app.installed()).toEqual([]);
     });
 });
 

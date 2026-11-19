@@ -13,6 +13,8 @@ import { readTar, tarSize } from './tar';
 const READY_TIMEOUT_MS = 30_000;
 /** How far a backup's time may lag the launch's (a file system that keeps whole seconds) and still count as this launch's. */
 const CLOCK_SLACK_MS = 2000;
+/** What the first launch of a shell version waits for before its first window: the manifest, then the download. */
+const CATCH_UP_MS = { manifest: 3000, install: 60_000 };
 /** How many bundles whose daemon came up healthy `state.json` remembers. */
 const PROVEN_KEPT = 10;
 const STATE_FILE = 'state.json';
@@ -40,6 +42,7 @@ export interface RunningBundle {
  * `current` is the installed bundle to run, `previous` the one to fall back to; null means the app's own copy.
  * `unconfirmed`: `current` has not called `ready()` since it took over. A rejected version is never installed again.
  * `proven`: bundles whose daemon came up healthy once, so a later failure of theirs is no reason to go back.
+ * `shell`: the shell version whose first launch has had its catch-up.
  */
 interface OtaState {
     current: number | null;
@@ -47,9 +50,16 @@ interface OtaState {
     unconfirmed: boolean;
     rejected: number[];
     proven: number[];
+    shell: string | null;
 }
 
-const NO_STATE: OtaState = { current: null, previous: null, unconfirmed: false, rejected: [], proven: [] };
+const NO_STATE: OtaState = { current: null, previous: null, unconfirmed: false, rejected: [], proven: [], shell: null };
+
+/** A launch waiting for a bundle: its progress, 0 to 1 once the download begins, and how long it waits. */
+interface Waiting {
+    onProgress: (fraction: number) => void;
+    wait: typeof CATCH_UP_MS;
+}
 
 export interface OtaOptions {
     /** `updatesDir(dataDir)`: installed bundles in `bundles/<version>`, the choice in `state.json`. */
@@ -68,7 +78,7 @@ export interface OtaOptions {
     publicKey: string;
     /** Where `manifest.json` and the archives are published, without a trailing slash; empty turns checks off. */
     feed: string;
-    fetch: (url: string) => Promise<Response>;
+    fetch: (url: string, init?: { signal?: AbortSignal }) => Promise<Response>;
     /**
      * The bundle version the running daemon reports, if one runs: its folder is never deleted. Rejects when a daemon runs
      * but does not say which bundle it is; nothing is deleted then.
@@ -80,6 +90,7 @@ export interface OtaOptions {
     onInstalled?: (version: number) => void;
     log?: (message: string) => void;
     readyTimeoutMs?: number;
+    catchUpMs?: typeof CATCH_UP_MS;
 }
 
 export type Ota = ReturnType<typeof createOta>;
@@ -227,15 +238,64 @@ export function createOta(options: OtaOptions) {
         // A bundle on trial is never replaced: it would escape its rollback, and `previous` would be unproven.
         if (!enabled || onTrial) return Promise.resolve(null);
 
-        checking ??= installNewer().finally(() => {
+        checking ??= (async () => {
+            const version = await installNewer();
+
+            if (version !== null) {
+                installedVersion = version;
+                log(`Installed bundle ${ version }; it runs from the next launch.`);
+                options.onInstalled?.(version);
+            }
+
+            return version;
+        })().finally(() => {
             checking = undefined;
         });
 
         return checking;
     }
 
-    async function installNewer(): Promise<number | null> {
-        const response = await options.fetch(`${ feed }/${ MANIFEST_FILE }`);
+    /**
+     * The first launch of a shell version runs its own copy, which can trail the published bundle by weeks. Installs the
+     * published bundle now, so the app opens on it instead of offering a restart a moment later. Offline, refused, or too
+     * slow, the app's own copy starts and `check` goes on in the background. Resolves true when a bundle was installed:
+     * choose again.
+     */
+    async function catchUp(onProgress: (fraction: number) => void): Promise<boolean> {
+        // An installed bundle is a recent one; `check` keeps it current.
+        if (!enabled || running.dir) return false;
+
+        let first = false;
+
+        // Marked first, so a launch cut short does not wait again.
+        await changeState((state) => {
+            first = state.shell !== options.shellVersion;
+
+            return first ? { ...state, shell: options.shellVersion } : state;
+        });
+
+        if (!first) return false;
+
+        try {
+            const version = await installNewer({ onProgress, wait: options.catchUpMs ?? CATCH_UP_MS });
+
+            if (version !== null) log(`Installed bundle ${ version } before the first window.`);
+
+            return version !== null;
+        }
+        catch (error) {
+            log(`Could not install the newest bundle before the first window: ${ errorText(error) }`);
+
+            return false;
+        }
+    }
+
+    /**
+     * Installs the published bundle when it is newer and this shell can run it, and puts it on trial. Resolves to its
+     * version, or null when there is nothing to install. With `waiting` a launch waits, so the requests are cut short.
+     */
+    async function installNewer(waiting?: Waiting): Promise<number | null> {
+        const response = await options.fetch(`${ feed }/${ MANIFEST_FILE }`, { signal: waiting && AbortSignal.timeout(waiting.wait.manifest) });
 
         // Nothing published yet, or the repository is still private.
         if (response.status === 404) return null;
@@ -256,29 +316,34 @@ export function createOta(options: OtaOptions) {
 
         // The state switches in the same turn as the install, so a prune never sees the new folder without the state that keeps it.
         await exclusive(async () => {
-            await install(manifest, signed);
+            await install(manifest, signed, waiting);
             await changeState(state => ({ ...state, current: manifest.version, previous, unconfirmed: true }));
         });
-        installedVersion = manifest.version;
-        log(`Installed bundle ${ manifest.version }; it runs from the next launch.`);
-        options.onInstalled?.(manifest.version);
         await prune();
 
         return manifest.version;
     }
 
-    async function install(manifest: BundleManifest, signed: string): Promise<void> {
+    async function install(manifest: BundleManifest, signed: string, waiting?: Waiting): Promise<void> {
         const target = path.join(bundles, String(manifest.version));
 
         // Installed by a run that ended before it wrote `state.json`.
         if (await installed(manifest.version)) return;
 
         const { name, sha256: archiveHash, size } = manifest.archive;
-        const response = await options.fetch(`${ feed }/${ name }`);
+
+        // Before the request: a launch whose download stalls before it answers still shows why it waits.
+        waiting?.onProgress(0);
+
+        const response = await options.fetch(`${ feed }/${ name }`, { signal: waiting && AbortSignal.timeout(waiting.wait.install) });
 
         if (!response.ok) throw new Error(`${ name } answered ${ response.status }`);
 
-        const archive = await readBody(response, size);
+        let received = 0;
+        const archive = await readBody(response, size, (length) => {
+            received += length;
+            waiting?.onProgress(Math.min(received / size, 1));
+        });
 
         if (archive.length !== size || sha256(archive) !== archiveHash) throw new Error(`${ name } does not match the manifest`);
 
@@ -392,6 +457,7 @@ export function createOta(options: OtaOptions) {
                 unconfirmed: state.unconfirmed === true,
                 rejected: Array.isArray(state.rejected) ? state.rejected.filter(Number.isSafeInteger) : [],
                 proven: Array.isArray(state.proven) ? state.proven.filter(Number.isSafeInteger) : [],
+                shell: typeof state.shell === 'string' ? state.shell : null,
             };
         }
         catch {
@@ -420,7 +486,7 @@ export function createOta(options: OtaOptions) {
         if (installedVersion !== null) options.relaunch();
     }
 
-    return { enabled, choose, watchReady, ready, daemonUp, daemonFailed, check, prune, restart, pending: () => installedVersion };
+    return { enabled, choose, catchUp, watchReady, ready, daemonUp, daemonFailed, check, prune, restart, pending: () => installedVersion };
 }
 
 /** Runs each piece of work it is given once the one before has settled. */
@@ -437,7 +503,7 @@ function oneAtATime() {
 }
 
 /** The body, refused past `limit` bytes, so a hostile host cannot exhaust memory with an endless one. */
-async function readBody(response: Response, limit: number): Promise<Uint8Array> {
+async function readBody(response: Response, limit: number, onChunk?: (length: number) => void): Promise<Uint8Array> {
     const chunks: Uint8Array[] = [];
     let length = 0;
 
@@ -448,6 +514,7 @@ async function readBody(response: Response, limit: number): Promise<Uint8Array> 
         if (length > limit) throw new Error(`${ response.url || 'A download' } is larger than ${ limit } bytes`);
 
         chunks.push(chunk);
+        onChunk?.(chunk.length);
     }
 
     return Buffer.concat(chunks);
