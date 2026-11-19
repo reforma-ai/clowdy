@@ -5,8 +5,19 @@ import type { AgentProtocol } from './catalog';
 import type { ResolvedAgent } from './registry';
 import type { SessionDeps } from './session';
 
-/** Where a session's one prompt is: not sent yet, with the agent, or answered (or never to be sent: the session ended before it). */
+/**
+ * Where the session's prompt is: not sent yet, with the agent (a turn runs), or answered (the turn is over, or the session ended before it was sent). A
+ * layer that keeps the session open moves it to `running` again with each turn that begins, a turn the agent starts on its own or one a prompt sent
+ * into the live session leads to; the end of the session is for good.
+ */
 export type PromptState = 'before' | 'running' | 'over';
+
+/**
+ * How long a session with nothing open and no turn running waits before it ends. The agent starts the report of finished background work 0.1 to 0.9 s
+ * after its last "done" marker (measured over eight samples, `.briefback/background-work/research/acp-background-probe.md`), so a session closed the
+ * moment nothing is open would lose the report. This is the only timer the layer keeps; a session with work open waits for as long as the agent says so.
+ */
+export const BACKGROUND_HANDOFF_MS = 2000;
 
 export const wait = (ms: number) => new Promise<void>((resolve) => {
     setTimeout(resolve, ms).unref();
@@ -23,14 +34,14 @@ export interface LayerHost {
     options: EngineStartOptions;
     /** Aborted when the turn's own signal is or the session is closed. The layer ends at once; stopping the process is the session's. */
     signal: AbortSignal;
-    deps: Pick<SessionDeps, 'costs' | 'clientVersion' | 'initializeTimeoutMs' | 'log'>;
+    deps: Pick<SessionDeps, 'costs' | 'clientVersion' | 'initializeTimeoutMs' | 'backgroundHandoffMs' | 'log'>;
     /** Registers the runtime's tools with the bridge, once the agent has shaken hands, and gives back the MCP server to name in the session. `undefined` when the run has none. */
     openBridge(): BridgeAccess | undefined;
     /** Passes a title the agent gave to the runtime, which says whether it took it. */
     offerTitle(title: string): void;
     /** The option of a permission request the daemon answers with, or `undefined` to cancel the request. */
     pickPermission(options: readonly { optionId: string; kind: string }[]): string | undefined;
-    /** Moves the prompt along and wakes the steers that wait for it. */
+    /** Moves the prompt along and wakes the steers that wait for it. A turn that begins after the last one ended moves it to `running` again. */
     promptIs(state: Exclude<PromptState, 'before'>): void;
     /** Whether the prompt is with the agent. */
     promptRunning(): boolean;
@@ -57,6 +68,12 @@ export interface ProtocolLayer {
     run(): AsyncGenerator<EngineEvent>;
     /** Hands `text` to the turn in flight. Answers whether the agent took it. Called while the prompt is with the agent. */
     steer(text: string): Promise<boolean>;
+    /**
+     * Hands `text` to the live session as a prompt of its own, once its turn ended. A layer that keeps the session open for the agent's background work
+     * takes it, and leaves it out when it cannot. Resolves `true` when the agent took the prompt in; its events follow on the stream of `run`, with one
+     * `done` for the whole activity, and `false` when the session is over or the agent refused it. It never waits for the events to be read.
+     */
+    send?(text: string): Promise<boolean>;
     /** Tells the agent to stop the turn. Settles once it is written, so the session may close the agent's input after it. */
     cancel(): Promise<void>;
     /** Closes the connection, after the process is gone. */

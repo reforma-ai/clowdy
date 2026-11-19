@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { UpdateMapper } from '../src/engine/acp/mapper';
 import { UpdateMapperV2 } from '../src/engine/acp/mapper-v2';
 
-import type { SessionUpdate as SessionUpdateV2, Usage } from '@agentclientprotocol/sdk/experimental/v2/unstable';
+import type { BackgroundWork, SessionUpdate as SessionUpdateV2, Usage } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import type { PromptResponse, SessionUpdate } from '@agentclientprotocol/sdk/unstable';
 import type { EngineEvent } from '../src/engine/types';
 
@@ -491,6 +491,117 @@ describe('updates of ACP v2', () => {
                 ['compaction-c1', 'compact', 'done', undefined],
                 ['compaction-c2', 'compact', 'error', 'too short'],
             ]);
+        });
+    });
+
+    describe('background work', () => {
+        const listed = (updates: SessionUpdateV2[], work: BackgroundWork[]) => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            for (const update of updates) {
+                mapper.update(update);
+            }
+
+            return mapper.background(work);
+        };
+
+        test('a terminal is a command named by what it ran, a sub-agent a sub-agent named by its title, and a call a task named by its title', () => {
+            const items = listed([
+                { sessionUpdate: 'terminal_update', terminalId: 'term-1', command: 'sleep 60 && echo done' },
+                { sessionUpdate: 'subagent_update', sessionId: 'child-1', title: 'Map the docs', description: 'Reads every page' },
+                call({ toolCallId: 'wf-1', title: 'Workflow: verify', kind: 'other', status: 'in_progress' }),
+                call({ toolCallId: 'mon-1', status: 'in_progress', _meta: { claudeCode: { toolName: 'Monitor' } } }),
+            ], [
+                { type: 'terminal', terminalId: 'term-1' },
+                { type: 'subagent', sessionId: 'child-1' },
+                { type: 'tool_call', toolCallId: 'wf-1' },
+                { type: 'tool_call', toolCallId: 'mon-1' },
+            ]);
+
+            expect(items).toEqual([
+                { id: 'term-1', kind: 'command', title: 'sleep 60 && echo done' },
+                { id: 'child-1', kind: 'subagent', title: 'Map the docs' },
+                { id: 'wf-1', kind: 'task', title: 'Workflow: verify' },
+                { id: 'mon-1', kind: 'task', title: 'Monitor' },
+            ]);
+        });
+
+        test('an item the mapper heard nothing of is named for its kind, a sub-agent falls back to its description, and a title the agent clears is gone', () => {
+            const items = listed([
+                { sessionUpdate: 'subagent_update', sessionId: 'child-1', description: 'Reads every page' },
+                { sessionUpdate: 'subagent_update', sessionId: 'child-2', title: 'Named' },
+                { sessionUpdate: 'subagent_update', sessionId: 'child-2', title: null },
+            ], [
+                { type: 'terminal', terminalId: 'unknown' },
+                { type: 'subagent', sessionId: 'child-1' },
+                { type: 'subagent', sessionId: 'child-2' },
+                { type: 'tool_call', toolCallId: 'never-seen' },
+            ]);
+
+            expect(items.map(item => item.title)).toEqual(['Background command', 'Reads every page', 'Sub-agent', 'Background task']);
+        });
+
+        test('a title is one line, cut at 200 characters, and a kind of work the draft adds later is left out', () => {
+            const items = listed([{ sessionUpdate: 'terminal_update', terminalId: 't', command: `echo\n  ${ 'y'.repeat(400) }` }], [{ type: 'terminal', terminalId: 't' }, { type: '_vendor', id: 'x' } as unknown as BackgroundWork]);
+
+            expect(items).toHaveLength(1);
+            expect(items[0].title).toHaveLength(200);
+            expect(items[0].title.startsWith('echo yyy')).toBe(true);
+        });
+
+        test('a terminal named later by its command is named by it from then on', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+            const work: BackgroundWork[] = [{ type: 'terminal', terminalId: 't' }];
+
+            expect(mapper.background(work)[0].title).toBe('Background command');
+            mapper.update({ sessionUpdate: 'terminal_update', terminalId: 't', command: 'npm test' });
+            expect(mapper.background(work)[0].title).toBe('npm test');
+        });
+    });
+
+    describe('turns after the first', () => {
+        test('each turn\'s cost is the rise over where the turn before it left the session\'s, and a turn that says nothing has no result of its own', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 1 });
+            const cost = (amount: number) => mapper.update({ sessionUpdate: 'usage_update', used: 1, size: 10, cost: { amount, currency: 'USD' } });
+
+            mapper.update(chunk2('first'));
+            cost(1.5);
+            expect(mapper.stop({ inputTokens: 10, outputTokens: 2 }).filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 10, outputTokens: 2, costUsd: 0.5 }]);
+            expect(mapper.result()).toBe('first');
+
+            mapper.next();
+            expect(mapper.result()).toBeUndefined();
+            cost(2);
+            expect(mapper.stop({ inputTokens: 1, outputTokens: 1 }).filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 1, outputTokens: 1, costUsd: 0.5 }]);
+        });
+
+        test('the turn after a steer that landed may say the answer again as a whole message under a new id, and it is not written twice', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+            const shown = (updates: SessionUpdateV2[]) => updates.flatMap(update => mapper.update(update)).filter(event => event.type === 'text' && event.delta).map(event => event.type === 'text' && event.delta);
+
+            expect(shown([chunk2('The answer', 'a')])).toEqual(['The answer']);
+            mapper.close();
+            mapper.expectRepeat();
+            // The same text under another id adds nothing, and does not when it comes again. Another text is a message.
+            expect(shown([whole('The answer', 'b'), whole('The answer', 'b'), whole('More words', 'c')])).toEqual(['More words']);
+        });
+
+        test('with no steer to repeat, a whole message that says what the last one said is a message', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(chunk2('Same', 'a'));
+            mapper.close();
+            expect(mapper.update(whole('Same', 'b')).filter(event => event.type === 'text' && event.delta)).toHaveLength(1);
+        });
+
+        test('the repeat is expected only until the next turn begins', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(chunk2('Same', 'a'));
+            mapper.close();
+            mapper.expectRepeat();
+            mapper.next();
+            expect(mapper.update(whole('Same', 'b')).filter(event => event.type === 'text' && event.delta)).toHaveLength(1);
         });
     });
 

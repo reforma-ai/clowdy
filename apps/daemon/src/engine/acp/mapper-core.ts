@@ -244,6 +244,25 @@ export class Message {
         return this.closed.has(messageId) ? [] : this.append(text, messageId, agentId);
     }
 
+    /**
+     * Whether `text` is a whole message that says again what the last closed message said, under another id (the turn that follows a steer repeats
+     * the answer the steer was folded into). It is remembered as shown, so it adds nothing now and nothing when the agent sends it again.
+     */
+    repeats(messageId: string, text: string): boolean {
+        if (this.open || this.closed.has(messageId) || !this.last.trim() || text.trim() !== this.last.trim()) {
+            return false;
+        }
+
+        this.closed.add(messageId);
+
+        return true;
+    }
+
+    /** Forgets the last closed message: a turn that says nothing has no result of its own. */
+    forget(): void {
+        this.last = '';
+    }
+
     /** Ends the open message, if there is one. */
     close(agentId?: string): EngineEvent[] {
         if (!this.open) {

@@ -11,6 +11,17 @@ import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError
  *
  *   pause <ms>                  `requires_action` for that long, then `running` again, as an agent waiting for a person does
  *   stop <reason>               ends the turn at once with that stop reason (`max_tokens`, `max_turn_requests`, `refusal`, ...)
+ *   background <kind> <ms> <title>   starts work that runs on after the turn and ends <ms> later, listed in `background` of every state until then:
+ *                               `terminal` (a command: `terminal_update` with its command, a `Bash` call that completes at once), `subagent` (a child
+ *                               session announced with `subagent_update`, which says a message of its own on the child's session) or `workflow` (a
+ *                               `Workflow` tool call that stays `in_progress`). When it ends the list says so (a repeated `idle` snapshot without a stop
+ *                               reason, or `running` while a turn goes on) and, after the gap, the agent starts a turn of its own that reports it
+ *   retitle <ms> <title>        <ms> from now gives the workflow started last a new title, with no state update after it, as a workflow's progress does
+ *   report <directive>          a line of the script of that report turn (default: `say <title> finished`); `report none` ends work with no report turn
+ *   gap <ms>                    how long after the work ended (and after the turn it ended in) the report turn begins; 40 ms by default
+ *   twice                       when a prompt was inserted into this turn, the turn ends as Claude's adapter ends one that took a steer: an `idle` with
+ *                               zero usage, a `running`, the last message again as a whole message under a new id, and an `idle` with the real usage
+ *   die <ms>                    the agent's process exits that long from now, whatever it is doing
  *
  * FAKE_ACP_LOG is a file that gets a line for every `session/cancel`, `steer <text>` for every prompt that comes while a turn runs (v2 has no steering
  * method: a prompt is inserted into the turn), and `title <session> <title>` for every `session/set_title`. A prompt during a turn is always taken:
@@ -19,8 +30,9 @@ import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError
  * FAKE_ACP_REPLAY=always replays whether asked or not, with a stale `idle` among them, as an agent that does not wait to be asked. FAKE_ACP_SNAPSHOT=1 starts every
  * turn with an `idle` that carries no stop reason, before `running`, as a snapshot of the state the session was in (`FAKE_ACP_SNAPSHOT=reason`: one
  * that carries the last stop reason, which a repeated snapshot may). FAKE_ACP_BLOCKED=1 starts every turn with `requires_action` instead of `running`, as
- * foreground work that begins blocked does. FAKE_ACP_REJECT=1 refuses every prompt with an error response, as an agent does that cannot take the message in. FAKE_ACP_QUEUE=1 holds a prompt that comes while a turn runs until that turn's `idle`, then runs it as a turn
- * of its own and only then answers it, as Codex does (a prompt answered after the `idle` that came before it). FAKE_ACP_WHOLE=1 says every message
+ * foreground work that begins blocked does. FAKE_ACP_REJECT=1 refuses every prompt with an error response, as an agent does that cannot take the message in (`later`: those after the first turn began). FAKE_ACP_QUEUE=1 holds a prompt that comes while a turn runs until that turn's `idle`, then runs it as a turn
+ * of its own and only then answers it, as Codex does (a prompt answered after the `idle` that came before it; `refuse`: it refuses the held prompt then instead). FAKE_ACP_SLOW=<ms>
+ * answers every prompt after the first turn began that much later. FAKE_ACP_NOECHO=1 does not echo the prompts it is given back as `user_message`. FAKE_ACP_WHOLE=1 says every message
  * as two whole-message upserts, the second with all the text. FAKE_ACP_SYSTEM_PROMPT=0 drops the system prompt capability; FAKE_ACP_DIRECTORIES=1 advertises
  * `session.additionalDirectories` (the `info` directive shows the list a session got either way); FAKE_ACP_TITLES=1 gives the agent `session.title` and
  * `session/set_title`; FAKE_ACP_AUTH=1 makes `session/new` ask for authentication; FAKE_ACP_EFFORT is `1` (a reasoning option that follows the model)
@@ -61,6 +73,31 @@ interface FakeSession {
     queue: (() => void)[];
     /** The title the client gave with `session/set_title`; the agent names the session only while it has none. */
     title?: string;
+    id: string;
+    /** The connection the agent talks to the client on, kept to speak when no request is open: a report turn begins on the agent's own. */
+    client?: AgentContext;
+    /** Background work that was started and has not ended, and what is owed a report turn once the agent is free to give one. */
+    work: Work[];
+    reports: Work[];
+    /** The lines of the report turn (`report`), `false` for no report turn at all (`report none`). */
+    reportLines: string[] | false;
+    /** How long after the work ended the report turn begins. */
+    gap: number;
+    /** A report turn is waiting to begin. */
+    reporting: boolean;
+    /** A prompt was inserted into the turn that runs. */
+    landed: boolean;
+}
+
+/** One piece of background work. */
+interface Work {
+    title: string;
+    /** What `background` lists for it. */
+    item: Record<string, unknown>;
+    done: boolean;
+    kind: 'terminal' | 'subagent' | 'workflow';
+    /** The id the work is known by: a terminal's, a child session's, a tool call's. */
+    ref: string;
 }
 
 const sessions = new Map<string, FakeSession>();
@@ -81,7 +118,7 @@ function systemText(content: unknown): string | undefined {
 }
 
 function open(id: string, params: { cwd: string; additionalDirectories?: string[]; mcpServers?: McpServer[]; systemPrompt?: { content?: unknown } | null; replayFrom?: unknown; _meta?: unknown }, resumed: boolean): FakeSession {
-    const session: FakeSession = { cwd: params.cwd, directories: params.additionalDirectories, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, replayFrom: params.replayFrom ?? undefined, resumed, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [], queue: [] };
+    const session: FakeSession = { cwd: params.cwd, directories: params.additionalDirectories, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, replayFrom: params.replayFrom ?? undefined, resumed, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [], queue: [], id, work: [], reports: [], reportLines: [], gap: 40, reporting: false, landed: false };
 
     sessions.set(id, session);
 
@@ -145,13 +182,117 @@ async function replay(client: AgentContext, sessionId: string): Promise<void> {
     await send({ sessionUpdate: 'replay_complete' });
 }
 
+/** What `background` lists now. */
+const listed = (session: FakeSession) => session.work.filter(work => !work.done).map(work => work.item);
+
+/** A `state_update` that carries the session's background list, as an agent that reports background work puts it on every state. */
+const state = (session: FakeSession, fields: Record<string, unknown>) => ({ sessionUpdate: 'state_update', background: listed(session), ...fields }) as SessionUpdate;
+
+/** What an `idle` reports for a turn that spent nothing: Claude's adapter says so when a turn ends without a result of its own. */
+const NOTHING_SPENT = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0 };
+
+let works = 0;
+
+/** Starts a piece of background work that ends `ms` from now. */
+async function startWork(session: FakeSession, client: AgentContext, kind: Work['kind'], ms: number, title: string): Promise<void> {
+    // A client that has gone is not an error of the work.
+    const send = (update: SessionUpdate, sessionId = session.id) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
+    const n = ++works;
+    let ref: string;
+    let item: Record<string, unknown>;
+
+    if (kind === 'terminal') {
+        ref = `term-${ n }`;
+        item = { type: 'terminal', terminalId: ref };
+        // The command comes with the terminal, before any list that names it; the `Bash` call that started it completes at once.
+        await send({ sessionUpdate: 'terminal_update', terminalId: ref, command: title });
+        await send({ sessionUpdate: 'tool_call_update', toolCallId: `bash-${ n }`, title, kind: 'execute', status: 'completed', rawInput: { command: title, run_in_background: true }, content: [{ type: 'terminal', terminalId: ref }] });
+    }
+    else if (kind === 'subagent') {
+        ref = `child-${ n }`;
+        item = { type: 'subagent', sessionId: ref };
+        await send({ sessionUpdate: 'subagent_update', sessionId: ref, title, description: 'A background sub-agent', capabilities: { cancel: {} }, state: { state: 'running', background: [] } });
+        // What the child says is on its own session, which the client does not read yet.
+        await send({ sessionUpdate: 'agent_message', messageId: `m-${ ref }`, content: [{ type: 'text', text: `${ title } is working` }] }, ref);
+    }
+    else {
+        ref = `wf-${ n }`;
+        item = { type: 'tool_call', toolCallId: ref };
+        await send({ sessionUpdate: 'tool_call_update', toolCallId: ref, title: `Workflow: ${ title }`, kind: 'other', status: 'in_progress', _meta: { claudeCode: { toolName: 'Workflow' } } });
+    }
+
+    const work: Work = { title, item, done: false, kind, ref };
+
+    session.work.push(work);
+    await send(state(session, { state: session.prompting ? 'running' : 'idle' }));
+    setTimeout(() => void endWork(session, work), ms);
+}
+
+/** The work ends: its card says so, the list drops it, and the agent owes a report of it. */
+async function endWork(session: FakeSession, work: Work): Promise<void> {
+    const { client } = session;
+
+    if (!client || work.done) {
+        return;
+    }
+
+    const send = (update: SessionUpdate, sessionId = session.id) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
+
+    work.done = true;
+
+    if (work.kind === 'terminal') {
+        await send({ sessionUpdate: 'terminal_update', terminalId: work.ref, exitStatus: { exitCode: 0 } });
+    }
+    else if (work.kind === 'subagent') {
+        await send({ sessionUpdate: 'subagent_update', sessionId: work.ref, state: { state: 'idle', stopReason: 'end_turn', background: [] } });
+    }
+    else {
+        await send({ sessionUpdate: 'tool_call_update', toolCallId: work.ref, status: 'completed' });
+    }
+
+    // While a turn goes on the list rides on its state; with none, on a repeated `idle` that carries no stop reason (it is no new completion).
+    await send(state(session, { state: session.prompting ? 'running' : 'idle' }));
+
+    if (session.reportLines !== false) {
+        session.reports.push(work);
+        report(session);
+    }
+}
+
+/** Begins the report turn of finished work after the gap, unless a turn runs by then: that turn reports it when it ends. */
+function report(session: FakeSession): void {
+    if (session.reporting || session.reports.length === 0) {
+        return;
+    }
+
+    session.reporting = true;
+    setTimeout(() => {
+        session.reporting = false;
+
+        if (session.prompting || session.reports.length === 0 || !session.client || session.reportLines === false) {
+            return;
+        }
+
+        const finished = session.reports.splice(0);
+        const lines = session.reportLines.length > 0 ? session.reportLines : [`say ${ finished.map(work => work.title).join(', ') } finished`];
+
+        session.reportLines = [];
+        session.prompting = true;
+        void turn(session, session.id, lines.join('\n'), session.client);
+    }, session.gap);
+}
+
 /** Runs one turn of a prompt: the directives of its text, and those of every prompt inserted into it. Ends with the `idle` that says why. */
 async function turn(session: FakeSession, sessionId: string, text: string, client: AgentContext): Promise<void> {
     // A client that has gone (a cancelled turn closes the agent's input) is not an error of the turn.
     const send = (update: SessionUpdate) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
+    let said = '';
+    let twice = false;
     const say = async (what: string) => {
         const middle = Math.ceil(what.length / 2);
         const messageId = crypto.randomUUID();
+
+        said = what;
 
         if (process.env.FAKE_ACP_WHOLE === '1') {
             await send({ sessionUpdate: 'agent_message', messageId, content: [{ type: 'text', text: what.slice(0, middle) }] });
@@ -176,12 +317,13 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
 
     session.cancel = new AbortController();
     session.count += 1;
+    session.landed = false;
 
     if (process.env.FAKE_ACP_SNAPSHOT) {
-        await send({ sessionUpdate: 'state_update', state: 'idle', ...(process.env.FAKE_ACP_SNAPSHOT === 'reason' && { stopReason: 'end_turn' }) } as SessionUpdate);
+        await send(state(session, { state: 'idle', ...(process.env.FAKE_ACP_SNAPSHOT === 'reason' && { stopReason: 'end_turn' }) }));
     }
 
-    await send(process.env.FAKE_ACP_BLOCKED === '1' ? { sessionUpdate: 'state_update', state: 'requires_action' } : { sessionUpdate: 'state_update', state: 'running' });
+    await send(state(session, { state: process.env.FAKE_ACP_BLOCKED === '1' ? 'requires_action' : 'running' }));
 
     if (session.resumed && session.count === 1 && process.env.FAKE_ACP_RESUME_WARNING === '1') {
         await send({ sessionUpdate: 'agent_message_chunk', messageId: crypto.randomUUID(), content: { type: 'text', text: 'Warning: This session was recorded with model `gpt-5.6-luna` but is resuming with `gpt-6-sol`.\n\n' } });
@@ -243,7 +385,7 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                 }
                 case 'perm': {
                     // The foreground work waits on a person until the client answers.
-                    await send({ sessionUpdate: 'state_update', state: 'requires_action' });
+                    await send(state(session, { state: 'requires_action' }));
 
                     const answer = await client.request(methods.client.session.requestPermission, {
                         sessionId,
@@ -256,14 +398,45 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                         ],
                     });
 
-                    await send({ sessionUpdate: 'state_update', state: 'running' });
+                    await send(state(session, { state: 'running' }));
                     await say(`permission: ${ answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome }`);
                     break;
                 }
                 case 'pause':
-                    await send({ sessionUpdate: 'state_update', state: 'requires_action' });
+                    await send(state(session, { state: 'requires_action' }));
                     await Bun.sleep(Number(argument));
-                    await send({ sessionUpdate: 'state_update', state: 'running' });
+                    await send(state(session, { state: 'running' }));
+                    break;
+                case 'background': {
+                    const [kind, ms, ...title] = rest;
+
+                    await startWork(session, client, kind as Work['kind'], Number(ms), title.join(' '));
+                    break;
+                }
+                case 'retitle': {
+                    const [ms, ...title] = rest;
+                    const work = session.work.filter(candidate => candidate.kind === 'workflow' && !candidate.done).at(-1);
+
+                    if (work) {
+                        setTimeout(() => void send({ sessionUpdate: 'tool_call_update', toolCallId: work.ref, title: title.join(' ') }), Number(ms));
+                    }
+
+                    break;
+                }
+                case 'report':
+                    session.reportLines = argument === 'none' ? false : [...(session.reportLines || []), argument];
+                    break;
+                case 'gap':
+                    session.gap = Number(argument);
+                    break;
+                case 'twice':
+                    twice = true;
+                    break;
+                case 'die':
+                    setTimeout(() => {
+                        process.stderr.write('boom: the fake agent was told to die\n');
+                        process.exit(4);
+                    }, Number(argument));
                     break;
                 case 'stop':
                     stopReason = argument;
@@ -367,10 +540,28 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
         }
     }
     finally {
-        session.prompting = false;
-        await send({ sessionUpdate: 'state_update', state: 'idle', stopReason, ...(error && { error }), ...(usage && { usage }) } as SessionUpdate);
-        // A prompt held for this turn's end (`FAKE_ACP_QUEUE`) runs next.
+        if (twice && session.landed && stopReason === 'end_turn') {
+            // A prompt that landed in the turn was queued by the agent behind it: the turn ends without a result of its own, and the prompt's turn
+            // follows, which gives the answer again as a whole message under a new id, and the usage.
+            await send(state(session, { state: 'idle', stopReason, usage: NOTHING_SPENT }));
+            await Bun.sleep(session.gap);
+            await send(state(session, { state: 'running' }));
+
+            if (said) {
+                await send({ sessionUpdate: 'agent_message', messageId: crypto.randomUUID(), content: [{ type: 'text', text: said }] });
+            }
+
+            session.prompting = false;
+            await send(state(session, { state: 'idle', stopReason, ...(usage && { usage }) }));
+        }
+        else {
+            session.prompting = false;
+            await send(state(session, { state: 'idle', stopReason, ...(error && { error }), ...(usage && { usage }) }));
+        }
+
+        // A prompt held for this turn's end (`FAKE_ACP_QUEUE`) runs next; work that ended meanwhile is reported once the agent is free.
         session.queue.shift()?.();
+        report(session);
 
         // What an agent gives once the turn is over: its first message as the title, then a name of its own a moment later.
         if (session.title === undefined) {
@@ -472,8 +663,14 @@ const app = agent({ name: 'fake-acp-agent-v2' })
             throw RequestError.sessionNotFound(params.sessionId);
         }
 
-        if (process.env.FAKE_ACP_REJECT === '1') {
+        session.client = client;
+
+        if (process.env.FAKE_ACP_REJECT === '1' || (process.env.FAKE_ACP_REJECT === 'later' && session.count > 0)) {
             throw new RequestError(-32000, 'Authentication required');
+        }
+
+        if (process.env.FAKE_ACP_SLOW && session.count > 0) {
+            await Bun.sleep(Number(process.env.FAKE_ACP_SLOW));
         }
 
         const text = params.prompt.map(block => (block.type === 'text' ? block.text : '')).join('\n');
@@ -483,10 +680,15 @@ const app = agent({ name: 'fake-acp-agent-v2' })
         if (starting) {
             session.prompting = true;
         }
-        else if (process.env.FAKE_ACP_QUEUE === '1') {
-            // Held, answered and echoed only when the turn before it is over, and run as a turn of its own.
+        else if (process.env.FAKE_ACP_QUEUE === '1' || process.env.FAKE_ACP_QUEUE === 'refuse') {
+            // Held, answered and echoed only when the turn before it is over, and run as a turn of its own (or refused then).
             log(`queued ${ text.replaceAll('\n', ' | ') }`);
             await new Promise<void>(resolve => session.queue.push(resolve));
+
+            if (process.env.FAKE_ACP_QUEUE === 'refuse') {
+                throw new RequestError(-32000, 'Authentication required');
+            }
+
             session.prompting = true;
             starting = true;
         }
@@ -494,9 +696,13 @@ const app = agent({ name: 'fake-acp-agent-v2' })
             // Inserted into the running turn: its lines run as directives of that same turn, after the line in progress.
             log(`steer ${ text.replaceAll('\n', ' | ') }`);
             session.steers.push(text);
+            session.landed = true;
         }
 
-        await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'user_message', messageId, content: [{ type: 'text', text }] } });
+        // FAKE_ACP_NOECHO=1: the agent takes the prompt in and says nothing of it, as an agent that does not echo the messages it is given.
+        if (process.env.FAKE_ACP_NOECHO !== '1') {
+            await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'user_message', messageId, content: [{ type: 'text', text }] } });
+        }
 
         if (starting) {
             // The turn goes on after the answer: the message is inserted, nothing more.
