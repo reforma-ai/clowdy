@@ -297,6 +297,13 @@ describe('startingEngine', () => {
         expect(startingEngine(['codex'], NOTHING)).toBe('codex');
         expect(startingEngine([], { ...NOTHING, engine: 'codex' })).toBeUndefined();
     });
+
+    it('is the provider the project asks for while it can be used, whatever was last picked', () => {
+        expect(startingEngine(['claude', 'codex'], { ...NOTHING, engine: 'codex' }, 'claude')).toBe('claude');
+        expect(startingEngine(['claude', 'codex'], NOTHING, 'codex')).toBe('codex');
+        expect(startingEngine(['claude', 'codex'], { ...NOTHING, engine: 'codex' }, 'cursor')).toBe('codex');
+        expect(startingEngine(['claude'], NOTHING, 'cursor')).toBe('claude');
+    });
 });
 
 describe('what is remembered', () => {

@@ -6,6 +6,7 @@ import { Clip } from '@clowdy/icons/14';
 import { useImperativeHandle, useRef, useState, type MouseEvent, type Ref } from 'react';
 
 import { useRootStore } from '../../stores';
+import { readRememberedMode, startingMode, writeRememberedMode } from './chatModeMemory';
 import { isRunActive } from './chatRun';
 import { perform } from './commands';
 import styles from './Composer.module.css';
@@ -41,8 +42,11 @@ export interface ComposerProps {
     chat: Chat | undefined;
     /** The chat's orchestrator, once the first message started one. While it works the mode stays as it is. */
     run: Run | undefined;
-    /** For the new-chat page: the project the chat is made in, and what to do once its first message is sent. */
-    start?: { projectId: ProjectId; onStarted: (chatId: ChatId) => void };
+    /**
+     * For the new-chat page: the project the chat is made in, what to do once its first message is sent, and what the project asks a new
+     * chat to start with (its agent and its mode; what it leaves out starts where the last chat left off).
+     */
+    start?: { projectId: ProjectId; onStarted: (chatId: ChatId) => void; defaults?: { engine?: string; mode?: ChatMode } };
     /** How many lines the empty field is tall (it still grows with the text). One by default. */
     minLines?: number;
     ref?: Ref<ComposerHandle>;
@@ -67,14 +71,17 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
     const [shown, setShown] = useState({ key, doc: draftOf(key) });
     const doc = shown.key === key ? shown.doc : draftOf(key);
     const [isStopping, setIsStopping] = useState(false);
-    const [draftMode, setDraftMode] = useState<ChatMode>('autopilot');
+    // The mode a new chat starts in: what was picked on this page for this project, else where the project and the last pick say it starts.
+    const [rememberedMode, setRememberedMode] = useState(readRememberedMode);
+    const [pickedMode, setPickedMode] = useState<{ projectId: ProjectId | undefined; mode: ChatMode }>();
+    const draftMode = pickedMode && pickedMode.projectId === start?.projectId ? pickedMode.mode : startingMode(start?.defaults?.mode, rememberedMode);
     // The chat a first message made, when sending the message then failed. It belongs to the project it was made in: the page of
     // another project (the same composer, drawn again) starts its own chat, and a model picked there is not picked for this one.
     const [madeIn, setMade] = useState<Chat>();
     const made = madeIn?.projectId === start?.projectId ? madeIn : undefined;
     const target = chat ?? made;
     const running = isRunActive(run);
-    const model = useModelChoice({ chat, made, run });
+    const model = useModelChoice({ chat, made, run, preferredEngine: start?.defaults?.engine });
     const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
     const picker = useRef<HTMLInputElement>(null);
     const hasMessage = messageOf(doc) !== '' || attach.files.length > 0;
@@ -222,7 +229,11 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
                                 isDisabled={ running || (!chat && made !== undefined) }
                                 onPick={ (picked) => {
                                     if (chat) void perform(root, { type: 'chat.setMode', chatId: chat.id, mode: picked });
-                                    else setDraftMode(picked);
+                                    else setPickedMode({ projectId: start?.projectId, mode: picked });
+
+                                    // Every pick is remembered, as the model's is, for the next new chat that has no mode of its project's.
+                                    setRememberedMode(picked);
+                                    writeRememberedMode(picked);
                                 } }
                             />
                         </Unavailable>

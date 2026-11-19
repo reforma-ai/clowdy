@@ -26,6 +26,8 @@ interface ModelChoiceArgs {
     made: Chat | undefined;
     /** The orchestrator of `chat`. */
     run: Run | undefined;
+    /** The provider the new-chat page's project asks for; the page starts on it while it can be used. */
+    preferredEngine?: string;
 }
 
 export interface ModelChoiceState {
@@ -40,12 +42,12 @@ export interface ModelChoiceState {
 }
 
 /**
- * The model choice behind the composer's picker. On the new-chat page it starts from what the person last picked on this machine
- * (`startingChoice`), looks again as the models arrive until they pick, and holds their pick from then on. In a chat it is the chat's
+ * The model choice behind the composer's picker. On the new-chat page it starts on the provider the project asks for, else from what the
+ * person last picked on this machine (`startingChoice`), looks again as the models arrive until they pick, and holds their pick from then on. In a chat it is the chat's
  * own (`engine`, `model`, `effort`, from the store as they change), and a pick sends `chat.setModel`; before the orchestrator has
  * started the provider may change too. Every pick is remembered for the next new chat.
  */
-export function useModelChoice({ chat, made, run }: ModelChoiceArgs): ModelChoiceState {
+export function useModelChoice({ chat, made, run, preferredEngine }: ModelChoiceArgs): ModelChoiceState {
     const root = useRootStore();
     const { agents, status } = useAgents();
     const [remembered] = useState(readRemembered);
@@ -66,7 +68,7 @@ export function useModelChoice({ chat, made, run }: ModelChoiceArgs): ModelChoic
     const waiting = heldPick && heldPick.from === choiceKey(stored) ? heldPick.choice : undefined;
     const fixed = chat ? (waiting ?? stored) : (picked ?? choiceOf(made));
     const starting = !chat && !fixed;
-    const engine = starting ? startingEngine(usable.map(agent => agent.id), remembered) : fixed?.engine;
+    const engine = starting ? startingEngine(usable.map(agent => agent.id), remembered, preferredEngine) : fixed?.engine;
     const list = useAgentModels(engine);
     const models = list?.models?.state === 'ok' ? list.models.models : [];
     const choice = starting ? (engine ? startingChoice(engine, models, remembered) : undefined) : fixed;

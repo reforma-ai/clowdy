@@ -178,7 +178,9 @@ export function startingChoice(engine: string, models: readonly AgentModel[], re
     return choiceForModel(engine, model, undefined, remembered);
 }
 
-/** The provider a new chat starts on: the one last picked if it can still be used, else the first that can. */
-export function startingEngine(usable: readonly string[], remembered: RememberedChoice): string | undefined {
+/** The provider a new chat starts on: the one its project asks for if it can be used, else the one last picked if it still can, else the first that can. */
+export function startingEngine(usable: readonly string[], remembered: RememberedChoice, preferred?: string): string | undefined {
+    if (preferred && usable.includes(preferred)) return preferred;
+
     return remembered.engine && usable.includes(remembered.engine) ? remembered.engine : usable[0];
 }

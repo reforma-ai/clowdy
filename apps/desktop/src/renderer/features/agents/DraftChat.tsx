@@ -15,6 +15,8 @@ import styles from './DraftChat.module.css';
 export function DraftChat() {
     const project = useProjectState();
     const ui = useProjectUi();
+    // What the project asks a new chat to start with; what it leaves out starts where the last chat left off.
+    const { settings } = project.project;
     const composer = useRef<ComposerHandle>(null);
     const pending = ui.pendingFiles;
 
@@ -35,7 +37,7 @@ export function DraftChat() {
                     <Text variant="heading-3">What should we work on?</Text>
 
                     <ContentColumn className={ styles.composerSlot }>
-                        <Composer ref={ composer } chat={ undefined } run={ undefined } minLines={ 3 } start={ { projectId: project.id, onStarted: chatId => ui.openChat(chatId) } } />
+                        <Composer ref={ composer } chat={ undefined } run={ undefined } minLines={ 3 } start={ { projectId: project.id, onStarted: chatId => ui.openChat(chatId), defaults: { engine: settings.engine, mode: settings.chatMode } } } />
                     </ContentColumn>
                 </div>
             </div>

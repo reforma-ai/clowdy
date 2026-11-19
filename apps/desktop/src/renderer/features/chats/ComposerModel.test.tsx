@@ -5,12 +5,13 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RootStoreProvider, type RootStore } from '../../stores';
+import { readRememberedMode, writeRememberedMode } from './chatModeMemory';
 import { Composer } from './Composer';
 import { newChatDraftKey, saveDraft } from './composerDrafts';
 import { readRemembered, writeRemembered } from './modelSelection';
 import { modelStore, type ModelStoreOptions } from './modelTestKit';
 
-import type { AgentModels, Chat, CommandResult, Run } from '@clowdy/protocol';
+import type { AgentModels, Chat, ChatMode, CommandResult, Run } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { CommandInput } from '../../daemon/transport';
 
@@ -50,6 +51,8 @@ interface Page {
     answer?: (input: CommandInput) => CommandResult;
     /** The project of the new-chat page (default `p`). */
     projectId?: string;
+    /** What the project asks a new chat to start with. */
+    defaults?: { engine?: string; mode?: ChatMode };
 }
 
 /** A chat as the daemon makes it from `chat.create`. */
@@ -72,7 +75,7 @@ async function mount(page: Page = {}, options: ModelStoreOptions = {}) {
             <RootStoreProvider value={ root$ }>
                 { current.chat
                     ? <Composer chat={ current.chat } run={ current.run } />
-                    : <Composer chat={ undefined } run={ undefined } start={ { projectId: current.projectId ?? 'p', onStarted: chatId => started.push(chatId) } } /> }
+                    : <Composer chat={ undefined } run={ undefined } start={ { projectId: current.projectId ?? 'p', onStarted: chatId => started.push(chatId), defaults: current.defaults } } /> }
             </RootStoreProvider>
         );
     });
@@ -101,6 +104,7 @@ const tabNames = () => tabs().map(tab => tab.getAttribute('aria-label'));
 const flyout = () => document.querySelector<HTMLElement>('[data-model-flyout]');
 const flyoutOptions = () => [...(flyout()?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
 const stored = () => localStorage.getItem('clowdy:model-choice');
+const modeTrigger = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Mode:"]');
 
 function type(value: string) {
     act(() => {
@@ -133,6 +137,13 @@ const key = (target: Element, name: string) => act(async () => {
 async function openPicker() {
     await press(trigger());
     await settle();
+}
+
+/** Picks a mode by its label in the mode list. */
+async function pickMode(label: string) {
+    await press(modeTrigger());
+    await settle();
+    await press([...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes(label)));
 }
 
 /** Picks a model by its name in the open popover's list (on the tab of its provider, when it is not the one the list starts on), and leaves the popover open on its face. */
@@ -170,6 +181,82 @@ beforeEach(() => {
 afterEach(() => {
     act(() => root.unmount());
     container.remove();
+});
+
+describe('where a new chat starts', () => {
+    const create = () => sent.find(input => input.type === 'chat.create');
+
+    async function send(text: string) {
+        type(text);
+        await pressEnter();
+    }
+
+    it('starts in Autopilot when the project asks for no mode and none was picked before', async () => {
+        await mount();
+
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Autopilot');
+    });
+
+    it('starts in the mode its project asks for', async () => {
+        await mount({ defaults: { mode: 'semi' } });
+
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Semi-manual');
+
+        await send('Build the thing');
+
+        expect(create()).toMatchObject({ mode: 'semi' });
+    });
+
+    it('remembers the mode that was picked, and the next new chat starts in it', async () => {
+        await mount();
+
+        await pickMode('Semi-manual');
+        expect(readRememberedMode()).toBe('semi');
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Semi-manual');
+
+        act(() => root.unmount());
+        root = createRoot(container);
+        await mount();
+
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Semi-manual');
+
+        await send('Build the thing');
+
+        expect(create()).toMatchObject({ mode: 'semi' });
+    });
+
+    it('lets the mode its project asks for win over the one picked last', async () => {
+        writeRememberedMode('semi');
+        await mount({ defaults: { mode: 'autopilot' } });
+
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Autopilot');
+    });
+
+    it('keeps a mode picked on the page of one project off the page of another', async () => {
+        const page = await mount({ projectId: 'p', defaults: { mode: 'autopilot' } });
+
+        await pickMode('Semi-manual');
+        saveDraft(newChatDraftKey('q'), emptyComposerDoc());
+        await page.update({ projectId: 'q', defaults: { mode: 'autopilot' } });
+
+        expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Autopilot');
+    });
+
+    it('starts on the provider its project asks for, even when another was picked last', async () => {
+        writeRemembered({ engine: 'claude', models: {}, efforts: {} });
+        await mount({ defaults: { engine: 'codex' } });
+        await send('Build the thing');
+
+        expect(create()).toMatchObject({ engine: 'codex' });
+    });
+
+    it('starts on the provider that was picked last when its project asks for none', async () => {
+        writeRemembered({ engine: 'codex', models: {}, efforts: {} });
+        await mount();
+        await send('Build the thing');
+
+        expect(create()).toMatchObject({ engine: 'codex' });
+    });
 });
 
 describe('on the new-chat page', () => {

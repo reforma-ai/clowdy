@@ -201,11 +201,15 @@ describe('ProjectsPage project', () => {
         expect(input.value).toBe('Clowdy');
     });
 
-    it('saves the agent and the mode of new chats, and clears the agent with Default', async () => {
+    it('saves the agent and the mode of new chats, and clears each with Last used', async () => {
         await open(FIXTURE_EMPTY_PROJECT_ID);
 
         const settings = () => store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.settings;
         const radio = (group: string, label: string) => [...container.querySelectorAll<HTMLElement>(`[aria-label="${ group }"] [role="radio"]`)].find(item => item.textContent === label)!;
+        const checked = (group: string) => container.querySelector(`[aria-label="${ group }"] [role="radio"][aria-checked="true"]`)?.textContent;
+
+        // Nothing saved is Last used, for the agent and for the mode.
+        expect([checked('Agent for new chats'), checked('Mode for new chats')]).toEqual(['Last used', 'Last used']);
 
         await click(radio('Agent for new chats', 'Codex'));
         await flush();
@@ -215,10 +219,15 @@ describe('ProjectsPage project', () => {
         await flush();
         expect(settings().chatMode).toBe('semi');
 
-        await click(radio('Agent for new chats', 'Default'));
+        await click(radio('Agent for new chats', 'Last used'));
         await flush();
         expect(settings()).not.toHaveProperty('engine');
         expect(settings().chatMode).toBe('semi');
+
+        await click(radio('Mode for new chats', 'Last used'));
+        await flush();
+        expect(settings()).not.toHaveProperty('chatMode');
+        expect([checked('Agent for new chats'), checked('Mode for new chats')]).toEqual(['Last used', 'Last used']);
     });
 
     it('confirms with the counts before removing, and leaves the page when the project is gone', async () => {

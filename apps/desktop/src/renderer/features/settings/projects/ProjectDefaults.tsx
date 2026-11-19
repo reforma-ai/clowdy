@@ -9,15 +9,18 @@ import { setProjectDefaults } from './projectActions';
 
 import type { ChatMode, Project } from '@clowdy/protocol';
 
-/** The key of "Default": no agent chosen, so the daemon picks. It cannot be an agent's id, which never starts with `~`. */
-const DEFAULT_AGENT = '~default';
+/** The key of "Last used", for the agent and for the mode: nothing chosen, so a new chat starts where the last one left off. It cannot be an agent's id, which never starts with `~`. */
+const LAST_USED = '~last-used';
 
 const MODES: ReadonlyArray<{ id: ChatMode; label: string }> = [
     { id: 'autopilot', label: 'Autopilot' },
     { id: 'semi', label: 'Semi-manual' },
 ];
 
-/** What a new chat in this project starts with: the agent that answers it and how much it decides alone. A chat can still choose for itself. */
+/**
+ * What a new chat in this project starts with: the agent that answers it and how much it decides alone. "Last used" (nothing saved) starts
+ * it where the last chat left off, on this machine; a chat can still choose for itself.
+ */
 export function ProjectDefaults({ project }: { project: Project }) {
     const root = useRootStore();
     const { agents } = useAgents();
@@ -29,20 +32,20 @@ export function ProjectDefaults({ project }: { project: Project }) {
     return (
         <SettingsSection title="New chats">
             <SettingsCard divided>
-                <SettingsRow title="Agent" description="The agent a new chat starts with. Default leaves the choice to Clowdy." stacked>
+                <SettingsRow title="Agent" description="The agent a new chat starts with. Last used keeps the one you picked in your previous chat." stacked>
                     <ToggleButtonGroup
                         aria-label="Agent for new chats"
                         size="sm"
-                        selectedKeys={ [engine ?? DEFAULT_AGENT] }
+                        selectedKeys={ [engine ?? LAST_USED] }
                         onSelectionChange={ (keys) => {
                             const next = [...keys][0];
 
-                            if (typeof next !== 'string' || next === (engine ?? DEFAULT_AGENT)) return;
+                            if (typeof next !== 'string' || next === (engine ?? LAST_USED)) return;
 
-                            void setProjectDefaults(root, project, { engine: next === DEFAULT_AGENT ? null : next });
+                            void setProjectDefaults(root, project, { engine: next === LAST_USED ? null : next });
                         } }
                     >
-                        <ToggleButtonGroupItem value={ DEFAULT_AGENT }>Default</ToggleButtonGroupItem>
+                        <ToggleButtonGroupItem value={ LAST_USED }>Last used</ToggleButtonGroupItem>
                         { providers.map(agent => (
                             <ToggleButtonGroupItem key={ agent.id } value={ agent.id } isDisabled={ agent.status !== 'ready' && agent.id !== engine }>{ agent.name }</ToggleButtonGroupItem>
                         )) }
@@ -50,17 +53,22 @@ export function ProjectDefaults({ project }: { project: Project }) {
                     </ToggleButtonGroup>
                 </SettingsRow>
 
-                <SettingsRow title="Mode" description="Autopilot decides alone. Semi-manual asks you before a significant fork." stacked>
+                <SettingsRow title="Mode" description="How much a new chat decides on its own. Last used keeps the mode of your previous chat." stacked>
                     <ToggleButtonGroup
                         aria-label="Mode for new chats"
                         size="sm"
-                        selectedKeys={ [project.settings.chatMode ?? 'autopilot'] }
+                        selectedKeys={ [project.settings.chatMode ?? LAST_USED] }
                         onSelectionChange={ (keys) => {
-                            const next = MODES.find(mode => keys.has(mode.id));
+                            const next = [...keys][0];
 
-                            if (next && next.id !== (project.settings.chatMode ?? 'autopilot')) void setProjectDefaults(root, project, { chatMode: next.id });
+                            if (typeof next !== 'string' || next === (project.settings.chatMode ?? LAST_USED)) return;
+
+                            const mode = MODES.find(candidate => candidate.id === next);
+
+                            void setProjectDefaults(root, project, { chatMode: mode?.id ?? null });
                         } }
                     >
+                        <ToggleButtonGroupItem value={ LAST_USED }>Last used</ToggleButtonGroupItem>
                         { MODES.map(mode => <ToggleButtonGroupItem key={ mode.id } value={ mode.id }>{ mode.label }</ToggleButtonGroupItem>) }
                     </ToggleButtonGroup>
                 </SettingsRow>
