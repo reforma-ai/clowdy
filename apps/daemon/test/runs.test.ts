@@ -151,12 +151,14 @@ describe('waiting for background work', () => {
         return { h, project, runs, create };
     }
 
-    test('is entered from running only, and leaves by queued or an end, never straight to running', () => {
+    test('is entered from running, or from the other wait while the session is open, and leaves by queued or an end, never straight to running', () => {
         for (const from of Object.keys(TRANSITIONS) as RunStatus[]) {
-            expect(canTransition(from, 'waiting_background')).toBe(from === 'running' || from === 'waiting_background');
+            expect(canTransition(from, 'waiting_background')).toBe(from === 'running' || from === 'waiting_background' || from === 'waiting_children');
         }
 
-        expect(TRANSITIONS.waiting_background).toEqual(['waiting_background', 'queued', 'succeeded', 'failed', 'cancelled', 'interrupted']);
+        // The two waits trade places as what the run waits for changes (children win), and a session that fails for a moment is retried through `blocked`.
+        expect(TRANSITIONS.waiting_background).toEqual(['waiting_background', 'waiting_children', 'queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']);
+        expect(TRANSITIONS.waiting_children).toEqual(['waiting_children', 'waiting_background', 'queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']);
         expect(NEEDS_REASON).toContain('waiting_background');
     });
 
@@ -215,7 +217,7 @@ describe('waiting for background work', () => {
 
         runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
 
-        for (const to of ['running', 'waiting_children', 'waiting_user', 'blocked'] as const) {
+        for (const to of ['running', 'waiting_user'] as const) {
             expect(() => runs.setStatus(runId, to, { reason: 'Nope' })).toThrow(`Illegal run transition waiting_background -> ${ to }`);
         }
 

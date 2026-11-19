@@ -213,6 +213,8 @@ export interface RunWork {
     /** How the run itself reported its end with `report_result`. */
     outcome?: RunOutcome;
     process?: RunProcess;
+    /** What the run had open in the background when a restart ended its session: the next turn's message names it, then the record is cleared. */
+    lostBackground?: BackgroundItem[];
 }
 
 interface WorkRow {
@@ -223,10 +225,11 @@ interface WorkRow {
     pid: number | null;
     pgid: number | null;
     process_started_at: number | null;
+    lost_background: string | null;
 }
 
 export function getRunWork(db: Database, runId: string): RunWork {
-    const row = db.query('SELECT cwd, idempotency_key, next_prompt, outcome, pid, pgid, process_started_at FROM runs WHERE id = ?').get(runId) as WorkRow | null;
+    const row = db.query('SELECT cwd, idempotency_key, next_prompt, outcome, pid, pgid, process_started_at, lost_background FROM runs WHERE id = ?').get(runId) as WorkRow | null;
 
     if (!row) {
         return {};
@@ -238,6 +241,7 @@ export function getRunWork(db: Database, runId: string): RunWork {
         nextPrompt: row.next_prompt,
         outcome: row.outcome,
         process: row.pid === null ? undefined : clean({ pid: row.pid, pgid: row.pgid, startedAt: row.process_started_at }),
+        lostBackground: parseJson<BackgroundItem[]>(row.lost_background),
     }) as RunWork;
 }
 
@@ -255,6 +259,10 @@ export function setRunWork(db: Database, runId: string, work: WorkPatch): void {
 
     if (work.process !== undefined) {
         columns.push(['pid', work.process?.pid ?? null], ['pgid', work.process?.pgid ?? null], ['process_started_at', work.process?.startedAt ?? null]);
+    }
+
+    if (work.lostBackground !== undefined) {
+        columns.push(['lost_background', work.lostBackground === null ? null : toJson(work.lostBackground)]);
     }
 
     if (columns.length > 0) {

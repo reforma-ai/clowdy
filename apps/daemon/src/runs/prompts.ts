@@ -2,7 +2,9 @@ import { mainFolder } from '@clowdy/protocol';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { ChatMode, Project, RunRole, Task } from '@clowdy/protocol';
+import { clip } from './tool-kit';
+
+import type { BackgroundItem, ChatMode, Project, RunRole, Task } from '@clowdy/protocol';
 
 /** The system skill each role starts from. It is named in the first message and its text is in the system prompt, because a skill listing alone is advisory. */
 const ENTRY_SKILL: Record<RunRole, string> = {
@@ -113,3 +115,27 @@ export function taskMessage(task: Task): string {
 
 /** Sent to a run that was cut off by a subscription limit or a passing engine failure, once it can continue. */
 export const CONTINUE_MESSAGE = 'The previous attempt was interrupted by a temporary problem (a usage limit or an overloaded service). Continue where you left off; do not redo finished work.';
+
+/** What the person reads of a background item's kind, in a line of the stream ("Background command finished: ...") and in the agent's message. */
+export const BACKGROUND_KINDS: Record<BackgroundItem['kind'], string> = {
+    command: 'command',
+    subagent: 'sub-agent',
+    task: 'task',
+};
+
+/** The longest title of a background item that goes into a sentence. */
+const MAX_NAMED_TITLE = 80;
+
+/** A background item's title for a sentence: one line, cut at about 80 characters (a command's title may be a whole script). */
+export const namedTitle = (title: string) => clip(title.replace(/\s+/g, ' ').trim(), MAX_NAMED_TITLE);
+
+/**
+ * Told to the agent with the first message after its session was cut off (a Stop, a restart, a failure): what it had running in the background is gone,
+ * whatever its state was, and nobody will report on it. The agent decides whether to start it again.
+ */
+export function lostBackgroundMessage(items: readonly BackgroundItem[]): string {
+    return [
+        'The background work you had running was lost when your session was cut off (stopped, restarted or failed). It did not finish, and no result of it will arrive. Start it again if it is still needed.',
+        ...items.map(item => `- ${ BACKGROUND_KINDS[item.kind] }: ${ namedTitle(item.title) }`),
+    ].join('\n');
+}

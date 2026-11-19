@@ -3,7 +3,7 @@ import { isTerminalRunStatus } from '@clowdy/protocol';
 import { errorMessage } from '../errors';
 import { TurnWriter } from './writer';
 
-import type { Run } from '@clowdy/protocol';
+import type { BackgroundItem, Run } from '@clowdy/protocol';
 import type { EngineEvent, SubagentState } from '../engine/types';
 import type { Store } from '../store';
 import type { RunService } from './service';
@@ -21,6 +21,8 @@ type StreamEvent = Extract<EngineEvent, { type: 'text' | 'tool' }> & { agentId: 
 interface Agent {
     run: Run;
     writer: TurnWriter;
+    /** It outlived the end of a turn because its background item was still open: the item leaving the snapshot ends it. */
+    kept?: boolean;
 }
 
 /**
@@ -33,6 +35,8 @@ export class NativeAgents {
     private queue: (() => void)[] = [];
     private timer?: ReturnType<typeof setTimeout>;
     private skipped = new Set<string>();
+    /** The ids of the `subagent` items in the latest background snapshot. */
+    private listed = new Set<string>();
 
     constructor(private store: Store, private runs: RunService, private parent: Run) {}
 
@@ -46,16 +50,31 @@ export class NativeAgents {
         this.push(() => this.applyStream(event));
     }
 
+    /** The session's latest complete list of what it has open in the background; a sub-agent that was kept past a turn's end ends once its item is gone. */
+    background(items: BackgroundItem[]): void {
+        this.push(() => this.applyBackground(items));
+    }
+
     /**
      * The parent's turn ended: whatever still runs ends with it, and so does a call a sub-agent left running (`reason` says why), also in a sub-agent
-     * that a Stop of the parent has ended already.
+     * that a Stop of the parent has ended already. With `keepOpen` (the session goes on waiting for background work) a sub-agent whose item is still in
+     * the latest snapshot goes on too, with its stream and its calls: it ends when its item leaves the snapshot, or with the next `finish` that does not
+     * keep it. The item is matched by the id of the sub-agent or of the call that started it (`parentToolCallId`), which an engine must use as the item's
+     * id; a sub-agent no item names is cancelled as before.
      */
-    finish(reason?: string): void {
+    finish(reason?: string, keepOpen = false): void {
         this.flush();
         this.store.tx(() => {
-            for (const agent of this.agents.values()) {
+            for (const [agentId, agent] of this.agents) {
+                if (keepOpen && this.isListed(agentId, agent)) {
+                    agent.kept = true;
+
+                    continue;
+                }
+
                 agent.writer.finish(reason);
                 this.close(agent, 'cancelled', 'The parent run ended its turn');
+                this.agents.delete(agentId);
             }
 
             if (this.skipped.size > 0) {
@@ -63,7 +82,6 @@ export class NativeAgents {
                 this.skipped.clear();
             }
         });
-        this.agents.clear();
     }
 
     private push(apply: () => void): void {
@@ -106,6 +124,22 @@ export class NativeAgents {
         this.agents.set(agentId, agent);
 
         return agent;
+    }
+
+    private applyBackground(items: BackgroundItem[]): void {
+        this.listed = new Set(items.filter(item => item.kind === 'subagent').map(item => item.id));
+
+        for (const [agentId, agent] of this.agents) {
+            if (agent.kept && !this.isListed(agentId, agent)) {
+                // Its item is gone: it finished. A failure or a cancel was reported by its own `subagent` event, which closed it already.
+                this.close(agent, 'done');
+                this.agents.delete(agentId);
+            }
+        }
+    }
+
+    private isListed(agentId: string, agent: Agent): boolean {
+        return this.listed.has(agentId) || (agent.run.parentToolCallId !== undefined && this.listed.has(agent.run.parentToolCallId));
     }
 
     private applyState(event: SubagentEvent): void {

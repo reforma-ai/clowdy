@@ -8,14 +8,18 @@ import type { RunStatus } from '@clowdy/protocol';
  * - `queued`, `waiting_children`, `waiting_background` and `blocked` may repeat to refresh their reason (why the run still waits).
  * - A chat orchestrator whose session outlives its turn (an agent's background work still open) goes `waiting_background`, which holds no slot. It
  *   leaves by `queued` when a message is delivered to the live session, and by a terminal state when the session ends or the person stops it.
+ * - While its session is open the two waits trade places as what the run waits for changes (`RunDriver.settle` decides, children win): a turn the
+ *   agent starts by itself may start children or read their results, and a run that waited for children with its session open ends `succeeded` when
+ *   the session ends and no child is left to wait for. A session that fails for a moment while the run waits is retried like a running one's: both go
+ *   `blocked`.
  * - A running run goes `blocked` when its engine is at a subscription limit or failed for a moment, and comes back through `queued`.
  * - A finished chat orchestrator is resumed by the user's next message: terminal states lead back to `queued`.
  */
 export const TRANSITIONS: Record<RunStatus, readonly RunStatus[]> = {
     queued: ['queued', 'running', 'failed', 'cancelled', 'interrupted'],
     running: ['waiting_children', 'waiting_background', 'waiting_user', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted'],
-    waiting_children: ['waiting_children', 'queued', 'failed', 'cancelled', 'interrupted'],
-    waiting_background: ['waiting_background', 'queued', 'succeeded', 'failed', 'cancelled', 'interrupted'],
+    waiting_children: ['waiting_children', 'waiting_background', 'queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted'],
+    waiting_background: ['waiting_background', 'waiting_children', 'queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted'],
     waiting_user: ['queued', 'failed', 'cancelled', 'interrupted'],
     blocked: ['blocked', 'queued', 'failed', 'cancelled', 'interrupted'],
     succeeded: ['queued'],

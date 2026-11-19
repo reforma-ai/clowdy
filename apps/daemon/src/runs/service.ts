@@ -590,7 +590,8 @@ export class RunService {
      * At startup nothing is running any more. Engine processes that outlived the daemon are killed (when their pid still
      * belongs to the process that was recorded), and runs that were mid-turn come back `interrupted`, the calls their turn left running failed as
      * `TurnWriter.finish` would have done (a crash never got to it). A run that waits for background work (`waiting_background`) has a live session
-     * too, which no restart keeps, so it is interrupted whether or not a process was recorded for it. Runs that only wait (queued, blocked, waiting
+     * too, which no restart keeps, so it is interrupted whether or not a process was recorded for it, and the items it had open are kept in its work
+     * record until its next message tells the agent they are lost. Runs that only wait (queued, blocked, waiting
      * for children) keep waiting; the driver starts them again.
      */
     async recover(): Promise<number> {
@@ -603,7 +604,9 @@ export class RunService {
             const dead = listActiveRuns(this.store.db).filter(run => ['running', 'waiting_user', 'waiting_background'].includes(run.status) || withProcess.has(run.id));
 
             for (const run of dead) {
-                setRunWork(this.store.db, run.id, { process: null });
+                // `setStatus` clears what a run had open in the background, since a run that ended has nothing open; what the restart cost it is kept first,
+                // for the next turn's message (`lostBackgroundMessage`).
+                setRunWork(this.store.db, run.id, { process: null, lostBackground: run.background });
                 this.setStatus(run.id, 'interrupted', { reason: 'Daemon restarted' });
 
                 for (const { seq, body } of listRunningTools(this.store.db, run.id)) {
@@ -687,14 +690,16 @@ export class RunService {
 
     /**
      * Keeps what the agent has open in the background, as the engine's latest complete list (a `background` event repeats the whole list whenever it
-     * changes). Nothing is written when the list is the same, and an empty one clears it.
+     * changes). Nothing is written when the list is the same, and an empty one clears it. A run that ended keeps none: `setStatus` cleared it, and
+     * what its session still reports while it shuts down is not open any more.
      */
     setBackground(runId: string, items: BackgroundItem[]): void {
         // Only the protocol's fields are kept, so whatever else an engine put on an item does not reach the row or the clients. The list and each title
         // are bounded: a command's title may be a whole script, and the list rides in every `run.upserted` that the event log keeps.
         const kept = items.slice(0, MAX_BACKGROUND_ITEMS).map(({ id, kind, title }) => ({ id, kind, title: title.slice(0, MAX_BACKGROUND_TITLE) }));
+        const run = this.require(runId);
 
-        if (sameItems(this.require(runId).background ?? [], kept)) {
+        if (isTerminalRunStatus(run.status) || sameItems(run.background ?? [], kept)) {
             return;
         }
 

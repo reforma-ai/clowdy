@@ -33,7 +33,10 @@ export interface QueueInput {
     content: string;
 }
 
-/** Whether a chat's orchestrator takes a message at once: its work is over, or it only waits for its children (`isBusyRunStatus`). */
+/**
+ * Whether a chat's orchestrator takes a message at once: its work is over, or it only waits for its children or for background work its session keeps open
+ * (`isBusyRunStatus`). A message to one whose session is open goes into that session (`RunDriver.launch`), not into a new one.
+ */
 export function isAtRest(run: Run): boolean {
     return !isBusyRunStatus(run.status);
 }
