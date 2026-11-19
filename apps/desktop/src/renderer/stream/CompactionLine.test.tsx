@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { STOPPED_TOOL } from '@clowdy/protocol';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -61,6 +62,13 @@ describe('CompactionLine', () => {
 
         expect(line().textContent).toBe('Compaction failed');
         expect(line().className).toMatch(/failed/);
+    });
+
+    it('says a compaction the person stopped was stopped, without the danger tone', async () => {
+        await draw({ state: 'error', error: STOPPED_TOOL });
+
+        expect(line().textContent).toBe('Compaction stopped');
+        expect(line().className).not.toMatch(/failed/);
     });
 
     it('does not shimmer for a call left running in a run that is over', async () => {

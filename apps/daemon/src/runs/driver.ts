@@ -1,4 +1,4 @@
-import { isTerminalRunStatus } from '@clowdy/protocol';
+import { isTerminalRunStatus, STOPPED_TOOL } from '@clowdy/protocol';
 import { statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 
@@ -13,7 +13,7 @@ import { describeProcess, killSurvivor } from './processes';
 import { CONTINUE_MESSAGE, firstMessage, skillPrompt, systemPrompt } from './prompts';
 import { childReport, wakeMessage } from './reports';
 import { ASK_USER } from './tools';
-import { STOPPED_TOOL, TurnWriter, UNFINISHED_TOOL } from './writer';
+import { TurnWriter, UNFINISHED_TOOL } from './writer';
 
 import type { ChatMode, EngineId, Run, RunContext, RunRole, Task } from '@clowdy/protocol';
 import type { Config } from '../config';

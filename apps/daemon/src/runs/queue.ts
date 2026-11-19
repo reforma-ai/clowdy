@@ -317,7 +317,7 @@ export class ChatQueue {
     /** Refuses a compact turn an orchestrator at rest cannot take now (`canCompact`), saying what it waits for. */
     private requireCompactable(run: Run): void {
         if (!isTerminalRunStatus(run.status)) {
-            throw conflict('The orchestrator is waiting for its child runs. The chat is compacted once they have finished');
+            throw conflict('The orchestrator is waiting for its child runs. Compact the chat when they have finished');
         }
 
         if (this.deps.runs.hasUnseenResults(run.id)) {

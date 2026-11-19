@@ -1,4 +1,4 @@
-import { ACTIVE_RUN_STATUSES, isTerminalRunStatus } from '@clowdy/protocol';
+import { ACTIVE_RUN_STATUSES, isTerminalRunStatus, STOPPED_TOOL } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
 import { findQuestion, listRunningTools } from '../db/items';
@@ -13,7 +13,6 @@ import { EngineLimits } from './limits';
 import { killSurvivor, signalProcess } from './processes';
 import { QUEUE_REASON, Scheduler } from './scheduler';
 import { canTransition, NEEDS_REASON } from './transitions';
-import { STOPPED_TOOL } from './writer';
 
 import type { ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunRole, RunStatus, RunUsage, Task } from '@clowdy/protocol';
 import type { Config } from '../config';

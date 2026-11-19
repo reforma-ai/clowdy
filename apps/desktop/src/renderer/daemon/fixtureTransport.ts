@@ -1,4 +1,4 @@
-import { isBusyRunStatus, isTerminalRunStatus, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE } from '@clowdy/protocol';
+import { isBusyRunStatus, isTerminalRunStatus, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, STOPPED_TOOL } from '@clowdy/protocol';
 
 import {
     catalogTokens,
@@ -1085,7 +1085,7 @@ export class FixtureTransport implements Transport {
         if (isCompact(item)) {
             if (isBusyRunStatus(run.status)) return ok({ chatId: chat.id, runId: run.id });
 
-            if (!isTerminalRunStatus(run.status)) return fail('conflict', 'The orchestrator is waiting for its child runs. The chat is compacted once they have finished');
+            if (!isTerminalRunStatus(run.status)) return fail('conflict', 'The orchestrator is waiting for its child runs. Compact the chat when they have finished');
 
             this.#dispatch(chat, run, item);
 
@@ -1185,7 +1185,7 @@ export class FixtureTransport implements Transport {
 
             // A call it left running ends with it, as the daemon ends them.
             for (const item of data.items[run.id] ?? []) {
-                if (item.body.kind === 'tool' && item.body.state === 'running') this.#saveItem(run, { ...item, body: { ...item.body, state: 'error', error: 'Stopped before it finished' } });
+                if (item.body.kind === 'tool' && item.body.state === 'running') this.#saveItem(run, { ...item, body: { ...item.body, state: 'error', error: STOPPED_TOOL } });
             }
 
             // Stop holds the queue of the chat whose orchestrator it stopped.

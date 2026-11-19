@@ -311,6 +311,9 @@ export type StreamItemBody =
 
 export type ToolState = 'running' | 'done' | 'error';
 
+/** The `error` of a call that was still running when the person stopped the run, or the daemon stopped: the app reads it as stopped, not failed. */
+export const STOPPED_TOOL = 'Stopped before it finished';
+
 export interface QuestionOption {
     id: string;
     label: string;

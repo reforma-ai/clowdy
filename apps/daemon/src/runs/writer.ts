@@ -7,10 +7,8 @@ import type { Store } from '../store';
 /** Streaming text reaches the log at most this often; the last piece is always flushed. */
 const TEXT_THROTTLE_MS = 50;
 
-/** What a call that was still running says once its turn is over, */
+/** What a call that was still running says once its turn is over (`STOPPED_TOOL` once the person stopped the run, or the daemon stopped). */
 export const UNFINISHED_TOOL = 'The turn ended before this finished';
-/** and once the person stopped the run (or the daemon stopped). */
-export const STOPPED_TOOL = 'Stopped before it finished';
 
 type ToolBody = Extract<StreamItemBody, { kind: 'tool' }>;
 
