@@ -1,6 +1,6 @@
 import { LAST_USED } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { infoPath, lockPath } from '../src/instance';
@@ -154,10 +154,31 @@ describe('the prompts of a run', () => {
 
         expect(prompt).toContain('Follow clowdy:orchestrate');
         expect(prompt).toContain('Mode: semi-manual.');
-        expect(prompt).toContain('Project: Car Rental, repository at /work/cars, task keys CAR-<number>, project documents in .clowdy/docs/.');
+        // Any folder can be a project's, so none is called a repository.
+        expect(prompt).toContain('Project: Car Rental, folder at /work/cars, task keys CAR-<number>, project documents in .clowdy/docs/.');
+        expect(prompt).not.toContain('repository');
         expect(prompt.length).toBeLessThan(900);
         expect(systemPrompt('executor', 'autopilot', project)).toContain('Follow clowdy:executor. Never ask the user; finish with report_result.');
         expect(systemPrompt('verifier', 'autopilot', project)).toContain('Follow clowdy:verify.');
+    });
+
+    test('a project of several folders names each by path, marks the main one and the one the run works in, and says where instructions and documents are', () => {
+        const several = { ...project, folders: [{ id: 'fld_1', path: '/work/cars' }, { id: 'fld_2', path: '/work/cars-api' }, { id: 'fld_3', path: '/notes/fleet' }] };
+        const prompt = systemPrompt('orchestrator', 'semi', several);
+
+        expect(prompt).toContain([
+            'Project: Car Rental, task keys CAR-<number>, folders (use absolute paths outside the folder you work in):',
+            '- /work/cars (main, you work here)',
+            '- /work/cars-api',
+            '- /notes/fleet',
+            'Each folder may have its own AGENTS.md or CLAUDE.md; read it before you change files in that folder.',
+            'Documents: each folder has its own .clowdy/docs/. A document about one folder goes into that folder\'s; one about several folders or the whole project goes into the main folder\'s.',
+        ].join('\n'));
+        expect(prompt).not.toContain('repository');
+        expect(prompt.length).toBeLessThan(1200);
+        // A child that `run_spawn` started in another folder works there, and one started in a copy outside the project works in none of them.
+        expect(systemPrompt('executor', 'semi', several, '/notes/fleet')).toContain('- /work/cars (main)\n- /work/cars-api\n- /notes/fleet (you work here)\n');
+        expect(systemPrompt('executor', 'semi', several, '/tmp/cars-copy')).toContain('- /work/cars (main)\n- /work/cars-api\n- /notes/fleet\n');
     });
 
     test('the entry skill of the role is inlined without its front matter, with where the other skills are; no folder, no skill text', () => {
@@ -190,7 +211,47 @@ describe('the prompts of a run', () => {
         h.ok('chat.send', { chatId: chat.id, text: 'Hello' });
         await waitFor(() => engine.turns.length === 1, 'the orchestrator to start');
         expect(engine.turns[0].systemPrompt).toContain('Mode: semi-manual.');
-        expect(engine.turns[0].systemPrompt).toContain(`repository at ${ opened.path }`);
+        expect(engine.turns[0].systemPrompt).toContain(`folder at ${ opened.path }`);
+        // A project of one folder has no other folder to hand the agent.
+        expect(engine.turns[0].additionalDirectories).toEqual([]);
+    });
+
+    test('a turn gets the project\'s other folders that are still there, in order, but not the one it works in', async () => {
+        let notes = '';
+        const { h, engine } = await setup(async function* (turn) {
+            yield { type: 'session', sessionId: `s${ turn.number }` };
+
+            if (turn.number === 1) {
+                const { task } = yield* turn.call('task_create', { title: 'Tidy the notes' });
+
+                yield* turn.call('run_spawn', { taskIds: [task.key], prompt: 'Goal: tidy the notes', idempotencyKey: 'notes-1', cwd: notes });
+            }
+
+            await untilAborted(turn.signal);
+        });
+        const parent = tempDir();
+
+        for (const name of ['web', 'api', 'notes']) {
+            mkdirSync(join(parent, name));
+        }
+
+        const { project } = h.ok('project.add', { name: 'Shop', folders: ['web', 'api', 'notes'].map(name => join(parent, name)) }) as { project: Project };
+        const [web, api] = project.folders.map(folder => folder.path);
+
+        notes = project.folders[2].path;
+        rmSync(api, { recursive: true });
+
+        const { chat } = h.ok('chat.create', { projectId: project.id });
+
+        h.ok('chat.send', { chatId: chat.id, text: 'Hello' });
+        await waitFor(() => engine.turns.length === 2, 'the orchestrator and its child to start');
+
+        // The orchestrator works in the main folder; the missing folder is left out of what the agent gets, not of what it is told.
+        expect(engine.turns[0]).toMatchObject({ cwd: web, additionalDirectories: [notes] });
+        expect(engine.turns[0].systemPrompt).toContain(`- ${ web } (main, you work here)\n- ${ api }\n- ${ notes }\n`);
+        // A child that works in another folder of the project gets the main folder instead of its own, and is told where it works.
+        expect(engine.turns[1]).toMatchObject({ cwd: notes, additionalDirectories: [web] });
+        expect(engine.turns[1].systemPrompt).toContain(`- ${ web } (main)\n- ${ api }\n- ${ notes } (you work here)\n`);
     });
 });
 

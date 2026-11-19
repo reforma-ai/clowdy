@@ -24,7 +24,8 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
  * while a prompt runs is `injected`, and its lines run as directives of that same prompt, after the line in progress; with no prompt running it is
  * `promptRequired`. Without the switch the agent still answers the method, so a test can see that the client did not ask.
  * FAKE_ACP_RESUME is `resume` (default), `load` (replays two messages first) or `none` (FAKE_ACP_LOST=1 refuses either with "Session not found"); FAKE_ACP_SYSTEM_PROMPT=0 drops
- * the system prompt capability; FAKE_ACP_AUTH=1 makes `session/new` ask for authentication; FAKE_ACP_EFFORT is `1` (a reasoning
+ * the system prompt capability; FAKE_ACP_DIRECTORIES=1 advertises `sessionCapabilities.additionalDirectories` (the `info` directive shows the list a
+ * session got either way, so a test sees what was sent unasked); FAKE_ACP_AUTH=1 makes `session/new` ask for authentication; FAKE_ACP_EFFORT is `1` (a reasoning
  * option that follows the model) or `thinking` (the same, behind an option of another kind); FAKE_ACP_ECHO_CLIENT=1 puts what the client
  * said in `initialize` into the agent's own capabilities (`_meta.client`), for a caller that sends no prompt, such as the probe.
  */
@@ -37,6 +38,8 @@ import type { McpServer, SessionUpdate } from '@agentclientprotocol/sdk/unstable
 
 interface FakeSession {
     cwd: string;
+    /** The `additionalDirectories` of the request that opened the session, absent when it had none. */
+    directories?: string[];
     mcpServers: McpServer[];
     systemPrompt?: string;
     meta?: unknown;
@@ -71,8 +74,8 @@ function systemText(content: unknown): string | undefined {
     return Array.isArray(content) ? content.map(block => (block as { text?: string }).text ?? '').join('') : undefined;
 }
 
-function open(id: string, params: { cwd: string; mcpServers?: McpServer[]; systemPrompt?: { content?: unknown } | null; _meta?: unknown }): FakeSession {
-    const session: FakeSession = { cwd: params.cwd, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [] };
+function open(id: string, params: { cwd: string; additionalDirectories?: string[]; mcpServers?: McpServer[]; systemPrompt?: { content?: unknown } | null; _meta?: unknown }): FakeSession {
+    const session: FakeSession = { cwd: params.cwd, directories: params.additionalDirectories, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [] };
 
     sessions.set(id, session);
 
@@ -132,6 +135,7 @@ const app = agent({ name: 'fake-acp-agent' })
                 sessionCapabilities: {
                     ...(resumeMode === 'resume' && { resume: {} }),
                     ...(process.env.FAKE_ACP_SYSTEM_PROMPT !== '0' && { systemPrompt: {} }),
+                    ...(process.env.FAKE_ACP_DIRECTORIES === '1' && { additionalDirectories: {} }),
                 },
                 ...(process.env.FAKE_ACP_ECHO_CLIENT === '1' && { _meta: { client: params.clientCapabilities } }),
             },
@@ -349,7 +353,7 @@ const app = agent({ name: 'fake-acp-agent' })
                         break;
                     }
                     case 'info':
-                        await say(JSON.stringify({ cwd: session.cwd, servers: session.mcpServers.map(server => server.name), systemPrompt: session.systemPrompt, meta: session.meta, model: session.model, prompts: session.count }));
+                        await say(JSON.stringify({ cwd: session.cwd, directories: session.directories, servers: session.mcpServers.map(server => server.name), systemPrompt: session.systemPrompt, meta: session.meta, model: session.model, prompts: session.count }));
                         break;
                     case 'capabilities':
                         await say(JSON.stringify(clientCapabilities));

@@ -69,8 +69,9 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         launch: { kind: 'package', package: '@agentclientprotocol/claude-agent-acp@0.107.0', pathEnv: 'CLAUDE_CODE_EXECUTABLE' },
         compact: '/compact',
         // Sub-agents are a feature, this only caps hidden fan-out. The rest of what a run does not do by default (claude.ai
-        // connectors, the agent's own memory) is a setting below, off until the person turns it on.
-        env: { CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '20' },
+        // connectors, the agent's own memory) is a setting below, off until the person turns it on. Without the last variable
+        // Claude Code reads no CLAUDE.md in the project's other folders, which reach it as additional directories.
+        env: { CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '20', CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1' },
         settings: [
             {
                 id: 'memory',

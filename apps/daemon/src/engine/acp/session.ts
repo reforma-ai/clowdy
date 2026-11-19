@@ -461,9 +461,14 @@ export class AcpSession implements EngineSession {
             this.access = access;
 
             const supportsSystemPrompt = Boolean(capabilities.sessionCapabilities?.systemPrompt);
+            // Only an agent that advertises the field gets it: Grok's `session/resume` refuses a non-empty list. ACP lets the list change on a resume
+            // while `cwd` stays, so a folder added between turns keeps the session. Not in `_meta.claudeCode.options` as well: Claude's adapter
+            // would add the folders a second time.
+            const directories = capabilities.sessionCapabilities?.additionalDirectories ? options.additionalDirectories ?? [] : [];
             const shared: NewSessionRequest = {
                 cwd: options.cwd,
                 mcpServers: access ? [access.server] : [],
+                ...(directories.length > 0 && { additionalDirectories: directories }),
                 ...(agent.sessionMeta && { _meta: agent.sessionMeta }),
                 ...(supportsSystemPrompt && options.systemPrompt && { systemPrompt: { mode: 'append', content: [{ type: 'text', text: options.systemPrompt }] } }),
             };

@@ -25,6 +25,11 @@ export interface EngineRegistry {
 export interface EngineStartOptions {
     /** Working directory of the agent. */
     cwd: string;
+    /**
+     * The project's other folders, as absolute paths, for the agent to read and change besides `cwd`. An engine hands them on only to an agent that
+     * says it takes them; the system prompt names every folder for all agents.
+     */
+    additionalDirectories?: string[];
     /** The user's message or the executor's assignment. */
     prompt: string;
     systemPrompt?: string;

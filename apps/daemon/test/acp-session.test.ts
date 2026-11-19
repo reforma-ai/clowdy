@@ -323,6 +323,49 @@ describe('resuming', () => {
     });
 });
 
+describe('the project\'s other folders', () => {
+    const folders = ['/work/api', '/work/notes'];
+    const advertised = { FAKE_ACP_DIRECTORIES: '1' };
+
+    /** The session a turn ended up in and the folders it was opened with, as the fake agent's `info` directive reports them. */
+    const opened = async (agentEnv: Record<string, string>, options: Parameters<Rig['start']>[1] = {}) => {
+        const { session } = use({ agentEnv }).start('info', options);
+        const events = await collect(session);
+
+        await session.close();
+        current?.stop();
+
+        const said = events.find(event => event.type === 'session');
+
+        return { sessionId: said?.type === 'session' ? said.sessionId : undefined, ...JSON.parse(textOf(events)) as { directories?: string[]; prompts: number } };
+    };
+
+    test('reach a new session of an agent that advertises them, in their order', async () => {
+        expect(await opened(advertised, { additionalDirectories: folders })).toMatchObject({ sessionId: 'fake-1', directories: folders });
+    });
+
+    test('reach a session that resumes or loads, and a list changed since the last turn continues the same session', async () => {
+        const first = await opened(advertised, { additionalDirectories: ['/work/api'] });
+        const resumed = await opened(advertised, { additionalDirectories: folders, resumeSessionId: first.sessionId });
+        const loaded = await opened({ ...advertised, FAKE_ACP_RESUME: 'load' }, { additionalDirectories: folders, resumeSessionId: 'earlier-7' });
+
+        expect(first).toMatchObject({ sessionId: 'fake-1', directories: ['/work/api'] });
+        expect(resumed).toMatchObject({ sessionId: 'fake-1', directories: folders });
+        expect(loaded).toMatchObject({ sessionId: 'earlier-7', directories: folders });
+    });
+
+    test('are left out for an agent that does not advertise them, new or resumed, and when there are none', async () => {
+        expect(await opened({}, { additionalDirectories: folders })).not.toHaveProperty('directories');
+        // Grok's resume refuses a list it did not ask for.
+        const resumed = await opened({}, { additionalDirectories: folders, resumeSessionId: 'earlier-7' });
+
+        expect(resumed.sessionId).toBe('earlier-7');
+        expect(resumed).not.toHaveProperty('directories');
+        expect(await opened(advertised, { additionalDirectories: [] })).not.toHaveProperty('directories');
+        expect(await opened(advertised)).not.toHaveProperty('directories');
+    });
+});
+
 describe('a session that cannot be continued', () => {
     const record = 'RECORD: the person asked for a footer.';
     /** The fake agent answers every line it does not know with `ok` and the `prompt` directive with the whole prompt as a JSON string, last. */
