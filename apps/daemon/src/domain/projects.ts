@@ -365,6 +365,10 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
             throw conflict('The personal space cannot be renamed or given other folders');
         }
 
+        if (current.personal && patch.settings?.icon !== undefined) {
+            throw conflict('The personal space has no icon of its own');
+        }
+
         // `project.add` answers a set of folders with the project that has it, so two projects never share the whole set.
         const twin = foldersChanged ? getProjectByFolders(store.db, folders.map(folder => folder.path)) : undefined;
 

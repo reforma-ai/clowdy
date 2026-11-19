@@ -35,6 +35,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            it until the message it is sent with is deleted. Refused above `MAX_ATTACHMENT_BYTES`.
  *                                            A file that is never sent is removed after a day)
  * GET  /v1/projects/:id/attachments/:attachmentId -> the file's bytes, with its media type
+ * GET  /v1/projects/:id/icon              -> the icon found in the project's main folder (a favicon, an app icon: SVG, PNG or ICO, at most
+ *                                            512 KB), with its media type; `not_found` when there is none, and for the personal space. The
+ *                                            icon the person uploaded is `ProjectSettings.icon`, which the app shows first
  * DELETE /v1/projects/:id/attachments/:attachmentId -> { ok: true }; only for a file that was not sent yet (`conflict` otherwise)
  * POST /v1/shutdown                       -> { ok: true }; stops the daemon gracefully (live engines are aborted, their runs
  *                                            come back `interrupted` at the next start, nothing is marked cancelled)
@@ -59,6 +62,7 @@ export const ROUTES = {
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
+    projectIcon: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/icon`,
     skills: '/v1/skills',
     agents: '/v1/agents',
     agentModels: (agentId: string) => `/v1/agents/${ encodeURIComponent(agentId) }/models`,
@@ -67,6 +71,9 @@ export const ROUTES = {
 
 /** How many folders one project may have. */
 export const MAX_PROJECT_FOLDERS = 50;
+
+/** The longest `ProjectSettings.icon`: a 64px PNG the app made is a few kilobytes as a data URL. */
+export const MAX_PROJECT_ICON_LENGTH = 64 * 1024;
 
 /** A file `GET /v1/projects/:id/files` found: the folder of the project it is in, and its path below that folder with `/` separators. */
 export interface ProjectFileMatch {

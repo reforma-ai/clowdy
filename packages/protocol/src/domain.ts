@@ -107,6 +107,12 @@ export interface ProjectSettings {
      */
     chatMode?: ChatMode | typeof LAST_USED;
     model?: string;
+    /**
+     * The picture the person uploaded for the project, as the app made it: a small square PNG as a `data:image/png;base64,` URL. The project
+     * menu and the project list show it in place of the folder icon. Left out, they show the icon the daemon finds in the main folder
+     * (`GET /v1/projects/:id/icon`), or the folder icon. The personal space has none.
+     */
+    icon?: string;
     /** Not used by the daemon: agents decide about branches themselves. Kept so older settings stay valid. */
     targetBranch?: string;
 }

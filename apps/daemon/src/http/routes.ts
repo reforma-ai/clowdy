@@ -1,13 +1,14 @@
-import { commandSchema, MAX_ATTACHMENT_BYTES, PROTOCOL_VERSION } from '@clowdy/protocol';
+import { commandSchema, mainFolder, MAX_ATTACHMENT_BYTES, PROTOCOL_VERSION } from '@clowdy/protocol';
 
 import { contentDisposition, servedMediaType } from '../attachments/names';
 import { executeCommand } from '../commands';
 import { listItems } from '../db/items';
 import { getRun } from '../db/runs';
 import { requireChat } from '../domain/chats';
+import { findProjectIcon } from '../domain/projectIcon';
 import { projectsInfo, requireProject } from '../domain/projects';
 import { projectSnapshot, rootSnapshot, taskDetail } from '../domain/snapshots';
-import { invalid, notFound } from '../errors';
+import { CommandError, invalid, notFound } from '../errors';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body';
 import { commandResponse, failure, json } from './responses';
 import { eventStream } from './sse';
@@ -198,6 +199,28 @@ export function createRoutes(context: RouteContext): Route[] {
                 attachments.remove(requireProject(store, id).id, attachmentId);
 
                 return json({ ok: true });
+            },
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/icon$/,
+            handle: (_request, _url, [id]) => {
+                const project = requireProject(store, id);
+                const icon = project.personal ? undefined : findProjectIcon(mainFolder(project).path);
+
+                if (!icon) {
+                    throw new CommandError('not_found', `${ project.name } has no icon in its main folder`);
+                }
+
+                // A file of the project's own, read by the app as a picture; nothing here may be taken for a page.
+                return new Response(Bun.file(icon.path), {
+                    headers: {
+                        'content-type': icon.mediaType,
+                        'x-content-type-options': 'nosniff',
+                        'content-security-policy': 'sandbox',
+                        'cache-control': 'no-store',
+                    },
+                });
             },
         },
         { method: 'GET', pattern: /^\/v1\/agents$/, handle: async () => json(services.providers.decorate(await services.agents.list())) },
