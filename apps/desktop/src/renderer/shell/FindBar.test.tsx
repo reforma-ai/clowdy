@@ -20,7 +20,7 @@ const stopFind = vi.fn(async () => undefined);
 
 const field = () => container.querySelector<HTMLInputElement>('input[aria-label="Find in page"]');
 const bar = () => container.querySelector('[role="search"]');
-const count = () => container.querySelector('[aria-live="polite"]')?.textContent;
+const count = () => container.querySelector('[aria-live="polite"]')?.getAttribute('aria-label');
 
 function press(key: string, init: KeyboardEventInit & { mod?: boolean } = {}, target: Element = document.body) {
     const { mod, ...rest } = init;
@@ -39,7 +39,8 @@ async function type(text: string) {
 
         setValue.call(input, text);
         input.dispatchEvent(new Event('input', { bubbles: true }));
-        await Promise.resolve();
+
+        for (let step = 0; step < 5; step++) await Promise.resolve();
     });
 }
 
@@ -111,7 +112,7 @@ describe('Find in page', () => {
         await type('booking');
 
         expect(findInPage).toHaveBeenCalledWith('booking', { forward: true, findNext: true });
-        expect(count()).toBe('1 of 4');
+        expect(count()).toBe('1 of 3');
 
         findInPage.mockClear();
         await act(async () => press('Enter', {}, field()!));
@@ -122,6 +123,55 @@ describe('Find in page', () => {
         await act(async () => press('Enter', { shiftKey: true }, field()!));
 
         expect(findInPage).toHaveBeenCalledWith('booking', { forward: false, findNext: false });
+    });
+
+    it('drops the match in the field, and clears the highlight when that is the only one', async () => {
+        findInPage.mockResolvedValue({ matches: 1, activeMatchOrdinal: 1 });
+        await draw();
+        await act(async () => press('f', { mod: true }));
+        await type('booking');
+
+        expect(count()).toBe('No matches');
+        expect(stopFind).toHaveBeenCalled();
+    });
+
+    it('moves the highlight off the field when the page has other matches', async () => {
+        await draw();
+        await act(async () => press('f', { mod: true }));
+
+        const input = field()!;
+
+        input.getBoundingClientRect = () => ({
+            x: 420,
+            y: 48,
+            width: 188,
+            height: 36,
+            left: 420,
+            top: 48,
+            right: 608,
+            bottom: 84,
+            toJSON() {
+                return {};
+            },
+        });
+        findInPage.mockReset();
+        findInPage
+            .mockResolvedValueOnce({
+                matches: 5,
+                activeMatchOrdinal: 2,
+                selectionArea: { x: 424, y: 56, width: 40, height: 16 },
+            })
+            .mockResolvedValueOnce({
+                matches: 5,
+                activeMatchOrdinal: 3,
+                selectionArea: { x: 20, y: 200, width: 40, height: 16 },
+            });
+
+        await type('booking');
+
+        expect(findInPage).toHaveBeenLastCalledWith('booking', { forward: true, findNext: false });
+        expect(count()).toBe('2 of 4');
+        expect(stopFind).not.toHaveBeenCalled();
     });
 
     it('says when nothing matches, and Escape closes the bar and clears the highlights', async () => {
@@ -200,13 +250,13 @@ describe('Find in page', () => {
             await type('');
 
             expect(stopFind).toHaveBeenCalledTimes(1);
-            expect(count()).toBe('');
+            expect(count() ?? '').toBe('');
 
             stopFind.mockClear();
             await finish(0);
 
             expect(stopFind).toHaveBeenCalledTimes(1);
-            expect(count()).toBe('');
+            expect(count() ?? '').toBe('');
             expect(bar()).not.toBeNull();
         });
 
@@ -241,7 +291,7 @@ describe('Find in page', () => {
             await finish(1);
 
             expect(stopFind).not.toHaveBeenCalled();
-            expect(count()).toBe('1 of 3');
+            expect(count()).toBe('1 of 2');
         });
     });
 });

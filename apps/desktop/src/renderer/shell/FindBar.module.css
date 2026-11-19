@@ -18,15 +18,23 @@
 }
 
 .field {
-    flex: 1;
+    flex: none;
     width: 14rem;
-    min-width: 0;
 }
 
+/* The words are generated content: Chromium's find only sees DOM text, so "1 of 3" is not a match. */
 .count {
-    flex-shrink: 0;
-    min-width: 5.75rem;
+    flex: none;
     font-variant-numeric: tabular-nums;
-    text-align: end;
     white-space: nowrap;
+}
+
+.count::before {
+    content: attr(data-label);
+}
+
+.steps {
+    display: flex;
+    align-items: center;
+    gap: 0;
 }

@@ -1,7 +1,7 @@
 import { THEMES, type Theme } from '@clowdy/constants';
 import { BrowserWindow, dialog } from 'electron';
 
-import { IPC_CHANNELS, type DesktopBridge, type FindOptions, type FindResult } from '../shared/bridge';
+import { IPC_CHANNELS, type DesktopBridge, type FindOptions, type FindRect, type FindResult } from '../shared/bridge';
 import { isTrustedUrl } from './security';
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
@@ -98,6 +98,7 @@ interface FoundInPage {
     requestId: number;
     matches: number;
     activeMatchOrdinal: number;
+    selectionArea?: Partial<FindRect>;
     finalUpdate: boolean;
 }
 
@@ -107,6 +108,18 @@ interface FindTarget {
     stopFindInPage: (action: 'clearSelection' | 'keepSelection' | 'activateSelection') => void;
     on: (event: 'found-in-page', listener: (event: unknown, result: FoundInPage) => void) => void;
     removeListener: (event: 'found-in-page', listener: (event: unknown, result: FoundInPage) => void) => void;
+}
+
+function selectionArea(value: Partial<FindRect> | undefined): FindRect | undefined {
+    if (!value) return undefined;
+
+    const { x, y, width, height } = value;
+
+    if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') return undefined;
+
+    if (![x, y, width, height].every(Number.isFinite)) return undefined;
+
+    return { x, y, width, height };
 }
 
 function findOptions(value: unknown): FindOptions {
@@ -142,9 +155,12 @@ function findInPage(contents: FindTarget, text: unknown, options: unknown): Prom
         const onFound = (_event: unknown, result: FoundInPage) => {
             if (result.requestId !== requestId || !result.finalUpdate) return;
 
+            const area = selectionArea(result.selectionArea);
+
             finish({
                 matches: Number.isInteger(result.matches) ? result.matches : 0,
                 activeMatchOrdinal: Number.isInteger(result.activeMatchOrdinal) ? result.activeMatchOrdinal : 0,
+                ...(area ? { selectionArea: area } : {}),
             });
         };
         const timer = setTimeout(() => finish({ matches: 0, activeMatchOrdinal: 0 }), FIND_TIMEOUT_MS);

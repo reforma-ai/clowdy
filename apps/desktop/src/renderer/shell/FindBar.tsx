@@ -8,7 +8,7 @@ import { commandTooltip, useCommands } from '../hotkeys';
 import styles from './FindBar.module.css';
 import { findCommands, type FindActions } from './findCommands';
 
-import type { FindResult } from '../../shared/bridge';
+import type { FindRect, FindResult } from '../../shared/bridge';
 
 /** `No matches` when the query is nowhere in the window, otherwise `2 of 14`. Nothing while there is nothing to report. */
 function matchLabel(query: string, result: FindResult | null): string | null {
@@ -20,8 +20,39 @@ function matchLabel(query: string, result: FindResult | null): string | null {
 }
 
 /**
+ * The field's value is the query, so Chromium counts it. The rect is viewport pixels, same as the input's box.
+ * With no rect, the field is the last text in the shell and the last match is the one to drop.
+ */
+function matchInField(found: FindResult, input: HTMLInputElement | null): boolean {
+    if (found.matches < 1 || found.activeMatchOrdinal < 1) return false;
+
+    const area = found.selectionArea;
+    const box = input?.getBoundingClientRect();
+
+    if (area && area.width > 0 && area.height > 0 && box && box.width > 0 && box.height > 0) return contains(box, area);
+
+    return found.activeMatchOrdinal === found.matches;
+}
+
+function contains(box: DOMRect, area: FindRect): boolean {
+    const slop = 1;
+
+    return area.x >= box.left - slop
+        && area.y >= box.top - slop
+        && area.x + area.width <= box.right + slop
+        && area.y + area.height <= box.bottom + slop;
+}
+
+/** A match before the field keeps its number. One after it moves up, because the field was in between. */
+function pageOrdinal(fieldOrdinal: number, nextOrdinal: number, matches: number): number {
+    const ordinal = nextOrdinal > fieldOrdinal ? nextOrdinal - 1 : nextOrdinal;
+
+    return Math.min(matches, Math.max(1, ordinal));
+}
+
+/**
  * Chromium's search of the text drawn in the window: a chat, a settings page, whatever is on screen, including what is scrolled out of view.
- * `Cmd/Ctrl+F` opens it, Enter and `Cmd/Ctrl+G` go to the next match, Shift+Enter and `Cmd/Ctrl+Shift+G` to the previous, Escape closes it.
+ * The query in the field is not a match. `Cmd/Ctrl+F` opens it, Enter and `Cmd/Ctrl+G` go to the next match, Shift+Enter and `Cmd/Ctrl+Shift+G` to the previous, Escape closes it.
  */
 export function FindBar() {
     const field = useRef<HTMLInputElement>(null);
@@ -73,7 +104,36 @@ export function FindBar() {
             return;
         }
 
-        setResult(found);
+        // The field contains the query, so one of Chromium's matches is the bar itself.
+        const matches = Math.max(0, found.matches - 1);
+
+        if (matches === 0) {
+            if (found.matches > 0 && id === generation.current) {
+                await desktop.stopFind();
+
+                if (id !== generation.current) return;
+            }
+
+            setResult({ matches: 0, activeMatchOrdinal: 0 });
+
+            return;
+        }
+
+        if (!matchInField(found, field.current)) {
+            setResult({ matches, activeMatchOrdinal: Math.min(matches, Math.max(1, found.activeMatchOrdinal)) });
+
+            return;
+        }
+
+        const stepped = await desktop.findInPage(text, { forward, findNext: false });
+
+        if (id !== generation.current) {
+            if (closed.current) await desktop.stopFind();
+
+            return;
+        }
+
+        setResult({ matches, activeMatchOrdinal: pageOrdinal(found.activeMatchOrdinal, stepped.activeMatchOrdinal, matches) });
     };
 
     const close = () => {
@@ -158,43 +218,54 @@ export function FindBar() {
                 } }
                 onKeyDown={ onKeyDown }
             />
-            <Text variant="xs" color="secondary" className={ styles.count } aria-live="polite">{ label ?? '' }</Text>
-            <Button
-                variant="filling"
-                size="sm"
-                iconOnly
-                aria-label="Previous match"
-                tooltip={ commandTooltip('Previous match', 'find.previous') ?? 'Previous match' }
-                tooltipPlacement="bottom"
-                preventFocusOnPress
-                onPress={ () => step(false) }
-            >
-                <ChevronUp />
-            </Button>
-            <Button
-                variant="filling"
-                size="sm"
-                iconOnly
-                aria-label="Next match"
-                tooltip={ commandTooltip('Next match', 'find.next') ?? 'Next match' }
-                tooltipPlacement="bottom"
-                preventFocusOnPress
-                onPress={ () => step(true) }
-            >
-                <ChevronDown />
-            </Button>
-            <Button
-                variant="filling"
-                size="sm"
-                iconOnly
-                aria-label="Close find"
-                tooltip="Close"
-                tooltipPlacement="bottom"
-                preventFocusOnPress
-                onPress={ close }
-            >
-                <Close />
-            </Button>
+            { label !== null && (
+                <Text
+                    variant="xs"
+                    color="secondary"
+                    className={ styles.count }
+                    aria-live="polite"
+                    aria-label={ label }
+                    data-label={ label }
+                />
+            ) }
+            <div className={ styles.steps }>
+                <Button
+                    variant="filling"
+                    size="sm"
+                    iconOnly
+                    aria-label="Previous match"
+                    tooltip={ commandTooltip('Previous match', 'find.previous') ?? 'Previous match' }
+                    tooltipPlacement="bottom"
+                    preventFocusOnPress
+                    onPress={ () => step(false) }
+                >
+                    <ChevronUp />
+                </Button>
+                <Button
+                    variant="filling"
+                    size="sm"
+                    iconOnly
+                    aria-label="Next match"
+                    tooltip={ commandTooltip('Next match', 'find.next') ?? 'Next match' }
+                    tooltipPlacement="bottom"
+                    preventFocusOnPress
+                    onPress={ () => step(true) }
+                >
+                    <ChevronDown />
+                </Button>
+                <Button
+                    variant="filling"
+                    size="sm"
+                    iconOnly
+                    aria-label="Close find"
+                    tooltip="Close"
+                    tooltipPlacement="bottom"
+                    preventFocusOnPress
+                    onPress={ close }
+                >
+                    <Close />
+                </Button>
+            </div>
         </div>
     );
 }

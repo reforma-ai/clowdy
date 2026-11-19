@@ -125,6 +125,7 @@ describe('find in page', () => {
         requestId: number;
         matches: number;
         activeMatchOrdinal: number;
+        selectionArea?: { x: number; y: number; width: number; height: number };
         finalUpdate: boolean;
     }
 
@@ -161,9 +162,19 @@ describe('find in page', () => {
         expect(target.findInPage).toHaveBeenCalledWith('booking', { forward: false, findNext: true });
 
         target.emit({ requestId: 7, matches: 1, activeMatchOrdinal: 0, finalUpdate: false });
-        target.emit({ requestId: 7, matches: 4, activeMatchOrdinal: 2, finalUpdate: true });
+        target.emit({
+            requestId: 7,
+            matches: 4,
+            activeMatchOrdinal: 2,
+            selectionArea: { x: 8, y: 12, width: 40, height: 16 },
+            finalUpdate: true,
+        });
 
-        await expect(pending).resolves.toEqual({ matches: 4, activeMatchOrdinal: 2 });
+        await expect(pending).resolves.toEqual({
+            matches: 4,
+            activeMatchOrdinal: 2,
+            selectionArea: { x: 8, y: 12, width: 40, height: 16 },
+        });
 
         await handlers.get(IPC_CHANNELS.stopFind)!(event);
 

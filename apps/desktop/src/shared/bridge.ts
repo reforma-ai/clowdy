@@ -25,10 +25,20 @@ export const IPC_CHANNELS = {
 /** What the Edit menu asked the page to do. */
 export type FindCommand = 'open' | 'next' | 'previous';
 
+/** Viewport pixels of the active match, the same space as `getBoundingClientRect`. */
+export interface FindRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
 /** How many matches Chromium found, and which one is current. `activeMatchOrdinal` counts from 1. */
 export interface FindResult {
     matches: number;
     activeMatchOrdinal: number;
+    /** Where the active match is drawn, when Chromium reported it. */
+    selectionArea?: FindRect;
 }
 
 /** `findNext` starts a session (a new query). A follow-up moves through it, `forward` saying which way. */
