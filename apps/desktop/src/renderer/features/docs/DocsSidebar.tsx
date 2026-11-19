@@ -49,7 +49,7 @@ function SidebarBody({ store }: { store: DocsStore }) {
         );
     }
 
-    if (store.tree.length === 0 && store.removedBuffers.length === 0) return <PanelEmptyRow>No documents yet</PanelEmptyRow>;
+    if (store.nodes.length === 0 && store.removedBuffers.length === 0) return <PanelEmptyRow>No documents yet</PanelEmptyRow>;
 
     if (store.visibleTree.length === 0 && store.removedBuffers.length === 0) return <PanelEmptyRow>{ `Nothing matches “${ store.query.trim() }”` }</PanelEmptyRow>;
 

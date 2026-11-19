@@ -31,7 +31,10 @@ export interface FixtureData {
     runTaskLinks: RunTaskLink[];
     items: Record<string, StreamItem[]>;
     artifacts: Artifact[];
-    /** Markdown files of each project's docs folder, by relative path. */
+    /**
+     * Markdown files of each folder's `.clowdy/docs`, by the folder's path, then by the path under it. A folder that is not listed has no
+     * docs folder yet. Keyed by folder, as on disk: a folder several projects have shares its documents with all of them.
+     */
     docs: Record<string, Record<string, string>>;
     /** Paths of each project's files, relative to its folder, as the file search would list them. */
     files: Record<string, string[]>;
@@ -267,6 +270,12 @@ const FIXTURE_ATTACHMENTS: FixtureAttachment[] = [
     { projectId: FIXTURE_PROJECT_ID, attachment: { id: 'a-sketch', name: 'booking-sketch.svg', mediaType: 'image/svg+xml', size: BOOKING_SKETCH.length }, content: BOOKING_SKETCH },
     { projectId: FIXTURE_PROJECT_ID, attachment: { id: 'a-log', name: 'booking-error.log', mediaType: 'text/plain', size: BOOKING_LOG.length }, content: BOOKING_LOG },
 ];
+
+/** The docs folder of a folder that is in no fixture project, for a project of several folders. */
+const API_DOCS: Record<string, string> = {
+    'endpoints.md': '# Endpoints\n\n| Method | Path | Does |\n| --- | --- | --- |\n| GET | /availability | free cars in a date range |\n| POST | /bookings | books a car |\n',
+    'decisions/rate-limits.md': '# Rate limits\n\nSixty requests a minute per partner key. A burst over it waits rather than fails.\n',
+};
 
 const FIXTURE_FILES = [
     'README.md',
@@ -713,7 +722,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
         runTaskLinks,
         items,
         artifacts,
-        docs: { [projectId]: docs, [FIXTURE_EMPTY_PROJECT_ID]: {}, [FIXTURE_PERSONAL_PROJECT_ID]: {} },
+        // `car-rental-api` belongs to no project yet: add it to Car Rental to see the documents of two folders.
+        docs: { '/Users/dev/car-rental': docs, '/Users/dev/car-rental-api': API_DOCS },
         files: { [projectId]: FIXTURE_FILES, [FIXTURE_EMPTY_PROJECT_ID]: [], [FIXTURE_PERSONAL_PROJECT_ID]: [] },
         attachments: structuredClone(FIXTURE_ATTACHMENTS),
         skills: fixtureSkills(projectId),

@@ -1,10 +1,11 @@
 import { FileIcon } from '@clowdy/components/FileIcon';
+import { folderNames } from '@clowdy/protocol';
 
 import { DOCS_FOLDER } from './composerMentions';
 import { mentionIcon } from './MentionChip';
 
 import type { RichInputTriggerItem } from '@clowdy/components/RichInput';
-import type { DocNode, SkillEntry, Task } from '@clowdy/protocol';
+import type { DocNode, DocsTree, ProjectFolder, SkillEntry, Task } from '@clowdy/protocol';
 
 /** How many of each kind the `@` menu lists: it is a pick list, not a search page. */
 export const TASKS_SHOWN = 6;
@@ -46,20 +47,44 @@ export function docPaths(nodes: readonly DocNode[]): string[] {
     return nodes.flatMap(node => (node.kind === 'dir' ? docPaths(node.children ?? []) : [node.path]));
 }
 
-/** Documents whose path has every word typed, in the order the tree lists them. */
-export function docItems(paths: readonly string[], query: string): RichInputTriggerItem[] {
-    const words = wordsOf(query);
+/** `relative` (with `/`) below an absolute folder, with the folder's own separator, so a Windows path stays one. */
+function underFolder(folder: string, relative: string): string {
+    const windows = folder.includes('\\') && !folder.includes('/');
+    const separator = windows ? '\\' : '/';
 
-    return paths
-        .filter(path => hasAll(words, path.toLowerCase()))
+    return `${ folder.replace(/[\\/]+$/, '') }${ separator }${ windows ? relative.replaceAll('/', '\\') : relative }`;
+}
+
+/**
+ * Documents whose path has every word typed, folder by folder in the order the tree lists them. A document of the main folder reaches the
+ * agent as `.clowdy/docs/<path>`, relative to the folder it works in; another folder's by its absolute path, since the agent works in the main
+ * folder. With several folders the suggestion names the folder, and the folder's name counts as part of the path when searching.
+ */
+export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], query: string): RichInputTriggerItem[] {
+    const words = wordsOf(query);
+    const names = folderNames(folders);
+    const several = tree.length > 1;
+    const docs = tree.flatMap(({ folderId, nodes }) => {
+        const index = folders.findIndex(folder => folder.id === folderId);
+        const folder = folders[index];
+
+        if (!folder) return [];
+
+        const name = names[index] ?? '';
+
+        return docPaths(nodes).map(path => ({ folderId, path, name, shown: several ? `${ name }/${ path }` : path, agentPath: index === 0 ? `${ DOCS_FOLDER }/${ path }` : underFolder(folder.path, `${ DOCS_FOLDER }/${ path }`) }));
+    });
+
+    return docs
+        .filter(doc => hasAll(words, doc.shown.toLowerCase()))
         .slice(0, DOCS_SHOWN)
-        .map((path) => {
-            const data = { path: `${ DOCS_FOLDER }/${ path }` };
+        .map(({ folderId, path, shown, agentPath }) => {
+            const data = { path: agentPath };
 
             return {
-                value: `doc:${ path }`,
+                value: `doc:${ folderId }:${ path }`,
                 label: baseName(path),
-                description: folderOf(path) || undefined,
+                description: folderOf(shown) || undefined,
                 icon: mentionIcon({ kind: 'doc', data }, 14),
                 section: 'Documents',
                 kind: 'doc',

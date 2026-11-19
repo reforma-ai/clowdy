@@ -386,12 +386,10 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
         if (foldersChanged) {
             // The project's skills come from its folders, so a catalog read before is out of date.
             store.emit(projectId, { type: 'skills.changed' });
-            // The watchers hold the old folders; the next request for docs or skills watches the new ones.
+            // The watchers hold the old folders; the next request for docs or skills watches the new ones. A folder another project
+            // still has keeps its docs watcher.
             store.afterCommit(() => {
-                if (mainChanged) {
-                    docs.forget(projectId);
-                }
-
+                docs.release();
                 skills.forgetProject(current);
             });
         }
@@ -421,7 +419,7 @@ export function deleteProject(store: Store, projectId: string, { attachments, do
         deleteProjectRow(store.db, projectId);
         store.emit(projectId, { type: 'project.deleted' });
         store.afterCommit(() => {
-            docs.forget(projectId);
+            docs.release();
             skills.forgetProject(project);
         });
     });

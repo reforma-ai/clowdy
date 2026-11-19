@@ -3,7 +3,7 @@ import { useMemo, useRef, type RefObject } from 'react';
 
 import { useProjectState, useRootStore } from '../../stores';
 import { MENTION_TRIGGER, SKILL_TRIGGER } from './composerMentions';
-import { docItems, docPaths, fileItems, FILES_SHOWN, skillItems, taskItems } from './mentionItems';
+import { docItems, fileItems, FILES_SHOWN, skillItems, taskItems } from './mentionItems';
 
 import type { RichInputTrigger, RichInputTriggerItem } from '@clowdy/components/RichInput';
 import type { SkillEntry } from '@clowdy/protocol';
@@ -47,12 +47,12 @@ export function useMentionTriggers(box: RefObject<HTMLElement | null>): readonly
             onSearch: async (query): Promise<RichInputTriggerItem[]> => {
                 const main = mainFolder(project.project).id;
                 const [docs, files] = await Promise.all([
-                    orNothing(root.transport.getDocsTree(projectId).then(docPaths)),
+                    orNothing(root.transport.getDocsTree(projectId).then(tree => docItems(tree, project.project.folders, query))),
                     // Only the main folder's files can be mentioned by a path the agent reads from its own folder.
                     orNothing(root.transport.getProjectFiles(projectId, query, FILES_SHOWN).then(found => found.filter(match => match.folderId === main).map(match => match.path))),
                 ]);
 
-                return [...taskItems(project.taskList, query), ...docItems(docs, query), ...fileItems(files)];
+                return [...taskItems(project.taskList, query), ...docs, ...fileItems(files)];
             },
         };
 

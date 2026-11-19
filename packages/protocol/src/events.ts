@@ -1,4 +1,4 @@
-import type { Artifact, Chat, ChatTaskLink, DocNode, Project, Run, RunTaskLink, StreamItem, Task, TaskId, TaskStatus } from './domain';
+import type { Artifact, Chat, ChatTaskLink, DocsFolder, FolderId, Project, Run, RunTaskLink, StreamItem, Task, TaskId, TaskStatus } from './domain';
 
 /**
  * The daemon's change feed. Every event has a strictly increasing `cursor`; a client that stores the cursor of
@@ -28,8 +28,11 @@ export type EventData =
     | { type: 'link.chatTask'; link: ChatTaskLink; present: boolean }
     | { type: 'link.runTask'; link: RunTaskLink; present: boolean }
     | { type: 'artifact.added'; artifact: Artifact }
-    /** A file under the project's docs folder changed on disk. Clients refetch the tree or the open file. */
-    | { type: 'docs.changed'; path: string; change: 'created' | 'modified' | 'removed' }
+    /**
+     * A file under the docs folder of one of the project's folders changed on disk. Clients refetch the tree or the open file. A folder that
+     * several projects have announces its change to each of them, with each project's own `folderId`.
+     */
+    | { type: 'docs.changed'; folderId: FolderId; path: string; change: 'created' | 'modified' | 'removed' }
     /**
      * The skills this project's runs see changed: a skill folder was edited, or a user skill was switched.
      * User-level changes are announced once per project. Clients refetch `GET /v1/skills`.
@@ -61,4 +64,8 @@ export interface RootSnapshot {
     projects: Project[];
 }
 
-export type DocsTree = DocNode[];
+/**
+ * The documents of a project: one entry per folder, in the project's order (the main folder first). A folder other than the main one whose
+ * documents cannot be read (missing, or its docs folder leads out of it) is left out.
+ */
+export type DocsTree = DocsFolder[];

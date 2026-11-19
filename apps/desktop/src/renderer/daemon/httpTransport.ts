@@ -11,6 +11,7 @@ import type {
     CommandResult,
     DocFile,
     DocsTree,
+    FolderId,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
@@ -102,8 +103,8 @@ export class HttpTransport implements Transport {
         return this.#get(ROUTES.docsTree(projectId));
     }
 
-    getDocFile(projectId: ProjectId, path: string): Promise<DocFile> {
-        return this.#get(`${ ROUTES.docsFile(projectId) }?path=${ encodeURIComponent(path) }`);
+    getDocFile(projectId: ProjectId, folderId: FolderId, path: string): Promise<DocFile> {
+        return this.#get(`${ ROUTES.docsFile(projectId) }?folderId=${ encodeURIComponent(folderId) }&path=${ encodeURIComponent(path) }`);
     }
 
     getProjectFiles(projectId: ProjectId, query: string, limit?: number): Promise<ProjectFileMatch[]> {

@@ -6,7 +6,7 @@ const hashOf = (content: string) => `h(${ content })`;
 const version = (content: string) => ({ content, hash: hashOf(content) });
 
 function openBuffer(content = 'one\n'): DocBuffer {
-    const buffer = new DocBuffer('plan.md');
+    const buffer = new DocBuffer('f1', 'plan.md');
 
     buffer.loaded({ path: 'plan.md', ...version(content) });
 
@@ -28,7 +28,7 @@ describe('DocBuffer', () => {
         });
 
         it('takes no edits before the file has loaded', () => {
-            const buffer = new DocBuffer('plan.md');
+            const buffer = new DocBuffer('f1', 'plan.md');
 
             buffer.edit('typed too early');
             expect(buffer.text).toBe('');
@@ -107,7 +107,7 @@ describe('DocBuffer', () => {
         });
 
         it('is ignored while the file has not loaded', () => {
-            const buffer = new DocBuffer('plan.md');
+            const buffer = new DocBuffer('f1', 'plan.md');
 
             buffer.observe(version('x'));
             expect(buffer).toMatchObject({ status: 'loading', text: '', conflict: null });

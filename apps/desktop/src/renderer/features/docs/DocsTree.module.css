@@ -74,6 +74,18 @@
     background-color: var(--color-primary);
 }
 
+/* A row action, as in the design system's lists: there only while the row is hovered, or has the keyboard's focus, as the action itself may. */
+.action {
+    flex: none;
+    visibility: hidden;
+}
+
+.row:hover .action,
+.row:focus-visible .action,
+.action:focus-visible {
+    visibility: visible;
+}
+
 .group {
     margin-top: var(--spacing-lg);
     padding: var(--spacing-xs) var(--spacing-md);

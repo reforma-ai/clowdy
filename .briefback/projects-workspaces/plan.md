@@ -154,13 +154,13 @@
 
 **This stage:** documents stop being the main folder's alone: every folder has its own `.clowdy/docs`, the API addresses a document by folder and path, and the docs tree shows the folders at its top level when there are several (one folder looks as today). `.clowdy/docs` is made only by the first write, so adding someone else's repository to a workspace leaves no trace in it. A folder shared by two projects shares its documents with both. `@` document mentions follow the same path rule as files: relative for the main folder, absolute for the others. Daemon and renderer land together because the contract changes under both; after the protocol is written they can be done by two workers in parallel.
 
-- [ ] Complete
-  - [ ] Protocol: the docs tree answers one entry per folder (`folderId`, nodes); reading, `docs.write` and `docs.changed` carry `folderId`
-  - [ ] `DocsService`: a root and a watcher per folder, created on first write only, reading a folder with no `.clowdy/docs` as empty, announcing a change to every project that has the folder
-  - [ ] `DocsStore` and the tree: documents keyed by folder and path; one folder shows the tree as today, several show the folders first (main first, empty ones too)
-  - [ ] New document goes to the folder it was made under; conflict handling, reveal and selection work per folder
-  - [ ] `@` document mentions: relative path for the main folder, absolute for others, the folder name in the suggestion when there are several
-  - [ ] Daemon and desktop tests; fixture daemon serves documents per folder
+- [x] Complete
+  - [x] Protocol: the docs tree answers one entry per folder (`folderId`, nodes); reading, `docs.write` and `docs.changed` carry `folderId`
+  - [x] `DocsService`: a root and a watcher per folder, created on first write only, reading a folder with no `.clowdy/docs` as empty, announcing a change to every project that has the folder
+  - [x] `DocsStore` and the tree: documents keyed by folder and path; one folder shows the tree as today, several show the folders first (main first, empty ones too)
+  - [x] New document goes to the folder it was made under; conflict handling, reveal and selection work per folder
+  - [x] `@` document mentions: relative path for the main folder, absolute for others, the folder name in the suggestion when there are several
+  - [x] Daemon and desktop tests; fixture daemon serves documents per folder
 
 **Files**
 
@@ -181,7 +181,7 @@
 
 **Done when:** in a project of two folders the tree shows both, a document created under the second lands in its `.clowdy/docs` (made at that moment), and a project of one folder shows the tree as before.
 **Verify:** `bun run --cwd apps/daemon test`, `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`, a screenshot of the docs tree in fixtures mode with two folders
-**Commits:** None yet.
+**Commits:** None yet. Reviewed: a `.clowdy` or docs folder that links out of its folder is refused before anything is made; a non-main folder whose documents cannot be read is left out of the tree; the folder rows' New document button is reachable by keyboard; `ProjectUi.docFolderId` (`?docFolder=`) remembers the open document's folder. The fixtures screenshot of a two-folder tree was not taken.
 
 ## Stage 5 — Add project
 

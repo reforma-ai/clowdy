@@ -10,17 +10,17 @@ import type { HotkeyRegistry, Platform } from '../../hotkeys/registry';
 let registry: HotkeyRegistry;
 let uninstall: () => void;
 
-/** The tree as `DocsTree` draws it (a folder and files, the path on each row), beside the editor and the sidebar's search field. */
+/** The tree as `DocsTree` draws it (a folder and files, the key of its folder and path on each row), beside the editor and the sidebar's search field. */
 function mount() {
     document.body.innerHTML = `
         <nav><button id="rail">Docs</button></nav>
         <aside>
             <input id="search">
             <div id="tree" role="tree" aria-label="Documents">
-                <div role="treeitem" id="folder" data-path="notes" tabindex="0"></div>
-                <div role="treeitem" id="a" data-path="notes/a.md" tabindex="-1"></div>
-                <div role="treeitem" id="b" data-path="b.md" tabindex="-1"></div>
-                <div role="treeitem" id="gone" data-path="gone.md" tabindex="-1"></div>
+                <div role="treeitem" id="folder" data-key="f1/notes" tabindex="0"></div>
+                <div role="treeitem" id="a" data-key="f1/notes/a.md" tabindex="-1"></div>
+                <div role="treeitem" id="b" data-key="f1/b.md" tabindex="-1"></div>
+                <div role="treeitem" id="gone" data-key="f1/gone.md" tabindex="-1"></div>
             </div>
         </aside>
         <section>
@@ -32,15 +32,15 @@ function mount() {
 
 const element = (id: string) => document.getElementById(id)!;
 const focused = () => document.activeElement?.id ?? '';
-const PATHS = ['notes', 'notes/a.md', 'b.md', 'gone.md'];
-const BY_ID: Record<string, string> = { folder: 'notes', a: 'notes/a.md', b: 'b.md', gone: 'gone.md' };
+const KEYS = ['f1/notes', 'f1/notes/a.md', 'f1/b.md', 'f1/gone.md'];
+const BY_ID: Record<string, string> = { folder: 'f1/notes', a: 'f1/notes/a.md', b: 'f1/b.md', gone: 'f1/gone.md' };
 
-function setup(openId: string | null = 'b.md') {
+function setup(openId: string | null = 'f1/b.md') {
     mount();
     registry = createRegistry('darwin');
     registry.pushScope(DOCS_SCOPE);
 
-    for (const command of docTreeCommands({ tree: () => element('tree'), ids: () => PATHS, openId: () => openId })) registry.defineCommand(command);
+    for (const command of docTreeCommands({ tree: () => element('tree'), ids: () => KEYS, openId: () => openId })) registry.defineCommand(command);
 
     uninstall = installDispatcher(registry);
 }
@@ -72,7 +72,7 @@ describe('document tree commands', () => {
         ]);
     });
 
-    it('move the focus through folders, files and removed documents by the path on the row', () => {
+    it('move the focus through folders, files and removed documents by the key on the row', () => {
         setup();
         element('folder').focus();
 
@@ -94,7 +94,7 @@ describe('document tree commands', () => {
     });
 
     it('show the open document first while nothing has the focus', () => {
-        setup('notes/a.md');
+        setup('f1/notes/a.md');
 
         press('j');
 

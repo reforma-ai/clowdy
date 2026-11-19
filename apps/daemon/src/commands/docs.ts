@@ -5,9 +5,10 @@ import type { Handlers } from './context';
 export const docsHandlers: Pick<Handlers, 'docs.write'> = {
     'docs.write': ({ store, docs }, command) => {
         const project = requireProject(store, command.projectId);
-        const { path, hash, change } = docs.write(project, command);
+        const { folder, path, hash, change } = docs.write(project, command.folderId, command);
 
-        store.emit(project.id, { type: 'docs.changed', path, change });
+        // Every project that has the folder shares its documents, so each of them hears of the change.
+        docs.announce(folder, path, change);
 
         return { path, hash };
     },

@@ -152,7 +152,7 @@ export function createRoutes(context: RouteContext): Route[] {
         {
             method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/docs\/file$/,
-            handle: (_request, url, [id]) => json(docs.read(requireProject(store, id), url.searchParams.get('path') ?? '')),
+            handle: (_request, url, [id]) => json(docs.read(requireProject(store, id), url.searchParams.get('folderId') ?? '', url.searchParams.get('path') ?? '')),
         },
         {
             method: 'GET',

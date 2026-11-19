@@ -26,7 +26,7 @@ const TABS: ReadonlyArray<{ value: DocsTab; label: string }> = [
 export function DocsMain({ store }: { store: DocsStore }) {
     const buffer = store.current;
 
-    if (!store.currentPath) {
+    if (!store.currentKey) {
         if (store.treeStatus === 'loading') return <Loading />;
 
         if (store.treeStatus === 'failed') {
@@ -53,7 +53,7 @@ export function DocsMain({ store }: { store: DocsStore }) {
     if (buffer.status === 'failed') {
         return (
             <Message title={ `${ buffer.path } cannot be opened` } text={ buffer.error }>
-                <Button variant="bordered" onPress={ () => store.retry(buffer.path) }>Try again</Button>
+                <Button variant="bordered" onPress={ () => store.retry(buffer) }>Try again</Button>
             </Message>
         );
     }
@@ -113,16 +113,22 @@ function OpenDocument({ store, buffer }: { store: DocsStore; buffer: DocBuffer }
     );
 }
 
-/** `docs / decisions / booking-flow.md`, with a dot while there is unsaved text. The folders reveal themselves in the tree. */
+/**
+ * `docs / decisions / booking-flow.md`, with a dot while there is unsaved text; in a project of several folders the folder's name takes the
+ * place of `docs`. The folders reveal themselves in the tree.
+ */
 function PathBar({ store, buffer }: { store: DocsStore; buffer: DocBuffer }) {
     const name = buffer.path.slice(buffer.path.lastIndexOf('/') + 1);
+    const { folderId } = buffer;
 
     return (
         <div className={ styles.path }>
             <Breadcrumb variant="md" aria-label="Document path">
-                <Breadcrumb.Link key="docs" onPress={ () => store.setQuery('') }>docs</Breadcrumb.Link>
+                { store.multiFolder
+                    ? <Breadcrumb.Link key={ `folder:${ folderId }` } onPress={ () => store.reveal({ folderId, path: '' }) }>{ store.folderName(folderId) }</Breadcrumb.Link>
+                    : <Breadcrumb.Link key="docs" onPress={ () => store.setQuery('') }>docs</Breadcrumb.Link> }
                 { ancestorDirs(buffer.path).map(dir => (
-                    <Breadcrumb.Link key={ dir } onPress={ () => store.reveal(dir) }>{ dir.slice(dir.lastIndexOf('/') + 1) }</Breadcrumb.Link>
+                    <Breadcrumb.Link key={ dir } onPress={ () => store.reveal({ folderId, path: dir }) }>{ dir.slice(dir.lastIndexOf('/') + 1) }</Breadcrumb.Link>
                 )) }
                 <Breadcrumb.Page key={ buffer.path }>{ name }</Breadcrumb.Page>
             </Breadcrumb>

@@ -21,8 +21,12 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/runs/:id/items?after=SEQ       -> StreamItem[] (a run's stream, also an orchestrator's chat)
  * GET  /v1/chats/:id/items?after=SEQ      -> StreamItem[] (the chat's orchestrator stream)
  * GET  /v1/tasks/:id/detail               -> TaskDetail
- * GET  /v1/projects/:id/docs              -> DocsTree
- * GET  /v1/projects/:id/docs/file?path=   -> DocFile
+ * GET  /v1/projects/:id/docs              -> DocsTree (one entry per folder in the project's order, its documents under `.clowdy/docs`; a folder
+ *                                            without that docs folder has no nodes and is not given one. A missing main folder is
+ *                                            `unavailable`, one whose docs folder leads out of it `invalid`; another folder whose
+ *                                            documents cannot be read, missing or leading out, is left out)
+ * GET  /v1/projects/:id/docs/file?folderId=&path= -> DocFile (`path` relative to that folder's docs folder; a folder the project does not
+ *                                            have is `not_found`)
  * GET  /v1/projects/:id/files?query=&limit= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
  *                                            the folder's name counting as part of the path when there are several; best match first,
  *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside

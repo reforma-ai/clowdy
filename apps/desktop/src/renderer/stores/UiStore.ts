@@ -2,7 +2,7 @@ import { makeAutoObservable, observableRef, reaction } from 'mobx';
 
 import { readStored, removeStored, writeStored, type KeyValueStorage } from './storage';
 
-import type { ChatId, ProjectId, RunId, TaskId } from '@clowdy/protocol';
+import type { ChatId, FolderId, ProjectId, RunId, TaskId } from '@clowdy/protocol';
 
 export const SECTIONS = ['agents', 'tasks', 'docs'] as const;
 
@@ -21,6 +21,8 @@ export interface ProjectView {
     taskId: TaskId | null;
     runId: RunId | null;
     docPath: string | null;
+    /** The folder of the project whose docs folder holds `docPath`; `null` is the main folder. */
+    docFolderId: FolderId | null;
     /** Agents: the new-chat row is selected, and no chat exists yet. */
     draft: boolean;
 }
@@ -37,6 +39,7 @@ interface StoredProjectUi {
     taskId: TaskId | null;
     runId: RunId | null;
     docPath: string | null;
+    docFolderId: FolderId | null;
     showFinished: boolean;
     showSubthreads: boolean;
     showArchived: boolean;
@@ -48,7 +51,7 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'showFinished' | 'showSubthreads' | 'showArchived' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'showFinished' | 'showSubthreads' | 'showArchived' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -65,6 +68,8 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
     if (params.has('run')) initial.runId = params.get('run');
 
     if (params.has('doc')) initial.docPath = params.get('doc');
+
+    if (params.has('docFolder')) initial.docFolderId = params.get('docFolder');
 
     if (params.has('finished')) initial.showFinished = params.get('finished') !== '0';
 
@@ -84,6 +89,8 @@ export class ProjectUi {
     taskId: TaskId | null = null;
     runId: RunId | null = null;
     docPath: string | null = null;
+    /** The folder whose docs folder holds `docPath`; `null` is the main folder, which is also where a document opened by its path alone is. */
+    docFolderId: FolderId | null = null;
     /** Agents: the new-chat row is selected, and the chat it starts does not exist until its first message is sent. Not kept between sessions. */
     draft = false;
     /** Agents: list the runs below each chat, the chat's subthreads. */
@@ -106,6 +113,7 @@ export class ProjectUi {
             this.taskId = idOrNull(stored.taskId);
             this.runId = idOrNull(stored.runId);
             this.docPath = idOrNull(stored.docPath);
+            this.docFolderId = idOrNull(stored.docFolderId);
             this.showFinished = stored.showFinished !== false;
             this.showSubthreads = stored.showSubthreads !== false;
             this.showArchived = stored.showArchived === true;
@@ -121,6 +129,7 @@ export class ProjectUi {
                 taskId: this.taskId,
                 runId: this.runId,
                 docPath: this.docPath,
+                docFolderId: this.docFolderId,
                 showFinished: this.showFinished,
                 showSubthreads: this.showSubthreads,
                 showArchived: this.showArchived,
@@ -132,16 +141,17 @@ export class ProjectUi {
 
     /** The place the window shows, as a value that can be kept and shown again with `show`. */
     get view(): ProjectView {
-        return { section: this.section, chatId: this.chatId, taskId: this.taskId, runId: this.runId, docPath: this.docPath, draft: this.draft };
+        return { section: this.section, chatId: this.chatId, taskId: this.taskId, runId: this.runId, docPath: this.docPath, docFolderId: this.docFolderId, draft: this.draft };
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ section, chatId, taskId, runId, docPath, draft }: ProjectView): void {
+    show({ section, chatId, taskId, runId, docPath, docFolderId, draft }: ProjectView): void {
         this.section = section;
         this.chatId = chatId;
         this.taskId = taskId;
         this.runId = runId;
         this.docPath = docPath;
+        this.docFolderId = docFolderId;
         this.draft = draft;
     }
 
@@ -187,9 +197,11 @@ export class ProjectUi {
         this.draft = false;
     }
 
-    openDoc(path: string | null): void {
+    /** Shows a document in the Documents section: its path under the docs folder of `folderId`, the main folder's when none is named. */
+    openDoc(path: string | null, folderId: FolderId | null = null): void {
         this.section = 'docs';
         this.docPath = path;
+        this.docFolderId = folderId;
     }
 
     setShowFinished(show: boolean): void {

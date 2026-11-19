@@ -67,7 +67,7 @@ describe('HttpTransport requests', () => {
         await transport.getItems({ chatId: 'c1' });
         await transport.getTaskDetail('t1');
         await transport.getDocsTree('p1');
-        await transport.getDocFile('p1', 'decisions/a b.md');
+        await transport.getDocFile('p1', 'fld 1', 'decisions/a b.md');
         await transport.getProjectSnapshot('p/1');
 
         expect(calls.map(call => call.url)).toEqual([
@@ -75,7 +75,7 @@ describe('HttpTransport requests', () => {
             'http://d/v1/chats/c1/items?after=0',
             'http://d/v1/tasks/t1/detail',
             'http://d/v1/projects/p1/docs',
-            'http://d/v1/projects/p1/docs/file?path=decisions%2Fa%20b.md',
+            'http://d/v1/projects/p1/docs/file?folderId=fld%201&path=decisions%2Fa%20b.md',
             'http://d/v1/projects/p%2F1/snapshot',
         ]);
     });

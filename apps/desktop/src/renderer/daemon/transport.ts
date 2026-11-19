@@ -8,6 +8,7 @@ import type {
     CommandResult,
     DocFile,
     DocsTree,
+    FolderId,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
@@ -52,8 +53,10 @@ export interface Transport {
     command: (command: CommandInput) => Promise<CommandResult>;
     getItems: (target: StreamTarget, afterSeq?: number) => Promise<StreamItem[]>;
     getTaskDetail: (taskId: TaskId) => Promise<TaskDetail>;
+    /** The project's documents: one entry per folder, in the project's order, a folder that has none yet too. */
     getDocsTree: (projectId: ProjectId) => Promise<DocsTree>;
-    getDocFile: (projectId: ProjectId, path: string) => Promise<DocFile>;
+    /** A document of one of the project's folders, by its path under that folder's `.clowdy/docs`. */
+    getDocFile: (projectId: ProjectId, folderId: FolderId, path: string) => Promise<DocFile>;
     /** Files of the project's folders whose path contains every word of `query`, best match first, each with its folder and its path relative to that folder. */
     getProjectFiles: (projectId: ProjectId, query: string, limit?: number) => Promise<ProjectFileMatch[]>;
     /** Stores a file in the project, to go with the next message of one of its chats. Rejects with a `TransportError` that carries the daemon's reason when it refuses. */
