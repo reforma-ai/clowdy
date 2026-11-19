@@ -4,6 +4,7 @@ import { buildAgentEnv } from './env';
 import { classifyThrown, failureEvent } from './failure';
 import { wait } from './layer';
 import { V1Layer } from './v1';
+import { V2Layer } from './v2';
 
 import type { AgentProcess } from '../process';
 import type { EngineEvent, EngineSession, EngineStartOptions } from '../types';
@@ -39,6 +40,11 @@ export interface SessionDeps {
     /** The session's cumulative cost in USD as of its last prompt, kept in memory per session id (the agent reports totals). */
     costs: Map<string, number>;
     clientVersion: string;
+    /**
+     * The agents that were asked for ACP v2 and answered with version 1 or refused the handshake, by launch (`launchKey`): they are spoken to in v1 from
+     * then on, for the life of the daemon. The engine owns it, so every session of an agent shares what the first one learned.
+     */
+    downgraded: Set<string>;
     /** How long to wait for the agent's answer to `initialize`; two minutes by default. */
     initializeTimeoutMs?: number;
     /** How long an agent that has not named its session by the end of the turn keeps running for the name; ten seconds by default. */
@@ -49,12 +55,17 @@ export interface SessionDeps {
 /** The layer that speaks each protocol. */
 const LAYERS: Record<AgentProtocol, new (host: LayerHost) => ProtocolLayer> = {
     v1: V1Layer,
-    // There is no v2 layer yet: an agent set to `v2` speaks v1 until there is.
-    v2: V1Layer,
+    v2: V2Layer,
 };
 
 /**
- * One agent process driven over ACP for one turn of a run: one `session/prompt`, and `done` when the agent answers it. A message the person writes
+ * What tells one program of an agent from another, for the memory of which ones speak v1 only: the program it drives and the command with its
+ * arguments, which carry an adapter's pinned version, so a new pin is tried on v2 again.
+ */
+const launchKey = (agent: ResolvedAgent): string => [agent.program, agent.command, ...agent.args].join('\0');
+
+/**
+ * One agent process driven over ACP for one turn of a run: one `session/prompt`, and `done` when the agent's turn ends. A message the person writes
  * meanwhile reaches the turn only as a steer (`steer`), when the agent can take one; the runtime keeps any other for the next turn. The session owns
  * the process and what every protocol shares; the conversation is a layer for the agent's protocol (`layer.ts`).
  */
@@ -209,6 +220,26 @@ export class AcpSession implements EngineSession {
         }
 
         const { agent } = resolution;
+        const key = launchKey(agent);
+        let protocol: AgentProtocol = agent.protocol === 'v2' && !this.deps.downgraded.has(key) ? 'v2' : 'v1';
+
+        // An agent asked for v2 that answers with version 1, or refuses the handshake, is started again on v1, once, and remembered. The attempt that
+        // found out told the runtime nothing but its process, which the next attempt's replaces.
+        for (;;) {
+            const next = yield* this.attempt(agent, protocol);
+
+            if (next === undefined || this.signal.aborted) {
+                return;
+            }
+
+            this.deps.downgraded.add(key);
+            protocol = next;
+        }
+    }
+
+    /** One start of the agent's process and its conversation. Gives back the protocol to start the agent on again, when the handshake showed it speaks another. */
+    private async *attempt(agent: ResolvedAgent, protocol: AgentProtocol): AsyncGenerator<EngineEvent, AgentProtocol | undefined> {
+        const { registry } = this.deps;
         let proc: AgentProcess;
 
         try {
@@ -234,7 +265,8 @@ export class AcpSession implements EngineSession {
 
         this.exited = proc.exited;
 
-        const layer = this.startLayer(agent, proc);
+        const layer = this.startLayer(agent, proc, protocol);
+        let restart: AgentProtocol | undefined;
         let stopping = false;
 
         // Cancelled: tell the agent (the cancel has to be written before the input closes), let it leave by itself for a
@@ -269,6 +301,7 @@ export class AcpSession implements EngineSession {
             }
 
             yield* layer.run();
+            restart = layer.restartOn;
         }
         finally {
             this.signal.removeEventListener('abort', stopAgent);
@@ -287,13 +320,20 @@ export class AcpSession implements EngineSession {
 
             void proc.exited.then(() => layer.disconnect());
         }
+
+        // The next attempt starts when this process is gone, not beside it.
+        if (restart) {
+            await proc.exited;
+        }
+
+        return restart;
     }
 
     /** The layer for the agent's protocol, with what the session lends it. */
-    private startLayer(agent: ResolvedAgent, proc: AgentProcess): ProtocolLayer {
+    private startLayer(agent: ResolvedAgent, proc: AgentProcess, protocol: AgentProtocol): ProtocolLayer {
         const { options, deps, signal } = this;
 
-        const layer = new LAYERS[agent.protocol]({
+        const layer = new LAYERS[protocol]({
             agent,
             proc,
             options,
