@@ -21,12 +21,13 @@
 /* Scroll to the latest message: there while the stream is not at its end. */
 .toLatest {
     position: absolute;
-    right: var(--spacing-10);
+    left: 50%;
     bottom: var(--spacing-10);
     z-index: 1;
+    translate: -50% 0;
     background-color: var(--color-surface);
     box-shadow: var(--shadow-xs);
-    transition-property: opacity, transform, visibility;
+    transition-property: opacity, translate, visibility;
     transition-duration: 0.2s;
     transition-timing-function: ease;
 }
@@ -35,7 +36,7 @@
 .toLatest[data-hidden] {
     visibility: hidden;
     opacity: 0;
-    transform: translateY(0.375rem);
+    translate: -50% 0.375rem;
     pointer-events: none;
 }
 

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StreamView } from './StreamView';
 
@@ -98,5 +98,58 @@ describe('StreamView', () => {
         expect(worked()).toBeUndefined();
         expect(container.textContent).toContain('Looking at it.');
         expect(container.textContent).toContain('src/form.tsx');
+    });
+
+    it('keeps the message rail away until the seventh message', async () => {
+        const few = Array.from({ length: 6 }, (_, n) => item(n, { kind: 'user', text: `Ask ${ n }` }));
+
+        await act(async () => root.render(<StreamView items={ few } />));
+
+        expect(container.querySelector('[aria-label="Messages"]')).toBeNull();
+    });
+
+    it('draws a tick per message from the seventh, and a press scrolls the stream to it', async () => {
+        const many = Array.from({ length: 7 }, (_, n) => item(n, { kind: 'user', text: `Ask ${ n }` }));
+
+        await act(async () => root.render(<StreamView items={ many } />));
+
+        const rail = container.querySelector('[aria-label="Messages"]');
+        const message = container.querySelector<HTMLElement>('[data-turn="i-4"]');
+        const scroll = message?.parentElement?.parentElement as HTMLElement;
+        const box = (top: number, height: number): DOMRect => ({ top, bottom: top + height, left: 0, right: 0, width: 0, height, x: 0, y: top, toJSON: () => ({}) });
+
+        expect(rail?.querySelectorAll('[data-tick]')).toHaveLength(7);
+        expect(message).not.toBeNull();
+
+        message!.getBoundingClientRect = () => box(300, 40);
+        scroll.getBoundingClientRect = () => box(100, 700);
+        scroll.scrollTop = 40;
+        const scrolled = vi.spyOn(scroll, 'scrollTo');
+
+        await act(async () => rail?.querySelector<HTMLButtonElement>('[data-tick="i-4"]')?.click());
+
+        expect(scrolled).toHaveBeenCalledWith({ top: 224, behavior: 'auto' });
+    });
+
+    it('keeps one card and swaps its text as the pointer moves across ticks', async () => {
+        const many = Array.from({ length: 7 }, (_, n) => item(n, { kind: 'user', text: `Ask ${ n }` }));
+
+        await act(async () => root.render(<StreamView items={ many } />));
+
+        const rail = container.querySelector('[aria-label="Messages"]')?.parentElement;
+        const move = (id: string) => rail?.querySelector(`[data-tick="${ id }"]`)?.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientY: 40 }));
+
+        await act(async () => move('i-1'));
+
+        const card = document.querySelector('[data-turn-card]');
+
+        expect(document.querySelectorAll('[data-turn-card]')).toHaveLength(1);
+        expect(card?.textContent).toContain('Ask 1');
+
+        await act(async () => move('i-4'));
+
+        expect(document.querySelector('[data-turn-card]')).toBe(card);
+        expect(card?.textContent).toContain('Ask 4');
+        expect(card?.textContent).not.toContain('Ask 1');
     });
 });
