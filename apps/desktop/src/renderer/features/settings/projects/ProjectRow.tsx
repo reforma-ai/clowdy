@@ -46,7 +46,7 @@ export function ProjectRow({ project, info, onManage, onOpen, onRemove }: Projec
             </button>
 
             <MenuTrigger>
-                <Button variant="transparent" size="sm" iconOnly className={ styles.menu } aria-label={ `${ project.name } actions` }>
+                <Button variant="filling" color="secondary" size="sm" iconOnly className={ styles.menu } aria-label={ `${ project.name } actions` }>
                     <More />
                 </Button>
                 <Popover placement="bottom end" width={ 200 }>
