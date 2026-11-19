@@ -189,12 +189,12 @@
 
 **This stage:** creating and opening a project become one action with one form. The select, Settings > Projects and the no-project screen show Add project…; the form takes a name and a folder list built with a multi-select system picker (a path field in a browser), with the first folder marked Main and the order set by dragging. No folders makes a new one. The same set as an existing project opens it with a toast.
 
-- [ ] Complete
-  - [ ] The desktop bridge asks for several folders at once (`chooseDirectories`, an empty list on cancel)
-  - [ ] `RootStore.addProject` replaces `createProject` and `openProject`, and reports whether the project already existed
-  - [ ] The Add project form: name filled from the main folder until edited, the folder list with Main, drag and remove, Add folders… any number of times, the empty-list hint, errors from the daemon inline
-  - [ ] Add project… in the select (with Manage projects…), a single Add project button on Settings > Projects and on the no-project screen
-  - [ ] The same-set toast
+- [x] Complete
+  - [x] The desktop bridge asks for several folders at once (`chooseDirectories`, an empty list on cancel)
+  - [x] `RootStore.addProject` replaces `createProject` and `openProject`, and reports whether the project already existed
+  - [x] The Add project form: name filled from the main folder until edited, the folder list with Main, drag and remove, Add folders… any number of times, the empty-list hint, errors from the daemon inline
+  - [x] Add project… in the select (with Manage projects…), a single Add project button on Settings > Projects and on the no-project screen
+  - [x] The same-set toast
 
 **Files**
 
@@ -212,7 +212,7 @@
 
 **Done when:** from the select a person adds a project of two folders picked in one dialog, reorders them, and lands in it; adding the same two folders again opens it with the toast.
 **Verify:** `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`, screenshots of the form in fixtures mode (empty and with folders)
-**Commits:** None yet.
+**Commits:** None yet. Reviewed: removing a folder moves focus to its neighbour; a typed drive root keeps its separator; dialog tests turn off the Modal's animation instead of mocking `motion`. Screenshots: the form empty, with two folders, and after a real drag in Electron.
 
 ## Stage 6 — A project's folders in Settings, the select and `@`
 

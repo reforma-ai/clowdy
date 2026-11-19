@@ -1,3 +1,4 @@
+import { BrowserWindow, dialog } from 'electron';
 import { describe, expect, test, vi } from 'vitest';
 
 import { IPC_CHANNELS } from '../shared/bridge';
@@ -78,5 +79,40 @@ describe('the daemon address for the preload', () => {
         expect(nested.returnValue).toBeNull();
         expect(gone.returnValue).toBeNull();
         expect(getDaemon).not.toHaveBeenCalled();
+    });
+});
+
+describe('the folder dialog', () => {
+    /** Registers the IPC handlers on a fake `ipcMain` and returns the handler of the folder dialog. */
+    function chooser() {
+        const handlers = new Map<string, (event: unknown) => Promise<unknown>>();
+
+        registerIpc(
+            { handle: (channel: string, handler: (event: unknown) => Promise<unknown>) => void handlers.set(channel, handler), on: vi.fn() } as never,
+            TRUSTED,
+            { setThemeSource: vi.fn(), getDaemon: async () => undefined }
+        );
+
+        return handlers.get(IPC_CHANNELS.chooseDirectories)!;
+    }
+
+    test('opens over the window that asked with several folders selectable, and answers every folder chosen, or none on cancel', async () => {
+        const window = { id: 1 };
+        const showOpenDialog = vi.fn()
+            .mockResolvedValueOnce({ canceled: false, filePaths: ['/Users/dev/web', '/Users/dev/api'] })
+            .mockResolvedValueOnce({ canceled: true, filePaths: [] });
+
+        Object.assign(BrowserWindow, { fromWebContents: () => window });
+        Object.assign(dialog, { showOpenDialog });
+
+        const choose = chooser();
+
+        expect(await choose(callFrom({ url: `${ TRUSTED }/` }))).toEqual(['/Users/dev/web', '/Users/dev/api']);
+        expect(showOpenDialog).toHaveBeenCalledWith(window, { properties: ['openDirectory', 'createDirectory', 'multiSelections'] });
+        expect(await choose(callFrom({ url: `${ TRUSTED }/` }))).toEqual([]);
+    });
+
+    test('refuses a page of another origin', async () => {
+        await expect(chooser()(callFrom({ url: 'https://example.com/' }))).rejects.toThrow('Untrusted sender');
     });
 });

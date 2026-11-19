@@ -1,11 +1,9 @@
 import { Button } from '@clowdy/components/Button';
-import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
-import { Popover } from '@clowdy/components/Popover';
 import { SortableList } from '@clowdy/components/SortableList';
-import { Folder, Plus } from '@clowdy/icons/14';
+import { Plus } from '@clowdy/icons/14';
 import { useMemo } from 'react';
 
-import { openCreateProject, openExistingProject } from '../../../shell/projectDialogs';
+import { openAddProject } from '../../../shell/projectDialogs';
 import { useRootStore } from '../../../stores';
 import { SettingsEmpty } from '../ui/SettingsEmpty';
 import { SettingsPage } from '../ui/SettingsPage';
@@ -15,9 +13,6 @@ import { ProjectRow } from './ProjectRow';
 import styles from './ProjectsPage.module.css';
 import { projectNote } from './projectView';
 import { useProjectsInfo } from './useProjectsInfo';
-
-const CREATE = 'create';
-const OPEN = 'open';
 
 /**
  * Settings > Projects: the personal space, pinned, and the person's projects, which a grip drags into the order of the project menu. A row
@@ -43,24 +38,7 @@ export function ProjectsPage() {
                 }]
                 : [] }
             onNavigate={ () => root.ui.openProjectSettings() }
-            actions={ selected ? undefined : (
-                <MenuTrigger>
-                    <Button variant="filled" color="contrast" size="sm"><Plus />Add project</Button>
-                    <Popover placement="bottom end" width={ 240 }>
-                        <Menu
-                            aria-label="Add a project"
-                            size="md"
-                            onAction={ (key) => {
-                                if (key === CREATE) openCreateProject(root);
-                                else if (key === OPEN) void openExistingProject(root);
-                            } }
-                        >
-                            <MenuItem id={ CREATE } text="Create project" icon={ <Plus /> } />
-                            <MenuItem id={ OPEN } text="Open existing project…" icon={ <Folder /> } />
-                        </Menu>
-                    </Popover>
-                </MenuTrigger>
-            ) }
+            actions={ selected ? undefined : <Button variant="filled" color="contrast" size="sm" onPress={ () => openAddProject(root) }><Plus />Add project</Button> }
         >
             <div className={ styles.list }>
                 { personal && (
@@ -73,7 +51,7 @@ export function ProjectsPage() {
                 ) }
 
                 { own.length === 0
-                    ? <SettingsEmpty>No projects yet. Create one, or open a folder you already work in.</SettingsEmpty>
+                    ? <SettingsEmpty>No projects yet. Add the folders you work in, or start one in a new folder.</SettingsEmpty>
                     : (
                         <SortableList
                             aria-label="Projects"

@@ -6,16 +6,15 @@ import { Check, ChevronDown, Folder, Home, Plus, Sliders } from '@clowdy/icons/1
 import { mainFolder } from '@clowdy/protocol';
 
 import { useRootStore } from '../stores';
-import { openCreateProject, openExistingProject } from './projectDialogs';
+import { openAddProject } from './projectDialogs';
 import styles from './ProjectSelect.module.css';
 
-const CREATE = 'create-project';
-const OPEN = 'open-project';
+const ADD = 'add-project';
 const MANAGE = 'manage-projects';
 
 /**
- * The project switcher in the title band: the personal space on top, then the projects in the person's order, then "Create project",
- * "Open existing project…" and "Manage projects…", which opens Settings > Projects. The menu only switches; everything else about a project is managed there.
+ * The project switcher in the title band: the personal space on top, then the projects in the person's order, then "Add project…" and
+ * "Manage projects…", which opens Settings > Projects. The menu only switches; everything else about a project is managed there.
  */
 export function ProjectSelect() {
     const root = useRootStore();
@@ -36,8 +35,7 @@ export function ProjectSelect() {
                     aria-label="Projects"
                     size="md"
                     onAction={ (key) => {
-                        if (key === CREATE) openCreateProject(root);
-                        else if (key === OPEN) void openExistingProject(root);
+                        if (key === ADD) openAddProject(root);
                         else if (key === MANAGE) root.ui.openProjectSettings();
                         else root.selectProject(String(key));
                     } }
@@ -57,9 +55,7 @@ export function ProjectSelect() {
                         />
                     )) }
                     { root.projects.length > 0 && <MenuSeparator /> }
-                    <MenuItem id={ CREATE } text="Create project" icon={ <Plus /> } />
-                    <MenuItem id={ OPEN } text="Open existing project…" icon={ <Folder /> } />
-                    <MenuSeparator />
+                    <MenuItem id={ ADD } text="Add project…" icon={ <Plus /> } />
                     <MenuItem id={ MANAGE } text="Manage projects…" icon={ <Sliders /> } />
                 </Menu>
             </Popover>

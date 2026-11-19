@@ -54,14 +54,14 @@ export function registerIpc(
         setThemeSource(theme as Theme);
     });
 
-    ipcMain.handle(IPC_CHANNELS.chooseDirectory, async (event): Promise<string | null> => {
+    ipcMain.handle(IPC_CHANNELS.chooseDirectories, async (event): Promise<string[]> => {
         assertTrustedSender(event, trustedOrigin);
 
         // The dialog belongs to the window that asked, so it opens as a sheet over it.
         const window = BrowserWindow.fromWebContents(event.sender);
-        const options = { properties: ['openDirectory' as const, 'createDirectory' as const] };
+        const options = { properties: ['openDirectory' as const, 'createDirectory' as const, 'multiSelections' as const] };
         const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
 
-        return result.canceled ? null : result.filePaths[0] ?? null;
+        return result.canceled ? [] : result.filePaths;
     });
 }

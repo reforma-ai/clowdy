@@ -5,7 +5,7 @@ export const WINDOW_MATERIAL_ARGUMENT = '--clowdy-window-material';
 
 export const IPC_CHANNELS = {
     setThemeSource: 'desktop:set-theme-source',
-    chooseDirectory: 'desktop:choose-directory',
+    chooseDirectories: 'desktop:choose-directories',
     /** Synchronous (`sendSync`): the preload needs the answer before the page's scripts run. */
     getDaemon: 'desktop:get-daemon',
     /** Main to renderer: the daemon was replaced and listens elsewhere now. */
@@ -26,6 +26,6 @@ export interface DesktopBridge {
     daemon?: { url: string; token: string };
     /** Called with the new address when the daemon is replaced while the window is open (a development run restarts it after its sources change). Returns a function that stops listening. */
     onDaemonChange: (listener: (daemon: { url: string; token: string }) => void) => () => void;
-    /** Asks the person for a folder with the system dialog. Resolves `null` when they cancel. */
-    chooseDirectory: () => Promise<string | null>;
+    /** Asks the person for one or more folders with the system dialog. Resolves an empty list when they cancel. */
+    chooseDirectories: () => Promise<string[]>;
 }

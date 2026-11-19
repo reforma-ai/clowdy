@@ -4,8 +4,3 @@
     gap: var(--spacing-xxl);
     padding: var(--spacing-20);
 }
-
-.path {
-    display: flex;
-    gap: var(--spacing-md);
-}

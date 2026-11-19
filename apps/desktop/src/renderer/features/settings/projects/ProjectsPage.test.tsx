@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { Modal } from '@clowdy/components/Modal';
 import { LAST_USED } from '@clowdy/protocol';
 import { observer } from 'mobx-react-lite';
 import { act } from 'react';
@@ -66,9 +67,16 @@ beforeEach(() => {
     container = document.createElement('div');
     document.body.append(container);
     reactRoot = createRoot(container);
+    // The modal animates by itself, whatever the motion setting; a test that ends while it moves leaves a cancelled animation behind.
+    const create = Modal.create.bind(Modal);
+
+    vi.spyOn(Modal, 'create').mockImplementation(options => create({ ...options, animate: false }));
 });
 
-afterEach(() => {
+afterEach(async () => {
+    for (const modal of Modal.opened) await modal.close(false);
+
+    vi.restoreAllMocks();
     delete (window as { desktop?: unknown }).desktop;
     act(() => reactRoot.unmount());
     container.remove();
@@ -151,6 +159,17 @@ describe('ProjectsPage list', () => {
         await flush();
 
         expect(store.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental']);
+    });
+
+    it('opens the Add project form from the one Add project button, with no menu between', async () => {
+        await open();
+        await click(named('Add project'));
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 60));
+        });
+
+        expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(0);
+        expect(document.body.querySelector('form')?.textContent).toContain('A new folder is made when none is added');
     });
 
     it('does not offer removal while agents work in the project', async () => {
@@ -251,8 +270,8 @@ describe('ProjectsPage project', () => {
         expect(row(FIXTURE_EMPTY_PROJECT_ID)).toBeNull();
     });
 
-    it('points the project at another folder after the person chose it and confirmed', async () => {
-        (window as { desktop?: unknown }).desktop = { chooseDirectory: async () => '/Users/dev/moved' };
+    it('points the project at another folder after the person chose it and confirmed, the first when several were chosen', async () => {
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => ['/Users/dev/moved', '/Users/dev/other'] };
         await open(FIXTURE_EMPTY_PROJECT_ID);
         await click(named('Change folder…'));
         await flush();
@@ -268,7 +287,7 @@ describe('ProjectsPage project', () => {
     });
 
     it('shows the daemon\'s reason in the dialog when it refuses the folder', async () => {
-        (window as { desktop?: unknown }).desktop = { chooseDirectory: async () => '/Users/dev/elsewhere' };
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => ['/Users/dev/elsewhere'] };
         await open(FIXTURE_EMPTY_PROJECT_ID, { command: async () => ({ ok: false, requestId: 'r', error: { code: 'invalid', message: '/Users/dev/elsewhere does not exist' } }) });
         await click(named('Change folder…'));
         await flush();
@@ -277,7 +296,7 @@ describe('ProjectsPage project', () => {
     });
 
     it('does nothing when the folder dialog is closed without a choice', async () => {
-        (window as { desktop?: unknown }).desktop = { chooseDirectory: async () => null };
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => [] };
         await open(FIXTURE_EMPTY_PROJECT_ID);
         await click(named('Change folder…'));
         await flush();

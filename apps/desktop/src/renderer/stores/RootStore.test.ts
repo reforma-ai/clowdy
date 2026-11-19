@@ -107,32 +107,63 @@ describe('RootStore', () => {
         root.dispose();
     });
 
-    it('lists a project that appears by event, and creating one selects it', async () => {
+    it('lists a project that appears by event, and adding one in a new folder selects it', async () => {
         const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
 
         await root.load();
         await settle();
 
-        const result = await root.createProject('Garden Planner');
+        const result = await root.addProject({ name: 'Garden Planner', folders: [] });
 
         await settle();
 
-        expect(result.ok).toBe(true);
+        expect(result).toMatchObject({ ok: true, data: { project: { name: 'Garden Planner', folders: [{ path: '/Users/dev/garden-planner' }] }, existing: false } });
         expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental', 'Clowdy', 'Garden Planner']);
         expect(root.selectedProject?.project.name).toBe('Garden Planner');
         expect(root.selectedProject?.project.taskPrefix).toBe('GAR');
         root.dispose();
     });
 
-    it('opening a repository that is already a project selects it instead of adding another', async () => {
+    it('adds a project of several folders in their order, named after the main one unless a name is given', async () => {
         const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
 
         await root.load();
-        await root.openProject('/Users/dev/clowdy');
+
+        const named = await root.addProject({ folders: ['/Users/dev/web', '/Users/dev/api'] });
+        const renamed = await root.addProject({ name: 'Shop', folders: ['/Users/dev/shop'] });
+
+        expect(named).toMatchObject({ ok: true, data: { project: { name: 'web', folders: [{ path: '/Users/dev/web' }, { path: '/Users/dev/api' }] }, existing: false } });
+        expect(renamed).toMatchObject({ ok: true, data: { project: { name: 'Shop' } } });
+        expect(root.selectedProject?.project.name).toBe('Shop');
+        root.dispose();
+    });
+
+    it('switches to the project that has the same folders instead of adding another, and says it existed', async () => {
+        const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
+
+        await root.load();
+
+        const result = await root.addProject({ name: 'Ignored', folders: ['/Users/dev/clowdy'] });
+
         await settle();
 
+        expect(result).toMatchObject({ ok: true, data: { project: { id: FIXTURE_EMPTY_PROJECT_ID, name: 'Clowdy' }, existing: true } });
         expect(root.projects).toHaveLength(3);
         expect(root.selectedProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
+        root.dispose();
+    });
+
+    it('keeps the list and the open project when the daemon refuses to add one', async () => {
+        const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
+
+        await root.load();
+
+        // Without folders the new folder is named after the project, so a name is needed.
+        const result = await root.addProject({ folders: [] });
+
+        expect(result).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(root.projects).toHaveLength(3);
+        expect(root.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
         root.dispose();
     });
 

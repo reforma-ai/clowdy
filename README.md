@@ -27,7 +27,7 @@ bun install
 
 ## Develop Clowdy with Clowdy
 
-1. `./clowdy dev`, then in the app: project select (top left) → **Open existing project…** → choose this repository.
+1. `./clowdy dev`, then in the app: project select (top left) → **Add project…** → **Add folders…** → choose this repository → **Add project**.
 2. **Chats** → **New chat**, and describe what you want changed. The orchestrator reads the repo and the docs, answers questions without touching anything, and for real work creates tasks and runs agents in parallel. Pick *Semi-manual* in the composer if you want it to ask you about significant decisions first.
 3. Watch **Tasks** (board), **Agents** (the run tree and each agent's stream) and **Documents** (`.clowdy/docs/`, plain Markdown in the repo).
 4. The renderer is rebuilt as agents edit it and the window reloads a few seconds later. A change under `apps/desktop/src/main` restarts the app window but not the daemon, so running work continues. A change to the daemon (`apps/daemon/src`, `packages/protocol/src`) is picked up by the app itself: when the daemon has no runs in progress it is replaced and the window reconnects without a reload; while runs are in progress it waits, so nothing is interrupted. `CLOWDY_PROFILE=dev bun run --cwd apps/daemon stop` stops it by hand (live runs then show as *Interrupted*; send a message in the chat to resume).
