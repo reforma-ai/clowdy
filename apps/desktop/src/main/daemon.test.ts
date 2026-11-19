@@ -1,7 +1,7 @@
 import { PROTOCOL_VERSION, type Health } from '@clowdy/protocol';
 import { describe, expect, test } from 'vitest';
 
-import { attachDaemon, daemonAddress, daemonEnvironment, DaemonError, ensureDaemon, tailLines, type DaemonContext } from './daemon';
+import { attachDaemon, daemonAddress, daemonEnvironment, DaemonError, ensureDaemon, environmentRuntime, tailLines, type DaemonContext, type DaemonRuntime } from './daemon';
 
 import type { DaemonExit, DaemonHost, DaemonLaunch } from './daemonHost';
 
@@ -9,6 +9,8 @@ const DATA_DIR = '/data/daemon';
 const INFO_FILE = `${ DATA_DIR }/daemon.json`;
 const LOG_FILE = `${ DATA_DIR }/daemon.log`;
 const INFO = { pid: 4242, port: 51000, token: 'secret', protocol: PROTOCOL_VERSION, startedAt: 1_700_000_000_000 };
+
+const CHECKOUT: DaemonRuntime = { bun: '/usr/local/bin/bun', entry: '/repo/apps/daemon/src/main.ts' };
 
 const healthOf = (info = INFO, overrides: Partial<Health> = {}): Health => ({ ok: true, protocol: info.protocol, version: '0.0.1', pid: info.pid, startedAt: info.startedAt, ...overrides });
 
@@ -34,6 +36,8 @@ function publish(world: World, info = INFO, delay = 0): void {
  */
 function setup(options: {
     env?: NodeJS.ProcessEnv;
+    /** What runs the daemon; a checkout's by default, `null` for an app without one. */
+    runtime?: DaemonRuntime | null;
     platform?: NodeJS.Platform;
     files?: Record<string, string>;
     running?: typeof INFO;
@@ -77,8 +81,9 @@ function setup(options: {
     const context: DaemonContext = {
         host,
         platform: options.platform ?? 'darwin',
-        env: { PATH: '/opt/bin:/usr/bin', CLOWDY_BUN: '/usr/local/bin/bun', CLOWDY_DAEMON_ENTRY: '/repo/apps/daemon/src/main.ts', ...options.env },
+        env: { PATH: '/opt/bin:/usr/bin', ...options.env },
         dataDir: DATA_DIR,
+        runtime: options.runtime === null ? undefined : options.runtime ?? CHECKOUT,
     };
 
     return { world, context };
@@ -171,14 +176,31 @@ describe('ensureDaemon: how the daemon is started', () => {
         expect(world.launches[0].env.CLOWDY_DATA_DIR).toBe(DATA_DIR);
     });
 
-    test('says so when no daemon is bundled', async () => {
-        for (const env of [{ CLOWDY_BUN: '' }, { CLOWDY_DAEMON_ENTRY: '' }]) {
-            const { world, context } = setup({ env });
-            const error = await failureOf(ensureDaemon(context));
+    test('runs a bundled daemon from its bundle folder and names its system skills', async () => {
+        const bundle = '/updates/bundles/412';
+        const { world, context } = setup({
+            runtime: { bun: '/updates/bun/1.4.4/bun', entry: `${ bundle }/daemon/main.js`, skillsDir: `${ bundle }/system-skills` },
+            onLaunch: state => void publish(state),
+        });
 
-            expect(error.message).toBe('Daemon is not bundled in this build.');
-            expect(world.launches).toEqual([]);
-        }
+        await ensureDaemon(context);
+
+        expect(world.launches[0]).toMatchObject({ bun: '/updates/bun/1.4.4/bun', entry: `${ bundle }/daemon/main.js`, cwd: bundle });
+        expect(world.launches[0].env.CLOWDY_SYSTEM_SKILLS_DIR).toBe(`${ bundle }/system-skills`);
+    });
+
+    test('says so when no daemon is bundled', async () => {
+        const { world, context } = setup({ runtime: null });
+        const error = await failureOf(ensureDaemon(context));
+
+        expect(error.message).toBe('Daemon is not bundled in this build.');
+        expect(world.launches).toEqual([]);
+    });
+
+    test('a development run names its daemon in the environment', () => {
+        expect(environmentRuntime({ CLOWDY_BUN: '/bin/bun', CLOWDY_DAEMON_ENTRY: '/repo/main.ts' })).toEqual({ bun: '/bin/bun', entry: '/repo/main.ts' });
+        expect(environmentRuntime({ CLOWDY_BUN: '/bin/bun' })).toBeUndefined();
+        expect(environmentRuntime({ CLOWDY_DAEMON_ENTRY: '/repo/main.ts' })).toBeUndefined();
     });
 
     test('resolves the login-shell PATH only for an app started from Finder', async () => {

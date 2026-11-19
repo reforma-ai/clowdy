@@ -10,12 +10,12 @@
         "dev": "bun scripts/dev.ts",
         "build:app": "bun scripts/build.ts",
         "package": "bun scripts/build.ts && electron-builder --mac --dir -c.mac.identity=- -c.mac.hardenedRuntime=false",
-        "package:win": "bun scripts/build.ts && electron-builder --win --dir --x64 --arm64",
+        "package:win": "bun scripts/build.ts win32-x64 win32-arm64 && electron-builder --win --dir --x64 --arm64",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "test": "vitest run --passWithNoTests",
         "typecheck": "tsc --noEmit && tsc --noEmit -p scripts",
-        "clean": "rm -rf node_modules/{*,.*} .turbo dist app release 2>/dev/null || true"
+        "clean": "rm -rf node_modules/{*,.*} .turbo dist app bundle runtime release 2>/dev/null || true"
     },
     "dependencies": {
         "@clowdy/components": "workspace:*",

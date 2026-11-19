@@ -28,6 +28,12 @@ import type { Services } from './commands';
 import type { Config } from './config';
 import type { EngineRegistry } from './engine/types';
 
+/** Set by `scripts/bundle.ts`: the version of the app bundle this daemon was built into. */
+declare const __CLOWDY_BUNDLE_VERSION__: string | undefined;
+
+/** What `/v1/health` reports: the bundle's version, or the package's when the daemon runs from its sources. The app compares it with the bundle it runs. */
+const VERSION = typeof __CLOWDY_BUNDLE_VERSION__ === 'string' ? __CLOWDY_BUNDLE_VERSION__ : pkg.version;
+
 export interface Daemon {
     info: DaemonInfo;
     services: Services;
@@ -106,7 +112,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         })();
         const server = startServer({
             services,
-            version: pkg.version,
+            version: VERSION,
             startedAt,
             heartbeatMs: options.heartbeatMs,
             // Answer first: stopping closes the connection this request came in on.

@@ -56,13 +56,13 @@
 
 **This stage:** A packaged build has no daemon today: `startDaemon` needs `CLOWDY_BUN` and `CLOWDY_DAEMON_ENTRY`, which only `./clowdy dev` sets. This stage makes `./clowdy build` produce an app that carries its bundled copy (renderer in the ASAR; daemon JS and system skills in `Resources/bundle`; a `bundle.json` naming version, `minShell`, and protocol) and a Bun executable for its arch in `Resources/bun`, and that starts the daemon from copies outside the install folder (`<updates>/bun/<bun version>/` and `<updates>/bundles/<version>/`), so a running daemon never holds files an installer must replace. The daemon reports the bundle version in `Health.version`. Development runs keep their environment variables.
 
-- [ ] Complete
-  - [ ] The daemon builds into `main.js` + `mcp-stdio.js` with `bun build --target=bun`, with the bundle version baked in, and finds `mcp-stdio.js` beside itself
-  - [ ] The release build lays out the bundled copy and `bundle.json`; the bundle version comes from the first-parent commit count
-  - [ ] The release build downloads the pinned Bun for each target arch (cached) and electron-builder ships it in `extraResources`, signed with the inherit entitlements
-  - [ ] A packaged app copies Bun and its bundled daemon into the updates folder when missing and launches from there; `CLOWDY_SYSTEM_SKILLS_DIR` points at the copied skills
-  - [ ] `hasLaunchSwitches` accepts `--updated`
-  - [ ] `apps/desktop/AGENTS.md` "Packaged app" describes the shipped shape
+- [x] Complete
+  - [x] The daemon builds into `main.js` + `mcp-stdio.js` with `bun build --target=bun`, with the bundle version baked in, and finds `mcp-stdio.js` beside itself
+  - [x] The release build lays out the bundled copy and `bundle.json`; the bundle version comes from the first-parent commit count
+  - [x] The release build downloads the pinned Bun for each target arch (cached) and electron-builder ships it in `extraResources`, signed with the inherit entitlements
+  - [x] A packaged app copies Bun and its bundled daemon into the updates folder when missing and launches from there; `CLOWDY_SYSTEM_SKILLS_DIR` points at the copied skills
+  - [x] `hasLaunchSwitches` accepts `--updated`
+  - [x] `apps/desktop/AGENTS.md` "Packaged app" describes the shipped shape
 
 **Files**
 
@@ -74,6 +74,7 @@
 - `apps/desktop/scripts/build.ts` — lay out `bundle/` (daemon, system skills), `app/bundle.json`, call the Bun fetch
 - `apps/desktop/electron-builder.ts` — `extraResources` (`bundle`, `bun/${arch}`), `entitlementsInherit`, `files` include `bundle.json`
 - `apps/desktop/build/entitlements.mac.inherit.plist` — create: Bun's JIT entitlements plus `disable-library-validation`; cannot reuse `entitlements.mac.plist` because the app itself must not get library validation off
+- `apps/desktop/scripts/bundle.ts` — create: bundle version, `bundle.json` data, daemon and skills layout; Stage 4 adds the renderer, archive, and manifest
 - `apps/desktop/src/main/bundle.ts` — create: reads the bundled copy's `bundle.json`, resolves the updates folder, copies Bun and the bundled daemon out of the install folder; Stage 5's OTA chooser extends it
 - `apps/desktop/src/main/daemon.ts` — `DaemonContext` carries the launch runtime (`bun`, `entry`, `skillsDir`) instead of `startDaemon` reading `CLOWDY_BUN` / `CLOWDY_DAEMON_ENTRY`; `daemonEnvironment` sets `CLOWDY_SYSTEM_SKILLS_DIR`
 - `apps/desktop/src/main/index.ts` — packaged runs build the runtime from `bundle.ts`; development runs from the environment

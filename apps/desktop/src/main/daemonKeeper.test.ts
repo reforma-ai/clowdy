@@ -59,8 +59,9 @@ function setup({ running = true, startedAt = 1000, activeRuns = 0 }: { running?:
     const context: DaemonContext = {
         host,
         platform: 'darwin',
-        env: { PATH: '/usr/bin', CLOWDY_BUN: '/bin/bun', CLOWDY_DAEMON_ENTRY: '/repo/apps/daemon/src/main.ts' },
+        env: { PATH: '/usr/bin' },
         dataDir: DATA_DIR,
+        runtime: { bun: '/bin/bun', entry: '/repo/apps/daemon/src/main.ts' },
     };
 
     return { world, context, setRuns: (runs: number) => world.daemons.forEach((health, port) => world.daemons.set(port, { ...health, activeRuns: runs })) };

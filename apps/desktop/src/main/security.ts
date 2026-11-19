@@ -180,11 +180,14 @@ export function restrictPermissions(
     session.setDevicePermissionHandler(() => false);
 }
 
+/** The Windows installer restarts the app with it after an update; Chromium has no such switch. */
+const UPDATED_SWITCH = '--updated';
+
 /**
  * A packaged app starts without command-line switches: a debugging port, a proxy,
  * relaxed certificates, or another profile would each hand out the session.
- * Chromium on Windows also reads `/switch`.
+ * Chromium on Windows also reads `/switch`. The one exception is `--updated`.
  */
 export function hasLaunchSwitches(argv: readonly string[], platform: NodeJS.Platform = process.platform): boolean {
-    return argv.some(arg => arg.startsWith('-') || (platform === 'win32' && arg.startsWith('/')));
+    return argv.some(arg => arg !== UPDATED_SWITCH && (arg.startsWith('-') || (platform === 'win32' && arg.startsWith('/'))));
 }

@@ -1,4 +1,6 @@
 /app/
 /release/
+/bundle/
+/runtime/
 # electron-builder's resources (icon, entitlements); the root ignores every `build`.
 !/build/

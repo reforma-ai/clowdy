@@ -23,17 +23,36 @@ export class DaemonError extends Error {
     }
 }
 
+/** What runs the daemon: a packaged app's copies (`bundle.ts`), or a development run's checkout. */
+export interface DaemonRuntime {
+    /** The bun executable. */
+    bun: string;
+    /** The daemon's entry: `main.js` of a bundle, `src/main.ts` of a checkout. */
+    entry: string;
+    /** The system skills plugin folder, passed as `CLOWDY_SYSTEM_SKILLS_DIR`; a checkout's daemon finds its own. */
+    skillsDir?: string;
+}
+
 export interface DaemonContext {
     host: DaemonHost;
     platform: NodeJS.Platform;
     env: NodeJS.ProcessEnv;
     dataDir: string;
+    /** Absent when this app has no daemon to start; one already running is still found. */
+    runtime?: DaemonRuntime;
 }
 
-export function currentContext(): DaemonContext {
+export function currentContext(runtime?: DaemonRuntime): DaemonContext {
     const { platform, env } = process;
 
-    return { host: nodeHost, platform, env, dataDir: daemonDataDir({ platform, home: homedir(), env }) };
+    return { host: nodeHost, platform, env, dataDir: daemonDataDir({ platform, home: homedir(), env }), runtime };
+}
+
+/** A development run's daemon: the Bun and the entry `./clowdy dev` names in `CLOWDY_BUN` and `CLOWDY_DAEMON_ENTRY`. */
+export function environmentRuntime(env: NodeJS.ProcessEnv): DaemonRuntime | undefined {
+    const { CLOWDY_BUN: bun, CLOWDY_DAEMON_ENTRY: entry } = env;
+
+    return bun && entry ? { bun, entry } : undefined;
 }
 
 export interface RunningDaemon {
@@ -86,8 +105,9 @@ const ELECTRON_VARIABLES = new Set(['CHROME_DESKTOP', 'CHROME_CRASHPAD_PIPE_NAME
  * The environment of the daemon, and of the agents it starts: the app's own, minus what only makes sense inside
  * Electron (`ELECTRON_RUN_AS_NODE` would turn a child into plain Node), with the data folder pinned and, when the
  * app was started from Finder, the user's login-shell PATH, so agents find git, node, and the rest of the toolchain.
+ * A bundled daemon is told where its system skills are.
  */
-export function daemonEnvironment(env: NodeJS.ProcessEnv, dataDir: string, loginPath?: string): Record<string, string> {
+export function daemonEnvironment(env: NodeJS.ProcessEnv, dataDir: string, loginPath?: string, skillsDir?: string): Record<string, string> {
     const result: Record<string, string> = {};
 
     for (const [name, value] of Object.entries(env)) {
@@ -97,6 +117,8 @@ export function daemonEnvironment(env: NodeJS.ProcessEnv, dataDir: string, login
     }
 
     result.CLOWDY_DATA_DIR = dataDir;
+
+    if (skillsDir) result.CLOWDY_SYSTEM_SKILLS_DIR = skillsDir;
 
     if (loginPath) result.PATH = mergePaths(loginPath, env.PATH);
 
@@ -135,15 +157,16 @@ export async function stopDaemon(context: DaemonContext, { info }: RunningDaemon
 }
 
 async function startDaemon(context: DaemonContext): Promise<DaemonInfo> {
-    const { host, platform, env, dataDir } = context;
-    const { CLOWDY_BUN: bun, CLOWDY_DAEMON_ENTRY: entry } = env;
+    const { host, platform, env, dataDir, runtime } = context;
 
-    if (!bun || !entry) {
+    if (!runtime) {
         throw new DaemonError(
             'Daemon is not bundled in this build.',
             'Set CLOWDY_BUN (the bun executable) and CLOWDY_DAEMON_ENTRY (the daemon\'s main.ts) to run one from a checkout; `./clowdy dev` does.'
         );
     }
+
+    const { bun, entry, skillsDir } = runtime;
 
     const logPath = path.join(dataDir, 'daemon.log');
     const loginPath = platform !== 'win32' && isMinimalPath(env.PATH) ? await host.loginPath(platform, env) : undefined;
@@ -156,7 +179,7 @@ async function startDaemon(context: DaemonContext): Promise<DaemonInfo> {
 
     try {
         // The daemon's folder is the parent of the folder that holds its entry point.
-        exited = host.launch({ bun, entry, cwd: path.dirname(path.dirname(entry)), env: daemonEnvironment(env, dataDir, loginPath), logPath });
+        exited = host.launch({ bun, entry, cwd: path.dirname(path.dirname(entry)), env: daemonEnvironment(env, dataDir, loginPath, skillsDir), logPath });
     }
     catch (error) {
         throw await failure(`The daemon could not be started: ${ error instanceof Error ? error.message : String(error) }`);

@@ -15,7 +15,7 @@ const LOG_TAIL_BYTES = 16 * 1024;
 export interface DaemonLaunch {
     /** The bun executable. */
     bun: string;
-    /** The daemon's `main.ts`. */
+    /** The daemon's entry: `main.js` of a bundle, `src/main.ts` of a checkout. */
     entry: string;
     cwd: string;
     env: Record<string, string>;

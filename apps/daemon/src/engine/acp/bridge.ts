@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { errorMessage } from '../../errors';
@@ -9,8 +10,12 @@ import type { ToolDefinition } from '../types';
 /** The name the runtime's tools go by in an agent's tool list. */
 export const BRIDGE_SERVER_NAME = 'clowdy';
 
-/** The program an agent starts as an MCP server: it speaks MCP on stdio and forwards every call to the daemon (`mcp-stdio.ts`). */
-const MCP_ENTRY = fileURLToPath(new URL('./mcp-stdio.ts', import.meta.url));
+/**
+ * The program an agent starts as an MCP server: it speaks MCP on stdio and forwards every call to the daemon (`mcp-stdio.ts`).
+ * It sits beside the module that runs this line: `mcp-stdio.ts` next to this file in the sources, `mcp-stdio.js` next to
+ * `main.js` in a bundle (`scripts/bundle.ts`), so its extension is this module's.
+ */
+const MCP_ENTRY = fileURLToPath(new URL(`./mcp-stdio${ extname(fileURLToPath(import.meta.url)) }`, import.meta.url));
 
 interface Registration {
     tools: Map<string, ToolDefinition>;

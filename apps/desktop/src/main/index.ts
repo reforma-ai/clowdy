@@ -5,7 +5,8 @@ import path from 'node:path';
 
 import { IPC_CHANNELS } from '../shared/bridge';
 import { DEV_BUILD_MARKER } from '../shared/dev';
-import { attachDaemon, currentContext, daemonAddress, ensureDaemon } from './daemon';
+import { installRuntime, readBundleInfo, updatesDir } from './bundle';
+import { attachDaemon, currentContext, daemonAddress, ensureDaemon, environmentRuntime, type DaemonContext, type DaemonRuntime } from './daemon';
 import { showDaemonError } from './daemonDialog';
 import { keepDaemonFresh, type DaemonKeeper } from './daemonKeeper';
 import { registerIpc } from './ipc';
@@ -92,24 +93,45 @@ function start(): void {
         });
         Menu.setApplicationMenu(createAppMenu());
 
-        const keeper = startKeeper();
-        const daemonError = await connectDaemon(keeper);
+        let runtimeError: unknown;
+        const runtime = await daemonRuntime().catch((error: unknown) => {
+            console.error('The daemon cannot be prepared:', error);
+            runtimeError = error;
+
+            return undefined;
+        });
+        const context = currentContext(runtime);
+        const keeper = startKeeper(context);
+        // Without a runtime the app still joins a daemon that is running; when it cannot, the runtime's failure is the reason shown.
+        const daemonError = await connectDaemon(context, keeper);
         const window = openWindow();
 
         firstWindowOpen = true;
 
         // A sheet on the visible window: an unparented dialog would block the main process's event loop on macOS.
-        if (daemonError) window.once('ready-to-show', () => void showDaemonError(daemonError, window));
+        if (daemonError) window.once('ready-to-show', () => void showDaemonError(runtimeError ?? daemonError, window));
     });
+}
+
+/**
+ * What runs the daemon. A packaged app copies the Bun and the daemon it ships out of its install folder and runs those
+ * (`bundle.ts`); a development run takes the Bun and the checkout `./clowdy dev` names.
+ */
+async function daemonRuntime(): Promise<DaemonRuntime | undefined> {
+    if (!app.isPackaged) return environmentRuntime(process.env);
+
+    const bundle = await readBundleInfo(path.join(app.getAppPath(), 'bundle.json'));
+
+    return installRuntime({ resources: process.resourcesPath, updates: updatesDir(currentContext().dataDir), bundle });
 }
 
 /**
  * Finds the daemon or starts one before the window opens, so the page loads with its address. Resolves with the
  * reason when there is none, and the window opens anyway. Quitting never stops the daemon: it outlives the app (only a development run replaces a stale one, see `startKeeper`).
  */
-async function connectDaemon(keeper: DaemonKeeper | undefined): Promise<unknown> {
+async function connectDaemon(context: DaemonContext, keeper: DaemonKeeper | undefined): Promise<unknown> {
     try {
-        const { pid, port } = await ensureDaemon();
+        const { pid, port } = await ensureDaemon(context);
 
         console.info(`Using the daemon with pid ${ pid } on port ${ port }.`);
 
@@ -128,13 +150,13 @@ async function connectDaemon(keeper: DaemonKeeper | undefined): Promise<unknown>
  * daemon with a new one when its sources change, but only while it has no runs in progress. The windows are told
  * where the new one is, and their event feed resumes from its cursor. A packaged app never does this.
  */
-function startKeeper(): DaemonKeeper | undefined {
+function startKeeper(context: DaemonContext): DaemonKeeper | undefined {
     const dirs = app.isPackaged ? [] : (process.env.CLOWDY_DAEMON_WATCH ?? '').split(path.delimiter).filter(Boolean);
 
     if (dirs.length === 0) return undefined;
 
     return keepDaemonFresh({
-        context: currentContext(),
+        context,
         dirs,
         log: message => console.info(message),
         onRestarted: (info) => {

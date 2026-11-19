@@ -13,7 +13,8 @@
         "typecheck": "tsc --noEmit",
         "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
         "stop": "bun src/stop.ts",
-        "probe": "bun src/probe.ts"
+        "probe": "bun src/probe.ts",
+        "bundle": "bun scripts/bundle.ts"
     },
     "dependencies": {
         "@agentclientprotocol/sdk": "2.7.0",

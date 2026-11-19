@@ -1,5 +1,5 @@
 import baseConfig, { combine } from '@clowdy/eslint-config';
 
 export default combine(baseConfig, {
-    ignores: ['dist/**', 'app/**', 'release/**'],
+    ignores: ['dist/**', 'app/**', 'bundle/**', 'runtime/**', 'release/**'],
 });
