@@ -495,7 +495,7 @@ export class FixtureTransport implements Transport {
 
                 const name = command.name ?? paths[0]?.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Project';
 
-                return this.#addProject(name, paths.length > 0 ? paths : [`/Users/dev/${ name.toLowerCase().replace(/\W+/g, '-') }`]);
+                return this.#addProject(name, paths.length > 0 ? paths : [`/Users/dev/Clowdy/projects/${ name.toLowerCase().replace(/\W+/g, '-') }`]);
             }
             case 'project.update': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);

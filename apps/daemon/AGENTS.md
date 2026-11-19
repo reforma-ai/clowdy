@@ -33,7 +33,7 @@ Tests build a real daemon on a temp data dir (`test/helpers.ts`: `startHarness`,
 | `CLOWDY_WAKE_WINDOW_MS` | `10000`, how long after the first finished child an orchestrator waits for more before it is resumed (each resume is a quota-costing turn) |
 | `CLOWDY_DEBUG` | off; any value logs raw engine `limit` events |
 | `CLOWDY_FAKE_SPEED` | `1`, multiplier for the fake engine's delays |
-| `CLOWDY_PROJECTS_DIR` | `~/Clowdy`, parent of the new folder `project.add` makes for a project without folders |
+| `CLOWDY_PROJECTS_DIR` | `~/Clowdy/projects`, parent of the new folder `project.add` makes for a project without folders |
 | `CLOWDY_SYSTEM_SKILLS_DIR` | the repository's `packages/system-skills`; the plugin folder (manifest and `skills/`) copied at start, see "Skills". The packaged app sets it to its bundle's copy |
 | `CLOWDY_USER_SKILLS_DIRS` | `~/.claude/skills` and `~/.agents/skills` (path-delimited list, weakest first); point it at a scratch folder to keep your own skills out of a test run |
 

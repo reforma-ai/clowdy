@@ -1,6 +1,7 @@
 import { daemonDataDir } from '@clowdy/protocol';
 import { describe, expect, test } from 'bun:test';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 import { ConfigError, loadConfig } from '../src/config';
 
@@ -11,6 +12,11 @@ describe('config', () => {
         expect(config).toMatchObject({ port: 0, engine: 'fake', maxRuns: 8, fakeSpeed: 1 });
         expect(config.token).toMatch(/^[0-9a-f]{64}$/);
         expect(loadConfig({}, 'linux').token).not.toBe(config.token);
+    });
+
+    test('a project without folders gets a new folder under ~/Clowdy/projects, or CLOWDY_PROJECTS_DIR', () => {
+        expect(loadConfig({}, 'linux').projectsDir).toBe(join(homedir(), 'Clowdy', 'projects'));
+        expect(loadConfig({ CLOWDY_PROJECTS_DIR: '/work' }, 'linux').projectsDir).toBe('/work');
     });
 
     test('the data dir comes from the shared protocol function, so the desktop app finds the same folder', () => {

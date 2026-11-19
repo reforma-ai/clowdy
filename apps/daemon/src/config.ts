@@ -5,7 +5,7 @@ import { delimiter, join } from 'node:path';
 
 export interface Config {
     dataDir: string;
-    /** Parent folder of the new folder `project.add` makes for a project without folders. */
+    /** Parent folder of the new folder `project.add` makes for a project without folders: `~/Clowdy/projects`. */
     projectsDir: string;
     /** 0 picks a random free port. */
     port: number;
@@ -98,7 +98,7 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
 
     return {
         dataDir: daemonDataDir({ platform, home: homedir(), env }),
-        projectsDir: env.CLOWDY_PROJECTS_DIR || join(homedir(), 'Clowdy'),
+        projectsDir: env.CLOWDY_PROJECTS_DIR || join(homedir(), 'Clowdy', 'projects'),
         port: numberFrom(env, 'CLOWDY_PORT', 0, v => Number.isInteger(v) && v >= 0 && v <= 65535, 'a port between 0 and 65535'),
         token: env.CLOWDY_TOKEN || randomBytes(32).toString('hex'),
         corsOrigins: (env.CLOWDY_CORS_ORIGINS ?? '').split(',').map(origin => origin.trim()).filter(Boolean),
