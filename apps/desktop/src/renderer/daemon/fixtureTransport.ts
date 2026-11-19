@@ -429,7 +429,7 @@ export class FixtureTransport implements Transport {
         if (!agent) return fail('not_found', `There is no agent called "${ id }"`);
 
         if (agent.signInSession?.step === 'starting' || agent.signInSession?.step === 'waiting') {
-            agent.signInSession = { step: 'cancelled', startedAt: agent.signInSession.startedAt, message: 'The sign-in was cancelled.' };
+            agent.signInSession = { step: 'cancelled', startedAt: agent.signInSession.startedAt, message: 'Sign-in cancelled' };
             this.#agentsChanged();
         }
 

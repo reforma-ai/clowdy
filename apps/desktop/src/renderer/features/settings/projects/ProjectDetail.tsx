@@ -68,7 +68,7 @@ function NameRow({ project }: { project: Project }) {
     };
 
     return (
-        <SettingsRow title="Name" description="How the project is listed in Clowdy.">
+        <SettingsRow title="Name" description="How the project is listed in Clowdy">
             <Input
                 type="text"
                 variant="bordered"
@@ -92,9 +92,9 @@ function GitSection({ info, failed }: { info: ProjectInfo | undefined; failed: b
     return (
         <SettingsSection title="Git">
             <SettingsCard divided>
-                { !info && <SettingsRow title="Repository" description={ failed ? 'The repository could not be read.' : 'Reading the repository…' } /> }
+                { !info && <SettingsRow title="Repository" description={ failed ? 'Couldn\'t read the repository' : 'Reading the repository…' } /> }
                 { info && !remote && (
-                    <SettingsRow title="Remote" description={ info.folderExists ? 'This repository has no origin remote.' : 'The folder is missing, so there is nothing to read.' } />
+                    <SettingsRow title="Remote" description={ info.folderExists ? 'This repository has no origin remote' : 'The folder is missing, so there is nothing to read' } />
                 ) }
                 { remote && (
                     <SettingsRow title="Remote">

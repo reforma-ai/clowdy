@@ -178,7 +178,7 @@ function ProviderUsage({ agent, now, onOpenProviders, isRefreshing, onRefresh }:
 
             { isSignedOut && (
                 <div className={ styles.note }>
-                    <Text variant="sm" color="secondary">Not signed in.</Text>
+                    <Text variant="sm" color="secondary">Not signed in</Text>
                     <Button variant="bordered" size="xs" onPress={ onOpenProviders }>Open Providers</Button>
                 </div>
             ) }

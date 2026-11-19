@@ -216,7 +216,7 @@ describe('signing in', () => {
         expect(button(card('Codex'), 'Sign in again')).toBeDefined();
     });
 
-    it('cancels a sign-in that is running and says so', async () => {
+    it('cancels a sign-in that is running, and offers it again without a word on it', async () => {
         await start(signedOut());
         await press(button(card('Codex'), 'Sign in'));
         await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'codex')?.signInSession).toBeDefined());
@@ -225,7 +225,7 @@ describe('signing in', () => {
         await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'codex')?.signInSession?.step).toBe('cancelled'));
         await draw();
 
-        expect(card('Codex').textContent).toContain('The sign-in was cancelled.');
+        expect(card('Codex').textContent).not.toContain('cancelled');
         expect(button(card('Codex'), 'Sign in')).toBeDefined();
     });
 
@@ -427,6 +427,15 @@ describe('the usage', () => {
 
         expect(card('Claude Code').querySelectorAll('[role="progressbar"]')).toHaveLength(3);
         expect(card('Claude Code').textContent).toContain('The usage endpoint answered 429.');
+    });
+
+    it('asks the person to sign in when the daemon has no limits and no words on why', async () => {
+        await start(withAgent('codex', (agent) => {
+            agent.signIn = { status: 'signed-out', checkedAt: 1 };
+            agent.usage = { state: 'unavailable', windows: [] };
+        }));
+
+        expect(card('Codex').textContent).toContain('Sign in to see your limits');
     });
 });
 

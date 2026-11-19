@@ -400,7 +400,7 @@ describe('the popover', () => {
         }));
         await openPopover();
 
-        expect(section('Claude Code').textContent).toContain('Not signed in.');
+        expect(section('Claude Code').textContent).toContain('Not signed in');
 
         await press(button(section('Claude Code'), 'Open Providers'));
         await vi.waitFor(() => expect(dialog()).toBeNull());

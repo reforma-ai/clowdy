@@ -68,9 +68,10 @@ function UsageNote({ usage }: { usage: AgentUsage }) {
         return <Text variant="sm" color={ state === 'error' ? 'danger' : 'secondary' }><InlineCode text={ detail } /></Text>;
     }
 
-    if (state === 'error') return <Text variant="sm" color="danger">The usage could not be read.</Text>;
+    if (state === 'error') return <Text variant="sm" color="danger">Couldn't read the usage</Text>;
 
-    return windows.length === 0 ? <Text variant="sm" color="secondary">There are no limits to show.</Text> : null;
+    // The daemon sends no windows and no words of its own when nobody is signed in.
+    return windows.length === 0 ? <Text variant="sm" color="secondary">Sign in to see your limits</Text> : null;
 }
 
 export interface UsageReadingProps {

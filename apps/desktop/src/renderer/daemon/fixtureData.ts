@@ -191,10 +191,10 @@ function fixtureAgents(now: number): AgentInfo[] {
                 ],
             },
             settings: [
-                { id: 'memory', label: 'Memory', description: 'Let Claude Code read and write its own auto-memory in your runs.', value: false, default: false },
-                { id: 'connectors', label: 'claude.ai connectors', description: 'Load the connectors of your claude.ai account (Drive, Docs and so on) into every run.', value: false, default: false },
+                { id: 'memory', label: 'Memory', description: 'Let Claude Code read and write its own auto-memory in your runs', value: false, default: false },
+                { id: 'connectors', label: 'claude.ai connectors', description: 'Load the connectors of your claude.ai account (Drive, Docs and so on) into every run', value: false, default: false },
                 { id: 'subagents', label: 'Claude Code sub-agents', description: 'Let Claude Code start sub-agents of its own. Clowdy\'s agents are the better way to delegate work.', value: true, default: true },
-                { id: 'longContext', label: '1M context window', description: 'Use the 1M-token context window on the models that have one.', value: true, default: true },
+                { id: 'longContext', label: '1M context window', description: 'Use the 1M-token context window on the models that have one', value: true, default: true },
             ],
         },
         {

@@ -17,7 +17,7 @@ const CHOICES: ReadonlyArray<{ id: QueuedMessageMode; label: string }> = [
 /** Settings > Chat: how the message box sends on this computer. */
 export function ChatPage() {
     return (
-        <SettingsPage title="Chat" description="How the message box works on this computer.">
+        <SettingsPage title="Chat" description="How the message box works on this computer">
             <SettingsSection title="Messages while the agent works">
                 <SettingsCard>
                     <SettingsRow

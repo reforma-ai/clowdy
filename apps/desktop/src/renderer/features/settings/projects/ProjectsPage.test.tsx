@@ -299,7 +299,7 @@ describe('ProjectsPage project', () => {
     it('says so when the repository could not be read, instead of waiting for it', async () => {
         await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: () => Promise.reject(new Error('offline')) });
 
-        expect(container.textContent).toContain('The repository could not be read.');
+        expect(container.textContent).toContain('Couldn\'t read the repository');
         expect(container.textContent).not.toContain('Reading the repository…');
     });
 

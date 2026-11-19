@@ -5,6 +5,8 @@ Chat may match the user.
 
 Product spec: `spec.md`. Visual language: `DESIGN.md`.
 
+UI text that is a phrase or a single sentence ends without a period: a label, description, hint, placeholder, note, empty state, toast, or error (`Not signed in`, `Sign in to see your limits`, `Couldn't read the usage`). A period dangling after one sentence looks broken in the interface. Keep periods only in text of two sentences or more. This covers the daemon's messages that the app shows (`detail`, setting descriptions, sign-in messages).
+
 ## Layout
 
 | Path | What |

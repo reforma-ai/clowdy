@@ -75,14 +75,14 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
             {
                 id: 'memory',
                 label: 'Memory',
-                description: 'Let Claude Code read and write its own auto-memory in your runs.',
+                description: 'Let Claude Code read and write its own auto-memory in your runs',
                 default: false,
                 effect: on => ({ env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: on ? null : '1' } }),
             },
             {
                 id: 'connectors',
                 label: 'claude.ai connectors',
-                description: 'Load the connectors set up on claude.ai (Drive, Docs and the like) into every run.',
+                description: 'Load the connectors set up on claude.ai (Drive, Docs and the like) into every run',
                 default: false,
                 effect: on => ({ env: { ENABLE_CLAUDEAI_MCP_SERVERS: on ? null : 'false' } }),
             },
@@ -96,7 +96,7 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
             {
                 id: 'longContext',
                 label: '1M-token context',
-                description: 'Use the 1M-token context window where the plan has one.',
+                description: 'Use the 1M-token context window where the plan has one',
                 default: true,
                 effect: on => ({ env: { CLAUDE_CODE_DISABLE_1M_CONTEXT: on ? null : '1' } }),
             },

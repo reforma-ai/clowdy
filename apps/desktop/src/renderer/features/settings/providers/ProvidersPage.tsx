@@ -69,7 +69,7 @@ export function ProvidersPage() {
                 </Alert>
             ) }
             { providers.length === 0
-                ? <SettingsEmpty>The daemon lists none of Claude Code, Codex or Cursor.</SettingsEmpty>
+                ? <SettingsEmpty>The daemon lists none of Claude Code, Codex or Cursor</SettingsEmpty>
                 : <div className={ styles.cards }>{ providers.map(agent => <ProviderCard key={ agent.id } agent={ agent } />) }</div> }
         </SettingsPage>
     );

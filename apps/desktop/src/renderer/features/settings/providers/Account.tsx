@@ -90,7 +90,7 @@ function SignInLink({ url, code }: { url?: string; code?: string }) {
 
 /**
  * The sign-in the daemon runs with the vendor's login, as it goes: the link the program printed, with Copy and Open, and Cancel; after it,
- * how it ended. Nothing when no sign-in has run, so the caller lays out no empty row.
+ * a failure or the account. Nothing when no sign-in has run or the person cancelled it, so the caller lays out no empty row.
  */
 export function SignInStatus({ agent, commands, className }: AccountProps & { className?: string }) {
     const session = agent.signInSession;
@@ -110,9 +110,7 @@ export function SignInStatus({ agent, commands, className }: AccountProps & { cl
 
     switch (session?.step) {
         case 'failed':
-            return <Text variant="sm" color="danger" role="alert" className={ className }>{ session.message ?? 'The sign-in failed.' }</Text>;
-        case 'cancelled':
-            return <Text variant="sm" color="secondary" className={ className }>{ session.message ?? 'The sign-in was cancelled.' }</Text>;
+            return <Text variant="sm" color="danger" role="alert" className={ className }>{ session.message ?? 'Sign-in failed' }</Text>;
         case 'done':
             return (
                 <Text variant="sm" color="success" className={ cn(styles.done, className) }>
