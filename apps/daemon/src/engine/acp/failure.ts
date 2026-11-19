@@ -3,6 +3,8 @@
 
 import { readableMessage } from '../error-text';
 
+import type { EngineEvent } from '../types';
+
 /** Stable identifiers of why a turn failed. They go out as `EngineEvent.error.code`. */
 export type FailureCode =
     | 'not_logged_in'
@@ -68,6 +70,11 @@ function resetPhrase(text: string): string | undefined {
 
 function failure(code: FailureCode, message: string, retryable = false): Failure {
     return { code, message, retryable };
+}
+
+/** The event that ends a turn with a failure. */
+export function failureEvent({ message, retryable, code }: Failure): EngineEvent {
+    return { type: 'error', message, retryable, code };
 }
 
 function signedOut({ agent, login }: FailureContext): Failure {
