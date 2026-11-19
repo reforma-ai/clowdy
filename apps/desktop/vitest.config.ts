@@ -19,5 +19,7 @@ export default defineConfig({
         // Component and DOM tests opt in with `// @vitest-environment happy-dom`.
         environment: 'node',
         include: ['src/**/*.test.{ts,tsx}'],
+        // Tests run as a person who asked for reduced motion (see the file).
+        setupFiles: ['./src/vitest.setup.ts'],
     },
 });

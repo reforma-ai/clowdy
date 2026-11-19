@@ -1,4 +1,4 @@
-import type { ProjectInfo } from '@clowdy/protocol';
+import type { Project, ProjectInfo } from '@clowdy/protocol';
 
 export interface RemoteLink {
     /** The address as a person reads it, without the credentials it may carry. */
@@ -59,6 +59,13 @@ export function holdingsLine(info: Pick<ProjectInfo, 'chats' | 'tasks'> | undefi
     if (info.chats === 0 && info.tasks === 0) return 'No chats or tasks yet';
 
     return [plural(info.chats, 'chat'), plural(info.tasks, 'task')].join(' · ');
+}
+
+const PERSONAL_NOTE = 'Your personal space is for chats that belong to no repository. It lives in Clowdy\'s own folder, and it cannot be renamed, moved or removed.';
+
+/** The line under the title of a project's page: what the personal space is, or what any other project holds. */
+export function projectNote(project: Pick<Project, 'personal'>, info: Pick<ProjectInfo, 'chats' | 'tasks'> | undefined): string | undefined {
+    return project.personal ? PERSONAL_NOTE : holdingsLine(info);
 }
 
 /** What removing a project deletes, for its confirmation. */

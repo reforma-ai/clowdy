@@ -14,20 +14,3 @@
     min-width: 0;
     min-height: 0;
 }
-
-.scroll {
-    flex: 1;
-    min-height: 0;
-}
-
-.page {
-    display: flex;
-    flex-direction: column;
-    /* At least 24px between the blocks of a page. */
-    gap: var(--spacing-24);
-    /*
-     * The title's line is as tall as a button (30px) and the heading's is 24px, so the page starts half the difference higher than the
-     * heading's own inset: the two titles then stand on one line.
-     */
-    padding: calc(var(--spacing-xl) - (var(--spacing-30) - var(--leading-xl)) / 2) var(--spacing-xxl) var(--spacing-xxl);
-}

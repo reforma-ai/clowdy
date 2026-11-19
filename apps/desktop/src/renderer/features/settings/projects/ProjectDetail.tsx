@@ -6,14 +6,13 @@ import { useEffect, useState } from 'react';
 
 import { useRootStore } from '../../../stores';
 import { SettingsCard } from '../ui/SettingsCard';
-import { SettingsPage } from '../ui/SettingsPage';
 import { SettingsRow } from '../ui/SettingsRow';
 import { SettingsSection } from '../ui/SettingsSection';
 import { removeProject, renameProject } from './projectActions';
 import { ProjectDefaults } from './ProjectDefaults';
 import styles from './ProjectDetail.module.css';
 import { ProjectFolder } from './ProjectFolder';
-import { holdingsLine, remoteLink } from './projectView';
+import { remoteLink } from './projectView';
 
 import type { Project, ProjectInfo } from '@clowdy/protocol';
 
@@ -22,22 +21,16 @@ export interface ProjectDetailProps {
     info: ProjectInfo | undefined;
     /** The last read of `info` failed: what is shown may be out of date, or missing. */
     infoFailed: boolean;
-    onBack: () => void;
 }
 
-const PERSONAL_NOTE = 'Your personal space is for chats that belong to no repository. It lives in Clowdy\'s own folder, and it cannot be renamed, moved or removed.';
-
 /**
- * The page of one project in Settings, under the Projects page: its name and folder, git remote, what new chats start with, and removing it.
- * The personal space has the folder and the new-chat settings only.
+ * The blocks of the page of one project in Settings, which opens over the Projects page (its title and the line under it are the layer's,
+ * in `ProjectsPage`): its name and folder, git remote, what new chats start with, and removing it. The personal space has the folder and
+ * the new-chat settings only.
  */
-export function ProjectDetail({ project, info, infoFailed, onBack }: ProjectDetailProps) {
+export function ProjectDetail({ project, info, infoFailed }: ProjectDetailProps) {
     return (
-        <SettingsPage
-            title={ project.name }
-            parents={ [{ label: 'Projects', onPress: onBack }] }
-            description={ project.personal ? PERSONAL_NOTE : holdingsLine(info) }
-        >
+        <>
             <SettingsSection title="Project">
                 <SettingsCard divided>
                     { !project.personal && <NameRow project={ project } /> }
@@ -50,7 +43,7 @@ export function ProjectDetail({ project, info, infoFailed, onBack }: ProjectDeta
             <ProjectDefaults project={ project } />
 
             { !project.personal && <RemoveSection project={ project } info={ info } /> }
-        </SettingsPage>
+        </>
     );
 }
 

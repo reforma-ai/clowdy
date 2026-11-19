@@ -1,8 +1,7 @@
-import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
 import { Panel, PanelContent } from '@clowdy/components/Panel';
-import { Scrollable } from '@clowdy/components/Scrollable';
 import { Book, Folder, Message, PaintBucket, Robot } from '@clowdy/icons/14';
+import { Fragment } from 'react';
 
 import { SidebarHeading, SidebarLayout } from '../../shared';
 import { useRootStore, type SettingsPage } from '../../stores';
@@ -59,12 +58,8 @@ export function Screen() {
     return (
         <SidebarLayout screen="settings" defaultWidth={ 270 } sidebar={ <PagesSidebar page={ page } /> }>
             <section className={ styles.main } aria-label={ page.label }>
-                {/* The key restarts the scroll position when another page is chosen. */}
-                <Scrollable key={ page.id } className={ styles.scroll }>
-                    <ContentColumn className={ styles.page }>
-                        { page.render() }
-                    </ContentColumn>
-                </Scrollable>
+                {/* The key opens the page again, from the top, when another one is chosen. The page lays out its own title line and scroll. */}
+                <Fragment key={ page.id }>{ page.render() }</Fragment>
             </section>
         </SidebarLayout>
     );

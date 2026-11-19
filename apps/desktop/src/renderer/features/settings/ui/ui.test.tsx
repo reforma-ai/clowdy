@@ -29,28 +29,45 @@ afterEach(() => {
 });
 
 describe('SettingsPage', () => {
-    it('is a heading, what the page is for, its actions, and then the page\'s blocks', () => {
+    it('is a title that stays, an action, and then what the page is for and its blocks', () => {
         draw(<SettingsPage title="Providers" description="Who is signed in." actions={ <button type="button">Add</button> }><p>block</p></SettingsPage>);
 
-        expect(container.querySelector('h1')?.textContent).toBe('Providers');
-        expect(container.querySelector('header')?.textContent).toContain('Who is signed in.');
-        expect(container.querySelector('header button')?.textContent).toBe('Add');
-        expect(container.querySelector('header + p')?.textContent).toBe('block');
+        const heading = container.querySelector('[role="heading"]')!;
+
+        expect([heading.textContent, heading.getAttribute('aria-level')]).toEqual(['Providers', '1']);
+        expect(container.querySelector('nav[aria-label="Settings path"] button')).toBeNull();
+        expect(container.querySelector('nav + div button')?.textContent).toBe('Add');
+        expect(container.textContent).toContain('Who is signed in.');
+        expect(container.querySelector('p')?.textContent).toBe('block');
+        // Nothing is open over the page, so the page itself is in reach.
+        expect(container.querySelector('[inert]')).toBeNull();
     });
 
-    it('reads as a path for a page inside another one, each page above being a link back', () => {
-        const back = vi.fn();
+    it('reads as a path once a page is open over it, each page above the last being a link back', () => {
+        const navigate = vi.fn();
 
-        draw(<SettingsPage title="Car Rental" parents={ [{ label: 'Projects', onPress: back }] } />);
+        draw(
+            <SettingsPage
+                title="Projects"
+                description="The list."
+                layers={ [{ id: 'car', title: 'Car Rental', description: 'Four chats.', content: <p>detail</p> }] }
+                onNavigate={ navigate }
+            >
+                <p>list</p>
+            </SettingsPage>
+        );
 
         const nav = container.querySelector('nav[aria-label="Settings path"]')!;
 
-        expect(container.querySelector('h1')).toBeNull();
         expect(nav.querySelector('[aria-current="page"]')?.textContent).toBe('Car Rental');
+        expect(nav.querySelector('button')?.textContent).toBe('Projects');
+        // The page opened over the other has its own line on what it is, and the one under it is out of reach, still there.
+        expect(container.textContent).toContain('Four chats.');
+        expect(container.querySelector('[inert]')?.textContent).toContain('The list.');
+        expect(container.querySelector('[inert] p')?.textContent).toBe('list');
 
         act(() => nav.querySelector<HTMLButtonElement>('button')!.click());
-        expect(back).toHaveBeenCalledTimes(1);
-        expect(nav.querySelector('button')?.textContent).toBe('Projects');
+        expect(navigate).toHaveBeenCalledWith(0);
     });
 });
 

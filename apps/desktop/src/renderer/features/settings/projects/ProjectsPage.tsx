@@ -13,14 +13,15 @@ import { openProject, removeProject, reorderProjects } from './projectActions';
 import { ProjectDetail } from './ProjectDetail';
 import { ProjectRow } from './ProjectRow';
 import styles from './ProjectsPage.module.css';
+import { projectNote } from './projectView';
 import { useProjectsInfo } from './useProjectsInfo';
 
 const CREATE = 'create';
 const OPEN = 'open';
 
 /**
- * Settings > Projects (the window's own title is the page's): the personal space, pinned, and the person's projects, which a grip drags into
- * the order of the project menu. A row opens the page of that project; the page of one project replaces the list until its back link is used.
+ * Settings > Projects: the personal space, pinned, and the person's projects, which a grip drags into the order of the project menu. A row
+ * opens the page of that project over the list, which stays under it as it was, until the link back in the path of the title is used.
  */
 export function ProjectsPage() {
     const root = useRootStore();
@@ -29,13 +30,20 @@ export function ProjectsPage() {
     const personal = root.projects.find(project => project.personal);
     const own = useMemo(() => root.projects.filter(project => !project.personal), [root.projects]);
 
-    if (selected) return <ProjectDetail project={ selected } info={ info.get(selected.id) } infoFailed={ failed } onBack={ () => root.ui.openProjectSettings() } />;
-
     return (
         <SettingsPage
             title="Projects"
             description="The folders Clowdy can work in. Your personal space is always first. Drag a project to change the order of the project menu."
-            actions={ (
+            layers={ selected
+                ? [{
+                    id: selected.id,
+                    title: selected.name,
+                    description: projectNote(selected, info.get(selected.id)),
+                    content: <ProjectDetail project={ selected } info={ info.get(selected.id) } infoFailed={ failed } />,
+                }]
+                : [] }
+            onNavigate={ () => root.ui.openProjectSettings() }
+            actions={ selected ? undefined : (
                 <MenuTrigger>
                     <Button variant="filled" color="contrast" size="sm"><Plus />Add project</Button>
                     <Popover placement="bottom end" width={ 240 }>
