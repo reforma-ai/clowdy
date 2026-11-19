@@ -149,7 +149,8 @@ export class NativeAgents {
             return;
         }
 
-        agent.writer.end();
+        // A call the sub-agent left running ends with it.
+        agent.writer.finish();
 
         if (state === 'done') {
             this.runs.setStatus(agent.run.id, 'succeeded', { result: summary });

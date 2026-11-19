@@ -31,9 +31,9 @@ export const HTTP_STATUS: Record<ErrorCode, number> = {
     internal: 500,
 };
 
-/** Thrown when the engine ends a run with an error event; the run fails with this message. */
+/** Thrown when the engine ends a run with an error event; the run fails with this message, and keeps `code` (the engine's class of the failure) when there is one. */
 export class EngineFailure extends Error {
-    constructor(message: string, readonly retryable = false) {
+    constructor(message: string, readonly retryable = false, readonly code?: string) {
         super(message);
         this.name = 'EngineFailure';
     }

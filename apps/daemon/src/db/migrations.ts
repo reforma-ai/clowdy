@@ -256,4 +256,11 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 10,
+        up(db) {
+            // Why a failed run failed, as the engine classed it (see `Run.failureCode`).
+            db.run('ALTER TABLE runs ADD COLUMN failure_code TEXT');
+        },
+    },
 ];

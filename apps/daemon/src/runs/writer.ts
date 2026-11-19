@@ -1,10 +1,18 @@
 import { appendItem, updateItem } from '../domain/items';
 
+import type { StreamItemBody } from '@clowdy/protocol';
 import type { EngineEvent } from '../engine/types';
 import type { Store } from '../store';
 
 /** Streaming text reaches the log at most this often; the last piece is always flushed. */
 const TEXT_THROTTLE_MS = 50;
+
+/** What a call that was still running says once its turn is over, */
+export const UNFINISHED_TOOL = 'The turn ended before this finished';
+/** and once the person stopped the run (or the daemon stopped). */
+export const STOPPED_TOOL = 'Stopped before it finished';
+
+type ToolBody = Extract<StreamItemBody, { kind: 'tool' }>;
 
 /**
  * Turns one turn's engine events into stream items. Streaming text updates a single `assistant` item in place,
@@ -14,7 +22,8 @@ export class TurnWriter {
     private message?: { seq?: number; text: string };
     private flushedAt = 0;
     private timer?: ReturnType<typeof setTimeout>;
-    private tools = new Map<string, number>();
+    /** Each call's item and what it holds now. */
+    private tools = new Map<string, { seq: number; body: ToolBody }>();
 
     constructor(private store: Store, private runId: string, private throttleMs = TEXT_THROTTLE_MS) {}
 
@@ -33,8 +42,8 @@ export class TurnWriter {
     tool(event: Extract<EngineEvent, { type: 'tool' }>): void {
         this.end();
 
-        const body = {
-            kind: 'tool' as const,
+        const body: ToolBody = {
+            kind: 'tool',
             toolCallId: event.toolCallId,
             name: event.name,
             input: event.input,
@@ -42,14 +51,32 @@ export class TurnWriter {
             ...(event.output !== undefined && { output: event.output }),
             ...(event.error !== undefined && { error: event.error }),
         };
-        const seq = this.tools.get(event.toolCallId);
+        const known = this.tools.get(event.toolCallId);
 
-        if (seq === undefined) {
-            this.tools.set(event.toolCallId, appendItem(this.store, this.runId, body).seq);
+        if (known === undefined) {
+            this.tools.set(event.toolCallId, { seq: appendItem(this.store, this.runId, body).seq, body });
         }
         else {
-            updateItem(this.store, this.runId, seq, body);
+            known.body = body;
+            updateItem(this.store, this.runId, known.seq, body);
         }
+    }
+
+    /**
+     * The turn is over (an answer, a failure, a Stop): closes the open message, and a call the agent never reported finished is failed with `reason`, so the
+     * stream does not show it running for ever. One transaction for all of it.
+     */
+    finish(reason = UNFINISHED_TOOL): void {
+        this.store.tx(() => {
+            this.end();
+
+            for (const tool of this.tools.values()) {
+                if (tool.body.state === 'running') {
+                    tool.body = { ...tool.body, state: 'error', error: reason };
+                    updateItem(this.store, this.runId, tool.seq, tool.body);
+                }
+            }
+        });
     }
 
     /** Closes the open assistant message, if any: its item gets its final text and `done: true`. */

@@ -13,7 +13,7 @@ import { describeProcess, killSurvivor } from './processes';
 import { CONTINUE_MESSAGE, firstMessage, skillPrompt, systemPrompt } from './prompts';
 import { childReport, wakeMessage } from './reports';
 import { ASK_USER } from './tools';
-import { TurnWriter } from './writer';
+import { STOPPED_TOOL, TurnWriter, UNFINISHED_TOOL } from './writer';
 
 import type { ChatMode, EngineId, Run, RunContext, RunRole, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
@@ -403,7 +403,8 @@ export class RunDriver {
         }
         finally {
             clearTimeout(live.reportTimer);
-            writer.end();
+            // Whatever the agent left running ends with the turn: a Stop or a failure mid-call would otherwise leave the call shimmering.
+            writer.finish(signal.aborted ? STOPPED_TOOL : UNFINISHED_TOOL);
             live.native.finish();
             live.session = undefined;
             live.writer = undefined;
@@ -470,7 +471,7 @@ export class RunDriver {
 
                         return event.result;
                     case 'error':
-                        throw new EngineFailure(event.message, event.retryable);
+                        throw new EngineFailure(event.message, event.retryable, event.code);
                 }
             }
 
@@ -603,6 +604,8 @@ export class RunDriver {
     private fail(runId: string, error: unknown): void {
         const { store, runs } = this.deps;
         const message = errorMessage(error);
+        // The engine's class of the failure stays on the run, so the app can offer what fixes it (Compact for a context that overflowed).
+        const failureCode = error instanceof EngineFailure ? error.code : undefined;
 
         store.tx(() => {
             if (isTerminalRunStatus(runs.require(runId).status)) {
@@ -610,7 +613,7 @@ export class RunDriver {
             }
 
             appendItem(store, runId, { kind: 'error', text: message });
-            runs.setStatus(runId, 'failed', { error: message });
+            runs.setStatus(runId, 'failed', { error: message, ...(failureCode !== undefined && { failureCode }) });
         });
     }
 }

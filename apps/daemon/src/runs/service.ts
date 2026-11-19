@@ -53,6 +53,8 @@ export interface StatusOptions {
     reason?: string;
     result?: string;
     error?: string;
+    /** Why a failed run failed, as the engine classed it (`Run.failureCode`). */
+    failureCode?: string;
 }
 
 const isActive = (status: RunStatus) => ACTIVE_RUN_STATUSES.includes(status);
@@ -240,11 +242,16 @@ export class RunService {
                 if (options.error !== undefined) {
                     next.error = options.error;
                 }
+
+                if (options.failureCode !== undefined) {
+                    next.failureCode = options.failureCode;
+                }
             }
             else if (isTerminalRunStatus(run.status)) {
                 delete next.finishedAt;
                 delete next.result;
                 delete next.error;
+                delete next.failureCode;
                 setRunWork(this.store.db, runId, { outcome: null });
             }
 
