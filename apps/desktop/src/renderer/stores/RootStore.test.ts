@@ -117,7 +117,7 @@ describe('RootStore', () => {
 
         await settle();
 
-        expect(result).toMatchObject({ ok: true, data: { project: { name: 'Garden Planner', folders: [{ path: '/Users/dev/garden-planner' }] }, existing: false } });
+        expect(result).toMatchObject({ ok: true, data: { project: { name: 'Garden Planner', folders: [{ path: '/Users/dev/Clowdy/projects/garden-planner' }] }, existing: false } });
         expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental', 'Clowdy', 'Garden Planner']);
         expect(root.selectedProject?.project.name).toBe('Garden Planner');
         expect(root.selectedProject?.project.taskPrefix).toBe('GAR');

@@ -132,7 +132,7 @@ describe('the Add project form', () => {
 
         await press(button('Add project'));
 
-        expect(store.selectedProject?.project).toMatchObject({ name: 'Garden Planner', folders: [{ path: '/Users/dev/garden-planner' }] });
+        expect(store.selectedProject?.project).toMatchObject({ name: 'Garden Planner', folders: [{ path: '/Users/dev/Clowdy/projects/garden-planner' }] });
         expect(form()).toBeNull();
         expect(toasts.info).not.toHaveBeenCalled();
     });
