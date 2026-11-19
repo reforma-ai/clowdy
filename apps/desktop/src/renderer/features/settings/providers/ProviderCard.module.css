@@ -1,6 +1,6 @@
 /*
  * The first block of a card is a row of three columns: the mark, the name over the account, and the buttons with the switch. The mark
- * and the buttons are centred on the two lines of text. What goes under the row (a running sign-in) starts where the name does.
+ * and the buttons are centred on the lines of text.
  */
 .identity {
     display: grid;
@@ -45,10 +45,6 @@
 /* The switch is a setting, not an action: it keeps a little more room from the buttons. */
 .switch {
     margin-inline-start: var(--spacing-md);
-}
-
-.status {
-    grid-column: 2 / -1;
 }
 
 /* A provider that is off keeps its settings readable, so the person sees what they would be turning back on. */

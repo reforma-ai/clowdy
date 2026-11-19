@@ -1,3 +1,5 @@
+@reference '@clowdy/styles/rulesets';
+
 .who {
     display: flex;
     align-items: center;
@@ -10,49 +12,26 @@
     flex-shrink: 0;
 }
 
-.session {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-    padding: var(--spacing-lg);
-    border-radius: var(--radius-lg);
-    background-color: var(--color-secondary-muted);
-}
-
+/*
+ * A running sign-in on the account's line: the spinner, where to finish, and the links. The links are inline buttons, which take the size
+ * of the text around them, so the line sets the size of its text.
+ */
 .progress {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-}
+    @ruleset typography-text-sm;
 
-.step {
-    flex: 1;
-    min-width: 0;
-}
-
-.link {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--spacing-md);
-    max-width: 100%;
+    gap: var(--spacing-xs) var(--spacing-md);
+    min-width: 0;
 }
 
-/* The address is long and only there to be copied: it gives way to the buttons. */
-.url {
-    flex: 1 1 8rem;
-    min-width: 0;
+.spinner {
+    flex-shrink: 0;
 }
 
 .code {
     display: flex;
-    flex-basis: 100%;
     align-items: center;
     gap: var(--spacing-md);
-}
-
-.done {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--spacing-xs);
 }

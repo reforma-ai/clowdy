@@ -186,7 +186,7 @@ describe('signing in', () => {
         expect(button(card('Claude Code'), 'Sign in')).toBeUndefined();
     });
 
-    it('follows the daemon\'s sign-in: the link to copy or open, then the account', async () => {
+    it('follows the daemon\'s sign-in on the account\'s line, with the link to open or copy and Cancel, then shows the account', async () => {
         await start(signedOut());
         await press(button(card('Codex'), 'Sign in'));
         await act(async () => {
@@ -196,14 +196,16 @@ describe('signing in', () => {
         await draw();
 
         const codex = card('Codex');
-        const open = button(codex, 'Open') as HTMLAnchorElement;
+        const open = button(codex, 'Open page') as HTMLAnchorElement;
 
-        expect(codex.textContent).toContain('Finish signing in in your browser');
-        expect(codex.textContent).toContain('https://auth.openai.com/oauth/authorize');
+        expect(codex.textContent).toContain('Continue in your browser');
+        expect(codex.textContent).not.toContain('Not signed in');
         expect(button(codex, 'Copy link')).toBeDefined();
         expect(open.getAttribute('href')).toContain('https://auth.openai.com/oauth/authorize');
         expect(open.getAttribute('target')).toBe('_blank');
+        expect(button(codex, 'Cancel')).toBeDefined();
         expect(button(codex, 'Sign in')).toBeUndefined();
+        expect(button(codex, 'Refresh usage')).toBeUndefined();
 
         await act(async () => {
             await vi.advanceTimersByTimeAsync(5000);
@@ -212,7 +214,6 @@ describe('signing in', () => {
         await draw();
 
         expect(card('Codex').textContent).toContain('dev@example.com');
-        expect(card('Codex').textContent).toContain('Signed in');
         expect(button(card('Codex'), 'Sign in again')).toBeDefined();
     });
 
@@ -256,7 +257,7 @@ describe('signing in', () => {
         }));
 
         expect(button(card('Codex'), 'Copy link')).toBeDefined();
-        expect(button(card('Codex'), 'Open')).toBeUndefined();
+        expect(button(card('Codex'), 'Open page')).toBeUndefined();
     });
 
     it('shows the vendor\'s command when the daemon cannot run the sign-in', async () => {

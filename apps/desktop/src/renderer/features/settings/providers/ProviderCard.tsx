@@ -3,10 +3,11 @@ import { Text } from '@clowdy/components/Text';
 
 import { SettingsBlock } from '../ui/SettingsBlock';
 import { SettingsCard } from '../ui/SettingsCard';
-import { AccountLine, SignInAction, SignInStatus } from './Account';
+import { AccountLine, SignInAction } from './Account';
 import styles from './ProviderCard.module.css';
 import { ProviderIcon } from './ProviderIcon';
 import { ProviderAdvanced, ProviderSettings } from './ProviderSettings';
+import { isSignInRunning } from './providerView';
 import { UsageBlock } from './UsageBlock';
 import { RefreshUsageButton } from './UsageRows';
 import { useAgentCommands } from './useAgentCommands';
@@ -15,9 +16,9 @@ import type { AgentInfo } from '@clowdy/protocol';
 
 /**
  * One provider. Its first block is one row: the mark; the name over who is signed in; and at the end the button that reads the usage
- * again, the sign-in button and the switch. A running sign-in, or how it ended, goes under the name. Then what is left of its plan, its
- * settings, and Advanced, each in a block of its own. A provider that is off or not installed shows less, because there is nothing to
- * sign in to or to read.
+ * again (not while a sign-in runs), the sign-in button (Cancel while it runs) and the switch. A running sign-in takes the account's line.
+ * Then what is left of its plan, its settings, and Advanced, each in a block of its own. A provider that is off or not installed shows
+ * less, because there is nothing to sign in to or to read.
  */
 export function ProviderCard({ agent }: { agent: AgentInfo }) {
     const commands = useAgentCommands(agent.id);
@@ -39,7 +40,7 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
                 </div>
 
                 <div className={ styles.actions }>
-                    { usage && <RefreshUsageButton size="sm" isRefreshing={ commands.pending.has('refresh') } onRefresh={ () => void commands.refresh() } /> }
+                    { usage && !isSignInRunning(agent.signInSession) && <RefreshUsageButton size="sm" isRefreshing={ commands.pending.has('refresh') } onRefresh={ () => void commands.refresh() } /> }
                     <SignInAction agent={ agent } commands={ commands } />
                     <Switch
                         size="sm"
@@ -51,8 +52,6 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
                         onChange={ enabled => void commands.setEnabled(enabled) }
                     />
                 </div>
-
-                <SignInStatus agent={ agent } commands={ commands } className={ styles.status } />
             </SettingsBlock>
 
             { usage && (
