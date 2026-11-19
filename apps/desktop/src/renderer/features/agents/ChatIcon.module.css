@@ -1,0 +1,19 @@
+/* The icon of a chat's row, with the status dot on its top right corner. */
+.icon {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.dot {
+    position: absolute;
+    top: calc(var(--spacing-xxs) * -1);
+    right: calc(var(--spacing-xs) * -1);
+    display: flex;
+}
+
+/* Doubled so it outranks the dot's own size. */
+.dotMark.dotMark {
+    width: var(--spacing-sm);
+    height: var(--spacing-sm);
+}

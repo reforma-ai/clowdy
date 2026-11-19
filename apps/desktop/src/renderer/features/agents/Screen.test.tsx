@@ -47,8 +47,6 @@ const draw = (before?: () => void) => act(async () => {
 const rowKeys = () => [...container.querySelectorAll('[role="row"]')].map(row => row.getAttribute('data-key'));
 const rowOf = (key: string) => container.querySelector<HTMLElement>(`[role="row"][data-key="${ key }"]`)!;
 const isSelected = (key: string) => rowOf(key).hasAttribute('data-selected');
-const newChatButton = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.startsWith('New chat'))!;
-const isNewChatOpen = () => newChatButton().getAttribute('aria-pressed') === 'true';
 const buttonNamed = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`)!;
 
 /** A press with a mouse: what React Aria opens a menu on, and picks an item with. */
@@ -77,11 +75,10 @@ afterEach(() => {
 });
 
 describe('the list', () => {
-    it('has the chats, and nests the runs of a chat below each, and the new-chat button is no row of it', () => {
+    it('starts with the new-chat row, then the chats, and nests the runs of a chat below it', () => {
         const keys = rowKeys();
 
-        expect(keys[0]).toBe('c-1');
-        expect(keys).not.toContain('@new-chat');
+        expect(keys[0]).toBe('@new-chat');
         expect(keys.filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-4', 'c-3', 'c-2']);
 
         // The orchestrator is the chat, so it has no row; its runs follow the chat, and a run's own runs follow it.
@@ -138,6 +135,23 @@ describe('the list', () => {
             project().chats.set('c-2', { ...project().chats.get('c-2')!, updatedAt: Date.now() });
         });
         expect(chatKeys()).toEqual(['c-4', 'c-3', 'c-1', 'c-2']);
+    });
+
+    it('keeps the row of an open `⋯` menu as if hovered, since the pointer is in the menu and not on the row', async () => {
+        const menuButton = () => rowOf('c-4').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!;
+
+        expect(rowOf('c-4').hasAttribute('data-open')).toBe(false);
+
+        await press(menuButton());
+
+        expect(rowOf('c-4').hasAttribute('data-open')).toBe(true);
+        expect(rowOf('c-3').hasAttribute('data-open')).toBe(false);
+
+        await act(async () => {
+            document.body.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        });
+
+        expect(rowOf('c-4').hasAttribute('data-open')).toBe(false);
     });
 
     it('selects the first chat when nothing was opened', () => {
@@ -237,8 +251,7 @@ describe('the new-chat row', () => {
 
         await draw(() => ui().openDraft());
 
-        expect(isNewChatOpen()).toBe(true);
-        expect(rowKeys().some(key => isSelected(key!))).toBe(false);
+        expect(isSelected('@new-chat')).toBe(true);
         expect(container.querySelector('[data-testid="chat"]')).toBeNull();
         expect(field()).not.toBeNull();
         expect(container.textContent).toContain('What should we work on?');
@@ -285,34 +298,34 @@ describe('the new-chat row', () => {
         await vi.waitFor(() => expect(store.selectedProject?.status).toBe('ready'));
         await draw();
 
-        expect(rowKeys()).toEqual([]);
-        expect(isNewChatOpen()).toBe(true);
+        expect(rowKeys()).toEqual(['@new-chat']);
+        expect(isSelected('@new-chat')).toBe(true);
         expect(field()).not.toBeNull();
     });
 });
 
-describe('the new-chat button', () => {
-    it('opens the new-chat page, and looks pressed only while it is open', async () => {
-        expect(isNewChatOpen()).toBe(false);
+describe('the heading', () => {
+    it('has the archive, as a button, to the left of the filters', () => {
+        // The rows have an Archive of their own, as a quick action: the heading's buttons are the ones outside the list.
+        const buttons = [...container.querySelectorAll<HTMLElement>('button[aria-label="Archive"], button[aria-label="Filters"]')].filter(button => !button.closest('[role="grid"]'));
 
-        await press(newChatButton());
+        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['Archive', 'Filters']);
+        expect(buttons[0].parentElement).toBe(buttons[1].parentElement);
+    });
+
+    it('has the new-chat page open by its row, which is selected only while it is open', async () => {
+        await press(rowOf('@new-chat'));
 
         expect(ui().draft).toBe(true);
 
         // The test build has no observer, so the screen is drawn again by hand.
         await draw();
 
-        expect(isNewChatOpen()).toBe(true);
+        expect(isSelected('@new-chat')).toBe(true);
 
         await draw(() => ui().openChat('c-3'));
 
-        expect(isNewChatOpen()).toBe(false);
-    });
-
-    it('shares its line with the archive, which is a square icon button that comes after it', () => {
-        const line = newChatButton().parentElement!;
-
-        expect([...line.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? button.textContent?.trim().slice(0, 8))).toEqual(['New chat', 'Archive']);
+        expect(isSelected('@new-chat')).toBe(false);
     });
 });
 
@@ -344,6 +357,24 @@ describe('the archive', () => {
         expect(titles()[0]).toMatch(/now$/);
     });
 
+    it('opens under the heading and is as wide as it, not wider than the column', async () => {
+        await press(buttonNamed('Archive'));
+
+        const popover = document.body.querySelector<HTMLElement>('[data-modal-clickout-layer]')!;
+
+        expect(popover.style.width).toBe('var(--trigger-width)');
+    });
+
+    it('shows the mark of the provider each chat runs on, as the list does, and the speech bubble for a chat that never started', async () => {
+        await archive('c-2', true);
+        await archive('c-4', true);
+        await press(buttonNamed('Archive'));
+
+        expect(archiveRow('First version').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe(project().runs.get('r-orch-2')?.engine);
+        expect(archiveRow('New chat').querySelector('[data-provider]')).toBeNull();
+        expect(archiveRow('New chat').querySelector('svg')).not.toBeNull();
+    });
+
     it('says so when there is nothing in it', async () => {
         await press(buttonNamed('Archive'));
 
@@ -362,6 +393,17 @@ describe('the archive', () => {
         expect(ui().chatId).toBe('c-4');
         expect(isSelected('c-4')).toBe(true);
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-4');
+    });
+
+    it('keeps the row of an open menu as if hovered here too', async () => {
+        await archive('c-4', true);
+        await press(buttonNamed('Archive'));
+
+        expect(archiveRow('New chat').hasAttribute('data-open')).toBe(false);
+
+        await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
+
+        expect(archiveRow('New chat').hasAttribute('data-open')).toBe(true);
     });
 
     it('has a menu in each row, with Unarchive and Delete', async () => {
@@ -430,13 +472,14 @@ describe('the archive', () => {
         expect(rowKeys()).not.toContain('c-2');
     });
 
-    it('has the Archive icon, in the row, the button and the menu, and none of them is the cube', async () => {
-        const archiveIcon = buttonNamed('Archive').innerHTML;
-
-        expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.innerHTML).toBe(archiveIcon);
+    it('has the Archive icon in the row and in the menu, and the history mark on the button that opens the list', async () => {
+        const rowIcon = rowOf('c-4').querySelector('button[aria-label="Archive"] svg')!;
 
         await press(rowOf('c-4').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
 
-        expect(menuItem('Archive').querySelector('svg')?.outerHTML).toBe(buttonNamed('Archive').querySelector('svg')?.outerHTML);
+        expect(menuItem('Archive').querySelector('svg')?.outerHTML).toBe(rowIcon.outerHTML);
+        // The 16px history mark, where the others are 14px.
+        expect(buttonNamed('Archive').querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 16 16');
+        expect(rowIcon.getAttribute('viewBox')).toBe('0 0 14 14');
     });
 });

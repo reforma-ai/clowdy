@@ -23,29 +23,12 @@ import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
 import { agentRows, ancestorIds, chatDotTone, countActiveChildren, describeRun, listedRunId, type AgentRow, type AgentSelection } from './agentTree';
 import { ArchiveButton } from './ArchiveButton';
+import { ChatIcon } from './ChatIcon';
 
 import type { Chat, ChatId, Run } from '@clowdy/protocol';
 
-/**
- * The icon of a chat's row: the mark of the provider it runs on once it has started (the chat's own, else its orchestrator's), a speech bubble before and for an agent that has no mark.
- * What the orchestrator is doing is a dot on the icon's top right corner (`chatDotTone`), so the row needs no room of its own for it.
- */
-function chatIcon(chat: Chat, run: Run | undefined) {
-    const engine = chat.engine ?? run?.engine;
-    const icon = chat.orchestratorRunId && engine && (PROVIDER_IDS as readonly string[]).includes(engine) ? <ProviderIcon agentId={ engine } size={ 14 } data-provider={ engine } /> : <Message />;
-    const tone = chatDotTone(run);
-
-    if (!run || !tone) return icon;
-
-    return (
-        <span className={ styles.icon }>
-            { icon }
-            <span className={ styles.dot } role="img" aria-label={ RUN_STATUS_VIEW[run.status].label }>
-                <StatusDot status={ run.status } tone={ tone } className={ styles.dotMark } />
-            </span>
-        </span>
-    );
-}
+/** The id of the first row, the one that starts a chat. Chat and run ids never look like it. */
+export const NEW_CHAT_ROW = '@new-chat';
 
 /** A row's `⋯` button and the right-click menu are the same actions; a rename is a rename of the row it started on. */
 interface ChatActions {
@@ -55,9 +38,9 @@ interface ChatActions {
 }
 
 /**
- * The project's agents: the New chat button with the archive beside it, then the chats in use (in the order the menu of the
+ * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the
  * heading's `⋯` asks for), each with the runs its orchestrator started below it (its subthreads). Archived chats are not
- * here, they are in the archive's list, and take their subthreads with them.
+ * here, they are in the archive's list (the button in the heading, beside the filters), and take their subthreads with them.
  */
 export function AgentList({ selection, chats }: { selection: AgentSelection; chats: readonly Chat[] }) {
     const root = useRootStore();
@@ -65,8 +48,11 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     const ui = useProjectUi();
     const [renamingId, setRenamingId] = useState<ChatId | null>(null);
     const [menuChat, setMenuChat] = useState<Chat | null>(null);
+    // The chat whose `⋯` menu is open: its row keeps the hover plate while the pointer is in the menu.
+    const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
     const list = useRef<HTMLDivElement>(null);
+    const heading = useRef<HTMLDivElement>(null);
     const contextMenu = useContextMenu();
     const runOf = (chat: Chat) => (chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined);
     const actions: ChatActions = {
@@ -80,7 +66,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     const rows = agentRows(chats, forest, collapsed);
     const activeChildren = countActiveChildren(project.runs.values());
     // A native sub-agent has no row: the run it lives in, or the chat, stays selected while its page is open. The new-chat page has none.
-    const selectedId = selection.draft ? undefined : ((selection.run && listedRunId(project.runs, selection.run)) ?? selection.chat?.id);
+    const selectedId = selection.draft ? NEW_CHAT_ROW : ((selection.run && listedRunId(project.runs, selection.run)) ?? selection.chat?.id);
 
     // A run opened from elsewhere may sit below a fold: open the folds above it.
     useEffect(() => {
@@ -102,7 +88,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     useHotkeyScope(AGENTS_SCOPE);
     useCommands(AGENTS_SCOPE, agentCommands({
         list: () => list.current,
-        ids: () => rows.map(row => row.id),
+        ids: () => [NEW_CHAT_ROW, ...rows.map(row => row.id)],
         openId: () => selectedId,
     }));
 
@@ -134,7 +120,8 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     };
 
     const select = (id: string) => {
-        if (project.chats.has(id)) ui.openChat(id);
+        if (id === NEW_CHAT_ROW) ui.openDraft();
+        else if (project.chats.has(id)) ui.openChat(id);
         else ui.openRun(id);
     };
 
@@ -151,8 +138,10 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                     id={ chat.id }
                     text={ chat.title }
                     startAffix={ fold }
-                    icon={ chatIcon(chat, runOf(chat)) }
-                    endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } /> }
+                    icon={ <ChatIcon chat={ chat } run={ runOf(chat) } /> }
+                    endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } isOpen={ menuOpenId === chat.id } onOpenChange={ open => setMenuOpenId(open ? chat.id : null) } /> }
+                    // The row of an open menu, from its button or the right click, stays as if hovered: the pointer is in the menu, not on the row.
+                    data-open={ menuOpenId === chat.id || (contextMenu.isOpen && menuChat?.id === chat.id) || undefined }
                 >
                     { renamingId === chat.id
                         ? <RenameField chat={ chat } onDone={ () => setRenamingId(null) } />
@@ -182,33 +171,15 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
 
     return (
         <Panel side="left">
-            <SidebarHeading title="Agents" className={ styles.heading }>
+            <SidebarHeading ref={ heading } title="Agents" className={ styles.heading }>
+                <ArchiveButton anchor={ heading } />
                 <FilterMenu />
             </SidebarHeading>
-
-            {/* Two buttons in a line: the one that starts a chat takes the width, the archive is a square. */}
-            <div className={ styles.start }>
-                <Button
-                    variant="filling"
-                    color="secondary"
-                    size="sm"
-                    className={ styles.newChat }
-                    contentClassName={ styles.newChatContent }
-                    isPressed={ selection.draft }
-                    onPress={ () => ui.openDraft() }
-                >
-                    <Plus aria-hidden />
-                    <span className={ styles.title }>New chat</span>
-                    {/* The shortcut is a hint for the pointer on its way to the button, not a label it wears at rest. */}
-                    <span className={ styles.hint }><CommandHotkey id={ NEW_CHAT_COMMAND } size="xs" /></span>
-                </Button>
-                <ArchiveButton />
-            </div>
 
             <PanelContent contentClass={ styles.content }>
                 <div ref={ list } onContextMenu={ openContextMenu } onKeyDown={ onKeyDown }>
                     <GridList
-                        aria-label="Chats"
+                        aria-label="Agents"
                         size="md"
                         selectionMode="single"
                         disallowEmptySelection
@@ -219,6 +190,19 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                             if (id !== undefined) select(String(id));
                         } }
                     >
+                        <GridListItem
+                            id={ NEW_CHAT_ROW }
+                            text="New chat"
+                            icon={ <Plus /> }
+                            // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
+                            endAffix={ (
+                                <span className={ styles.end } data-show={ listBoxItemDataShow.itemHover }>
+                                    <CommandHotkey id={ NEW_CHAT_COMMAND } size="xs" />
+                                </span>
+                            ) }
+                        >
+                            <span className={ styles.title }>New chat</span>
+                        </GridListItem>
                         { rows.map(renderRow) }
                     </GridList>
                 </div>
@@ -322,11 +306,10 @@ function Fold({ row, onToggle }: { row: AgentRow; onToggle: () => void }) {
 }
 
 /** The end of a chat's row, on hover: Archive as a quick action, and the `⋯` menu button. */
-function RowEnd({ chat, actions }: { chat: Chat; actions: ChatActions }) {
+function RowEnd({ chat, actions, isOpen, onOpenChange }: { chat: Chat; actions: ChatActions; isOpen: boolean; onOpenChange: (isOpen: boolean) => void }) {
     const project = useProjectState();
-    const [isOpen, setIsOpen] = useState(false);
     const busy = isRunActive(chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined);
-    const close = () => setIsOpen(false);
+    const close = () => onOpenChange(false);
 
     return (
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
@@ -352,7 +335,7 @@ function RowEnd({ chat, actions }: { chat: Chat; actions: ChatActions }) {
             >
                 <Archive />
             </Button>
-            <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
+            <PopoverTrigger isOpen={ isOpen } onOpenChange={ onOpenChange }>
                 <Button
                     variant="filling"
                     color="secondary"
