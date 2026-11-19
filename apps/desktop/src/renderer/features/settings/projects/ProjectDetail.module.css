@@ -7,3 +7,18 @@
     width: 16rem;
     max-width: 100%;
 }
+
+/* The icon as the menu shows it, larger, on a tile of its own so a clear background reads as one. */
+.preview {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-32);
+    height: var(--spacing-32);
+    margin-inline-end: var(--spacing-xs);
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    color: var(--color-secondary-muted-text);
+}

@@ -65,6 +65,8 @@ export interface Transport {
     getAttachment: (projectId: ProjectId, attachmentId: string) => Promise<Blob>;
     /** Removes a file that was uploaded and not sent. */
     deleteAttachment: (projectId: ProjectId, attachmentId: string) => Promise<void>;
+    /** The icon the daemon finds in the project's main folder (a favicon, an app icon), or `undefined` when there is none. */
+    getProjectIcon: (projectId: ProjectId) => Promise<Blob | undefined>;
     /** The skills agents get: system and user ones, and with a project also that project's. */
     getSkills: (projectId?: ProjectId) => Promise<SkillCatalog>;
     /** Every agent the daemon knows, with who is signed in to it, its usage and its settings. */

@@ -1,10 +1,11 @@
 import { openConfirmModal } from '@clowdy/components/modals';
 import { toast } from '@clowdy/components/Toast';
-import { folderNames, mainFolder } from '@clowdy/protocol';
+import { folderNames, mainFolder, NO_PROJECT_ICON } from '@clowdy/protocol';
 import { runInAction } from 'mobx';
 
 import { perform } from '../../chats/commands';
 import { newMainMessage, removalMessage } from './projectView';
+import { MAX_ICON_SOURCE_BYTES, squareIcon } from './squareIcon';
 
 import type { Project, ProjectFolder, ProjectInfo, ProjectSettings } from '@clowdy/protocol';
 import type { RootStore } from '../../../stores';
@@ -24,6 +25,41 @@ export async function renameProject(root: RootStore, project: Project, name: str
 /** `null` in a field clears it, so the project follows the daemon's own choice again. */
 export async function setProjectDefaults(root: RootStore, project: Project, settings: { [K in keyof ProjectSettings]?: ProjectSettings[K] | null }): Promise<boolean> {
     return (await perform(root, { type: 'project.update', projectId: project.id, settings })).ok;
+}
+
+/**
+ * Makes the picture the project's icon, drawn small first (`squareIcon`) so the project carries it in its settings. A file over
+ * `MAX_ICON_SOURCE_BYTES`, one that is not a picture, and the daemon's refusal are toasts. Resolves to whether the icon was saved.
+ */
+export async function uploadProjectIcon(root: RootStore, project: Project, file: File): Promise<boolean> {
+    if (file.size > MAX_ICON_SOURCE_BYTES) {
+        toast.error({ message: `${ file.name } is over ${ MAX_ICON_SOURCE_BYTES / 1024 / 1024 } MB` });
+
+        return false;
+    }
+
+    let icon: string;
+
+    try {
+        icon = await squareIcon(file);
+    }
+    catch {
+        toast.error({ message: `Couldn't read ${ file.name } as a picture` });
+
+        return false;
+    }
+
+    return setProjectDefaults(root, project, { icon });
+}
+
+/** Takes the project's icon away, so it shows the folder icon, even with a favicon in its main folder. */
+export async function removeProjectIcon(root: RootStore, project: Project): Promise<boolean> {
+    return setProjectDefaults(root, project, { icon: NO_PROJECT_ICON });
+}
+
+/** Shows the favicon of the project's main folder again, after the person removed the icon. */
+export async function restoreFolderIcon(root: RootStore, project: Project): Promise<boolean> {
+    return setProjectDefaults(root, project, { icon: null });
 }
 
 /** Saves the order the person dragged the projects to; the list goes back to the daemon's order when it refuses. */

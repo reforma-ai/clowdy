@@ -44,6 +44,7 @@ const unconfigured: Transport = {
     uploadAttachment: noDaemon,
     getAttachment: noDaemon,
     deleteAttachment: noDaemon,
+    getProjectIcon: noDaemon,
     getSkills: noDaemon,
     getAgents: noDaemon,
     getAgentModels: noDaemon,

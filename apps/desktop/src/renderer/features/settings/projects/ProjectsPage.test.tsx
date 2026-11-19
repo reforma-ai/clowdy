@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { Modal } from '@clowdy/components/Modal';
-import { LAST_USED } from '@clowdy/protocol';
+import { LAST_USED, NO_PROJECT_ICON } from '@clowdy/protocol';
 import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -20,8 +20,19 @@ import type { Transport } from '../../../daemon/transport';
 const confirm = vi.hoisted(() => vi.fn());
 const toasts = vi.hoisted(() => ({ info: vi.fn(), error: vi.fn(), success: vi.fn() }));
 
+const square = vi.hoisted(() => vi.fn<(file: Blob) => Promise<string>>());
+
 vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: confirm }));
 vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
+// happy-dom draws no pictures: the tests say what drawing a picture small gives.
+vi.mock('./squareIcon', async importOriginal => ({ ...await importOriginal<Record<string, unknown>>(), squareIcon: square }));
+// The babel plugin that makes the app's components observers does not run under Vitest: `observer` stands in for it here.
+vi.mock('../../../shared/ProjectIcon', async (importOriginal) => {
+    const { ProjectIcon } = await importOriginal<typeof import('../../../shared/ProjectIcon')>();
+    const mobx = await import('mobx-react-lite');
+
+    return { ProjectIcon: mobx.observer(ProjectIcon) };
+});
 
 /**
  * happy-dom cannot drag, so the tests move a row the way a drop does: through the list's own `onChange`, with the items in their new
@@ -134,6 +145,7 @@ function type(input: HTMLInputElement, value: string) {
 beforeEach(() => {
     confirm.mockReset();
     toasts.error.mockReset();
+    square.mockReset();
     sortables.clear();
     container = document.createElement('div');
     document.body.append(container);
@@ -541,6 +553,7 @@ describe('ProjectsPage project', () => {
         expect(container.querySelector('button[aria-label^="Remove "]')).toBeNull();
         expect(container.textContent).not.toContain('Add folders');
         expect(container.textContent).not.toContain('Remove project');
+        expect(container.textContent).not.toContain('Upload');
         expect(container.querySelector('[aria-label="Agent for new chats"]')).not.toBeNull();
     });
 
@@ -559,5 +572,86 @@ describe('ProjectsPage project', () => {
         expect(rows()[1]!.textContent).toContain('This folder no longer exists, so the agents leave it out');
         expect(rows()[2]!.textContent).not.toContain('no longer exists');
         expect(rows()[2]!.querySelector('a[href="https://github.com/acme/notes"]')).not.toBeNull();
+    });
+});
+
+describe('ProjectsPage icon', () => {
+    const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+    const settingsOf = (projectId: ProjectId) => store.projects.find(project => project.id === projectId)!.settings;
+    const iconOf = (projectId: ProjectId) => row(projectId)?.querySelector('img')?.getAttribute('src');
+    /** The picture of the page's Icon row, beside its Upload… button (the list under the page has pictures too). */
+    const preview = () => container.querySelector('input[type="file"]')!.parentElement!.querySelector('img')?.getAttribute('src');
+
+    /** Picks a file in the Upload… dialog. */
+    async function pick(file: File) {
+        const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+
+        Object.defineProperty(input, 'files', { value: [file], configurable: true });
+        await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })));
+        await flush();
+    }
+
+    it('shows the favicon found in a project\'s main folder before its name, and the folder icon without one', async () => {
+        await open();
+
+        expect(iconOf(FIXTURE_PROJECT_ID)).toMatch(/^blob:/);
+        expect(iconOf(FIXTURE_EMPTY_PROJECT_ID)).toBeUndefined();
+        expect(iconOf(FIXTURE_PERSONAL_PROJECT_ID)).toBeUndefined();
+    });
+
+    it('uploads a picture drawn small, removes it for the folder icon, and takes the favicon back', async () => {
+        square.mockResolvedValue(PNG);
+        await open(FIXTURE_PROJECT_ID);
+
+        const favicon = preview();
+
+        expect(favicon).toMatch(/^blob:/);
+        expect(named('Use favicon')).toBeUndefined();
+
+        const file = new File(['png'], 'logo.png', { type: 'image/png' });
+
+        await pick(file);
+        expect(square).toHaveBeenCalledWith(file);
+        expect(settingsOf(FIXTURE_PROJECT_ID).icon).toBe(PNG);
+        expect(preview()).toBe(PNG);
+
+        await click(named('Remove'));
+        await flush();
+        expect(settingsOf(FIXTURE_PROJECT_ID).icon).toBe(NO_PROJECT_ICON);
+        expect(preview()).toBeUndefined();
+        expect(named('Remove')).toBeUndefined();
+
+        await click(named('Use favicon'));
+        await flush();
+        expect(settingsOf(FIXTURE_PROJECT_ID).icon).toBeUndefined();
+        expect(preview()).toBe(favicon);
+    });
+
+    it('offers Remove only while a picture shows, and no favicon to take back where the main folder has none', async () => {
+        const data = createFixtureData();
+
+        data.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.settings.icon = NO_PROJECT_ICON;
+        await open(FIXTURE_EMPTY_PROJECT_ID, {}, data);
+
+        expect(preview()).toBeUndefined();
+        expect(named('Upload…')).toBeDefined();
+        expect(named('Remove')).toBeUndefined();
+        expect(named('Use favicon')).toBeUndefined();
+    });
+
+    it('refuses a picture over 5 MB and a file that is not a picture, as toasts', async () => {
+        square.mockRejectedValue(new Error('Not a picture'));
+        await open(FIXTURE_EMPTY_PROJECT_ID);
+
+        const huge = new File(['x'], 'huge.png', { type: 'image/png' });
+
+        Object.defineProperty(huge, 'size', { value: 5 * 1024 * 1024 + 1 });
+        await pick(huge);
+        expect(square).not.toHaveBeenCalled();
+        expect(toasts.error).toHaveBeenLastCalledWith({ message: 'huge.png is over 5 MB' });
+
+        await pick(new File(['x'], 'notes.txt'));
+        expect(toasts.error).toHaveBeenLastCalledWith({ message: 'Couldn\'t read notes.txt as a picture' });
+        expect(settingsOf(FIXTURE_EMPTY_PROJECT_ID).icon).toBeUndefined();
     });
 });

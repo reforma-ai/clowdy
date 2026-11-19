@@ -1,6 +1,7 @@
+import { mainFolder } from '@clowdy/protocol';
 import { createContext, use, useEffect } from 'react';
 
-import type { AgentInfo, Chat, RunId } from '@clowdy/protocol';
+import type { AgentInfo, Chat, Project, RunId } from '@clowdy/protocol';
 import type { AgentModelList } from './ModelsStore';
 import type { ProjectState } from './ProjectState';
 import type { RootStore } from './RootStore';
@@ -71,4 +72,20 @@ export function useAgentModels(agentId: string | undefined): AgentModelList | un
     }, [list]);
 
     return list;
+}
+
+/**
+ * The picture a project shows in place of the folder icon (`ProjectIconsStore.src`), or `undefined` for the folder icon. Asks the daemon
+ * for the icon of the main folder the first time a component needs it.
+ */
+export function useProjectIcon(project: Project): string | undefined {
+    const icons = useRootStore().projectIcons;
+    const folder = mainFolder(project).path;
+    const wanted = icons.wantsFound(project);
+
+    useEffect(() => {
+        if (wanted) void icons.load(project.id, folder);
+    }, [icons, project.id, folder, wanted]);
+
+    return icons.src(project);
 }

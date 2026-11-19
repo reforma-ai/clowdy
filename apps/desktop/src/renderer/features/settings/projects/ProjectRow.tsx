@@ -3,10 +3,11 @@ import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@clowdy/components/L
 import { Popover } from '@clowdy/components/Popover';
 import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
-import { Folder, Home, More, Sliders, Trash } from '@clowdy/icons/14';
+import { Folder, More, Sliders, Trash } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
 import { CardRow } from '../../../shared/CardRow';
+import { ProjectIcon } from '../../../shared/ProjectIcon';
 import styles from './ProjectRow.module.css';
 import { holdingMarks, plural } from './projectView';
 
@@ -41,7 +42,7 @@ export function ProjectRow({ project, info, onManage, onOpen, onRemove }: Projec
         <CardRow
             onPress={ onManage }
             pressProps={ { 'data-project-id': project.id } }
-            icon={ project.personal ? <Home /> : <Folder /> }
+            icon={ <ProjectIcon project={ project } size={ 20 } /> }
             title={ <Text weight="medium" truncate>{ project.name }</Text> }
             marks={ (
                 <>
