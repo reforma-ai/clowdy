@@ -46,16 +46,15 @@ export interface RefreshUsageButtonProps {
     /** A read is on its way. */
     isRefreshing: boolean;
     onRefresh: () => void;
-    /** `inline` (the default) is the bare icon at the end of a line of text; `transparent` is a button of its own beside other buttons. */
-    variant?: 'inline' | 'transparent';
+    /** `xs` (the default) at the end of a line of text, `sm` beside other `sm` buttons. */
     size?: 'xs' | 'sm';
     className?: string;
 }
 
-/** The button that reads the usage again. Its icon turns while a read is on its way. */
-export function RefreshUsageButton({ isRefreshing, onRefresh, variant = 'inline', size = 'xs', className }: RefreshUsageButtonProps) {
+/** The button that reads the usage again: an icon that gets a fill under the pointer, and turns while a read is on its way. */
+export function RefreshUsageButton({ isRefreshing, onRefresh, size = 'xs', className }: RefreshUsageButtonProps) {
     return (
-        <Button variant={ variant } color="secondary" size={ size } iconOnly aria-label="Refresh usage" tooltip="Refresh usage" isPending={ isRefreshing } spinnerPlacement="none" className={ className } onPress={ onRefresh }>
+        <Button variant="filling" color="secondary" size={ size } iconOnly aria-label="Refresh usage" tooltip="Refresh usage" isPending={ isRefreshing } spinnerPlacement="none" className={ className } onPress={ onRefresh }>
             <Refresh className={ isRefreshing ? styles.spin : undefined } />
         </Button>
     );

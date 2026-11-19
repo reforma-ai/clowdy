@@ -1,12 +1,5 @@
 @reference '@clowdy/styles/rulesets';
 
-/* Advanced is as far from the last setting as the settings are from each other. */
-.block {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-lg);
-}
-
 .list {
     display: flex;
     flex-direction: column;
@@ -31,18 +24,17 @@
     min-width: 0;
 }
 
-/* An inline button takes the size of the text around it; Advanced is in the size of the settings above it. */
+/* An inline button takes the size of the text around it; Advanced is in the size of the settings. */
 .trigger {
     @ruleset typography-text-sm;
-
-    align-self: flex-start;
 }
 
+/* Open, the fields stand clear of the Advanced line, a little further than they are from each other. */
 .advanced {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-lg);
-    padding-top: var(--spacing-md);
+    padding-top: var(--spacing-xl);
 }
 
 .field {

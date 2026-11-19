@@ -56,10 +56,11 @@ function AdvancedPanel({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Where the program is, and the environment it starts with. The boxes show what the daemon saved (`agent.overrides`) and
- * follow it when it changes; what the person has typed and not saved is a draft that stays until it is saved or typed away.
+ * Advanced, folded until asked: where the program is, and the environment it starts with. The boxes show what the daemon saved
+ * (`agent.overrides`) and follow it when it changes; what the person has typed and not saved is a draft that stays until it is saved or
+ * typed away.
  */
-function Advanced({ agent, commands }: SettingsProps) {
+export function ProviderAdvanced({ agent, commands }: SettingsProps) {
     const savedPath = agent.overrides?.path ?? '';
     const savedEnv = agent.overrides?.env ? formatEnv(agent.overrides.env) : '';
     const [pathDraft, setPathDraft] = useState<string>();
@@ -139,25 +140,22 @@ function Advanced({ agent, commands }: SettingsProps) {
     );
 }
 
-/** The agent's own settings as switches, and the Advanced part (program and environment). */
+/** The agent's own settings as switches. Nothing for an agent that has none. */
 export function ProviderSettings({ agent, commands }: SettingsProps) {
     const settings = agent.settings ?? [];
 
+    if (settings.length === 0) return null;
+
     return (
-        <section className={ styles.block } aria-label={ `${ agent.name } settings` }>
-            { settings.length > 0 && (
-                <ul className={ styles.list }>
-                    { settings.map(setting => (
-                        <SettingRow
-                            key={ setting.id }
-                            setting={ setting }
-                            isPending={ commands.pending.has(`setting:${ setting.id }`) }
-                            onChange={ value => void commands.setSetting(setting.id, value) }
-                        />
-                    )) }
-                </ul>
-            ) }
-            <Advanced agent={ agent } commands={ commands } />
-        </section>
+        <ul className={ styles.list } aria-label={ `${ agent.name } settings` }>
+            { settings.map(setting => (
+                <SettingRow
+                    key={ setting.id }
+                    setting={ setting }
+                    isPending={ commands.pending.has(`setting:${ setting.id }`) }
+                    onChange={ value => void commands.setSetting(setting.id, value) }
+                />
+            )) }
+        </ul>
     );
 }
