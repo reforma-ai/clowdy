@@ -41,6 +41,7 @@ test('a bundled daemon runs on its own and reports the bundle version', async ()
             HOME: root,
             CLOWDY_DATA_DIR: dataDir,
             CLOWDY_PROJECTS_DIR: join(root, 'projects'),
+            CLOWDY_PERSONAL_DIR: join(root, 'personal'),
             CLOWDY_USER_SKILLS_DIRS: join(root, 'skills'),
             CLOWDY_SYSTEM_SKILLS_DIR: SYSTEM_SKILLS,
             CLOWDY_ENGINE: 'fake',

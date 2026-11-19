@@ -535,7 +535,7 @@ describe('ProjectsPage project', () => {
         await open(FIXTURE_PERSONAL_PROJECT_ID);
 
         expect(container.querySelector('input[aria-label="Project name"]')).toBeNull();
-        expect(rowPaths()).toEqual(['/Users/dev/Library/Application Support/Clowdy/daemon/personal']);
+        expect(rowPaths()).toEqual(['/Users/dev/Clowdy/Personal']);
         expect(marked()).toEqual([]);
         expect(container.querySelector('button[aria-label^="Remove "]')).toBeNull();
         expect(container.textContent).not.toContain('Add folders');

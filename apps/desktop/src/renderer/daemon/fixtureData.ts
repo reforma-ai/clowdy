@@ -357,7 +357,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         {
             id: FIXTURE_PERSONAL_PROJECT_ID,
             name: 'Personal',
-            folders: [{ id: 'fld_personal', path: '/Users/dev/Library/Application Support/Clowdy/daemon/personal' }],
+            folders: [{ id: 'fld_personal', path: '/Users/dev/Clowdy/Personal' }],
             taskPrefix: 'PER',
             settings: {},
             createdAt: ago(60 * 24 * 30),

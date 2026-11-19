@@ -19,6 +19,11 @@ describe('config', () => {
         expect(loadConfig({ CLOWDY_PROJECTS_DIR: '/work' }, 'linux').projectsDir).toBe('/work');
     });
 
+    test('the personal space is ~/Clowdy/Personal, or CLOWDY_PERSONAL_DIR', () => {
+        expect(loadConfig({}, 'linux').personalDir).toBe(join(homedir(), 'Clowdy', 'Personal'));
+        expect(loadConfig({ CLOWDY_PERSONAL_DIR: '/mine' }, 'linux').personalDir).toBe('/mine');
+    });
+
     test('the data dir comes from the shared protocol function, so the desktop app finds the same folder', () => {
         for (const platform of ['darwin', 'win32', 'linux'] as const) {
             for (const env of [{}, { CLOWDY_PROFILE: 'dev' }, { LOCALAPPDATA: 'D:\\Local' }]) {
