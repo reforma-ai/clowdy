@@ -39,6 +39,13 @@ describe('ToolCard', () => {
         expect(header().textContent).toContain('src/form.tsx');
     });
 
+    it('titles a command by what the agent says it does, with the command beside it', async () => {
+        await draw({ name: 'Bash', input: { command: 'bun install', description: 'Install package dependencies' }, output: 'done' });
+
+        expect(header().textContent).toContain('Install package dependencies');
+        expect(header().querySelector('code')?.textContent).toBe('bun install');
+    });
+
     it('keeps input and output away until the line is opened', async () => {
         await draw();
 
