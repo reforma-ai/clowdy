@@ -23,13 +23,13 @@ export interface AccountProps {
 function CopyLinkButton({ url }: { url: string }) {
     const { copied, markCopied } = useCopyFeedback();
 
-    return <Button variant="bordered" size="sm" onPress={ () => copyWithFeedback(url, markCopied) }>{ copied ? 'Copied' : 'Copy link' }</Button>;
+    return <Button variant="inline" color="primary" onPress={ () => copyWithFeedback(url, markCopied) }>{ copied ? 'Copied' : 'Copy link' }</Button>;
 }
 
 /**
  * A sign-in the daemon runs, as a plate under the card's first row: where to finish it and what happens then, a one-time code when the
- * program printed one, and two buttons. The first opens the page again (`https:` only: the app opens nothing else) or, for another
- * kind of link, copies it; the second cancels. Nothing when no sign-in runs.
+ * program printed one, then a link and a button. The link opens the page again (`https:` only: the app opens nothing else) or, for another
+ * kind of link, copies it; the button cancels. Nothing when no sign-in runs.
  */
 export function SignInPanel({ agent, commands, className }: AccountProps & { className?: string }) {
     const session = agent.signInSession;
@@ -54,13 +54,13 @@ export function SignInPanel({ agent, commands, className }: AccountProps & { cla
             <div className={ styles.panelActions }>
                 { url && (url.startsWith('https://')
                     ? (
-                        <Button variant="bordered" size="sm" href={ url } target="_blank" rel="noreferrer">
+                        <Button variant="inline" color="primary" href={ url } target="_blank" rel="noreferrer">
                             <ArrowUpRight aria-hidden />
                             Reopen browser
                         </Button>
                     )
                     : <CopyLinkButton url={ url } />) }
-                <Button variant="inline" color="secondary" size="sm" isPending={ commands.pending.has('cancelSignIn') } onPress={ () => void commands.cancelSignIn() }>Cancel</Button>
+                <Button variant="bordered" size="sm" isPending={ commands.pending.has('cancelSignIn') } onPress={ () => void commands.cancelSignIn() }>Cancel</Button>
             </div>
         </div>
     );
