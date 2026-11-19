@@ -64,8 +64,8 @@ export class RunService {
     readonly limits: EngineLimits;
     /** Called after the commit in which a run started by `run_spawn` finished, with its parent's id. */
     onChildSettled: (parentRunId: string) => void = () => undefined;
-    /** Called after the commit in which a chat's orchestrator changed status, with the run as it is now and the status it left. */
-    onOrchestratorStatus: (run: Run, previous: RunStatus) => void = () => undefined;
+    /** Called after the commit in which a chat's orchestrator changed status, with the run as it is now. */
+    onOrchestratorStatus: (run: Run) => void = () => undefined;
     private scheduler: Scheduler;
     private controllers = new Map<string, AbortController>();
     private answers = new Map<string, (answer: string) => void>();
@@ -266,7 +266,7 @@ export class RunService {
 
             // Only a chat's orchestrator has a chat of its own, and with it the queue of what the person wrote while it worked.
             if (run.chatId) {
-                this.store.afterCommit(() => this.onOrchestratorStatus(next, run.status));
+                this.store.afterCommit(() => this.onOrchestratorStatus(next));
             }
 
             return next;
