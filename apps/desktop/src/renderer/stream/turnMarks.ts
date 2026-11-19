@@ -18,6 +18,12 @@ export interface TurnMark {
 
 type UserBody = Extract<StreamItemBody, { kind: 'user' }>;
 
+/**
+ * One item object is one version of its text. A later token replaces the object,
+ * so a tick rebuild does not strip every older message again.
+ */
+const plainCache = new WeakMap<StreamItem, string>();
+
 /** Markdown is noise in a two-line preview: keep the words, drop the marks. */
 function plain(text: string): string {
     const flat = text
@@ -33,8 +39,20 @@ function plain(text: string): string {
     return flat.length > 600 ? flat.slice(0, 600) : flat;
 }
 
-function titleOf(body: UserBody): string {
-    const text = plain(body.text);
+function plainOf(item: StreamItem, text: string): string {
+    const cached = plainCache.get(item);
+
+    if (cached !== undefined) return cached;
+
+    const value = plain(text);
+
+    plainCache.set(item, value);
+
+    return value;
+}
+
+function titleOf(item: StreamItem, body: UserBody): string {
+    const text = plainOf(item, body.text);
 
     if (text !== '') return text;
 
@@ -51,14 +69,14 @@ export function turnMarks(items: readonly StreamItem[]): TurnMark[] {
 
     for (const item of items) {
         if (item.body.kind === 'user') {
-            current = { id: item.id, title: titleOf(item.body), reply: '' };
+            current = { id: item.id, title: titleOf(item, item.body), reply: '' };
             marks.push(current);
             continue;
         }
 
         if (current == null || item.body.kind !== 'assistant') continue;
 
-        const reply = plain(item.body.text);
+        const reply = plainOf(item, item.body.text);
 
         if (reply !== '') current.reply = reply;
     }
