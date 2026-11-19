@@ -77,7 +77,7 @@ describe('StreamView', () => {
     });
 
     it('puts the action it is given at the end of an error', async () => {
-        const failed = [...items, item(4, { kind: 'error', text: 'The conversation no longer fits the model\'s context window. Start a new chat.' })];
+        const failed = [...items, item(4, { kind: 'error', text: 'The conversation no longer fits the model\'s context window. Compact it or start a new chat.' })];
 
         await act(async () => root.render(<StreamView items={ failed } errorAction={ entry => (entry.id === 'i-4' ? <button type="button">Compact</button> : null) } />));
 

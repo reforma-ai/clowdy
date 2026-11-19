@@ -106,7 +106,7 @@ export function classifyFailure({ agent, login, kind, rpcCode, text = '' }: Fail
     }
 
     if (CONTEXT.test(text)) {
-        return failure('context_too_long', 'The conversation no longer fits the model\'s context window. Start a new chat.');
+        return failure('context_too_long', 'The conversation no longer fits the model\'s context window. Compact it or start a new chat.');
     }
 
     if (rpcCode === RESOURCE_NOT_FOUND || SESSION_NOT_FOUND.test(text)) {

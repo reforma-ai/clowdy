@@ -297,7 +297,7 @@ describe('a chat that can be written to', () => {
 });
 
 describe('a chat whose conversation outgrew the context window', () => {
-    const OVERFLOW = 'The conversation no longer fits the model\'s context window. Start a new chat.';
+    const OVERFLOW = 'The conversation no longer fits the model\'s context window. Compact it or start a new chat.';
 
     /** The second fixture chat's orchestrator failed its last turn with `failure`, and its stream ends on the error. */
     const failed = (failure?: string) => (fixture: FixtureData) => {

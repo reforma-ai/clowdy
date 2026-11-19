@@ -91,7 +91,7 @@ describe('a turn that ends with calls still running', () => {
 
             if (number === 1) {
                 yield call('c1', 'running');
-                yield { type: 'error', message: 'The conversation no longer fits the model\'s context window. Start a new chat.', code: 'context_too_long' };
+                yield { type: 'error', message: 'The conversation no longer fits the model\'s context window. Compact it or start a new chat.', code: 'context_too_long' };
 
                 return;
             }
