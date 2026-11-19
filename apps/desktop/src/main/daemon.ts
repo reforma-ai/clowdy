@@ -13,8 +13,11 @@ const POLL_INTERVAL_MS = 100;
 /** After a launched daemon exits (typically because another one holds the lock), how long to wait for that other one. */
 const EXIT_GRACE_MS = 3000;
 const LOG_TAIL_LINES = 20;
-/** How long a daemon asked to shut down may take to be gone. */
-const STOP_TIMEOUT_MS = 10_000;
+/**
+ * How long a daemon asked to shut down may take to be gone. One stopped with runs in progress gives them 10 s to settle
+ * and each agent process left over 5 s more to end (`RunDriver.stop` in `apps/daemon`).
+ */
+const STOP_TIMEOUT_MS = 30_000;
 
 /** Why the app has no daemon. `details` is the dialog's second paragraph: a hint or the end of `daemon.log`. */
 export class DaemonError extends Error {
@@ -140,15 +143,17 @@ export async function ensureDaemon(context = currentContext()): Promise<DaemonIn
     return running ? acceptable(running) : startDaemon(context);
 }
 
-/** Asks the daemon to shut down and waits until it is gone (its address no longer answers). Throws `DaemonError` when it stays. */
-export async function stopDaemon(context: DaemonContext, { info }: RunningDaemon): Promise<void> {
-    const { host } = context;
+/**
+ * Asks the daemon to shut down and waits until its process has ended. It stops answering first and lets go of
+ * `daemon.lock` last, so a daemon started in between would find the lock taken and exit. Throws `DaemonError` when it stays.
+ */
+export async function stopDaemon({ host }: DaemonContext, { info }: RunningDaemon): Promise<void> {
     const deadline = host.now() + STOP_TIMEOUT_MS;
 
     await host.stop(info);
 
     while (host.now() < deadline) {
-        if (!await findRunning(context)) return;
+        if (!host.alive(info.pid)) return;
 
         await host.sleep(POLL_INTERVAL_MS);
     }

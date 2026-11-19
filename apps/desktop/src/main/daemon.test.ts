@@ -68,6 +68,7 @@ function setup(options: {
             world.daemons.delete(port);
             world.files.delete(INFO_FILE);
         },
+        alive: pid => [...world.daemons.values()].some(daemon => daemon.health.pid === pid),
         loginPath: async () => {
             world.logins += 1;
 

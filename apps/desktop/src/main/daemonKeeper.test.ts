@@ -15,20 +15,26 @@ const INFO_FILE = `${ DATA_DIR }/daemon.json`;
 interface World {
     files: Map<string, string>;
     daemons: Map<number, Health>;
+    /** When each daemon process ends, by pid: never while it runs. */
+    endsAt: Map<number, number>;
     stops: number;
     launches: number;
     clock: number;
     nextPid: number;
 }
 
-/** A machine in memory with one daemon on it, started at `startedAt`, with `activeRuns` runs in progress. */
-function setup({ running = true, startedAt = 1000, activeRuns = 0, version = '0.0.1', protocol = PROTOCOL_VERSION }: { running?: boolean; startedAt?: number; activeRuns?: number; version?: string; protocol?: number } = {}) {
-    const world: World = { files: new Map(), daemons: new Map(), stops: 0, launches: 0, clock: startedAt + 5000, nextPid: 100 };
+/**
+ * A machine in memory with one daemon on it, started at `startedAt`, with `activeRuns` runs in progress. A daemon asked to
+ * stop answers no more at once and its process ends `windDownMs` later.
+ */
+function setup({ running = true, startedAt = 1000, activeRuns = 0, version = '0.0.1', protocol = PROTOCOL_VERSION, windDownMs = 0 }: { running?: boolean; startedAt?: number; activeRuns?: number; version?: string; protocol?: number; windDownMs?: number } = {}) {
+    const world: World = { files: new Map(), daemons: new Map(), endsAt: new Map(), stops: 0, launches: 0, clock: startedAt + 5000, nextPid: 100 };
     const publish = (startedAtOfNew: number, runs: number, ofVersion = '412', ofProtocol = PROTOCOL_VERSION): DaemonInfo => {
         const info: DaemonInfo = { pid: world.nextPid++, port: 50000 + world.nextPid, token: 't', protocol: ofProtocol, startedAt: startedAtOfNew };
 
         world.files.set(INFO_FILE, JSON.stringify(info));
         world.daemons.set(info.port, { ok: true, protocol: ofProtocol, version: ofVersion, pid: info.pid, startedAt: startedAtOfNew, activeRuns: runs });
+        world.endsAt.set(info.pid, Infinity);
 
         return info;
     };
@@ -45,11 +51,13 @@ function setup({ running = true, startedAt = 1000, activeRuns = 0, version = '0.
 
             return new Promise(() => undefined);
         },
-        stop: async ({ port }) => {
+        stop: async ({ port, pid }) => {
             world.stops += 1;
             world.daemons.delete(port);
             world.files.delete(INFO_FILE);
+            world.endsAt.set(pid, world.clock + windDownMs);
         },
+        alive: pid => (world.endsAt.get(pid) ?? 0) > world.clock,
         loginPath: async () => undefined,
         sleep: async (ms) => {
             world.clock += ms;
@@ -116,6 +124,27 @@ describe('restartIfStale', () => {
         expect([world.stops, world.launches]).toEqual([1, 1]);
         expect(world.daemons.size).toBe(1);
         expect(outcome.kind === 'restarted' && outcome.info.startedAt).toBeGreaterThan(1000);
+    });
+
+    test('starts the new daemon once the stale one has ended, not when it stops answering: it holds the lock until then', async () => {
+        const { world, context } = setup({ startedAt: 1000, windDownMs: 1500 });
+        const { pid: stale } = JSON.parse(world.files.get(INFO_FILE)!) as DaemonInfo;
+        let staleRanAtLaunch: boolean | undefined;
+        const launch: DaemonHost['launch'] = (options) => {
+            staleRanAtLaunch = context.host.alive(stale);
+
+            return context.host.launch(options);
+        };
+
+        expect(await restartIfStale({ ...context, host: { ...context.host, launch } }, sourcesChangedSince(async () => 2000), true)).toMatchObject({ kind: 'restarted' });
+        expect(staleRanAtLaunch).toBe(false);
+    });
+
+    test('starts nothing when the stale daemon does not end', async () => {
+        const { world, context } = setup({ startedAt: 1000, windDownMs: Infinity });
+
+        await expect(restartIfStale(context, sourcesChangedSince(async () => 2000))).rejects.toThrow('did not stop within 30 seconds');
+        expect(world.launches).toBe(0);
     });
 });
 
@@ -232,10 +261,11 @@ describe('keepDaemonFresh', () => {
         const { context } = setup({ startedAt: 1000 });
         const log = vi.fn();
         const failing = { ...context, host: { ...context.host, stop: async () => Promise.reject(new Error('boom')) } };
-        const { keeper } = watched({ context: failing, isStale: sourcesChangedSince(async () => 2000), log });
+        const onFailed = vi.fn();
+        const { keeper } = watched({ context: failing, isStale: sourcesChangedSince(async () => 2000), log, onFailed });
 
-        await keeper.checkNow();
-
+        expect(await keeper.checkNow()).toMatchObject({ kind: 'failed', error: new Error('boom') });
+        expect(onFailed).toHaveBeenCalledWith(new Error('boom'));
         expect(log).toHaveBeenCalledWith(expect.stringContaining('Could not restart the daemon: boom'));
     });
 });

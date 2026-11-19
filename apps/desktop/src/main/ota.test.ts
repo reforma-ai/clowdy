@@ -50,6 +50,7 @@ interface Publish {
 /** One machine: the updates folder, the feed it checks, and the app's own copy. */
 function machine({ ownVersion = 100, shellVersion = '0.2.0' } = {}) {
     const updates = path.join(base, 'updates');
+    const dataDir = path.join(base, 'daemon');
     const feed = new Map<string, Uint8Array>();
     const fetch = vi.fn(async (url: string) => {
         const body = feed.get(url);
@@ -63,6 +64,7 @@ function machine({ ownVersion = 100, shellVersion = '0.2.0' } = {}) {
 
     return {
         updates,
+        dataDir,
         fetch,
         relaunch,
         onInstalled,
@@ -74,6 +76,7 @@ function machine({ ownVersion = 100, shellVersion = '0.2.0' } = {}) {
         launch: async () => {
             const ota = createOta({
                 updates,
+                dataDir,
                 own,
                 shellVersion,
                 protocol: PROTOCOL,
@@ -185,7 +188,7 @@ describe('check', () => {
         expect(ota.pending()).toBe(101);
         expect(app.onInstalled).toHaveBeenCalledWith(101);
         expect(await app.installed()).toEqual(['101']);
-        expect(await app.state()).toEqual({ current: 101, previous: null, unconfirmed: true, rejected: [] });
+        expect(await app.state()).toEqual({ current: 101, previous: null, unconfirmed: true, rejected: [], proven: [] });
         expect(await readFile(path.join(app.updates, 'bundles/101/renderer/index.html'), 'utf8')).toBe('page 101');
         expect(JSON.parse(await readFile(path.join(app.updates, 'bundles/101', MANIFEST_FILE), 'utf8'))).toHaveProperty('signature');
     });
@@ -281,7 +284,7 @@ describe('check', () => {
 
     test('is off without a feed', async () => {
         const app = machine();
-        const ota = createOta({ updates: app.updates, own: app.own, shellVersion: '0.2.0', protocol: PROTOCOL, publicKey: release.publicKey, feed: '', fetch: app.fetch, daemonVersion: async () => undefined, relaunch: app.relaunch });
+        const ota = createOta({ updates: app.updates, dataDir: app.dataDir, own: app.own, shellVersion: '0.2.0', protocol: PROTOCOL, publicKey: release.publicKey, feed: '', fetch: app.fetch, daemonVersion: async () => undefined, relaunch: app.relaunch });
 
         expect(ota.enabled).toBe(false);
         await expect(ota.check()).resolves.toBeNull();
@@ -314,7 +317,7 @@ describe('trial', () => {
         ota.watchReady();
         await vi.waitFor(() => expect(app.relaunch).toHaveBeenCalledOnce());
 
-        expect(await app.state()).toEqual({ current: 101, previous: null, unconfirmed: true, rejected: [102] });
+        expect(await app.state()).toEqual({ current: 101, previous: null, unconfirmed: true, rejected: [102], proven: [] });
 
         const back = await app.launch();
 
@@ -334,7 +337,7 @@ describe('trial', () => {
         (await app.launch()).ota.watchReady();
         await vi.waitFor(() => expect(app.relaunch).toHaveBeenCalledOnce());
 
-        expect(await app.state()).toEqual({ current: null, previous: null, unconfirmed: false, rejected: [101] });
+        expect(await app.state()).toEqual({ current: null, previous: null, unconfirmed: false, rejected: [101], proven: [] });
         expect((await app.launch()).bundle).toBe(app.own);
     });
 
@@ -345,6 +348,132 @@ describe('trial', () => {
         ota.watchReady();
         await wait(40);
 
+        expect(app.relaunch).not.toHaveBeenCalled();
+    });
+});
+
+describe('daemon trial', () => {
+    /** The data folder after a daemon of this launch migrated the database from schema 3 to 4 and then died. */
+    async function migratedAndDied(app: Machine) {
+        await mkdir(app.dataDir, { recursive: true });
+        await writeFile(path.join(app.dataDir, 'clowdy.db.bak-v3'), 'schema 3');
+        await writeFile(path.join(app.dataDir, 'clowdy.db'), 'schema 4');
+        await writeFile(path.join(app.dataDir, 'clowdy.db-wal'), 'schema 4 pages');
+    }
+
+    const database = (app: Machine) => readFile(path.join(app.dataDir, 'clowdy.db'), 'utf8');
+
+    test('a bundle whose daemon fails its first start is rejected, with the database it migrated put back', async () => {
+        const app = machine();
+
+        await installAndConfirm(app, 101);
+        app.publish(102);
+        await (await app.launch()).ota.check();
+
+        const { ota } = await app.launch();
+
+        await migratedAndDied(app);
+
+        await expect(ota.daemonFailed()).resolves.toBe(true);
+        expect(app.relaunch).toHaveBeenCalledOnce();
+        expect(await database(app)).toBe('schema 3');
+        expect(await app.state()).toMatchObject({ current: 101, previous: null, unconfirmed: true, rejected: [102] });
+        // Asked again (the keeper and the start both report it), it relaunches once.
+        await expect(ota.daemonFailed()).resolves.toBe(true);
+        expect(app.relaunch).toHaveBeenCalledOnce();
+    });
+
+    test('a daemon that fails after the page did goes back only once', async () => {
+        const app = machine();
+
+        await installAndConfirm(app, 101);
+        app.publish(102);
+        await (await app.launch()).ota.check();
+
+        const { ota } = await app.launch();
+
+        ota.watchReady();
+        await vi.waitFor(() => expect(app.relaunch).toHaveBeenCalledOnce());
+        await ota.daemonFailed();
+
+        expect(await app.state()).toMatchObject({ current: 101, previous: null, rejected: [102] });
+    });
+
+    test('a database that cannot be put back does not keep the bundle', async () => {
+        const app = machine();
+
+        app.publish(101);
+        await (await app.launch()).ota.check();
+
+        const { ota } = await app.launch();
+
+        await migratedAndDied(app);
+        await mkdir(path.join(app.dataDir, 'clowdy.db.restoring'));
+
+        await expect(ota.daemonFailed()).resolves.toBe(true);
+        expect(app.relaunch).toHaveBeenCalledOnce();
+        expect(await database(app)).toBe('schema 4');
+        expect(await app.state()).toMatchObject({ current: null, rejected: [101] });
+    });
+
+    test('a daemon that came up once is not rolled back later', async () => {
+        const app = machine();
+        const { ota } = await installAndConfirm(app, 101);
+
+        await ota.daemonUp(101);
+        await migratedAndDied(app);
+
+        await expect(ota.daemonFailed()).resolves.toBe(false);
+        expect(app.relaunch).not.toHaveBeenCalled();
+        expect(await database(app)).toBe('schema 4');
+        expect(await app.state()).toMatchObject({ current: 101, rejected: [], proven: [101] });
+    });
+
+    test('a daemon that comes up while the page reports ready proves the bundle, and the page confirms it', async () => {
+        const app = machine();
+
+        app.publish(101);
+        await (await app.launch()).ota.check();
+
+        const { ota } = await app.launch();
+
+        ota.watchReady();
+        await Promise.all([ota.ready(), ota.daemonUp(101)]);
+
+        expect(await app.state()).toMatchObject({ current: 101, unconfirmed: false, proven: [101] });
+    });
+
+    test('only the running bundle\'s daemon proves it', async () => {
+        const app = machine();
+        const { ota } = await installAndConfirm(app, 101);
+
+        await ota.daemonUp(100);
+        await ota.daemonUp(undefined);
+
+        expect(await app.state()).toMatchObject({ proven: [] });
+    });
+
+    test('a database a live daemon still holds is left alone, and the bundle is rejected all the same', async () => {
+        const app = machine();
+
+        app.publish(101);
+        await (await app.launch()).ota.check();
+
+        const { ota } = await app.launch();
+
+        await migratedAndDied(app);
+        await writeFile(path.join(app.dataDir, 'daemon.lock'), String(process.pid));
+
+        await expect(ota.daemonFailed()).resolves.toBe(true);
+        expect(await database(app)).toBe('schema 4');
+        expect(await app.state()).toMatchObject({ current: null, rejected: [101] });
+    });
+
+    test('the app\'s own copy has no daemon trial', async () => {
+        const app = machine();
+        const { ota } = await app.launch();
+
+        await expect(ota.daemonFailed()).resolves.toBe(false);
         expect(app.relaunch).not.toHaveBeenCalled();
     });
 });

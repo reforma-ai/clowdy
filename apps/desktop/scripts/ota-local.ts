@@ -3,10 +3,11 @@
  * checkout, signs it with a test key, and serves `manifest.json` and the archive on 127.0.0.1. The key stays in
  * `.ota-local/`, so the app keeps trusting the feed across runs.
  *
- *   bun scripts/ota-local.ts [--version <n>] [--no-ready] [--port <n>]
+ *   bun scripts/ota-local.ts [--version <n>] [--no-ready] [--broken-daemon] [--port <n>]
  *
  *   --version   the bundle's number, this commit's by default; serve a higher one to try the next update
- *   --no-ready  a renderer that never calls `ready()`, to try the rollback
+ *   --no-ready       a renderer that never calls `ready()`, to try the rollback
+ *   --broken-daemon  a daemon that exits at once, to try the rollback of a daemon's first start
  *
  * Then start the app with the command it prints.
  */
@@ -22,11 +23,13 @@ const home = path.resolve(import.meta.dir, '../.ota-local');
 /** `./clowdy` at the repository root, which this script is not run from. */
 const launcher = path.resolve(import.meta.dir, '../../../clowdy');
 const NOT_READY_PAGE = '<!doctype html><title>Clowdy</title><p>This renderer never calls ready()</p>';
+const BROKEN_DAEMON = 'console.error(\'This daemon never starts\');\nprocess.exit(1);\n';
 
 const { values } = parseArgs({
     options: {
         version: { type: 'string' },
         'no-ready': { type: 'boolean', default: false },
+        'broken-daemon': { type: 'boolean', default: false },
         port: { type: 'string', default: '4789' },
     },
 });
@@ -67,6 +70,8 @@ await layoutOtaBundle(folder, bundle);
 
 if (values['no-ready']) await writeFile(path.join(folder, RENDERER_DIR, 'index.html'), NOT_READY_PAGE);
 
+if (values['broken-daemon']) await writeFile(path.join(folder, 'daemon/main.js'), BROKEN_DAEMON);
+
 const { manifest, archive } = await packOtaBundle(folder, feed, bundle);
 const { privateKey, publicPath } = await testKeys();
 const signed = JSON.stringify(signManifest(manifest, privateKey));
@@ -87,7 +92,7 @@ Bun.serve({
     },
 });
 
-console.info(`Serving bundle ${ version }${ values['no-ready'] ? ' (never ready)' : '' } on http://127.0.0.1:${ port }. Start the app on it:
+console.info(`Serving bundle ${ version }${ values['no-ready'] ? ' (never ready)' : '' }${ values['broken-daemon'] ? ' (its daemon never starts)' : '' } on http://127.0.0.1:${ port }. Start the app on it:
 
   CLOWDY_UPDATE_FEED=http://127.0.0.1:${ port } CLOWDY_UPDATE_PUBLIC_KEY="$(cat '${ publicPath }')" '${ launcher }' dev
 `);

@@ -89,7 +89,8 @@ function start(): void {
         Menu.setApplicationMenu(createAppMenu());
 
         const release = releaseConfig(app.isPackaged, process.env);
-        const updates = updatesDir(currentContext().dataDir);
+        const { dataDir } = currentContext();
+        const updates = updatesDir(dataDir);
         let runtimeError: unknown;
         // A development run's own bundle is its checkout: version 0, so a bundle from the test feed is newer.
         const own = app.isPackaged
@@ -101,6 +102,7 @@ function start(): void {
             : undefined;
         const ota = createOta({
             updates,
+            dataDir,
             own: { version: own?.version ?? 0, rendererRoot: ownRendererRoot, dir: null, rendererFiles: null },
             shellVersion: app.getVersion(),
             protocol: PROTOCOL_VERSION,
@@ -162,21 +164,52 @@ function start(): void {
             restartToUpdate: () => ota.restart(),
         });
 
-        /** The daemon may have moved to this app's runtime: copies nothing runs from any more can go. */
-        const cleanUp = (ours: boolean) => {
-            ota.prune().catch((error: unknown) => console.warn('Could not delete old bundles:', error));
+        /**
+         * A daemon is up, maybe one this app started (`ours`): a bundle whose daemon it is has proven it, and copies
+         * nothing runs from any more can go.
+         */
+        const daemonUp = async (ours: boolean) => {
+            const running = await findRunning(context);
+
+            await ota.daemonUp(running && daemonBundle(running.health));
+            await ota.prune();
 
             // A development run's Bun is the checkout's.
-            if (ours && app.isPackaged && runtime) void pruneBunCopies(updates, runtime.bun);
+            if (ours && app.isPackaged && runtime) await pruneBunCopies(updates, runtime.bun);
+        };
+        /**
+         * No daemon came up: on the chosen bundle's first daemon start, that sends the app back to the previous bundle.
+         * Resolves true when it relaunches.
+         */
+        const daemonDown = async () => {
+            try {
+                return Boolean(runtime) && !await findRunning(context) && await ota.daemonFailed();
+            }
+            catch (error) {
+                console.warn('Could not go back to the previous bundle:', error);
+
+                return false;
+            }
         };
         const firstWindow = Promise.withResolvers<BrowserWindow>();
-        const keeper = startKeeper(context, bundle, firstWindow.promise, () => cleanUp(true));
+        const keeper = startKeeper(context, bundle, firstWindow.promise, {
+            onReplaced: () => void daemonUp(true).catch((error: unknown) => console.warn('After the daemon was replaced:', error)),
+            onFailed: () => void daemonDown(),
+        });
         // Without a runtime the app still joins a daemon that is running; when it cannot, the runtime's failure is the reason shown.
         const { error: daemonError, ours } = await connectDaemon(context, keeper);
+
+        if (daemonError) {
+            // Relaunching on the previous bundle.
+            if (await daemonDown()) return;
+        }
+        else {
+            void daemonUp(ours).catch((error: unknown) => console.warn('After the daemon came up:', error));
+        }
+
         const window = openWindow();
 
         firstWindowOpen = true;
-        cleanUp(ours);
         // From the first window's load: an OTA bundle on its first launch has 30 seconds to render.
         ota.watchReady();
         window.once('ready-to-show', () => firstWindow.resolve(window));
@@ -301,6 +334,9 @@ async function connectDaemon(context: DaemonContext, keeper: DaemonKeeper | unde
         // A stale daemon (another bundle's, or one older than its sources) is replaced now, while no window depends on it.
         const outcome = await keeper?.checkNow();
 
+        // The new daemon did not start: starting it again would fail again, after another wait.
+        if (outcome?.kind === 'failed' && !await findRunning(context)) return { error: outcome.error, ours: false };
+
         // A busy one this app cannot talk to stays until the keeper swaps it; the window shows that it cannot reach a daemon
         // and reloads on the swap.
         if (outcome?.kind === 'busy' && outcome.protocol !== PROTOCOL_VERSION) return { ours: false };
@@ -329,11 +365,17 @@ async function connectDaemon(context: DaemonContext, keeper: DaemonKeeper | unde
  * - A development run on its checkout (`CLOWDY_DAEMON_WATCH` names the daemon's source folders, `scripts/dev.ts` sets
  *   it) replaces the daemon when its sources change, or when it runs a bundle.
  */
-function startKeeper(context: DaemonContext, bundle: RunningBundle, firstWindow: Promise<BrowserWindow>, onReplaced: () => void): DaemonKeeper | undefined {
+function startKeeper(
+    context: DaemonContext,
+    bundle: RunningBundle,
+    firstWindow: Promise<BrowserWindow>,
+    { onReplaced, onFailed }: { onReplaced: () => void; onFailed: () => void }
+): DaemonKeeper | undefined {
     // The sheet about a busy daemon; it closes when that daemon is replaced without an answer (its runs finished first).
     let question: AbortController | undefined;
-    const common: Pick<KeeperOptions, 'context' | 'log' | 'onRestarted'> = {
+    const common: Pick<KeeperOptions, 'context' | 'log' | 'onRestarted' | 'onFailed'> = {
         context,
+        onFailed,
         log: message => console.info(message),
         onRestarted: (info) => {
             const address = daemonAddress(info);

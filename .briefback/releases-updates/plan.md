@@ -230,16 +230,18 @@ Scope change (implementation and review): a bundle must speak the shell's `PROTO
 
 **This stage:** A bundle whose daemon is starting for the first time is on trial: if it does not write `daemon.json` and answer `/v1/health` within the start window, the bundle is rejected, a `clowdy.db.bak-v<n>` written after that launch began replaces `clowdy.db` (with its `-wal` and `-shm` removed), and the app relaunches on the previous bundle. A daemon that came up healthy confirms its bundle's daemon half; after that there is no automatic rollback.
 
-- [ ] Complete
-  - [ ] Trial state for the daemon half in `state.json`
-  - [ ] Failed start: reject, restore the backup when this launch wrote one, relaunch
-  - [ ] Unit tests: healthy confirm, failure before migration, failure after migration
+- [x] Complete
+  - [x] Trial state for the daemon half in `state.json`
+  - [x] Failed start: reject, restore the backup when this launch wrote one, relaunch
+  - [x] Unit tests: healthy confirm, failure before migration, failure after migration
 
 **Files**
 
 - `apps/desktop/src/main/ota.ts` — daemon trial, reject, restore
 - `apps/desktop/src/main/ota.test.ts` — cases above
 - `apps/desktop/src/main/index.ts` — `connectDaemon`: report the outcome to `ota.ts`
+
+Scope change (implementation and review): the keeper reports a failed replacement (`{ kind: 'failed' }`, `onFailed`), and `connectDaemon` no longer starts again after one. `stopDaemon` waits for the stopped daemon's process to end (it keeps `daemon.lock` until then), up to 30 s; before, "Restart now" over a busy daemon made the new one exit as "already running", which would have rejected a good bundle. Every `state.json` change runs one at a time. `scripts/ota-local.ts --broken-daemon` serves a daemon that exits at once.
 
 **Done when:** a bundle whose daemon cannot start leaves the person on the previous bundle with their database as it was before that launch.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`.

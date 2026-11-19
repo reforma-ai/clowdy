@@ -71,7 +71,9 @@ export type KeeperOutcome =
     | { kind: 'fresh' }
     /** The daemon is stale but has runs in progress; a restart would interrupt them. */
     | { kind: 'busy'; pid: number; protocol: number; activeRuns: number | undefined }
-    | { kind: 'restarted'; info: DaemonInfo };
+    | { kind: 'restarted'; info: DaemonInfo }
+    /** Stopping the stale daemon or starting the new one failed. */
+    | { kind: 'failed'; error: unknown };
 
 /**
  * Replaces the running daemon with a new one when it is stale, but only when it says it has no active runs: a restart
@@ -101,6 +103,8 @@ export interface KeeperOptions {
     onRestarted: (info: DaemonInfo) => void;
     /** A stale daemon is busy. Called once per daemon process; `replaceNow` is the answer when the person wants it replaced anyway. */
     onBusy?: (busy: Extract<KeeperOutcome, { kind: 'busy' }>) => void;
+    /** A replacement failed: the old daemon did not stop, or the new one did not start. */
+    onFailed?: (error: unknown) => void;
     /** Folders whose changes make it look again: a development run's daemon sources. */
     dirs?: readonly string[];
     log?: (message: string) => void;
@@ -112,9 +116,9 @@ export interface KeeperOptions {
 
 export interface DaemonKeeper {
     /** Looks now, and settles with what it found when the look (and any restart it led to) is over. */
-    checkNow: () => Promise<KeeperOutcome | undefined>;
+    checkNow: () => Promise<KeeperOutcome>;
     /** Replaces a stale daemon even though it has runs in progress; they come back interrupted. */
-    replaceNow: () => Promise<KeeperOutcome | undefined>;
+    replaceNow: () => Promise<KeeperOutcome>;
     stop: () => void;
 }
 
@@ -122,9 +126,9 @@ export interface DaemonKeeper {
  * Keeps the running daemon the one the app wants: it looks once on demand and again after each change under `dirs`,
  * and a stale daemon that was busy is looked at again every few seconds until it is idle.
  */
-export function keepDaemonFresh({ context, isStale, onRestarted, onBusy, dirs = [], log = () => undefined, watch = fsWatch, debounceMs = DEBOUNCE_MS, busyRetryMs = BUSY_RETRY_MS }: KeeperOptions): DaemonKeeper {
+export function keepDaemonFresh({ context, isStale, onRestarted, onBusy, onFailed, dirs = [], log = () => undefined, watch = fsWatch, debounceMs = DEBOUNCE_MS, busyRetryMs = BUSY_RETRY_MS }: KeeperOptions): DaemonKeeper {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let current: Promise<KeeperOutcome | undefined> | undefined;
+    let current: Promise<KeeperOutcome> | undefined;
     let again = false;
     let force = false;
     let stopped = false;
@@ -137,7 +141,7 @@ export function keepDaemonFresh({ context, isStale, onRestarted, onBusy, dirs = 
         if (!stopped) timer = setTimeout(() => void checkNow(), ms);
     };
 
-    const look = async (): Promise<KeeperOutcome | undefined> => {
+    const look = async (): Promise<KeeperOutcome> => {
         const forced = force;
 
         force = false;
@@ -163,13 +167,14 @@ export function keepDaemonFresh({ context, isStale, onRestarted, onBusy, dirs = 
         }
         catch (error) {
             log(`Could not restart the daemon: ${ error instanceof Error ? error.message : String(error) }`);
+            onFailed?.(error);
 
-            return undefined;
+            return { kind: 'failed', error };
         }
     };
 
     // One look at a time; a change that arrives during one asks for another when it ends.
-    function checkNow(): Promise<KeeperOutcome | undefined> {
+    function checkNow(): Promise<KeeperOutcome> {
         if (current) {
             again = true;
 
@@ -177,7 +182,7 @@ export function keepDaemonFresh({ context, isStale, onRestarted, onBusy, dirs = 
         }
 
         current = (async () => {
-            let outcome: KeeperOutcome | undefined;
+            let outcome: KeeperOutcome;
 
             do {
                 again = false;

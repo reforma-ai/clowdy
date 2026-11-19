@@ -40,6 +40,8 @@ export interface DaemonHost {
     launch(launch: DaemonLaunch): Promise<DaemonExit>;
     /** Asks the daemon to shut down gracefully. Does not wait for it to end; a daemon that cannot be reached is taken as stopped. */
     stop(info: DaemonInfo): Promise<void>;
+    /** Whether the process `pid` still runs. */
+    alive(pid: number): boolean;
     /** The user's login-shell PATH, or `undefined` when it cannot be had. */
     loginPath(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): Promise<string | undefined>;
     sleep(ms: number): Promise<void>;
@@ -103,12 +105,25 @@ async function stop({ port, token, protocol }: DaemonInfo): Promise<void> {
     }).catch(() => undefined);
 }
 
+export function processAlive(pid: number): boolean {
+    try {
+        process.kill(pid, 0);
+
+        return true;
+    }
+    catch (error) {
+        // EPERM: the process exists but belongs to someone else.
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
+}
+
 export const nodeHost: DaemonHost = {
     readText: file => readFile(file, 'utf8').catch(() => undefined),
     readLogTail,
     probe: port => probeHealth(port, HEALTH_TIMEOUT_MS),
     launch,
     stop,
+    alive: processAlive,
     loginPath: loginShellPath,
     sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
     now: () => Date.now(),

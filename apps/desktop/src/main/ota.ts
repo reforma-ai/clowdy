@@ -7,9 +7,14 @@ import { gunzip } from 'node:zlib';
 
 import { renameWhenFree } from './bundle';
 import { MANIFEST_FILE, openManifest, RENDERER_DIR, rendererFiles, sha256, type BundleFiles, type BundleManifest } from './bundleManifest';
+import { daemonHoldsLock, restoreDatabase } from './daemonFiles';
 import { readTar, tarSize } from './tar';
 
 const READY_TIMEOUT_MS = 30_000;
+/** How far a backup's time may lag the launch's (a file system that keeps whole seconds) and still count as this launch's. */
+const CLOCK_SLACK_MS = 2000;
+/** How many bundles whose daemon came up healthy `state.json` remembers. */
+const PROVEN_KEPT = 10;
 const STATE_FILE = 'state.json';
 /** A real manifest is a few hundred KB. */
 const MANIFEST_LIMIT = 4_000_000;
@@ -34,19 +39,23 @@ export interface RunningBundle {
 /**
  * `current` is the installed bundle to run, `previous` the one to fall back to; null means the app's own copy.
  * `unconfirmed`: `current` has not called `ready()` since it took over. A rejected version is never installed again.
+ * `proven`: bundles whose daemon came up healthy once, so a later failure of theirs is no reason to go back.
  */
 interface OtaState {
     current: number | null;
     previous: number | null;
     unconfirmed: boolean;
     rejected: number[];
+    proven: number[];
 }
 
-const NO_STATE: OtaState = { current: null, previous: null, unconfirmed: false, rejected: [] };
+const NO_STATE: OtaState = { current: null, previous: null, unconfirmed: false, rejected: [], proven: [] };
 
 export interface OtaOptions {
     /** `updatesDir(dataDir)`: installed bundles in `bundles/<version>`, the choice in `state.json`. */
     updates: string;
+    /** The daemon's data folder: a bundle whose daemon fails its first start puts back the database it migrated there. */
+    dataDir: string;
     /** The app's own copy: the floor every choice falls back to. */
     own: RunningBundle;
     shellVersion: string;
@@ -93,16 +102,13 @@ export function createOta(options: OtaOptions) {
     /** The newest bundle installed during this run: it runs from the next launch. */
     let installedVersion: number | null = null;
     let readyTimer: ReturnType<typeof setTimeout> | undefined;
+    /** A backup written since then is this launch's. */
+    const launchedAt = Date.now();
+    let daemonFailure: Promise<boolean> | undefined;
     /** Installs and prunes touch the same folder, one at a time. */
-    let busy: Promise<unknown> = Promise.resolve();
-
-    const exclusive = <T>(work: () => Promise<T>): Promise<T> => {
-        const result = busy.then(work);
-
-        busy = result.catch(() => undefined);
-
-        return result;
-    };
+    const exclusive = oneAtATime();
+    /** `state.json` changes one at a time, each from what the one before left: the page's `ready()` and a daemon coming up meet at start. */
+    const stateTurn = oneAtATime();
 
     const enabled = Boolean(publicKey && feed);
 
@@ -144,7 +150,7 @@ export function createOta(options: OtaOptions) {
 
         onTrial = false;
         clearTimeout(readyTimer);
-        await writeState({ ...await readState(), unconfirmed: false });
+        await changeState(state => ({ ...state, unconfirmed: false }));
         check().catch((error: unknown) => log(`The update check failed: ${ errorText(error) }`));
     }
 
@@ -152,18 +158,64 @@ export function createOta(options: OtaOptions) {
         if (!onTrial) return;
 
         onTrial = false;
-
-        const state = await readState();
-
-        log(`Bundle ${ running.version } did not start; going back to ${ state.previous ?? 'the app\'s own copy' }.`);
-        // The previous bundle proves itself again; if it fails too, the app's own copy runs.
-        await writeState({
-            current: state.previous,
-            previous: null,
-            unconfirmed: state.previous !== null,
-            rejected: [...state.rejected, running.version],
-        });
+        await reject('did not start');
         options.relaunch();
+    }
+
+    /** Never runs the running bundle again; the next launch runs the one before it. */
+    function reject(reason: string): Promise<void> {
+        return changeState((state) => {
+            // Its page and its daemon both failed; the first failure already went back.
+            if (state.rejected.includes(running.version)) return state;
+
+            const back = running.version === state.current ? state.previous : null;
+
+            log(`Bundle ${ running.version } ${ reason }; going back to ${ back ?? 'the app\'s own copy' }.`);
+
+            // The previous bundle proves itself again; if it fails too, the app's own copy runs.
+            return { ...state, current: back, previous: null, unconfirmed: back !== null, rejected: [...state.rejected, running.version] };
+        });
+    }
+
+    /** A daemon came up healthy reporting `version`: when that is the running bundle, its daemon is proven. */
+    async function daemonUp(version: number | undefined): Promise<void> {
+        if (!running.dir || version !== running.version) return;
+
+        await changeState(state => (state.proven.includes(version) ? state : { ...state, proven: [...state.proven, version].slice(-PROVEN_KEPT) }));
+    }
+
+    /**
+     * The running bundle's daemon could not start, and none runs. On the first start of an installed bundle's daemon that
+     * rejects the bundle: the database it migrated in this launch comes back from the backup the migration wrote, and the
+     * app relaunches on the previous bundle. Resolves true when it relaunches. A bundle whose daemon came up healthy once
+     * fixes forward instead.
+     */
+    function daemonFailed(): Promise<boolean> {
+        daemonFailure ??= (async () => {
+            if (!running.dir || (await readState()).proven.includes(running.version)) return false;
+
+            onTrial = false;
+            clearTimeout(readyTimer);
+
+            // A daemon stuck in its migration still holds the database; it is left alone.
+            if (!await daemonHoldsLock(options.dataDir)) {
+                // The bundle goes all the same: its daemon did not start either way.
+                const restored = await restoreDatabase(options.dataDir, launchedAt - CLOCK_SLACK_MS).catch((error: unknown) => {
+                    log(`Could not put back the database the daemon of bundle ${ running.version } migrated: ${ errorText(error) }`);
+
+                    return undefined;
+                });
+
+                if (restored) log(`Put back ${ restored }, which the daemon of bundle ${ running.version } migrated.`);
+            }
+
+            await reject('could not start its daemon');
+            options.relaunch();
+
+            return true;
+        })();
+
+        return daemonFailure;
     }
 
     /**
@@ -205,7 +257,7 @@ export function createOta(options: OtaOptions) {
         // The state switches in the same turn as the install, so a prune never sees the new folder without the state that keeps it.
         await exclusive(async () => {
             await install(manifest, signed);
-            await writeState({ ...await readState(), current: manifest.version, previous, unconfirmed: true });
+            await changeState(state => ({ ...state, current: manifest.version, previous, unconfirmed: true }));
         });
         installedVersion = manifest.version;
         log(`Installed bundle ${ manifest.version }; it runs from the next launch.`);
@@ -339,6 +391,7 @@ export function createOta(options: OtaOptions) {
                 previous: version(state.previous),
                 unconfirmed: state.unconfirmed === true,
                 rejected: Array.isArray(state.rejected) ? state.rejected.filter(Number.isSafeInteger) : [],
+                proven: Array.isArray(state.proven) ? state.proven.filter(Number.isSafeInteger) : [],
             };
         }
         catch {
@@ -346,13 +399,20 @@ export function createOta(options: OtaOptions) {
         }
     }
 
-    /** One rename switches the choice, so a crash leaves the old state or the new one. */
-    async function writeState(state: OtaState): Promise<void> {
-        const file = path.join(updates, STATE_FILE);
+    /** Writes what `change` makes of the state; one rename switches it, so a crash leaves the old state or the new one. */
+    function changeState(change: (state: OtaState) => OtaState): Promise<void> {
+        return stateTurn(async () => {
+            const state = await readState();
+            const next = change(state);
 
-        await mkdir(updates, { recursive: true });
-        await writeFile(`${ file }.tmp`, JSON.stringify(state));
-        await rename(`${ file }.tmp`, file);
+            if (next === state) return;
+
+            const file = path.join(updates, STATE_FILE);
+
+            await mkdir(updates, { recursive: true });
+            await writeFile(`${ file }.tmp`, JSON.stringify(next));
+            await rename(`${ file }.tmp`, file);
+        });
     }
 
     /** Restarts into the installed bundle; nothing installed, nothing happens. */
@@ -360,7 +420,20 @@ export function createOta(options: OtaOptions) {
         if (installedVersion !== null) options.relaunch();
     }
 
-    return { enabled, choose, watchReady, ready, check, prune, restart, pending: () => installedVersion };
+    return { enabled, choose, watchReady, ready, daemonUp, daemonFailed, check, prune, restart, pending: () => installedVersion };
+}
+
+/** Runs each piece of work it is given once the one before has settled. */
+function oneAtATime() {
+    let last: Promise<unknown> = Promise.resolve();
+
+    return <T>(work: () => Promise<T>): Promise<T> => {
+        const result = last.then(work);
+
+        last = result.catch(() => undefined);
+
+        return result;
+    };
 }
 
 /** The body, refused past `limit` bytes, so a hostile host cannot exhaust memory with an endless one. */
