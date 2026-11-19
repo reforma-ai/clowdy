@@ -72,7 +72,7 @@ export function SettingsPage({ title, description, actions, layers = [], onNavig
 function PageBody({ description, children }: { description: ReactNode; children: ReactNode }) {
     return (
         <ContentColumn className={ styles.body }>
-            { description && <div className={ styles.intro }><Text color="secondary">{ description }</Text></div> }
+            { description && <div className={ styles.intro }><Text color="secondary" className={ styles.description }>{ description }</Text></div> }
             { children }
         </ContentColumn>
     );

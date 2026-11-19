@@ -49,3 +49,12 @@
     padding-bottom: var(--spacing-xl);
     border-bottom: 1px solid var(--color-secondary-muted-border);
 }
+
+/*
+ * What the page is for stops well short of the column's right edge, so it never runs under the page's action in the title line (a small
+ * button) and its lines stay short enough to read. The hairline under it still spans the column.
+ */
+.description {
+    display: block;
+    max-width: 34rem;
+}
