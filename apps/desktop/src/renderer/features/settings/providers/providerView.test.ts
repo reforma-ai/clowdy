@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { accountLine, formatEnv, headlineWindow, isSignInRunning, isUsableProvider, parseEnv, providerAgents, usageTone, windowPercent } from './providerView';
+import { accountLine, formatEnv, headlineWindow, isSignInRunning, isUsableProvider, parseEnv, providerAgents, scopedHotWindow, usageTone, weeklyMark, windowPercent } from './providerView';
 
 import type { AgentInfo, AgentUsage, AgentUsageWindow } from '@clowdy/protocol';
 
@@ -97,6 +97,48 @@ describe('headlineWindow', () => {
         expect(headlineWindow(agent({ usage: usage([]) }))).toBeUndefined();
         expect(headlineWindow(agent({ usage: usage(windows), signIn: { status: 'signed-out', checkedAt: 1 } }))).toBeUndefined();
         expect(headlineWindow(agent({ usage: usage(windows), signIn: { status: 'signed-in', checkedAt: 1 } }))?.id).toBe('session');
+    });
+});
+
+describe('weeklyMark', () => {
+    const claude = (windows: AgentUsageWindow[]) => agent({ usage: usage(windows), signIn: { status: 'signed-in', checkedAt: 1 } });
+
+    it('is the second plan window from 60% used, once it is ahead of the nearest one', () => {
+        expect(weeklyMark(claude([meter('session', 8), meter('weekly', 78)]))?.id).toBe('weekly');
+        expect(weeklyMark(claude([meter('session', 8), meter('weekly', 60)]))?.id).toBe('weekly');
+        expect(weeklyMark(agent({ id: 'codex', usage: usage([meter('codex:primary', 12), meter('codex:secondary', 60)]), signIn: { status: 'signed-in', checkedAt: 1 } }))?.id).toBe('codex:secondary');
+    });
+
+    it('stays off while the week is quiet, behind the session, or the only window', () => {
+        expect(weeklyMark(claude([meter('session', 8), meter('weekly', 59)]))).toBeUndefined();
+        expect(weeklyMark(claude([meter('session', 60), meter('weekly', 60)]))).toBeUndefined();
+        expect(weeklyMark(claude([meter('session', 80), meter('weekly', 70)]))).toBeUndefined();
+        expect(weeklyMark(claude([meter('weekly', 90)]))).toBeUndefined();
+        expect(weeklyMark(claude([meter('session', 8), meter('on-demand', 90)]))).toBeUndefined();
+    });
+
+    it('leaves out a scoped window and an untrusted reading', () => {
+        expect(weeklyMark(claude([meter('session', 8), meter('weekly:fable', 99)]))).toBeUndefined();
+        expect(weeklyMark(agent({ usage: usage([meter('session', 8), meter('weekly', 80)], 'error') }))).toBeUndefined();
+        expect(weeklyMark(agent({ usage: usage([meter('session', 8), meter('weekly', 80)]), signIn: { status: 'signed-out', checkedAt: 1 } }))).toBeUndefined();
+    });
+});
+
+describe('scopedHotWindow', () => {
+    const claude = (windows: AgentUsageWindow[]) => agent({ usage: usage(windows), signIn: { status: 'signed-in', checkedAt: 1 } });
+
+    it('is the fullest model limit at 90% or more, while the plan is not there yet', () => {
+        expect(scopedHotWindow(claude([meter('session', 8), meter('weekly', 78), meter('weekly:fable', 99)]))?.id).toBe('weekly:fable');
+        expect(scopedHotWindow(claude([meter('weekly:fable', 99)]))?.id).toBe('weekly:fable');
+        expect(scopedHotWindow(agent({ id: 'codex', usage: usage([meter('codex:primary', 12), meter('spark:secondary', 99)]), signIn: { status: 'signed-in', checkedAt: 1 } }))?.id).toBe('spark:secondary');
+        expect(scopedHotWindow(claude([meter('weekly:fable', 92), meter('weekly:opus', 99)]))?.id).toBe('weekly:opus');
+    });
+
+    it('stays off when a plan window is already at the danger tone, or the model limit is not', () => {
+        expect(scopedHotWindow(claude([meter('session', 8), meter('weekly', 90), meter('weekly:fable', 99)]))).toBeUndefined();
+        expect(scopedHotWindow(claude([meter('session', 90), meter('weekly:fable', 99)]))).toBeUndefined();
+        expect(scopedHotWindow(claude([meter('session', 8), meter('weekly:fable', 89)]))).toBeUndefined();
+        expect(scopedHotWindow(claude([meter('session', 8), meter('on-demand', 99)]))).toBeUndefined();
     });
 });
 
