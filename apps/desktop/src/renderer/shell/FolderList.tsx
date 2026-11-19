@@ -16,8 +16,10 @@ export interface FolderListProps<T> {
     getPath: (item: T) => string;
     /** The short name `folderNames` gives it among the folders: the row's title, and what a screen reader hears while it is dragged. */
     getName: (item: T) => string;
-    /** Lines under a folder's path: its remote, a warning. */
+    /** Lines under a folder's path: a warning. */
     renderDetails?: (item: T) => ReactNode;
+    /** Buttons at the end of a folder's row, before Remove: Open in GitHub. */
+    renderActions?: (item: T) => ReactNode;
     /**
      * Takes the folder out, and says whether it went: a promise for a change the daemon makes. Once the row is gone the focus moves to the
      * folder in its place, else the one above, else to what adds folders, so it does not fall out of the page. Absent: no row has Remove.
@@ -38,7 +40,7 @@ export interface FolderListProps<T> {
  * another order by the whole row (a grip outside its edge would stick out of the card) and removed one by one, and Add folders… across the
  * bottom of the card.
  */
-export function FolderList<T>({ items, getKey, getPath, getName, renderDetails, onRemove, isRemoveDisabled, onReorder, canDrop, onAdd, empty }: FolderListProps<T>) {
+export function FolderList<T>({ items, getKey, getPath, getName, renderDetails, renderActions, onRemove, isRemoveDisabled, onReorder, canDrop, onAdd, empty }: FolderListProps<T>) {
     const card = useRef<HTMLDivElement>(null);
     // The place of a removed row, where the focus goes once the row is gone.
     const removedAt = useRef<number | null>(null);
@@ -71,6 +73,7 @@ export function FolderList<T>({ items, getKey, getPath, getName, renderDetails, 
             isMain={ index === 0 && (onAdd !== undefined || items.length > 1) }
             onRemove={ remove && (() => remove(item, index)) }
             isRemoveDisabled={ isRemoveDisabled?.(item) }
+            actions={ renderActions?.(item) }
         >
             { renderDetails?.(item) }
         </FolderRow>
@@ -95,7 +98,7 @@ export function FolderList<T>({ items, getKey, getPath, getName, renderDetails, 
         : <div className={ styles.rows }>{ items.map((item, index) => <div key={ getKey(item) }>{ row(item, index) }</div>) }</div>;
 
     return (
-        <Card ref={ card } variant="filled" size="lg" padding="md" gap="sm">
+        <Card ref={ card } variant="filled" size="lg" padding="md" gap="sm" className={ styles.card }>
             { items.length > 0 ? rows : empty && <Text variant="sm" color="secondary" align="center" className={ styles.empty }>{ empty }</Text> }
             { onAdd && <FolderAdder onAdd={ onAdd } /> }
         </Card>

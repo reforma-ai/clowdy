@@ -1,3 +1,8 @@
+/* Rounder than the rows inside by the room around them, so the corners run alongside each other. */
+.card {
+    --clowdy-card-radius: calc(var(--radius-xl) + var(--spacing-md));
+}
+
 /* The list has no grip: a row is what the person takes to drag it. */
 .sortable [data-folder-path] {
     cursor: grab;
