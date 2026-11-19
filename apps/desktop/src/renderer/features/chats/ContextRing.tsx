@@ -82,7 +82,7 @@ function Ring({ fill }: { fill: ContextFill }) {
 interface PanelProps {
     chat: Chat;
     fill: ContextFill;
-    /** The orchestrator has not finished: Compact joins the chat's queue and runs once it has. */
+    /** The orchestrator has not finished: Compact joins the chat's queue and runs once it has, unless the queue is held. */
     running: boolean;
     canCompact: boolean;
 }
@@ -127,8 +127,11 @@ function ContextPanel({ chat, fill, running, canCompact }: PanelProps) {
                         </Button>
                     </Unavailable>
 
+                    { /* A held queue (after a Stop or a failure) gives nothing by itself when the agent finishes: the person sends from it. */ }
                     <Show when={ running && !queued }>
-                        <Text variant="xs" color="secondary" align="center">Waits in the queue until the agent finishes.</Text>
+                        <Text variant="xs" color="secondary" align="center">
+                            { chat.queuePaused ? 'Joins the paused queue. Use Send now on it once the agent finishes.' : 'Waits in the queue until the agent finishes' }
+                        </Text>
                     </Show>
                 </div>
             </Show>

@@ -393,7 +393,7 @@ describe('Compact', () => {
     });
 
     describe('while the orchestrator works', () => {
-        const caption = 'Waits in the queue until the agent finishes.';
+        const caption = 'Waits in the queue until the agent finishes';
 
         it.each(ACTIVE_RUN_STATUSES)('is on when the run is %s, and says it waits in the queue until the agent finishes', async (status) => {
             const chat = chatOn();
@@ -410,6 +410,15 @@ describe('Compact', () => {
 
             expect(sent).toEqual([{ type: 'chat.compact', chatId: chat.id }]);
             expect(dialog()).toBeNull();
+        });
+
+        it('says a held queue does not send it by itself: the person sends it from there', async () => {
+            await mount({ chat: chatOn({ queuePaused: 'stopped', queue: [{ id: 'q-1', mode: 'queue', text: 'Later', content: 'Later', createdAt: 0 }] }), run: runOf({ status: 'running' }) });
+            await openRing();
+
+            expect(compactButton()!.disabled).toBe(false);
+            expect(dialog()!.textContent).not.toContain(caption);
+            expect(dialog()!.textContent).toContain('Joins the paused queue. Use Send now on it once the agent finishes.');
         });
 
         it('says nothing of the queue once the orchestrator has finished', async () => {

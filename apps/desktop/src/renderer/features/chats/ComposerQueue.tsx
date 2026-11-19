@@ -64,6 +64,9 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
 
     if (items.length === 0) return null;
 
+    // A compact item cannot steer, so its Send now waits for an orchestrator that has finished; a held queue gives it nothing by itself even then.
+    const compactWaits = running ? (chat.queuePaused ? 'Send it once the agent finishes' : 'Runs when the agent finishes') : undefined;
+
     const reorder = async (next: QueuedMessage[], moved: QueuedMessage) => {
         const base = queue ?? [];
 
@@ -125,7 +128,7 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
                             label={ queuedLabel(item) }
                             isFirst={ isFirst }
                             sending={ sending.has(item.id) }
-                            running={ running }
+                            waits={ compactWaits }
                             onSendNow={ () => void sendNow(item) }
                             onRemove={ () => remove(item) }
                         />
@@ -231,13 +234,14 @@ interface CompactRowProps {
     isFirst: boolean;
     /** Its Send now is with the daemon. */
     sending: boolean;
-    running: boolean;
+    /** Why Send now is off while the orchestrator has not finished: when the item will go. None once it can go now. */
+    waits: string | undefined;
     onSendNow: () => void;
     onRemove: () => void;
 }
 
 /** A compact item: what it does, Send now once the orchestrator has finished (it cannot steer a turn), and Remove; there are no words to edit. */
-function CompactRow({ label, isFirst, sending, running, onSendNow, onRemove }: CompactRowProps) {
+function CompactRow({ label, isFirst, sending, waits, onSendNow, onRemove }: CompactRowProps) {
     return (
         <div className={ styles.item } data-first={ isFirst || undefined }>
             <div className={ styles.preview } data-command>
@@ -248,8 +252,8 @@ function CompactRow({ label, isFirst, sending, running, onSendNow, onRemove }: C
             </div>
 
             <Box direction="row" className={ styles.actions }>
-                <Unavailable label="Send now" hint={ running ? 'Runs when the agent finishes' : undefined }>
-                    <Button size="xs" variant="filling" color="secondary" isDisabled={ running } isPending={ sending } onPress={ onSendNow }>
+                <Unavailable label="Send now" hint={ waits }>
+                    <Button size="xs" variant="filling" color="secondary" isDisabled={ waits !== undefined } isPending={ sending } onPress={ onSendNow }>
                         Send now
                     </Button>
                 </Unavailable>

@@ -151,15 +151,34 @@ describe('the queue in the composer', () => {
             expect(sent).toEqual([{ type: 'chat.removeQueued', chatId: chat.id, itemId: 'q-c' }]);
         });
 
+        /** The hint of the stand-in of a Send now that is off, as its tooltip shows it on focus. */
+        async function sendNowHint() {
+            await act(async () => {
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+                compactRow().querySelector<HTMLElement>('[role="button"][aria-disabled]')!.focus();
+            });
+            await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+
+            return document.querySelector('[role="tooltip"]')?.textContent;
+        }
+
         it.each(['running', 'waiting_children'] as const)('cannot be sent now while the orchestrator is %s, and says when it runs', async (status) => {
             await mount(chatWith([compact]), status);
 
             expect(sendNow().disabled).toBe(true);
             expect(compactRow().querySelector('[role="button"][aria-disabled]')?.getAttribute('aria-label')).toBe('Send now');
+            expect(await sendNowHint()).toBe('Runs when the agent finishes');
 
             await act(async () => sendNow().click());
 
             expect(sent).toEqual([]);
+        });
+
+        it('in a held queue, says it is sent by hand once the orchestrator has finished', async () => {
+            await mount(chatWith([compact], { queuePaused: 'stopped' }), 'running');
+
+            expect(sendNow().disabled).toBe(true);
+            expect(await sendNowHint()).toBe('Send it once the agent finishes');
         });
 
         it('is sent now from a held queue once the orchestrator has finished', async () => {
