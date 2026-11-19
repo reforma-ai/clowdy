@@ -39,5 +39,7 @@ jobs:
         # A failed or cancelled gate must fail this job too, not skip it.
         if: always()
         runs-on: ubuntu-latest
+        env:
+            RESULT: ${{ needs.gate.result }}
         steps:
-            - run: test "${{ needs.gate.result }}" = success
+            - run: test "$RESULT" = success

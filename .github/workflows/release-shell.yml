@@ -31,10 +31,10 @@ jobs:
             decision: ${{ steps.decide.outputs.decision }}
         steps:
             # History for the version before the push.
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
               with:
                   fetch-depth: 0
-            - uses: oven-sh/setup-bun@v2
+            - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
               with:
                   bun-version-file: package.json
             - run: bun install --frozen-lockfile
@@ -52,14 +52,14 @@ jobs:
         runs-on: macos-latest
         steps:
             # Full history: the bundle version counts first-parent commits.
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
               with:
                   fetch-depth: 0
             # Vite and electron-builder run on the runner's Node.
-            - uses: actions/setup-node@v5
+            - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
               with:
                   node-version: ${{ env.NODE_VERSION }}
-            - uses: oven-sh/setup-bun@v2
+            - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
               with:
                   bun-version-file: package.json
             - run: bun install --frozen-lockfile
@@ -149,7 +149,7 @@ jobs:
                           xcrun stapler validate "$dmg"
                       done
                   fi
-            - uses: actions/upload-artifact@v4
+            - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: shell-macos
                   if-no-files-found: error
@@ -166,13 +166,13 @@ jobs:
         if: needs.decide.outputs.decision == 'build'
         runs-on: windows-latest
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
               with:
                   fetch-depth: 0
-            - uses: actions/setup-node@v5
+            - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
               with:
                   node-version: ${{ env.NODE_VERSION }}
-            - uses: oven-sh/setup-bun@v2
+            - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
               with:
                   bun-version-file: package.json
             - run: bun install --frozen-lockfile
@@ -191,7 +191,7 @@ jobs:
               working-directory: apps/desktop
               env:
                   CLOWDY_RELEASE_REPO: ${{ github.repository }}
-            - uses: actions/upload-artifact@v4
+            - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: shell-windows
                   if-no-files-found: error
@@ -208,13 +208,13 @@ jobs:
         permissions:
             contents: write
         steps:
-            - uses: actions/checkout@v5
-            - uses: oven-sh/setup-bun@v2
+            - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+            - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
               with:
                   bun-version-file: package.json
             - run: bun install --frozen-lockfile
             # Every build job's artifact, in one folder.
-            - uses: actions/download-artifact@v4
+            - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
               with:
                   pattern: shell-*
                   merge-multiple: true
