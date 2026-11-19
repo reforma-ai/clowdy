@@ -1,4 +1,4 @@
-import { PROTOCOL_HEADER, PROTOCOL_VERSION, ROUTES, type DaemonInfo, type Health } from '@clowdy/protocol';
+import { PROTOCOL_HEADER, ROUTES, type DaemonInfo, type Health } from '@clowdy/protocol';
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, writeSync } from 'node:fs';
 import { open, readFile } from 'node:fs/promises';
@@ -91,10 +91,14 @@ function launch({ bun, entry, cwd, env, logPath }: DaemonLaunch): Promise<Daemon
     }
 }
 
-async function stop({ port, token }: DaemonInfo): Promise<void> {
+/**
+ * The daemon's own protocol in the header, not this app's: the daemon refuses another major, and the one being stopped is
+ * often one an update left behind, on the protocol before.
+ */
+async function stop({ port, token, protocol }: DaemonInfo): Promise<void> {
     await fetch(`http://127.0.0.1:${ port }${ ROUTES.shutdown }`, {
         method: 'POST',
-        headers: { authorization: `Bearer ${ token }`, [PROTOCOL_HEADER]: String(PROTOCOL_VERSION) },
+        headers: { authorization: `Bearer ${ token }`, [PROTOCOL_HEADER]: String(protocol) },
         signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS * 5),
     }).catch(() => undefined);
 }
