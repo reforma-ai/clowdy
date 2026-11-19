@@ -38,6 +38,9 @@ const chatTitleSetting = (agent: string): AgentSettingSpec => ({
     default: true,
 });
 
+/** The ACP version a layer of the engine speaks to an agent (`layer.ts`). */
+export type AgentProtocol = 'v1' | 'v2';
+
 /** A built-in agent: what finds it, how it starts, and what to tell the user about it. */
 export interface AgentSpec {
     id: string;
@@ -66,6 +69,8 @@ export interface AgentSpec {
     clientMeta?: Record<string, unknown>;
     /** The message that makes the agent compact its conversation (verified: both report it as a "Compact conversation" tool call and a smaller context). Absent when it has none. */
     compact?: string;
+    /** The ACP version the engine speaks to the agent: `v1` unless set. */
+    protocol?: AgentProtocol;
 }
 
 /**
