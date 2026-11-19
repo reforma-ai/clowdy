@@ -1,7 +1,7 @@
-import { cn, mergeRefs } from '@clowdy/lib';
-import { useMemo } from 'react';
+import { cn } from '@clowdy/lib';
 import { mergeProps } from 'react-aria';
 
+import { useMergedRef } from '../hooks/useMergedRef';
 import styles from './Scrollable.module.css';
 
 import type { HTMLAttributes, ReactNode, Ref } from 'react';
@@ -33,12 +33,8 @@ export function ScrollChromeRoot({
     const isVerticalEnabled = vertical ?? true;
     const isHorizontalEnabled = horizontal ?? false;
 
-    // mergeRefs() returns a new callback every call — memoize so React does not
-    // detach/reattach (e.g. motion mid-animation) on every parent render.
-    const rootMergedRef = useMemo(
-        () => mergeRefs(rootRef, userRef),
-        [rootRef, userRef]
-    );
+    // A new callback ref on every render would detach/reattach the node (e.g. motion mid-animation).
+    const rootMergedRef = useMergedRef(rootRef, userRef);
 
     return (
         <div

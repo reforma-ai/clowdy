@@ -86,7 +86,7 @@ Examples: `max/feat/auth-token-refresh`, `max/fix`, `max/chore/update-dependenci
 
 ## Worktrees
 
-A day of related work stays on one branch. Commit each slice there. At merge those commits are rebased onto `main`, so they read as one sequence.
+A day of related work stays on one branch. Commit each slice there. At merge the branch lands on `main` as one merge commit, with its own commits, and their signatures, kept as they are.
 
 Open a worktree when the work should not share that branch: a parallel unrelated task, or a separate chunk large enough to need its own checkout. The agent decides. A small edit on the current task stays in the current tree.
 
@@ -104,7 +104,13 @@ A branch can be checked out in only one worktree. Do not switch another checkout
 ## Pull Requests
 
 - One PR is one logical change, with a description.
-- There is no CI on pull requests yet. Before you merge, run the checks for what you changed:
+- CI (`.github/workflows/ci.yml`) runs on a PR into `main` that changes code, not on one that only changes documents, and not on a PR into another branch. It tests the result of merging the PR into `main`: build, lint, typecheck and test of every package, then lint and typecheck of the root `scripts/` (`gate.yml`, Linux). Its `ci-ok` check is the one to look at: `gh pr checks <n>`. A PR with no `ci-ok` is a documents-only PR: there is nothing to wait for.
+- Nothing runs again after the merge. A push to `main` does not run CI; the OTA bundle of a merge is published as before (Releases).
+- GitHub cannot make a check required on a private repository of a free plan, so nothing stops a merge. Merge only when `ci-ok` is green.
+- Merge with a merge commit: `gh pr merge <n> --merge`. The branch does not have to be rebased first: CI already ran on its merge with `main`, and a merge commit has fewer conflicts to settle. Do not rebase-merge or squash: both drop the signatures of the branch's commits.
+- Direct pushes to `main` are not part of the flow.
+
+Before you push, run the same checks for what you changed (the whole gate is what CI runs):
 
 ```
 bunx turbo run build lint typecheck test --affected

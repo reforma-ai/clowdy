@@ -110,7 +110,7 @@ async function gitOk(repoRoot: string, args: string[]): Promise<boolean> {
 
 async function gitResult(
     repoRoot: string,
-    args: string[],
+    args: string[]
 ): Promise<{ code: number, stdout: string, stderr: string }> {
     const child = Bun.spawn(['git', ...args], {
         cwd: repoRoot,

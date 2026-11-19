@@ -72,7 +72,9 @@ describe('parseColorValue', () => {
 
         expect(parsed.color?.toString('hex')).toBe('#000000');
         expect(parsed.alpha).toBe(16);
-        expect(serializeColorInputValue(parsed.color, parsed.alpha, 'css')).toBe('rgba(0, 0, 0, 0.16)');
+        // The `css` format writes hex, with the alpha as two more digits only when it is not opaque.
+        expect(serializeColorInputValue(parsed.color, parsed.alpha, 'css')).toBe('#00000029');
+        expect(serializeColorInputValue(parsed.color, 100, 'css')).toBe('#000000');
     });
 
     it.each([

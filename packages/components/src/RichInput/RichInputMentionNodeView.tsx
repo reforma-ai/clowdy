@@ -5,9 +5,13 @@ import { use, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 
 import { defaultRenderMention, mentionAttrsFromNode, RichInputMentionContext } from './mentionRender';
 
-/** TipTap host for consumer mention UI (via {@link RichInputMentionContext}). */
+/**
+ * TipTap host for consumer mention UI (via {@link RichInputMentionContext}).
+ * The context holds a render function, not a component: it is called here, and `RichInput` makes
+ * it create the element of the host's `renderMention`, so that component keeps its own hooks.
+ */
 export function RichInputMentionNodeView({ node, deleteNode }: NodeViewProps): ReactNode {
-    const RenderMention = use(RichInputMentionContext) ?? defaultRenderMention;
+    const renderMention = use(RichInputMentionContext) ?? defaultRenderMention;
     const mention = mentionAttrsFromNode(node.attrs);
 
     return (
@@ -17,7 +21,7 @@ export function RichInputMentionNodeView({ node, deleteNode }: NodeViewProps): R
             onPointerDown={ (event: PointerEvent) => event.stopPropagation() }
             onClick={ (event: MouseEvent) => event.stopPropagation() }
         >
-            <RenderMention mention={ mention } deleteNode={ deleteNode } />
+            { renderMention({ mention, deleteNode }) }
         </NodeViewWrapper>
     );
 }

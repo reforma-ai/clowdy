@@ -1,9 +1,10 @@
-import { cn, mergeRefs } from '@clowdy/lib';
+import { cn } from '@clowdy/lib';
 import { useRunner } from '@clowdy/lib/useRunner';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Provider } from 'react-aria-components';
 
 import { Box } from '../../Box';
+import { useMergedRef } from '../../hooks/useMergedRef';
 import { Input } from '../../Input';
 import { Show } from '../../Show';
 import { DEFAULT_SLOT, filterSlots, SlotContext } from '../../Slot';
@@ -63,7 +64,7 @@ export function HexColorEditor({
     const [alphaValue, setAlphaValue] = useState(() => String(parsed.alpha));
     const hexInputRef = useRef<HTMLInputElement | null>(null);
     const alphaFieldRef = useRef<HTMLDivElement | null>(null);
-    const mergedInputRef = useMemo(() => mergeRefs(hexInputRef, inputRef), [inputRef]);
+    const mergedInputRef = useMergedRef(hexInputRef, inputRef);
 
     useEffect(() => {
         setInputValue(colorToHexInput(parsed.color));

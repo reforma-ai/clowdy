@@ -77,6 +77,8 @@ describe('shouldYieldRichInputAutofocus', () => {
             const own = document.createElement('div');
             const frame = document.createElement('iframe');
 
+            // happy-dom loads no iframe page, so a frame has no `contentDocument`; `srcdoc` gives it a document of its own without a page load.
+            frame.setAttribute('srcdoc', '<body></body>');
             document.body.append(own, frame);
 
             const area = frame.contentDocument!.createElement('textarea');
