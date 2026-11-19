@@ -25,7 +25,7 @@ export function ChatPage() {
         <SettingsPage title="Chat" description="Choose how chats look and behave">
             <SettingsSection title="Messages">
                 <SettingsCard>
-                    <SettingsRow title={ LABEL } stacked>
+                    <SettingsRow title={ LABEL } description="Steer it into the current turn, or queue it for the next one">
                         <ToggleButtonGroup
                             aria-label={ LABEL }
                             size="sm"
