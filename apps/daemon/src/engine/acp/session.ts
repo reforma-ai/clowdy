@@ -51,6 +51,8 @@ export interface SessionDeps {
     titleWaitMs?: number;
     /** How long a session with nothing open waits for the agent to begin a turn before it ends (`BACKGROUND_HANDOFF_MS`, two seconds by default). */
     backgroundHandoffMs?: number;
+    /** The same when the agent owes the report of work that just ended (`BACKGROUND_REPORT_MS`, twenty seconds by default; `backgroundHandoffMs` when only that is set). */
+    backgroundReportMs?: number;
     log?: (line: string) => void;
 }
 
@@ -319,6 +321,8 @@ export class AcpSession implements EngineSession {
             }
 
             stopping = true;
+            // The agent may leave by itself as soon as its input closes, and what it started in groups of their own would then belong to nobody.
+            proc.watch();
 
             void layer.cancel().then(() => {
                 proc.child.stdin?.end();

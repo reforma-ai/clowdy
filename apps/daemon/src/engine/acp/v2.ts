@@ -5,7 +5,7 @@ import { errorMessage } from '../../errors';
 import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
 import { applyChoices, isResumeWarning, keepTitle, prefaceOf, stopFailure } from './conversation';
 import { classifyThrown, failureEvent, processEnded } from './failure';
-import { BACKGROUND_HANDOFF_MS } from './layer';
+import { BACKGROUND_HANDOFF_MS, BACKGROUND_REPORT_MS } from './layer';
 import { UpdateMapperV2 } from './mapper-v2';
 import { Turns } from './turns';
 
@@ -44,6 +44,8 @@ interface Course {
     held: boolean;
     /** A `done` has been said: from then on the session may be wound up when nothing is open. */
     delivered: boolean;
+    /** The last background work ended while no turn ran, and no turn has begun since: the agent owes the report of it, which begins only when its first output arrives. */
+    owed: boolean;
     /** What the turns of the activity under way used, summed: it goes out once, in front of their `done`. */
     tokens?: Tokens;
     /** The background work as the runtime was last told. */
@@ -234,14 +236,21 @@ export class V2Layer implements ProtocolLayer {
         }
     }
 
-    /** Starts the timer `which` unless it runs already. */
-    private arm(which: Wake): void {
+    /** How long a session with nothing open waits before it ends: the long wait for a report that is owed, the short guard after a turn of its own. */
+    private guard(course: Course): number {
+        const { backgroundHandoffMs, backgroundReportMs } = this.host.deps;
+
+        return course.owed ? backgroundReportMs ?? backgroundHandoffMs ?? BACKGROUND_REPORT_MS : backgroundHandoffMs ?? BACKGROUND_HANDOFF_MS;
+    }
+
+    /** Starts the timer `which` for `ms` unless it runs already. */
+    private arm(which: Wake, ms: number): void {
         if (this.timers[which] || this.finished) {
             return;
         }
 
         const id = ++this.timerCount;
-        const handle = setTimeout(() => this.channel.push({ kind: 'timer', which, id }), this.host.deps.backgroundHandoffMs ?? BACKGROUND_HANDOFF_MS);
+        const handle = setTimeout(() => this.channel.push({ kind: 'timer', which, id }), ms);
 
         handle.unref();
         this.timers[which] = { id, handle };
@@ -453,7 +462,7 @@ export class V2Layer implements ProtocolLayer {
      * cancelled, the process left, or nothing has been open for the length of the handoff guard.
      */
     private async *converse(id: string, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent> {
-        const course: Course = { working: false, held: false, delivered: false, items: [], listed: [] };
+        const course: Course = { working: false, held: false, delivered: false, owed: false, items: [], listed: [] };
 
         for (;;) {
             const item = await this.channel.next();
@@ -468,7 +477,7 @@ export class V2Layer implements ProtocolLayer {
 
             // Nothing is open and no turn runs: the session is wound up, unless the agent starts a turn within the guard.
             if (this.quiet(course)) {
-                this.arm('handoff');
+                this.arm('handoff', this.guard(course));
             }
             else {
                 this.disarm('handoff');
@@ -568,6 +577,8 @@ export class V2Layer implements ProtocolLayer {
         }
 
         course.working = true;
+        // A turn that answers a message sent into the session is not the report that is owed: that one may still come.
+        course.owed &&= this.turns.sending;
         this.turns.begin();
         this.open = true;
         this.host.promptIs('running');
@@ -581,6 +592,8 @@ export class V2Layer implements ProtocolLayer {
         const items = mapper.background(course.listed);
 
         if (JSON.stringify(items) !== JSON.stringify(course.items)) {
+            // The last work ended between turns: Claude Code reports it with a turn of its own.
+            course.owed ||= course.items.length > 0 && items.length === 0 && !course.working;
             course.items = items;
 
             yield { type: 'background', items };
@@ -629,7 +642,7 @@ export class V2Layer implements ProtocolLayer {
             // A message that landed in a turn that says no more may have been folded into it: the agent gets the guard to begin the turn that answers it.
             if (landed) {
                 mapper.expectRepeat();
-                this.arm('release');
+                this.arm('release', this.host.deps.backgroundHandoffMs ?? BACKGROUND_HANDOFF_MS);
             }
 
             return false;

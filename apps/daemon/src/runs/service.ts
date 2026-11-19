@@ -446,6 +446,11 @@ export class RunService {
             throw new Error('Another question is waiting for the user. Ask one question at a time and wait for its answer.');
         }
 
+        // A turn the agent starts by itself while the run waits has no way to park the run for an answer (neither wait leads to `waiting_user`).
+        if (['waiting_background', 'waiting_children'].includes(this.require(runId).status)) {
+            throw new Error('Can\'t ask a question while the run waits for background work or child runs');
+        }
+
         const questionId = newId('qst');
 
         this.asking.add(runId);

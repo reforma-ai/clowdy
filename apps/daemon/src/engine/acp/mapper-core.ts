@@ -244,6 +244,16 @@ export class Message {
         return this.closed.has(messageId) ? [] : this.append(text, messageId, agentId);
     }
 
+    /** Whether a message called `messageId` could repeat the last closed one: nothing is open, the id is new, and there is a last message to repeat. */
+    mayRepeat(messageId: string): boolean {
+        return !this.open && !this.closed.has(messageId) && this.last.trim() !== '';
+    }
+
+    /** Whether `text`, a message so far, is still the start of what the last closed message said, or all of it. */
+    startsLast(text: string): boolean {
+        return this.last.trim().startsWith(text.trim());
+    }
+
     /**
      * Whether `text` is a whole message that says again what the last closed message said, under another id (the turn that follows a steer repeats
      * the answer the steer was folded into). It is remembered as shown, so it adds nothing now and nothing when the agent sends it again.

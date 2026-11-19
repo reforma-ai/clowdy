@@ -229,6 +229,18 @@ describe('waiting for background work', () => {
         expect(() => runs.setStatus(queued.id, 'waiting_background', { reason: BACKGROUND_REASON })).toThrow(/Illegal run transition queued -> waiting_background/);
     });
 
+    test('refuses a question of a run that waits, in words a person can read, and keeps the run as it was', async () => {
+        const { runs, create } = await runningRun();
+
+        for (const status of ['waiting_background', 'waiting_children'] as const) {
+            const runId = create();
+
+            runs.setStatus(runId, status, { reason: 'Waiting' });
+            await expect(runs.ask(runId, { text: 'Which one?', options: [{ id: 'a', label: 'A' }] }, new AbortController().signal)).rejects.toThrow('Can\'t ask a question while the run waits for background work or child runs');
+            expect(runs.require(runId).status).toBe(status);
+        }
+    });
+
     describe('the open items', () => {
         const command: BackgroundItem = { id: 'bg-1', kind: 'command', title: 'sleep 60' };
         const subagent: BackgroundItem = { id: 'bg-2', kind: 'subagent', title: 'Researcher' };

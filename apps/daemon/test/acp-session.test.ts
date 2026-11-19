@@ -1251,6 +1251,52 @@ describe('an ACP v2 session that outlives its turn', () => {
             await until(() => !alive(pidOf(events)), 'the agent to stop');
         });
 
+        test('the last work ending owes a report, which gets the longer wait: a report turn that begins after the guard is read, and the short guard runs after it', async () => {
+            // The report begins 700 ms after the work ended, as the model's first output does: late for the 150 ms guard, inside the 3 s report wait.
+            const { session } = use({ backgroundHandoffMs: 150, backgroundReportMs: 3000 }).start('say started\nbackground terminal 100 sleep\ngap 700\nreport say late but read');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(2);
+
+            const reported = Date.now();
+
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['started', 'done:started', 'late but read', 'done:late but read']);
+            // After the report nothing is owed any more: the session ended by the short guard, not by waiting out the report wait again.
+            expect(Date.now() - reported).toBeLessThan(1500);
+        });
+
+        test('an agent that never reports ends after the report wait, and not before it', async () => {
+            const { session } = use({ backgroundHandoffMs: 100, backgroundReportMs: 700 }).start('say started\nbackground terminal 100 sleep\nreport none');
+            const started = Date.now();
+            const { events, ended } = follow(session);
+
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['started', 'done:started']);
+            // The work ended at about 100 ms and the report wait ran from there.
+            expect(Date.now() - started).toBeGreaterThanOrEqual(750);
+            await until(() => !alive(pidOf(events)), 'the agent to stop');
+        });
+
+        test('a message sent while the report is owed does not spend it: the report that follows the answer still gets the long wait', async () => {
+            // The work ends at 100 ms; the message goes in at 150 ms and is answered at once; the report begins at 900 ms, after the short guard that follows the answer.
+            const { session } = use({ backgroundHandoffMs: 200, backgroundReportMs: 3000 }).start('say started\nbackground terminal 100 sleep\ngap 900\nreport say late but read');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await Bun.sleep(150);
+            expect(await session.send?.('say answered')).toBe(true);
+            await untilDone(3);
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['started', 'done:started', 'answered', 'done:answered', 'late but read', 'done:late but read']);
+        });
+
         test('the guard does not run while work is open: a session waits as long as the agent says', async () => {
             const { session } = use({ backgroundHandoffMs: 100 }).start('say started\nbackground terminal 700 long\nreport say finally');
             const { events, ended, until: untilDone } = follow(session);
@@ -1604,6 +1650,14 @@ describe('an ACP v2 session that outlives its turn', () => {
 
             expect(taken).toBe(true);
             // One `done` ends the turn and the turn of the steer, and the answer that the second turn says again is not shown again.
+            expect(turns(events)).toEqual(['first', 'steered', 'last', 'done:last']);
+            expect(events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 100, outputTokens: 20, costUsd: 0 }]);
+        });
+
+        test('is answered by a turn of its own that says the answer again as a whole message, and that is not written twice either', async () => {
+            const { events, taken } = await steered('usage 100 20 0\nsay first\nsleep 200\nsay last\ntwice whole\ngap 60', 'first', 'say steered', { backgroundHandoffMs: 800 });
+
+            expect(taken).toBe(true);
             expect(turns(events)).toEqual(['first', 'steered', 'last', 'done:last']);
             expect(events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 100, outputTokens: 20, costUsd: 0 }]);
         });

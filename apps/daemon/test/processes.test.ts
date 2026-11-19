@@ -4,8 +4,9 @@ import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 
 import { getRunWork } from '../src/db/runs';
-import { isAlive, startTimeOf } from '../src/runs/processes';
-import { cleanTempDirs, restartHarness, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
+import { processesBelow, spawnInOwnGroup } from '../src/engine/process';
+import { isAlive, killSurvivor, startTimeOf } from '../src/runs/processes';
+import { cleanTempDirs, restartHarness, ScriptEngine, scriptEngines, startHarness, tempDir, untilAborted, waitFor } from './helpers';
 
 import type { Harness } from './helpers';
 
@@ -183,5 +184,155 @@ describe('the process guard', () => {
 
         await waitFor(() => runs.every(id => h.run(id).status === 'succeeded'), 'every run to finish');
         expect(engine.turns).toHaveLength(3);
+    });
+});
+
+/**
+ * An agent as Claude Code's adapter is to the daemon: it starts a shell command in a group of its own (the command is the agent's child but not in its
+ * group, and outlives it) and says the command's pid on stdout.
+ */
+const AGENT_WITH_DETACHED_TOOL = `
+const tool = require('node:child_process').spawn('sleep', ['60'], { detached: true, stdio: 'ignore' });
+
+tool.unref();
+console.log('tool ' + tool.pid);
+setInterval(() => undefined, 1000);
+`;
+
+/** The same agent, but it ignores SIGTERM, and its tool leaves on SIGTERM (a program that cleans up): SIGTERM has to reach the tool before the agent is killed. */
+const STUBBORN_AGENT_WITH_DETACHED_TOOL = `
+const tool = require('node:child_process').spawn('sh', ['-c', 'trap "exit 0" TERM; while :; do sleep 0.2; done'], { detached: true, stdio: 'ignore' });
+
+process.on('SIGTERM', () => undefined);
+tool.unref();
+console.log('tool ' + tool.pid);
+setInterval(() => undefined, 1000);
+`;
+
+/** The pid a process that runs `AGENT_WITH_DETACHED_TOOL` says its tool has. */
+function toolOf(child: { stdout: NodeJS.ReadableStream | null }): Promise<number> {
+    return new Promise((resolve) => {
+        child.stdout?.on('data', (data: Buffer) => {
+            const match = /tool (\d+)/.exec(String(data));
+
+            if (match) {
+                resolve(Number(match[1]));
+            }
+        });
+    });
+}
+
+describe('a tool that left the agent\'s process group', () => {
+    const tools: number[] = [];
+
+    afterEach(() => {
+        for (const pid of tools.splice(0)) {
+            try {
+                process.kill(-pid, 'SIGKILL');
+            }
+            catch {
+                // already gone
+            }
+        }
+    });
+
+    async function startAgent(script = AGENT_WITH_DETACHED_TOOL) {
+        const agent = await spawnInOwnGroup({ command: process.execPath, args: ['-e', script], cwd: tempDir(), env: { PATH: process.env.PATH ?? '' } });
+        spawned.push(agent.pid);
+
+        const tool = await toolOf(agent.child);
+
+        tools.push(tool);
+        // The tool is below the agent and in a group of its own: the agent's group does not reach it.
+        expect(isAlive(tool)).toBe(true);
+        expect(tool).not.toBe(agent.pid);
+
+        return { agent, tool };
+    }
+
+    test('goes down with a stop of the agent', async () => {
+        const { agent, tool } = await startAgent();
+
+        agent.stop();
+        await agent.exited;
+        await waitFor(() => gone(tool), 'the tool to be stopped');
+    });
+
+    test('is asked to stop (SIGTERM) when the agent is, before the agent is killed for ignoring it', async () => {
+        const { agent, tool } = await startAgent(STUBBORN_AGENT_WITH_DETACHED_TOOL);
+
+        agent.stop();
+        await waitFor(() => gone(tool), 'the tool to leave on SIGTERM');
+        // The agent shrugs SIGTERM off: it is still there, and the tool was not killed with it.
+        expect(isAlive(agent.pid)).toBe(true);
+        await agent.exited;
+    });
+
+    test('goes down when the agent leaves by itself after a cancel began, which is how Claude Code\'s adapter leaves when its input closes', async () => {
+        const { agent, tool } = await startAgent();
+
+        agent.watch();
+        // Only the agent: its own group is signalled when it is gone, and the tool is not in it.
+        agent.child.kill('SIGKILL');
+        await agent.exited;
+        await waitFor(() => gone(tool), 'the tool to be stopped');
+    });
+
+    test('is left alone while the agent works: nothing is signalled before a stop', async () => {
+        const { agent, tool } = await startAgent();
+
+        agent.watch();
+        await Bun.sleep(300);
+        expect(isAlive(tool)).toBe(true);
+        agent.stop();
+        await agent.exited;
+    });
+
+    test('is found below the agent with its own group, and nothing else is: not the agent, this process, nor the one that started it', async () => {
+        const { agent, tool } = await startAgent();
+        const found = processesBelow(agent.pid);
+
+        expect(found).toContainEqual({ pid: tool, pgid: tool });
+        expect(found.map(({ pid }) => pid)).not.toContain(agent.pid);
+        expect(found.map(({ pid }) => pid)).not.toContain(process.pid);
+        expect(found.map(({ pid }) => pid)).not.toContain(process.ppid);
+        expect(processesBelow(1)).toEqual([]);
+        agent.stop();
+        await agent.exited;
+    });
+
+    test('is not looked for where the OS cannot list processes: the agent is stopped as before, and nothing throws or waits', async () => {
+        const { agent } = await startAgent();
+        const path = process.env.PATH;
+
+        // No `ps` to run (a stripped system, a failing listing): what `watch` and `stop` find is nothing.
+        process.env.PATH = '/nonexistent';
+
+        try {
+            expect(processesBelow(agent.pid)).toEqual([]);
+            agent.watch();
+            agent.stop();
+        }
+        finally {
+            process.env.PATH = path;
+        }
+
+        await agent.exited;
+    });
+
+    test('goes down with a survivor of a daemon that was killed, which startup recovery finds by the pid it recorded', async () => {
+        const child = spawn(process.execPath, ['-e', AGENT_WITH_DETACHED_TOOL], { detached: true, stdio: ['ignore', 'pipe', 'ignore'] });
+
+        child.unref();
+        spawned.push(child.pid!);
+
+        const tool = await toolOf(child);
+
+        tools.push(tool);
+        expect(isAlive(tool)).toBe(true);
+
+        // The agent started a moment ago, as the daemon recorded it before it died.
+        expect(await killSurvivor({ pid: child.pid!, pgid: child.pid!, startedAt: startTimeOf(child.pid!) }, 300)).toBe(true);
+        await waitFor(() => gone(child.pid!) && gone(tool), 'the agent and its tool to be stopped');
     });
 });

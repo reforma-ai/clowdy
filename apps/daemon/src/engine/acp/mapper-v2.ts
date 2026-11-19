@@ -81,8 +81,10 @@ export class UpdateMapperV2 {
     private subagents = new Map<string, { title?: string; description?: string }>();
     /** The session's cumulative cost at the end of the last turn: what the next turn's cost is measured from. */
     private costBefore?: number;
-    /** The turn that follows a steer that landed may say the answer again: a whole message identical to the one before it is not shown twice. */
+    /** The turn that follows a steer that landed may say the answer again: a message identical to the one before it is not shown twice. */
     private folding = false;
+    /** The start of a message that may be that repeat, held back (Claude's adapter says it as one chunk) until it is clear whether it is. */
+    private held?: { id: string; text: string };
 
     constructor(private options: MapperOptions) {
         this.tools = new ToolLedger(options.toolNames);
@@ -103,7 +105,7 @@ export class UpdateMapperV2 {
     update(update: SessionUpdate): EngineEvent[] {
         // The SDK's union keeps a catch-all for updates it does not know, so each kind is asked for by its guard.
         if (SessionUpdate.isAgentMessageChunk(update)) {
-            return ContentBlock.isText(update.content) ? this.message.append(update.content.text, update.messageId) : [];
+            return ContentBlock.isText(update.content) ? this.chunk(update.content.text, update.messageId) : [];
         }
 
         if (SessionUpdate.isAgentMessage(update)) {
@@ -113,8 +115,9 @@ export class UpdateMapperV2 {
             }
 
             const text = textOf(update.content);
+            const settled = this.settle();
 
-            return this.folding && this.message.repeats(update.messageId, text) ? [] : this.message.upsert(update.messageId, text);
+            return [...settled, ...(this.folding && this.message.repeats(update.messageId, text) ? [] : this.message.upsert(update.messageId, text))];
         }
 
         if (SessionUpdate.isToolCallUpdate(update)) {
@@ -202,7 +205,41 @@ export class UpdateMapperV2 {
 
     /** Ends the open assistant message, if there is one. */
     close(): EngineEvent[] {
-        return this.message.close();
+        return [...this.settle(), ...this.message.close()];
+    }
+
+    /**
+     * Adds a chunk to its message. After a steer that landed, a message with a new id that so far says what the last message said is held back until it
+     * ends: Claude's adapter gives the turn that answers the steer as one chunk with the whole answer again, which is no new message. One that goes
+     * on differently is shown at once, with what was held.
+     */
+    private chunk(delta: string, messageId: string): EngineEvent[] {
+        const settled = this.held && this.held.id !== messageId ? this.settle() : [];
+
+        if (this.held || (this.folding && this.message.mayRepeat(messageId))) {
+            const text = (this.held?.text ?? '') + delta;
+
+            if (this.message.startsLast(text)) {
+                this.held = { id: messageId, text };
+
+                return settled;
+            }
+
+            this.held = undefined;
+
+            return [...settled, ...this.message.append(text, messageId)];
+        }
+
+        return [...settled, ...this.message.append(delta, messageId)];
+    }
+
+    /** What was held back is over: a repeat of the last message adds nothing, anything else is a message, shown now. */
+    private settle(): EngineEvent[] {
+        const { held } = this;
+
+        this.held = undefined;
+
+        return held && !this.message.repeats(held.id, held.text) ? this.message.append(held.text, held.id) : [];
     }
 
     /** One update of a tool call, and the content item a chunk adds to it. The first update of an id is the call's start, which ends the message before it. */

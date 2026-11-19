@@ -7,7 +7,7 @@ import { getRunWork, pendingMailbox, runningCounts } from '../src/db/runs';
 import { projectSnapshot } from '../src/domain/snapshots';
 import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
 
-import type { BackgroundItem, Chat, Run, RunStatus } from '@clowdy/protocol';
+import type { BackgroundItem, Chat, ChatMode, Run, RunStatus } from '@clowdy/protocol';
 import type { EngineEvent } from '../src/engine/types';
 import type { Harness, Script, Turn } from './helpers';
 
@@ -113,7 +113,7 @@ function lingering(plan: Plan): Script {
     };
 }
 
-async function setup(script: Script, overrides: Parameters<typeof startHarness>[0] = {}, answers: ScriptEngine['sendAnswer'] | false = () => true) {
+async function setup(script: Script, overrides: Parameters<typeof startHarness>[0] = {}, answers: ScriptEngine['sendAnswer'] | false = () => true, mode?: ChatMode) {
     const engine = new ScriptEngine(script);
 
     if (answers) {
@@ -125,7 +125,7 @@ async function setup(script: Script, overrides: Parameters<typeof startHarness>[
     harnesses.push(h);
 
     const project = h.openRepo();
-    const { chat } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
+    const { chat } = h.ok('chat.create', { projectId: project.id, ...(mode && { mode }) }) as { chat: Chat };
     const send = (text: string, chatId = chat.id) => h.ok('chat.send', { chatId, text }) as { chatId: string; runId: string };
     const runId = send('Do the work').runId;
     const bodies = (id = runId) => listItems(h.store.db, id, 0).map(item => item.body);
@@ -259,6 +259,32 @@ describe('a run that waits for background work', () => {
 
         finished.release();
         await waitFor(() => tools().find(tool => tool.toolCallId === 'wf-1')?.state === 'done', 'the workflow call to finish');
+    });
+
+    test('refuses a question in a turn the agent starts by itself in words a person can read, with no card and no status of its own', async () => {
+        const finished = latch();
+        const refusals: string[] = [];
+        const { status, waits, bodies, history } = await setup(lingering({
+            finished,
+            report: async function* (turn) {
+                try {
+                    yield* turn.call('ask_user', { question: 'Which one?', options: [{ id: 'a', label: 'A' }] });
+                }
+                catch (error) {
+                    refusals.push((error as Error).message);
+                }
+
+                yield* finishedLine();
+            },
+        }), {}, () => true, 'semi');
+
+        await waits();
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end after its report');
+
+        expect(refusals).toEqual(['Can\'t ask a question while the run waits for background work or child runs']);
+        expect(bodies().some(body => body.kind === 'question')).toBe(false);
+        expect(history()).not.toContain('waiting_user');
     });
 
     test('ends when its engine cannot take a prompt after a turn, as every session did before: at the first done', async () => {

@@ -86,6 +86,8 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         name: 'Claude Code',
         programs: ['claude'],
         launch: { kind: 'package', package: '@agentclientprotocol/claude-agent-acp@0.107.0', pathEnv: 'CLAUDE_CODE_EXECUTABLE' },
+        // ACP v2: background commands, sub-agents and workflows are told as `state_update`s, and the agent's own turns come on the same session.
+        protocol: 'v2',
         compact: '/compact',
         // Sub-agents are a feature, this only caps hidden fan-out. The rest of what a run does not do by default (claude.ai
         // connectors, the agent's own memory) is a setting below, off until the person turns it on. Without the last variable
@@ -133,6 +135,7 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         name: 'Codex',
         programs: ['codex'],
         launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.6.0', pathEnv: 'CODEX_PATH' },
+        protocol: 'v2',
         compact: '/compact',
         settings: [chatTitleSetting('Codex')],
         scrub: [/^OPENAI_API_KEY$/, /^CODEX_API_KEY$/],

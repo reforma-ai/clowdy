@@ -19,8 +19,9 @@ import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError
  *   retitle <ms> <title>        <ms> from now gives the workflow started last a new title, with no state update after it, as a workflow's progress does
  *   report <directive>          a line of the script of that report turn (default: `say <title> finished`); `report none` ends work with no report turn
  *   gap <ms>                    how long after the work ended (and after the turn it ended in) the report turn begins; 40 ms by default
- *   twice                       when a prompt was inserted into this turn, the turn ends as Claude's adapter ends one that took a steer: an `idle` with
- *                               zero usage, a `running`, the last message again as a whole message under a new id, and an `idle` with the real usage
+ *   twice [whole]               when a prompt was inserted into this turn, the turn ends as Claude's adapter ends one that took a steer: an `idle` with
+ *                               zero usage, a `running`, the last message again under a new id (one `agent_message_chunk` with all the text, as the
+ *                               adapter says it; `whole`: one `agent_message`), and an `idle` with the real usage
  *   die <ms>                    the agent's process exits that long from now, whatever it is doing
  *
  * FAKE_ACP_LOG is a file that gets a line for every `session/cancel`, `steer <text>` for every prompt that comes while a turn runs (v2 has no steering
@@ -287,7 +288,7 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
     // A client that has gone (a cancelled turn closes the agent's input) is not an error of the turn.
     const send = (update: SessionUpdate) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
     let said = '';
-    let twice = false;
+    let twice: false | 'chunk' | 'whole' = false;
     const say = async (what: string) => {
         const middle = Math.ceil(what.length / 2);
         const messageId = crypto.randomUUID();
@@ -430,7 +431,7 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     session.gap = Number(argument);
                     break;
                 case 'twice':
-                    twice = true;
+                    twice = argument === 'whole' ? 'whole' : 'chunk';
                     break;
                 case 'die':
                     setTimeout(() => {
@@ -548,7 +549,11 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
             await send(state(session, { state: 'running' }));
 
             if (said) {
-                await send({ sessionUpdate: 'agent_message', messageId: crypto.randomUUID(), content: [{ type: 'text', text: said }] });
+                const messageId = crypto.randomUUID();
+
+                await send(twice === 'whole'
+                    ? { sessionUpdate: 'agent_message', messageId, content: [{ type: 'text', text: said }] }
+                    : { sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text: said } });
             }
 
             session.prompting = false;

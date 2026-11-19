@@ -74,6 +74,11 @@ describe('the protocol of an agent', () => {
         }
     });
 
+    test('Claude Code and Codex are on v2, and every other built-in agent stays on v1', () => {
+        expect(KNOWN_AGENTS.filter(spec => spec.protocol === 'v2').map(spec => spec.id)).toEqual(['claude', 'codex']);
+        expect(KNOWN_AGENTS.find(spec => spec.id === 'cursor')?.protocol).toBeUndefined();
+    });
+
     test('a custom agent speaks v1', async () => {
         const reg = registry();
 

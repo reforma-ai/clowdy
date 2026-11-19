@@ -586,12 +586,64 @@ describe('updates of ACP v2', () => {
             expect(shown([whole('The answer', 'b'), whole('The answer', 'b'), whole('More words', 'c')])).toEqual(['More words']);
         });
 
-        test('with no steer to repeat, a whole message that says what the last one said is a message', () => {
+        test('the repeat that Claude\'s adapter says as one chunk, or as several, is held back until it ends and is not written twice', () => {
             const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+            const shown = (updates: SessionUpdateV2[]) => updates.flatMap(update => mapper.update(update)).filter(event => event.type === 'text' && event.delta).map(event => event.type === 'text' && event.delta);
+
+            expect(shown([chunk2('The ', 'a'), chunk2('answer', 'a')])).toEqual(['The ', 'answer']);
+            mapper.close();
+            mapper.expectRepeat();
+            // All the text in one chunk, then the same in pieces under another id: nothing shows, and what ends them closes no message that was shown.
+            expect(shown([chunk2('The answer', 'b')])).toEqual([]);
+            expect(shown([chunk2('The ', 'c'), chunk2('ans', 'c'), chunk2('wer', 'c')])).toEqual([]);
+            expect(mapper.close()).toEqual([]);
+            expect(mapper.result()).toBe('The answer');
+            // Another text is a message, shown whole the moment it is no longer the start of the last one, with what was held.
+            expect(shown([chunk2('The ', 'd'), chunk2('ans', 'd'), chunk2('wers are many', 'd'), chunk2('!', 'd')])).toEqual(['The answers are many', '!']);
+        });
+
+        test('what a held repeat is followed by settles it: a new message, a tool call, the end of the turn', () => {
+            const text = (events: ReturnType<UpdateMapperV2['update']>) => events.filter(event => event.type === 'text' && event.delta).map(event => event.type === 'text' && event.delta);
+            const fresh = () => {
+                const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+                mapper.update(chunk2('The answer', 'a'));
+                mapper.close();
+                mapper.expectRepeat();
+
+                return mapper;
+            };
+
+            // A different message after it: the repeat is dropped, the message shows.
+            const next = fresh();
+
+            expect(text(next.update(chunk2('The answer', 'b')))).toEqual([]);
+            expect(text(next.update(chunk2('More words', 'c')))).toEqual(['More words']);
+
+            // A tool call after it ends it as well.
+            const tool = fresh();
+
+            tool.update(chunk2('The answer', 'b'));
+            expect(tool.update({ sessionUpdate: 'tool_call_update', toolCallId: 't1', name: 'Bash', status: 'in_progress' }).map(event => event.type)).toEqual(['tool']);
+            expect(tool.close()).toEqual([]);
+
+            // A start that is only the beginning of the last message, when the turn ends, was a message after all.
+            const cut = fresh();
+
+            expect(text(cut.update(chunk2('The', 'b')))).toEqual([]);
+            expect(text(cut.close())).toEqual(['The']);
+        });
+
+        test('with no steer to repeat, nothing is held back: a message that says what the last one said is a message, and its chunks show as they come', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+            const shown = (update: SessionUpdateV2) => mapper.update(update).filter(event => event.type === 'text' && event.delta).map(event => event.type === 'text' && event.delta);
 
             mapper.update(chunk2('Same', 'a'));
             mapper.close();
-            expect(mapper.update(whole('Same', 'b')).filter(event => event.type === 'text' && event.delta)).toHaveLength(1);
+            expect(shown(whole('Same', 'b'))).toEqual(['Same']);
+            mapper.close();
+            expect(shown(chunk2('Sa', 'c'))).toEqual(['Sa']);
+            expect(shown(chunk2('me', 'c'))).toEqual(['me']);
         });
 
         test('the repeat is expected only until the next turn begins', () => {
@@ -602,6 +654,9 @@ describe('updates of ACP v2', () => {
             mapper.expectRepeat();
             mapper.next();
             expect(mapper.update(whole('Same', 'b')).filter(event => event.type === 'text' && event.delta)).toHaveLength(1);
+            mapper.close();
+            // A message that begins as the last one did streams at once too, now that no repeat is expected.
+            expect(mapper.update(chunk2('Sa', 'c')).filter(event => event.type === 'text' && event.delta)).toHaveLength(1);
         });
     });
 

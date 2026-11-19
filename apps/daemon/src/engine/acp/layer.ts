@@ -13,11 +13,18 @@ import type { SessionDeps } from './session';
 export type PromptState = 'before' | 'running' | 'over';
 
 /**
- * How long a session with nothing open and no turn running waits before it ends. The agent starts the report of finished background work 0.1 to 0.9 s
- * after its last "done" marker (measured over eight samples, `.briefback/background-work/research/acp-background-probe.md`), so a session closed the
- * moment nothing is open would lose the report. This is the only timer the layer keeps; a session with work open waits for as long as the agent says so.
+ * How long a session with nothing open and no turn running waits before it ends, when a turn of its own has just ended: the agent may begin another
+ * one at once (the turn a landed steer leads to, which comes within milliseconds). A session closed the moment nothing is open would lose it.
  */
 export const BACKGROUND_HANDOFF_MS = 2000;
+
+/**
+ * How long it waits when the last background work has just finished while no turn ran: the agent owes the report of it. Claude's adapter says
+ * `running` for that turn only when the model's first output arrives, which took 0.75 to 1.7 s in thirteen samples and more than 2 s in one, whose
+ * report a two-second guard lost (`.briefback/background-work/research/acp-background-probe.md`, "Real check through the daemon"). No marker comes
+ * before that output, so this is a bound on a slow model call, not a measure of one; a session whose agent never reports ends after it.
+ */
+export const BACKGROUND_REPORT_MS = 20_000;
 
 export const wait = (ms: number) => new Promise<void>((resolve) => {
     setTimeout(resolve, ms).unref();
@@ -34,7 +41,7 @@ export interface LayerHost {
     options: EngineStartOptions;
     /** Aborted when the turn's own signal is or the session is closed. The layer ends at once; stopping the process is the session's. */
     signal: AbortSignal;
-    deps: Pick<SessionDeps, 'costs' | 'clientVersion' | 'initializeTimeoutMs' | 'backgroundHandoffMs' | 'log'>;
+    deps: Pick<SessionDeps, 'costs' | 'clientVersion' | 'initializeTimeoutMs' | 'backgroundHandoffMs' | 'backgroundReportMs' | 'log'>;
     /** Registers the runtime's tools with the bridge, once the agent has shaken hands, and gives back the MCP server to name in the session. `undefined` when the run has none. */
     openBridge(): BridgeAccess | undefined;
     /** Passes a title the agent gave to the runtime, which says whether it took it. */
