@@ -369,6 +369,43 @@ describe('steering', () => {
         });
     });
 
+    test('a turn that fails while a steer is with the agent holds the queue at once, and a held queue steers nothing', async () => {
+        const { h, engine, chat, send, chatNow, queue, start, release } = await setup(turn => turn === 1);
+        let answer!: (taken: boolean) => void;
+
+        engine.steerAnswer = () => new Promise<boolean>((resolve) => {
+            answer = resolve;
+        });
+
+        const runId = await start();
+
+        send('queued');
+        send('steer me', { mode: 'steer' });
+        await waitFor(() => engine.steered.length === 1, 'the steer to reach the agent');
+
+        release(1);
+        await waitFor(() => h.run(runId).status === 'failed', 'the turn to fail');
+        await waitFor(() => chatNow().queuePaused === 'failed', 'the queue to hold');
+
+        // The person writes before the agent answers the steer: that turn gets only their message.
+        send('by hand');
+        await waitFor(() => engine.turns.length === 2 && h.run(runId).status === 'running', 'the turn by hand');
+        engine.steerAnswer = () => Promise.resolve(true);
+        answer(false);
+        await Bun.sleep(50);
+
+        expect(engine.steered).toHaveLength(1);
+        expect(chatNow().queuePaused).toBe('failed');
+        expect(queue().map(item => item.text)).toEqual(['steer me', 'queued']);
+
+        release(2);
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the turn by hand to end');
+        await Bun.sleep(30);
+
+        expect(engine.turns).toHaveLength(2);
+        expect(getChat(h.store.db, chat.id)?.queue?.map(item => item.mode)).toEqual(['queue', 'queue']);
+    });
+
     test('a steer while the orchestrator waits for an answer reaches its turn once the answer puts it back to work', async () => {
         const gate = latch();
         const engine = new ScriptEngine(async function* (turn) {

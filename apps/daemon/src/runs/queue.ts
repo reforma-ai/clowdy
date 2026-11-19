@@ -136,8 +136,9 @@ export class ChatQueue {
             const run = runs.require(chat.orchestratorRunId as string);
 
             if (!isAtRest(run)) {
-                if (item.mode !== 'steer') {
-                    saveChat(store, withQueue(chat, placeQueued(queueOf(chat), { ...item, mode: 'steer' }), chat.queuePaused));
+                // Sending a message from a held queue is what lets it flow again, as at rest.
+                if (item.mode !== 'steer' || chat.queuePaused) {
+                    saveChat(store, withQueue(chat, placeQueued(queueOf(chat), { ...item, mode: 'steer' }), undefined));
                 }
 
                 store.afterCommit(() => this.steerAll(chat.id));
@@ -208,12 +209,22 @@ export class ChatQueue {
             const current = getRun(store.db, run.id);
             const queue = chat ? queueOf(chat) : [];
 
-            if (!chat || !current || chat.orchestratorRunId !== run.id || !isAtRest(current) || queue.length === 0 || queue.some(item => this.steering.has(item.id))) {
+            if (!chat || !current || chat.orchestratorRunId !== run.id || !isAtRest(current) || queue.length === 0) {
                 return;
             }
 
             // A run that ended on an error, or that the daemon lost in a restart, did not do what the queue was written after: the person decides.
             const paused = chat.queuePaused ?? (current.status === 'failed' || current.status === 'interrupted' ? 'failed' : undefined);
+
+            // A steer still with the agent settles the queue again when it is answered. The hold is written now all the same, or a message the person
+            // sends meanwhile would start a turn that the held messages (and that steer) then flow into.
+            if (queue.some(item => this.steering.has(item.id))) {
+                if (paused !== chat.queuePaused) {
+                    saveChat(store, withQueue(chat, queue, paused));
+                }
+
+                return;
+            }
             const settled = withQueue(chat, settleSteers(queue), paused);
 
             if (!paused) {
@@ -267,7 +278,8 @@ export class ChatQueue {
 
         for (;;) {
             const chat = getChat(store.db, chatId);
-            const item = chat && queueOf(chat).find(entry => entry.mode === 'steer' && !tried.has(entry.id));
+            // A held queue steers nothing: a turn the person started by hand after a Stop or a failure gets only what they send now.
+            const item = chat && !chat.queuePaused ? queueOf(chat).find(entry => entry.mode === 'steer' && !tried.has(entry.id)) : undefined;
 
             runId = chat?.orchestratorRunId;
 
