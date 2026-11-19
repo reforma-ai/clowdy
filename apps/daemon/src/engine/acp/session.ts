@@ -49,6 +49,8 @@ export interface SessionDeps {
     initializeTimeoutMs?: number;
     /** How long an agent that has not named its session by the end of the turn keeps running for the name; ten seconds by default. */
     titleWaitMs?: number;
+    /** How long a session with nothing open waits for the agent to begin a turn before it ends (`BACKGROUND_HANDOFF_MS`, two seconds by default). */
+    backgroundHandoffMs?: number;
     log?: (line: string) => void;
 }
 
@@ -68,6 +70,10 @@ const launchKey = (agent: ResolvedAgent): string => [agent.program, agent.comman
  * One agent process driven over ACP for one turn of a run: one `session/prompt`, and `done` when the agent's turn ends. A message the person writes
  * meanwhile reaches the turn only as a steer (`steer`), when the agent can take one; the runtime keeps any other for the next turn. The session owns
  * the process and what every protocol shares; the conversation is a layer for the agent's protocol (`layer.ts`).
+ *
+ * A session outlives its turn in two ways. A layer whose agent has background work open keeps its iterator going (the process stays recorded on the
+ * run for the whole wait), reads the turns the agent starts on its own, and takes `send`; the layer ends when nothing is open, and with it the process.
+ * After that, a new session whose title the runtime still waits for keeps the process for the name, up to `titleWaitMs` (`linger`), unrecorded.
  */
 export class AcpSession implements EngineSession {
     private closing = new AbortController();
@@ -76,6 +82,8 @@ export class AcpSession implements EngineSession {
     private layer?: ProtocolLayer;
     private access?: BridgeAccess;
     private prompt: PromptState = 'before';
+    /** The session is over for good: its process is to be stopped or gone, and no turn will begin. Until then a layer may open the prompt again with each turn. */
+    private finished = false;
     /** Wake the steers that wait for the prompt to be with the agent (or for the session to end before it is). */
     private promptWaiters: (() => void)[] = [];
     /** The runtime took a title the agent gave. */
@@ -110,13 +118,42 @@ export class AcpSession implements EngineSession {
         return layer.steer(text);
     }
 
-    /** Moves the prompt along and wakes the steers that wait for it. */
+    /**
+     * Puts `text` to the live session as a prompt of its own, for an agent that keeps the session open while it has background work: its turn ended
+     * (`done`) and the iterator is still being read. Answers whether the agent took it, and never waits for the iterator to be read; the session being
+     * over (closed, cancelled, ended, or its process gone), or a layer that cannot, answers `false`, and the runtime resumes the conversation in a
+     * session of its own instead. One `done` follows an accepted prompt.
+     */
+    async send(text: string): Promise<boolean> {
+        const { layer } = this;
+
+        if (this.finished || this.signal.aborted || !layer?.send) {
+            return false;
+        }
+
+        return layer.send(text);
+    }
+
+    /**
+     * Moves the prompt along and wakes the steers that wait for it. A layer that keeps the session open opens the prompt again with each turn that
+     * begins, so a steer finds the turn that runs now; a session that is over (`finish`) stays over.
+     */
     private promptIs(state: Exclude<PromptState, 'before'>): void {
-        if (this.prompt === 'over') {
+        if (this.finished) {
             return;
         }
 
         this.prompt = state;
+
+        for (const wake of this.promptWaiters.splice(0)) {
+            wake();
+        }
+    }
+
+    /** The session is over for good, whatever ended it: no prompt will be with the agent again, and a steer that still waits for one waits for nothing. */
+    private finish(): void {
+        this.finished = true;
+        this.prompt = 'over';
 
         for (const wake of this.promptWaiters.splice(0)) {
             wake();
@@ -138,7 +175,7 @@ export class AcpSession implements EngineSession {
     /** Stops the session and waits until its process is gone, except one that runs on for its title: that leaves by itself, so the run does not wait for it. */
     async close(): Promise<void> {
         this.closing.abort();
-        this.promptIs('over');
+        this.finish();
         // The token is useless once the session is over, even when nobody reads the generator to its end.
         this.access?.dispose();
 
@@ -201,7 +238,7 @@ export class AcpSession implements EngineSession {
         }
         finally {
             // However the session ended, a steer that still waits for the prompt waits for nothing.
-            this.promptIs('over');
+            this.finish();
         }
     }
 

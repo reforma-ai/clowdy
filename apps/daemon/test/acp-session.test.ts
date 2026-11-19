@@ -6,8 +6,9 @@ import { dirname, join } from 'node:path';
 import { probeAgent } from '../src/engine/acp/probe';
 import { alive, collect, PROTOCOLS, rig, textOf, tool, types, until } from './acp-helpers';
 
+import type { BackgroundItem } from '@clowdy/protocol';
 import type { AgentProtocol } from '../src/engine/acp/catalog';
-import type { EngineEvent } from '../src/engine/types';
+import type { EngineEvent, EngineSession } from '../src/engine/types';
 import type { Rig } from './acp-helpers';
 
 let current: Rig | undefined;
@@ -989,5 +990,703 @@ describe('the turn of an ACP v2 agent', () => {
         const events = await run('usage 100 20 0');
 
         expect(events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 100, outputTokens: 20, costUsd: 0 }]);
+    });
+});
+
+describe('an ACP v2 session that outlives its turn', () => {
+    beforeEach(() => {
+        speaking = 'v2';
+    });
+    afterEach(() => {
+        speaking = 'v1';
+    });
+
+    /** Reads the session to its end in the background, so a test can send into it and watch what it says meanwhile. */
+    function follow(session: EngineSession) {
+        const events: EngineEvent[] = [];
+        const ended = (async () => {
+            for await (const event of session) {
+                events.push(event);
+            }
+        })();
+        const dones = () => events.filter(event => event.type === 'done');
+
+        return { events, ended, dones, until: (count: number) => until(() => dones().length >= count, `${ count } done events`, 8000) };
+    }
+
+    const pidOf = (events: EngineEvent[]) => events.find(event => event.type === 'process')?.pid ?? -1;
+    const backgrounds = (events: EngineEvent[]) => events.flatMap(event => event.type === 'background' ? [event.items] : []);
+    /** What the agent said, message by message, with a `done:<result>` where each `done` came. */
+    const turns = (events: EngineEvent[]) => {
+        const told: string[] = [];
+        let open = '';
+
+        for (const event of events) {
+            if (event.type === 'text') {
+                open += event.delta;
+
+                if (event.done) {
+                    told.push(open);
+                    open = '';
+                }
+            }
+            else if (event.type === 'done') {
+                told.push(`done:${ event.result }`);
+            }
+        }
+
+        return told;
+    };
+
+    describe('background work', () => {
+        test('a turn that started work says what is open before it says done, and leaves the process alive for the report that follows', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground terminal 500 sleep 5\nreport say all done');
+            const { events, ended, dones, until: untilDone } = follow(session);
+
+            await untilDone(1);
+
+            const pid = pidOf(events);
+            const first = types(events);
+
+            expect(first.slice(-2)).toEqual(['background', 'done']);
+            expect(backgrounds(events)).toEqual([[{ id: 'term-1', kind: 'command', title: 'sleep 5' }]]);
+            expect(dones()[0]).toEqual({ type: 'done', result: 'started' });
+            // The turn is over and the process is not: the work it started runs on in it.
+            expect(alive(pid)).toBe(true);
+
+            await untilDone(2);
+
+            // The list said the command ended before the report turn began, and the report is a turn of its own with its own `done`.
+            expect(backgrounds(events)).toEqual([[{ id: 'term-1', kind: 'command', title: 'sleep 5' }], []]);
+            expect(turns(events)).toEqual(['started', 'done:started', 'all done', 'done:all done']);
+            expect(types(events).lastIndexOf('background')).toBeLessThan(types(events).lastIndexOf('text'));
+
+            // Nothing is open and nothing runs: the session ends after the guard, and the process with it.
+            await ended;
+            await session.close();
+            await until(() => !alive(pid), 'the agent to stop');
+            // The process was told to the runtime once, at the start.
+            expect(types(events).filter(type => type === 'process')).toHaveLength(1);
+        });
+
+        test('the report turn is a turn like any: its text, tools, usage and window map as a turn\'s do, and its cost is its own', async () => {
+            const { session } = use({ backgroundHandoffMs: 200 }).start('usage 10 2 0.01\nbackground terminal 100 sleep\nreport tool read {"file_path":"a"}\nreport say reported\nreport usage 30 4 0.02\nreport context 5000 200000');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            const afterFirst = events.slice(types(events).indexOf('done') + 1);
+
+            expect(afterFirst.filter(event => event.type === 'tool').map(event => event.type === 'tool' && [event.name, event.state])).toEqual([['Read', 'running'], ['Read', 'done']]);
+            expect(afterFirst.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 30, outputTokens: 4, costUsd: expect.closeTo(0.02, 6) }]);
+            // The `usage` directive reports a window of its own first (34 tokens), then the directive that follows it says 5000.
+            expect(afterFirst.filter(event => event.type === 'context')).toEqual([{ type: 'context', used: 34, size: 200000 }, { type: 'context', used: 5000, size: 200000 }]);
+            expect(events.filter(event => event.type === 'usage')[0]).toEqual({ type: 'usage', inputTokens: 10, outputTokens: 2, costUsd: 0.01 });
+            expect(afterFirst.at(-1)).toEqual({ type: 'done', result: 'reported' });
+        });
+
+        test('what a turn with no work open does is unchanged: the iterator is the reader\'s to stop at its `done`', async () => {
+            const { session } = use().start('say plain');
+            const events = await collect(session);
+
+            await session.close();
+
+            expect(types(events)).toEqual(['process', 'session', 'text', 'text', 'text', 'done']);
+            expect(events.at(-1)).toEqual({ type: 'done', result: 'plain' });
+        });
+
+        test('an agent that has nothing open when its turn ends is ended by the guard, after the `done`, when the reader goes on', async () => {
+            const { session } = use({ backgroundHandoffMs: 200 }).start('say plain');
+            const started = Date.now();
+            const { events, ended } = follow(session);
+
+            await ended;
+            await session.close();
+
+            expect(events.at(-1)).toEqual({ type: 'done', result: 'plain' });
+            expect(Date.now() - started).toBeGreaterThanOrEqual(200);
+            await until(() => !alive(pidOf(events)), 'the agent to stop');
+        });
+
+        test('a sub-agent is a `subagent` item named by its title, and what it says on its own session is not the turn\'s', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground subagent 300 Map the docs\nreport say mapped');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(backgrounds(events)).toEqual([[{ id: 'child-1', kind: 'subagent', title: 'Map the docs' }], []]);
+            expect(turns(events)).toEqual(['started', 'done:started', 'mapped', 'done:mapped']);
+            expect(textOf(events)).not.toContain('is working');
+        });
+
+        test('a workflow is a `task` item named by its call, and the call goes on after the turn and ends with the work', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground workflow 300 Verify the docs\nreport say verified');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(backgrounds(events)).toEqual([[{ id: 'wf-1', kind: 'task', title: 'Workflow: Verify the docs' }], []]);
+
+            const calls = events.flatMap(event => event.type === 'tool' && event.toolCallId === 'wf-1' ? [event.state] : []);
+
+            expect(calls).toEqual(['running', 'done']);
+            // The call is still running when the first turn says `done`, and finished by the time of the report.
+            expect(types(events).indexOf('done')).toBeLessThan(events.findIndex(event => event.type === 'tool' && event.state === 'done' && event.toolCallId === 'wf-1'));
+        });
+
+        test('a name that changes while the work is open is told again, though the list did not change', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground workflow 700 Verify\nretitle 300 Workflow: step 2\nreport say verified');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(backgrounds(events).map(items => items.map(item => item.title))).toEqual([['Workflow: Verify'], ['Workflow: step 2'], []]);
+        });
+
+        test('the list is told again whenever it changes, and the session lives until the last item is gone', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground terminal 200 first\nbackground subagent 600 second\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(3);
+            await ended;
+            await session.close();
+
+            const first: BackgroundItem = { id: 'term-1', kind: 'command', title: 'first' };
+            const second: BackgroundItem = { id: 'child-2', kind: 'subagent', title: 'second' };
+
+            expect(backgrounds(events)).toEqual([[first], [first, second], [second], []]);
+            // The report of the first is a turn that goes by while the second is still open.
+            expect(turns(events)).toEqual(['started', 'done:started', 'reported', 'done:reported', 'second finished', 'done:second finished']);
+        });
+
+        test('a report turn that says what the turn before it said is a message of its own: only a landed steer makes a repeat', async () => {
+            const { session } = use({ backgroundHandoffMs: 200 }).start('say same\nbackground terminal 100 sleep\nreport say same');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['same', 'done:same', 'same', 'done:same']);
+        });
+
+        test('a title and a command are one line and cut, and a name that is missing is the kind of work', async () => {
+            const long = 'x'.repeat(300);
+            const { session } = use({ backgroundHandoffMs: 200 }).start(`background terminal 100 echo   one   two ${ long }\nreport none`);
+            const { events, ended } = follow(session);
+
+            await ended;
+            await session.close();
+
+            const [[item]] = backgrounds(events);
+
+            expect(item.title.startsWith('echo one two xxx')).toBe(true);
+            expect(item.title).toHaveLength(200);
+            expect(item.title.endsWith('…')).toBe(true);
+        });
+    });
+
+    describe('the handoff guard', () => {
+        test('a `running` that comes inside the guard cancels it: the report turn is read', async () => {
+            // The report begins 250 ms after the work ended, inside the 400 ms guard.
+            const { session } = use({ backgroundHandoffMs: 400 }).start('say started\nbackground terminal 100 sleep\ngap 250\nreport say in time');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['started', 'done:started', 'in time', 'done:in time']);
+        });
+
+        test('a session with nothing open that hears nothing within the guard ends, and a report that comes later is not read', async () => {
+            const { session } = use({ backgroundHandoffMs: 150 }).start('say started\nbackground terminal 100 sleep\ngap 800\nreport say too late');
+            const started = Date.now();
+            const { events, ended } = follow(session);
+
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['started', 'done:started']);
+            // The work ended at 100 ms, and the guard ran from there: nothing ended the session before it.
+            expect(Date.now() - started).toBeGreaterThanOrEqual(250);
+            await until(() => !alive(pidOf(events)), 'the agent to stop');
+        });
+
+        test('the guard does not run while work is open: a session waits as long as the agent says', async () => {
+            const { session } = use({ backgroundHandoffMs: 100 }).start('say started\nbackground terminal 700 long\nreport say finally');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            // Well beyond the guard, and the session is open.
+            await Bun.sleep(400);
+            expect(alive(pidOf(events))).toBe(true);
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+            expect(turns(events)).toEqual(['started', 'done:started', 'finally', 'done:finally']);
+        });
+
+        test('a report turn that starts new work keeps the session open for it', async () => {
+            const { session } = use({ backgroundHandoffMs: 250 }).start('say one\nbackground terminal 100 first\nreport say two\nreport background terminal 300 second');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(3);
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['one', 'done:one', 'two', 'done:two', 'second finished', 'done:second finished']);
+            expect(backgrounds(events).map(items => items.map(item => item.title))).toEqual([['first'], [], ['second'], []]);
+        });
+    });
+
+    describe('send', () => {
+        test('a prompt sent while the work runs is taken at once and answered by one `done`, and the work goes on', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground terminal 1000 long\nreport say all done');
+            const { events, ended, dones, until: untilDone } = follow(session);
+
+            await untilDone(1);
+
+            expect(await session.send!('say hello from the person')).toBe(true);
+            await untilDone(2);
+            expect(dones()[1]).toEqual({ type: 'done', result: 'hello from the person' });
+            // The answer came while the work was open, and the list did not change for it.
+            expect(backgrounds(events)).toHaveLength(1);
+            expect(alive(pidOf(events))).toBe(true);
+
+            await untilDone(3);
+            await ended;
+            await session.close();
+            expect(turns(events)).toEqual(['started', 'done:started', 'hello from the person', 'done:hello from the person', 'all done', 'done:all done']);
+        });
+
+        test('send does not wait for the iterator to be read, and a prompt sent before the first turn has ended is taken into it', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground terminal 300 x\nreport none');
+            const iterator = session[Symbol.asyncIterator]();
+            const events: EngineEvent[] = [];
+
+            // Read up to the first `done`, then leave the iterator alone: the agent talks, and nobody reads.
+            for (let event = await iterator.next(); !event.done; event = await iterator.next()) {
+                events.push(event.value);
+
+                if (event.value.type === 'done') {
+                    break;
+                }
+            }
+
+            const accepted = await Promise.race([session.send!('say unread').then(taken => ({ taken })), Bun.sleep(3000).then(() => 'hung' as const)]);
+
+            expect(accepted).toEqual({ taken: true });
+            await session.close();
+        });
+
+        test('a prompt sent during a report turn that the agent holds until the turn ends is answered by one `done` for the report and the prompt together', async () => {
+            const log = join(mkdtempSync(join(tmpdir(), 'clowdy-send-')), 'requests');
+            const { session } = use({ backgroundHandoffMs: 300, agentEnv: { FAKE_ACP_QUEUE: '1', FAKE_ACP_LOG: log } }).start('say started\nbackground terminal 100 sleep\nreport say reporting\nreport sleep 500');
+            const { events, ended, dones, until: untilDone } = follow(session);
+
+            await until(() => textOf(events).includes('reporting'), 'the report turn');
+
+            const taken = session.send!('say answered');
+
+            await untilDone(2);
+
+            // The agent answered the prompt after the report turn ended: the `done` of the report waited for it.
+            expect(await taken).toBe(true);
+            expect(readFileSync(log, 'utf8')).toContain('queued say answered');
+            expect(dones()).toEqual([{ type: 'done', result: 'started' }, { type: 'done', result: 'answered' }]);
+            expect(turns(events)).toEqual(['started', 'done:started', 'reporting', 'answered', 'done:answered']);
+
+            await ended;
+            await session.close();
+            // Nothing was owed after it: the session ended with the guard, and said no `done` more.
+            expect(dones()).toHaveLength(2);
+            rmSync(dirname(log), { recursive: true, force: true });
+        });
+
+        test('a prompt the agent inserts into a report turn is answered by that turn\'s `done`, which waits the guard for the turn the agent may give the prompt', async () => {
+            const { session } = use({ backgroundHandoffMs: 250 }).start('say started\nbackground terminal 100 sleep\nreport say reporting\nreport sleep 500');
+            const { events, ended, dones, until: untilDone } = follow(session);
+
+            await until(() => textOf(events).includes('reporting'), 'the report turn');
+            expect(await session.send!('say inserted')).toBe(true);
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            // The agent folded the prompt into the turn it was in: that turn's `idle` was the answer, and one `done` says so.
+            expect(dones()).toHaveLength(2);
+            expect(turns(events)).toEqual(['started', 'done:started', 'reporting', 'inserted', 'done:inserted']);
+        });
+
+        test('a prompt Claude\'s adapter queues behind a report turn comes back as two turns, and they are one `done`: their usage is one, and the answer is not written twice', async () => {
+            const { session } = use({ backgroundHandoffMs: 800 }).start('say started\nbackground terminal 100 sleep\nreport say reporting\nreport sleep 400\nreport usage 100 20 0\nreport twice\ngap 60');
+            const { events, ended, dones, until: untilDone } = follow(session);
+
+            await until(() => textOf(events).includes('reporting'), 'the report turn');
+            expect(await session.send!('say inserted')).toBe(true);
+            await untilDone(2);
+
+            const started = Date.now();
+
+            await ended;
+            await session.close();
+
+            // The guard ran from the `done` only: the second turn began within it, so the first `idle` was no end.
+            expect(Date.now() - started).toBeGreaterThanOrEqual(700);
+            expect(dones()).toEqual([{ type: 'done', result: 'started' }, { type: 'done', result: 'inserted' }]);
+            expect(turns(events)).toEqual(['started', 'done:started', 'reporting', 'inserted', 'done:inserted']);
+            expect(events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 100, outputTokens: 20, costUsd: 0 }]);
+        });
+
+        test('the usage of the turns that one `done` ends is summed into one reading', async () => {
+            const { session } = use({ backgroundHandoffMs: 300, agentEnv: { FAKE_ACP_QUEUE: '1' } }).start('say started\nbackground terminal 100 sleep\nreport say reporting\nreport usage 30 4 0\nreport sleep 600');
+            const { events, ended, dones, until: untilDone } = follow(session);
+
+            await until(() => textOf(events).includes('reporting'), 'the report turn');
+            expect(await session.send!('say answered\nusage 5 1 0')).toBe(true);
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(dones()).toHaveLength(2);
+            expect(events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 35, outputTokens: 5, costUsd: 0 }]);
+        });
+
+        test('a prompt the agent holds behind a turn and then refuses leaves that turn\'s `done` to be said, and the prompt owes none', async () => {
+            const { session } = use({ backgroundHandoffMs: 300, agentEnv: { FAKE_ACP_QUEUE: 'refuse' } }).start('say started\nbackground terminal 100 sleep\nreport say reporting\nreport sleep 600');
+            const { events, ended, dones, until: untilDone } = follow(session);
+
+            await until(() => textOf(events).includes('reporting'), 'the report turn');
+
+            const taken = await session.send!('say refused');
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(taken).toBe(false);
+            expect(dones()).toEqual([{ type: 'done', result: 'started' }, { type: 'done', result: 'reporting' }]);
+            expect(turns(events)).toEqual(['started', 'done:started', 'reporting', 'done:reporting']);
+        });
+
+        test('a prompt on its way keeps the guard from ending the session, and its answer is read', async () => {
+            const { session } = use({ backgroundHandoffMs: 150, agentEnv: { FAKE_ACP_SLOW: '500' } }).start('say started');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            // Nothing is open and the guard runs; the agent takes longer to answer than the guard lasts.
+            expect(await session.send!('say answered')).toBe(true);
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['started', 'done:started', 'answered', 'done:answered']);
+        });
+
+        test('send says false when the session is over: closed, ended by the guard, or cancelled', async () => {
+            const closed = use({ backgroundHandoffMs: 300 }).start('say started\nbackground terminal 5000 x');
+            const reading = follow(closed.session);
+
+            await reading.until(1);
+            await closed.session.close();
+            expect(await closed.session.send!('say late')).toBe(false);
+            await reading.ended;
+            current?.stop();
+
+            const guarded = use({ backgroundHandoffMs: 100 }).start('say started');
+            const guard = follow(guarded.session);
+
+            await guard.ended;
+            expect(await guarded.session.send!('say late')).toBe(false);
+            await guarded.session.close();
+            current?.stop();
+
+            const cancelled = use({ backgroundHandoffMs: 300 }).start('say started\nbackground terminal 5000 x');
+            const cancelling = follow(cancelled.session);
+
+            await cancelling.until(1);
+            cancelled.abort.abort();
+            expect(await cancelled.session.send!('say late')).toBe(false);
+            await cancelling.ended;
+            await cancelled.session.close();
+        });
+
+        test('a send the agent never echoes is answered all the same, by one `done`', async () => {
+            const { session } = use({ backgroundHandoffMs: 200, agentEnv: { FAKE_ACP_NOECHO: '1' } }).start('say started\nbackground terminal 800 x\nreport none');
+            const { events, ended, dones, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            expect(await session.send!('say hello')).toBe(true);
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(dones()).toEqual([{ type: 'done', result: 'started' }, { type: 'done', result: 'hello' }]);
+            expect(turns(events)).toEqual(['started', 'done:started', 'hello', 'done:hello']);
+        });
+
+        test('a prompt on its way when the run is cancelled settles false, and the held `done` is not waited for', async () => {
+            const { session, abort } = use({ backgroundHandoffMs: 300, agentEnv: { FAKE_ACP_QUEUE: '1' } }).start('say started\nbackground terminal 100 sleep\nreport say reporting\nreport sleep 3000');
+            const { events, ended } = follow(session);
+
+            await until(() => textOf(events).includes('reporting'), 'the report turn');
+
+            // The agent holds the prompt until the report turn ends, which is three seconds away.
+            const taken = session.send!('say answered');
+
+            await Bun.sleep(100);
+            abort.abort();
+
+            expect(await Promise.race([taken, Bun.sleep(3000).then(() => 'hung')])).toBe(false);
+            await ended;
+            await session.close();
+            expect(types(events).filter(type => type === 'done')).toHaveLength(1);
+            await until(() => !alive(pidOf(events)), 'the agent to stop');
+        });
+
+        test('a session that was never started takes no prompt', async () => {
+            const { session } = use().start('say hi');
+
+            expect(await session.send!('say early')).toBe(false);
+            await session.close();
+        });
+
+        test('a prompt the agent refuses is not taken, owes no `done`, and the session goes on waiting for the work', async () => {
+            const { session } = use({ backgroundHandoffMs: 200, agentEnv: { FAKE_ACP_REJECT: 'later' } }).start('say started\nbackground terminal 600 x\nreport say reported');
+            const { events, ended, dones, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            expect(await session.send!('say refused')).toBe(false);
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(dones()).toHaveLength(2);
+            expect(turns(events)).toEqual(['started', 'done:started', 'reported', 'done:reported']);
+        });
+    });
+
+    describe('ending the wait', () => {
+        test('cancelling the run while the session waits for work ends it at once, without an error, and leaves no process', async () => {
+            const log = join(mkdtempSync(join(tmpdir(), 'clowdy-cancel-')), 'cancels');
+            const { session, abort } = use({ backgroundHandoffMs: 300, agentEnv: { FAKE_ACP_LOG: log } }).start('say started\nbackground terminal 30000 long');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+
+            const pid = pidOf(events);
+            const started = Date.now();
+
+            abort.abort();
+            await ended;
+            await session.close();
+
+            expect(Date.now() - started).toBeLessThan(4000);
+            expect(types(events)).not.toContain('error');
+            expect(types(events).filter(type => type === 'done')).toHaveLength(1);
+            await until(() => !alive(pid), 'the agent to stop');
+            // The agent heard of it before its input closed.
+            expect(readFileSync(log, 'utf8')).toBe('cancel fake-1\n');
+            rmSync(dirname(log), { recursive: true, force: true });
+        });
+
+        test('closing the session while it waits ends it, and a process that was killed meanwhile does not hold the close', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground terminal 30000 long');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+
+            const started = Date.now();
+
+            await session.close();
+            await ended;
+
+            expect(Date.now() - started).toBeLessThan(4000);
+            await until(() => !alive(pidOf(events)), 'the agent to stop');
+        });
+
+        test('the process leaving while work is open is the failure a process that leaves in a turn is', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground terminal 30000 long\ndie 200');
+            const { events, ended } = follow(session);
+
+            await ended;
+            await session.close();
+
+            expect(events.at(-1)).toMatchObject({ type: 'error', code: 'process_crashed', message: expect.stringContaining('boom: the fake agent was told to die') });
+            expect(types(events).filter(type => type === 'done')).toHaveLength(1);
+        });
+
+        test('the process leaving while a `done` is held back for the turn of a steer is a failure, and that `done` is not said', async () => {
+            const { session } = use({ backgroundHandoffMs: 1500 }).start('say started\nbackground terminal 100 sleep\nreport say reporting\nreport sleep 600\nreport twice\nreport gap 3000\nreport die 600');
+            const { events, ended, dones, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => textOf(events).includes('reporting'), 'the report turn');
+            expect(await session.steer!('say inserted')).toBe(true);
+            await ended;
+            await session.close();
+
+            expect(events.at(-1)).toMatchObject({ type: 'error', code: 'process_crashed', message: expect.stringContaining('boom: the fake agent was told to die') });
+            expect(dones()).toHaveLength(1);
+        });
+
+        test('the process leaving after the last `done`, with nothing open, loses nothing and is no failure', async () => {
+            const { session } = use({ backgroundHandoffMs: 2000 }).start('say plain\ndie 100');
+            const { events, ended } = follow(session);
+
+            await ended;
+            await session.close();
+
+            expect(types(events)).not.toContain('error');
+            expect(events.at(-1)).toEqual({ type: 'done', result: 'plain' });
+        });
+    });
+
+    describe('a steer that lands in a turn', () => {
+        /** Starts `prompt`, steers `text` once the agent has said `after`, and reads on until the session ends. */
+        async function steered(prompt: string, after: string, text: string, options?: Parameters<typeof rig>[0]) {
+            const { session } = use(options).start(prompt);
+            const { events, ended, until: untilDone } = follow(session);
+
+            await until(() => textOf(events).includes(after), `the agent to say ${ after }`);
+
+            const taken = await session.steer!(text);
+
+            await untilDone(1);
+            await ended;
+            await session.close();
+
+            return { events, taken };
+        }
+
+        test('is answered by a turn of its own, whose usage is the turn\'s, and the answer it gives again is not written twice', async () => {
+            const { events, taken } = await steered('usage 100 20 0\nsay first\nsleep 200\nsay last\ntwice\ngap 60', 'first', 'say steered', { backgroundHandoffMs: 800 });
+
+            expect(taken).toBe(true);
+            // One `done` ends the turn and the turn of the steer, and the answer that the second turn says again is not shown again.
+            expect(turns(events)).toEqual(['first', 'steered', 'last', 'done:last']);
+            expect(events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 100, outputTokens: 20, costUsd: 0 }]);
+        });
+
+        test('is answered by one `done` when the agent folded it into the turn it landed in and no second turn comes', async () => {
+            const started = Date.now();
+            const { events, taken } = await steered('usage 100 20 0\nsay first\nsleep 200\nsay last', 'first', 'say steered', { backgroundHandoffMs: 300 });
+
+            expect(taken).toBe(true);
+            expect(turns(events)).toEqual(['first', 'steered', 'last', 'done:last']);
+            expect(events.filter(event => event.type === 'usage')).toEqual([{ type: 'usage', inputTokens: 100, outputTokens: 20, costUsd: 0 }]);
+            // The `done` waited the guard for the turn that never came.
+            expect(Date.now() - started).toBeGreaterThanOrEqual(500);
+        });
+
+        test('is no end of the turn at the first `idle`: the `done` comes after the second turn has begun and ended', async () => {
+            const { session } = use({ backgroundHandoffMs: 800 }).start('say first\nsleep 200\nsay last\ntwice\ngap 300');
+            const iterator = session[Symbol.asyncIterator]();
+            const events: EngineEvent[] = [];
+            let steer: Promise<boolean> | undefined;
+            let lastAt = 0;
+
+            for (let event = await iterator.next(); !event.done; event = await iterator.next()) {
+                events.push(event.value);
+
+                if (!steer && textOf(events).includes('first')) {
+                    steer = session.steer!('say steered');
+                }
+
+                if (!lastAt && textOf(events).endsWith('last')) {
+                    lastAt = Date.now();
+                }
+
+                if (event.value.type === 'done') {
+                    break;
+                }
+            }
+
+            const doneAt = Date.now();
+
+            await session.close();
+            expect(await steer).toBe(true);
+            // The agent said `idle` right after `last`, and `running` again 300 ms on: the `done` was not said at the first `idle`.
+            expect(doneAt - lastAt).toBeGreaterThanOrEqual(250);
+            expect(types(events).filter(type => type === 'done')).toHaveLength(1);
+        });
+
+        test('does not make a message that is said twice with no steer between its turns a repeat', async () => {
+            const { session } = use().start('say same\nsay same');
+            const events = await collect(session);
+
+            await session.close();
+            expect(textOf(events)).toBe('samesame');
+        });
+
+        test('a steer that comes after the turn is refused, and is the runtime\'s to send again', async () => {
+            const { session } = use({ backgroundHandoffMs: 100 }).start('say first');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            expect(await session.steer!('say late')).toBe(false);
+            await ended;
+            await session.close();
+            expect(textOf(events)).toBe('first');
+        });
+    });
+
+    describe('the chat title', () => {
+        const named = { FAKE_ACP_TITLES: '1' };
+
+        test('a session that ends after its work still keeps running for the name of a new session, and the process is not recorded again', async () => {
+            const message = 'echo\nbackground terminal 100 sleep\nreport say reported\nlate 600 Dark mode toggle';
+            const given: string[] = [];
+            const title = { onTitle: (text: string) => given.push(text) > 0 && text !== message.replace(/\s+/g, ' ') };
+            const { session } = use({ agentEnv: named, backgroundHandoffMs: 100 }).start(message, { title });
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(2);
+            await ended;
+
+            const pid = pidOf(events);
+
+            // The iterator ended with the work, and the agent runs on for its name; it was not told to the runtime again.
+            await session.close();
+            expect(alive(pid)).toBe(true);
+            expect(types(events).filter(type => type === 'process')).toHaveLength(1);
+            await until(() => given.includes('Dark mode toggle'), 'the name');
+            await until(() => !alive(pid), 'the agent to stop');
+        });
+
+        test('a title that comes while the session waits for work is taken then', async () => {
+            const given: string[] = [];
+            const title = { onTitle: (text: string) => given.push(text) > 0 };
+            const { session } = use({ agentEnv: named, backgroundHandoffMs: 100 }).start('background terminal 500 sleep\nreport say reported\nlate 100 Named while waiting\nsay started', { title });
+            const { events, ended } = follow(session);
+
+            await until(() => given.includes('Named while waiting'), 'the name');
+            // The wait went on after the name came: the report is still to be read.
+            expect(alive(pidOf(events))).toBe(true);
+            await ended;
+            await session.close();
+            expect(turns(events)).toEqual(['started', 'done:started', 'reported', 'done:reported']);
+        });
+    });
+});
+
+describe('an ACP v1 session', () => {
+    test('has no background work to wait for: it ends at its `done` and takes no prompt after it', async () => {
+        const { session } = use().start('say plain');
+        const events = await collect(session);
+
+        expect(events.at(-1)).toEqual({ type: 'done', result: 'plain' });
+        expect(await session.send!('say again')).toBe(false);
+        await session.close();
     });
 });

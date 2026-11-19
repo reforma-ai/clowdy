@@ -5,13 +5,17 @@ import { errorMessage } from '../../errors';
 import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
 import { applyChoices, isResumeWarning, keepTitle, prefaceOf, stopFailure } from './conversation';
 import { classifyThrown, failureEvent, processEnded } from './failure';
+import { BACKGROUND_HANDOFF_MS } from './layer';
 import { UpdateMapperV2 } from './mapper-v2';
+import { Turns } from './turns';
 
-import type { ClientCapabilities, ClientConnection, NewSessionRequest } from '@agentclientprotocol/sdk/experimental/v2/unstable';
+import type { BackgroundWork, ClientCapabilities, ClientConnection, NewSessionRequest } from '@agentclientprotocol/sdk/experimental/v2/unstable';
+import type { BackgroundItem } from '@clowdy/protocol';
 import type { EngineEvent } from '../types';
 import type { AgentProtocol } from './catalog';
 import type { SelectOption } from './conversation';
 import type { LayerHost, ProtocolLayer } from './layer';
+import type { Tokens } from './mapper-core';
 import type { ResolvedAgent } from './registry';
 
 /**
@@ -20,11 +24,44 @@ import type { ResolvedAgent } from './registry';
  */
 const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCapabilities => ({ ...(agent.clientMeta && { _meta: agent.clientMeta }) });
 
+/** The timers of a session that lives on: the handoff guard before it ends, and the wait for the turn that a message which landed in a turn may have to come. */
+type Wake = 'handoff' | 'release';
+
 type Item =
     | { kind: 'update'; update: SessionUpdate }
     | { kind: 'failed'; error: unknown }
     | { kind: 'exited' }
-    | { kind: 'aborted' };
+    | { kind: 'aborted' }
+    | { kind: 'timer'; which: Wake; id: number }
+    /** A message on its way to the agent was taken or refused: what the loop waits for may have changed. */
+    | { kind: 'nudge' };
+
+/** Where the conversation stands, which the loop reads and moves. */
+interface Course {
+    /** A turn is in progress: the agent said `running` or `requires_action` since its last `idle`. */
+    working: boolean;
+    /** A turn ended and its `done` waits: a message that landed in it has a turn of its own to come, or one the agent has not begun queues behind it. */
+    held: boolean;
+    /** A `done` has been said: from then on the session may be wound up when nothing is open. */
+    delivered: boolean;
+    /** What the turns of the activity under way used, summed: it goes out once, in front of their `done`. */
+    tokens?: Tokens;
+    /** The background work as the runtime was last told. */
+    items: BackgroundItem[];
+    /** The agent's own list behind `items`. */
+    listed: BackgroundWork[];
+}
+
+/** Adds the tokens a turn used to those of the turns before it in the same activity. */
+function summed(total: Tokens | undefined, more: Tokens | null | undefined): Tokens | undefined {
+    if (!more) {
+        return total;
+    }
+
+    const add = (key: keyof Tokens) => (total?.[key] ?? 0) + (more[key] ?? 0);
+
+    return { inputTokens: add('inputTokens'), outputTokens: add('outputTokens'), cachedReadTokens: add('cachedReadTokens'), cachedWriteTokens: add('cachedWriteTokens') };
+}
 
 /** The select options among an agent's, each with its choices (the members of its groups included) in one list. */
 function selectsOf(options: SessionConfigOption[] | null | undefined): SelectOption[] {
@@ -55,6 +92,12 @@ function isResumeWarningUpdate(update: SessionUpdate): boolean {
  * message was inserted (`{ messageId }`). The turn is told by `state_update`: `running` while the agent works, `requires_action` while it waits for a
  * person, `idle` with a `stopReason` (and the turn's `usage`) when it is over. A prompt sent while a turn runs is inserted into it, which is how a
  * steer goes in. The SDK's v2 `client()` carries it. See `mapper-v2.ts` for the updates.
+ *
+ * The conversation does not end with the first turn. Every `state_update` may carry the agent's background work as a complete list, which becomes a
+ * `background` event whenever it changes. While that list has items, or a turn runs, the layer keeps reading: a `running` after an `idle` is a turn the
+ * agent started on its own (the report of work that finished), and it ends at its own `idle` with its own `done`. When nothing is open and the session
+ * is idle, the layer waits the handoff guard (`BACKGROUND_HANDOFF_MS`) for such a turn to begin, and then ends. `send` puts another prompt to the live
+ * session; `turns.ts` keeps count of the turns that messages sent into the session lead to, so that one `done` ends the whole activity.
  */
 export class V2Layer implements ProtocolLayer {
     private connection?: ClientConnection;
@@ -63,16 +106,30 @@ export class V2Layer implements ProtocolLayer {
     naming = false;
     answered = false;
     restartOn?: AgentProtocol;
-    /** Settles with `false` once the turn is over, for a steer whose message has not been echoed by then. */
-    private ended: Promise<false>;
+    /** What the agent says, the timers and the messages in flight, in the order the loop reads them. */
+    private channel = new Channel<Item>();
+    /** Races a request against the end of the process or the run, once the connection is up: a message sent while the session waits cannot hang after a cancel. */
+    private request: <T>(call: Promise<T>) => Promise<T> = call => call;
+    private turns = new Turns();
+    /** A turn is open: its prompt is with the agent and its `idle` has not come, so a steer may still land in it. */
+    private open = false;
+    /** Settles with `false` once the open turn is over, for a steer whose message has not been echoed by then. */
+    private turnEnded: Promise<false>;
     private markEnded: () => void = () => undefined;
-    /** The messages the agent has echoed back as the person's while the turn ran, by id: a prompt it inserted into the turn shows there. */
-    private echoed = new Set<string>();
     /** The steers that wait for their message to be echoed, by its id. */
     private landing = new Map<string, () => void>();
+    /** The conversation is over: nothing more is taken. */
+    private finished = false;
+    private timers: Partial<Record<Wake, { id: number; handle: ReturnType<typeof setTimeout> }>> = {};
+    private timerCount = 0;
 
     constructor(private host: LayerHost) {
-        this.ended = new Promise<false>((resolve) => {
+        this.turnEnded = this.latch();
+    }
+
+    /** A promise for the end of the turn that is open, and the call that settles it. */
+    private latch(): Promise<false> {
+        return new Promise<false>((resolve) => {
             this.markEnded = () => resolve(false);
         });
     }
@@ -86,34 +143,128 @@ export class V2Layer implements ProtocolLayer {
     async steer(text: string): Promise<boolean> {
         const { host, connection, sessionId } = this;
 
-        if (!connection || !sessionId || host.signal.aborted) {
+        if (!connection || !sessionId || host.signal.aborted || !this.open) {
             return false;
         }
 
+        const entry = this.turns.add('steer');
+        let landed = false;
+
         try {
-            return await Promise.race([
-                connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: 'text', text }] }).then(({ messageId }) => this.landed(messageId)),
-                this.ended,
+            landed = await Promise.race([
+                connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: 'text', text }] }).then(({ messageId }) => {
+                    this.turns.took(entry, messageId);
+
+                    return this.landed(messageId);
+                }),
+                this.turnEnded,
             ]);
         }
         catch (error) {
             host.deps.log?.(`${ host.agent.id } refused a steer: ${ errorMessage(error) }`);
+        }
 
+        // A steer that did not land is the runtime's to send again: the agent owes no turn for it.
+        if (!landed) {
+            this.turns.drop(entry);
+        }
+
+        return landed;
+    }
+
+    /**
+     * Puts `text` to the live session as a prompt of its own. The agent takes it in at once, or after the turn it is in (Claude's adapter answers a prompt
+     * that comes during a turn when it begins to run it), and `true` says it did; the turn that answers it follows on the stream of `run`, and with it one
+     * `done` for the whole activity: the `done` of a turn the agent had under way is held back until this prompt is answered. It does not wait for the
+     * stream to be read, and it settles `false` when the session is over, the agent refuses the prompt, or the run is cancelled or the process leaves.
+     */
+    async send(text: string): Promise<boolean> {
+        const { host, connection, sessionId } = this;
+
+        if (!connection || !sessionId || this.finished || host.signal.aborted) {
             return false;
         }
+
+        const entry = this.turns.add('send');
+        let taken = false;
+
+        // The wait for the agent's report does not end while the prompt is on its way.
+        this.nudge();
+
+        try {
+            const { messageId } = await this.request(connection.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: 'text', text }] }));
+
+            this.turns.took(entry, messageId);
+            taken = !this.finished;
+        }
+        catch (error) {
+            if (!host.signal.aborted && !(error instanceof ProcessEnded)) {
+                host.deps.log?.(`${ host.agent.id } refused a prompt: ${ errorMessage(error) }`);
+            }
+        }
+
+        if (!taken) {
+            this.turns.drop(entry);
+        }
+
+        this.nudge();
+
+        return taken;
     }
 
     /** Settles with `true` once the agent has echoed the message `id` back, which `run` sees in the order the agent said things. */
     private landed(id: string): Promise<true> {
-        return this.echoed.has(id) ? Promise.resolve(true) : new Promise<true>((resolve) => {
+        return this.turns.echoed(id) ? Promise.resolve(true) : new Promise<true>((resolve) => {
             this.landing.set(id, () => resolve(true));
         });
     }
 
-    /** The turn is over: the prompt takes no steer any more, and one that has not been echoed will not be. */
-    private over(): void {
+    /** The open turn is over: the prompt takes no steer any more, and one that has not been echoed will not be. The next turn that begins opens it again. */
+    private endTurn(): void {
+        this.open = false;
         this.host.promptIs('over');
         this.markEnded();
+        this.turnEnded = this.latch();
+    }
+
+    /** Wakes the loop, which looks again at what it waits for. */
+    private nudge(): void {
+        if (!this.finished) {
+            this.channel.push({ kind: 'nudge' });
+        }
+    }
+
+    /** Starts the timer `which` unless it runs already. */
+    private arm(which: Wake): void {
+        if (this.timers[which] || this.finished) {
+            return;
+        }
+
+        const id = ++this.timerCount;
+        const handle = setTimeout(() => this.channel.push({ kind: 'timer', which, id }), this.host.deps.backgroundHandoffMs ?? BACKGROUND_HANDOFF_MS);
+
+        handle.unref();
+        this.timers[which] = { id, handle };
+    }
+
+    private disarm(which: Wake): void {
+        const timer = this.timers[which];
+
+        if (timer) {
+            clearTimeout(timer.handle);
+            delete this.timers[which];
+        }
+    }
+
+    /** Whether the timer item `id` is the timer that runs now, and not one that was stopped after it went off. A timer that went off is spent. */
+    private fires(which: Wake, id: number): boolean {
+        if (this.timers[which]?.id !== id) {
+            return false;
+        }
+
+        delete this.timers[which];
+
+        return true;
     }
 
     cancel(): Promise<void> {
@@ -127,12 +278,11 @@ export class V2Layer implements ProtocolLayer {
         this.connection?.close();
     }
 
-    /** The conversation with a running agent, from `initialize` to the last event of the turn. */
+    /** The conversation with a running agent, from `initialize` to the end of the session: the last turn when nothing is open, or the run's end. */
     async *run(): AsyncGenerator<EngineEvent> {
-        const { host } = this;
+        const { host, channel } = this;
         const { agent, proc, options, signal, deps } = host;
         const context = { agent: agent.name, login: agent.login };
-        const channel = new Channel<Item>();
         let current: string | undefined;
         // What the session says before the prompt is in (the state it resumed in, a replay of its history) is not news of the turn.
         let listening = false;
@@ -162,6 +312,8 @@ export class V2Layer implements ProtocolLayer {
 
         // Either end of the process or the run also wakes the loop that waits for the agent's next word, so a cancelled session ends at once.
         const request = watchEnd(proc, signal, ending => channel.push({ kind: ending }));
+
+        this.request = request;
 
         try {
             let init;
@@ -266,78 +418,14 @@ export class V2Layer implements ProtocolLayer {
 
             // The answer says the message was inserted, not that the turn is over; only a refusal of it ends the turn here.
             listening = true;
+            this.open = true;
             void connection.agent.request(methods.agent.session.prompt, { sessionId: id, prompt: [{ type: 'text', text: `${ preface }${ options.prompt }` } satisfies ContentBlock] }).then(
                 () => undefined,
                 error => channel.push({ kind: 'failed', error })
             );
             host.promptIs('running');
 
-            // The agent has said `running` (or `requires_action`, as work that starts blocked does) since the prompt went in. ACP makes the agent say
-            // so whenever foreground work starts, and an `idle` before it, with a stop reason or without, is a snapshot of the state the session was in
-            // ("repeated snapshots may carry the last stop reason"), not the end of this turn.
-            let working = false;
-
-            for (;;) {
-                const item = await channel.next();
-
-                if (signal.aborted || item.kind === 'aborted') {
-                    return;
-                }
-
-                if (item.kind === 'update') {
-                    const { update } = item;
-
-                    if (SessionUpdate.isUserMessage(update) || SessionUpdate.isUserMessageChunk(update)) {
-                        this.echoed.add(update.messageId);
-                        this.landing.get(update.messageId)?.();
-                        continue;
-                    }
-
-                    if (!SessionUpdate.isStateUpdate(update)) {
-                        yield* mapper.update(update);
-                        continue;
-                    }
-
-                    // `requires_action` pauses the turn: the agent waits on a person, the daemon answers its permission requests as they come, and
-                    // the turn goes on with `running` or ends with `idle`.
-                    if (StateUpdate.isRunning(update) || StateUpdate.isRequiresAction(update)) {
-                        working = true;
-                    }
-
-                    if (!StateUpdate.isIdle(update) || !working) {
-                        continue;
-                    }
-
-                    this.over();
-                    yield* mapper.stop(update.usage);
-
-                    if (mapper.cost !== undefined) {
-                        deps.costs.set(id, mapper.cost);
-                    }
-
-                    const failure = IdleStateUpdate.isError(update)
-                        ? failureEvent(classifyThrown(update.error ?? new Error(`${ agent.name } stopped with an error`), context, proc.stderr()))
-                        : stopFailure(update.stopReason, agent.name);
-
-                    this.answered = !failure;
-                    yield failure ?? { type: 'done', result: mapper.result() };
-
-                    return;
-                }
-
-                this.over();
-
-                if (item.kind === 'exited') {
-                    yield failureEvent(processEnded(context, `exit code ${ proc.child.exitCode ?? 'unknown' }`, proc.stderr()));
-
-                    return;
-                }
-
-                yield* mapper.close();
-                yield failureEvent(classifyThrown(item.error, context, proc.stderr()));
-
-                return;
-            }
+            yield* this.converse(id, mapper);
         }
         catch (error) {
             if (signal.aborted) {
@@ -353,7 +441,252 @@ export class V2Layer implements ProtocolLayer {
             yield failureEvent(classifyThrown(error, context, proc.stderr()));
         }
         finally {
+            this.finished = true;
+            this.disarm('handoff');
+            this.disarm('release');
             this.markEnded();
         }
+    }
+
+    /**
+     * Reads what the agent says for as long as the session lives: the first turn, and what follows it. Gives back when a turn failed, the run was
+     * cancelled, the process left, or nothing has been open for the length of the handoff guard.
+     */
+    private async *converse(id: string, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent> {
+        const course: Course = { working: false, held: false, delivered: false, items: [], listed: [] };
+
+        for (;;) {
+            const item = await this.channel.next();
+
+            if (this.host.signal.aborted || item.kind === 'aborted') {
+                return;
+            }
+
+            if (yield* this.take(item, id, course, mapper)) {
+                return;
+            }
+
+            // Nothing is open and no turn runs: the session is wound up, unless the agent starts a turn within the guard.
+            if (this.quiet(course)) {
+                this.arm('handoff');
+            }
+            else {
+                this.disarm('handoff');
+            }
+        }
+    }
+
+    /** Whether a `done` has been said and nothing is open since: no turn, no held `done`, no background work, no prompt sent into the session. */
+    private quiet(course: Course): boolean {
+        return course.delivered && !course.working && !course.held && course.items.length === 0 && !this.turns.sending;
+    }
+
+    /** One thing the loop was woken for. Gives back whether the conversation is over. */
+    private async *take(item: Item, id: string, course: Course, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent, boolean> {
+        const { host } = this;
+        const { agent, proc } = host;
+        const context = { agent: agent.name, login: agent.login };
+
+        switch (item.kind) {
+            case 'update':
+                return yield* this.heard(item.update, id, course, mapper);
+            case 'timer':
+                return yield* this.timed(item, id, course, mapper);
+            case 'nudge':
+                // A prompt that a turn waited for was refused: there may be nothing left to wait for.
+                if (course.held && !course.working && !this.review().blocked) {
+                    yield* this.deliver(id, course, mapper, false);
+                }
+
+                return false;
+            case 'exited':
+                this.endTurn();
+
+                // The agent leaving when nothing was open loses nothing, and the guard would have ended the session about now.
+                if (!this.quiet(course)) {
+                    yield failureEvent(processEnded(context, `exit code ${ proc.child.exitCode ?? 'unknown' }`, proc.stderr()));
+                }
+
+                return true;
+            case 'failed':
+                this.endTurn();
+                yield* mapper.close();
+                yield failureEvent(classifyThrown(item.error, context, proc.stderr()));
+
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    /** One update of the session. Gives back whether the conversation is over. */
+    private async *heard(update: SessionUpdate, id: string, course: Course, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent, boolean> {
+        if (SessionUpdate.isUserMessage(update) || SessionUpdate.isUserMessageChunk(update)) {
+            this.turns.echo(update.messageId);
+            this.landing.get(update.messageId)?.();
+            this.landing.delete(update.messageId);
+
+            return false;
+        }
+
+        if (!SessionUpdate.isStateUpdate(update)) {
+            yield* mapper.update(update);
+
+            // What names an item (a terminal's command, a sub-agent's title, a call's title) may come after the list that names the item.
+            if (course.listed.length > 0 && (SessionUpdate.isTerminalUpdate(update) || SessionUpdate.isSubagentUpdate(update) || SessionUpdate.isToolCallUpdate(update))) {
+                yield* this.publish(course, mapper);
+            }
+
+            return false;
+        }
+
+        // A state that carries no list says nothing of the background work: the last list stands.
+        if ('background' in update && Array.isArray(update.background)) {
+            course.listed = update.background;
+            yield* this.publish(course, mapper);
+        }
+
+        // `requires_action` pauses the turn: the agent waits on a person, the daemon answers its permission requests as they come, and the turn goes
+        // on with `running` or ends with `idle`. Either one, after an `idle`, begins a turn; the agent says so whenever foreground work starts, and an
+        // `idle` before it, with a stop reason or without, is a snapshot of the state the session was in ("repeated snapshots may carry the last stop
+        // reason"), not the end of a turn.
+        if (StateUpdate.isRunning(update) || StateUpdate.isRequiresAction(update)) {
+            this.begin(course);
+        }
+
+        if (!StateUpdate.isIdle(update) || !course.working) {
+            return false;
+        }
+
+        return yield* this.ended(update, id, course, mapper);
+    }
+
+    /** The agent says a turn is in progress. After an `idle` that is a new one: a turn it starts on its own, or the one a message sent into the session leads to. */
+    private begin(course: Course): void {
+        if (course.working) {
+            return;
+        }
+
+        course.working = true;
+        this.turns.begin();
+        this.open = true;
+        this.host.promptIs('running');
+        // The turn the guards waited for has begun.
+        this.disarm('handoff');
+        this.disarm('release');
+    }
+
+    /** Tells the runtime the background work when it changed, with the names the mapper knows by now. */
+    private *publish(course: Course, mapper: UpdateMapperV2): Generator<EngineEvent> {
+        const items = mapper.background(course.listed);
+
+        if (JSON.stringify(items) !== JSON.stringify(course.items)) {
+            course.items = items;
+
+            yield { type: 'background', items };
+        }
+    }
+
+    /** What the turn that just ended leaves to wait for: whether its `done` is held back, and whether a message that landed in it may have a turn of its own to come. */
+    private review(): { blocked: boolean; landed: boolean } {
+        const { landed, queued, answered } = this.turns.review();
+
+        // A prompt the agent has not begun (queued behind the turn that ended) holds the turn's `done` back, unless the turn was that prompt's own.
+        return { blocked: landed > 0 || (answered === 0 && queued > 0), landed: landed > 0 };
+    }
+
+    /**
+     * An `idle` that ends the turn in progress. Its `done` is said now, unless a message waits for a turn that is to come: one that landed in the turn
+     * (Claude's adapter answers it with a turn of its own, an `idle` and a `running` away) or one the agent has not begun. Gives back whether the
+     * conversation is over.
+     */
+    private async *ended(update: IdleStateUpdate, id: string, course: Course, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent, boolean> {
+        const { agent, proc } = this.host;
+
+        course.working = false;
+        this.endTurn();
+        course.tokens = summed(course.tokens, update.usage);
+
+        const failure = IdleStateUpdate.isError(update)
+            ? failureEvent(classifyThrown(update.error ?? new Error(`${ agent.name } stopped with an error`), { agent: agent.name, login: agent.login }, proc.stderr()))
+            : stopFailure(update.stopReason, agent.name);
+
+        if (failure) {
+            yield* mapper.stop(course.tokens);
+            this.costed(id, mapper);
+            this.answered = false;
+            yield failure;
+
+            return true;
+        }
+
+        const { blocked, landed } = this.review();
+
+        if (blocked) {
+            course.held = true;
+            yield* mapper.close();
+
+            // A message that landed in a turn that says no more may have been folded into it: the agent gets the guard to begin the turn that answers it.
+            if (landed) {
+                mapper.expectRepeat();
+                this.arm('release');
+            }
+
+            return false;
+        }
+
+        yield* this.deliver(id, course, mapper, false);
+
+        return false;
+    }
+
+    /**
+     * Says the `done` of the activity that just ended: its usage, summed over its turns, and one `done` for each prompt sent into the session that it
+     * answers (a turn the agent started on its own has one too). `fold`: the messages that landed in the last turn were folded into it.
+     */
+    private async *deliver(id: string, course: Course, mapper: UpdateMapperV2, fold: boolean): AsyncGenerator<EngineEvent> {
+        const sends = this.turns.release(fold);
+
+        yield* mapper.stop(course.tokens);
+        this.costed(id, mapper);
+
+        const result = mapper.result();
+
+        mapper.next();
+        course.tokens = undefined;
+        course.held = false;
+        course.delivered = true;
+        this.answered = true;
+        this.disarm('release');
+
+        for (let owed = Math.max(1, sends); owed > 0; owed--) {
+            yield { type: 'done', result };
+        }
+    }
+
+    /** What the session has cost so far, which the next prompt of this session is measured from. */
+    private costed(id: string, mapper: UpdateMapperV2): void {
+        if (mapper.cost !== undefined) {
+            this.host.deps.costs.set(id, mapper.cost);
+        }
+    }
+
+    /** A timer went off. Gives back whether the conversation is over. */
+    private async *timed(item: Extract<Item, { kind: 'timer' }>, id: string, course: Course, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent, boolean> {
+        if (!this.fires(item.which, item.id)) {
+            return false;
+        }
+
+        if (item.which === 'release') {
+            // No turn came for the message that landed: the agent folded it into the turn it landed in, which answered it.
+            if (course.held && !course.working) {
+                yield* this.deliver(id, course, mapper, true);
+            }
+
+            return false;
+        }
+
+        // Nothing opened within the guard: the report turn, if there was to be one, did not come.
+        return this.quiet(course);
     }
 }

@@ -5,8 +5,12 @@ import { join } from 'node:path';
 import { startDaemon } from '../src/daemon';
 import { listItems } from '../src/db/items';
 import { projectSnapshot } from '../src/domain/snapshots';
-import { FAKE_AGENT } from './acp-helpers';
+import { ToolBridge } from '../src/engine/acp/bridge';
+import { AcpEngine } from '../src/engine/acp/engine';
+import { alive, FAKE_AGENT, FAKE_AGENT_V2 } from './acp-helpers';
 import { cleanTempDirs, Harness, testAgents, testConfig, waitFor } from './helpers';
+
+import type { EngineRegistry } from '../src/engine/types';
 
 afterAll(cleanTempDirs);
 
@@ -195,4 +199,116 @@ describe('runs on an ACP agent, through the real runtime', () => {
     test('a daemon told to use an agent it does not know refuses to start', async () => {
         await expect(startDaemon(testConfig({ engine: 'gpt' }))).rejects.toThrow(/CLOWDY_ENGINE=gpt is not an agent this daemon knows/);
     });
+});
+
+describe('a chat on an ACP v2 agent that works in the background, through the real runtime', () => {
+    const bridges: ToolBridge[] = [];
+
+    afterEach(() => {
+        for (const bridge of bridges.splice(0)) {
+            bridge.stop();
+        }
+    });
+
+    /** A whole daemon whose only engine is the v2 fake agent, with a handoff guard of a fraction of a second. */
+    async function setupV2() {
+        const config = testConfig({ engine: 'fake-acp' });
+        const agents = testAgents(config);
+
+        agents.add({ id: 'fake-acp', name: 'Fake ACP', command: process.execPath, args: [FAKE_AGENT_V2] });
+
+        // A custom agent speaks v1; this one is set to v2, as the built-in ones are once the real adapters pass their checks.
+        const resolve = agents.resolve.bind(agents);
+
+        agents.resolve = async (id) => {
+            const found = await resolve(id);
+
+            return found.ok ? { ok: true, agent: { ...found.agent, protocol: 'v2' } } : found;
+        };
+
+        const bridge = new ToolBridge();
+        const engine = new AcpEngine('fake-acp', { registry: agents, bridge, backgroundHandoffMs: 300 });
+        const engines: EngineRegistry = { has: id => id === 'fake-acp', get: id => id === 'fake-acp' ? engine : undefined };
+
+        bridges.push(bridge);
+
+        const h = new Harness(await startDaemon(config, { agents, engines }), config);
+
+        harnesses.push(h);
+
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id });
+        const say = (text: string): string => h.ok('chat.send', { chatId: chat.id, text }).runId;
+        const pid = (runId: string) => (h.store.db.query('SELECT pid FROM runs WHERE id = ?').get(runId) as { pid: number | null }).pid;
+        /** The stream as lines: what the person said (`> `), what the agent said (`< `), and the notes. */
+        const stream = (runId: string) => listItems(h.store.db, runId, 0).flatMap(item => item.body.kind === 'user' ? [`> ${ item.body.text.split('\n')[0] }`] : item.body.kind === 'assistant' ? [`< ${ item.body.text }`] : item.body.kind === 'note' ? [`note: ${ item.body.text }`] : []);
+
+        return { h, chat, say, pid, stream };
+    }
+
+    test('a turn that starts a command leaves the run waiting, the report turn is a message with no `user` item before it, and the run settles when nothing is open', async () => {
+        const { h, say, pid, stream } = await setupV2();
+        const runId = say('say started\nbackground terminal 1200 sleep 60\nreport say the command finished\nreport sleep 100');
+
+        // The turn is over, and the run waits with the session: its process recorded, its slot free.
+        await waitFor(() => h.run(runId).status === 'waiting_background', 'the run to wait for the command', 15_000);
+
+        const agent = pid(runId);
+
+        expect(h.run(runId).background).toEqual([{ id: 'term-1', kind: 'command', title: 'sleep 60' }]);
+        expect(agent).not.toBeNull();
+        expect(alive(agent as number)).toBe(true);
+        expect(stream(runId).filter(line => line.startsWith('<'))).toEqual(['< ok', '< started']);
+
+        // A message sent meanwhile goes into the live session, and the agent answers it in the same process.
+        h.ok('chat.send', { chatId: h.run(runId).chatId, text: 'say heard you' });
+        await waitFor(() => stream(runId).includes('< heard you'), 'the answer to the message', 15_000);
+        await waitFor(() => h.run(runId).status === 'waiting_background', 'the run to wait again', 15_000);
+
+        expect(pid(runId)).toBe(agent);
+        expect(h.run(runId).background).toHaveLength(1);
+
+        // The command ends: the agent starts a turn of its own, which is a message with no `user` item, and the session ends with the guard.
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to settle', 15_000);
+
+        expect(stream(runId)).toEqual([
+            '> say started',
+            '< ok',
+            '< started',
+            '> say heard you',
+            '< heard you',
+            'note: Background command finished: sleep 60',
+            '< the command finished',
+        ]);
+        expect(h.run(runId).background).toBeUndefined();
+        expect(h.run(runId).result).toBe('the command finished');
+        await waitFor(() => pid(runId) === null && !alive(agent as number), 'the agent process to be gone', 15_000);
+    }, 30_000);
+
+    test('a workflow that goes on after the turn is a task of the run until it ends, and its call is finished by it', async () => {
+        const { h, say } = await setupV2();
+        const runId = say('say started\nbackground workflow 1000 Verify the docs\nreport say verified');
+        const calls = () => listItems(h.store.db, runId, 0).flatMap(item => item.body.kind === 'tool' ? [[item.body.name, item.body.state]] : []);
+
+        await waitFor(() => h.run(runId).status === 'waiting_background', 'the run to wait', 15_000);
+        expect(h.run(runId).background).toEqual([{ id: 'wf-1', kind: 'task', title: 'Workflow: Verify the docs' }]);
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to settle', 15_000);
+        expect(calls()).toEqual([['Workflow', 'done']]);
+        expect(h.run(runId).result).toBe('verified');
+    }, 30_000);
+
+    test('stopping a run that waits for background work ends the session and leaves no process', async () => {
+        const { h, say, pid } = await setupV2();
+        const runId = say('say started\nbackground terminal 60000 sleep 600');
+
+        await waitFor(() => h.run(runId).status === 'waiting_background', 'the run to wait for the command', 15_000);
+
+        const agent = pid(runId) as number;
+
+        h.ok('run.cancel', { runId });
+        await waitFor(() => h.run(runId).status === 'cancelled', 'the run to be cancelled', 15_000);
+        await waitFor(() => !alive(agent), 'the agent process to be gone', 15_000);
+        expect(h.run(runId).background).toBeUndefined();
+    }, 30_000);
 });

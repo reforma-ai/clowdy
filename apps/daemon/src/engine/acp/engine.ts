@@ -16,6 +16,8 @@ export interface AcpEngineDeps {
     initializeTimeoutMs?: number;
     /** How long an agent that has not named its session by the end of the turn keeps running for the name; see `SessionDeps`. */
     titleWaitMs?: number;
+    /** How long a session with nothing open waits for the agent to begin a turn before it ends; see `SessionDeps`. */
+    backgroundHandoffMs?: number;
     debug?: boolean;
 }
 
@@ -42,6 +44,7 @@ export class AcpEngine implements AgentEngine {
             clientVersion: deps.clientVersion ?? '0.0.0',
             initializeTimeoutMs: deps.initializeTimeoutMs,
             titleWaitMs: deps.titleWaitMs,
+            backgroundHandoffMs: deps.backgroundHandoffMs,
             log: deps.debug ? line => console.debug(`[clowdy] ${ this.id }: ${ line }`) : undefined,
         });
     }
