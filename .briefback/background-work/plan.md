@@ -16,10 +16,10 @@
 Confirmed by the owner in chat (2026-11-19):
 
 - No background feature of any engine is forbidden, hidden or disabled. The runtime supports them and matches bb: a background task started in a turn finishes after the turn, and the agent reports it in a new turn.
-- Nothing guesses that a turn is over from silence. A turn, a task or a sub-agent is over when the agent says so. The only timer is a handoff guard of 2 s that runs before a session is closed because nothing is open (the report turn starts 0.1 to 0.9 s after the last "done" marker).
+- Nothing guesses that a turn is over from silence. A turn, a task or a sub-agent is over when the agent says so. The only timers are explicit-marker driven: a handoff guard of 2 s that runs before a session is closed because nothing is open (the report turn starts 0.1 to 1.7 s after the last "done" marker), the same length again after a steer that landed (the turn it may get begins or the `done` goes out), and a report wait of 20 s (`BACKGROUND_REPORT_MS`) that runs only while a report is owed, that is from the moment the last background item ended between turns until a turn begins: the real adapter says `running` for an agent-started turn only at the model's first output, so the gap has no upper bound, and one real run lost its report at 2.003 s. Changed after the real check (2026-11-19); the owner is to confirm the 20 s.
 - A session that waits for background work has no time limit. It ends when the agent has nothing open, or when the person stops the run, or the daemon stops, or the agent process exits.
 - The runtime stays on ACP. The Claude Agent SDK is a fallback only if v2 proves unable to carry this; it is not planned.
-- The engine seam is protocol-neutral. Each agent has a `protocol` setting in the catalog: `v2` for Claude Code and Codex, which answer `protocolVersion: 2` (an answer of 1, or a refused handshake, restarts that agent once on v1), and `v1` for every other agent. Only Claude Code, Codex and Cursor are in use; when another agent is taken into use its protocol is chosen then, by checking its answer to a v2 handshake. The v1 layer stays as it is.
+- The engine seam is protocol-neutral. Each agent has a `protocol` setting in the catalog: `v2` for Claude Code, which answers `protocolVersion: 2` (an answer of 1, or a refused handshake, restarts that agent once on v1), and `v1` for every other agent. Codex also answers 2 but stays on v1: on v2 its adapter holds a prompt that comes mid-turn (a steer becomes a turn of its own), where v1 injects it with `_session/steering`, and it has no background work to report on either version (real check, 2026-11-19). Only Claude Code, Codex and Cursor are in use; when another agent is taken into use its protocol is chosen then, by checking its answer to a v2 handshake. The v1 layer stays as it is.
 - The v1 layer is kept working, not extended. A feature that needs v2, or is not easy on v1 (background work, a prompt into a live session, steering), is not built for v1: an agent on v1 offers what its layer can, and the runtime degrades as it already does (an engine without `steer` or `send` leaves the message in the chat's queue for the next turn). That an agent lacks a feature because of its protocol is accepted.
 - The v1 opt-in route for Claude (`_meta.jetbrains.air`, `async_task_*` events, a tap on the agent's stdout) is not built. It is the fallback if the v2 layer falls short for Claude.
 - A user message to a run that waits for background work goes to the live session as a normal `session/prompt` on the same process, with no resume. The run goes `waiting_background → queued → running` through the scheduler, so caps hold. An agent-started turn in progress finishes first; the message runs after it.
@@ -142,7 +142,7 @@ Confirmed by the owner in chat (2026-11-19):
   - [x] `steer(text)` is a prompt inserted into the running turn; it answers whether the agent took it
   - [x] Updates that belong to another session than the main one (sub-agent children) are dropped for now
   - [x] `test/fake-acp-agent-v2.ts` speaks v2 and the same directives as the v1 fake agent where they apply, and the session tests run against both layers for the scenarios they share
-  - [ ] Claude Code and Codex are switched to `protocol: 'v2'` only after the real-adapter checks pass (a handshake, a one-line prompt, a steer, a resume, a cancel in a scratch daemon); those checks and the switch run after Stage 5, because Stage 5 changes how a turn ends and Stage 7 owns the real runs
+  - [x] Claude Code is switched to `protocol: 'v2'` after the real-adapter checks (Codex stays on v1, see Decisions); Claude Code and Codex were meant to switch only after the real-adapter checks pass (a handshake, a one-line prompt, a steer, a resume, a cancel in a scratch daemon); those checks and the switch run after Stage 5, because Stage 5 changes how a turn ends and Stage 7 owns the real runs
 
 **Files**
 
@@ -219,10 +219,10 @@ Confirmed by the owner in chat (2026-11-19):
 **This stage:** Everything so far was tested against fakes and one-turn probes. This stage runs the whole chain once with real agents, in a daemon on its own data folder and port (never the owner's running app), and brings the daemon guide in line with how a session now lives.
 
 - [ ] Complete
-  - [ ] Real Claude Code through the app or the HTTP API: a 60 s background command ends its turn and the completion arrives as a new turn; a background sub-agent and a workflow likewise; a message sent while they work reaches the agent and is answered; Stop during the wait leaves no process (`ps`); a restart makes the run `interrupted` and the next message mentions the lost tasks
-  - [ ] Real Codex on v2: a normal turn, a steer, a resume; a command it backgrounds does not keep the run waiting
-  - [ ] An agent on v1 (Cursor) still ends its session at `done`
-  - [ ] `apps/daemon/AGENTS.md`: "One session is one process, one turn" and "Turns, parking and wake-ups" say how a session may outlive its turn, "Agents" says what `protocol` is and which agents use v2, the status list and "Events" have `waiting_background` and `background`; `research/` records the evidence
+  - [x] Real Claude Code through the HTTP API of a scratch daemon: a 60 s background command ends its turn and the completion arrives as a new turn; a background sub-agent and a workflow likewise; a message sent while they work reaches the agent and is answered; Stop during the wait leaves no process (`ps`); a restart makes the run `interrupted` and the next message mentions the lost tasks
+  - [x] Real Codex on v2: a normal turn, a steer, a resume; a command it backgrounds does not keep the run waiting. Result: all pass except the steer, which v2 holds until the turn ends where v1 injects it, so Codex stays on v1
+  - [x] An agent on v1 (Cursor) still ends its session at `done`
+  - [x] `apps/daemon/AGENTS.md`: "One session is one process, one turn" and "Turns, parking and wake-ups" say how a session may outlive its turn, "Agents" says what `protocol` is and which agents use v2, the status list and "Events" have `waiting_background` and `background`; `research/` records the evidence
 
 **Files**
 
@@ -231,11 +231,16 @@ Confirmed by the owner in chat (2026-11-19):
 
 **Done when:** the real Claude Code chat shows the completion of a 60 s background command as a new turn with the composer row visible during the wait, and the daemon guide describes the new lifecycle.
 **Verify:** `bunx turbo run build lint typecheck test --affected` and the real check above
-**Commits:** None yet.
+**Commits:**
 
-## Stage 8 — Background sub-agents as child runs
+- `3c7f4a0` fix(daemon): carry the real-adapter findings of the background work into the v2 layer and run Claude Code and Codex on it. Three defects fixed with tests: a repeated answer after a steer (Claude sends it as one chunk), a report turn later than the guard (`BACKGROUND_REPORT_MS`, 20 s), commands below the agent left alive by Stop (`AgentProcess.watch`). The owner still has to look at the composer row and the strip in the app during a wait: the agents drove the API only.
+- Regression check of Claude Code and Codex on v2 against v1 (`research/acp-background-probe.md`): the rest passes (`run_spawn` children, `ask_user`, permissions, compact, model and effort, title, attachments, resume, usage). Found: Codex steer (v2 holds it), foreground and background sub-agents invisible on v2 (Stage 8), and a Claude steer that waits for the running tool on v2 where v1 cut it short.
 
-**Depends on:** Stage 2, Stage 5.
+## Stage 8 — Sub-agents as child runs on v2
+
+**Depends on:** Stage 2, Stage 5, Stage 7.
+
+**Scope change after the real check (2026-11-19):** on v2 the parent is not shown the `Agent` call of a child it announces, and the child's traffic is a session of its own that the layer drops, so every sub-agent of Claude Code, foreground and background, lost its tool card and its child run compared with v1. The stage covers both kinds, and Claude Code stays on v2 only if it lands before the branch ships.
 
 **This stage:** In v2 a background sub-agent is a child session: `subagent_update` announces it and carries its state, and its messages and tool calls keep arriving after the parent's turn ended, which Stage 4 drops. This stage routes that traffic into native child runs, so the person can open a working sub-agent from the strip above the message box and read what it does, and so a child run ends when its sub-agent does, not when the call that started it returned.
 

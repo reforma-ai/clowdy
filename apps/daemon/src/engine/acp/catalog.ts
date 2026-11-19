@@ -135,7 +135,8 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         name: 'Codex',
         programs: ['codex'],
         launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.6.0', pathEnv: 'CODEX_PATH' },
-        protocol: 'v2',
+        // ACP v1 on purpose: its adapter injects a steer into the running turn through `_session/steering`, while on v2 it holds the prompt until the turn ends,
+        // and it has no background work to report on either version (real check, 2026-11-19).
         compact: '/compact',
         settings: [chatTitleSetting('Codex')],
         scrub: [/^OPENAI_API_KEY$/, /^CODEX_API_KEY$/],

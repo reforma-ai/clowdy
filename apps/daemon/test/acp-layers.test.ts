@@ -74,8 +74,8 @@ describe('the protocol of an agent', () => {
         }
     });
 
-    test('Claude Code and Codex are on v2, and every other built-in agent stays on v1', () => {
-        expect(KNOWN_AGENTS.filter(spec => spec.protocol === 'v2').map(spec => spec.id)).toEqual(['claude', 'codex']);
+    test('Claude Code is on v2, and every other built-in agent stays on v1: Codex holds a steer on v2 where v1 injects it', () => {
+        expect(KNOWN_AGENTS.filter(spec => spec.protocol === 'v2').map(spec => spec.id)).toEqual(['claude']);
         expect(KNOWN_AGENTS.find(spec => spec.id === 'cursor')?.protocol).toBeUndefined();
     });
 
