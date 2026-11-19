@@ -108,7 +108,14 @@ export function newMainMessage(projectName: string, next: string, removed?: stri
 /** `1 chat`, `2 chats`. */
 export const plural = (count: number, one: string) => `${ count } ${ count === 1 ? one : `${ one }s` }`;
 
-/** What a project holds, for its row: `12 chats · 5 tasks`. */
+/** What a project holds, as the marks of its row: `12 chats`, `5 tasks`. A count of none is left out. */
+export function holdingMarks(info: Pick<ProjectInfo, 'chats' | 'tasks'> | undefined): string[] {
+    if (!info) return [];
+
+    return ([[info.chats, 'chat'], [info.tasks, 'task']] as const).filter(([count]) => count > 0).map(([count, one]) => plural(count, one));
+}
+
+/** What a project holds, for the line under the title of its page: `12 chats · 5 tasks`. */
 export function holdingsLine(info: Pick<ProjectInfo, 'chats' | 'tasks'> | undefined): string | undefined {
     if (!info) return undefined;
 

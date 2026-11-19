@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { folderViews, holdingsLine, missingFolderNote, newMainMessage, remoteLink, removalMessage, siteName } from './projectView';
+import { folderViews, holdingMarks, holdingsLine, missingFolderNote, newMainMessage, remoteLink, removalMessage, siteName } from './projectView';
 
 describe('siteName', () => {
     it('names the sites it knows and gives the host of the others', () => {
@@ -54,6 +54,15 @@ describe('holdingsLine', () => {
         expect(holdingsLine({ chats: 1, tasks: 1 })).toBe('1 chat · 1 task');
         expect(holdingsLine({ chats: 0, tasks: 0 })).toBe('No chats or tasks yet');
         expect(holdingsLine(undefined)).toBeUndefined();
+    });
+});
+
+describe('holdingMarks', () => {
+    it('counts chats and tasks as marks, leaving out a count of none', () => {
+        expect(holdingMarks({ chats: 12, tasks: 1 })).toEqual(['12 chats', '1 task']);
+        expect(holdingMarks({ chats: 0, tasks: 3 })).toEqual(['3 tasks']);
+        expect(holdingMarks({ chats: 0, tasks: 0 })).toEqual([]);
+        expect(holdingMarks(undefined)).toEqual([]);
     });
 });
 

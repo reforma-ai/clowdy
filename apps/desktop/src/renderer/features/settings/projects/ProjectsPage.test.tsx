@@ -168,9 +168,10 @@ describe('ProjectsPage list', () => {
         ]);
         // The main folder, and how many the project has besides.
         expect(rows[1]).toContain('/Users/dev/car-rental+2 folders');
-        expect(rows[1]).toContain('4 chats · 11 tasks');
+        // What a project holds is marks after its name, with no count of none.
+        expect(rows[1]).toContain('Car Rental4 chats11 tasks');
         expect(rows[2]).not.toContain('folder');
-        expect(rows[2]).toContain('No chats or tasks yet');
+        expect(rows[2]).not.toContain('chat');
     });
 
     it('opens the page of a project from its row and goes back to the list', async () => {
