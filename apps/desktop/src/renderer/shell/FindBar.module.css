@@ -1,0 +1,61 @@
+/* Over the page, under the title band, clear of the window's edge. Above a dialog, under a tooltip.
+   One fixed-width surface: the field is the bar, and the count and buttons sit in a reserved strip on the right. */
+.bar {
+    position: fixed;
+    z-index: var(--z-confirm);
+    top: calc(var(--spacing-48) + var(--spacing-sm));
+    right: var(--spacing-lg);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    width: 24rem;
+    max-width: calc(100vw - 2 * var(--spacing-lg));
+    padding-left: var(--spacing-sm);
+    border: 1px solid var(--color-surface-border);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+    box-shadow: var(--shadow-md);
+}
+
+.bar:focus-within {
+    border-color: var(--color-primary);
+}
+
+.field,
+.field:hover,
+.field:focus-within {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    border-width: 0;
+    background-color: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+/* The words are generated content: Chromium's find only sees DOM text, so "1 of 3" is not a match.
+   The width stays whether or not there is a label, so the field does not move. */
+.trail {
+    display: flex;
+    flex: none;
+    align-items: center;
+}
+
+.count {
+    flex: none;
+    width: 5.75rem;
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+    white-space: nowrap;
+}
+
+.count::before {
+    content: attr(data-label);
+}
+
+.steps {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}

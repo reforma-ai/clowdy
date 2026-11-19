@@ -120,6 +120,80 @@ describe('the folder dialog', () => {
     });
 });
 
+describe('find in page', () => {
+    interface Found {
+        requestId: number;
+        matches: number;
+        activeMatchOrdinal: number;
+        selectionArea?: { x: number; y: number; width: number; height: number };
+        finalUpdate: boolean;
+    }
+
+    function contents() {
+        const listeners = new Set<(event: unknown, result: Found) => void>();
+        const target = {
+            mainFrame: null as { url: string } | null,
+            findInPage: vi.fn(() => 7),
+            stopFindInPage: vi.fn(),
+            on: (_event: string, listener: (event: unknown, result: Found) => void) => void listeners.add(listener),
+            removeListener: (_event: string, listener: (event: unknown, result: Found) => void) => void listeners.delete(listener),
+            emit(result: Found) {
+                for (const listener of listeners) listener({}, result);
+            },
+        };
+
+        return target;
+    }
+
+    function eventFor(target: ReturnType<typeof contents>, url: string) {
+        const frame = { url };
+
+        target.mainFrame = frame;
+
+        return { sender: target, senderFrame: frame };
+    }
+
+    test('answers with the match count once Chromium finishes, and clears the highlights', async () => {
+        const { handlers } = register();
+        const target = contents();
+        const event = eventFor(target, `${ TRUSTED }/`);
+        const pending = handlers.get(IPC_CHANNELS.findInPage)!(event, 'booking', { forward: false, findNext: true });
+
+        expect(target.findInPage).toHaveBeenCalledWith('booking', { forward: false, findNext: true });
+
+        target.emit({ requestId: 7, matches: 1, activeMatchOrdinal: 0, finalUpdate: false });
+        target.emit({
+            requestId: 7,
+            matches: 4,
+            activeMatchOrdinal: 2,
+            selectionArea: { x: 8, y: 12, width: 40, height: 16 },
+            finalUpdate: true,
+        });
+
+        await expect(pending).resolves.toEqual({
+            matches: 4,
+            activeMatchOrdinal: 2,
+            selectionArea: { x: 8, y: 12, width: 40, height: 16 },
+        });
+
+        await handlers.get(IPC_CHANNELS.stopFind)!(event);
+
+        expect(target.stopFindInPage).toHaveBeenCalledWith('clearSelection');
+    });
+
+    test('refuses an empty query, bad options, and a page of another origin', async () => {
+        const { handlers } = register();
+        const target = contents();
+        const find = handlers.get(IPC_CHANNELS.findInPage)!;
+
+        expect(() => find(eventFor(target, `${ TRUSTED }/`), '', { forward: true, findNext: true })).toThrow('Empty find');
+        expect(() => find(eventFor(target, `${ TRUSTED }/`), 'booking', { forward: true })).toThrow('Bad find options');
+        expect(() => find(eventFor(target, 'https://example.com/'), 'booking', { forward: true, findNext: true })).toThrow('Untrusted sender');
+        expect(target.findInPage).not.toHaveBeenCalled();
+        expect(() => handlers.get(IPC_CHANNELS.stopFind)!(eventFor(target, 'https://example.com/'))).toThrow('Untrusted sender');
+    });
+});
+
 describe('OTA updates', () => {
     test('the app\'s own page can say it is ready and restart into an update', async () => {
         const ready = vi.fn(async () => undefined);

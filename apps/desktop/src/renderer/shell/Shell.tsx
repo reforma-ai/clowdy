@@ -10,6 +10,7 @@ import { Screen as TasksScreen } from '../features/tasks';
 import { ChordHud, hotkeys, installDispatcher, useCommands } from '../hotkeys';
 import { openHelp } from '../hotkeys/openHelp';
 import { useProjectUi, useRootStore } from '../stores';
+import { FindBar } from './FindBar';
 import { NoProject } from './NoProject';
 import { Rail } from './Rail';
 import styles from './Shell.module.css';
@@ -45,6 +46,7 @@ export function Shell() {
             </div>
             <SyncBanner />
             <ChordHud />
+            <FindBar />
         </div>
     );
 }

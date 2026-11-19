@@ -14,7 +14,38 @@ export const IPC_CHANNELS = {
     restartToUpdate: 'desktop:restart-to-update',
     /** Main to renderer: an OTA bundle is installed and runs from the next launch. */
     updateReady: 'desktop:update-ready',
+    /** Renderer to main: search the text Chromium has drawn in this window. */
+    findInPage: 'desktop:find-in-page',
+    /** Renderer to main: drop the highlights of that search. */
+    stopFind: 'desktop:stop-find',
+    /** Main to renderer: the Edit menu's Find, Find Next or Find Previous. */
+    findCommand: 'desktop:find-command',
 } as const;
+
+/** What the Edit menu asked the page to do. */
+export type FindCommand = 'open' | 'next' | 'previous';
+
+/** Viewport pixels of the active match, the same space as `getBoundingClientRect`. */
+export interface FindRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/** How many matches Chromium found, and which one is current. `activeMatchOrdinal` counts from 1. */
+export interface FindResult {
+    matches: number;
+    activeMatchOrdinal: number;
+    /** Where the active match is drawn, when Chromium reported it. */
+    selectionArea?: FindRect;
+}
+
+/** `findNext` starts a session (a new query). A follow-up moves through it, `forward` saying which way. */
+export interface FindOptions {
+    forward: boolean;
+    findNext: boolean;
+}
 
 /**
  * What the preload exposes as `window.desktop`. Keep it minimal: the renderer is untrusted and
@@ -38,4 +69,10 @@ export interface DesktopBridge {
     onUpdateReady: (listener: (version: number) => void) => () => void;
     /** Restarts the app into the installed update. */
     restartToUpdate: () => Promise<void>;
+    /** Searches the text drawn in this window. Rejects an empty query: clear the highlights with `stopFind` instead. */
+    findInPage: (text: string, options: FindOptions) => Promise<FindResult>;
+    /** Clears the highlights of `findInPage`. */
+    stopFind: () => Promise<void>;
+    /** The Edit menu's Find commands. Returns a function that stops listening. */
+    onFindCommand: (listener: (command: FindCommand) => void) => () => void;
 }

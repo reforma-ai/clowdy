@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-import { IPC_CHANNELS, WINDOW_MATERIAL_ARGUMENT, type DesktopBridge } from '../shared/bridge';
+import { IPC_CHANNELS, WINDOW_MATERIAL_ARGUMENT, type DesktopBridge, type FindCommand } from '../shared/bridge';
 
 // Synchronous, so the field exists before the page's first script runs. The main process answers only the app's own top frame.
 const daemon = ipcRenderer.sendSync(IPC_CHANNELS.getDaemon) as DesktopBridge['daemon'] | null;
@@ -31,6 +31,17 @@ const desktop: DesktopBridge = {
         ipcRenderer.on(IPC_CHANNELS.updateReady, handler);
 
         return () => void ipcRenderer.removeListener(IPC_CHANNELS.updateReady, handler);
+    },
+    findInPage: (text, options) => ipcRenderer.invoke(IPC_CHANNELS.findInPage, text, options),
+    stopFind: () => ipcRenderer.invoke(IPC_CHANNELS.stopFind),
+    onFindCommand: (listener) => {
+        const handler = (_event: unknown, command: unknown) => {
+            if (command === 'open' || command === 'next' || command === 'previous') listener(command as FindCommand);
+        };
+
+        ipcRenderer.on(IPC_CHANNELS.findCommand, handler);
+
+        return () => void ipcRenderer.removeListener(IPC_CHANNELS.findCommand, handler);
     },
     ...daemon && { daemon },
 };
