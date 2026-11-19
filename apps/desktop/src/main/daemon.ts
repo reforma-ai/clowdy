@@ -75,7 +75,7 @@ function acceptable({ info, health }: RunningDaemon): DaemonInfo {
     if (health.protocol !== PROTOCOL_VERSION) {
         throw new DaemonError(
             `The running daemon (pid ${ info.pid }) speaks protocol ${ health.protocol }, but this app needs ${ PROTOCOL_VERSION }.`,
-            'Stop that daemon (or restart it from this checkout), then start Clowdy again.'
+            'Use the copy of Clowdy that started it, or stop that daemon and start Clowdy again.'
         );
     }
 

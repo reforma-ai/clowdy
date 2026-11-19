@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from '@clowdy/protocol';
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, protocol, session, shell } from 'electron';
 import { watch } from 'node:fs';
 import { release } from 'node:os';
@@ -5,10 +6,10 @@ import path from 'node:path';
 
 import { IPC_CHANNELS } from '../shared/bridge';
 import { DEV_BUILD_MARKER } from '../shared/dev';
-import { installRuntime, readBundleInfo, updatesDir } from './bundle';
+import { installRuntime, readBundleInfo, updatesDir, type BundleInfo } from './bundle';
 import { attachDaemon, currentContext, daemonAddress, ensureDaemon, environmentRuntime, type DaemonContext, type DaemonRuntime } from './daemon';
-import { showDaemonError } from './daemonDialog';
-import { keepDaemonFresh, type DaemonKeeper } from './daemonKeeper';
+import { askToReplaceDaemon, showDaemonError } from './daemonDialog';
+import { fromOlderBundle, keepDaemonFresh, newestSourceTime, sourcesChangedSince, type DaemonKeeper, type KeeperOptions } from './daemonKeeper';
 import { registerIpc } from './ipc';
 import { createAppMenu } from './menu';
 import { createProtocolHandler } from './protocol';
@@ -94,19 +95,21 @@ function start(): void {
         Menu.setApplicationMenu(createAppMenu());
 
         let runtimeError: unknown;
-        const runtime = await daemonRuntime().catch((error: unknown) => {
+        const prepared = await daemonRuntime().catch((error: unknown) => {
             console.error('The daemon cannot be prepared:', error);
             runtimeError = error;
 
             return undefined;
         });
-        const context = currentContext(runtime);
-        const keeper = startKeeper(context);
+        const context = currentContext(prepared?.runtime);
+        const firstWindow = Promise.withResolvers<BrowserWindow>();
+        const keeper = startKeeper(context, prepared?.bundle, firstWindow.promise);
         // Without a runtime the app still joins a daemon that is running; when it cannot, the runtime's failure is the reason shown.
         const daemonError = await connectDaemon(context, keeper);
         const window = openWindow();
 
         firstWindowOpen = true;
+        window.once('ready-to-show', () => firstWindow.resolve(window));
 
         // A sheet on the visible window: an unparented dialog would block the main process's event loop on macOS.
         if (daemonError) window.once('ready-to-show', () => void showDaemonError(runtimeError ?? daemonError, window));
@@ -117,26 +120,31 @@ function start(): void {
  * What runs the daemon. A packaged app copies the Bun and the daemon it ships out of its install folder and runs those
  * (`bundle.ts`); a development run takes the Bun and the checkout `./clowdy dev` names.
  */
-async function daemonRuntime(): Promise<DaemonRuntime | undefined> {
-    if (!app.isPackaged) return environmentRuntime(process.env);
+async function daemonRuntime(): Promise<{ runtime?: DaemonRuntime; bundle?: BundleInfo }> {
+    if (!app.isPackaged) return { runtime: environmentRuntime(process.env) };
 
     const bundle = await readBundleInfo(path.join(app.getAppPath(), 'bundle.json'));
 
-    return installRuntime({ resources: process.resourcesPath, updates: updatesDir(currentContext().dataDir), bundle });
+    return { runtime: await installRuntime({ resources: process.resourcesPath, updates: updatesDir(currentContext().dataDir), bundle }), bundle };
 }
 
 /**
  * Finds the daemon or starts one before the window opens, so the page loads with its address. Resolves with the
- * reason when there is none, and the window opens anyway. Quitting never stops the daemon: it outlives the app (only a development run replaces a stale one, see `startKeeper`).
+ * reason when there is none, and the window opens anyway. Quitting never stops the daemon: it outlives the app, and
+ * only the keeper replaces a stale one (see `startKeeper`).
  */
 async function connectDaemon(context: DaemonContext, keeper: DaemonKeeper | undefined): Promise<unknown> {
     try {
+        // A stale daemon (another bundle's, or one older than its sources) is replaced now, while no window depends on it.
+        const outcome = await keeper?.checkNow();
+
+        // A busy one this app cannot talk to stays until the keeper swaps it; the window shows that it cannot reach a daemon
+        // and reloads on the swap.
+        if (outcome?.kind === 'busy' && outcome.protocol !== PROTOCOL_VERSION) return undefined;
+
         const { pid, port } = await ensureDaemon(context);
 
         console.info(`Using the daemon with pid ${ pid } on port ${ port }.`);
-
-        // A daemon left over from before the last source change is replaced now, while no window depends on it.
-        await keeper?.checkNow();
     }
     catch (error) {
         console.error('No daemon:', error);
@@ -146,25 +154,55 @@ async function connectDaemon(context: DaemonContext, keeper: DaemonKeeper | unde
 }
 
 /**
- * A development run (`CLOWDY_DAEMON_WATCH` names the daemon's source folders, `scripts/dev.ts` sets it) replaces the
- * daemon with a new one when its sources change, but only while it has no runs in progress. The windows are told
- * where the new one is, and their event feed resumes from its cursor. A packaged app never does this.
+ * Keeps the daemon the one this app wants, replacing a stale one once it has no runs in progress. The windows are told
+ * where the new one is, and their event feed resumes from its cursor.
+ *
+ * - A packaged app wants the daemon of the bundle it runs: one from another bundle (left by the previous version) is
+ *   replaced, and when it is busy a sheet asks whether to interrupt its runs or wait for them.
+ * - A development run (`CLOWDY_DAEMON_WATCH` names the daemon's source folders, `scripts/dev.ts` sets it) replaces the
+ *   daemon when its sources change.
  */
-function startKeeper(context: DaemonContext): DaemonKeeper | undefined {
-    const dirs = app.isPackaged ? [] : (process.env.CLOWDY_DAEMON_WATCH ?? '').split(path.delimiter).filter(Boolean);
-
-    if (dirs.length === 0) return undefined;
-
-    return keepDaemonFresh({
+function startKeeper(context: DaemonContext, bundle: BundleInfo | undefined, firstWindow: Promise<BrowserWindow>): DaemonKeeper | undefined {
+    // The sheet about a busy daemon; it closes when that daemon is replaced without an answer (its runs finished first).
+    let question: AbortController | undefined;
+    const common: Pick<KeeperOptions, 'context' | 'log' | 'onRestarted'> = {
         context,
-        dirs,
         log: message => console.info(message),
         onRestarted: (info) => {
             const address = daemonAddress(info);
 
+            question?.abort();
             BrowserWindow.getAllWindows().forEach(window => window.webContents.send(IPC_CHANNELS.daemonChanged, address));
         },
-    });
+    };
+
+    if (app.isPackaged) {
+        if (!bundle) return undefined;
+
+        const keeper: DaemonKeeper = keepDaemonFresh({
+            ...common,
+            isStale: fromOlderBundle(bundle.version),
+            // A sheet on the visible window: an unparented dialog would block the main process's event loop on macOS.
+            onBusy: ({ activeRuns }) => {
+                question = new AbortController();
+                const { signal } = question;
+
+                void firstWindow
+                    .then(window => askToReplaceDaemon(window, activeRuns, signal))
+                    .then(async (replace) => {
+                        if (replace) await keeper.replaceNow();
+                    });
+            },
+        });
+
+        return keeper;
+    }
+
+    const dirs = (process.env.CLOWDY_DAEMON_WATCH ?? '').split(path.delimiter).filter(Boolean);
+
+    if (dirs.length === 0) return undefined;
+
+    return keepDaemonFresh({ ...common, dirs, isStale: sourcesChangedSince(() => newestSourceTime(dirs)) });
 }
 
 /** A development run: every rebuild of the renderer ends with the marker, and the windows load the new files. */

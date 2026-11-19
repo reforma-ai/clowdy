@@ -91,11 +91,11 @@
 
 **This stage:** After a shell update (and later an OTA bundle) the running daemon can be from another bundle; today the app refuses one with another protocol and tells the person to stop it. The keeper, dev-only today, gets a packaged mode where "stale" means `health.version` differs from the bundle the app runs or the protocol differs. An idle daemon is replaced silently; a busy one gets a sheet with the number of active runs and Restart now / Wait. Wait keeps polling and swaps once idle; while protocols match the app keeps using the old daemon, otherwise the window waits on the existing "Can't reach the daemon" banner. The windows move to the new daemon through `daemonChanged`.
 
-- [ ] Complete
-  - [ ] `restartIfStale` takes the staleness rule, with mtimes for development and bundle version or protocol for packaged runs
-  - [ ] `ensureDaemon` hands a stale daemon to the keeper in a packaged run instead of throwing a protocol `DaemonError`
-  - [ ] A busy stale daemon raises one sheet per launch with the run count; Restart now stops it and starts the current one; Wait swaps when idle
-  - [ ] Unit tests cover idle swap, busy wait, forced restart, and protocol mismatch
+- [x] Complete
+  - [x] `restartIfStale` takes the staleness rule, with mtimes for development and bundle version or protocol for packaged runs
+  - [x] `ensureDaemon` hands a stale daemon to the keeper in a packaged run instead of throwing a protocol `DaemonError`
+  - [x] A busy stale daemon raises one sheet per launch with the run count; Restart now stops it and starts the current one; Wait swaps when idle
+  - [x] Unit tests cover idle swap, busy wait, forced restart, and protocol mismatch
 
 **Files**
 
@@ -105,7 +105,9 @@
 - `apps/desktop/src/main/index.ts` — `startKeeper`, `connectDaemon`: start the keeper in packaged runs
 - `apps/desktop/src/main/daemonKeeper.test.ts`, `apps/desktop/src/main/daemon.test.ts` — cases above
 
-**Done when:** a packaged app that finds a daemon from another bundle replaces it when idle, and asks with the run count when busy.
+Scope change (review): only a daemon from an **older** bundle (or from sources, or the same bundle on another protocol) is stale (`fromOlderBundle`); a newer one stays, because its database may be migrated past what this bundle's daemon opens. A window that loaded without a daemon reloads on `daemonChanged` (`src/renderer/root.ts`), and the sheet closes itself when the keeper swaps first.
+
+**Done when:** a packaged app that finds a daemon from an older bundle replaces it when idle, and asks with the run count when busy.
 **Verify:** `bun run typecheck && bun run test` in `apps/desktop`.
 **Commits:** None yet.
 

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { type DaemonContext } from './daemon';
-import { isDaemonSource, keepDaemonFresh, newestSourceTime, restartIfStale } from './daemonKeeper';
+import { fromOlderBundle, isDaemonSource, keepDaemonFresh, newestSourceTime, restartIfStale, sourcesChangedSince } from './daemonKeeper';
 
 import type { DaemonHost } from './daemonHost';
 
@@ -22,18 +22,18 @@ interface World {
 }
 
 /** A machine in memory with one daemon on it, started at `startedAt`, with `activeRuns` runs in progress. */
-function setup({ running = true, startedAt = 1000, activeRuns = 0 }: { running?: boolean; startedAt?: number; activeRuns?: number } = {}) {
+function setup({ running = true, startedAt = 1000, activeRuns = 0, version = '0.0.1', protocol = PROTOCOL_VERSION }: { running?: boolean; startedAt?: number; activeRuns?: number; version?: string; protocol?: number } = {}) {
     const world: World = { files: new Map(), daemons: new Map(), stops: 0, launches: 0, clock: startedAt + 5000, nextPid: 100 };
-    const publish = (startedAtOfNew: number, runs: number): DaemonInfo => {
-        const info: DaemonInfo = { pid: world.nextPid++, port: 50000 + world.nextPid, token: 't', protocol: PROTOCOL_VERSION, startedAt: startedAtOfNew };
+    const publish = (startedAtOfNew: number, runs: number, ofVersion = '412', ofProtocol = PROTOCOL_VERSION): DaemonInfo => {
+        const info: DaemonInfo = { pid: world.nextPid++, port: 50000 + world.nextPid, token: 't', protocol: ofProtocol, startedAt: startedAtOfNew };
 
         world.files.set(INFO_FILE, JSON.stringify(info));
-        world.daemons.set(info.port, { ok: true, protocol: PROTOCOL_VERSION, version: '0.0.1', pid: info.pid, startedAt: startedAtOfNew, activeRuns: runs });
+        world.daemons.set(info.port, { ok: true, protocol: ofProtocol, version: ofVersion, pid: info.pid, startedAt: startedAtOfNew, activeRuns: runs });
 
         return info;
     };
 
-    if (running) publish(startedAt, activeRuns);
+    if (running) publish(startedAt, activeRuns, version, protocol);
 
     const host: DaemonHost = {
         readText: async file => world.files.get(file),
@@ -71,21 +71,21 @@ describe('restartIfStale', () => {
     test('does nothing when no daemon runs', async () => {
         const { world, context } = setup({ running: false });
 
-        expect(await restartIfStale(context, async () => 9_999)).toEqual({ kind: 'none' });
+        expect(await restartIfStale(context, sourcesChangedSince(async () => 9_999))).toEqual({ kind: 'none' });
         expect([world.stops, world.launches]).toEqual([0, 0]);
     });
 
     test('leaves a daemon that started after the last source change', async () => {
         const { world, context } = setup({ startedAt: 1000 });
 
-        expect(await restartIfStale(context, async () => 1000)).toEqual({ kind: 'fresh' });
+        expect(await restartIfStale(context, sourcesChangedSince(async () => 1000))).toEqual({ kind: 'fresh' });
         expect([world.stops, world.launches]).toEqual([0, 0]);
     });
 
     test('waits while the stale daemon has runs in progress, so nothing is interrupted', async () => {
         const { world, context } = setup({ startedAt: 1000, activeRuns: 2 });
 
-        expect(await restartIfStale(context, async () => 2000)).toEqual({ kind: 'busy', activeRuns: 2 });
+        expect(await restartIfStale(context, sourcesChangedSince(async () => 2000))).toMatchObject({ kind: 'busy', activeRuns: 2 });
         expect([world.stops, world.launches]).toEqual([0, 0]);
     });
 
@@ -97,13 +97,13 @@ describe('restartIfStale', () => {
             return health;
         } } };
 
-        expect(await restartIfStale(silent, async () => 2000)).toEqual({ kind: 'busy', activeRuns: undefined });
+        expect(await restartIfStale(silent, sourcesChangedSince(async () => 2000))).toMatchObject({ kind: 'busy', activeRuns: undefined });
         expect(world.stops).toBe(0);
     });
 
     test('replaces an idle stale daemon with a new one', async () => {
         const { world, context } = setup({ startedAt: 1000, activeRuns: 0 });
-        const outcome = await restartIfStale(context, async () => 2000);
+        const outcome = await restartIfStale(context, sourcesChangedSince(async () => 2000));
 
         expect(outcome.kind).toBe('restarted');
         expect([world.stops, world.launches]).toEqual([1, 1]);
@@ -127,6 +127,7 @@ describe('keepDaemonFresh', () => {
         const restarted: DaemonInfo[] = [];
         const keeper = keepDaemonFresh({
             dirs: ['/repo/apps/daemon/src'],
+            isStale: () => false,
             onRestarted: info => restarted.push(info),
             watch: ((_dir: string, _options: unknown, listener: (event: string, file: string | null) => void) => {
                 changes.push(listener);
@@ -143,7 +144,7 @@ describe('keepDaemonFresh', () => {
 
     test('restarts an idle daemon once after a burst of changes, and tells the windows', async () => {
         const { world, context } = setup({ startedAt: 1000 });
-        const { changes, restarted } = watched({ context, newestTime: async () => 2000 });
+        const { changes, restarted } = watched({ context, isStale: sourcesChangedSince(async () => 2000) });
 
         changes[0]('change', 'runs/driver.ts');
         changes[0]('change', 'runs/service.ts');
@@ -157,7 +158,7 @@ describe('keepDaemonFresh', () => {
 
     test('ignores tests and files that are not sources', async () => {
         const { world, context } = setup({ startedAt: 1000 });
-        const { changes } = watched({ context, newestTime: async () => 2000 });
+        const { changes } = watched({ context, isStale: sourcesChangedSince(async () => 2000) });
 
         changes[0]('change', 'runs/driver.test.ts');
         changes[0]('change', 'notes.md');
@@ -169,7 +170,7 @@ describe('keepDaemonFresh', () => {
 
     test('looks again every few seconds while the daemon is busy, and restarts it once idle', async () => {
         const { world, context, setRuns } = setup({ startedAt: 1000, activeRuns: 1 });
-        const { changes, restarted } = watched({ context, newestTime: async () => 2000 });
+        const { changes, restarted } = watched({ context, isStale: sourcesChangedSince(async () => 2000) });
 
         changes[0]('change', 'runs/driver.ts');
         await vi.advanceTimersByTimeAsync(1000);
@@ -184,9 +185,34 @@ describe('keepDaemonFresh', () => {
         expect(restarted).toHaveLength(1);
     });
 
+    test('a change saved while the daemon restarts leads to another restart', async () => {
+        const { world, context } = setup({ startedAt: 1000 });
+        let newest = 2000;
+        let saved = false;
+        const launch: DaemonHost['launch'] = (options) => {
+            const exited = context.host.launch(options);
+
+            if (!saved) {
+                saved = true;
+                newest = world.clock + 1;
+                changes[0]('change', 'runs/driver.ts');
+            }
+
+            return exited;
+        };
+        const { changes } = watched({ context: { ...context, host: { ...context.host, launch } }, isStale: sourcesChangedSince(async () => newest) });
+
+        changes[0]('change', 'runs/service.ts');
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(world.stops).toBe(1);
+
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(world.stops).toBe(2);
+    });
+
     test('checkNow settles after the restart it led to, and stop closes the watchers', async () => {
         const { world, context } = setup({ startedAt: 1000 });
-        const { keeper, closed } = watched({ context, newestTime: async () => 2000 });
+        const { keeper, closed } = watched({ context, isStale: sourcesChangedSince(async () => 2000) });
 
         await keeper.checkNow();
         expect(world.stops).toBe(1);
@@ -199,11 +225,76 @@ describe('keepDaemonFresh', () => {
         const { context } = setup({ startedAt: 1000 });
         const log = vi.fn();
         const failing = { ...context, host: { ...context.host, stop: async () => Promise.reject(new Error('boom')) } };
-        const { keeper } = watched({ context: failing, newestTime: async () => 2000, log });
+        const { keeper } = watched({ context: failing, isStale: sourcesChangedSince(async () => 2000), log });
 
         await keeper.checkNow();
 
         expect(log).toHaveBeenCalledWith(expect.stringContaining('Could not restart the daemon: boom'));
+    });
+});
+
+describe('a packaged app', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    test('a daemon from an older bundle, from sources, or of another protocol is stale; its own and a newer one are not', async () => {
+        const isStale = fromOlderBundle(412);
+        const cases = [
+            ['412', PROTOCOL_VERSION, false],
+            ['411', PROTOCOL_VERSION, true],
+            ['0.0.1', PROTOCOL_VERSION, true],
+            ['412', PROTOCOL_VERSION + 1, true],
+            // A newer copy of the app started it, and its database may be past what this bundle opens.
+            ['413', PROTOCOL_VERSION, false],
+            ['413', PROTOCOL_VERSION + 1, false],
+        ] as const;
+
+        for (const [version, protocol, stale] of cases) {
+            const { context } = setup({ version, protocol });
+
+            expect((await restartIfStale(context, isStale)).kind).toBe(stale ? 'restarted' : 'fresh');
+        }
+    });
+
+    test('a busy daemon from another bundle is reported once, swapped once idle, and the windows are told', async () => {
+        const { world, context, setRuns } = setup({ version: '411', activeRuns: 2 });
+        const busy = vi.fn();
+        const restarted = vi.fn();
+        const keeper = keepDaemonFresh({ context, isStale: fromOlderBundle(412), onRestarted: restarted, onBusy: busy, busyRetryMs: 5000 });
+
+        expect(await keeper.checkNow()).toMatchObject({ kind: 'busy', activeRuns: 2, protocol: PROTOCOL_VERSION });
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(busy).toHaveBeenCalledOnce();
+        expect(world.stops).toBe(0);
+
+        setRuns(0);
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(world.stops).toBe(1);
+        expect(restarted).toHaveBeenCalledOnce();
+        keeper.stop();
+    });
+
+    test('replaceNow swaps a busy daemon at once when the person chooses to', async () => {
+        const { world, context } = setup({ version: '411', activeRuns: 3 });
+        const restarted = vi.fn();
+        const keeper = keepDaemonFresh({ context, isStale: fromOlderBundle(412), onRestarted: restarted });
+
+        await keeper.checkNow();
+        expect(world.stops).toBe(0);
+
+        expect((await keeper.replaceNow())?.kind).toBe('restarted');
+        expect(world.stops).toBe(1);
+        expect(restarted).toHaveBeenCalledOnce();
+
+        // The new daemon is the app's own: nothing more to do.
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(world.stops).toBe(1);
+        keeper.stop();
     });
 });
 

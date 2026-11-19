@@ -15,8 +15,12 @@ const config = resolveDaemonConfig(location.search, window.desktop?.daemon);
 
 const transport = createTransport(config);
 
-// A daemon that was replaced listens elsewhere: the transport follows it and its feed resumes where it was.
-const stopFollowing = transport instanceof HttpTransport ? window.desktop?.onDaemonChange(address => transport.setAddress(address)) : undefined;
+// A daemon that was replaced listens elsewhere: the transport follows it and its feed resumes where it was. A window that
+// loaded without one (the running daemon spoke another protocol) is handed the new one by a reload.
+const stopFollowing = window.desktop?.onDaemonChange((address) => {
+    if (transport instanceof HttpTransport) transport.setAddress(address);
+    else if (config.kind === 'none') location.reload();
+});
 
 /** The app's one store. It starts loading when the module is first imported. */
 export const root = new RootStore(transport, {
