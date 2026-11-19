@@ -5,10 +5,9 @@ import { emptyComposerDoc, RichInput, type ComposerDoc, type RichInputHandle } f
 import { Clip } from '@clowdy/icons/14';
 import { useImperativeHandle, useRef, useState, type MouseEvent, type Ref } from 'react';
 
-import { useAgents, useRootStore } from '../../stores';
+import { useRootStore } from '../../stores';
 import { busyEnter, sendMode } from './busyEnter';
 import { readRememberedMode, startingMode, writeRememberedMode } from './chatModeMemory';
-import { canSteerChat } from './chatProvider';
 import { isRunActive, isRunBusy } from './chatRun';
 import { perform } from './commands';
 import styles from './Composer.module.css';
@@ -65,7 +64,6 @@ export interface ComposerProps {
  */
 export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
     const root = useRootStore();
-    const { agents } = useAgents();
     const field = useRef<RichInputHandle>(null);
     const box = useRef<HTMLDivElement>(null);
     const triggers = useMentionTriggers(box);
@@ -88,8 +86,6 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
     const running = isRunActive(run);
     // A message to a busy orchestrator waits in the queue; the box says so, and Send now on a queued message steers.
     const busy = isRunBusy(run);
-    // An agent that takes no message while it works has its turn stopped by Send now (the daemon's stop and send), which the queue's button says.
-    const canSteer = chat ? canSteerChat(chat, run, agents) : true;
     const model = useModelChoice({ chat, made, run, preferredEngine: start?.defaults?.engine });
     const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
     const picker = useRef<HTMLInputElement>(null);
@@ -215,7 +211,7 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
 
     return (
         <div ref={ box } className={ styles.surface }>
-            { chat && <ComposerQueue chat={ chat } busy={ busy } running={ running } canSteer={ canSteer } stops={ run?.status === 'running' && !canSteer } onEdit={ editQueued } /> }
+            { chat && <ComposerQueue chat={ chat } busy={ busy } running={ running } onEdit={ editQueued } /> }
 
             { /* The field is the keyboard way in; this only gives the mouse the whole card. */ }
             <div className={ styles.main } onMouseDown={ focusField }>

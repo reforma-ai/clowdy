@@ -948,7 +948,7 @@ export class FixtureTransport implements Transport {
             chat.queue = placeQueued(chat.queue ?? [], item);
             this.#emit(chat.projectId, { type: 'chat.upserted', chat });
 
-            if (mode === 'steer' && this.#takesSteer(existing)) this.#later(STEER_MS, () => this.#takeSteer(chat.id, item.id));
+            if (mode === 'steer') this.#later(STEER_MS, () => this.#takeSteer(chat.id, item.id));
 
             return ok({ chatId: chat.id, runId: existing.id });
         }
@@ -1158,14 +1158,10 @@ export class FixtureTransport implements Transport {
             return ok({ chatId: chat.id, runId: run.id });
         }
 
-        if (run.status === 'running' && !this.#takesSteer(run)) {
-            this.#stopAndSend(chat, run, item);
-        }
-        else if (isBusyRunStatus(run.status)) {
+        if (isBusyRunStatus(run.status)) {
             this.#setQueue(chat, placeQueued(chat.queue ?? [], { ...item, mode: 'steer' }));
             this.#emit(chat.projectId, { type: 'chat.upserted', chat });
-
-            if (this.#takesSteer(run)) this.#later(STEER_MS, () => this.#takeSteer(chat.id, item.id));
+            this.#later(STEER_MS, () => this.#takeSteer(chat.id, item.id));
         }
         else {
             chat.updatedAt = Date.now();
@@ -1173,33 +1169,6 @@ export class FixtureTransport implements Transport {
         }
 
         return ok({ chatId: chat.id, runId: run.id });
-    }
-
-    /** Whether the run's agent takes a message while it works; one the fixture does not list (the scripted agent) does. A steer to one that does not waits for the turn's end. */
-    #takesSteer(run: Run): boolean {
-        const agent = this.#agent(run.engine);
-
-        return agent === undefined || agent.canSteer === true;
-    }
-
-    /**
-     * Send now for an agent that cannot take a steer, as the daemon does it (stop and send): the turn ends on purpose and a call it left running is stopped,
-     * the run rests for a moment, and the message, put ahead of the steers that waited, is the next turn at once. Nothing below the run is cancelled, and a
-     * held queue flows again.
-     */
-    #stopAndSend(chat: Chat, run: Run, item: QueuedMessage): void {
-        for (const stored of this.#data.items[run.id] ?? []) {
-            if (stored.body.kind === 'tool' && stored.body.state === 'running') this.#saveItem(run, { ...stored, body: { ...stored.body, state: 'error', error: STOPPED_TOOL } });
-        }
-
-        run.status = 'cancelled';
-        run.statusReason = 'Stopped to send a message';
-        run.finishedAt = Date.now();
-        this.#saveRun(run);
-        delete chat.queuePaused;
-        chat.updatedAt = Date.now();
-        this.#setQueue(chat, placeQueued(chat.queue ?? [], { ...item, mode: 'steer' }, 0));
-        this.#settleQueue(chat);
     }
 
     #startTask(taskId: TaskId, force: boolean): Outcome {

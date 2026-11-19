@@ -69,8 +69,6 @@ export interface AgentSpec {
     clientMeta?: Record<string, unknown>;
     /** The message that makes the agent compact its conversation (verified: both report it as a "Compact conversation" tool call and a smaller context). Absent when it has none. */
     compact?: string;
-    /** The agent takes a message while it works (it says so in its handshake, or speaks v2): `AgentInfo.canSteer`, which tells the app what Send now will do. */
-    steer?: boolean;
     /** The ACP version the engine speaks to the agent: `v1` unless set. */
     protocol?: AgentProtocol;
 }
@@ -89,7 +87,6 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         programs: ['claude'],
         launch: { kind: 'package', package: '@agentclientprotocol/claude-agent-acp@0.107.0', pathEnv: 'CLAUDE_CODE_EXECUTABLE' },
         compact: '/compact',
-        steer: true,
         // Sub-agents are a feature, this only caps hidden fan-out. The rest of what a run does not do by default (claude.ai
         // connectors, the agent's own memory) is a setting below, off until the person turns it on. Without the last variable
         // Claude Code reads no CLAUDE.md in the project's other folders, which reach it as additional directories.
@@ -137,7 +134,6 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         programs: ['codex'],
         launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.6.0', pathEnv: 'CODEX_PATH' },
         compact: '/compact',
-        steer: true,
         settings: [chatTitleSetting('Codex')],
         scrub: [/^OPENAI_API_KEY$/, /^CODEX_API_KEY$/],
         login: 'codex login',

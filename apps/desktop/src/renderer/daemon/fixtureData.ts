@@ -185,7 +185,6 @@ function fixtureAgents(now: number): AgentInfo[] {
             login: 'claude auth login',
             canSignIn: true,
             canCompact: true,
-            canSteer: true,
             signIn: { status: 'signed-in', account: { ...account, plan: 'Max' }, checkedAt: now },
             usage: {
                 state: 'ok',
@@ -216,7 +215,6 @@ function fixtureAgents(now: number): AgentInfo[] {
             login: 'codex login',
             canSignIn: true,
             canCompact: true,
-            canSteer: true,
             signIn: { status: 'signed-in', account: { ...account, plan: 'Plus' }, checkedAt: now },
             usage: {
                 state: 'ok',

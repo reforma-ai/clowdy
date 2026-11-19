@@ -131,63 +131,6 @@ describe('the queue in the composer', () => {
         expect(fieldText()).toBe('Queued words\n\ntyped since');
     });
 
-    describe('Send now for an agent that takes no steer', () => {
-        /** The hint of a button as its tooltip shows it on focus. */
-        async function hintOf(button: HTMLElement) {
-            await act(async () => {
-                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-                button.focus();
-            });
-            await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
-
-            return document.querySelector('[role="tooltip"]')?.textContent;
-        }
-
-        it('reads "Stop and send" while its turn runs, says that it stops the agent, and sends the same command', async () => {
-            const chat = chatWith([queued('q-1', 'Change of plan')], { engine: 'cursor' });
-
-            await mount(chat, 'running');
-
-            const row = rowOf('Change of plan');
-
-            expect(buttonIn(row, 'Send now')).toBeUndefined();
-            expect(buttonIn(row, 'Stop and send')).toBeDefined();
-            expect(await hintOf(buttonIn(row, 'Stop and send')!)).toBe('Stops what the agent is doing now, then sends this message');
-
-            await act(async () => buttonIn(row, 'Stop and send')!.click());
-
-            expect(sent).toEqual([{ type: 'chat.sendQueued', chatId: chat.id, itemId: 'q-1' }]);
-        });
-
-        it.each(['claude', 'codex'])('keeps "Send now" for %s, which takes a steer', async (engine) => {
-            await mount(chatWith([queued('q-1', 'Change of plan')], { engine }), 'running');
-
-            expect(buttonIn(rowOf('Change of plan'), 'Send now')).toBeDefined();
-            expect(buttonIn(rowOf('Change of plan'), 'Stop and send')).toBeUndefined();
-            expect(await hintOf(buttonIn(rowOf('Change of plan'), 'Send now')!)).toBe('Submit without interrupting the model');
-        });
-
-        it.each(['cancelled', 'succeeded', 'queued', 'waiting_user', 'waiting_children'] as const)('keeps "Send now" while the orchestrator is %s: there is no running turn to stop', async (status) => {
-            await mount(chatWith([queued('q-1', 'Change of plan')], { engine: 'cursor' }), status);
-
-            expect(buttonIn(rowOf('Change of plan'), 'Send now')).toBeDefined();
-            expect(buttonIn(rowOf('Change of plan'), 'Stop and send')).toBeUndefined();
-        });
-
-        it('keeps "Send now" for a chat whose agent the list does not have (still loading, or the scripted one)', async () => {
-            await mount(chatWith([queued('q-1', 'Change of plan')], { engine: 'fake' }), 'running');
-
-            expect(buttonIn(rowOf('Change of plan'), 'Send now')).toBeDefined();
-        });
-
-        it('does not call a steer that it cannot take "Steering…": the steer waits for the turn\'s end and offers to stop it', async () => {
-            await mount(chatWith([queued('q-1', 'Use the blue one', { mode: 'steer' })], { engine: 'cursor' }), 'running');
-
-            expect(rowOf('Use the blue one').textContent).not.toContain('Steering…');
-            expect(buttonIn(rowOf('Use the blue one'), 'Stop and send')).toBeDefined();
-        });
-    });
-
     describe('a compact item', () => {
         const compact = queued('q-c', 'Compact the conversation', { command: 'compact', content: '/compact' });
         const compactRow = () => [...container.querySelectorAll<HTMLElement>('[data-first], [class*="item"]')].find(row => row.textContent?.startsWith('Compact the conversation'))!;
