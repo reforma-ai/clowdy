@@ -124,13 +124,21 @@ export function claudeWindows(limits: unknown): AgentUsageWindow[] {
     return windows.sort((a, b) => rank(a) - rank(b));
 }
 
-/** The lines of `claude -p "/usage" --output-format stream-json`: the report rides on the assistant line of the command. */
-export function parseClaudeUsage(stdout: string): AgentUsage {
+/**
+ * The lines of `claude -p "/usage" --output-format stream-json`: the report rides on the assistant line of the command. `program` is the one that
+ * printed them, named when it is too old to have the command.
+ */
+export function parseClaudeUsage(stdout: string, program?: string): AgentUsage {
     let reportLimits: unknown;
     let message = '';
+    let result = '';
 
     for (const line of stdout.split('\n')) {
         const object = line.trim().startsWith('{') ? jsonObject(line) : undefined;
+
+        if (object?.type === 'result') {
+            result = text(object.result) ?? result;
+        }
 
         if (object?.type !== 'assistant') {
             continue;
@@ -177,7 +185,16 @@ export function parseClaudeUsage(stdout: string): AgentUsage {
 
     const reason = message.split('\n').map(part => part.trim()).find(part => /rate limited|try again|unavailable/i.test(part));
 
-    return { state: 'error', windows: [], detail: reason ?? 'Claude Code did not report its limits' };
+    if (reason) {
+        return { state: 'error', windows: [], detail: reason };
+    }
+
+    // A Claude Code from before the command takes it for a skill that is not there, and says so as the result of the run.
+    if (/unknown skill/i.test(result)) {
+        return { state: 'error', windows: [], detail: `Claude Code${ program ? ` at ${ program }` : '' } is too old to report its limits. Update it, then try again` };
+    }
+
+    return { state: 'error', windows: [], detail: result ? `Claude Code did not report its limits: ${ result.slice(0, 160) }` : 'Claude Code did not report its limits' };
 }
 
 async function readUsage(context: ProbeContext): Promise<AgentUsage> {
@@ -193,7 +210,7 @@ async function readUsage(context: ProbeContext): Promise<AgentUsage> {
         return { state: 'error', windows: [], detail: run.error ? `Could not start Claude Code: ${ run.error }` : 'Claude Code did not report its limits in time' };
     }
 
-    return parseClaudeUsage(run.stdout);
+    return parseClaudeUsage(run.stdout, context.program);
 }
 
 export const claude: Provider = {

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startDaemon } from '../src/daemon';
-import { codexModel, cursorModels, MODEL_ROUTES, ModelCatalog, parseClaudeModels, parseCursorFamilies, parseCursorModels } from '../src/providers/models';
+import { claudeModelsError, codexModel, cursorModels, MODEL_ROUTES, ModelCatalog, parseClaudeModels, parseCursorFamilies, parseCursorModels } from '../src/providers/models';
 import { FAKE_AGENT } from './acp-helpers';
 import { cleanTempDirs, Harness, testAgents, testConfig } from './helpers';
 
@@ -53,6 +53,31 @@ describe('Claude Code models', () => {
         expect(parseClaudeModels(JSON.stringify({ type: 'control_response', response: { subtype: 'error', error: 'Unsupported control request' } }))).toBeUndefined();
         expect(parseClaudeModels('')).toBeUndefined();
         expect(parseClaudeModels(response([]))).toEqual([]);
+    });
+
+    test('reads the error the program answered with, and nothing from an answer that is not one', () => {
+        expect(claudeModelsError(`${ JSON.stringify({ type: 'system' }) }\n${ JSON.stringify({ type: 'control_response', response: { subtype: 'error', error: 'Unsupported control request subtype: list_models' } }) }`)).toBe('Unsupported control request subtype: list_models');
+        expect(claudeModelsError(response(rows))).toBeUndefined();
+        expect(claudeModelsError(JSON.stringify({ type: 'control_response', response: { subtype: 'error', error: '  ' } }))).toBeUndefined();
+        expect(claudeModelsError('not json\n')).toBeUndefined();
+    });
+
+    test('says which program is too old when it does not know the request, as an old Claude Code answers it', async () => {
+        const claude = program('claude', `read line; echo '${ JSON.stringify({ type: 'control_response', response: { subtype: 'error', request_id: 'clowdy-models', error: 'Unsupported control request subtype: list_models' } }) }'`);
+        const models = await new ModelCatalog({ registry: registryOf({ claude }), cwd: root }).get('claude');
+
+        expect(models).toEqual({ state: 'error', models: [], detail: `Claude Code at ${ claude } is too old to list its models. Update it, then try again` });
+    });
+
+    test('gives the program\'s own words for any other failure, and says so when it listed nothing', async () => {
+        const refusing = program('claude-refusing', `read line; echo '${ JSON.stringify({ type: 'control_response', response: { subtype: 'error', error: 'Not logged in' } }) }'`);
+        const failing = program('claude-failing', 'read line; echo "Error: the settings file is damaged" >&2; exit 1');
+        const empty = program('claude-empty', `read line; echo '${ response([]) }'`);
+        const catalog = (claude: string) => new ModelCatalog({ registry: registryOf({ claude }), cwd: root }).get('claude');
+
+        expect((await catalog(refusing)).detail).toBe('Claude Code could not list its models: Not logged in');
+        expect((await catalog(failing)).detail).toBe('Claude Code could not list its models: Error: the settings file is damaged');
+        expect((await catalog(empty)).detail).toBe('Claude Code listed no models');
     });
 
     test('is read from the program with the request on its standard input', async () => {
