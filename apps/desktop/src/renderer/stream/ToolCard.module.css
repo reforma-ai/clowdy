@@ -1,6 +1,6 @@
 @reference '@clowdy/styles/rulesets';
 
-/* A tool call is a line of the turn, not a card: the icon, what it does, and a thin rule down to the next call. */
+/* A tool call is a line of the turn, not a card: the icon, what it does, and, once it is open, a thin rule down the input and output. */
 .root {
     @ruleset typography-text-md;
 
@@ -37,23 +37,6 @@
     border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
     corner-shape: superellipse(var(--squircle-value));
     transition: color 0.15s ease;
-}
-
-/* The rule that joins this line to the next one. */
-.header::before {
-    content: '';
-    position: absolute;
-    z-index: 1;
-    left: calc(var(--spacing-sm) + var(--spacing-sm));
-    top: 26px;
-    bottom: 0;
-    width: 1px;
-    background: var(--color-secondary-border);
-    pointer-events: none;
-}
-
-.root:has(+ .root) .header::before {
-    bottom: -10px;
 }
 
 .header:hover,
@@ -128,6 +111,7 @@
 }
 
 .content {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
@@ -136,6 +120,21 @@
     margin-left: var(--spacing-sm);
     padding-top: var(--spacing-sm);
     padding-left: var(--spacing-14);
+}
+
+/*
+ * The rule under the icon runs alongside what the call shows and ends with it. It belongs to the content, which exists only while the call
+ * is open, so a closed call has no rule at all (and none that reaches into the call below).
+ */
+.content::before {
+    content: '';
+    position: absolute;
+    top: calc(26px - var(--spacing-20));
+    bottom: 0;
+    left: 0;
+    width: 1px;
+    background: var(--color-secondary-border);
+    pointer-events: none;
 }
 
 .section {
