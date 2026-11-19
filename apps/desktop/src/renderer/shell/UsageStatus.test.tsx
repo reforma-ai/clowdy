@@ -117,7 +117,7 @@ describe('the badges', () => {
         await start(agentsWith());
 
         expect(badges().map(element => element.getAttribute('aria-label'))).toEqual([
-            'Claude Code usage 8%, resets in 28 minutes',
+            'Claude Code usage 8%, resets in 28 minutes, Week 78%, Fable 99%',
             'Codex usage 85%, resets in 45 minutes',
             'Cursor usage 40%, resets in 3 days',
         ]);
@@ -131,8 +131,15 @@ describe('the badges', () => {
         // The Session window (8%) is the nearest one, though the Week one (78%) and the Fable one (99%) are fuller.
         expect(claude.textContent).toBe('8%28m');
         expect(claude.querySelector('svg')).not.toBeNull();
+        // The week is a line under the text, as wide as its percent, and Fable at 99% is a dot. Neither replaces the number.
+        expect(claude.querySelector('[data-week]')?.getAttribute('style')).toContain('width: 78%');
+        expect(claude.querySelector('[data-week]')?.hasAttribute('data-tone')).toBe(false);
+        expect(claude.querySelector('[data-hot]')).not.toBeNull();
+        expect(claude.getAttribute('data-color')).toBe('secondary');
         expect(badge('Codex').textContent).toBe('85%45m');
+        expect(badge('Codex').querySelector('[data-week]')).toBeNull();
         expect(badge('Cursor').textContent).toBe('40%3d');
+        expect(badge('Cursor').querySelector('[data-week]')).toBeNull();
     });
 
     it('shows a session that is at zero, as the nearest limit, whatever the fuller ones say', async () => {
@@ -140,7 +147,13 @@ describe('the badges', () => {
             providers.claude.usage!.windows = [meter('session', 0, 300), meter('weekly', 90, 60), meter('weekly:fable', 99, 60)];
         }));
 
-        expect(badge('Claude Code').textContent).toBe('0%5h');
+        const claude = badge('Claude Code');
+
+        expect(claude.textContent).toBe('0%5h');
+        // The week at 90% is the line, in the danger tone. The chip stays plain: a red chip would read as the session. Fable adds no dot, the plan is already there.
+        expect(claude.querySelector('[data-week]')?.getAttribute('data-tone')).toBe('danger');
+        expect(claude.querySelector('[data-hot]')).toBeNull();
+        expect(claude.getAttribute('data-color')).toBe('secondary');
     });
 
     it('does not let the limit of a single model decide the badge, for Codex as for Claude', async () => {
@@ -148,7 +161,13 @@ describe('the badges', () => {
             providers.codex.usage!.windows = [meter('spark:secondary', 99, 60), meter('codex:primary', 12, 45), meter('codex:secondary', 30, 24 * 60)];
         }));
 
-        expect(badge('Codex').textContent).toBe('12%45m');
+        const codex = badge('Codex');
+
+        expect(codex.textContent).toBe('12%45m');
+        // The week at 30% is too quiet for a line. Spark at 99% is the dot, since neither plan window is at 90%.
+        expect(codex.querySelector('[data-week]')).toBeNull();
+        expect(codex.querySelector('[data-hot]')).not.toBeNull();
+        expect(codex.getAttribute('aria-label')).toBe('Codex usage 12%, resets in 45 minutes, Codex Spark 99%');
 
         await openPopover('Codex');
 
@@ -161,8 +180,23 @@ describe('the badges', () => {
             providers.claude.usage!.windows = [meter('weekly:fable', 99, 60)];
         }));
 
+        const claude = badge('Claude Code');
+
+        // No plan window, so no percent. A model limit at 99% is still the dot, and the chip is not faded while that dot shows.
+        expect(claude.hasAttribute('data-muted')).toBe(false);
+        expect(claude.textContent).toBe('');
+        expect(claude.querySelector('[data-hot]')).not.toBeNull();
+        expect(claude.getAttribute('aria-label')).toBe('Claude Code usage: Fable 99%');
+    });
+
+    it('shows the mark alone, muted, when a single model\'s limit is under the danger tone', async () => {
+        await start(agentsWith((providers) => {
+            providers.claude.usage!.windows = [meter('weekly:fable', 40, 60)];
+        }));
+
         expect(badge('Claude Code').hasAttribute('data-muted')).toBe(true);
         expect(badge('Claude Code').textContent).toBe('');
+        expect(badge('Claude Code').querySelector('[data-hot]')).toBeNull();
     });
 
     it('leaves the time out when the window has no reset', async () => {
@@ -182,6 +216,31 @@ describe('the badges', () => {
         }));
 
         expect(badges().map(element => element.getAttribute('data-color'))).toEqual(['secondary', 'secondary', 'danger']);
+    });
+
+    it('keeps the week line terracotta through 89% and red from 90%, without turning the chip red', async () => {
+        await start(agentsWith((providers) => {
+            providers.claude.usage!.windows = [meter('session', 8, 28), meter('weekly', 89, 92)];
+            providers.codex.usage!.windows = [meter('codex:primary', 8, 45), meter('codex:secondary', 90, 24 * 60)];
+        }));
+
+        const claude = badge('Claude Code');
+
+        expect(claude.getAttribute('data-color')).toBe('secondary');
+        expect(claude.querySelector('[data-week]')?.hasAttribute('data-tone')).toBe(false);
+        expect(claude.querySelector('[data-week]')?.getAttribute('style')).toContain('width: 89%');
+        expect(badge('Codex').getAttribute('data-color')).toBe('secondary');
+        expect(badge('Codex').querySelector('[data-week]')?.getAttribute('data-tone')).toBe('danger');
+    });
+
+    it('leaves the week line off while the week is under 60% or not ahead of the session', async () => {
+        await start(agentsWith((providers) => {
+            providers.claude.usage!.windows = [meter('session', 70, 28), meter('weekly', 59, 92)];
+            providers.codex.usage!.windows = [meter('codex:primary', 80, 45), meter('codex:secondary', 60, 24 * 60)];
+        }));
+
+        expect(badge('Claude Code').querySelector('[data-week]')).toBeNull();
+        expect(badge('Codex').querySelector('[data-week]')).toBeNull();
     });
 
     it('shows the mark alone, muted, for a provider with no reading', async () => {

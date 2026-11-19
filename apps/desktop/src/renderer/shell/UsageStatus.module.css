@@ -11,6 +11,41 @@
     --clowdy-button-opacity--hover: 1;
 }
 
+/* The percent and the reset, so the week line can be as wide as they are and not as wide as the icon too. */
+.figures {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+/*
+ * The longer plan window, under the percent. No track: the rest of the text's width is the part still left, and a quiet week is not drawn at all.
+ * It sits in the button's own padding, under the line of text.
+ */
+.week {
+    position: absolute;
+    left: 0;
+    top: calc(100% + var(--spacing-1));
+    height: var(--spacing-xxs);
+    border-radius: var(--radius-full);
+    background-color: var(--color-primary);
+    pointer-events: none;
+}
+
+.week[data-tone='danger'] {
+    background-color: var(--color-danger);
+}
+
+/* A model's limit at the danger tone, after the reset. The plan's own windows keep the line and the chip's color. */
+.hot {
+    flex-shrink: 0;
+    width: var(--spacing-sm);
+    height: var(--spacing-sm);
+    border-radius: var(--radius-full);
+    background-color: var(--color-danger);
+}
+
 /*
  * The popover is wider than the menus: a bar needs room, and over it the label, the percent used and the time to reset on one line. It opens under the badge that was
  * pressed, so its top edge reaches into the band's window-drag area; the popover takes no part in dragging.

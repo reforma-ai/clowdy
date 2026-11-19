@@ -17,6 +17,12 @@ export function isUsableProvider(agent: AgentInfo): boolean {
 export const USAGE_WARNING_PERCENT = 80;
 export const USAGE_DANGER_PERCENT = 90;
 
+/**
+ * From this used percent the longer plan window (the week) is drawn under the badge, in the primary color. From 90% the line
+ * is red (`USAGE_DANGER_PERCENT`). It skips the warning tone: a yellow line on every badge from 80% is the noise the chip avoids.
+ */
+export const USAGE_WEEKLY_MARK_PERCENT = 60;
+
 export type UsageTone = 'normal' | 'warning' | 'danger';
 
 /** How much of a window is used, as the whole percent a bar and a badge show: rounded, and kept between 0 and 100. Something that is not a number is no usage. */
@@ -48,6 +54,18 @@ function isSpendWindow(window: AgentUsageWindow): boolean {
     return window.id === 'on-demand';
 }
 
+/** The windows of a reading that can be shown. A failed read keeps the last windows, and those are not news. */
+function readableWindows(agent: AgentInfo): readonly AgentUsageWindow[] | undefined {
+    if (agent.usage?.state !== 'ok' || agent.signIn?.status === 'signed-out') return undefined;
+
+    return agent.usage.windows;
+}
+
+/** A window of the plan's own quota: not one model's limit (`isScopedWindow`) and not spend (`isSpendWindow`). */
+function isPlanQuota(agent: AgentInfo, window: AgentUsageWindow): boolean {
+    return !isScopedWindow(agent, window) && !isSpendWindow(window);
+}
+
 /**
  * The window a provider is summed up by: its nearest limit, the first of the plan's own windows (not a scoped one, see `isScopedWindow`).
  * The daemon lists a plan's windows shortest first, so this is the session of Claude and the 5-hour window of Codex, shown whatever its
@@ -58,11 +76,60 @@ function isSpendWindow(window: AgentUsageWindow): boolean {
  * news), nobody is signed in, or it has no window of the plan.
  */
 export function headlineWindow(agent: AgentInfo): AgentUsageWindow | undefined {
-    if (agent.usage?.state !== 'ok' || agent.signIn?.status === 'signed-out') return undefined;
+    const windows = readableWindows(agent);
 
-    const own = agent.usage.windows.filter(window => !isScopedWindow(agent, window));
+    if (!windows) return undefined;
+
+    const own = windows.filter(window => !isScopedWindow(agent, window));
 
     return own.find(window => !isSpendWindow(window)) ?? own[0];
+}
+
+/**
+ * The longer plan window drawn as a line under the badge: the second quota, after the nearest one (`headlineWindow`).
+ * The daemon lists a plan's windows shortest first, so this is the week of Claude and of Codex.
+ * Drawn only from 60% used (`USAGE_WEEKLY_MARK_PERCENT`) and when it is ahead of the nearest window. A week that is
+ * behind the session says nothing the badge's number does not already say, and a quiet week is left off the chip.
+ */
+export function weeklyMark(agent: AgentInfo): AgentUsageWindow | undefined {
+    const windows = readableWindows(agent);
+
+    if (!windows) return undefined;
+
+    const quotas = windows.filter(window => isPlanQuota(agent, window));
+    const longer = quotas[1];
+
+    if (!longer || !quotas[0]) return undefined;
+
+    const used = windowPercent(longer);
+
+    if (used < USAGE_WEEKLY_MARK_PERCENT || used <= windowPercent(quotas[0])) return undefined;
+
+    return longer;
+}
+
+/**
+ * The fullest limit of a single model, once it is at the danger tone, and only while no plan quota is there yet.
+ * The badge keeps the plan's number; the dot says a model window (Claude's Fable, Codex's Spark) is the one that is hot.
+ */
+export function scopedHotWindow(agent: AgentInfo): AgentUsageWindow | undefined {
+    const windows = readableWindows(agent);
+
+    if (!windows) return undefined;
+
+    const quotas = windows.filter(window => isPlanQuota(agent, window));
+
+    if (quotas.some(window => windowPercent(window) >= USAGE_DANGER_PERCENT)) return undefined;
+
+    let hottest: AgentUsageWindow | undefined;
+
+    for (const window of windows) {
+        if (!isScopedWindow(agent, window) || windowPercent(window) < USAGE_DANGER_PERCENT) continue;
+
+        if (!hottest || windowPercent(window) > windowPercent(hottest)) hottest = window;
+    }
+
+    return hottest;
 }
 
 /** What the line under a card's title says: who is signed in, or why there is nobody to show. */
