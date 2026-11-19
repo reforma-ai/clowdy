@@ -10,6 +10,7 @@ import { CONTINUE_MESSAGE } from '../src/runs/prompts';
 import { cleanTempDirs, latch, restartHarness, ScriptEngine, startHarness, tempDir, untilAborted, waitFor } from './helpers';
 
 import type { Chat } from '@clowdy/protocol';
+import type { Config } from '../src/config';
 import type { EngineEvent } from '../src/engine/types';
 import type { Harness, Script } from './helpers';
 
@@ -51,9 +52,9 @@ const ending: Script = async function* () {
 };
 
 /** Claude's script stands in for its program, which is not on this machine; `other` is an agent with no compact command. */
-async function setup(script: Script, other: Script = finishing) {
+async function setup(script: Script, other: Script = finishing, config: Partial<Config> = {}) {
     const claude = new ScriptEngine(script);
-    const h = await startHarness({}, { engines: new Map([['fake', new ScriptEngine(finishing)], ['claude', claude], ['other', new ScriptEngine(other)]]) });
+    const h = await startHarness(config, { engines: new Map([['fake', new ScriptEngine(finishing)], ['claude', claude], ['other', new ScriptEngine(other)]]) });
 
     harnesses.push(h);
 
@@ -384,6 +385,31 @@ describe('chat.compact', () => {
         expect(claude.turns.at(-1)?.prompt).toContain('A child run has finished.');
         h.ok('chat.compact', { chatId: chat.id });
         await waitFor(() => claude.turns.at(-1)?.prompt === '/compact' && h.run(runId).status === 'succeeded', 'the compact turn to end');
+    });
+
+    test('leaves the results of children that finish while it waits to start for the turn after it, so the command stays the whole prompt', async () => {
+        const child = latch();
+        // One slot: the executor holds it while the compact turn waits for it, and lets it go as it finishes.
+        const { h, claude, project } = await setup(spawning(async function* (turn) {
+            yield session(turn);
+            await child.wait(turn.signal);
+            yield { type: 'done', result: 'child done' };
+        }, async function* () {
+            yield { type: 'error', message: 'The conversation no longer fits the model\'s context window.', code: 'context_too_long' };
+        }), finishing, { maxRuns: 1 });
+        const { chat, runId } = await start(h, project.id);
+
+        // The overflow fails the orchestrator; its executor goes on, and nothing is unread yet.
+        await waitFor(() => h.run(runId).status === 'failed' && h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ? AND status = \'running\'').get(runId), 'the executor to run after the failure');
+        h.ok('chat.compact', { chatId: chat.id });
+        expect(h.run(runId).status).toBe('queued');
+        child.release();
+        await waitFor(() => claude.turns.filter(turn => turn.tools.some(tool => tool.name === 'run_spawn')).length === 3 && h.run(runId).status === 'succeeded', 'the turn after the compaction');
+
+        const prompts = claude.turns.filter(turn => turn.tools.some(tool => tool.name === 'run_spawn')).map(turn => turn.prompt);
+
+        expect(prompts[1]).toBe('/compact');
+        expect(prompts[2]).toContain('A child run has finished.');
     });
 
     test('works on a chat whose run was interrupted by a restart', async () => {

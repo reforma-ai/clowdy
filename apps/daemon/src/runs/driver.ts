@@ -239,10 +239,15 @@ export class RunDriver {
      * only compact what is being compacted.
      */
     isCompacting(runId: string): boolean {
-        const command = this.deps.compactCommand(this.deps.runs.require(runId).engine);
+        const { engine } = this.deps.runs.require(runId);
         const live = this.live.get(runId);
 
-        return command !== undefined && ((live?.session !== undefined && live.prompt === command) || getRunWork(this.deps.store.db, runId).nextPrompt === command);
+        return (live?.session !== undefined && this.isCompactCommand(engine, live.prompt)) || this.isCompactCommand(engine, getRunWork(this.deps.store.db, runId).nextPrompt);
+    }
+
+    /** Whether `prompt` is the engine's compact command, which a turn must be told alone (`chat.compact`). */
+    private isCompactCommand(engine: EngineId, prompt: string | null | undefined): boolean {
+        return typeof prompt === 'string' && prompt === this.deps.compactCommand(engine);
     }
 
     /** `report_result`: the run's work is over with this outcome. The session gets a moment to end its turn, then is closed. */
@@ -348,7 +353,9 @@ export class RunDriver {
         // The stream as it is before this turn adds its own lines (a note per child that finished): what the agent was told so far.
         const told = nextSeq(store.db, runId) - 1;
         const work = getRunWork(store.db, runId);
-        const pending = pendingMailbox(store.db, runId);
+        // A compact turn is the command alone. Children that finished while it waited for its slot are told in the turn after it, which they wake
+        // (`settle` parks the run for them).
+        const pending = this.isCompactCommand(run.engine, work.nextPrompt) ? [] : pendingMailbox(store.db, runId);
         const children = pending.flatMap(entry => getRun(store.db, entry.childRunId) ?? []);
         const prompt = [work.nextPrompt, children.length > 0 && wakeMessage(store, children)].filter(Boolean).join('\n\n') || CONTINUE_MESSAGE;
 
@@ -542,7 +549,7 @@ export class RunDriver {
         const now = runs.limits.now();
 
         // A compact turn is its command and nothing else (`chat.compact`); nothing was compacted, so a "continue" would have the agent resume work that does not exist.
-        const compacting = live.prompt !== undefined && live.prompt === this.deps.compactCommand(run.engine);
+        const compacting = this.isCompactCommand(run.engine, live.prompt);
 
         store.tx(() => {
             // Without a session there is nothing to continue: the turn starts again from its own message.
