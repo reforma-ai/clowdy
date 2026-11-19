@@ -32,29 +32,47 @@ Auto-compaction by Clowdy (the agents compact themselves), Reforma's edit lock, 
 
 **Depends on:** None.
 
-- [ ] Complete
-  - [ ] Protocol: `QueuedMessage`, `Chat.queue`, `Chat.queuePaused`, `chat.send.mode`, queue commands (remove, move, send now)
-  - [ ] Daemon: queue on the chat (migration), enqueue for a busy orchestrator, drain at rest, pause on Stop and failure, send now
-  - [ ] Engine: `steer` on the session; ACP over `_session/steering`; the joined inbox, `deliver` and `pending` removed; the fake ACP agent and the fake engine learn steering
-  - [ ] Desktop: queue rows in the composer, Send now / Edit / Remove / drag, paused note, busy placeholder, Enter and Cmd+Enter by the setting, Settings page "Chat", fixture daemon queues
-  - [ ] Tests: daemon queue, drain, pause, steer and fallback; desktop composer routing and queue rows
+- [x] Complete
+  - [x] Protocol: `QueuedMessage`, `Chat.queue`, `Chat.queuePaused`, `chat.send.mode`, queue commands (`chat.removeQueued`, `chat.moveQueued`, `chat.sendQueued`)
+  - [x] Daemon: queue on the chat (migration 9), enqueue for a busy orchestrator, drain at rest, pause on Stop and failure, send now
+  - [x] Engine: `steer` on the session; ACP over `_session/steering`; the joined inbox, `deliver` and `pending` removed; the fake ACP agent and the fake engine learn steering
+  - [x] Desktop: queue rows in the composer, Send now / Edit / Remove / drag, paused note, busy placeholder, Enter and Cmd+Enter by the setting, Settings page "Chat", fixture daemon queues
+  - [x] Tests: daemon queue, drain, pause, steer and fallback; desktop composer routing and queue rows
 
 **Done when:** a message sent while the agent works shows in the queue, goes out as the next turn when the agent finishes, or steers the running turn and shows its bubble where the agent took it.
 **Verify:** `bun test` in `apps/daemon`; `bun run test`, `bun run typecheck`, `bun run lint` in `apps/desktop` and `packages/protocol`
-**Commits:** None yet.
+**Commits:**
+
+- `e10b5aa` feat(daemon): queue messages for a busy orchestrator and steer the running turn
+- `bb9cace` feat(desktop): show the chat queue in the composer and send by the enter setting
+- `818aa30` refactor: share the busy orchestrator rule through the protocol (review)
+- `4d0912c` refactor(daemon): drop the unused previous status from the orchestrator status hook (review)
+- `d6d5a35` fix(daemon): write a held chat queue only when settling changes it (review)
+- `699d189` test(daemon): cover a steer still with the agent when the turn ends (review)
+- `c635ebc` fix(daemon): hold the queue of a turn that fails while a steer is out, and steer nothing from a held queue (review follow-up)
+
+**Implementation choices beyond the decisions:** a steer the turn did not take becomes a `queue` item at the head (Reforma's `settleQueue`); steering is tried on send, on Send now, at a turn's session start and whenever the run returns to `running`, never in `waiting_user`; a `promptRequired` answer while our prompt runs is retried every 100 ms up to 20 times; Edit removes the item with `keepFiles` and gives text and files back to the composer; a held queue steers nothing, and Send now on one of its messages lets it flow again. **Not checked live:** how fast the real Claude and Codex adapters accept a steer after a fresh `session/prompt` (a slow one makes the steer the next turn instead, which is safe).
 
 ## Stage 2 — Sub-agent cards
 
 **Depends on:** None (parallel with Stage 1).
 
-- [ ] Complete
-  - [ ] Daemon: `Run.parentToolCallId` (migration); the ACP mapper routes Claude's `parentToolUseId` traffic to native children; the fake engine wraps its sub-agent in an `Agent` call
-  - [ ] Desktop: the sub-agent card for native calls and the `run_spawn` card for spawned children, both opening the child run; native runs out of the Agents tree; the running children strip above the composer; fixture data with both kinds
-  - [ ] Tests: mapper routing, native child with its tool call id, card states and activity copy, tree filter
+- [x] Complete
+  - [x] Daemon: `Run.parentToolCallId` (migration); the ACP mapper routes Claude's `parentToolUseId` traffic to native children; the fake engine wraps its sub-agent in an `Agent` call
+  - [x] Desktop: the sub-agent card for native calls and the `run_spawn` card for spawned children, both opening the child run; native runs out of the Agents tree; the running children strip above the composer; fixture data with both kinds
+  - [x] Tests: mapper routing, native child with its tool call id, card states and activity copy, tree filter
 
 **Done when:** a `run_spawn` call and a native sub-agent call each read as a card with live status and open their child run, and native children are not tree nodes.
 **Verify:** as Stage 1
-**Commits:** None yet.
+**Commits:**
+
+- `f73842e` feat(daemon): route Claude's sub-agent traffic to native child runs under the call that started them
+- `0b60a39` feat(desktop): draw sub-agent calls as agent cards, list the chat's agents at work above the message box
+- `23ad321` fix(daemon): keep a late sub-agent call's unstamped updates out of the parent's stream (review)
+- `48e5eb8` fix(desktop): end a sub-agent card whose child ended with the turn, and name it by its call alone (review)
+- `4668a93` refactor(desktop): read sub-agent call inputs with the stream's own input helpers (review)
+
+**Not checked live:** the real Claude adapter's `parentToolUseId` stamping (read from its code, tested on the fake ACP agent). **Follow-up:** a turn stopped mid-call leaves its tool items `running`, so their lines shimmer after Stop; close them in the driver's `finally` next to `writer.end()`.
 
 ## Stage 3 — Compaction
 
