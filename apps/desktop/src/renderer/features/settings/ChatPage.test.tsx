@@ -33,7 +33,8 @@ describe('ChatPage', () => {
         expect(container.querySelector(`[aria-label="${ LABEL }"]`)).not.toBeNull();
         expect(choice('Steer').getAttribute('aria-checked')).toBe('true');
         expect(choice('Queue').getAttribute('aria-checked')).toBe('false');
-        // The tips are tooltips on the choices, not a description under the row.
+        expect(container.textContent).toContain('Steer it into the current turn, or queue it for the next one. Press Ctrl+Enter to use the other option.');
+        // The tips of the choices are tooltips, not text under the row.
         expect(container.textContent).not.toContain('Steer sends your message');
     });
 
