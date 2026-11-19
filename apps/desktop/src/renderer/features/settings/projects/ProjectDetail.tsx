@@ -1,7 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
 import { Text } from '@clowdy/components/Text';
-import { ArrowUpRight } from '@clowdy/icons/14';
 import { useEffect, useState } from 'react';
 
 import { useRootStore } from '../../../stores';
@@ -11,8 +10,7 @@ import { SettingsSection } from '../ui/SettingsSection';
 import { removeProject, renameProject } from './projectActions';
 import { ProjectDefaults } from './ProjectDefaults';
 import styles from './ProjectDetail.module.css';
-import { ProjectFolder } from './ProjectFolder';
-import { remoteLink } from './projectView';
+import { ProjectFolders } from './ProjectFolders';
 
 import type { Project, ProjectInfo } from '@clowdy/protocol';
 
@@ -25,20 +23,21 @@ export interface ProjectDetailProps {
 
 /**
  * The blocks of the page of one project in Settings, which opens over the Projects page (its title and the line under it are the layer's,
- * in `ProjectsPage`): its name and folder, git remote, what new chats start with, and removing it. The personal space has the folder and
- * the new-chat settings only.
+ * in `ProjectsPage`): its name, its folders with their git remotes, what new chats start with, and removing it. The personal space has its
+ * folder and the new-chat settings only.
  */
 export function ProjectDetail({ project, info, infoFailed }: ProjectDetailProps) {
     return (
         <>
-            <SettingsSection title="Project">
-                <SettingsCard divided>
-                    { !project.personal && <NameRow project={ project } /> }
-                    <ProjectFolder project={ project } info={ info } />
-                </SettingsCard>
-            </SettingsSection>
+            { !project.personal && (
+                <SettingsSection title="Project">
+                    <SettingsCard>
+                        <NameRow project={ project } />
+                    </SettingsCard>
+                </SettingsSection>
+            ) }
 
-            { !project.personal && <GitSection info={ info } failed={ infoFailed } /> }
+            <ProjectFolders project={ project } info={ info } infoFailed={ infoFailed } />
 
             <ProjectDefaults project={ project } />
 
@@ -86,39 +85,17 @@ function NameRow({ project }: { project: Project }) {
     );
 }
 
-function GitSection({ info, failed }: { info: ProjectInfo | undefined; failed: boolean }) {
-    const main = info?.folders[0];
-    const remote = remoteLink(main?.remoteUrl);
-
-    return (
-        <SettingsSection title="Git">
-            <SettingsCard divided>
-                { !info && <SettingsRow title="Repository" description={ failed ? 'Couldn\'t read the repository' : 'Reading the repository…' } /> }
-                { info && !remote && (
-                    <SettingsRow title="Remote" description={ main?.exists ? 'This repository has no origin remote' : 'The folder is missing, so there is nothing to read' } />
-                ) }
-                { remote && (
-                    <SettingsRow title="Remote">
-                        { remote.href
-                            ? <Button variant="inline" color="primary" href={ remote.href } target="_blank" rel="noreferrer" className={ styles.value }>{ remote.text }<ArrowUpRight aria-hidden /></Button>
-                            : <Text className={ styles.value }>{ remote.text }</Text> }
-                    </SettingsRow>
-                ) }
-            </SettingsCard>
-        </SettingsSection>
-    );
-}
-
 function RemoveSection({ project, info }: { project: Project; info: ProjectInfo | undefined }) {
     const root = useRootStore();
     const working = (info?.activeRuns ?? 0) > 0;
+    const stays = project.folders.length === 1 ? 'The folder and its files stay' : 'Its folders and their files stay';
 
     return (
         <SettingsSection title="Danger zone">
             <SettingsCard>
                 <SettingsRow
                     title="Remove project"
-                    description={ `Deletes ${ project.name }'s chats, tasks and the work of its agents from Clowdy. The folder and its files stay on your computer.` }
+                    description={ `Deletes ${ project.name }'s chats, tasks and the work of its agents from Clowdy. ${ stays } on your computer.` }
                     footer={ working && <Text variant="sm" color="warning" role="status">Agents are working in this project. Stop them first.</Text> }
                 >
                     <Button color="danger" isDisabled={ working } onPress={ () => removeProject(root, project, info) }>Remove project</Button>

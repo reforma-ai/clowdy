@@ -5,7 +5,7 @@ import { DOCS_FOLDER } from './composerMentions';
 import { mentionIcon } from './MentionChip';
 
 import type { RichInputTriggerItem } from '@clowdy/components/RichInput';
-import type { DocNode, DocsTree, ProjectFolder, SkillEntry, Task } from '@clowdy/protocol';
+import type { DocNode, DocsTree, ProjectFileMatch, ProjectFolder, SkillEntry, Task } from '@clowdy/protocol';
 
 /** How many of each kind the `@` menu lists: it is a pick list, not a search page. */
 export const TASKS_SHOWN = 6;
@@ -94,15 +94,28 @@ export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], quer
         });
 }
 
-/** The files the daemon found, as it ranked them. */
-export function fileItems(paths: readonly string[]): RichInputTriggerItem[] {
-    return paths.map((path) => {
-        const data = { path };
+/**
+ * The files the daemon found, as it ranked them. A file of the main folder reaches the agent by its path from there, the folder it works in;
+ * another folder's by its absolute path. With several folders the suggestion names the folder (`<folder name>/<path>`).
+ */
+export function fileItems(matches: readonly ProjectFileMatch[], folders: readonly ProjectFolder[]): RichInputTriggerItem[] {
+    const names = folderNames(folders);
+    const several = folders.length > 1;
+
+    return matches.flatMap(({ folderId, path }) => {
+        const index = folders.findIndex(folder => folder.id === folderId);
+        const folder = folders[index];
+
+        // A folder the project no longer has: the answer was for its list before the change.
+        if (!folder) return [];
+
+        const shown = several ? `${ names[index] }/${ path }` : path;
+        const data = { path: index === 0 ? path : underFolder(folder.path, path) };
 
         return {
-            value: `file:${ path }`,
+            value: `file:${ folderId }:${ path }`,
             label: baseName(path),
-            description: folderOf(path) || undefined,
+            description: folderOf(shown) || undefined,
             icon: <FileIcon path={ path } kind="file" />,
             section: 'Files',
             kind: 'file',

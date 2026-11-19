@@ -35,4 +35,16 @@ describe('FixtureTransport.getProjectFiles', () => {
         expect(await transport.getProjectFiles(FIXTURE_PROJECT_ID, '', 3)).toHaveLength(3);
         expect(await transport.getProjectFiles(FIXTURE_EMPTY_PROJECT_ID, '')).toEqual([]);
     });
+
+    it('lists the files of every folder of the project, the folder\'s name counting as part of the path', async () => {
+        const transport = new FixtureTransport();
+
+        await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/car-rental-api' }] });
+
+        const found = await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'price');
+
+        expect(found.map(file => file.path)).toEqual(['src/booking/price.ts', 'src/booking/price.test.ts', 'src/booking/price.ts']);
+        expect(found[2]!.folderId).not.toBe('fld_car_rental');
+        expect((await transport.getProjectFiles(FIXTURE_PROJECT_ID, 'api limits')).map(file => file.path)).toEqual(['src/limits.ts']);
+    });
 });

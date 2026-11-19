@@ -38,7 +38,7 @@ export function ProjectsPage() {
                 }]
                 : [] }
             onNavigate={ () => root.ui.openProjectSettings() }
-            actions={ selected ? undefined : <Button variant="filled" color="contrast" size="sm" onPress={ () => openAddProject(root) }><Plus />Add project</Button> }
+            actions={ selected ? undefined : <Button variant="filled" color="contrast" size="sm" onPress={ () => openAddProject(root) }><Plus />Add project…</Button> }
         >
             <div className={ styles.list }>
                 { personal && (

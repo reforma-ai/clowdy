@@ -6,18 +6,50 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID } from '../../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, type FixtureData } from '../../../daemon/fixtureData';
 import { FixtureTransport } from '../../../daemon/fixtureTransport';
 import { overrideTransport } from '../../../daemon/testing';
 import { RootStore, RootStoreProvider } from '../../../stores';
 import { ProjectsPage } from './ProjectsPage';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
+import type { SortableList as SortableListComponent, SortableListDropContext } from '@clowdy/components/SortableList';
+import type { ProjectId } from '@clowdy/protocol';
 import type { Transport } from '../../../daemon/transport';
 
 const confirm = vi.hoisted(() => vi.fn());
+const toasts = vi.hoisted(() => ({ info: vi.fn(), error: vi.fn(), success: vi.fn() }));
 
 vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: confirm }));
+vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
+
+/**
+ * happy-dom cannot drag, so the tests move a row the way a drop does: through the list's own `onChange`, with the items in their new
+ * order, and ask its `canDrop` what a drag would. The real list still draws the rows; each list is found by its label.
+ */
+const sortables = vi.hoisted(() => new Map<string, {
+    items: unknown[];
+    onChange: (items: unknown[]) => void;
+    canDrop?: (context: SortableListDropContext<unknown>) => boolean;
+}>());
+
+vi.mock('@clowdy/components/SortableList', async (importOriginal) => {
+    const actual = await importOriginal<{ SortableList: typeof SortableListComponent }>();
+    const { createElement } = await import('react');
+
+    return {
+        ...actual,
+        SortableList: (props: Parameters<typeof actual.SortableList>[0]) => {
+            sortables.set(props['aria-label'], {
+                items: [...props.items],
+                onChange: items => props.onChange(items, { item: items[0], index: 0 }),
+                canDrop: props.canDrop as ((context: SortableListDropContext<unknown>) => boolean) | undefined,
+            });
+
+            return createElement(actual.SortableList, props);
+        },
+    };
+});
 
 // The babel plugin that makes the app's components observers does not run under Vitest.
 const Page = observer(ProjectsPage);
@@ -40,8 +72,8 @@ async function flush() {
     });
 }
 
-async function open(projectId: string | null = null, overrides: Partial<Transport> = {}) {
-    store = new RootStore(overrideTransport(new FixtureTransport(), overrides), { storage: memoryStorage() });
+async function open(projectId: string | null = null, overrides: Partial<Transport> = {}, data: FixtureData = createFixtureData()) {
+    store = new RootStore(overrideTransport(new FixtureTransport({ data }), overrides), { storage: memoryStorage() });
     await store.load();
     store.ui.openProjectSettings(projectId);
     act(() => reactRoot.render(<RootStoreProvider value={ store }><Page /></RootStoreProvider>));
@@ -53,6 +85,43 @@ const row = (projectId: string) => container.querySelector<HTMLButtonElement>(`b
 const named = (text: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text)!;
 const click = (element: HTMLElement) => act(async () => element.click());
 const lastConfirm = () => confirm.mock.calls.at(-1)![0] as OpenConfirmModalOptions;
+/** Closes the last confirmation as the window does, after a confirm or a cancel. */
+const closeConfirm = () => act(() => (confirm.mock.calls.at(-1)![1] as { onClose: () => void }).onClose());
+
+/** The fixture data, with these folders added after the first one of the project. */
+function withFolders(projectId: ProjectId, ...paths: string[]): FixtureData {
+    const data = createFixtureData();
+    const project = data.projects.find(candidate => candidate.id === projectId)!;
+
+    project.folders.push(...paths.map((path, index) => ({ id: `fld_added_${ index + 1 }`, path })));
+
+    return data;
+}
+
+const folderPaths = (projectId: ProjectId) => store.projects.find(project => project.id === projectId)!.folders.map(folder => folder.path);
+const rows = () => [...container.querySelectorAll<HTMLElement>('[data-folder-path]')];
+const rowPaths = () => rows().map(item => item.dataset.folderPath);
+/** The rows marked Main: there is one, the first, in a project of its own. */
+const marked = () => rows().filter(item => item.textContent?.includes('Main')).map(item => item.dataset.folderPath);
+
+/** Whether the list lets the folder at `from` be dropped on the one at `to`, as it asks while a row is dragged over another. */
+function canDropOn(from: number, to: number): boolean {
+    const { items, canDrop } = sortables.get('Folders')!;
+    const context = { items: [items[from]], target: items[to], sourceParent: null, sourceLevel: 1, parent: null, targetLevel: 1, dropPosition: 'before' as const };
+
+    return canDrop?.(context) ?? true;
+}
+
+/** Drops the folder at `from` at `to`. */
+async function move(from: number, to: number) {
+    const list = sortables.get('Folders')!;
+    const items = [...list.items];
+    const [moved] = items.splice(from, 1);
+
+    items.splice(to, 0, moved);
+    await act(async () => list.onChange(items));
+    await flush();
+}
 
 function type(input: HTMLInputElement, value: string) {
     act(() => {
@@ -64,6 +133,8 @@ function type(input: HTMLInputElement, value: string) {
 
 beforeEach(() => {
     confirm.mockReset();
+    toasts.error.mockReset();
+    sortables.clear();
     container = document.createElement('div');
     document.body.append(container);
     reactRoot = createRoot(container);
@@ -161,9 +232,9 @@ describe('ProjectsPage list', () => {
         expect(store.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental']);
     });
 
-    it('opens the Add project form from the one Add project button, with no menu between', async () => {
+    it('opens the Add project form from the one Add project… button, with no menu between', async () => {
         await open();
-        await click(named('Add project'));
+        await click(named('Add project…'));
         await act(async () => {
             await new Promise(resolve => setTimeout(resolve, 60));
         });
@@ -183,12 +254,15 @@ describe('ProjectsPage list', () => {
 });
 
 describe('ProjectsPage project', () => {
-    it('shows where the project is, its git remote as a link', async () => {
-        await open(FIXTURE_PROJECT_ID);
+    it('shows the folders, the first marked Main, each with its git remote as a link', async () => {
+        await open(FIXTURE_PROJECT_ID, {}, withFolders(FIXTURE_PROJECT_ID, '/Users/dev/car-rental-api'));
 
-        expect(container.textContent).toContain('/Users/dev/car-rental');
-        expect(container.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental"]')?.textContent).toContain('github.com/acme/car-rental');
+        expect(rowPaths()).toEqual(['/Users/dev/car-rental', '/Users/dev/car-rental-api']);
+        expect(marked()).toEqual(['/Users/dev/car-rental']);
+        expect(rows()[0]!.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental"]')?.textContent).toContain('github.com/acme/car-rental');
+        expect(rows()[1]!.querySelector<HTMLAnchorElement>('a[href="https://github.com/acme/car-rental-api"]')?.textContent).toContain('github.com/acme/car-rental-api');
         expect(container.textContent).not.toContain('Branch');
+        expect(container.textContent).not.toContain('Change folder');
     });
 
     it('renames on blur, and puts the name back on Escape', async () => {
@@ -270,69 +344,216 @@ describe('ProjectsPage project', () => {
         expect(row(FIXTURE_EMPTY_PROJECT_ID)).toBeNull();
     });
 
-    it('points the project at another folder after the person chose it and confirmed, the first when several were chosen', async () => {
-        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => ['/Users/dev/moved', '/Users/dev/other'] };
+    it('adds the folders picked in one dialog after the others, at once, leaving out one the project has', async () => {
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => ['/Users/dev/car-rental-api', '/Users/dev/clowdy', '/Users/dev/notes', '/Users/dev/notes'] };
         await open(FIXTURE_EMPTY_PROJECT_ID);
-        await click(named('Change folder…'));
+
+        // One folder: nothing to remove, it is the project's only one.
+        expect(container.querySelector('button[aria-label^="Remove "]')).toBeNull();
+
+        await click(named('Add folders…'));
         await flush();
 
-        expect(lastConfirm()).toMatchObject({ title: 'Use another folder?', confirmLabel: 'Use this folder' });
-        expect(lastConfirm().message).toContain('/Users/dev/moved');
+        expect(confirm).not.toHaveBeenCalled();
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/car-rental-api', '/Users/dev/notes']);
+        expect(rowPaths()).toEqual(['/Users/dev/clowdy', '/Users/dev/car-rental-api', '/Users/dev/notes']);
+        expect(marked()).toEqual(['/Users/dev/clowdy']);
+        // The page reads the folders again when the project changes: the new folder's remote shows.
+        expect(rows()[1]!.querySelector('a[href="https://github.com/acme/car-rental-api"]')).not.toBeNull();
+    });
+
+    it('adds nothing when the folder dialog is closed without a choice', async () => {
+        const command = vi.fn();
+
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => [] };
+        await open(FIXTURE_EMPTY_PROJECT_ID, { command });
+        await click(named('Add folders…'));
+        await flush();
+
+        expect(command).not.toHaveBeenCalled();
+    });
+
+    it('reorders the folders under the main one at once, with no dialog', async () => {
+        await open(FIXTURE_EMPTY_PROJECT_ID, {}, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
+        await move(2, 1);
+
+        expect(confirm).not.toHaveBeenCalled();
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/notes', '/Users/dev/car-rental-api']);
+        expect(rowPaths()).toEqual(['/Users/dev/clowdy', '/Users/dev/notes', '/Users/dev/car-rental-api']);
+    });
+
+    it('makes another folder main once the person confirmed it, and puts the order back when they did not', async () => {
+        await open(FIXTURE_EMPTY_PROJECT_ID, {}, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+
+        // With no agent working, a folder can be dragged above the main one.
+        expect(canDropOn(1, 0)).toBe(true);
+
+        await move(1, 0);
+
+        expect(lastConfirm()).toMatchObject({ title: 'Make car-rental-api the main folder?', confirmLabel: 'Make main folder' });
+        expect(lastConfirm().message).toContain('Clowdy will work in /Users/dev/car-rental-api from now on');
+        expect(lastConfirm().message).toContain('starts a new conversation');
+        // Nothing is sent before the answer; the list shows the order dragged meanwhile.
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/car-rental-api']);
+        expect(rowPaths()).toEqual(['/Users/dev/car-rental-api', '/Users/dev/clowdy']);
+
+        closeConfirm();
+        await flush();
+
+        expect(rowPaths()).toEqual(['/Users/dev/clowdy', '/Users/dev/car-rental-api']);
+
+        await move(1, 0);
+        await act(async () => lastConfirm().onConfirm());
+        closeConfirm();
+        await flush();
+
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/car-rental-api', '/Users/dev/clowdy']);
+        expect(marked()).toEqual(['/Users/dev/car-rental-api']);
+    });
+
+    it('applies a new main folder to the folders the project has when the person confirms, not when the dialog opened', async () => {
+        /** Another window changes the folders while the dialog is open. */
+        const elsewhere = async (folders: ({ id: string } | { path: string })[]) => {
+            await act(async () => void await store.command({ type: 'project.update', projectId: FIXTURE_EMPTY_PROJECT_ID, folders }));
+            await flush();
+        };
+        const confirmed = async () => {
+            await act(async () => lastConfirm().onConfirm());
+            closeConfirm();
+            await flush();
+        };
+
+        await open(FIXTURE_EMPTY_PROJECT_ID, {}, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+        await move(1, 0);
+        await elsewhere([{ id: 'fld_clowdy' }, { id: 'fld_added_1' }, { path: '/Users/dev/notes' }]);
+        await confirmed();
+
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/car-rental-api', '/Users/dev/clowdy', '/Users/dev/notes']);
+
+        await click(button('Remove car-rental-api'));
+        await elsewhere([...store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.folders.map(folder => ({ id: folder.id })), { path: '/Users/dev/web' }]);
+        await confirmed();
+
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/notes', '/Users/dev/web']);
+    });
+
+    it('asks before removing the main folder, and makes the next one main', async () => {
+        await open(FIXTURE_EMPTY_PROJECT_ID, {}, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+        await click(button('Remove clowdy'));
+
+        expect(lastConfirm()).toMatchObject({ title: 'Remove clowdy?', confirmLabel: 'Remove folder' });
+        expect(lastConfirm().message).toContain('Clowdy will work in /Users/dev/car-rental-api from now on, and /Users/dev/clowdy leaves the project');
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toHaveLength(2);
 
         await act(async () => lastConfirm().onConfirm());
         await flush();
 
-        expect(store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)?.folders[0].path).toBe('/Users/dev/moved');
-        expect(container.textContent).toContain('/Users/dev/moved');
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/car-rental-api']);
+        expect(marked()).toEqual(['/Users/dev/car-rental-api']);
     });
 
-    it('shows the daemon\'s reason in the dialog when it refuses the folder', async () => {
-        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => ['/Users/dev/elsewhere'] };
-        await open(FIXTURE_EMPTY_PROJECT_ID, { command: async () => ({ ok: false, requestId: 'r', error: { code: 'invalid', message: '/Users/dev/elsewhere does not exist' } }) });
-        await click(named('Change folder…'));
-        await flush();
-
-        await expect(lastConfirm().onConfirm()).rejects.toThrow('does not exist');
-    });
-
-    it('does nothing when the folder dialog is closed without a choice', async () => {
-        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => [] };
-        await open(FIXTURE_EMPTY_PROJECT_ID);
-        await click(named('Change folder…'));
+    it('removes another folder at once, and moves the focus to the folder that takes its place', async () => {
+        await open(FIXTURE_EMPTY_PROJECT_ID, {}, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
+        await click(button('Remove car-rental-api'));
         await flush();
 
         expect(confirm).not.toHaveBeenCalled();
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/notes']);
+        expect(document.activeElement?.getAttribute('aria-label')).toBe('Remove notes');
+
+        // The last folder left has no Remove: the focus goes on to what adds folders.
+        await click(button('Remove notes'));
+        await flush();
+
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy']);
+        expect(document.activeElement?.textContent).toBe('Add folders…');
     });
 
-    it('keeps Remove and Change folder off while agents work, and says why', async () => {
+    it('shows the daemon\'s refusal of a new main folder in the dialog, and of another change as a toast', async () => {
+        const refusal = { ok: false as const, requestId: 'r', error: { code: 'conflict' as const, message: 'The agents of this project are still working. Stop them first.' } };
+
+        await open(FIXTURE_EMPTY_PROJECT_ID, { command: async () => refusal }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
+        await move(1, 0);
+
+        await expect(lastConfirm().onConfirm()).rejects.toThrow('Stop them first');
+
+        closeConfirm();
+        await flush();
+        await move(2, 1);
+
+        expect(toasts.error).toHaveBeenCalledWith({ message: 'The agents of this project are still working. Stop them first.' });
+        // The order goes back to the daemon's.
+        expect(rowPaths()).toEqual(['/Users/dev/clowdy', '/Users/dev/car-rental-api', '/Users/dev/notes']);
+    });
+
+    it('keeps the main folder in place while agents work, but moves, adds and removes the others', async () => {
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => ['/Users/dev/notes'] };
+        await open(FIXTURE_PROJECT_ID, {}, withFolders(FIXTURE_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/car-rental-web'));
+
+        expect(button('Remove car-rental').disabled).toBe(true);
+        expect(button('Remove car-rental-api').disabled).toBe(false);
+        expect(container.textContent).toContain('Agents are working in this project. Stop them before changing the main folder.');
+
+        // A drag neither moves the main folder nor puts another above it; the others change places.
+        expect(canDropOn(0, 1)).toBe(false);
+        expect(canDropOn(1, 0)).toBe(false);
+        expect(canDropOn(2, 1)).toBe(true);
+
+        // A drop that reached the top anyway is put back, with no dialog.
+        await move(1, 0);
+
+        expect(confirm).not.toHaveBeenCalled();
+        expect(rowPaths()).toEqual(['/Users/dev/car-rental', '/Users/dev/car-rental-api', '/Users/dev/car-rental-web']);
+
+        await move(2, 1);
+
+        expect(folderPaths(FIXTURE_PROJECT_ID)).toEqual(['/Users/dev/car-rental', '/Users/dev/car-rental-web', '/Users/dev/car-rental-api']);
+
+        await click(named('Add folders…'));
+        await flush();
+
+        expect(folderPaths(FIXTURE_PROJECT_ID)).toEqual(['/Users/dev/car-rental', '/Users/dev/car-rental-web', '/Users/dev/car-rental-api', '/Users/dev/notes']);
+
+        await click(button('Remove car-rental-api'));
+        await flush();
+
+        expect(folderPaths(FIXTURE_PROJECT_ID)).toEqual(['/Users/dev/car-rental', '/Users/dev/car-rental-web', '/Users/dev/notes']);
+        expect(toasts.error).not.toHaveBeenCalled();
+    });
+
+    it('keeps Remove project off while agents work, and says why', async () => {
         await open(FIXTURE_PROJECT_ID);
 
         expect(named('Remove project').disabled).toBe(true);
-        expect(named('Change folder…').disabled).toBe(true);
         expect(container.textContent).toContain('Agents are working in this project');
     });
 
-    it('shows the personal space with its folder and new-chat settings only', async () => {
+    it('shows the personal space with its one folder, read only, and new-chat settings only', async () => {
         await open(FIXTURE_PERSONAL_PROJECT_ID);
 
         expect(container.querySelector('input[aria-label="Project name"]')).toBeNull();
+        expect(rowPaths()).toEqual(['/Users/dev/Library/Application Support/Clowdy/daemon/personal']);
+        expect(marked()).toEqual([]);
+        expect(container.querySelector('button[aria-label^="Remove "]')).toBeNull();
+        expect(container.textContent).not.toContain('Add folders');
         expect(container.textContent).not.toContain('Remove project');
-        expect(container.textContent).not.toContain('Change folder');
-        expect(container.textContent).not.toContain('Git');
         expect(container.querySelector('[aria-label="Agent for new chats"]')).not.toBeNull();
     });
 
-    it('says so when the repository could not be read, instead of waiting for it', async () => {
+    it('says so when the folders could not be checked', async () => {
         await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: () => Promise.reject(new Error('offline')) });
 
-        expect(container.textContent).toContain('Couldn\'t read the repository');
-        expect(container.textContent).not.toContain('Reading the repository…');
+        expect(container.textContent).toContain('Couldn\'t check the folders');
     });
 
-    it('warns when the folder is gone', async () => {
-        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [{ projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: false }], chats: 0, tasks: 0, activeRuns: 0 }] });
+    it('warns about each folder that is gone: the main one stops the agents, another is left out', async () => {
+        const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: false }, { folderId: 'fld_added_1', exists: false }, { folderId: 'fld_added_2', exists: true, remoteUrl: 'git@github.com:acme/notes.git' }], chats: 0, tasks: 0, activeRuns: 0 };
 
-        expect(container.textContent).toContain('This folder no longer exists');
-        expect(named('Choose folder…')).toBeDefined();
+        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
+
+        expect(rows()[0]!.textContent).toContain('This folder no longer exists, so the agents of this project cannot work.');
+        expect(rows()[1]!.textContent).toContain('This folder no longer exists, so the agents leave it out');
+        expect(rows()[2]!.textContent).not.toContain('no longer exists');
+        expect(rows()[2]!.querySelector('a[href="https://github.com/acme/notes"]')).not.toBeNull();
     });
 });

@@ -1,4 +1,6 @@
-import type { Project, ProjectInfo } from '@clowdy/protocol';
+import { folderNames } from '@clowdy/protocol';
+
+import type { Project, ProjectFolder, ProjectInfo } from '@clowdy/protocol';
 
 export interface RemoteLink {
     /** The address as a person reads it, without the credentials it may carry. */
@@ -50,6 +52,50 @@ export function remoteLink(remote: string | undefined): RemoteLink | undefined {
     return { text: raw };
 }
 
+/** One folder as the project's page shows it. */
+export interface FolderView {
+    folder: ProjectFolder;
+    /** Its short name among the project's folders (`folderNames`). */
+    name: string;
+    /** The first folder, where the agents work. */
+    isMain: boolean;
+    /** The daemon found it gone. False until the folders have been read. */
+    missing: boolean;
+    remote?: RemoteLink;
+}
+
+/** The folders of a project in its order, each with what the daemon read about it (`ProjectInfo.folders`, matched by id). */
+export function folderViews(project: Pick<Project, 'folders'>, info: Pick<ProjectInfo, 'folders'> | undefined): FolderView[] {
+    const names = folderNames(project.folders);
+
+    return project.folders.map((folder, index) => {
+        const read = info?.folders.find(entry => entry.folderId === folder.id);
+        const remote = remoteLink(read?.remoteUrl);
+
+        return { folder, name: names[index] ?? folder.path, isMain: index === 0, missing: read?.exists === false, ...(remote && { remote }) };
+    });
+}
+
+/** Why a missing folder matters: without the main one the agents cannot work; another is left out of what they get. */
+export function missingFolderNote(project: Pick<Project, 'personal'>, isMain: boolean): string {
+    if (project.personal) return 'This folder no longer exists. Clowdy makes it again the next time it starts.';
+
+    return isMain
+        ? 'This folder no longer exists, so the agents of this project cannot work. If it moved, add its new place and make that the main folder.'
+        : 'This folder no longer exists, so the agents leave it out';
+}
+
+/**
+ * What a new main folder means, for its confirmation: the agents move to `next`, nothing on disk changes, and an agent that worked in the
+ * old main folder starts over. `removed` is the old main folder when it leaves the project.
+ */
+export function newMainMessage(projectName: string, next: string, removed?: string): string {
+    const move = removed ? `${ projectName } will work in ${ next } from now on, and ${ removed } leaves the project.` : `${ projectName } will work in ${ next } from now on.`;
+    const disk = removed ? 'Nothing is moved, copied or deleted.' : 'Nothing is moved or copied.';
+
+    return `${ move } ${ disk } An agent that worked in the old main folder starts a new conversation, so what it remembered may not carry over.`;
+}
+
 const plural = (count: number, one: string) => `${ count } ${ count === 1 ? one : `${ one }s` }`;
 
 /** What a project holds, for its row: `12 chats · 5 tasks`. */
@@ -68,9 +114,10 @@ export function projectNote(project: Pick<Project, 'personal'>, info: Pick<Proje
     return project.personal ? PERSONAL_NOTE : holdingsLine(info);
 }
 
-/** What removing a project deletes, for its confirmation. */
-export function removalMessage(name: string, path: string, info: Pick<ProjectInfo, 'chats' | 'tasks'> | undefined): string {
+/** What removing a project deletes, and that its folders (`paths`) stay, for its confirmation. */
+export function removalMessage(name: string, paths: readonly string[], info: Pick<ProjectInfo, 'chats' | 'tasks'> | undefined): string {
     const holds = info && (info.chats > 0 || info.tasks > 0) ? `its ${ [plural(info.chats, 'chat'), plural(info.tasks, 'task')].join(' and ') }, ` : 'its chats and tasks, ';
+    const stays = paths.length === 1 ? `The folder ${ paths[0] } and everything in it stay` : `Its ${ paths.length } folders and everything in them stay`;
 
-    return `"${ name }" leaves Clowdy together with ${ holds }and the work of its agents, for good. The folder ${ path } and everything in it stay on your computer.`;
+    return `"${ name }" leaves Clowdy together with ${ holds }and the work of its agents, for good. ${ stays } on your computer.`;
 }

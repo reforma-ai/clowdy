@@ -3,15 +3,15 @@ import { FormField } from '@clowdy/components/FormField';
 import { Input } from '@clowdy/components/Input';
 import { useModalContext } from '@clowdy/components/Modal';
 import { SortableList } from '@clowdy/components/SortableList';
-import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
-import { Close, Folder, Plus } from '@clowdy/icons/14';
+import { Plus } from '@clowdy/icons/14';
 import { folderNames } from '@clowdy/protocol';
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { flushSync } from 'react-dom';
 
 import styles from './AddProjectForm.module.css';
+import { FolderRow } from './FolderRow';
 
 import type { RootStore } from '../stores';
 
@@ -117,7 +117,7 @@ export function AddProjectForm({ root }: { root: RootStore }) {
                         onChange={ next => changeFolders(() => next.map(entry => entry.path)) }
                     >
                         { (entry, { isFirst }) => (
-                            <FolderRow entry={ entry } isMain={ isFirst } onRemove={ () => remove(entry.path) } />
+                            <FolderRow name={ entry.name } path={ entry.path } isMain={ isFirst } onRemove={ () => remove(entry.path) } />
                         ) }
                     </SortableList>
                 ) }
@@ -132,24 +132,6 @@ export function AddProjectForm({ root }: { root: RootStore }) {
             {/* No Cancel: the window's close button, Escape and a click outside already close it. */}
             <Button type="submit" color="primary" fullWidth isDisabled={ !canSubmit } isPending={ isPending }>Add project</Button>
         </form>
-    );
-}
-
-function FolderRow({ entry, isMain, onRemove }: { entry: FolderEntry; isMain: boolean; onRemove: () => void }) {
-    return (
-        <div className={ styles.folder } data-folder-path={ entry.path }>
-            <span className={ styles.icon }><Folder /></span>
-            <span className={ styles.text }>
-                <span className={ styles.title }>
-                    <Text variant="md" weight="medium" truncate>{ entry.name }</Text>
-                    { isMain && <Badge size="xs" textValue="Main">Main</Badge> }
-                </span>
-                <Text variant="sm" color="secondary" truncate title={ entry.path }>{ entry.path }</Text>
-            </span>
-            <Button iconOnly size="xs" variant="filling" color="secondary" aria-label={ `Remove ${ entry.name }` } onPress={ onRemove }>
-                <Close />
-            </Button>
-        </div>
     );
 }
 

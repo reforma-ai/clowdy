@@ -9,8 +9,17 @@ import { useRootStore } from '../stores';
 import { openAddProject } from './projectDialogs';
 import styles from './ProjectSelect.module.css';
 
+import type { Project } from '@clowdy/protocol';
+
 const ADD = 'add-project';
 const MANAGE = 'manage-projects';
+
+/** Where a project is: its main folder, and `+N` for the folders it has besides. */
+function whereLine(project: Pick<Project, 'folders'>): string {
+    const more = project.folders.length - 1;
+
+    return more > 0 ? `${ mainFolder(project).path } +${ more }` : mainFolder(project).path;
+}
 
 /**
  * The project switcher in the title band: the personal space on top, then the projects in the person's order, then "Add project…" and
@@ -47,7 +56,7 @@ export function ProjectSelect() {
                             key={ project.id }
                             id={ project.id }
                             text={ project.name }
-                            description={ mainFolder(project).path }
+                            description={ whereLine(project) }
                             icon={ <Folder /> }
                             stacked
                             data-align="center"

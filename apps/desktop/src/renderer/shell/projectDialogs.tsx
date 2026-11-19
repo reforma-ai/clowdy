@@ -23,8 +23,9 @@ export function openAddProject(root: RootStore): void {
 }
 
 /**
- * Folders for a project that already exists: the system folder dialog in the desktop app, where several can be chosen, and a small form
- * with a path field in a plain browser. Resolves to the paths, or an empty list when the person closed the dialog.
+ * Folders to add to a project that already exists (Add folders… on its page in Settings): the system folder dialog in the desktop app,
+ * where several can be chosen, and a small form with a path field in a plain browser. Resolves to the paths, or an empty list when the
+ * person closed the dialog.
  */
 export async function pickFolders(): Promise<string[]> {
     const choose = window.desktop?.chooseDirectories;
@@ -52,12 +53,12 @@ function FolderForm({ onPick }: { onPick: (path: string) => void }) {
                 }
             } }
         >
-            <Text variant="heading-3">Choose a folder</Text>
+            <Text variant="heading-3">Add a folder</Text>
             <FormField layout="vertical">
                 <FormField.Label>Folder</FormField.Label>
                 <Input type="text" aria-label="Folder" value={ path } onChange={ setPath } placeholder="/Users/you/code/my-app" autoFocus />
             </FormField>
-            <Button type="submit" color="primary" fullWidth isDisabled={ !path.trim() }>Use this folder</Button>
+            <Button type="submit" color="primary" fullWidth isDisabled={ !path.trim() }>Add folder</Button>
         </form>
     );
 }

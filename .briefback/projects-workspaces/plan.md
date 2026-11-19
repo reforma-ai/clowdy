@@ -44,6 +44,13 @@
 
 **Reuse:** `realDirectory`, `initRepository`, `insertProject`, `publishProject`, `requireProject` (`apps/daemon/src/domain/projects.ts`); `git`/`gitLine` (`apps/daemon/src/domain/git.ts`); `FolderWatchers` (`apps/daemon/src/skills/watch.ts`); `listProjectFiles` (`apps/daemon/src/files/list.ts`) and `searchPaths` (`apps/daemon/src/files/rank.ts`); `DocsWatcher` (`apps/daemon/src/docs/watcher.ts`); `perform` (`apps/desktop/src/renderer/features/chats/commands.ts`); `SortableList`, `Modal`, `FormField`, `Input`, `toast`, `openConfirmModal` (`@clowdy/components`); `SettingsRow` (`apps/desktop/src/renderer/features/settings/ui/SettingsRow.tsx`); `projectView.ts` remote-to-link helpers (`apps/desktop/src/renderer/features/settings/projects/projectView.ts`).
 
+## Left for later
+
+- Agents that take neither a system prompt nor additional folders (Cursor) hear about a folder change only in a new session: the prompt reaches them on the first turn only (Stage 3 review). Fix: tell the next turn when the folder list changed.
+- Launch flags for Gemini (`--include-directories`), Copilot (`--add-dir`) and omp (`--add-dir`), and a picker note for prompt-only agents, once someone can run those agents (`research/index.md`).
+- Reordering folders from the keyboard: `SortableList` has only a pointer sensor (Stages 5 and 6 reviews).
+- The Modal animates even with reduced motion on, which is why dialog tests turn its animation off (Stage 5 review).
+
 ## Out of scope
 
 - A working directory of its own for one chat (a chat choosing which folder of the workspace it runs in).
@@ -220,12 +227,12 @@
 
 **This stage:** the person manages a project's folders after it exists and sees them where the project shows up. The Folder block on the project's settings page becomes Folders (Main mark, drag, Add folders…, Remove, missing warning and git remote per folder), changing the main folder confirms like Change folder did and is refused during runs, the select shows `+N`, and `@` file suggestions come from every folder with the right path for the agent.
 
-- [ ] Complete
-  - [ ] The Folders block: list from `ProjectInfo.folders`, drag to reorder, Add folders…, Remove; the personal space shows its one folder read only
-  - [ ] A new main folder (by dragging or by removing the current one) asks for confirmation with the memory note and explains a refusal during runs; other folder changes apply without a dialog
-  - [ ] The select's description: the main folder's path and `+N`
-  - [ ] `@` files: matches from every folder, relative for the main folder and absolute for others, `<folder name>/<path>` in the suggestion when there are several folders
-  - [ ] `TODO.md`: Workspace checked
+- [x] Complete
+  - [x] The Folders block: list from `ProjectInfo.folders`, drag to reorder, Add folders…, Remove; the personal space shows its one folder read only
+  - [x] A new main folder (by dragging or by removing the current one) asks for confirmation with the memory note and explains a refusal during runs; other folder changes apply without a dialog
+  - [x] The select's description: the main folder's path and `+N`
+  - [x] `@` files: matches from every folder, relative for the main folder and absolute for others, `<folder name>/<path>` in the suggestion when there are several folders
+  - [x] `TODO.md`: Workspace checked
 
 **Files**
 
@@ -241,4 +248,4 @@
 
 **Done when:** on a project's page a person adds a second folder, drags it to the top after confirming, and `@` in a chat of that project suggests files from both folders.
 **Verify:** `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`, screenshots in fixtures mode of the Folders block and of `@` suggestions from two folders
-**Commits:** None yet.
+**Commits:** None yet. Reviewed: the new-main dialog applies its change to the folders the project has when the person confirms, so a folder added meanwhile is kept; the Danger zone copy speaks of folders; the guard that keeps the main row in place while agents work is tested. The rows of Settings > Projects still show only the main folder's path.
