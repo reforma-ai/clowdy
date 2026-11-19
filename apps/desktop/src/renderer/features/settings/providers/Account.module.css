@@ -1,5 +1,3 @@
-@reference '@clowdy/styles/rulesets';
-
 .who {
     display: flex;
     align-items: center;
@@ -12,26 +10,37 @@
     flex-shrink: 0;
 }
 
-/*
- * A running sign-in on the account's line: the spinner, where to finish, and the links. The links are inline buttons, which take the size
- * of the text around them, so the line sets the size of its text.
- */
-.progress {
-    @ruleset typography-text-sm;
-
+/* A running sign-in: a plate with what to do on the left and its two buttons on the right. */
+.panel {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--spacing-xs) var(--spacing-md);
+    justify-content: space-between;
+    gap: var(--spacing-lg) var(--spacing-xl);
+    padding: var(--spacing-lg) var(--spacing-xl);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-secondary-muted-light);
+}
+
+.panelText {
+    display: flex;
+    flex: 1 1 14rem;
+    flex-direction: column;
+    gap: var(--spacing-2);
     min-width: 0;
 }
 
-.spinner {
+.panelActions {
+    display: flex;
     flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-lg);
 }
 
 .code {
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
+    margin-top: var(--spacing-sm);
 }

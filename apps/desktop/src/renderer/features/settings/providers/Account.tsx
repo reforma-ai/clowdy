@@ -1,14 +1,15 @@
 import { Button } from '@clowdy/components/Button';
 import { CopyButton, copyWithFeedback, useCopyFeedback } from '@clowdy/components/CopyButton';
-import { Spinner } from '@clowdy/components/Spinner';
 import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
+import { ArrowUpRight } from '@clowdy/icons/14';
+import { cn } from '@clowdy/lib';
 
 import styles from './Account.module.css';
 import { InlineCode } from './InlineCode';
 import { accountLine, isSignInRunning } from './providerView';
 
-import type { AgentInfo, AgentSignInSession } from '@clowdy/protocol';
+import type { AgentInfo } from '@clowdy/protocol';
 import type { useAgentCommands } from './useAgentCommands';
 
 const TONE_COLOR = { default: undefined, muted: 'secondary', warning: 'warning' } as const;
@@ -22,43 +23,52 @@ export interface AccountProps {
 function CopyLinkButton({ url }: { url: string }) {
     const { copied, markCopied } = useCopyFeedback();
 
-    return <Button variant="inline" color="primary" onPress={ () => copyWithFeedback(url, markCopied) }>{ copied ? 'Copied' : 'Copy link' }</Button>;
+    return <Button variant="bordered" size="sm" onPress={ () => copyWithFeedback(url, markCopied) }>{ copied ? 'Copied' : 'Copy link' }</Button>;
 }
 
 /**
- * A sign-in the daemon runs, in the place of the account: a small spinner, where to finish it, and the link the program printed, to open
- * here (`https:` only: the app opens nothing else) or copy into another browser. Under it, a one-time code to enter on the page.
+ * A sign-in the daemon runs, as a plate under the card's first row: where to finish it and what happens then, a one-time code when the
+ * program printed one, and two buttons. The first opens the page again (`https:` only: the app opens nothing else) or, for another
+ * kind of link, copies it; the second cancels. Nothing when no sign-in runs.
  */
-function SignInProgress({ session }: { session: AgentSignInSession }) {
+export function SignInPanel({ agent, commands, className }: AccountProps & { className?: string }) {
+    const session = agent.signInSession;
+
+    if (!isSignInRunning(session)) return null;
+
     const { url, code } = session;
+    const starting = session.step === 'starting';
 
     return (
-        <>
-            <div className={ styles.progress }>
-                <Spinner size="xxs" className={ styles.spinner } />
-                <Text variant="sm" color="secondary" role="status">{ session.step === 'starting' ? 'Starting the sign-in…' : 'Continue in your browser' }</Text>
-                { url?.startsWith('https://') && <Button variant="inline" color="primary" href={ url } target="_blank" rel="noreferrer">Open page</Button> }
-                { url && <CopyLinkButton url={ url } /> }
+        <div className={ cn(styles.panel, className) }>
+            <div className={ styles.panelText } role="status">
+                <Text variant="sm" weight="medium">{ starting ? 'Starting the sign-in…' : 'Continue in your browser' }</Text>
+                { !starting && <Text variant="sm" color="secondary">{ 'Once you sign in, you\'ll be connected automatically' }</Text> }
+                { code && (
+                    <div className={ styles.code }>
+                        <Text variant="sm" color="secondary">Enter this code on the page</Text>
+                        <CopyButton value={ code } variant="filling" size="xs" tooltip="Copy the code">{ code }</CopyButton>
+                    </div>
+                ) }
             </div>
-            { code && (
-                <div className={ styles.code }>
-                    <Text variant="sm" color="secondary">Enter this code on the page</Text>
-                    <CopyButton value={ code } variant="filling" size="xs" tooltip="Copy the code">{ code }</CopyButton>
-                </div>
-            ) }
-        </>
+            <div className={ styles.panelActions }>
+                { url && (url.startsWith('https://')
+                    ? (
+                        <Button variant="bordered" size="sm" href={ url } target="_blank" rel="noreferrer">
+                            <ArrowUpRight aria-hidden />
+                            Reopen browser
+                        </Button>
+                    )
+                    : <CopyLinkButton url={ url } />) }
+                <Button variant="inline" color="secondary" size="sm" isPending={ commands.pending.has('cancelSignIn') } onPress={ () => void commands.cancelSignIn() }>Cancel</Button>
+            </div>
+        </div>
     );
 }
 
-/**
- * Who is signed in to the agent and the plan, or why there is nobody, with the daemon's note on that; a sign-in that failed says why
- * under it. While a sign-in runs, how it goes instead.
- */
+/** Who is signed in to the agent and the plan, or why there is nobody, with the daemon's note on that; a sign-in that failed says why under it. */
 export function AccountLine({ agent }: { agent: AgentInfo }) {
     const session = agent.signInSession;
-
-    if (isSignInRunning(session)) return <SignInProgress session={ session } />;
-
     const line = accountLine(agent);
 
     return (
@@ -74,21 +84,14 @@ export function AccountLine({ agent }: { agent: AgentInfo }) {
 }
 
 /**
- * The button at the end of the card's first row: Sign in (or Sign in again), Cancel while a sign-in runs, or the vendor's command when the
- * daemon cannot run the sign-in. Nothing for a program that is missing or a provider that is off, which have nobody to sign in.
+ * The button at the end of the card's first row: Sign in (or Sign in again), or the vendor's command when the daemon cannot run the
+ * sign-in. Nothing while a sign-in runs (its plate has Cancel), and nothing for a program that is missing or a provider that is off,
+ * which have nobody to sign in.
  */
 export function SignInAction({ agent, commands }: AccountProps) {
     const signedIn = agent.signIn?.status === 'signed-in';
 
-    if (agent.status !== 'ready' || !agent.enabled) return null;
-
-    if (isSignInRunning(agent.signInSession)) {
-        return (
-            <Button variant="bordered" color="secondary" size="sm" isPending={ commands.pending.has('cancelSignIn') } onPress={ () => void commands.cancelSignIn() }>
-                Cancel
-            </Button>
-        );
-    }
+    if (agent.status !== 'ready' || !agent.enabled || isSignInRunning(agent.signInSession)) return null;
 
     if (!agent.canSignIn) {
         return agent.login ? <Text variant="xs" color="secondary">Run <Text as="code" variant="code">{ agent.login }</Text> in a terminal</Text> : null;

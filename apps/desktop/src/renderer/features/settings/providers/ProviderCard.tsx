@@ -3,7 +3,7 @@ import { Text } from '@clowdy/components/Text';
 
 import { SettingsBlock } from '../ui/SettingsBlock';
 import { SettingsCard } from '../ui/SettingsCard';
-import { AccountLine, SignInAction } from './Account';
+import { AccountLine, SignInAction, SignInPanel } from './Account';
 import styles from './ProviderCard.module.css';
 import { ProviderIcon } from './ProviderIcon';
 import { ProviderAdvanced, ProviderSettings } from './ProviderSettings';
@@ -16,7 +16,7 @@ import type { AgentInfo } from '@clowdy/protocol';
 
 /**
  * One provider. Its first block is one row: the mark; the name over who is signed in; and at the end the button that reads the usage
- * again (not while a sign-in runs), the sign-in button (Cancel while it runs) and the switch. A running sign-in takes the account's line.
+ * again (not while a sign-in runs), the sign-in button and the switch. A running sign-in is a plate under that row, with Cancel.
  * Then what is left of its plan, its settings, and Advanced, each in a block of its own. A provider that is off or not installed shows
  * less, because there is nothing to sign in to or to read.
  */
@@ -52,6 +52,8 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
                         onChange={ enabled => void commands.setEnabled(enabled) }
                     />
                 </div>
+
+                <SignInPanel agent={ agent } commands={ commands } className={ styles.signIn } />
             </SettingsBlock>
 
             { usage && (

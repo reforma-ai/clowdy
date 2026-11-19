@@ -47,6 +47,11 @@
     margin-inline-start: var(--spacing-md);
 }
 
+/* A running sign-in's plate spans the card's width under the first row. */
+.signIn {
+    grid-column: 1 / -1;
+}
+
 /* A provider that is off keeps its settings readable, so the person sees what they would be turning back on. */
 .settings[data-dim] {
     opacity: 0.6;

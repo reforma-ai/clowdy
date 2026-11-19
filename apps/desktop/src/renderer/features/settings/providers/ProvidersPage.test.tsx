@@ -186,7 +186,7 @@ describe('signing in', () => {
         expect(button(card('Claude Code'), 'Sign in')).toBeUndefined();
     });
 
-    it('follows the daemon\'s sign-in on the account\'s line, with the link to open or copy and Cancel, then shows the account', async () => {
+    it('follows the daemon\'s sign-in on a plate with Reopen browser and Cancel, then shows the account', async () => {
         await start(signedOut());
         await press(button(card('Codex'), 'Sign in'));
         await act(async () => {
@@ -196,11 +196,10 @@ describe('signing in', () => {
         await draw();
 
         const codex = card('Codex');
-        const open = button(codex, 'Open page') as HTMLAnchorElement;
+        const open = button(codex, 'Reopen browser') as HTMLAnchorElement;
 
         expect(codex.textContent).toContain('Continue in your browser');
-        expect(codex.textContent).not.toContain('Not signed in');
-        expect(button(codex, 'Copy link')).toBeDefined();
+        expect(button(codex, 'Copy link')).toBeUndefined();
         expect(open.getAttribute('href')).toContain('https://auth.openai.com/oauth/authorize');
         expect(open.getAttribute('target')).toBe('_blank');
         expect(button(codex, 'Cancel')).toBeDefined();
@@ -257,7 +256,7 @@ describe('signing in', () => {
         }));
 
         expect(button(card('Codex'), 'Copy link')).toBeDefined();
-        expect(button(card('Codex'), 'Open page')).toBeUndefined();
+        expect(button(card('Codex'), 'Reopen browser')).toBeUndefined();
     });
 
     it('shows the vendor\'s command when the daemon cannot run the sign-in', async () => {
