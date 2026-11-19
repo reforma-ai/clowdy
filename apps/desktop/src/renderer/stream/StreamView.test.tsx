@@ -76,6 +76,12 @@ describe('StreamView', () => {
         expect(container.textContent).toContain('Working…');
     });
 
+    it('draws the progress loader in the working line', async () => {
+        await act(async () => root.render(<StreamView items={ items } active working />));
+
+        expect(container.querySelector('[role="status"] #progress-loader-a')).not.toBeNull();
+    });
+
     it('puts the action it is given at the end of an error', async () => {
         const failed = [...items, item(4, { kind: 'error', text: 'The conversation no longer fits the model\'s context window. Compact it or start a new chat.' })];
 
