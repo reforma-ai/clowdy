@@ -2,7 +2,7 @@
     "name": "@clowdy/desktop",
     "productName": "Clowdy Dev",
     "private": true,
-    "version": "0.0.1",
+    "version": "0.1.0",
     "description": "Clowdy desktop app",
     "type": "module",
     "main": "dist/main/index.cjs",
