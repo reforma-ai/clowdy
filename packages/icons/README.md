@@ -52,8 +52,12 @@ packages/icons/
 │   ├── [pack]/            # Generated React components per pack
 │   └── index.ts           # Main entry point
 └── scripts/
-    └── build.js           # Build script that generates components
+    ├── build.js           # Build script that generates components
+    ├── sync-icons.js      # Pulls the icon packs from Figma into src/
+    └── figma-auth.js      # Saved Figma token and the authorization prompt
 ```
+
+`src/figma-icons-manifest.json` is written by the sync: it lists the files Figma owns.
 
 ## Commands
 
@@ -61,10 +65,44 @@ Run from `packages/icons`:
 
 - `bun run build` — Generates React components from the SVG/PNG files in `src/` into `dist/`
 - `bun run typecheck` — Type checks the package
+- `bun run test` — Tests the Figma sync
+- `bun run sync` — Pulls every icon pack from Figma (see below)
+
+Run from the repository root: `./clowdy sync icons [pack ...]`, `./clowdy sync icons --list`, `./clowdy sync icons auth`.
 
 `dist/` is not committed. `./clowdy dev` and `./clowdy build` build it through Turbo (`dev:prepare` / `build`) before the app starts.
 
-The icons came from Reforma's Figma-synced packs. This repository has no Figma sync: add, rename, or remove files in `src/` by hand and rebuild.
+## Syncing from Figma
+
+The icons are drawn in Reforma's Figma file, and this repository pulls them from there with the same script Reforma uses. Draw or change an icon in Figma, then run `./clowdy sync icons` from the repository root.
+
+- `./clowdy sync icons` — every pack, then the package build when a file changed
+- `./clowdy sync icons 14` — only the exact `14` pack
+- `./clowdy sync icons --list` — packs, node ids, and icon counts, without writing anything
+- `./clowdy sync icons --json` — one versioned JSON result for scripts and agents: `addedFiles`, `changedFiles`, `removedFiles`, and the counts
+- `./clowdy sync icons auth` — replaces and verifies the saved Figma token without syncing
+
+How a Figma file turns into a pack, and how names and the `.` suffix work, is the same as in Reforma: the root frame's auto-layout children are packs, a pack frame holds one component set, and a variant `name=archive` becomes `archive.svg`. A variant that is not named for what it draws becomes a file of that name, so name it in Figma before you sync: renaming it there renames the file on the next run.
+
+`src/icons-metadata.json` holds the source in `figma`:
+
+```json
+{
+    "figma": {
+        "excludeFromSyncSuffix": "~",
+        "excludePacks": ["logo"],
+        "iconsSourceUrl": "https://www.figma.com/design/FILE_KEY/FILE_NAME?node-id=1-2"
+    }
+}
+```
+
+`excludePacks` lists Figma packs that this repository does not take. `logo` is Reforma's own set of brand marks, while `src/logo` here is a different set, kept by hand (the agents and services Clowdy shows). `src/assets` is not in Figma at all. A pack ending with `excludeFromSyncSuffix` in Figma is skipped everywhere.
+
+The sync changes only what the manifest lists. A file that is not in it, such as `src/16/keyboard.svg`, is never removed, but a Figma icon with the same name replaces it. Do not edit a managed SVG by hand: the next sync puts the Figma version back.
+
+### Token
+
+The first run asks for a Figma personal access token (the terminal prints the steps: Security, Personal access tokens, scope `file_content:read`) and keeps it in `~/.config/reforma/figma-access-token`, outside the repository. That is the file Reforma's `./reforma sync icons auth` writes, so authorizing in either repository works for both. `FIGMA_ACCESS_TOKEN` overrides it, for CI. Without a token a non-interactive run fails with `AUTH_REQUIRED`: run `./clowdy sync icons auth` in your own terminal, and never paste the token into a chat.
 
 ## What Happens During Build
 

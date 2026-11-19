@@ -1,4 +1,11 @@
 {
+    "figma": {
+        "excludeFromSyncSuffix": "~",
+        "excludePacks": [
+            "logo"
+        ],
+        "iconsSourceUrl": "https://www.figma.com/design/JS4KajHUpGIoAsA58wJEaS/Reforma-Main?node-id=597-13637"
+    },
     "optimization": {
         "excludeFromOptimizationSuffix": "."
     },

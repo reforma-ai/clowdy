@@ -74,6 +74,8 @@
         "build": "bun scripts/build.js",
         "clean": "rm -rf node_modules/{*,.*} .turbo dist 2>/dev/null || true",
         "dev:prepare": "bun run build",
+        "sync": "bun scripts/sync-icons.js",
+        "test": "vitest run scripts/sync-icons.test.js",
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
