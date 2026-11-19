@@ -163,15 +163,15 @@ Confirmed by the owner in chat (2026-11-19):
 
 **This stage:** The v2 layer turns what the agent reports into the engine contract of Stage 1. `state_update.background` becomes `background` snapshots; a turn the agent starts on its own is a `running` after `idle` with no prompt behind it and becomes the events of an agent-started turn ending in `done`; when nothing is open and nothing runs, the session waits the handoff guard and ends its iterator. It builds on the existing title linger of `AcpSession` (one linger mechanism with two reasons), and unlike the title linger it keeps the process recorded on the run.
 
-- [ ] Complete
-  - [ ] `background` snapshots from `state_update.background`: a terminal is a `command`, a sub-agent a `subagent`, a tool call (`Workflow`, `Monitor`) a `task`, titled from the call
-  - [ ] After `done` the session stays alive while the last snapshot has items or a turn runs; events that come with no prompt open an agent-started turn that ends at the next `idle`
-  - [ ] When the snapshot is empty and the session is `idle`, a 2 s handoff guard (a named constant) starts; a `running` or a new item cancels it; at its end the session closes its process and ends the iterator
-  - [ ] `send(text)`: a prompt on the live session; while an agent-started turn runs, the agent inserts it into that turn (a steer) and the prompt is not lost; one `done` follows an accepted `send`, and the `done` of an agent-started turn that was running is held back until the sent prompt has been answered
-  - [ ] A steer that lands in Claude's v2 adapter comes back as two turns (an `idle` with zero usage, a `running`, the same answer again as a whole message under a new id, an `idle` with the real usage): the `running` that follows a landed steer is that steer's own turn, its usage folds into the same `done`, and a whole message identical to the one before is not written twice
-  - [ ] The process stays recorded (`process` event) for the whole wait; cancel, abort and process exit end the wait at once
-  - [ ] The fake v2 agent has directives that start background work, end the prompt, and later emit a report turn; tests cover the guard, a `running` that arrives inside it, `send` during a report turn, cancel while waiting and the process exiting while waiting
-  - [ ] Probes repeated through the real adapters in a scratch daemon: a background command, a background sub-agent and a workflow each finish after the turn and produce a report turn
+- [x] Complete
+  - [x] `background` snapshots from `state_update.background`: a terminal is a `command`, a sub-agent a `subagent`, a tool call (`Workflow`, `Monitor`) a `task`, titled from the call
+  - [x] After `done` the session stays alive while the last snapshot has items or a turn runs; events that come with no prompt open an agent-started turn that ends at the next `idle`
+  - [x] When the snapshot is empty and the session is `idle`, a 2 s handoff guard (a named constant) starts; a `running` or a new item cancels it; at its end the session closes its process and ends the iterator
+  - [x] `send(text)`: a prompt on the live session; while an agent-started turn runs, the agent inserts it into that turn (a steer) and the prompt is not lost; one `done` follows an accepted `send`, and the `done` of an agent-started turn that was running is held back until the sent prompt has been answered
+  - [x] A steer that lands in Claude's v2 adapter comes back as two turns (an `idle` with zero usage, a `running`, the same answer again as a whole message under a new id, an `idle` with the real usage): the `running` that follows a landed steer is that steer's own turn, its usage folds into the same `done`, and a whole message identical to the one before is not written twice
+  - [x] The process stays recorded (`process` event) for the whole wait; cancel, abort and process exit end the wait at once
+  - [x] The fake v2 agent has directives that start background work, end the prompt, and later emit a report turn; tests cover the guard, a `running` that arrives inside it, `send` during a report turn, cancel while waiting and the process exiting while waiting
+  - [ ] (moved to Stage 7) Probes repeated through the real adapters in a scratch daemon: a background command, a background sub-agent and a workflow each finish after the turn and produce a report turn
 
 **Files**
 
@@ -183,7 +183,10 @@ Confirmed by the owner in chat (2026-11-19):
 
 **Done when:** against the v2 fake agent, a turn that started background work yields `done`, leaves the process alive and recorded, yields the agent's report as a second turn, ends the iterator after the guard once nothing is open, and `send` during the wait reaches the agent; against the real Claude Code adapter in a scratch daemon the same happens for a 60 s background command.
 **Verify:** `cd apps/daemon && bun test test/acp-session.test.ts test/acp-mapper.test.ts && bun run typecheck && bun run lint`, plus the scratch-daemon check
-**Commits:** None yet.
+**Commits:**
+
+- `2eab0eb` feat(daemon): keep a v2 session alive while background work is open and take messages into it. The report turn, `send`, the guard and the steer accounting (`engine/acp/turns.ts`) are tested against the v2 fake agent; the scratch-daemon check with the real adapters is in Stage 7. Decision: a landed steer holds the turn's `done` until the turn it may get begins or one guard (2 s) passes, so an agent that folds a steer into the same turn pays 2 s per steered turn; refine per adapter (for example skip the wait when the first `idle` carries usage) once Stage 7 shows the real sequences.
+
 
 ## Stage 6 — Desktop surface
 
@@ -260,13 +263,13 @@ Confirmed by the owner in chat (2026-11-19):
 
 **This stage:** Send now on a queued message hands it to the running turn as a steer. An agent that cannot steer (Cursor says nothing about steering in `initialize` and refuses `_session/steering`) leaves the message waiting for the turn's end, however long. For such an agent Send now becomes stop and send: the person asked for it explicitly, the button says what it does, the running turn ends, and the message runs as the next turn of the same session, resumed as any next turn. It ends only the orchestrator's turn: its spawned children keep working and report back as usual, and the chat's queue is not paused, unlike Stop. An ordinary queued message and a message to an agent that can steer behave as before. It waits for Stages 2 and 4 because both change `RunDriver.turn` and the session's steering.
 
-- [ ] Complete
-  - [ ] `EngineSession.canSteer`: whether the session can take a steer at all (the agent said so in its handshake; a v2 session always can), so a refusal because the turn is over is not mistaken for a missing ability
-  - [ ] `AgentInfo.canSteer` from the catalog (`AgentSpec.steer`, true for Claude Code and Codex), the way `canCompact` comes from `AgentSpec.compact`, so the app knows what Send now will do before it is pressed
-  - [ ] `RunDriver.interrupt(runId)`: ends the orchestrator's running turn on purpose: aborts the turn's session, closes open tool calls as stopped, leaves the run at rest with a reason such as "Stopped to send a message", cancels no descendant and pauses no queue
-  - [ ] `ChatQueue.sendNow` on a `running` orchestrator whose live session cannot steer: the chosen item becomes the head of the queue (a steer), the turn is interrupted, and `settle` sends it; any other status keeps today's behaviour
-  - [ ] The next turn's message, for the agent only (not the person's bubble), says that the previous turn was stopped so this message could be sent
-  - [ ] "Send now" reads "Stop and send" in the composer queue for a chat whose agent cannot steer, with a hint that it stops what the agent is doing now (UI text rule: no trailing period)
+- [x] Complete
+  - [x] `EngineSession.canSteer`: whether the session can take a steer at all (the agent said so in its handshake; a v2 session always can), so a refusal because the turn is over is not mistaken for a missing ability
+  - [~] `AgentInfo.canSteer` from the catalog: built, then removed at the owner's request (see Commits); the app does not ask which agents can steer
+  - [x] `RunDriver.interrupt(runId)`: ends the orchestrator's running turn on purpose: aborts the turn's session, closes open tool calls as stopped, leaves the run at rest with a reason such as "Stopped to send a message", cancels no descendant and pauses no queue
+  - [x] `ChatQueue.sendNow` on a `running` orchestrator whose live session cannot steer: the chosen item becomes the head of the queue (a steer), the turn is interrupted, and `settle` sends it; any other status keeps today's behaviour
+  - [x] The next turn's message, for the agent only (not the person's bubble), says that the previous turn was stopped so this message could be sent
+  - [~] "Send now" reads "Stop and send" for an agent that cannot steer: built, then removed at the owner's request; the button reads as before for every agent, and the daemon still stops the turn for an agent that cannot steer
 
 **Files**
 
@@ -282,4 +285,9 @@ Confirmed by the owner in chat (2026-11-19):
 
 **Done when:** in a daemon test with an engine that cannot steer, Send now on a queued message ends the running turn, the message runs as the next turn of the same session, the orchestrator's spawned children are still running and the queue is not paused; the app labels the button "Stop and send" for such an agent.
 **Verify:** `cd apps/daemon && bun test test/queue.test.ts test/runs.test.ts && bun run typecheck && bun run lint`, and `cd apps/desktop && bun run test && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Commits:**
+
+- `026fa80` feat(daemon): add stop and send for agents that cannot steer a running turn. Includes the review fixes: a queue emptied between the press and the rest parks a run that still has children (`RunDriver.rest`), and a stop and send does not send the chat's task back to todo.
+- `c673803` refactor(desktop): name Send now the same for every agent. The owner does not care about the label: users find out which agent steers well. Removes `AgentInfo.canSteer`, `AgentSpec.steer`, `canSteerChat` and the fixture simulation; `EngineSession.canSteer` stays, it decides what the daemon does.
+- Known and accepted: a press in the first seconds of a Cursor turn waits for the turn (the v1 handshake is not answered yet); a custom ACP agent that says it steers is steered, and one that does not is stopped, by the same rule.
+
