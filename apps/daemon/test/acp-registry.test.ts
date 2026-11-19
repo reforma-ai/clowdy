@@ -51,6 +51,10 @@ describe('the catalog', () => {
             expect(name).toMatch(/^@[a-z0-9-]+\/[a-z0-9-]+@\d+\.\d+\.\d+$/);
         }
     });
+
+    test('says that Claude Code and Codex take a message while they work, and no other built-in agent does (`AgentInfo.canSteer`)', () => {
+        expect(KNOWN_AGENTS.filter(agent => agent.steer).map(agent => agent.id)).toEqual(['claude', 'codex']);
+    });
 });
 
 describe('buildAgentEnv', () => {
@@ -242,7 +246,7 @@ describe('AgentRegistry', () => {
         const claude = program('claude', '2.1.325 (Claude Code)');
         const reg = registry();
 
-        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: `bun x --bun ${ pinned('claude') }`, fetches: pinned('claude'), login: 'claude auth login', canCompact: true, settings: expect.any(Array) });
+        expect(await byId(reg, 'claude')).toEqual({ id: 'claude', name: 'Claude Code', custom: false, enabled: true, status: 'ready', path: claude, version: '2.1.325', launch: `bun x --bun ${ pinned('claude') }`, fetches: pinned('claude'), login: 'claude auth login', canCompact: true, canSteer: true, settings: expect.any(Array) });
 
         const resolved = await reg.resolve('claude');
 
@@ -350,7 +354,7 @@ describe('AgentRegistry', () => {
         bun = program('bun', '1.4.0');
         reg.refresh();
 
-        expect(await byId(reg, 'codex')).toMatchObject({ status: 'ready', version: '0.166.0', canCompact: true });
+        expect(await byId(reg, 'codex')).toMatchObject({ status: 'ready', version: '0.166.0', canCompact: true, canSteer: true });
         expect(await byId(reg, 'claude')).toMatchObject({ status: 'missing' });
     });
 

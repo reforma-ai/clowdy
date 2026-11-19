@@ -69,6 +69,12 @@ export type SessionTitle =
 
 export interface EngineSession extends AsyncIterable<EngineEvent> {
     /**
+     * `false` when the session can take no steer at all (the agent did not say in its handshake that it can), so a steer will never be taken however early
+     * it is asked; `true` or absent when it can, or when that is not known yet (an agent before its handshake). It says nothing of the turn: a steer that
+     * is refused because the turn is over leaves it as it was. The runtime reads it to offer stop and send, which ends the turn so a message can start the next.
+     */
+    readonly canSteer?: boolean;
+    /**
      * Hands a message from the person to the turn in flight, for the agent to take in without stopping (a steer). Resolves `true` when the agent took it,
      * so what it says from then on answers it too, and `false` when it did not (it cannot steer, or its turn is over): the runtime then keeps the message
      * for the next turn. An engine that cannot steer leaves it out.

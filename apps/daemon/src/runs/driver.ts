@@ -2,9 +2,11 @@ import { isTerminalRunStatus, mainFolder, STOPPED_TOOL } from '@clowdy/protocol'
 import { statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 
+import { getChat } from '../db/chats';
 import { listItems, nextSeq } from '../db/items';
 import { countActiveSpawnedChildren, countSpawnedChildren, depthOf, findSpawnedChild, getRun, getRunWork, listActiveRuns, listRunsWithProcess, markMailboxDelivered, pendingMailbox, setRunWork } from '../db/runs';
 import { appendItem } from '../domain/items';
+import { queueOf } from '../domain/queue';
 import { CommandError, conflict, EngineFailure, errorMessage, invalid } from '../errors';
 import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
@@ -14,7 +16,7 @@ import { BACKGROUND_KINDS, CONTINUE_MESSAGE, firstMessage, lostBackgroundMessage
 import { childReport, wakeMessage } from './reports';
 import { sessionTitle } from './titles';
 import { ASK_USER } from './tools';
-import { BACKGROUND_REASON } from './transitions';
+import { BACKGROUND_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 import { TurnWriter, UNFINISHED_TOOL } from './writer';
 
 import type { BackgroundItem, ChatMode, EngineId, Project, Run, RunContext, RunRole, Task } from '@clowdy/protocol';
@@ -67,6 +69,8 @@ interface LiveRun {
     writer?: TurnWriter;
     /** Aborts this turn's session without cancelling the run. */
     turn?: AbortController;
+    /** The turn was ended on purpose (`interrupt`): it is not a failure, and the run is left at rest for the message that asked for it. */
+    interrupted?: boolean;
     /** Set when the engine is at its subscription limit: the turn stops and the run waits for the reset. */
     pausedUntil?: number;
     report?: Report;
@@ -98,8 +102,11 @@ interface LiveRun {
 /** Why a turn has to be repeated after a wait. */
 type Wait = { kind: 'limit'; until: number } | { kind: 'transient'; delayMs: number; message: string };
 
-/** What a turn that did not settle the run asks for: a wait, or at once the next turn of a new session (the old one could not take a message), the slot kept. */
-type Retry = Wait | { kind: 'resume' };
+/**
+ * What a turn that did not settle the run asks for: a wait, or at once the next turn of a new session (the old one could not take a message), the slot
+ * kept, or the run at rest because its turn was ended on purpose (`interrupt`).
+ */
+type Retry = Wait | { kind: 'resume' } | { kind: 'stopped' };
 
 /** Synchronous, because `spawn` reads it in its transaction and a turn between counting the live sessions and starting its own: nothing may wait there. */
 function isFolder(path: string): boolean {
@@ -297,6 +304,37 @@ export class RunDriver {
     }
 
     /**
+     * Whether the run's live session can take no steer at all (`EngineSession.canSteer`): a steer would be refused however early it came, so a message that
+     * has to go now can only go after the turn. A run with no session yet, or whose agent has not said, is not known to be unable: the answer is `false`,
+     * and so it is for a turn that is ending already (a Stop, an `interrupt`).
+     */
+    cannotSteer(runId: string): boolean {
+        const live = this.live.get(runId);
+        const session = live?.session;
+
+        return session !== undefined && !live?.ended?.aborted && (session.steer === undefined || session.canSteer === false);
+    }
+
+    /**
+     * Ends the turn the run is working on, on purpose, so that a message the agent cannot take meanwhile (`cannotSteer`) can be the next one: stop and send.
+     * The session is aborted as a Stop would, and the run is left at rest (`cancelled`, "Stopped to send a message"; see `rest`) once the turn has wound
+     * down, which is when the queue sends the message. It is not a Stop: the run's own signal stays, so nothing else of the run ends (the runs it spawned go on and report
+     * to it as ever), and nothing holds the queue. Returns whether there was a running turn to end.
+     */
+    interrupt(runId: string): boolean {
+        const live = this.live.get(runId);
+
+        if (!live?.session || !live.turn || live.ended?.aborted || this.deps.runs.require(runId).status !== 'running') {
+            return false;
+        }
+
+        live.interrupted = true;
+        live.turn.abort();
+
+        return true;
+    }
+
+    /**
      * Whether the run's turn, the one that waits to start or the one in flight, is the agent's compact command (`chat.compact`): asking for another would
      * only compact what is being compacted.
      */
@@ -376,6 +414,12 @@ export class RunDriver {
                     continue;
                 }
 
+                if (retry.kind === 'stopped') {
+                    this.rest(runId, live);
+
+                    return;
+                }
+
                 failures += retry.kind === 'transient' ? 1 : 0;
                 await this.waitToRetry(runId, live, retry, signal);
             }
@@ -447,6 +491,7 @@ export class RunDriver {
         live.delivering = false;
         live.delivery = undefined;
         live.restart = false;
+        live.interrupted = false;
 
         // The message this turn sends is in the stream already; the record leaves it out, as the agent gets it in the prompt.
         const incoming = [prompt];
@@ -524,6 +569,12 @@ export class RunDriver {
                 return { kind: 'limit', until: live.pausedUntil };
             }
 
+            // Ended on purpose to send a message (`interrupt`): whatever the engine said on its way out (a process that was told to stop may report an error)
+            // is not a failure, and the turn is not repeated. The status is set once the turn has wound down, in `drive`.
+            if (live.interrupted && !signal.aborted) {
+                return { kind: 'stopped' };
+            }
+
             if (error instanceof EngineFailure && error.retryable && failures < MAX_TRANSIENT_FAILURES && !signal.aborted) {
                 runs.limits.transientFailure(run.engine);
 
@@ -536,7 +587,7 @@ export class RunDriver {
             clearTimeout(live.reportTimer);
             ended.removeEventListener('abort', onEnded);
             // Whatever the agent and its sub-agents left running ends with the session: a Stop or a failure mid-call would otherwise leave the call shimmering.
-            const reason = signal.aborted ? STOPPED_TOOL : UNFINISHED_TOOL;
+            const reason = signal.aborted || live.interrupted ? STOPPED_TOOL : UNFINISHED_TOOL;
 
             writer.finish(reason);
             native.finish(reason);
@@ -554,6 +605,35 @@ export class RunDriver {
 
             runs.setProcess(runId, null);
         }
+    }
+
+    /**
+     * The turn was ended on purpose (`interrupt`) and has wound down: its message is closed, its calls are stopped and its session is gone. The run rests as
+     * `cancelled` with the reason, which is what the chat's queue waits for to send its next message; no run below it is cancelled, and the queue is not
+     * paused (a Stop does both). A run that ended some other way meanwhile (a Stop) stays as it is. When the message is not in the queue any more (the person
+     * took it back while the turn ended) nothing is sent, and nothing would wake a `cancelled` run for the runs it started: it waits for them as at the end of
+     * any turn instead (`settle`), and their results start its next turn.
+     */
+    private rest(runId: string, live: LiveRun): void {
+        const { store, runs } = this.deps;
+
+        store.tx(() => {
+            const run = runs.require(runId);
+
+            if (isTerminalRunStatus(run.status)) {
+                return;
+            }
+
+            const chat = run.chatId ? getChat(store.db, run.chatId) : undefined;
+            const hasChildren = countActiveSpawnedChildren(store.db, runId) > 0 || pendingMailbox(store.db, runId).length > 0;
+
+            if (hasChildren && (chat ? queueOf(chat).length : 0) === 0) {
+                this.settle(runId, live, undefined);
+            }
+            else {
+                runs.setStatus(runId, 'cancelled', { reason: STOPPED_TO_SEND_REASON });
+            }
+        });
     }
 
     /**

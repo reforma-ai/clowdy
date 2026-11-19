@@ -12,7 +12,7 @@ import { newId } from '../ids';
 import { EngineLimits } from './limits';
 import { killSurvivor, signalProcess } from './processes';
 import { QUEUE_REASON, Scheduler } from './scheduler';
-import { canTransition, NEEDS_REASON } from './transitions';
+import { canTransition, NEEDS_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 
 import type { BackgroundItem, ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunRole, RunStatus, RunUsage, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
@@ -296,7 +296,10 @@ export class RunService {
         return pendingMailbox(this.store.db, runId).length > 0;
     }
 
-    /** Task columns follow the work: started runs move tasks to active, a finished run to review, a dead one back to todo. */
+    /**
+     * Task columns follow the work: started runs move tasks to active, a finished run to review, a dead one back to todo. A run that only rests between a
+     * turn stopped to send a message and the turn that sends it (`STOPPED_TO_SEND_REASON`) is not dead: its task stays where it is.
+     */
     private syncTasks(previous: RunStatus, run: Run): void {
         const assigned = linksOfRun(this.store.db, run.id).filter(link => link.relation === 'assigned');
 
@@ -310,7 +313,7 @@ export class RunService {
             else if (run.status === 'succeeded' && category === 'active') {
                 moveTask(this.store, task.id, 'review');
             }
-            else if (['failed', 'cancelled', 'interrupted'].includes(run.status) && category === 'active' && this.activeRunsOfTask(task.id, run.id).length === 0) {
+            else if (['failed', 'cancelled', 'interrupted'].includes(run.status) && category === 'active' && run.statusReason !== STOPPED_TO_SEND_REASON && this.activeRunsOfTask(task.id, run.id).length === 0) {
                 moveTask(this.store, task.id, 'todo');
             }
         }

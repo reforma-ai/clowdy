@@ -134,6 +134,11 @@ export class AcpSession implements EngineSession {
         return layer.send(text);
     }
 
+    /** Whether the agent can take a steer at all: what its handshake said, and until then, or over v2, that it can. */
+    get canSteer(): boolean {
+        return this.layer?.canSteer ?? true;
+    }
+
     /**
      * Moves the prompt along and wakes the steers that wait for it. A layer that keeps the session open opens the prompt again with each turn that
      * begins, so a steer finds the turn that runs now; a session that is over (`finish`) stays over.

@@ -31,6 +31,12 @@ export const TRANSITIONS: Record<RunStatus, readonly RunStatus[]> = {
 /** Why a run waits while its session keeps background work open (`waiting_background`), refreshed whenever the list changes. */
 export const BACKGROUND_REASON = 'Waiting for background work';
 
+/**
+ * Why an orchestrator whose turn was ended on purpose (`RunDriver.interrupt`) rests as `cancelled`: a message waits to go in its next turn, and the run
+ * is neither failed nor paused (`ChatQueue` reads it to tell the agent, `dispatch`).
+ */
+export const STOPPED_TO_SEND_REASON = 'Stopped to send a message';
+
 /** Statuses that must say why the run is not running. */
 export const NEEDS_REASON: readonly RunStatus[] = ['queued', 'waiting_children', 'waiting_background', 'waiting_user', 'blocked'];
 

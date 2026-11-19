@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createFixtureData } from '../../daemon/fixtureData';
-import { chatProvider, chatWritability } from './chatProvider';
+import { canSteerChat, chatProvider, chatWritability } from './chatProvider';
 
 import type { AgentInfo, Chat, Run } from '@clowdy/protocol';
 
@@ -149,5 +149,26 @@ describe('chatWritability', () => {
 
     it('lets a chat go on when nothing tells what it runs on', () => {
         expect(verdict(agents(), chat({ engine: undefined }), undefined)).toEqual({ writable: true });
+    });
+});
+
+describe('canSteerChat', () => {
+    const list = () => createFixtureData().agents;
+
+    it('is true for an agent that says it takes a steer, by the chat\'s engine or its orchestrator\'s', () => {
+        expect(canSteerChat(chat({ engine: 'claude' }), run(), list())).toBe(true);
+        expect(canSteerChat(chat({ engine: 'codex' }), run(), list())).toBe(true);
+        expect(canSteerChat(chat({ engine: undefined }), run({ engine: 'codex' }), list())).toBe(true);
+    });
+
+    it('is false for an agent that does not say so, which is what makes Send now a stop and send', () => {
+        expect(canSteerChat(chat({ engine: 'cursor' }), run(), list())).toBe(false);
+        expect(canSteerChat(chat({ engine: undefined }), run({ engine: 'cursor' }), list())).toBe(false);
+    });
+
+    it('counts an agent the list does not have (still loading, or the scripted one) as one that can: the daemon decides', () => {
+        expect(canSteerChat(chat({ engine: 'fake' }), run(), list())).toBe(true);
+        expect(canSteerChat(chat({ engine: 'cursor' }), run(), [])).toBe(true);
+        expect(canSteerChat(chat({ engine: undefined }), undefined, list())).toBe(true);
     });
 });
