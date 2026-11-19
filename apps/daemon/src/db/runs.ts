@@ -2,7 +2,7 @@ import { ACTIVE_RUN_STATUSES } from '@clowdy/protocol';
 
 import { clean, parseJson, toJson } from './json';
 
-import type { Run, RunContext, RunOrigin, RunRole, RunTaskLink, RunUsage } from '@clowdy/protocol';
+import type { BackgroundItem, Run, RunContext, RunOrigin, RunRole, RunTaskLink, RunUsage } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
 
 interface RunRow {
@@ -28,6 +28,7 @@ interface RunRow {
     failure_code: string | null;
     usage: string | null;
     context: string | null;
+    background: string | null;
     created_at: number;
     started_at: number | null;
     finished_at: number | null;
@@ -56,6 +57,7 @@ const toRun = (row: RunRow): Run => clean({
     failureCode: row.failure_code,
     usage: parseJson<RunUsage>(row.usage),
     context: parseJson<RunContext>(row.context),
+    background: parseJson<BackgroundItem[]>(row.background),
     createdAt: row.created_at,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
@@ -76,17 +78,17 @@ export function listRuns(db: Database, projectId: string): Run[] {
 export function upsertRun(db: Database, run: Run): void {
     db.query(`
         INSERT INTO runs (id, project_id, parent_run_id, root_run_id, chat_id, role, origin, parent_tool_call_id, name, summary, status, status_reason, engine,
-            model, effort, session_id, worktree, result, error, failure_code, usage, context, created_at, started_at, finished_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            model, effort, session_id, worktree, result, error, failure_code, usage, context, background, created_at, started_at, finished_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, status = excluded.status, status_reason = excluded.status_reason,
             model = excluded.model, effort = excluded.effort, session_id = excluded.session_id, worktree = excluded.worktree, result = excluded.result,
-            error = excluded.error, failure_code = excluded.failure_code, usage = excluded.usage, context = excluded.context, started_at = excluded.started_at,
-            finished_at = excluded.finished_at
+            error = excluded.error, failure_code = excluded.failure_code, usage = excluded.usage, context = excluded.context, background = excluded.background,
+            started_at = excluded.started_at, finished_at = excluded.finished_at
     `).run(
         run.id, run.projectId, run.parentRunId ?? null, run.rootRunId, run.chatId ?? null, run.role, run.origin ?? null, run.parentToolCallId ?? null, run.name,
         run.summary, run.status, run.statusReason ?? null, run.engine, run.model ?? null, run.effort ?? null, run.sessionId ?? null, toJson(run.worktree),
-        run.result ?? null, run.error ?? null, run.failureCode ?? null, toJson(run.usage), toJson(run.context), run.createdAt, run.startedAt ?? null,
-        run.finishedAt ?? null
+        run.result ?? null, run.error ?? null, run.failureCode ?? null, toJson(run.usage), toJson(run.context), toJson(run.background),
+        run.createdAt, run.startedAt ?? null, run.finishedAt ?? null
     );
 }
 

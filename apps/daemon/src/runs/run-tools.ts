@@ -1,3 +1,4 @@
+import { isTerminalRunStatus } from '@clowdy/protocol';
 import { z } from 'zod';
 
 import { listItems, nextSeq } from '../db/items';
@@ -82,7 +83,7 @@ export function orchestratorRunTools({ store, runs, driver }: ToolDeps, run: Run
             input.runIds.forEach(ownRun);
 
             const waited = await runs.waitForRuns(input.runIds, (input.timeoutSeconds ?? 30) * 1000, signal);
-            const finished = waited.filter(child => !['queued', 'running', 'waiting_children', 'waiting_user', 'blocked'].includes(child.status));
+            const finished = waited.filter(child => isTerminalRunStatus(child.status));
 
             // The parent has read these results here, so it need not be told again when it is resumed.
             store.tx(() => markChildrenDelivered(store.db, run.id, finished.map(child => child.id)));

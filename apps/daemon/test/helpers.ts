@@ -249,6 +249,17 @@ export interface Turn {
     number: number;
     /** Runs a tool the runtime gave this session and reports it as tool events. Returns what the tool returned. */
     call(name: string, input?: unknown): AsyncGenerator<EngineEvent, any>;
+    /**
+     * For a session that outlives its `done`: resolves with the next text the runtime handed to `send` and the engine took (see `sendAnswer`), oldest
+     * first, and `undefined` once the session is over (closed, aborted, or the script ended), which is the script's cue to return, as the iterator of a
+     * closed ACP session ends without an error. The script answers a text with the events of a turn and ends them with `done`.
+     */
+    received(): Promise<string | undefined>;
+    /**
+     * Waits for `latch` or for the end of the session, whichever comes first: `true` when the test released the latch (the background work finished, say),
+     * `false` when the session ended first, and the script returns. A script that waited on the latch with `latch.wait(turn.signal)` would throw then.
+     */
+    hold(latch: { wait(signal?: AbortSignal): Promise<void> }): Promise<boolean>;
 }
 
 export type Script = (turn: Turn) => AsyncGenerator<EngineEvent>;
@@ -256,6 +267,11 @@ export type Script = (turn: Turn) => AsyncGenerator<EngineEvent>;
 /**
  * An engine whose sessions run a script the test wrote: the script yields engine events and calls tools through
  * `turn.call`. It decides by the options (role, prompt, resume id) what this session does.
+ *
+ * A script may go on after it yields `done`, as the session of an agent with background work does: it yields `background` snapshots, waits for
+ * the test with `turn.hold`, yields the events of a turn the agent starts on its own (no prompt behind it) and ends it with `done` again, answers
+ * what `send` handed over (`turn.received`), and ends the iterator by returning. The runtime closes the session meanwhile, or aborts it, and the
+ * script's wait then ends (`hold` and `received` answer `false` and `undefined`).
  */
 export class ScriptEngine implements AgentEngine {
     readonly id: EngineId = 'fake';
@@ -264,6 +280,14 @@ export class ScriptEngine implements AgentEngine {
     readonly steered: string[] = [];
     /** Answers a steer; without it every steer is refused, as by an agent that cannot steer. */
     steerAnswer?: (text: string, turn: Turn) => boolean | Promise<boolean>;
+    /** Prompts the runtime handed to `send` of a live session, in order, whatever the answer. */
+    readonly sent: string[] = [];
+    /**
+     * Answers a `send`: `true` takes the text (the script reads it with `turn.received()`), `false` refuses it. Without it the sessions have no `send`
+     * at all, as those of an engine that cannot take a prompt after its turn, which is what every session was before it existed. A session that is
+     * over refuses whatever this says. It decides when a session starts whether that session has `send`, and when `send` is called what it answers.
+     */
+    sendAnswer?: (text: string, turn: Turn) => boolean | Promise<boolean>;
     closed = 0;
     /** When each session started and finished closing (epoch ms), by session number minus one. */
     readonly startedAt: number[] = [];
@@ -281,10 +305,32 @@ export class ScriptEngine implements AgentEngine {
         const script = this.script;
         const engine = this;
         const closing = new AbortController();
+        const inbox: string[] = [];
+        const waiting: (() => void)[] = [];
+        let over = false;
+
+        const wake = () => waiting.splice(0).forEach(resolve => resolve());
         const turn: Turn = {
             options,
             signal: AbortSignal.any([options.signal, closing.signal]),
             number,
+            async received() {
+                while (!over && !turn.signal.aborted && inbox.length === 0) {
+                    await new Promise<void>(resolve => waiting.push(resolve));
+                }
+
+                return over || turn.signal.aborted ? undefined : inbox.shift();
+            },
+            async hold(latch) {
+                try {
+                    await latch.wait(turn.signal);
+
+                    return true;
+                }
+                catch {
+                    return false;
+                }
+            },
             async *call(name, input = {}) {
                 const tool = options.tools.find(candidate => candidate.name === name);
 
@@ -310,12 +356,28 @@ export class ScriptEngine implements AgentEngine {
             },
         };
 
+        turn.signal.addEventListener('abort', wake, { once: true });
+
         return {
             steer: async (text) => {
                 engine.steered.push(text);
 
                 return await engine.steerAnswer?.(text, turn) ?? false;
             },
+            ...(engine.sendAnswer && {
+                send: async (text: string) => {
+                    engine.sent.push(text);
+
+                    if (over || turn.signal.aborted || !await engine.sendAnswer?.(text, turn)) {
+                        return false;
+                    }
+
+                    inbox.push(text);
+                    wake();
+
+                    return true;
+                },
+            }),
             close: async () => {
                 engine.closed++;
                 closing.abort();
@@ -326,7 +388,15 @@ export class ScriptEngine implements AgentEngine {
 
                 engine.closedAt[number - 1] = Date.now();
             },
-            [Symbol.asyncIterator]: () => script(turn),
+            async *[Symbol.asyncIterator]() {
+                try {
+                    yield* script(turn);
+                }
+                finally {
+                    over = true;
+                    wake();
+                }
+            },
         };
     }
 

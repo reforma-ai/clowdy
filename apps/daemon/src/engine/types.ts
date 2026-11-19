@@ -1,4 +1,4 @@
-import type { EngineId, ToolState } from '@clowdy/protocol';
+import type { BackgroundItem, EngineId, ToolState } from '@clowdy/protocol';
 import type { z } from 'zod';
 
 /**
@@ -74,6 +74,16 @@ export interface EngineSession extends AsyncIterable<EngineEvent> {
      * for the next turn. An engine that cannot steer leaves it out.
      */
     steer?(text: string): Promise<boolean>;
+    /**
+     * Hands a prompt to the live session after its turn ended (`done`), for an agent that keeps the session open while it has background work to finish.
+     * Resolves `true` when the session took it: the events of the turn it starts follow on this iterator and end with `done`, as any turn's do. Resolves
+     * `false` when it did not (the session is over, or it cannot take a prompt now): the runtime then runs the message as the next turn of a session it
+     * resumes. It is not a steer: a steer joins a turn that runs, this one starts a turn. When the agent is working on a turn of its own, the prompt joins
+     * or follows it, and one `done` ends the whole activity that an accepted `send` leads to: the runtime counts one `done` per `send`, so an engine
+     * holds back the `done` of the agent's own turn until the sent prompt has been answered. An engine that cannot take a prompt into a live session
+     * leaves it out, and its session ends at `done`.
+     */
+    send?(text: string): Promise<boolean>;
     close(): void | Promise<void>;
 }
 
@@ -81,6 +91,10 @@ export interface EngineSession extends AsyncIterable<EngineEvent> {
  * What a session reports. A turn ends with `done` or `error`; the runtime maps events to stream items.
  * An engine reports a tool by emitting `tool` events with the same `toolCallId`: the first one creates the item,
  * later ones update it in place.
+ *
+ * A session may outlive its turn: an agent with background work open keeps the iterator going after `done`, and what it does next (more `background`
+ * snapshots, a turn it starts on its own, one `send` asked for) follows on the same iterator, each turn ending with `done`. The iterator ends when
+ * the agent has nothing open any more, or the session is closed.
  */
 export type EngineEvent =
     | { type: 'session'; sessionId: string }
@@ -99,6 +113,11 @@ export type EngineEvent =
     /** How full the session's context window is: tokens in it and the window's size. Only agents that report it send one. */
     | { type: 'context'; used: number; size: number }
     | { type: 'usage'; inputTokens: number; outputTokens: number; costUsd?: number }
+    /**
+     * What the agent has open in the background (a command, a sub-agent, a workflow): the complete list, not a change, sent again whenever it changes, so
+     * an item that is missing from the next one has finished and an empty list means nothing is open. An agent that cannot tell never sends one.
+     */
+    | { type: 'background'; items: BackgroundItem[] }
     | { type: 'done'; result?: string }
     /** A failure that ends the turn. `code` is a stable identifier of the cause (`not_logged_in`, `usage_limit`, ...). */
     | { type: 'error'; message: string; retryable?: boolean; code?: string };

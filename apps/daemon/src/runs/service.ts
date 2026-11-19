@@ -14,7 +14,7 @@ import { killSurvivor, signalProcess } from './processes';
 import { QUEUE_REASON, Scheduler } from './scheduler';
 import { canTransition, NEEDS_REASON } from './transitions';
 
-import type { ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunRole, RunStatus, RunUsage, Task } from '@clowdy/protocol';
+import type { BackgroundItem, ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunRole, RunStatus, RunUsage, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunProcess } from '../db/runs';
 import type { EngineRegistry } from '../engine/types';
@@ -234,6 +234,8 @@ export class RunService {
 
             if (isTerminalRunStatus(status)) {
                 next.finishedAt = now;
+                // A run that ended has nothing open: its session is gone, and so is what it had running in the background.
+                delete next.background;
 
                 if (options.result !== undefined) {
                     next.result = options.result;
@@ -587,8 +589,9 @@ export class RunService {
     /**
      * At startup nothing is running any more. Engine processes that outlived the daemon are killed (when their pid still
      * belongs to the process that was recorded), and runs that were mid-turn come back `interrupted`, the calls their turn left running failed as
-     * `TurnWriter.finish` would have done (a crash never got to it). Runs that only wait (queued, blocked, waiting for children) keep waiting; the
-     * driver starts them again.
+     * `TurnWriter.finish` would have done (a crash never got to it). A run that waits for background work (`waiting_background`) has a live session
+     * too, which no restart keeps, so it is interrupted whether or not a process was recorded for it. Runs that only wait (queued, blocked, waiting
+     * for children) keep waiting; the driver starts them again.
      */
     async recover(): Promise<number> {
         for (const { process: survivor } of listRunsWithProcess(this.store.db)) {
@@ -597,7 +600,7 @@ export class RunService {
 
         return this.store.tx(() => {
             const withProcess = new Set(listRunsWithProcess(this.store.db).map(entry => entry.runId));
-            const dead = listActiveRuns(this.store.db).filter(run => ['running', 'waiting_user'].includes(run.status) || withProcess.has(run.id));
+            const dead = listActiveRuns(this.store.db).filter(run => ['running', 'waiting_user', 'waiting_background'].includes(run.status) || withProcess.has(run.id));
 
             for (const run of dead) {
                 setRunWork(this.store.db, run.id, { process: null });
@@ -682,6 +685,26 @@ export class RunService {
         this.update(runId, run => ({ ...run, context }));
     }
 
+    /**
+     * Keeps what the agent has open in the background, as the engine's latest complete list (a `background` event repeats the whole list whenever it
+     * changes). Nothing is written when the list is the same, and an empty one clears it.
+     */
+    setBackground(runId: string, items: BackgroundItem[]): void {
+        // Only the protocol's fields are kept, so whatever else an engine put on an item does not reach the row or the clients. The list and each title
+        // are bounded: a command's title may be a whole script, and the list rides in every `run.upserted` that the event log keeps.
+        const kept = items.slice(0, MAX_BACKGROUND_ITEMS).map(({ id, kind, title }) => ({ id, kind, title: title.slice(0, MAX_BACKGROUND_TITLE) }));
+
+        if (sameItems(this.require(runId).background ?? [], kept)) {
+            return;
+        }
+
+        this.update(runId, (run) => {
+            const { background: _background, ...rest } = run;
+
+            return kept.length > 0 ? { ...rest, background: kept } : rest;
+        });
+    }
+
     /** Changes the run's one-line description. */
     describe(runId: string, summary: string): void {
         this.update(runId, run => ({ ...run, summary }));
@@ -710,6 +733,14 @@ export class RunService {
 
         return project;
     }
+}
+
+/** The most background items a run keeps, and the longest title of one. */
+const MAX_BACKGROUND_ITEMS = 50;
+const MAX_BACKGROUND_TITLE = 200;
+
+function sameItems(a: BackgroundItem[], b: BackgroundItem[]): boolean {
+    return a.length === b.length && a.every((item, index) => item.id === b[index].id && item.kind === b[index].kind && item.title === b[index].title);
 }
 
 function blockedReason(blockers: Task[]): string {

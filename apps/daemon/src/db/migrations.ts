@@ -312,4 +312,11 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 12,
+        up(db) {
+            // What an agent has open in the background while its session outlives a turn, as a JSON array of `BackgroundItem` (see `Run.background`).
+            db.run('ALTER TABLE runs ADD COLUMN background TEXT');
+        },
+    },
 ];
