@@ -146,7 +146,7 @@ function IconField({ project, slot }: { project: Project; slot?: string }) {
                         void (custom ? restoreFolderIcon(root, project) : removeProjectIcon(root, project));
                     } }
                 >
-                    <Close />
+                    <Close width={ 8 } height={ 8 } />
                 </button>
             ) }
         </span>

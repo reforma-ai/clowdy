@@ -6,9 +6,11 @@
 .nameField {
     width: 18rem;
     max-width: 100%;
+    /* The reset sits half outside the field, on the icon's corner. */
+    overflow: visible;
 }
 
-/* The whole left side of the name field: one hit target, a hairline before the text. The field clips it to the outer corners. */
+/* The whole left side of the name field: one hit target, a hairline before the text. Its own radius follows the field, which no longer clips this corner. */
 .iconSlot {
     position: relative;
     align-self: stretch;
@@ -24,7 +26,8 @@
     place-items: center;
     padding: 0;
     border: 0;
-    border-radius: 0;
+    border-radius: calc(var(--clowdy-input-radius) * var(--squircle-radius-factor) - 1px) 0 0 calc(var(--clowdy-input-radius) * var(--squircle-radius-factor) - 1px);
+    corner-shape: superellipse(var(--squircle-value));
     background: transparent;
     color: var(--color-secondary-muted-text);
     cursor: pointer;
@@ -47,16 +50,17 @@
     display: none;
 }
 
-/* A small cross on the icon's corner, only while the pointer or the keyboard is on it. */
+/* Half of the circle sits outside the icon button, on its corner, so a press on the picture does not hit it. */
 .reset {
     position: absolute;
-    top: var(--spacing-2);
-    right: var(--spacing-2);
+    top: 0;
+    right: 0;
     z-index: 1;
     display: grid;
     place-items: center;
-    width: var(--spacing-16);
-    height: var(--spacing-16);
+    width: var(--spacing-14);
+    height: var(--spacing-14);
+    transform: translate(50%, -50%);
     padding: 0;
     border: 0;
     border-radius: 50%;
