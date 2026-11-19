@@ -1,4 +1,4 @@
-import { cn, mergeRefs } from '@clowdy/lib';
+import { cn } from '@clowdy/lib';
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import {
     Group,
@@ -13,6 +13,7 @@ import {
     type PanelImperativeHandle,
 } from 'react-resizable-panels';
 
+import { useMergedRef } from '../hooks/useMergedRef';
 import { Show } from '../Show';
 import styles from './Resizable.module.css';
 
@@ -83,7 +84,7 @@ function ResizablePanel({
 }: ResizablePanelProps) {
     const [state, setState] = useState<ResizablePanelState>(defaultPanelState);
     const internalRef = useRef<PanelImperativeHandle | null>(null);
-    const panelRef = mergeRefs(internalRef, panelRefProp);
+    const panelRef = useMergedRef(internalRef, panelRefProp);
 
     const handleResize = useCallback(
         (panelSize: { inPixels: number; asPercentage: number }, id: string | number | undefined, prevPanelSize: { inPixels: number; asPercentage: number } | undefined) => {

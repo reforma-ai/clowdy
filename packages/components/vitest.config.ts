@@ -17,5 +17,7 @@ export default defineConfig({
     ],
     test: {
         include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
+        // Makes happy-dom's cancelled animations as quiet as a browser's (see the file).
+        setupFiles: ['./src/vitest.setup.ts'],
     },
 });

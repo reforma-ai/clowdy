@@ -1,13 +1,13 @@
 import { undoDepth } from '@tiptap/pm/history';
 // @vitest-environment happy-dom
-import { act, createRef } from 'react';
+import { act, createRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RichInput } from './RichInput';
 
 import type { Editor } from '@tiptap/core';
-import type { RichInputHandle } from './types';
+import type { ComposerMentionAttrs, RichInputHandle, RichInputMentionRenderProps } from './types';
 
 let host: HTMLDivElement;
 let root: Root;
@@ -85,5 +85,52 @@ describe('RichInput', () => {
             expect.anything(),
         ]);
         expect(document.querySelector('[role="option"]')).toBeNull();
+    });
+
+    describe('mention renderer', () => {
+        const mention: ComposerMentionAttrs = { id: 'file:hero.tsx', label: 'hero.tsx', kind: 'file', trigger: '@' };
+        // Renderers with hooks: each is a component of its own, with a different number of hooks, so one that ran inside the
+        // node view would break the next.
+        const OneHook = ({ mention: shown }: RichInputMentionRenderProps) => {
+            const [text] = useState(() => `one ${ shown.label }`);
+
+            return <span data-chip>{ text }</span>;
+        };
+        const TwoHooks = ({ mention: shown }: RichInputMentionRenderProps) => {
+            const [first] = useState('two');
+            const [second] = useState(shown.label);
+
+            return <b data-chip>{ `${ first } ${ second }` }</b>;
+        };
+        const chip = () => host.querySelector('[data-chip]');
+
+        const draw = async (renderMention?: (props: RichInputMentionRenderProps) => React.ReactNode, ref = createRef<RichInputHandle>()) => {
+            await act(async() => root.render(<RichInput ref={ ref } renderMention={ renderMention } />));
+
+            return ref;
+        };
+
+        it('should draw a mention as its label when the host gives no renderer', async() => {
+            const ref = await draw();
+
+            await act(async() => ref.current!.insertMention(mention));
+
+            expect(host.querySelector('[data-node-view-wrapper]')?.textContent).toBe('hero.tsx');
+        });
+
+        it('should draw a mention with the renderer of the host, and again with the next one when the node view redraws', async() => {
+            const ref = await draw(OneHook);
+            const editor = (host.querySelector('[contenteditable="true"]') as HTMLElement & { editor: Editor }).editor;
+
+            await act(async() => ref.current!.insertMention(mention));
+            expect(chip()?.textContent).toBe('one hero.tsx');
+
+            // A new renderer is read when the node view draws again, here because the mention is selected.
+            await draw(TwoHooks, ref);
+            await act(async() => editor.commands.setNodeSelection(1));
+
+            expect(chip()?.tagName).toBe('B');
+            expect(chip()?.textContent).toBe('two hero.tsx');
+        });
     });
 });

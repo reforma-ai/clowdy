@@ -37,36 +37,31 @@ export interface GradientStopThumbActions {
     onStopRemove?: (stopId: string) => void;
 }
 
-export function GradientStopThumb({
-    ref,
+interface UseStopMoveProps {
+    stop: GradientStopRangeStop;
+    trackRef: RefObject<HTMLDivElement | null>;
+    options: GradientStopRangeStepOptions;
+    isInteractive: boolean;
+    actions: GradientStopThumbActions;
+    onDraggingChange?: (isDragging: boolean) => void;
+}
+
+/**
+ * Drag and keyboard move of a thumb. The positions of a drag live in refs, so the thumb's other
+ * handlers get only `commitPosition` from here and never touch a ref themselves.
+ */
+function useStopMove({
     stop,
-    index,
-    activeStopId,
-    ariaLabel,
     trackRef,
     options,
-    isDisabled,
-    isReadOnly,
+    isInteractive,
     actions,
     onDraggingChange,
-    onPointerEnter,
-}: GradientStopThumbProps) {
-    const {
-        onActiveStopChange,
-        onStopPreview,
-        onStopCommit,
-        onStopCancel,
-        onStopRemove,
-    } = actions;
+}: UseStopMoveProps) {
+    const { onActiveStopChange, onStopPreview, onStopCommit } = actions;
     const dragPositionRef = useRef(stop.position);
     const lastPreviewPositionRef = useRef(stop.position);
     const [isDragging, setIsDragging] = useState(false);
-    const isThumbDisabled = isDisabled || stop.isDisabled;
-    const isInteractive = !isThumbDisabled && !isReadOnly;
-    const isActive = stop.id === activeStopId;
-    const canRemoveStop = activeStopId == null || isActive;
-    const { focusProps, isFocusVisible } = useFocusRing();
-    const { hoverProps, isHovered } = useHover({ isDisabled: !isInteractive });
 
     const previewPosition = useCallback((position: number) => {
         lastPreviewPositionRef.current = position;
@@ -122,6 +117,43 @@ export function GradientStopThumb({
                 onStopCommit?.(stop.id, lastPreviewPositionRef.current);
             }
         },
+    });
+
+    return { moveProps, isDragging, setIsDragging, commitPosition };
+}
+
+export function GradientStopThumb({
+    ref,
+    stop,
+    index,
+    activeStopId,
+    ariaLabel,
+    trackRef,
+    options,
+    isDisabled,
+    isReadOnly,
+    actions,
+    onDraggingChange,
+    onPointerEnter,
+}: GradientStopThumbProps) {
+    const {
+        onActiveStopChange,
+        onStopCancel,
+        onStopRemove,
+    } = actions;
+    const isThumbDisabled = isDisabled || stop.isDisabled;
+    const isInteractive = !isThumbDisabled && !isReadOnly;
+    const isActive = stop.id === activeStopId;
+    const canRemoveStop = activeStopId == null || isActive;
+    const { focusProps, isFocusVisible } = useFocusRing();
+    const { hoverProps, isHovered } = useHover({ isDisabled: !isInteractive });
+    const { moveProps, isDragging, setIsDragging, commitPosition } = useStopMove({
+        stop,
+        trackRef,
+        options,
+        isInteractive,
+        actions,
+        onDraggingChange,
     });
 
     const handlePointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
@@ -181,6 +213,7 @@ export function GradientStopThumb({
         onStopCancel,
         onStopRemove,
         options,
+        setIsDragging,
         stop.id,
         stop.position,
     ]);
