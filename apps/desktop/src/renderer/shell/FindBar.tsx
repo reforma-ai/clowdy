@@ -2,7 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
 import { Text } from '@clowdy/components/Text';
 import { ChevronDown, ChevronUp, Close } from '@clowdy/icons/14';
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 
 import { commandTooltip, useCommands } from '../hotkeys';
 import styles from './FindBar.module.css';
@@ -231,10 +231,18 @@ export function FindBar() {
 
     const label = matchLabel(query, result);
 
+    const focusField = (event: MouseEvent<HTMLDivElement>) => {
+        if (event.target instanceof Element && event.target.closest('button')) return;
+
+        event.preventDefault();
+        field.current?.focus();
+    };
+
     return (
-        <div className={ styles.bar } role="search" aria-label="Find in page">
+        <div className={ styles.bar } role="search" aria-label="Find in page" onMouseDown={ focusField }>
             <Input
                 className={ styles.field }
+                variant="transparent"
                 type="text"
                 size="sm"
                 aria-label="Find in page"
@@ -248,53 +256,56 @@ export function FindBar() {
                 } }
                 onKeyDown={ onKeyDown }
             />
-            { label !== null && (
+            <div className={ styles.trail }>
                 <Text
                     variant="xs"
                     color="secondary"
                     className={ styles.count }
                     aria-live="polite"
-                    aria-label={ label }
-                    data-label={ label }
+                    aria-label={ label ?? '' }
+                    data-label={ label ?? '' }
                 />
-            ) }
-            <div className={ styles.steps }>
-                <Button
-                    variant="filling"
-                    size="sm"
-                    iconOnly
-                    aria-label="Previous match"
-                    tooltip={ commandTooltip('Previous match', 'find.previous') ?? 'Previous match' }
-                    tooltipPlacement="bottom"
-                    preventFocusOnPress
-                    onPress={ () => step(false) }
-                >
-                    <ChevronUp />
-                </Button>
-                <Button
-                    variant="filling"
-                    size="sm"
-                    iconOnly
-                    aria-label="Next match"
-                    tooltip={ commandTooltip('Next match', 'find.next') ?? 'Next match' }
-                    tooltipPlacement="bottom"
-                    preventFocusOnPress
-                    onPress={ () => step(true) }
-                >
-                    <ChevronDown />
-                </Button>
-                <Button
-                    variant="filling"
-                    size="sm"
-                    iconOnly
-                    aria-label="Close find"
-                    tooltip="Close"
-                    tooltipPlacement="bottom"
-                    preventFocusOnPress
-                    onPress={ close }
-                >
-                    <Close />
-                </Button>
+                <div className={ styles.steps }>
+                    <Button
+                        variant="transparent"
+                        color="secondary"
+                        size="sm"
+                        iconOnly
+                        aria-label="Previous match"
+                        tooltip={ commandTooltip('Previous match', 'find.previous') ?? 'Previous match' }
+                        tooltipPlacement="bottom"
+                        preventFocusOnPress
+                        onPress={ () => step(false) }
+                    >
+                        <ChevronUp />
+                    </Button>
+                    <Button
+                        variant="transparent"
+                        color="secondary"
+                        size="sm"
+                        iconOnly
+                        aria-label="Next match"
+                        tooltip={ commandTooltip('Next match', 'find.next') ?? 'Next match' }
+                        tooltipPlacement="bottom"
+                        preventFocusOnPress
+                        onPress={ () => step(true) }
+                    >
+                        <ChevronDown />
+                    </Button>
+                    <Button
+                        variant="transparent"
+                        color="secondary"
+                        size="sm"
+                        iconOnly
+                        aria-label="Close find"
+                        tooltip="Close"
+                        tooltipPlacement="bottom"
+                        preventFocusOnPress
+                        onPress={ close }
+                    >
+                        <Close />
+                    </Button>
+                </div>
             </div>
         </div>
     );
