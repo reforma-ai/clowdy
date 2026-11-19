@@ -108,6 +108,8 @@ A branch can be checked out in only one worktree. Do not switch another checkout
 - Nothing runs again after the merge. A push to `main` does not run CI; the OTA bundle of a merge is published as before (Releases).
 - GitHub cannot make a check required on a private repository of a free plan, so nothing stops a merge. Merge only when `ci-ok` is green.
 - Merge with a merge commit: `gh pr merge <n> --merge`. The branch does not have to be rebased first: CI already ran on its merge with `main`, and a merge commit has fewer conflicts to settle. Do not rebase-merge or squash: both drop the signatures of the branch's commits.
+- After the merge, remove the worktree and delete the branch, on `origin` and locally: `./clowdy worktree remove <slug>`, `git push origin --delete <branch>`, `git branch -d <branch>` (use `-D` only once `gh pr view <n>` says MERGED, when the branch was merged some other way than by a merge commit).
+- Every action in `.github/workflows` is pinned to a commit SHA, with its release in a comment: `uses: actions/checkout@<sha> # v5.1.0`. To move one, resolve the new release tag to its commit and change both.
 - Direct pushes to `main` are not part of the flow.
 
 Before you push, run the same checks for what you changed (the whole gate is what CI runs):
