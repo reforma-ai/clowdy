@@ -38,13 +38,13 @@
 
 **This stage:** One bounded deletion so the later stages build on a smaller model. The daemon, protocol, system skills and desktop lose every trace of spawned child runs; what stays is a chat's own orchestrator, native sub-agents and tasks. The orchestrator skill is rewritten to the loop without fan-out (threads come back in Stage 4), so it says to do the work itself or with the agent's own sub-agents. Old data is migrated, never dropped. Workers own disjoint trees: daemon and protocol, system skills and docs, desktop.
 
-- [ ] Complete
-  - [ ] Tools, driver, service, queue, wake-ups, mailbox, config and migration 15 removed or reduced (daemon)
-  - [ ] Protocol types and commands reduced (`waiting_children`, `verifier`, `spawned`, `verifies`)
-  - [ ] Skills `executor` and `verify` deleted, `orchestrate`, `autopilot`, `semi-manual`, `scaffold` rewritten without `run_*`
-  - [ ] Daemon tests rewritten or deleted with what they covered
-  - [ ] Desktop: spawn card, Executors section kept only for native/assigned runs, fixtures, tree, strip, status maps reduced
-  - [ ] `apps/daemon/AGENTS.md`, `apps/desktop/AGENTS.md`, `packages/system-skills/README.md` describe the smaller model
+- [x] Complete
+  - [x] Tools, driver, service, queue, wake-ups, mailbox, config and migration 15 removed or reduced (daemon)
+  - [x] Protocol types and commands reduced (`waiting_children`, `verifier`, `spawned`, `verifies`)
+  - [x] Skills `executor` and `verify` deleted, `orchestrate`, `autopilot`, `semi-manual`, `scaffold` rewritten without `run_*`
+  - [x] Daemon tests rewritten or deleted with what they covered
+  - [x] Desktop: spawn card, Executors section kept only for native/assigned runs, fixtures, tree, strip, status maps reduced
+  - [x] `apps/daemon/AGENTS.md`, `apps/desktop/AGENTS.md`, `packages/system-skills/README.md` describe the smaller model
 
 **Files**
 
@@ -56,7 +56,11 @@
 
 **Done when:** no `run_spawn`, `waiting_children`, `run_mailbox` or spawned run is left in code, tests or docs, and the three test suites and typecheck pass.
 **Verify:** `bunx turbo run lint typecheck test --affected`
-**Commits:** None yet.
+**Commits:**
+
+- `43fa987` refactor: remove run_spawn and the child-run machinery (daemon, protocol, skills, desktop in one commit: the daemon test that checks the skills against the tools spans them). Beyond the plan: migration 15 also drops `runs.outcome`, cancels spawned runs still active and moves their tasks back to To do; the protocol gained the thread message types early. Review found and fixed the task move, a dead compact check, `ToolDeps.driver` and stale comments.
+
+Carried to later stages: restore `describeItem` (the old `run_inspect` line formatter) for `thread log`; old chat streams show `run_spawn` calls as plain tool lines.
 
 ## Stage 2 — Thread model and the thread tools
 
