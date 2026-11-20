@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { agentRowLabel, agentRowText, backgroundRowText, canStopAlone, offersStopAll, openBackground, runningAgents, unlistedBackground } from './runningAgentRows';
+import { agentRowLabel, agentRowText, backgroundItemText, backgroundRows, backgroundRowText, canStopAlone, MAX_AGENT_ROWS, offersStopAll, openBackground, runningAgents, unlistedBackground } from './runningAgentRows';
 
-import type { Run, RunStatus } from '@clowdy/protocol';
+import type { BackgroundItem, Run, RunStatus } from '@clowdy/protocol';
 
 const run = (id: string, status: RunStatus, rest: Partial<Run> = {}): Run => ({ id, projectId: 'p', rootRunId: 'orch', parentRunId: 'orch', role: 'executor', name: id, summary: '', status, engine: 'claude', createdAt: 1, ...rest });
 
@@ -94,6 +94,40 @@ describe('what the background row counts', () => {
         const child = run('child', 'running', { origin: 'native', parentToolCallId: 'bg-1' });
 
         expect(unlistedBackground([command], [child])).toEqual([command]);
+    });
+});
+
+describe('the rows of background items', () => {
+    const stoppable = (n: number, over: Partial<BackgroundItem> = {}): BackgroundItem => ({ id: `bg-${ n }`, kind: 'command', title: `command ${ n }`, canStopAlone: true, ...over });
+    const plain = { id: 'plain', kind: 'command' as const, title: 'plain' };
+
+    it('gives a row of its own to each item the agent lets be stopped alone, and counts the rest', () => {
+        const workflow = { id: 'wf-1', kind: 'task' as const, title: 'Workflow', canStopAlone: true };
+
+        expect(backgroundRows([stoppable(1), plain, workflow, stoppable(2)], [])).toEqual({ own: [stoppable(1), workflow, stoppable(2)], counted: [plain] });
+        expect(backgroundRows([plain], [])).toEqual({ own: [], counted: [plain] });
+        expect(backgroundRows([], [])).toEqual({ own: [], counted: [] });
+    });
+
+    it('keeps the order of the list, and the rows past the cap go to the count', () => {
+        const items = Array.from({ length: MAX_AGENT_ROWS + 2 }, (_, index) => stoppable(index + 1));
+        const { own, counted } = backgroundRows([plain, ...items], []);
+
+        expect(own).toEqual(items.slice(0, MAX_AGENT_ROWS));
+        expect(counted).toEqual([plain, ...items.slice(MAX_AGENT_ROWS)]);
+    });
+
+    it('never gives a sub-agent one: its row is its child run, and one with none is counted', () => {
+        const explore = { id: 'call-1', kind: 'subagent' as const, title: 'Explore', canStopAlone: true };
+        const child = run('child', 'running', { origin: 'native', parentToolCallId: 'call-1' });
+
+        expect(backgroundRows([explore], [child])).toEqual({ own: [], counted: [] });
+        expect(backgroundRows([explore], [])).toEqual({ own: [], counted: [explore] });
+    });
+
+    it('names a row by what the item is and what it runs', () => {
+        expect(backgroundItemText({ kind: 'command', title: 'bun run test' })).toBe('Command · bun run test');
+        expect(backgroundItemText({ kind: 'task', title: 'Workflow: verify' })).toBe('Task · Workflow: verify');
     });
 });
 

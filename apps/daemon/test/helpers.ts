@@ -302,6 +302,8 @@ export class ScriptEngine implements AgentEngine {
      * it the sessions have no `stopItem` at all, as those of an engine that cannot end one sub-agent alone. A session that is over refuses whatever this says.
      */
     stopAnswer?: (agentId: string, turn: Turn) => boolean | Promise<boolean>;
+    /** The agent starts no turn of its own to report background work that ended (`EngineSession.wakesOnBackgroundEnd`): its sessions say so. */
+    wakes = false;
     closed = 0;
     /** When each session started and finished closing (epoch ms), by session number minus one. */
     readonly startedAt: number[] = [];
@@ -385,6 +387,7 @@ export class ScriptEngine implements AgentEngine {
             get canSteer() {
                 return engine.steerAnswer !== undefined;
             },
+            ...(engine.wakes && { wakesOnBackgroundEnd: true as const }),
             steer: async (text) => {
                 engine.steered.push(text);
 

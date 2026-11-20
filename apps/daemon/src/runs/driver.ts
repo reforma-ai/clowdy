@@ -12,7 +12,7 @@ import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
 import { NativeAgents } from './native';
 import { describeProcess, killSurvivor } from './processes';
-import { BACKGROUND_KINDS, CONTINUE_MESSAGE, firstMessage, lostBackgroundMessage, namedTitle, skillPrompt, systemPrompt } from './prompts';
+import { BACKGROUND_KINDS, backgroundEndedMessage, backgroundStoppedMessage, CONTINUE_MESSAGE, firstMessage, lostBackgroundMessage, namedTitle, skillPrompt, systemPrompt } from './prompts';
 import { childReport, wakeMessage } from './reports';
 import { sessionTitle } from './titles';
 import { ASK_USER } from './tools';
@@ -86,8 +86,12 @@ interface LiveRun {
     close?: () => Promise<void>;
     /** The latest complete list of what the session has open in the background. */
     background?: BackgroundItem[];
+    /** The tool calls that are still running and stand for some of it (a command's call that outlived the turn): the turn's end does not fail them. */
+    calls?: string[];
     /** The items the latest lists lost and nothing has confirmed finished yet: one that comes back with the next list is the same item (`settleFinished`). */
     finishing?: Map<string, BackgroundItem>;
+    /** The background commands and tasks the person stopped alone this turn (`stopCommand`), by item id: their end is a stop, and the agent was told of it already. */
+    stopped?: Map<string, BackgroundItem>;
     /** The session outlived a turn and the run waits for its background work (`waiting_background`, or `waiting_children` when children win): a message goes to the session. */
     lingering?: boolean;
     /** Messages handed to the session that its `done` has not answered yet: the engine sends one `done` for each. */
@@ -148,6 +152,7 @@ export class RunDriver {
 
     constructor(private deps: DriverDeps) {
         deps.runs.stopNative = (child, reason) => this.stopSubagent(child, reason);
+        deps.runs.stopCommand = (runId, itemId) => this.stopCommand(runId, itemId);
     }
 
     /* --------------------------------- Starting -------------------------------- */
@@ -378,6 +383,87 @@ export class RunDriver {
     }
 
     /**
+     * Prepares the request that asks the live session of the run to end one background command or task alone (`RunService.stopBackground`): the session,
+     * the run and everything else it has open go on. Answers the function that sends it, which the caller runs once its transaction has committed, or `undefined`
+     * when the request cannot be made: the session is live and not ending, it can end one thing alone (`EngineSession.stopItem`), and the run's latest list
+     * has the command with the agent's permission (`canStopAlone`). A repeat for a command already being stopped answers a function that does nothing, so a
+     * command is stopped once. The command ends the way every background item does, as a snapshot without it, and its stream note says it was stopped
+     * (`settleFinished`). Once the agent took the request, it is told the person stopped the command: a stopped command gives it no report, and the
+     * session takes the line as a prompt of its own (`tell`).
+     */
+    stopCommand(runId: string, itemId: string): (() => void) | undefined {
+        const live = this.live.get(runId);
+        const session = live?.session;
+        const item = live?.background?.find(candidate => candidate.id === itemId);
+
+        if (!live || !session?.stopItem || !item?.canStopAlone || item.kind === 'subagent' || live.ended?.aborted) {
+            return undefined;
+        }
+
+        if (live.stopped?.has(itemId)) {
+            return () => undefined;
+        }
+
+        const stopItem = session.stopItem.bind(session);
+
+        return () => {
+            live.stopped?.set(itemId, item);
+            stopItem(itemId).then(
+                (taken) => {
+                    if (taken) {
+                        // This line, once in flight, keeps `reportEnd` from telling an agent that starts no turn of its own what finished while the command
+                        // ran, if the stopped command is the last item to leave (the list can come after the answer to the request): that goes in the same
+                        // prompt. When the list came first, `reportEnd` told it already and nothing is left to add.
+                        const finished = live.session?.wakesOnBackgroundEnd ? [...(live.finishing?.values() ?? [])].filter(done => !live.stopped?.has(done.id)).map(done => ({ item: done, stopped: false })) : [];
+
+                        this.tell(runId, live, [finished.length > 0 && backgroundEndedMessage(finished), backgroundStoppedMessage(item)].filter(Boolean).join('\n\n'));
+                    }
+                    else {
+                        // It ended on its own, or the agent would not: whatever ends it later is not a stop.
+                        live.stopped?.delete(itemId);
+                        console.warn(`[clowdy] the agent did not take the request to stop background command ${ itemId } of run ${ runId }: it has ended, or cannot be stopped alone`);
+                    }
+                },
+                (error) => {
+                    live.stopped?.delete(itemId);
+                    console.warn(`[clowdy] stopping background command ${ itemId } of run ${ runId } failed: ${ errorMessage(error) }`);
+                }
+            );
+        };
+    }
+
+    /**
+     * Hands the live session a prompt of the runtime's own (a note that background work ended, the line that the person stopped a command): not a message of
+     * the person, so nothing is written to the stream for it, and the answer is a turn of its own, written like one the agent started. It counts as a message
+     * in flight until the session's `done` answers it, like any `send` (`live.sent`). A session that cannot take it, or that is ending, is left alone.
+     */
+    private tell(runId: string, live: LiveRun, text: string): void {
+        const { session } = live;
+
+        if (!session?.send || live.ended?.aborted) {
+            return;
+        }
+
+        live.sent = (live.sent ?? 0) + 1;
+
+        const refused = () => {
+            live.sent = Math.max(0, (live.sent ?? 0) - 1);
+        };
+
+        session.send(text).then(
+            (taken) => {
+                if (!taken) {
+                    refused();
+                }
+            },
+            (error) => {
+                refused();
+                console.warn(`[clowdy] run ${ runId }'s session refused a note: ${ errorMessage(error) }`);
+            }
+        );
+    }
+
+    /**
      * Whether the run's turn, the one that waits to start or the one in flight, is the agent's compact command (`chat.compact`): asking for another would
      * only compact what is being compacted.
      */
@@ -529,7 +615,9 @@ export class RunDriver {
         live.prompt = prompt;
         live.ended = ended;
         live.background = undefined;
+        live.calls = undefined;
         live.finishing = new Map();
+        live.stopped = new Map();
         live.lingering = false;
         live.sent = 0;
         live.delivering = false;
@@ -883,7 +971,7 @@ export class RunDriver {
                         runs.setContext(run.id, context);
                         break;
                     case 'background':
-                        this.onBackground(run, live, native, event.items);
+                        this.onBackground(run, live, writer, native, event.items, event.calls);
                         break;
                     case 'done':
                         result = event.result;
@@ -930,9 +1018,10 @@ export class RunDriver {
     /**
      * A `background` snapshot: the run keeps it, and the sub-agents that follow it hear of it. An item that left it is finished only once something else
      * happens (`settleFinished`): a sub-agent that stops and is woken at once by a command of its own is out of the list and back in it within a
-     * millisecond, and that is the same item, not one that finished twice.
+     * millisecond, and that is the same item, not one that finished twice. Two things do not wait for the agent to do something: a command the person
+     * stopped, which nothing can bring back, and, for an agent that starts no turn to report work that ended, the last item leaving (`reportEnd`).
      */
-    private onBackground(run: Run, live: LiveRun, native: NativeAgents, items: BackgroundItem[]): void {
+    private onBackground(run: Run, live: LiveRun, writer: TurnWriter, native: NativeAgents, items: BackgroundItem[], calls?: string[]): void {
         const { store, runs } = this.deps;
         const finishing = live.finishing ?? new Map<string, BackgroundItem>();
 
@@ -948,32 +1037,74 @@ export class RunDriver {
 
         live.finishing = finishing;
         live.background = items;
+        live.calls = calls;
         native.background(items);
         store.tx(() => runs.setBackground(run.id, items));
+        this.reportEnd(run, live, writer, native, items);
+    }
+
+    /**
+     * What the items that just left the list ask of the runtime before the agent does anything. Commands the person stopped are over for good, so the stream
+     * says so now. For an agent that starts no turn of its own to report work that ended (`EngineSession.wakesOnBackgroundEnd`), the last item leaving while the
+     * session is idle is the moment nothing else will come: the stream notes are written and the agent gets one note through `send`, so it reports in a turn
+     * of that note's own. Not while a turn runs or a message of ours is on its way, not after a Stop, and not for what the person stopped alone: the agent
+     * heard of that when the person did it.
+     */
+    private reportEnd(run: Run, live: LiveRun, writer: TurnWriter, native: NativeAgents, items: BackgroundItem[]): void {
+        const lost = [...(live.finishing?.values() ?? [])];
+
+        if (lost.length === 0) {
+            return;
+        }
+
+        if (lost.every(item => live.stopped?.has(item.id))) {
+            this.settleFinished(run, live, writer, native);
+
+            return;
+        }
+
+        if (items.length > 0 || !live.session?.wakesOnBackgroundEnd || !live.lingering || live.sent || live.delivering || live.ended?.aborted) {
+            return;
+        }
+
+        if (!['waiting_background', 'waiting_children'].includes(this.deps.runs.require(run.id).status)) {
+            return;
+        }
+
+        const told = this.settleFinished(run, live, writer, native).filter(({ item, stopped }) => !stopped || item.kind === 'subagent');
+
+        if (told.length > 0) {
+            this.tell(run.id, live, backgroundEndedMessage(told));
+        }
     }
 
     /**
      * What a snapshot lost stayed away, because the agent did something after it (an answer, a call of its own, the end of the turn or of the session):
      * a note names each item, after what the agent said so far, and the sub-agents of those items end. What the agent says next is a new message. What a
-     * sub-agent says or does is not that: it is the item that may come back.
+     * sub-agent says or does is not that: it is the item that may come back. Gives the items it wrote a note for, and whether the person stopped each.
      */
-    private settleFinished(run: Run, live: LiveRun, writer: TurnWriter, native: NativeAgents): void {
+    private settleFinished(run: Run, live: LiveRun, writer: TurnWriter, native: NativeAgents): { item: BackgroundItem; stopped: boolean }[] {
         const { store, runs } = this.deps;
         const finished = [...(live.finishing?.values() ?? [])];
 
         if (finished.length === 0) {
-            return;
+            return [];
         }
 
         live.finishing?.clear();
         native.settle();
-        store.tx(() => {
+
+        return store.tx(() => {
             writer.end();
 
-            for (const item of finished) {
-                // A sub-agent that the person stopped did not finish.
-                runs.note(run.id, `Background ${ BACKGROUND_KINDS[item.kind] } ${ item.kind === 'subagent' && native.wasStopped(item) ? 'stopped' : 'finished' }: ${ namedTitle(item.title) }`);
-            }
+            return finished.map((item) => {
+                // An item that the person stopped did not finish.
+                const stopped = live.stopped?.has(item.id) === true || (item.kind === 'subagent' && native.wasStopped(item));
+
+                runs.note(run.id, `Background ${ BACKGROUND_KINDS[item.kind] } ${ stopped ? 'stopped' : 'finished' }: ${ namedTitle(item.title) }`);
+
+                return { item, stopped };
+            });
         });
     }
 
@@ -1035,11 +1166,11 @@ export class RunDriver {
     }
 
     /**
-     * The calls of the turn that are background work the session waits for (a `Workflow`, the call that started a sub-agent that goes on): they run on after
-     * the turn, so the turn's end does not fail them.
+     * The calls of the turn that are background work the session waits for (a `Workflow`, the call that started a sub-agent that goes on, the call of a
+     * command that outlived the turn when the agent keeps it running): they run on after the turn, so the turn's end does not fail them.
      */
     private openTasks(live: LiveRun): ReadonlySet<string> {
-        return new Set([...(live.background ?? []).filter(item => item.kind === 'task').map(item => item.id), ...(live.native?.openCalls() ?? [])]);
+        return new Set([...(live.background ?? []).filter(item => item.kind === 'task').map(item => item.id), ...(live.calls ?? []), ...(live.native?.openCalls() ?? [])]);
     }
 
     /* ----------------------------- Limits and retries ---------------------------- */

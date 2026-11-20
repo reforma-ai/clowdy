@@ -2186,3 +2186,572 @@ describe('a sub-agent of a sub-agent', () => {
         expect(natives(h, runId)).toHaveLength(3);
     });
 });
+
+/** The background commands of a chat's orchestrator the scripts below start: each can be stopped alone unless it says otherwise. */
+const cmd = (n: number, over: Partial<BackgroundItem> = {}): BackgroundItem => ({ id: `cmd-${ n }`, kind: 'command', title: `sleep ${ n }0`, canStopAlone: true, ...over });
+
+interface Commands {
+    /** The commands the first turn starts in the background. */
+    items: BackgroundItem[];
+    /** Released by the test when that command ends on its own, by item id. */
+    ends?: Record<string, Latch>;
+    /** The agent reports the end of the last work by itself, in a turn of its own (Claude Code); without it it says nothing until it is sent a prompt (Codex). */
+    reports?: boolean;
+    /** The first turn goes on until the test releases this: the orchestrator's turn runs while the command is stopped, or ends. */
+    turn?: Latch;
+    /** Held before the `done` of the answer to a message sent into the session. */
+    gate?: Latch;
+}
+
+/**
+ * An orchestrator that starts background commands and keeps its session for them. A command it is asked to stop alone ends the way a real adapter ends it: the
+ * list without it, and no word to the agent. A command the test lets end leaves the list too, and the agent reports it in a turn of its own or waits to be told
+ * (`reports`). Every prompt sent into the session is answered by a turn that says `Heard: <text>`, and the session ends once nothing is open and it was answered.
+ */
+function commandsScript(plan: Commands): Script {
+    return async function* (turn) {
+        yield { type: 'session', sessionId: 's-1' };
+
+        const open = new Map(plan.items.map(item => [item.id, item]));
+        const holds = new Map<string, Promise<boolean>>();
+
+        yield { type: 'text', delta: 'Started them', done: true };
+        yield { type: 'background', items: [...open.values()] };
+
+        if (plan.turn && !await turn.hold(plan.turn)) {
+            return;
+        }
+
+        yield { type: 'done', result: 'Started them' };
+
+        let stop = turn.stopRequested();
+        let message = turn.received();
+
+        for (;;) {
+            const ending = [...open.keys()].filter(id => plan.ends?.[id]).map(id => (holds.get(id) ?? holds.set(id, turn.hold(plan.ends![id] as Latch)).get(id) as Promise<boolean>).then(released => ({ ended: released ? id : undefined })));
+            const next = await Promise.race([stop.then(stopped => ({ stopped })), message.then(text => ({ text })), ...ending]);
+
+            if ('stopped' in next) {
+                if (next.stopped === undefined) {
+                    return;
+                }
+
+                open.delete(next.stopped);
+                yield { type: 'background', items: [...open.values()] };
+                stop = turn.stopRequested();
+            }
+            else if ('text' in next) {
+                if (next.text === undefined) {
+                    return;
+                }
+
+                yield { type: 'text', delta: `Heard: ${ next.text }`, done: true };
+                await plan.gate?.wait(turn.signal);
+                yield { type: 'done', result: `Heard: ${ next.text }` };
+
+                if (open.size === 0) {
+                    return;
+                }
+
+                message = turn.received();
+            }
+            else {
+                if (next.ended === undefined) {
+                    return;
+                }
+
+                open.delete(next.ended);
+                yield { type: 'background', items: [...open.values()] };
+
+                if (open.size === 0 && plan.reports) {
+                    yield { type: 'text', delta: 'It finished', done: true };
+                    yield { type: 'done', result: 'It finished' };
+
+                    return;
+                }
+            }
+        }
+    };
+}
+
+describe('stopping one background command of the work that waits', () => {
+    const stopsAlone = () => true;
+    const line = (title: string) => expect.stringContaining(`The user stopped the background command: ${ title }`);
+
+    test('asks the session to end that command alone, writes that it was stopped, tells the agent, and the run and the other command go on', async () => {
+        const ends = { 'cmd-2': latch() };
+        const { h, engine, runId, waits, status, notes, said, history } = await setup(commandsScript({ items: [cmd(1), cmd(2)], ends, reports: true }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+
+        // The answer does not wait for the end: the request goes out, and the list loses the command through the snapshot the agent gives back.
+        expect(h.ok('run.stopBackground', { runId, itemId: 'cmd-1' })).toEqual({ stopped: true });
+        await waitFor(() => engine.sent.length === 1, 'the agent to be told');
+        await waitFor(() => notes().length === 1, 'the note');
+
+        expect(engine.stopRequests).toEqual(['cmd-1']);
+        expect(engine.sent).toEqual(['The user stopped the background command: sleep 10\nIt did not finish, and no result of it will arrive. Carry on without it, and say in one short sentence what that changes for your work.']);
+        expect(notes()).toEqual(['Background command stopped: sleep 10']);
+        expect(h.run(runId).background).toEqual([cmd(2)]);
+        // Not the person's message: nothing of it is a bubble, and the run did not leave its wait for it.
+        expect(said()).toEqual(['Do the work']);
+        expect(status()).toBe('waiting_background');
+        expect(history()).toEqual(['queued', 'running', 'waiting_background']);
+
+        ends['cmd-2'].release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+        expect(notes()).toEqual(['Background command stopped: sleep 10', 'Background command finished: sleep 20']);
+    });
+
+    test('is not a Stop of the run: the chat is not held, and the answer to the line is a turn of its own', async () => {
+        const ends = { 'cmd-1': latch() };
+        const { h, engine, chat, runId, waits, bodies } = await setup(commandsScript({ items: [cmd(1), cmd(2)], ends, reports: true }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+        h.ok('run.stopBackground', { runId, itemId: 'cmd-2' });
+        await waitFor(() => bodies().some(body => body.kind === 'assistant' && body.text.startsWith('Heard: The user stopped')), 'the agent to answer the line');
+
+        expect(getChat(h.store.db, chat.id)?.queuePaused).toBeUndefined();
+        expect(engine.turns).toHaveLength(1);
+        expect(h.run(runId).status).toBe('waiting_background');
+        ends['cmd-1'].release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+    });
+
+    test('works while the orchestrator\'s own turn runs: the request goes out and the line is handed to the session', async () => {
+        const gate = latch();
+        const ends = { 'cmd-2': latch() };
+        const { h, engine, runId, status } = await setup(commandsScript({ items: [cmd(1), cmd(2)], ends, turn: gate, reports: true }), {}, () => true, undefined, stopsAlone);
+
+        await waitFor(() => (h.run(runId).background?.length ?? 0) === 2, 'the commands to be listed');
+        expect(status()).toBe('running');
+        expect(h.ok('run.stopBackground', { runId, itemId: 'cmd-1' })).toEqual({ stopped: true });
+        await waitFor(() => engine.stopRequests.length === 1 && engine.sent.length === 1, 'the request and the line');
+        expect(status()).toBe('running');
+        gate.release();
+        await waitFor(() => status() === 'waiting_background', 'the run to wait');
+        ends['cmd-2'].release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+    });
+
+    test('answers false and asks nobody for a command that cannot be stopped alone, one that is not listed, a sub-agent, and a run that is over', async () => {
+        const ends = { 'cmd-2': latch() };
+        const { h, engine, runId, waits } = await setup(commandsScript({ items: [cmd(1), cmd(2, { canStopAlone: undefined }), { id: 'call-1', kind: 'subagent', title: 'Explore', canStopAlone: true }], ends, reports: true }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+
+        for (const itemId of ['cmd-2', 'nobody', 'call-1']) {
+            expect(h.ok('run.stopBackground', { runId, itemId })).toEqual({ stopped: false });
+        }
+
+        await Bun.sleep(50);
+        expect(engine.stopRequests).toEqual([]);
+        expect(engine.sent).toEqual([]);
+
+        h.ok('run.cancel', { runId });
+        await waitFor(() => h.run(runId).status === 'cancelled', 'the run to be cancelled');
+        expect(h.ok('run.stopBackground', { runId, itemId: 'cmd-1' })).toEqual({ stopped: false });
+        expect(engine.stopRequests).toEqual([]);
+    });
+
+    test('answers false for a session that cannot end one command alone, which still has the Stop of the run', async () => {
+        const { h, engine, runId, waits } = await setup(commandsScript({ items: [cmd(1)], reports: true }), {}, () => true);
+
+        await waits();
+        expect(h.ok('run.stopBackground', { runId, itemId: 'cmd-1' })).toEqual({ stopped: false });
+        expect(engine.stopRequests).toEqual([]);
+        expect(h.ok('run.cancel', { runId })).toEqual({ cancelled: [runId] });
+    });
+
+    test('the stream says a command was stopped at once, not when the agent next does something: here it is not told and says nothing', async () => {
+        const ends = { 'cmd-2': latch() };
+        const { h, runId, waits, notes } = await setup(commandsScript({ items: [cmd(1), cmd(2)], ends, reports: true }), {}, () => false, undefined, stopsAlone);
+
+        await waits();
+        expect(h.ok('run.stopBackground', { runId, itemId: 'cmd-1' })).toEqual({ stopped: true });
+        await waitFor(() => notes().length === 1, 'the note of the stopped command');
+        expect(notes()).toEqual(['Background command stopped: sleep 10']);
+        expect(h.run(runId).background).toEqual([cmd(2)]);
+        ends['cmd-2'].release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+    });
+
+    test('a second press for the command that is being stopped is the same request: one request, one line, the same answer', async () => {
+        const ends = { 'cmd-2': latch() };
+        const { h, engine, runId, waits } = await setup(commandsScript({ items: [cmd(1), cmd(2)], ends, reports: true }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+        expect(h.ok('run.stopBackground', { runId, itemId: 'cmd-1' })).toEqual({ stopped: true });
+        expect(h.ok('run.stopBackground', { runId, itemId: 'cmd-1' })).toEqual({ stopped: true });
+        await waitFor(() => engine.sent.length === 1, 'the line');
+        await Bun.sleep(50);
+        expect(engine.stopRequests).toEqual(['cmd-1']);
+        expect(engine.sent).toHaveLength(1);
+        ends['cmd-2'].release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+    });
+
+    test('a request sent again with the same request id is answered from the first one and asks nobody twice', async () => {
+        const ends = { 'cmd-2': latch() };
+        const { h, engine, runId, waits } = await setup(commandsScript({ items: [cmd(1), cmd(2)], ends, reports: true }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+
+        const stop = makeCommand('run.stopBackground', { runId, itemId: 'cmd-1' });
+        const first = executeCommand(h.daemon.services, stop);
+
+        expect(first).toMatchObject({ ok: true, data: { stopped: true } });
+        expect(executeCommand(h.daemon.services, stop)).toEqual(first);
+        await waitFor(() => engine.sent.length === 1, 'the line');
+        await Bun.sleep(50);
+        expect(engine.stopRequests).toEqual(['cmd-1']);
+        expect(engine.sent).toHaveLength(1);
+        ends['cmd-2'].release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+    });
+
+    test('asks the agent only once the transaction has committed: a Stop that rolls back sends nothing', async () => {
+        const ends = { 'cmd-1': latch() };
+        const { h, engine, runId, waits } = await setup(commandsScript({ items: [cmd(1)], ends, reports: true }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+
+        expect(() => h.store.tx(() => {
+            h.daemon.services.runs.stopBackground(runId, 'cmd-1');
+            throw new Error('rolled back');
+        })).toThrow('rolled back');
+        await Bun.sleep(50);
+        expect(engine.stopRequests).toEqual([]);
+        expect(engine.sent).toEqual([]);
+        expect(h.run(runId).background).toEqual([cmd(1)]);
+
+        // Committed, it is asked once, and a rolled-back attempt did not leave the command marked as being stopped.
+        expect(h.ok('run.stopBackground', { runId, itemId: 'cmd-1' })).toEqual({ stopped: true });
+        await waitFor(() => engine.stopRequests.length === 1, 'the request');
+        expect(engine.stopRequests).toEqual(['cmd-1']);
+    });
+
+    test('a Stop of the run right after tells the agent nothing: the session is ending', async () => {
+        const { h, engine, runId, waits } = await setup(commandsScript({ items: [cmd(1)], reports: true }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+        h.ok('run.stopBackground', { runId, itemId: 'cmd-1' });
+        h.ok('run.cancel', { runId });
+        await waitFor(() => h.run(runId).status === 'cancelled', 'the run to be cancelled');
+        await Bun.sleep(100);
+        expect(engine.sent).toEqual([]);
+    });
+
+    test('a command the agent would not stop, or that ended on its own meanwhile, is no stop: nothing is told, and it is written as finished when it ends', async () => {
+        const ends = { 'cmd-1': latch() };
+        const { h, engine, runId, waits, notes, status } = await setup(commandsScript({ items: [cmd(1)], ends, reports: true }), {}, () => true, undefined, () => false);
+
+        await waits();
+        h.ok('run.stopBackground', { runId, itemId: 'cmd-1' });
+        await waitFor(() => engine.stopRequests.length === 1, 'the request');
+        await Bun.sleep(50);
+        expect(engine.sent).toEqual([]);
+        expect(h.run(runId).background).toEqual([cmd(1)]);
+
+        // It can be asked again, since the first request did not take.
+        h.ok('run.stopBackground', { runId, itemId: 'cmd-1' });
+        await waitFor(() => engine.stopRequests.length === 2, 'the second request');
+        ends['cmd-1'].release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+        expect(notes()).toEqual(['Background command finished: sleep 10']);
+    });
+});
+
+describe('telling an agent that starts no turn of its own that its background work ended', () => {
+    const finishedLine = (title: string) => expect.stringContaining(`Background command finished: ${ title }`);
+
+    /** A chat whose agent says it never reports finished work (`EngineSession.wakesOnBackgroundEnd`). */
+    async function wakingSetup(plan: Commands, wakes = true, stops?: ScriptEngine['stopAnswer']) {
+        const engine = new ScriptEngine(commandsScript(plan));
+
+        engine.sendAnswer = () => true;
+        engine.wakes = wakes;
+
+        if (stops) {
+            engine.stopAnswer = stops;
+        }
+
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+
+        harnesses.push(h);
+
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
+        const runId = h.ok('chat.send', { chatId: chat.id, text: 'Do the work' }).runId as string;
+        const bodies = () => listItems(h.store.db, runId, 0).map(item => item.body);
+        const notes = () => bodies().flatMap(body => (body.kind === 'note' ? [body.text] : []));
+        const status = () => h.run(runId).status;
+        const history = (): RunStatus[] => {
+            const seen: RunStatus[] = [];
+
+            for (const event of h.events()) {
+                if (event.data.type === 'run.upserted' && event.data.run.id === runId && seen.at(-1) !== event.data.run.status) {
+                    seen.push(event.data.run.status);
+                }
+            }
+
+            return seen;
+        };
+
+        await waitFor(() => status() === 'waiting_background', 'the run to wait for background work');
+
+        return { h, engine, chat, runId, bodies, notes, status, history };
+    }
+
+    test('the last item leaving the list sends the agent one note, and its answer is a turn of its own that ends the run, with no message of the person in the stream', async () => {
+        const ends = { 'cmd-1': latch() };
+        const { h, engine, runId, bodies, notes, status, history } = await wakingSetup({ items: [cmd(1)], ends });
+
+        expect(engine.sent).toEqual([]);
+        ends['cmd-1'].release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+
+        expect(engine.sent).toEqual(['Background command finished: sleep 10\nCheck how it went and tell the user what came of it, briefly.']);
+        expect(notes()).toEqual(['Background command finished: sleep 10']);
+        expect(bodies().filter(body => body.kind === 'user').map(body => body.text)).toEqual(['Do the work']);
+        // The note comes before what the agent said of it, and the answer is the run's result.
+        expect(bodies().flatMap(body => (body.kind === 'note' || body.kind === 'assistant' ? [body.kind] : []))).toEqual(['assistant', 'note', 'assistant']);
+        expect(h.run(runId).result).toMatch(/^Heard: Background command finished: sleep 10/);
+        // The run stayed in its wait through the agent's turn: no slot was taken for it.
+        expect(history()).toEqual(['queued', 'running', 'waiting_background', 'succeeded']);
+    });
+
+    test('an agent that reports by itself is sent nothing: the flag is the agent\'s', async () => {
+        const ends = { 'cmd-1': latch() };
+        const { engine, status, notes } = await wakingSetup({ items: [cmd(1)], ends, reports: true }, false);
+
+        ends['cmd-1'].release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+        expect(engine.sent).toEqual([]);
+        expect(notes()).toEqual(['Background command finished: sleep 10']);
+    });
+
+    test('only the last item to leave sends it, and its note names every item that finished since the agent last heard', async () => {
+        const ends = { 'cmd-1': latch(), 'cmd-2': latch() };
+        const { engine, status, notes } = await wakingSetup({ items: [cmd(1), cmd(2)], ends });
+
+        ends['cmd-1'].release();
+        await Bun.sleep(100);
+        expect(engine.sent).toEqual([]);
+        expect(status()).toBe('waiting_background');
+
+        ends['cmd-2'].release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+        expect(engine.sent).toEqual(['Background command finished: sleep 10\nBackground command finished: sleep 20\nCheck how they went and tell the user what came of them, briefly.']);
+        expect(notes()).toEqual(['Background command finished: sleep 10', 'Background command finished: sleep 20']);
+    });
+
+    test('a sub-agent that ended is told the same way, and its child run ends with it', async () => {
+        const finished = latch();
+        const engine = new ScriptEngine(async function* (turn) {
+            yield { type: 'session', sessionId: 's-1' };
+            yield* starts(1);
+            yield { type: 'background', items: [agentItem(1)] };
+            yield { type: 'done', result: 'Started it' };
+
+            const message = turn.received();
+
+            if (!await turn.hold(finished)) {
+                return;
+            }
+
+            yield { type: 'tool', toolCallId: 'call-1', name: 'Agent', input: {}, state: 'done', output: 'Done' };
+            yield { type: 'subagent', agentId: 'agent-1', parentToolCallId: 'call-1', name: 'Explore', state: 'done', summary: 'Done' };
+            yield { type: 'background', items: [] };
+
+            const text = await message;
+
+            if (text !== undefined) {
+                yield { type: 'text', delta: `Heard: ${ text }`, done: true };
+                yield { type: 'done', result: `Heard: ${ text }` };
+            }
+        });
+
+        engine.sendAnswer = () => true;
+        engine.wakes = true;
+
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+
+        harnesses.push(h);
+
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
+        const runId = h.ok('chat.send', { chatId: chat.id, text: 'Do the work' }).runId as string;
+
+        await waitFor(() => h.run(runId).status === 'waiting_background', 'the run to wait');
+        finished.release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+
+        expect(engine.sent).toEqual(['Background sub-agent finished: Explore 1\nCheck how it went and tell the user what came of it, briefly.']);
+        expect(projectSnapshot(h.store, h.run(runId).projectId).runs.filter((run: Run) => run.origin === 'native').map(run => run.status)).toEqual(['succeeded']);
+    });
+
+    test('nothing is sent for a command the person stopped: the agent was told when they did, and that line is the only thing it hears', async () => {
+        const { h, engine, status, notes, runId } = await wakingSetup({ items: [cmd(1)] }, true, () => true);
+
+        h.ok('run.stopBackground', { runId, itemId: 'cmd-1' });
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+        expect(engine.sent).toHaveLength(1);
+        expect(engine.sent[0]).toMatch(/^The user stopped the background command: sleep 10/);
+        expect(notes()).toEqual(['Background command stopped: sleep 10']);
+    });
+
+    test('a stopped command and one that finished are told together, and only the one that finished is in the note', async () => {
+        const ends = { 'cmd-2': latch() };
+        const { h, engine, status, notes, runId } = await wakingSetup({ items: [cmd(1), cmd(2)], ends }, true, () => true);
+
+        h.ok('run.stopBackground', { runId, itemId: 'cmd-1' });
+        await waitFor(() => engine.sent.length === 1, 'the line');
+        ends['cmd-2'].release();
+        await waitFor(() => engine.sent.length === 2, 'the note');
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+
+        expect(engine.sent[1]).toMatch(/^Background command finished: sleep 20\n/);
+        expect(engine.sent[1]).not.toContain('sleep 10');
+        expect(notes()).toEqual(['Background command stopped: sleep 10', 'Background command finished: sleep 20']);
+    });
+
+    test('a command that finished while another was open, and the other one the person stops last: the agent hears of both, in one prompt', async () => {
+        const ends = { 'cmd-2': latch() };
+        const { h, engine, status, notes, runId } = await wakingSetup({ items: [cmd(1), cmd(2)], ends }, true, () => true);
+
+        ends['cmd-2'].release();
+        await waitFor(() => h.run(runId).background?.length === 1, 'the command to leave the list');
+        // Nothing is told yet: one item is still open.
+        expect(engine.sent).toEqual([]);
+        h.ok('run.stopBackground', { runId, itemId: 'cmd-1' });
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+
+        // The prompt of the stop is in flight when the list empties, which keeps the note back: the finished one is in that prompt.
+        expect(engine.sent).toEqual([
+            'Background command finished: sleep 20\nCheck how it went and tell the user what came of it, briefly.\n\nThe user stopped the background command: sleep 10\nIt did not finish, and no result of it will arrive. Carry on without it, and say in one short sentence what that changes for your work.',
+        ]);
+        expect(notes()).toEqual(['Background command finished: sleep 20', 'Background command stopped: sleep 10']);
+    });
+
+    test('nothing is sent while a message of ours is on its way: the item leaving during the answer to a message is not announced', async () => {
+        const gate = latch();
+        const engine = new ScriptEngine(async function* (turn) {
+            yield { type: 'session', sessionId: 's-1' };
+            yield { type: 'background', items: [cmd(1)] };
+            yield { type: 'done', result: 'Started it' };
+
+            const text = await turn.received();
+
+            if (text === undefined) {
+                return;
+            }
+
+            // The command ends while the agent is answering the message.
+            yield { type: 'text', delta: `Heard: ${ text }`, done: true };
+            yield { type: 'background', items: [] };
+            await gate.wait(turn.signal);
+            yield { type: 'done', result: `Heard: ${ text }` };
+        });
+
+        engine.sendAnswer = () => true;
+        engine.wakes = true;
+
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+
+        harnesses.push(h);
+
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
+        const runId = h.ok('chat.send', { chatId: chat.id, text: 'Do the work' }).runId as string;
+
+        await waitFor(() => h.run(runId).status === 'waiting_background', 'the run to wait');
+        h.ok('chat.send', { chatId: chat.id, text: 'Meanwhile' });
+        await waitFor(() => h.run(runId).background === undefined, 'the list to be empty');
+        await Bun.sleep(100);
+        expect(engine.sent).toEqual(['Meanwhile']);
+        gate.release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+        expect(engine.sent).toEqual(['Meanwhile']);
+    });
+
+    test('nothing is sent while the agent answers the line about a stopped command: the last item leaving then is not announced either', async () => {
+        const gate = latch();
+        const engine = new ScriptEngine(async function* (turn) {
+            yield { type: 'session', sessionId: 's-1' };
+            yield { type: 'background', items: [cmd(1), cmd(2)] };
+            yield { type: 'done', result: 'Started them' };
+
+            if (await turn.stopRequested() === undefined) {
+                return;
+            }
+
+            yield { type: 'background', items: [cmd(2)] };
+
+            const text = await turn.received();
+
+            if (text === undefined) {
+                return;
+            }
+
+            // The other command ends while the agent is answering what it was told of the first.
+            yield { type: 'text', delta: `Heard: ${ text }`, done: true };
+            yield { type: 'background', items: [] };
+            await gate.wait(turn.signal);
+            yield { type: 'done', result: `Heard: ${ text }` };
+        });
+
+        engine.sendAnswer = () => true;
+        engine.stopAnswer = () => true;
+        engine.wakes = true;
+
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+
+        harnesses.push(h);
+
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
+        const runId = h.ok('chat.send', { chatId: chat.id, text: 'Do the work' }).runId as string;
+
+        await waitFor(() => h.run(runId).status === 'waiting_background', 'the run to wait');
+        h.ok('run.stopBackground', { runId, itemId: 'cmd-1' });
+        await waitFor(() => h.run(runId).background === undefined, 'the list to be empty');
+        await Bun.sleep(100);
+        expect(engine.sent).toHaveLength(1);
+        gate.release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+        expect(engine.sent).toHaveLength(1);
+    });
+
+    test('an item that ended while the first turn still ran is not announced: the agent was there when it did', async () => {
+        const gate = latch();
+        const engine = new ScriptEngine(async function* (turn) {
+            yield { type: 'session', sessionId: 's-1' };
+            yield { type: 'background', items: [cmd(1)] };
+            yield { type: 'background', items: [] };
+
+            if (!await turn.hold(gate)) {
+                return;
+            }
+
+            yield { type: 'text', delta: 'Done', done: true };
+            yield { type: 'done', result: 'Done' };
+        });
+
+        engine.sendAnswer = () => true;
+        engine.wakes = true;
+
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+
+        harnesses.push(h);
+
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
+        const runId = h.ok('chat.send', { chatId: chat.id, text: 'Do the work' }).runId as string;
+
+        await Bun.sleep(100);
+        gate.release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+        expect(engine.sent).toEqual([]);
+    });
+});

@@ -543,7 +543,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
             summary: 'Check the booking changes',
             statusReason: 'Waiting for background work',
             background: [
-                { id: 'bg-1', kind: 'command', title: 'bun run test' },
+                // The first can be stopped alone (a terminal the agent lets the client cancel): its row has a Stop of its own. The second only ends with the run.
+                { id: 'bg-1', kind: 'command', title: 'bun run test', canStopAlone: true },
                 { id: 'bg-2', kind: 'command', title: 'bun run typecheck' },
             ],
             createdAt: ago(30),

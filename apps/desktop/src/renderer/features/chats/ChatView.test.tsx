@@ -351,7 +351,8 @@ describe('a chat whose orchestrator waits for background work', () => {
         await start();
         await draw('c-5');
 
-        expect(container.querySelector('[aria-label="Work in progress"]')?.textContent).toBe('2 background tasks runningStop');
+        // The first command can be stopped alone and has a row of its own; the other is counted.
+        expect([...container.querySelectorAll('[aria-label="Work in progress"] > div')].map(row => row.textContent)).toEqual(['Command · bun run testStop', 'Background task runningStop']);
         expect(container.textContent).toContain('Waiting for background work…');
         expect(notice()).toBeNull();
         expect(field()).not.toBeNull();

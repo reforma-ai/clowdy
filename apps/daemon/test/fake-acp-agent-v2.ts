@@ -43,15 +43,23 @@ import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError
  * like any work that ended (`<title> stopped` by default). A `session/cancel` of the parent while only background work runs does nothing.
  *
  * FAKE_ACP_LOG is a file that gets a line for every `session/cancel`, `steer <text>` for every prompt that comes while a turn runs (v2 has no steering
- * method: a prompt is inserted into the turn), and `title <session> <title>` for every `session/set_title`. A prompt during a turn is always taken:
- * FAKE_ACP_STEERING means nothing here. FAKE_ACP_RESUME is `resume` (default) or `none` (`session/resume` is answered as an unknown method; FAKE_ACP_LOST=1
+ * method: a prompt is inserted into the turn), `steering <text>` for every `_session/steering` request, `terminal-cancel <terminal>` for every `terminal/cancel`, `tool-call-cancel <call>` for every `tool_call/cancel`,
+ * and `title <session> <title>` for every `session/set_title`. A prompt during a turn is taken, inserted into the turn (Claude's adapter does that), unless
+ * FAKE_ACP_QUEUE holds it. FAKE_ACP_STEERING=1 makes the agent an adapter like Codex's: its `initialize` says `_meta.steering.supported`, and a
+ * `_session/steering` request while a turn runs is answered `{ outcome: 'injected' }` (the message is echoed as a `user_message_chunk` and its lines run in
+ * that turn, after the line in progress, as a prompt's do), and `{ outcome: 'promptRequired', reason: 'noRunningTurn' }` when none runs. Without the switch
+ * the agent still answers the method, so a test can see that the client did not ask. FAKE_ACP_TERMINAL_CANCEL=1 gives every background terminal and every `Workflow` call the
+ * `cancel` capability and lets `terminal/cancel` and `tool_call/cancel` stop it: its terminal gets an exit status and the list loses it, and, as with a real adapter, the agent
+ * owes no report of it; a terminal that is unknown, has ended, or cannot be cancelled is refused with `-32602`. `FAKE_ACP_TERMINAL_CANCEL=refuse`
+ * advertises the capability and refuses every request with `-32602`, as an adapter does for a terminal that ended a moment before. FAKE_ACP_RESUME is `resume` (default) or `none` (`session/resume` is answered as an unknown method; FAKE_ACP_LOST=1
  * refuses it with "Session not found"). A resume replays two messages and `replay_complete` only when it asks for it (`replayFrom`);
  * FAKE_ACP_REPLAY=always replays whether asked or not, with a stale `idle` among them, as an agent that does not wait to be asked. FAKE_ACP_SNAPSHOT=1 starts every
  * turn with an `idle` that carries no stop reason, before `running`, as a snapshot of the state the session was in (`FAKE_ACP_SNAPSHOT=reason`: one
  * that carries the last stop reason, which a repeated snapshot may). FAKE_ACP_BLOCKED=1 starts every turn with `requires_action` instead of `running`, as
  * foreground work that begins blocked does. FAKE_ACP_REJECT=1 refuses every prompt with an error response, as an agent does that cannot take the message in (`later`: those after the first turn began). FAKE_ACP_QUEUE=1 holds a prompt that comes while a turn runs until that turn's `idle`, then runs it as a turn
  * of its own and only then answers it, as Codex does (a prompt answered after the `idle` that came before it; `refuse`: it refuses the held prompt then instead). FAKE_ACP_SLOW=<ms>
- * answers every prompt after the first turn began that much later. FAKE_ACP_NOECHO=1 does not echo the prompts it is given back as `user_message`. FAKE_ACP_WHOLE=1 says every message
+ * answers every prompt after the first turn began that much later. FAKE_ACP_NOECHO=1 does not echo the prompts it is given back as `user_message`. FAKE_ACP_ECHO_LATE=1 echoes a prompt that begins a turn after the turn's
+ * `running`, as Codex's adapter does (Claude's echoes it first). FAKE_ACP_WHOLE=1 says every message
  * as two whole-message upserts, the second with all the text. FAKE_ACP_SYSTEM_PROMPT=0 drops the system prompt capability; FAKE_ACP_DIRECTORIES=1 advertises
  * `session.additionalDirectories` (the `info` directive shows the list a session got either way); FAKE_ACP_TITLES=1 gives the agent `session.title` and
  * `session/set_title`; FAKE_ACP_AUTH=1 makes `session/new` ask for authentication; FAKE_ACP_EFFORT is `1` (a reasoning option that follows the model)
@@ -353,7 +361,7 @@ async function startWork(session: FakeSession, client: AgentContext, kind: Work[
         ref = `term-${ n }`;
         item = { type: 'terminal', terminalId: ref };
         // The command comes with the terminal, before any list that names it; the `Bash` call that started it completes at once.
-        await send({ sessionUpdate: 'terminal_update', terminalId: ref, command: title });
+        await send({ sessionUpdate: 'terminal_update', terminalId: ref, command: title, ...(process.env.FAKE_ACP_TERMINAL_CANCEL && { capabilities: { cancel: {} } }) });
         await send({ sessionUpdate: 'tool_call_update', toolCallId: `bash-${ n }`, title, kind: 'execute', status: 'completed', rawInput: { command: title, run_in_background: true }, content: [{ type: 'terminal', terminalId: ref }] });
     }
     else if (kind === 'subagent') {
@@ -364,7 +372,7 @@ async function startWork(session: FakeSession, client: AgentContext, kind: Work[
     else {
         ref = `wf-${ n }`;
         item = { type: 'tool_call', toolCallId: ref };
-        await send({ sessionUpdate: 'tool_call_update', toolCallId: ref, title: `Workflow: ${ title }`, kind: 'other', status: 'in_progress', _meta: { claudeCode: { toolName: 'Workflow' } } });
+        await send({ sessionUpdate: 'tool_call_update', toolCallId: ref, title: `Workflow: ${ title }`, kind: 'other', status: 'in_progress', ...(process.env.FAKE_ACP_TERMINAL_CANCEL && { capabilities: { cancel: {} } }), _meta: { claudeCode: { toolName: 'Workflow' } } });
     }
 
     const work: Work = { title, item, done: false, kind, ref, ...(kind === 'subagent' && { callId: `toolu-${ ref }`, outcome: session.outcome, flap: session.flap }) };
@@ -466,6 +474,55 @@ async function stopWork(session: FakeSession, work: Work): Promise<void> {
         session.reports.push(work);
         report(session);
     }
+}
+
+/**
+ * The client asked to cancel a background terminal (`terminal/cancel`): its process ends, the terminal gets an exit status, and the list loses it. A real
+ * adapter gives the agent no report of it, so none is owed. Refused with `-32602` when the terminal is unknown, has ended, or cannot be cancelled.
+ */
+async function cancelTerminal(terminalId: string): Promise<void> {
+    log(`terminal-cancel ${ terminalId }`);
+
+    for (const session of sessions.values()) {
+        const work = session.work.find(candidate => candidate.kind === 'terminal' && candidate.ref === terminalId);
+
+        if (work && !work.done && process.env.FAKE_ACP_TERMINAL_CANCEL === '1' && session.client) {
+            const { client } = session;
+            const send = (update: SessionUpdate) => client.notify(methods.client.session.update, { sessionId: session.id, update }).catch(() => undefined);
+
+            work.done = true;
+            work.stopped = true;
+            await send({ sessionUpdate: 'terminal_update', terminalId, exitStatus: { exitCode: -1 } });
+            await send(state(session, { state: session.prompting ? 'running' : 'idle' }));
+
+            return;
+        }
+    }
+
+    throw new RequestError(-32602, 'Unknown, exited or not cancellable terminal');
+}
+
+/** The client asked to cancel a background tool call (`tool_call/cancel`, a `Workflow`): as a terminal's cancel, the call ends `cancelled` and the list loses it; no report is owed. */
+async function cancelCall(toolCallId: string): Promise<void> {
+    log(`tool-call-cancel ${ toolCallId }`);
+
+    for (const session of sessions.values()) {
+        const work = session.work.find(candidate => candidate.kind === 'workflow' && candidate.ref === toolCallId);
+
+        if (work && !work.done && process.env.FAKE_ACP_TERMINAL_CANCEL === '1' && session.client) {
+            const { client } = session;
+            const send = (update: SessionUpdate) => client.notify(methods.client.session.update, { sessionId: session.id, update }).catch(() => undefined);
+
+            work.done = true;
+            work.stopped = true;
+            await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'cancelled', capabilities: null });
+            await send(state(session, { state: session.prompting ? 'running' : 'idle' }));
+
+            return;
+        }
+    }
+
+    throw new RequestError(-32602, 'Tool call is not running in the background, so it cannot be cancelled');
 }
 
 /** Begins the report turn of finished work after the gap, unless a turn runs by then: that turn reports it when it ends. */
@@ -828,7 +885,34 @@ const app = agent({ name: 'fake-acp-agent-v2' })
                     ...(process.env.FAKE_ACP_TITLES === '1' && { title: {} }),
                 },
             },
+            ...(process.env.FAKE_ACP_STEERING === '1' && { _meta: { steering: { supported: true } } }),
         };
+    })
+    .onRequest('_session/steering', params => params as { sessionId: string; prompt: { type: string; text?: string }[] }, async ({ params, client }) => {
+        const session = sessions.get(params.sessionId);
+        const text = params.prompt.map(block => block.text ?? '').join('\n');
+
+        log(`steering ${ text.replaceAll('\n', ' | ') }`);
+
+        if (!session?.prompting) {
+            return { outcome: 'promptRequired', reason: 'noRunningTurn' };
+        }
+
+        // Taken into the running turn: echoed at once, and its lines run in that turn.
+        session.steers.push(text);
+        await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'user_message_chunk', messageId: crypto.randomUUID(), content: { type: 'text', text } } });
+
+        return { outcome: 'injected' };
+    })
+    .onRequest(methods.agent.terminal.cancel, async ({ params }) => {
+        await cancelTerminal(params.terminalId);
+
+        return {};
+    })
+    .onRequest(methods.agent.toolCall.cancel, async ({ params }) => {
+        await cancelCall(params.toolCallId);
+
+        return {};
     })
     .onRequest(methods.agent.session.new, ({ params }) => {
         if (process.env.FAKE_ACP_AUTH === '1') {
@@ -954,12 +1038,20 @@ const app = agent({ name: 'fake-acp-agent-v2' })
             session.landed = true;
         }
 
+        // FAKE_ACP_ECHO_LATE=1: the turn that this prompt begins says `running` before the message is echoed.
+        const late = starting && process.env.FAKE_ACP_ECHO_LATE === '1';
+
+        if (late) {
+            setImmediate(() => void turn(session, params.sessionId, text, client));
+            await Bun.sleep(40);
+        }
+
         // FAKE_ACP_NOECHO=1: the agent takes the prompt in and says nothing of it, as an agent that does not echo the messages it is given.
         if (process.env.FAKE_ACP_NOECHO !== '1') {
             await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'user_message', messageId, content: [{ type: 'text', text }] } });
         }
 
-        if (starting) {
+        if (starting && !late) {
             // The turn goes on after the answer: the message is inserted, nothing more.
             setImmediate(() => void turn(session, params.sessionId, text, client));
         }

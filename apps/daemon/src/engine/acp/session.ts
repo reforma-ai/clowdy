@@ -82,6 +82,8 @@ export class AcpSession implements EngineSession {
     private signal: AbortSignal;
     private exited: Promise<void> = Promise.resolve();
     private layer?: ProtocolLayer;
+    /** The agent the session resolved, once it has. */
+    private agent?: ResolvedAgent;
     private access?: BridgeAccess;
     private prompt: PromptState = 'before';
     /** The session is over for good: its process is to be stopped or gone, and no turn will begin. Until then a layer may open the prompt again with each turn. */
@@ -137,17 +139,23 @@ export class AcpSession implements EngineSession {
     }
 
     /**
-     * Asks the agent to end one sub-agent it announced and leave everything else running. Answers whether the layer sent the request: a session that is
-     * over, a layer whose protocol has no such request (v1), and a sub-agent the layer does not know as open answer `false`.
+     * Asks the agent to end one sub-agent it announced, or one background command it lists, and leave everything else running. Answers whether the agent
+     * took the request: a session that is over, a layer whose protocol has no such request (v1), and a sub-agent or command the layer does not know as open
+     * answer `false`.
      */
-    async stopItem(agentId: string): Promise<boolean> {
+    async stopItem(id: string): Promise<boolean> {
         const { layer } = this;
 
         if (this.finished || this.signal.aborted || !layer?.stopItem) {
             return false;
         }
 
-        return layer.stopItem(agentId);
+        return layer.stopItem(id);
+    }
+
+    /** Whether the agent leaves it to the runtime to tell it that background work ended (`AgentSpec.wakesOnBackgroundEnd`). */
+    get wakesOnBackgroundEnd(): boolean {
+        return this.agent?.wakesOnBackgroundEnd === true;
     }
 
     /** Whether the agent can take a steer at all: what its handshake said, and until then, or over v2, that it can. */
@@ -278,6 +286,9 @@ export class AcpSession implements EngineSession {
         }
 
         const { agent } = resolution;
+
+        this.agent = agent;
+
         const key = launchKey(agent);
         let protocol: AgentProtocol = agent.protocol === 'v2' && !this.deps.downgraded.has(key) ? 'v2' : 'v1';
 
