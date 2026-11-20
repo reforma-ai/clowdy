@@ -1,8 +1,10 @@
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
 import { subagentLabel } from '../../stream/subagents';
+import { orchestratorOf } from '../agents/agentTree';
+import { isRunActive } from './chatRun';
 
-import type { BackgroundItem, Run, RunId } from '@clowdy/protocol';
+import type { BackgroundItem, Chat, ChatId, Run, RunId } from '@clowdy/protocol';
 
 /** The rows the strip above the message box lists at most; the rest are counted on one line. */
 export const MAX_AGENT_ROWS = 5;
@@ -47,15 +49,16 @@ export function canStopAlone(run: Pick<Run, 'canStopAlone'>): boolean {
     return run.canStopAlone === true;
 }
 
-/** How many agents that can stop alone the strip needs before it offers Stop all: with one, that row's own Stop does it. */
+/** How many rows with a Stop of their own the strip needs before it offers Stop all: with one, that row's own Stop does it. */
 const STOP_ALL_FROM = 2;
 
 /**
- * Whether the header over the rows offers Stop all. It stops every agent that can stop alone (`run.stopAgents`), the ones hidden behind
- * "N more agents at work" too, and none of those that cannot, so only the agents that can stop count, and it takes two of them to be worth a button.
+ * Whether the header over the rows offers Stop all. It stops every agent that can stop alone (`run.stopAgents`) and every thread at work (`run.cancel`
+ * of each), the ones hidden behind "N more agents at work" too, and none of the sub-agents that cannot, so only the rows that can stop count, and it
+ * takes two of them to be worth a button.
  */
-export function offersStopAll(agents: readonly Pick<Run, 'canStopAlone'>[]): boolean {
-    return agents.filter(canStopAlone).length >= STOP_ALL_FROM;
+export function offersStopAll(agents: readonly Pick<Run, 'canStopAlone'>[], threadCount = 0): boolean {
+    return agents.filter(canStopAlone).length + threadCount >= STOP_ALL_FROM;
 }
 
 /** The words of the background row: `Background task running`, `2 background tasks running`. Items of every kind are tasks to the person. */
@@ -79,4 +82,58 @@ export function agentRowText(run: Pick<Run, 'name' | 'status'>, activity: string
     const head = activity ? `${ label } · ${ activity }` : `${ label } working`;
 
     return calls > 0 ? `${ head } · ${ calls } ${ calls === 1 ? 'call' : 'calls' }` : head;
+}
+
+/** A thread of the open chat that works now: the thread's chat and its orchestrator. */
+export interface ThreadAtWork {
+    chat: Chat;
+    run: Run;
+}
+
+/**
+ * The threads the chat started that work now, oldest first: their orchestrator is queued, running, blocked, or waits for the person or for its
+ * background work. Only the chat's own threads: a thread's threads are rows of that thread's strip.
+ */
+export function threadsAtWork(threads: readonly Chat[], runs: ReadonlyMap<RunId, Run>): ThreadAtWork[] {
+    return threads.flatMap((chat) => {
+        const run = orchestratorOf(chat, runs);
+
+        return chat.archivedAt === undefined && isRunActive(run) ? [{ chat, run }] : [];
+    }).sort((a, b) => a.chat.createdAt - b.chat.createdAt || a.chat.id.localeCompare(b.chat.id));
+}
+
+/** One row of the strip: a native sub-agent of the orchestrator, or a thread of the chat. */
+export type StripRow =
+    | { kind: 'agent'; id: RunId; run: Run }
+    | { kind: 'thread'; id: ChatId; chat: Chat; run: Run };
+
+/** The rows of the strip, oldest first, sub-agents and threads together: a sub-agent by when its run was made, a thread by when it was made. */
+export function stripRows(agents: readonly Run[], threads: readonly ThreadAtWork[]): StripRow[] {
+    const rows: StripRow[] = [
+        ...agents.map(run => ({ kind: 'agent' as const, id: run.id, run })),
+        ...threads.map(({ chat, run }) => ({ kind: 'thread' as const, id: chat.id, chat, run })),
+    ];
+    const madeAt = (row: StripRow) => (row.kind === 'agent' ? row.run.createdAt : row.chat.createdAt);
+
+    return rows.sort((a, b) => madeAt(a) - madeAt(b) || a.id.localeCompare(b.id));
+}
+
+/**
+ * What a thread's row says: its title and what it does. `Fix login · Running bun test` while it works (`Fix login working` before it has done anything
+ * of its own), `· Waiting for you` on a question, `· Waiting for background work` while its session keeps work open after its turn, `· Waiting for a
+ * free slot` while queued, and why it is blocked.
+ */
+export function threadRowText(chat: Pick<Chat, 'title'>, run: Pick<Run, 'status' | 'statusReason'>, activity: string | undefined): string {
+    switch (run.status) {
+        case 'waiting_user':
+            return `${ chat.title } · Waiting for you`;
+        case 'waiting_background':
+            return `${ chat.title } · Waiting for background work`;
+        case 'queued':
+            return `${ chat.title } · Waiting for a free slot`;
+        case 'blocked':
+            return `${ chat.title } · ${ run.statusReason ?? 'Blocked' }`;
+        default:
+            return activity ? `${ chat.title } · ${ activity }` : `${ chat.title } working`;
+    }
 }

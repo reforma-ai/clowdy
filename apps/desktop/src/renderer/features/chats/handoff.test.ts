@@ -74,6 +74,34 @@ describe('turnsOf', () => {
         ]);
     });
 
+    it('keeps what other threads told the chat apart from the person\'s words: who wrote, and each thread that stopped with its words', () => {
+        const turns = turnsOf(items(
+            { kind: 'user', text: 'Fix the rounding', from: { kind: 'thread', chatId: 'c-p', title: 'Ship the checkout' } },
+            { kind: 'assistant', text: 'On it.', done: true },
+            {
+                kind: 'user',
+                text: '',
+                from: {
+                    kind: 'threadNotice',
+                    threads: [
+                        { chatId: 'c-a', title: 'Refund tests', outcome: 'finished', text: '14 cases pass' },
+                        { chatId: 'c-b', title: 'Migration', outcome: 'failed' },
+                        { chatId: 'c-c', title: 'Load test', outcome: 'finished', text: 'Short run held', background: ['k6 run long.js'] },
+                    ],
+                },
+            },
+            { kind: 'user', text: 'Thanks' }
+        ));
+
+        expect(turns).toEqual([
+            { role: 'thread', text: 'Message from Ship the checkout\n\nFix the rounding' },
+            { role: 'assistant', text: 'On it.' },
+            { role: 'thread', text: 'Refund tests finished\n\n14 cases pass\n\nMigration failed\n\nLoad test finished\n\nShort run held\n\nStill running: k6 run long.js' },
+            { role: 'person', text: 'Thanks' },
+        ]);
+        expect(transcriptOf(chat, turns)).toContain('## Thread\n\n> Message from Ship the checkout');
+    });
+
     it('puts items in the order of their sequence and drops empty text', () => {
         const [first, second, third] = items({ kind: 'user', text: 'one' }, { kind: 'assistant', text: 'two', done: true }, { kind: 'assistant', text: '  \n ', done: true });
 

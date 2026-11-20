@@ -76,6 +76,37 @@ describe('openChat', () => {
     });
 });
 
+describe('openChat, a thread', () => {
+    /** c-6 rests, but c-6a and c-6e work: they are stopped so the chat can be archived with its threads. */
+    async function archiveShipTheCheckout() {
+        for (const runId of ['r-orch-6a', 'r-orch-6e']) await store.command({ type: 'run.cancel', runId });
+
+        await store.command({ type: 'chat.setArchived', chatId: 'c-6', archived: true });
+        await archived('c-6', true);
+        await archived('c-6a1', true);
+    }
+
+    it('brings back the chats above a thread that went to the archive with them, the thread itself, and nothing beside them', async () => {
+        await archiveShipTheCheckout();
+        await openChat(store, project(), ui(), 'c-6a1');
+
+        await archived('c-6', false);
+        await archived('c-6a', false);
+        await archived('c-6a1', false);
+        expect(isArchived('c-6b')).toBe(true);
+        expect(ui().chatId).toBe('c-6a1');
+    });
+
+    it('brings back the chat of a thread\'s run with the path to it', async () => {
+        await archiveShipTheCheckout();
+        await openRun(store, project(), ui(), 'r-orch-6a1');
+
+        await archived('c-6', false);
+        await archived('c-6a1', false);
+        expect(ui().runId).toBe('r-orch-6a1');
+    });
+});
+
 describe('openRun', () => {
     it('brings the chat of the run out of the archive before it shows the run', async () => {
         await store.command({ type: 'chat.setArchived', chatId: 'c-2', archived: true });

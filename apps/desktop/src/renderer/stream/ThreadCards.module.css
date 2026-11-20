@@ -1,0 +1,63 @@
+@reference '@clowdy/styles/rulesets';
+
+/* A thread's card is drawn as the agent cards are (`SubagentCard`): a bordered plate in the stream, for words an agent wrote and not the person. */
+.card {
+    @ruleset typography-text-md;
+
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    width: 100%;
+    max-width: 100%;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+    overflow: hidden;
+}
+
+.group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    height: var(--spacing-20);
+    color: var(--color-secondary-muted-text);
+}
+
+.card[data-outcome='finished'] .icon {
+    color: var(--color-success);
+}
+
+.card[data-outcome='failed'] .icon {
+    color: var(--color-danger);
+}
+
+.body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.title {
+    font-weight: 500;
+    line-height: var(--spacing-20);
+}
+
+/* The name of a thread in a title: a link in the title's own words. */
+.link {
+    font-weight: 500;
+}
+
+.open {
+    overflow-wrap: anywhere;
+}

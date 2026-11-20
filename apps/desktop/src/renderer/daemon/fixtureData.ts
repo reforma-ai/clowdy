@@ -271,6 +271,12 @@ const FIXTURE_ATTACHMENTS: FixtureAttachment[] = [
     { projectId: FIXTURE_PROJECT_ID, attachment: { id: 'a-log', name: 'booking-error.log', mediaType: 'text/plain', size: BOOKING_LOG.length }, content: BOOKING_LOG },
 ];
 
+/** What the threads of Ship the checkout said last: their streams end with it, and the notices their parents were told carry it. */
+const CURRENCY_ANSWER = 'Every currency in the table has two decimals except JPY, which has none.';
+const REFUND_ANSWER = 'The refund tests are in `src/payments/refund.test.ts`: 14 cases, all passing.';
+const MIGRATION_FAILURE = 'The migration stopped: the column amount_cents already exists in staging';
+const LOAD_ANSWER = 'The short run held 120 requests a second with no errors. The long run is still going.';
+
 /** The docs folder of a folder that is in no fixture project, for a project of several folders. */
 const API_DOCS: Record<string, string> = {
     'endpoints.md': '# Endpoints\n\n| Method | Path | Does |\n| --- | --- | --- |\n| GET | /availability | free cars in a date range |\n| POST | /bookings | books a car |\n',
@@ -412,6 +418,34 @@ export function createFixtureData(now = Date.now()): FixtureData {
         { id: 'c-4', projectId, title: 'New chat', mode: 'autopilot', createdAt: ago(2), updatedAt: ago(2) },
         // Its orchestrator started two commands in the background and waits for them: the strip above the message box counts them.
         { id: 'c-5', projectId, title: 'Check the booking changes', mode: 'autopilot', orchestratorRunId: 'r-orch-5', createdAt: ago(30), updatedAt: ago(5) },
+        /*
+         * A chat whose agent handed the work to threads (`clowdy thread spawn`) and rests while they work, so its dot is green for them: Fix the price
+         * rounding works and has a thread of its own, which finished while it worked (the notice waits in its queue); Write the refund tests finished and
+         * Migrate the payments table failed, both told in the parent's stream with Load test the checkout, which waits for its background work.
+         */
+        { id: 'c-6', projectId, title: 'Ship the checkout', mode: 'autopilot', orchestratorRunId: 'r-orch-6', createdAt: ago(50), updatedAt: ago(3) },
+        {
+            id: 'c-6a',
+            projectId,
+            title: 'Fix the price rounding',
+            mode: 'autopilot',
+            parentChatId: 'c-6',
+            orchestratorRunId: 'r-orch-6a',
+            queue: [{
+                id: 'q-notice-6a',
+                mode: 'queue',
+                text: 'Thread "Check the currency table" finished',
+                content: 'Thread "Check the currency table" finished.',
+                from: { kind: 'threadNotice', threads: [{ chatId: 'c-6a1', title: 'Check the currency table', outcome: 'finished', text: CURRENCY_ANSWER }] },
+                createdAt: ago(25),
+            }],
+            createdAt: ago(48),
+            updatedAt: ago(2),
+        },
+        { id: 'c-6a1', projectId, title: 'Check the currency table', mode: 'autopilot', parentChatId: 'c-6a', orchestratorRunId: 'r-orch-6a1', createdAt: ago(46), updatedAt: ago(25) },
+        { id: 'c-6b', projectId, title: 'Write the refund tests', mode: 'autopilot', parentChatId: 'c-6', orchestratorRunId: 'r-orch-6b', createdAt: ago(47.5), updatedAt: ago(20) },
+        { id: 'c-6c', projectId, title: 'Migrate the payments table', mode: 'autopilot', parentChatId: 'c-6', orchestratorRunId: 'r-orch-6c', createdAt: ago(47), updatedAt: ago(20) },
+        { id: 'c-6e', projectId, title: 'Load test the checkout', mode: 'autopilot', parentChatId: 'c-6', orchestratorRunId: 'r-orch-6e', createdAt: ago(46.5), updatedAt: ago(20) },
     ];
 
     const run = (id: string, name: string, role: Run['role'], status: Run['status'], rest: Partial<Run> = {}): Run => ({
@@ -508,6 +542,29 @@ export function createFixtureData(now = Date.now()): FixtureData {
             createdAt: ago(30),
             startedAt: ago(30),
             context: { used: 31000, size: 250000 },
+        }),
+        // The orchestrators of Ship the checkout and of its threads: a thread's orchestrator is a root run of its own chat, never a child run.
+        run('r-orch-6', 'Orchestrator 06', 'orchestrator', 'succeeded', { chatId: 'c-6', summary: 'Ship the checkout', createdAt: ago(50), startedAt: ago(50), finishedAt: ago(9) }),
+        run('r-orch-6a', 'Orchestrator 07', 'orchestrator', 'running', { chatId: 'c-6a', summary: 'Fix the price rounding', createdAt: ago(48), startedAt: ago(48) }),
+        run('r-orch-6a1', 'Orchestrator 08', 'orchestrator', 'succeeded', { chatId: 'c-6a1', summary: 'Check the currency table', createdAt: ago(46), startedAt: ago(46), finishedAt: ago(25) }),
+        run('r-orch-6b', 'Orchestrator 09', 'orchestrator', 'succeeded', { chatId: 'c-6b', summary: 'Write the refund tests', createdAt: ago(47.5), startedAt: ago(47.5), finishedAt: ago(20) }),
+        run('r-orch-6c', 'Orchestrator 10', 'orchestrator', 'failed', {
+            chatId: 'c-6c',
+            summary: 'Migrate the payments table',
+            error: MIGRATION_FAILURE,
+            createdAt: ago(47),
+            startedAt: ago(47),
+            finishedAt: ago(20),
+        }),
+        run('r-orch-6e', 'Orchestrator 11', 'orchestrator', 'waiting_background', {
+            chatId: 'c-6e',
+            summary: 'Load test the checkout',
+            engine: 'codex',
+            model: 'gpt-6.2-sol',
+            statusReason: 'Waiting for background work',
+            background: [{ id: 'bg-k6', kind: 'command', title: 'k6 run checkout-long.js' }],
+            createdAt: ago(46.5),
+            startedAt: ago(46.5),
         }),
     ];
 
@@ -626,6 +683,73 @@ export function createFixtureData(now = Date.now()): FixtureData {
         [29, { kind: 'tool', toolCallId: 'tc-o5-1', name: 'Bash', state: 'done', input: { command: 'bun run test', run_in_background: true }, output: 'Command running in background with ID: bg-1' }],
         [29, { kind: 'tool', toolCallId: 'tc-o5-2', name: 'Bash', state: 'done', input: { command: 'bun run typecheck', run_in_background: true }, output: 'Command running in background with ID: bg-2' }],
         [28, { kind: 'assistant', done: true, text: 'Both are running. I will report here when they finish.' }],
+    ]);
+
+    // The parent: it started four threads, was told when three of them stopped, and answered the one that asked it something.
+    const fromParent = { kind: 'thread', chatId: 'c-6', title: 'Ship the checkout' } as const;
+
+    stream('r-orch-6', [
+        [50, { kind: 'user', text: 'Ship the new checkout: fix the price rounding, write the refund tests, migrate the payments table and load test the whole flow.' }],
+        [49, { kind: 'assistant', done: true, text: 'Four parts that do not depend on each other, so each gets a thread of its own. I will stay here and put the results together.' }],
+        [48, { kind: 'tool', toolCallId: 'tc-o6-1', name: 'Bash', state: 'done', input: { command: 'clowdy thread spawn --title "Fix the price rounding" --prompt-file rounding.md', description: 'Start a thread for the price rounding' }, output: 'c-6a' }],
+        [47.5, { kind: 'tool', toolCallId: 'tc-o6-2', name: 'Bash', state: 'done', input: { command: 'clowdy thread spawn --title "Write the refund tests" --prompt-file refunds.md', description: 'Start a thread for the refund tests' }, output: 'c-6b' }],
+        [47, { kind: 'tool', toolCallId: 'tc-o6-3', name: 'Bash', state: 'done', input: { command: 'clowdy thread spawn --title "Migrate the payments table" --prompt-file migration.md', description: 'Start a thread for the migration' }, output: 'c-6c' }],
+        [46.5, { kind: 'tool', toolCallId: 'tc-o6-4', name: 'Bash', state: 'done', input: { command: 'clowdy thread spawn --title "Load test the checkout" --engine codex --prompt-file load.md', description: 'Start a thread for the load test' }, output: 'c-6e' }],
+        [46, { kind: 'assistant', done: true, text: 'Four threads are working. I will report what each of them finds.' }],
+        [20, {
+            kind: 'user',
+            text: '',
+            from: {
+                kind: 'threadNotice',
+                threads: [
+                    { chatId: 'c-6b', title: 'Write the refund tests', outcome: 'finished', text: REFUND_ANSWER },
+                    { chatId: 'c-6c', title: 'Migrate the payments table', outcome: 'failed', text: MIGRATION_FAILURE },
+                    { chatId: 'c-6e', title: 'Load test the checkout', outcome: 'finished', text: LOAD_ANSWER, background: ['k6 run checkout-long.js'] },
+                ],
+            },
+        }],
+        [19, { kind: 'assistant', done: true, text: 'The refund tests are in. The migration failed because staging already has the column, so I will not touch staging without you. The long load run is still going.' }],
+        [10, { kind: 'user', text: 'The rounding helper is shared with the invoices. Should I change both, or only the checkout?', from: { kind: 'thread', chatId: 'c-6a', title: 'Fix the price rounding' } }],
+        [9, { kind: 'tool', toolCallId: 'tc-o6-5', name: 'Bash', state: 'done', input: { command: 'clowdy thread tell c-6a "Change both, and add a test for the invoice total."', description: 'Answer the price rounding thread' }, output: 'Sent' }],
+        [9, { kind: 'assistant', done: true, text: 'I told the rounding thread to change both and to cover the invoice total with a test.' }],
+    ]);
+
+    stream('r-orch-6a', [
+        [48, { kind: 'user', text: 'Fix the price rounding in the checkout: totals are off by a cent on some weekend bookings. Keep the existing tests green.', from: fromParent }],
+        [47, { kind: 'assistant', done: true, text: 'I will find where the total is rounded, and have a thread check the currency table meanwhile.' }],
+        [46, { kind: 'tool', toolCallId: 'tc-o6a-1', name: 'Bash', state: 'done', input: { command: 'clowdy thread spawn --title "Check the currency table" --prompt "List the decimals of every currency"', description: 'Start a thread for the currency table' }, output: 'c-6a1' }],
+        [40, { kind: 'tool', toolCallId: 'tc-o6a-2', name: 'Read', state: 'done', input: { file_path: 'src/booking/price.ts' }, output: 'export const total = (days: number[]) => round(sum(days));' }],
+        [11, { kind: 'assistant', done: true, text: 'The helper is shared with the invoices, so I asked which of them to change.' }],
+        [10, { kind: 'tool', toolCallId: 'tc-o6a-3', name: 'Bash', state: 'done', input: { command: 'clowdy thread tell --parent "The rounding helper is shared with the invoices. Should I change both, or only the checkout?"', description: 'Ask the parent' }, output: 'Sent' }],
+        [9, { kind: 'user', text: 'Change both, and add a test for the invoice total.', from: fromParent }],
+        [8, { kind: 'assistant', done: true, text: 'Changing both now.' }],
+        [2, { kind: 'tool', toolCallId: 'tc-o6a-4', name: 'Bash', state: 'running', input: { command: 'bun test src/checkout' } }],
+    ]);
+
+    stream('r-orch-6a1', [
+        [46, { kind: 'user', text: 'List the decimals of every currency in the rates table and flag any that is not two.', from: { kind: 'thread', chatId: 'c-6a', title: 'Fix the price rounding' } }],
+        [44, { kind: 'tool', toolCallId: 'tc-o6a1-1', name: 'Grep', state: 'done', input: { pattern: 'decimals', path: 'src/db' }, output: 'src/db/currencies.ts:3' }],
+        [25, { kind: 'assistant', done: true, text: CURRENCY_ANSWER }],
+    ]);
+
+    stream('r-orch-6b', [
+        [47.5, { kind: 'user', text: 'Write tests for the refund rules: a full refund until 24 hours before pickup, half after that, none once the car is out.', from: fromParent }],
+        [30, { kind: 'tool', toolCallId: 'tc-o6b-1', name: 'Write', state: 'done', input: { file_path: 'src/payments/refund.test.ts' }, output: 'The file was written.' }],
+        [21, { kind: 'tool', toolCallId: 'tc-o6b-2', name: 'Bash', state: 'done', input: { command: 'bun test src/payments' }, output: '14 pass, 0 fail' }],
+        [20, { kind: 'assistant', done: true, text: REFUND_ANSWER }],
+    ]);
+
+    stream('r-orch-6c', [
+        [47, { kind: 'user', text: 'Add an amount_cents column to payments and move the data over. Run it against staging once it works locally.', from: fromParent }],
+        [25, { kind: 'tool', toolCallId: 'tc-o6c-1', name: 'Bash', state: 'error', input: { command: 'bun run migrate --env staging' }, error: 'column "amount_cents" of relation "payments" already exists' }],
+        [20, { kind: 'error', text: MIGRATION_FAILURE }],
+    ]);
+
+    stream('r-orch-6e', [
+        [46.5, { kind: 'user', text: 'Load test the checkout: a short run first, then a long one, and report the error rate.', from: fromParent }],
+        [40, { kind: 'tool', toolCallId: 'tc-o6e-1', name: 'Bash', state: 'done', input: { command: 'k6 run checkout-short.js' }, output: 'http_reqs: 7200 (120/s), http_req_failed: 0.00%' }],
+        [21, { kind: 'tool', toolCallId: 'tc-o6e-2', name: 'Bash', state: 'done', input: { command: 'k6 run checkout-long.js', run_in_background: true }, output: 'Command running in background with ID: bg-k6' }],
+        [20, { kind: 'assistant', done: true, text: LOAD_ANSWER }],
     ]);
 
     stream('r-orch-2', [

@@ -8,8 +8,8 @@ import { RunDetail } from './RunDetail';
 import styles from './Screen.module.css';
 
 /**
- * Agents: the list of chats on the left, and beside it the selected one: a chat with its message box, a sub-agent's run of a
- * chat (its work, read only), or the new-chat row.
+ * Agents: the list of chats on the left, each with its threads below it, and beside it the selected one: a chat (a thread is one) with its
+ * message box, a sub-agent's run of a chat (its work, read only), or the new-chat row.
  */
 export function Screen() {
     const project = useProjectState();

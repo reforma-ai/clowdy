@@ -15,6 +15,7 @@ import { NO_LINKS, StreamLinksContext, type StreamLinks } from './StreamLinks';
 import styles from './StreamView.module.css';
 import { SubagentCard } from './SubagentCard';
 import { isSubagentTool } from './subagents';
+import { ThreadMessageCard, ThreadNoticeCards } from './ThreadCards';
 import { ToolCard } from './ToolCard';
 import { turnMarks } from './turnMarks';
 import { TurnRail } from './TurnRail';
@@ -45,7 +46,8 @@ export interface StreamViewProps {
 }
 
 /**
- * A run's stream: the person's messages, the agent's, tool calls, notes, questions and errors, kept scrolled to the end
+ * A run's stream: the person's messages, the agent's, tool calls, notes, questions and errors, and the cards of other threads (a message from one,
+ * threads that stopped), kept scrolled to the end
  * while it is there. A turn that is over shows what was asked and the answer, and the work between them under one
  * "Worked for" line.
  */
@@ -70,6 +72,11 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
 
         switch (body.kind) {
             case 'user':
+                // A message another thread wrote, or threads that stopped, is a card: the person did not write it.
+                if (body.from?.kind === 'thread') return <ThreadMessageCard turn={ item.id } chatId={ body.from.chatId } title={ body.from.title } text={ body.text } />;
+
+                if (body.from?.kind === 'threadNotice') return <ThreadNoticeCards turn={ item.id } threads={ body.from.threads } />;
+
                 return <UserBubble turn={ item.id } text={ body.text } attachments={ body.attachments } at={ item.at } animate={ !shown.has(item.id) } />;
             case 'assistant':
                 return <AssistantMessage text={ body.text } streaming={ !body.done } />;

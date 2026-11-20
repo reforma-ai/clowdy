@@ -1,11 +1,27 @@
 import { Shimmer } from '@clowdy/components/Shimmer';
-import { BackgroundTask, Robot } from '@clowdy/icons/14';
+import { BackgroundTask, Robot, Split } from '@clowdy/icons/14';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { useAgentActivity } from '../../stream/useAgentActivity';
+import { openChat } from './archiveChat';
 import { perform } from './commands';
 import { ComposerBanner, ComposerBannerHeader, ComposerBannerStatus } from './ComposerBanner';
-import { agentRowLabel, agentRowText, backgroundRowText, canStopAlone, MAX_AGENT_ROWS, offersStopAll, openBackground, runningAgents, unlistedBackground } from './runningAgentRows';
+import {
+    agentRowLabel,
+    agentRowText,
+    backgroundRowText,
+    canStopAlone,
+    MAX_AGENT_ROWS,
+    offersStopAll,
+    openBackground,
+    runningAgents,
+    stripRows,
+    threadRowText,
+    threadsAtWork,
+    unlistedBackground,
+    type StripRow,
+    type ThreadAtWork,
+} from './runningAgentRows';
 
 import type { Chat, Run, RunId } from '@clowdy/protocol';
 
@@ -33,17 +49,47 @@ function AgentRow({ run }: { run: Run }) {
 }
 
 /**
- * The line over the agents' rows. Stop all stops every agent that can stop alone and lets the orchestrator go on, knowing they were stopped
- * (`run.stopAgents`): unlike the composer's Stop, which ends the whole run. It is there when two or more rows have a Stop of their own.
+ * A thread of the chat at work: its title and what it does. The row opens the thread's chat; Stop ends that thread alone (`run.cancel` of its
+ * orchestrator, which holds the thread's queue as the person's Stop on a chat does) and leaves this chat and its other threads going.
  */
-function AgentsHeader({ runId, stopAll }: { runId: RunId; stopAll: boolean }) {
+function ThreadRow({ chat, run }: ThreadAtWork) {
     const root = useRootStore();
+    const project = useProjectState();
+    const ui = useProjectUi();
+    const working = run.status === 'running';
+    const { activity } = useAgentActivity(working ? run.id : undefined);
+    const text = threadRowText(chat, run, activity);
 
     return (
-        <ComposerBannerHeader
-            action={ stopAll ? 'Stop all' : undefined }
-            onAction={ stopAll ? () => void perform(root, { type: 'run.stopAgents', runId }) : undefined }
+        <ComposerBannerStatus
+            icon={ <Split /> }
+            action="Stop"
+            onAction={ () => void perform(root, { type: 'run.cancel', runId: run.id }) }
+            onPress={ () => void openChat(root, project, ui, chat.id) }
+            pressLabel={ `Open ${ chat.title }. ${ text }` }
         >
+            { working ? <Shimmer duration={ 1 }>{ text }</Shimmer> : text }
+        </ComposerBannerStatus>
+    );
+}
+
+/**
+ * The line over the rows. Stop all stops every sub-agent that can stop alone and lets the orchestrator go on, knowing they were stopped
+ * (`run.stopAgents`), and stops every thread at work (one `run.cancel` each): unlike the composer's Stop, which ends the whole run. It is there
+ * when two or more rows have a Stop of their own.
+ */
+function AgentsHeader({ orchestrator, agents, threads }: { orchestrator: Run | undefined; agents: readonly Run[]; threads: readonly ThreadAtWork[] }) {
+    const root = useRootStore();
+    const stopAll = offersStopAll(agents, threads.length);
+
+    const stop = () => {
+        if (orchestrator && agents.some(canStopAlone)) void perform(root, { type: 'run.stopAgents', runId: orchestrator.id });
+
+        threads.forEach(({ run }) => void perform(root, { type: 'run.cancel', runId: run.id }));
+    };
+
+    return (
+        <ComposerBannerHeader action={ stopAll ? 'Stop all' : undefined } onAction={ stopAll ? stop : undefined }>
             Agents running
         </ComposerBannerHeader>
     );
@@ -67,26 +113,33 @@ function BackgroundRow({ runId, count }: { runId: RunId; count: number }) {
     );
 }
 
+function Row({ row }: { row: StripRow }) {
+    return row.kind === 'agent' ? <AgentRow run={ row.run } /> : <ThreadRow chat={ row.chat } run={ row.run } />;
+}
+
 /**
  * The work of the chat that goes on now, one row each above the message box (Reforma's `ChatComposerSubagents`): under a line that says "Agents running"
- * (with Stop all when two or more rows can stop alone), the agents, who it is, what it does, how many tools it called (a row opens the agent's run,
- * and Stop ends that sub-agent alone when its session can end it), then one row for the rest of the background
- * work the orchestrator has open. Each thing is in one row: a sub-agent with a child run is its row, not a count. Nothing while there is none of either.
+ * (with Stop all when two or more rows can stop alone), the native sub-agents of the orchestrator and the threads of the chat that work, oldest
+ * first, each with who it is and what it does (a sub-agent's row opens its run, a thread's row opens the thread's chat; Stop ends that one alone), then
+ * one row for the rest of the background work the orchestrator has open. Each thing is in one row: a sub-agent with a child run is its row, not a
+ * count. Nothing while there is none of either.
  */
 export function RunningAgents({ chat }: { chat: Chat }) {
     const project = useProjectState();
     const agents = runningAgents(project.runs.values(), chat.orchestratorRunId);
+    const threads = threadsAtWork(project.threadsOf(chat.id), project.runs);
+    const rows = stripRows(agents, threads);
     const orchestrator = chat.orchestratorRunId === undefined ? undefined : project.runs.get(chat.orchestratorRunId);
     // A sub-agent with a child run is one of the rows above, and is not counted again here.
     const background = unlistedBackground(openBackground(orchestrator), agents);
-    const hidden = agents.length - MAX_AGENT_ROWS;
+    const hidden = rows.length - MAX_AGENT_ROWS;
 
-    if (agents.length === 0 && background.length === 0) return null;
+    if (rows.length === 0 && background.length === 0) return null;
 
     return (
         <ComposerBanner role="group" aria-label="Work in progress">
-            { orchestrator && agents.length > 0 && <AgentsHeader runId={ orchestrator.id } stopAll={ offersStopAll(agents) } /> }
-            { agents.slice(0, MAX_AGENT_ROWS).map(run => <AgentRow key={ run.id } run={ run } />) }
+            { rows.length > 0 && <AgentsHeader orchestrator={ orchestrator } agents={ agents } threads={ threads } /> }
+            { rows.slice(0, MAX_AGENT_ROWS).map(row => <Row key={ row.id } row={ row } />) }
             { hidden > 0 && <ComposerBannerStatus icon={ <Robot /> }>{ `${ hidden } more ${ hidden === 1 ? 'agent' : 'agents' } at work` }</ComposerBannerStatus> }
             { orchestrator && background.length > 0 && <BackgroundRow runId={ orchestrator.id } count={ background.length } /> }
         </ComposerBanner>

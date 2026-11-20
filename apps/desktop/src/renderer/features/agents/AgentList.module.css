@@ -31,3 +31,43 @@
 .newChat.newChat {
     padding-inline-end: calc((var(--clowdy-listbox-item-height) - (var(--leading-xs) + 2 * var(--spacing-2))) / 2);
 }
+
+/*
+ * The chevron sits in the row's own left padding, so it takes no room from the row: the icon of every row stays where the
+ * list puts it. A thread's padding grows by one level (`--depth`), and the chevron moves with it.
+ */
+.fold {
+    position: absolute;
+    top: 50%;
+    inset-inline-start: calc(var(--depth, 0) * var(--spacing-20));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-12);
+    height: var(--spacing-16);
+    transform: translateY(-50%);
+}
+
+.chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-secondary-muted-text);
+    cursor: pointer;
+}
+
+.chevron:hover {
+    background-color: var(--color-secondary-muted);
+    color: var(--color-text);
+}
+
+/* A thread below a chat: one level in from the row it belongs to, per level. Doubled so it outranks the list's own padding. */
+.nested.nested {
+    padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) + var(--depth) * var(--spacing-20));
+}

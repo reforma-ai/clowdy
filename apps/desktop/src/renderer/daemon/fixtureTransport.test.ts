@@ -538,3 +538,169 @@ describe('FixtureTransport agents', () => {
         expect(types()).toContain('agents.changed');
     });
 });
+
+/*
+ * The threads of c-6 (Ship the checkout, at rest): c-6a (running, with a notice of its thread c-6a1 waiting in its queue), c-6b (done), c-6c (failed),
+ * c-6e (waiting for background work); c-6a1 (done) is the thread of c-6a.
+ */
+describe('FixtureTransport threads', () => {
+    const snapshot = (transport: FixtureTransport) => transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+    const chatOf = async (transport: FixtureTransport, id: string) => (await snapshot(transport)).chats.find(chat => chat.id === id);
+    const runOf = async (transport: FixtureTransport, id: string) => (await snapshot(transport)).runs.find(run => run.id === id);
+    const lastUser = async (transport: FixtureTransport, chatId: string) => (await transport.getItems({ chatId })).findLast(item => item.body.kind === 'user')?.body;
+
+    it('seeds threads as chats below their parent, each answered by a root run of its own, in every state the app draws', async () => {
+        const { chats, runs } = await snapshot(new FixtureTransport());
+        const threads = chats.filter(chat => chat.parentChatId !== undefined);
+        const statusOf = (chatId: string) => runs.find(run => run.chatId === chatId)?.status;
+
+        expect(threads.map(chat => [chat.id, chat.parentChatId])).toEqual([['c-6a', 'c-6'], ['c-6a1', 'c-6a'], ['c-6b', 'c-6'], ['c-6c', 'c-6'], ['c-6e', 'c-6']]);
+        expect(threads.map(chat => runs.find(run => run.id === chat.orchestratorRunId)).every(run => run?.role === 'orchestrator' && run.parentRunId === undefined && run.rootRunId === run.id)).toBe(true);
+        expect(threads.map(chat => statusOf(chat.id))).toEqual(['running', 'succeeded', 'succeeded', 'failed', 'waiting_background']);
+        expect(chats.find(chat => chat.id === 'c-6a')?.queue?.[0]).toMatchObject({ text: 'Thread "Check the currency table" finished', from: { kind: 'threadNotice' } });
+    });
+
+    it('opens every thread with a message from its parent, and tells the parent what stopped', async () => {
+        const transport = new FixtureTransport();
+
+        expect((await transport.getItems({ chatId: 'c-6b' }))[0].body).toMatchObject({ kind: 'user', from: { kind: 'thread', chatId: 'c-6', title: 'Ship the checkout' } });
+        expect((await transport.getItems({ chatId: 'c-6' })).flatMap(item => (item.body.kind === 'user' && item.body.from?.kind === 'threadNotice' ? item.body.from.threads.map(entry => entry.outcome) : []))).toEqual(['finished', 'failed', 'finished']);
+    });
+
+    it('stops a thread alone: its run is cancelled and its queue held, its parent and the other threads go on', async () => {
+        const { transport } = await connected();
+
+        await transport.command({ type: 'run.cancel', runId: 'r-orch-6a' });
+
+        expect((await runOf(transport, 'r-orch-6a'))?.status).toBe('cancelled');
+        expect((await chatOf(transport, 'c-6a'))?.queuePaused).toBe('stopped');
+        expect([(await runOf(transport, 'r-orch-6'))?.status, (await runOf(transport, 'r-orch-6e'))?.status]).toEqual(['succeeded', 'waiting_background']);
+    });
+
+    it('refuses to archive or delete a chat while one of its threads works, and takes the threads with it once they are stopped', async () => {
+        const { transport, events } = await connected();
+
+        for (const type of ['chat.setArchived', 'chat.delete'] as const) {
+            const refused = await transport.command(type === 'chat.delete' ? { type, chatId: 'c-6' } : { type, chatId: 'c-6', archived: true });
+
+            expect(refused.ok ? '' : refused.error.code).toBe('conflict');
+        }
+
+        await transport.command({ type: 'run.cancel', runId: 'r-orch-6a' });
+        await transport.command({ type: 'run.cancel', runId: 'r-orch-6e' });
+        await vi.advanceTimersByTimeAsync(0);
+        events.length = 0;
+
+        expect((await transport.command({ type: 'chat.setArchived', chatId: 'c-6', archived: true })).ok).toBe(true);
+        await vi.advanceTimersByTimeAsync(0);
+
+        const archived = events.flatMap(event => (event.data.type === 'chat.upserted' ? [event.data.chat.id] : []));
+
+        // Each thread before its parent, the chat itself last.
+        expect(archived).toEqual(['c-6a1', 'c-6e', 'c-6c', 'c-6b', 'c-6a', 'c-6']);
+        expect((await snapshot(transport)).chats.filter(chat => chat.id.startsWith('c-6')).every(chat => chat.archivedAt !== undefined)).toBe(true);
+
+        // Back from the archive: the chat alone.
+        await transport.command({ type: 'chat.setArchived', chatId: 'c-6', archived: false });
+
+        expect((await chatOf(transport, 'c-6'))?.archivedAt).toBeUndefined();
+        expect((await chatOf(transport, 'c-6a'))?.archivedAt).toBeDefined();
+    });
+
+    it('deletes a chat with every thread below it, archived ones too, and their runs', async () => {
+        const { transport, events } = await connected();
+
+        await transport.command({ type: 'run.cancel', runId: 'r-orch-6a' });
+        await transport.command({ type: 'run.cancel', runId: 'r-orch-6e' });
+        await transport.command({ type: 'chat.setArchived', chatId: 'c-6b', archived: true });
+        await vi.advanceTimersByTimeAsync(0);
+        events.length = 0;
+
+        expect((await transport.command({ type: 'chat.delete', chatId: 'c-6' })).ok).toBe(true);
+        await vi.advanceTimersByTimeAsync(0);
+
+        const deleted = events.flatMap(event => (event.data.type === 'chat.deleted' ? [[event.data.chatId, event.data.runIds]] : []));
+        const after = await snapshot(transport);
+
+        expect(deleted).toEqual([['c-6a1', ['r-orch-6a1']], ['c-6e', ['r-orch-6e']], ['c-6c', ['r-orch-6c']], ['c-6b', ['r-orch-6b']], ['c-6a', ['r-orch-6a']], ['c-6', ['r-orch-6']]]);
+        expect(after.chats.some(chat => chat.id.startsWith('c-6'))).toBe(false);
+        expect(after.runs.some(run => run.id.startsWith('r-orch-6'))).toBe(false);
+    });
+
+    it('takes a message to a thread in that thread\'s chat, and tells its parent at rest when the turn ends, which starts the parent\'s turn', async () => {
+        const { transport } = await connected();
+        const parentBefore = (await transport.getItems({ chatId: 'c-6' })).length;
+
+        await transport.command({ type: 'chat.send', chatId: 'c-6b', text: 'Add a case for a refund in another currency' });
+
+        expect(await lastUser(transport, 'c-6b')).toEqual({ kind: 'user', text: 'Add a case for a refund in another currency' });
+        expect((await transport.getItems({ chatId: 'c-6' })).length).toBe(parentBefore);
+
+        await vi.advanceTimersByTimeAsync(1500);
+
+        expect(await lastUser(transport, 'c-6')).toMatchObject({
+            kind: 'user',
+            text: '',
+            from: { kind: 'threadNotice', threads: [{ chatId: 'c-6b', title: 'Write the refund tests', outcome: 'finished', text: expect.stringContaining('Got it') }] },
+        });
+        expect((await runOf(transport, 'r-orch-6'))?.status).toBe('running');
+    });
+
+    it('queues the notice for a busy parent, merged with the notices already waiting, the latest of a thread winning', async () => {
+        const data = createFixtureData();
+
+        data.chats.push({ ...data.chats.find(chat => chat.id === 'c-6a1')!, id: 'c-6a2', title: 'Check the tax table', orchestratorRunId: 'r-orch-6a2' });
+        data.runs.push({ ...data.runs.find(run => run.id === 'r-orch-6a1')!, id: 'r-orch-6a2', rootRunId: 'r-orch-6a2', chatId: 'c-6a2' });
+
+        const { transport } = await connected({ data });
+
+        await transport.command({ type: 'chat.send', chatId: 'c-6a1', text: 'Check the rates again' });
+        await transport.command({ type: 'chat.send', chatId: 'c-6a2', text: 'Check the taxes' });
+        await vi.advanceTimersByTimeAsync(1500);
+
+        const [item, ...rest] = (await chatOf(transport, 'c-6a'))?.queue ?? [];
+
+        expect(rest).toEqual([]);
+        expect(item).toMatchObject({ id: 'q-notice-6a', mode: 'queue', text: '2 threads stopped' });
+        expect(item.from?.kind === 'threadNotice' && item.from.threads.map(entry => [entry.chatId, entry.text?.slice(0, 6)])).toEqual([['c-6a1', 'Got it'], ['c-6a2', 'Got it']]);
+        expect((await runOf(transport, 'r-orch-6a'))?.status).toBe('running');
+    });
+
+    it('holds the notice in a parent whose queue is held, and sends a queued notice as a turn without words of its own', async () => {
+        const { transport } = await connected();
+
+        await transport.command({ type: 'run.cancel', runId: 'r-orch-6a' });
+        await transport.command({ type: 'chat.send', chatId: 'c-6a1', text: 'Check the rates again' });
+        await vi.advanceTimersByTimeAsync(1500);
+
+        expect((await chatOf(transport, 'c-6a'))?.queue).toHaveLength(1);
+        expect((await runOf(transport, 'r-orch-6a'))?.status).toBe('cancelled');
+
+        await transport.command({ type: 'chat.sendQueued', chatId: 'c-6a', itemId: 'q-notice-6a' });
+
+        expect(await lastUser(transport, 'c-6a')).toMatchObject({ kind: 'user', text: '', from: { kind: 'threadNotice' } });
+        expect((await chatOf(transport, 'c-6a'))?.queue).toBeUndefined();
+    });
+
+    it('tells no parent of a thread that was stopped, or of a parent in the archive', async () => {
+        const { transport } = await connected();
+
+        await transport.command({ type: 'chat.send', chatId: 'c-6b', text: 'One more case' });
+        await transport.command({ type: 'run.cancel', runId: 'r-orch-6b' });
+        await vi.advanceTimersByTimeAsync(1500);
+
+        expect((await runOf(transport, 'r-orch-6'))?.status).toBe('succeeded');
+
+        await transport.command({ type: 'chat.setArchived', chatId: 'c-6a1', archived: true });
+        await transport.command({ type: 'run.cancel', runId: 'r-orch-6a' });
+        await transport.command({ type: 'chat.setArchived', chatId: 'c-6a', archived: true });
+        await transport.command({ type: 'chat.send', chatId: 'c-6a1', text: 'Again' });
+        await vi.advanceTimersByTimeAsync(1500);
+
+        // The notice that waited is the same one: a new one would have replaced the thread's words with the reply to `Again`.
+        const queue = (await chatOf(transport, 'c-6a'))?.queue ?? [];
+
+        expect(queue).toHaveLength(1);
+        expect(queue[0].from?.kind === 'threadNotice' && queue[0].from.threads.map(entry => entry.text)).toEqual(['Every currency in the table has two decimals except JPY, which has none.']);
+    });
+});

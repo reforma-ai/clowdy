@@ -21,9 +21,10 @@ vi.mock('./RunDetail', () => ({ RunDetail: ({ run }: { run: { id: string; name: 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /*
- * The Agents screen on the fixture project. Chats by activity: c-1 (Simplify booking, orchestrator r-orch-1), c-4 (empty), c-5, c-3, c-2.
- * Native sub-agents live in r-orch-1's session (r-na-01 to r-na-04): cards in its stream, never rows. The test build has no MobX observer
- * plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
+ * The Agents screen on the fixture project. Chats by activity: c-1 (Simplify booking, orchestrator r-orch-1), c-4 (empty), c-6 (Ship the checkout,
+ * at rest, with threads), c-5, c-3, c-2. The threads of c-6, oldest first: c-6a (Fix the price rounding, working, with the finished thread c-6a1),
+ * c-6b (finished), c-6c (failed), c-6e (waiting for background work). Native sub-agents live in r-orch-1's session (r-na-01 to r-na-04): cards in its
+ * stream, never rows. The test build has no MobX observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
  */
 
 const memoryStorage = (): KeyValueStorage => {
@@ -77,7 +78,7 @@ afterEach(() => {
 describe('the list', () => {
     it('starts with the new-chat row, then the chats, and has no row for a run', () => {
         // The orchestrator is the chat, and a native sub-agent is a card on the call that started it: neither is a row.
-        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
     });
 
     it('marks a chat that started with the provider it runs on, and one that has not with the speech bubble', async () => {
@@ -103,7 +104,7 @@ describe('the list', () => {
     it('sorts the chats by last activity until the Filters menu asks for the order they were made in', async () => {
         const chatKeys = () => rowKeys().filter(key => key?.startsWith('c-'));
 
-        expect(chatKeys()).toEqual(['c-1', 'c-4', 'c-5', 'c-3', 'c-2']);
+        expect(chatKeys()).toEqual(['c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
 
         await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
 
@@ -114,13 +115,13 @@ describe('the list', () => {
         await press(menuItem('Created'));
         expect(ui().chatSort).toBe('created');
         await draw();
-        expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-1', 'c-2']);
+        expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
 
         // A message in a chat does not move it now.
         await draw(() => {
             project().chats.set('c-2', { ...project().chats.get('c-2')!, updatedAt: Date.now() });
         });
-        expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-1', 'c-2']);
+        expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
     });
 
     it('keeps the row of an open `⋯` menu as if hovered, since the pointer is in the menu and not on the row', async () => {
@@ -290,7 +291,7 @@ describe('the archive', () => {
         await archive('c-4', true);
 
         expect(rowKeys()).toEqual(expect.not.arrayContaining(['c-2', 'c-4']));
-        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-5', 'c-3']);
+        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-6', 'c-5', 'c-3']);
 
         await press(buttonNamed('Archive'));
 
@@ -422,5 +423,164 @@ describe('the archive', () => {
         // The 16px history mark, where the others are 14px.
         expect(buttonNamed('Archive').querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 16 16');
         expect(rowIcon.getAttribute('viewBox')).toBe('0 0 14 14');
+    });
+});
+
+describe('threads', () => {
+    const foldOf = (key: string) => rowOf(key).querySelector<HTMLButtonElement>('button[aria-label^="Expand"], button[aria-label^="Collapse"]');
+    const depthOf = (key: string) => rowOf(key).getAttribute('data-depth');
+    const dotOf = (key: string) => rowOf(key).querySelector('[role="img"]')?.getAttribute('aria-label');
+    const stopThreads = async () => {
+        for (const runId of ['r-orch-6a', 'r-orch-6e']) await store.command({ type: 'run.cancel', runId });
+
+        await vi.waitFor(() => expect(['r-orch-6a', 'r-orch-6e'].map(id => project().runs.get(id)?.status)).toEqual(['cancelled', 'cancelled']));
+    };
+
+    it('folds a chat\'s threads until it is opened: the chat has a fold and its threads are not rows', () => {
+        expect(rowKeys()).not.toContain('c-6a');
+        expect(foldOf('c-6')?.getAttribute('aria-label')).toBe('Expand Ship the checkout threads');
+        expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('false');
+        expect(foldOf('c-1')).toBeNull();
+    });
+
+    it('lists the threads below their chat, one level in and in the order they were made, once the fold is opened, and at every depth', async () => {
+        await act(async () => foldOf('c-6')!.click());
+        expect(ui().expandedChats).toEqual(['c-6']);
+        await draw();
+
+        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e', 'c-5', 'c-3', 'c-2']);
+        expect(['c-6', 'c-6a', 'c-6e'].map(depthOf)).toEqual(['0', '1', '1']);
+        expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('true');
+
+        await act(async () => foldOf('c-6a')!.click());
+        await draw();
+
+        expect(rowKeys().slice(3, 6)).toEqual(['c-6', 'c-6a', 'c-6a1']);
+        expect(depthOf('c-6a1')).toBe('2');
+
+        // Folding the chat hides every thread below it, the thread's own threads too.
+        await act(async () => foldOf('c-6')!.click());
+        await draw();
+
+        expect(rowKeys().filter(key => key?.startsWith('c-6'))).toEqual(['c-6']);
+    });
+
+    it('opens a fold with the right arrow and closes it with the left one', async () => {
+        const key = (name: string) => act(async () => {
+            rowOf('c-6').dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+        });
+
+        await key('ArrowRight');
+        expect(ui().expandedChats).toEqual(['c-6']);
+        await draw();
+        await key('ArrowLeft');
+        expect(ui().expandedChats).toEqual([]);
+    });
+
+    it('sorts only the chats the person made: threads keep the order they were made in, whatever the sort', async () => {
+        await draw(() => {
+            ui().toggleChatExpanded('c-6');
+            ui().setChatSort('created');
+            project().chats.set('c-6e', { ...project().chats.get('c-6e')!, updatedAt: Date.now() });
+        });
+
+        expect(rowKeys().filter(key => key?.startsWith('c-6'))).toEqual(['c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e']);
+    });
+
+    it('has a Show group in the Filters menu with one check, Finished threads, that hides the threads whose run is over', async () => {
+        await draw(() => ['c-6', 'c-6a'].forEach(id => ui().toggleChatExpanded(id)));
+        await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
+
+        expect(document.body.textContent).toContain('Show');
+        expect(menuItem('Finished threads').getAttribute('aria-checked')).toBe('true');
+        expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual(['Finished threads', 'Last activity', 'Created']);
+
+        await press(menuItem('Finished threads'));
+        expect(ui().showFinishedThreads).toBe(false);
+        await draw();
+
+        // The working thread and the one waiting for its background work stay; c-6a's own thread is done, so c-6a has nothing to fold.
+        expect(rowKeys().filter(key => key?.startsWith('c-6'))).toEqual(['c-6', 'c-6a', 'c-6e']);
+        expect(foldOf('c-6a')).toBeNull();
+    });
+
+    it('keeps a finished thread listed while it is the open chat', async () => {
+        await draw(() => {
+            ui().setShowFinishedThreads(false);
+            ui().openChat('c-6b');
+        });
+        // The screen opened the fold above it: drawn again, as the observer would.
+        await draw();
+
+        expect(rowKeys()).toContain('c-6b');
+        expect(isSelected('c-6b')).toBe(true);
+    });
+
+    it('opens the folds above a thread opened from elsewhere, and lets the person fold them again', async () => {
+        await draw(() => ui().openChat('c-6a1'));
+        await draw();
+
+        expect(ui().expandedChats).toEqual(expect.arrayContaining(['c-6', 'c-6a']));
+        expect(isSelected('c-6a1')).toBe(true);
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-6a1');
+
+        await act(async () => foldOf('c-6')!.click());
+        await draw();
+
+        expect(rowKeys()).not.toContain('c-6a1');
+        expect(ui().expandedChats).not.toContain('c-6');
+    });
+
+    it('marks a chat at rest whose threads work with the working dot, and each thread with its own state', async () => {
+        await draw(() => ui().toggleChatExpanded('c-6'));
+
+        expect(dotOf('c-6')).toBe('Threads working');
+        expect(dotOf('c-6a')).toBe('Working');
+        expect(dotOf('c-6c')).toBe('Failed');
+        expect(dotOf('c-6b')).toBeUndefined();
+        expect(rowOf('c-6e').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe('codex');
+    });
+
+    it('offers no Archive on a chat whose threads work, and offers it on a finished thread', async () => {
+        await draw(() => ui().toggleChatExpanded('c-6'));
+
+        expect(rowOf('c-6').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(true);
+        expect(rowOf('c-6b').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
+
+        await press(rowOf('c-6').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+
+        expect(menuItem('Archive').textContent).toContain('Stop its threads first');
+    });
+
+    it('lists a thread put away alone in the archive by its title, and the threads put away with their chat nowhere on their own', async () => {
+        const archiveTitles = () => [...document.body.querySelectorAll<HTMLElement>('[role="row"]')].filter(row => !container.contains(row)).map(row => row.textContent);
+
+        await store.command({ type: 'chat.setArchived', chatId: 'c-6b', archived: true });
+        await vi.waitFor(() => expect(project().chats.get('c-6b')?.archivedAt).toBeDefined());
+        await draw();
+        await press(buttonNamed('Archive'));
+
+        expect(archiveTitles()).toEqual([expect.stringMatching(/^Write the refund tests/)]);
+
+        await press(buttonNamed('Archive'));
+        await stopThreads();
+        await store.command({ type: 'chat.setArchived', chatId: 'c-6', archived: true });
+        await vi.waitFor(() => expect(project().chats.get('c-6')?.archivedAt).toBeDefined());
+        await draw();
+        await press(buttonNamed('Archive'));
+
+        expect(archiveTitles()).toEqual([expect.stringMatching(/^Ship the checkout/)]);
+        expect(rowKeys().some(key => key?.startsWith('c-6'))).toBe(false);
+    });
+
+    it('asks before deleting a chat with threads, saying how many go with it', async () => {
+        const { openConfirmModal } = await import('@clowdy/components/modals');
+
+        await stopThreads();
+        await draw();
+        await press(rowOf('c-6').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+        await press(menuItem('Delete'));
+
+        expect(openConfirmModal).toHaveBeenCalledWith(expect.objectContaining({ message: '"Ship the checkout", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.' }));
     });
 });

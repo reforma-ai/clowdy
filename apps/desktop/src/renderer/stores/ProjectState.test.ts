@@ -26,7 +26,8 @@ describe('ProjectState', () => {
         expect(state.status).toBe('ready');
         expect(state.cursor).toBe(1000);
         expect(state.tasks.get('t-24')?.title).toBe('Update the booking form');
-        expect(state.chats.size).toBe(5);
+        // Six chats the person made and the five threads of Ship the checkout.
+        expect(state.chats.size).toBe(11);
     });
 
     it('applies an upsert event once its cursor is past the snapshot cursor, and advances', async () => {
@@ -102,7 +103,21 @@ describe('ProjectState', () => {
         expect(state.tasksOfChat('c-1')).toEqual([]);
         expect(runIds.flatMap(runId => state.linksOfRun(runId))).toEqual([]);
         expect(state.tasks.has('t-24')).toBe(true);
-        expect(state.chats.size).toBe(4);
+        expect(state.chats.size).toBe(10);
+    });
+
+    it('knows the threads of each chat, oldest first, archived ones too, and every thread below a chat at any depth', async () => {
+        const { state } = await loadedProject();
+
+        expect(state.threadsOf('c-6').map(chat => chat.id)).toEqual(['c-6a', 'c-6b', 'c-6c', 'c-6e']);
+        expect(state.threadsOf('c-6a').map(chat => chat.id)).toEqual(['c-6a1']);
+        expect(state.threadsOf('c-1')).toEqual([]);
+        expect(state.threadsBelow('c-6').map(chat => chat.id)).toEqual(['c-6a', 'c-6b', 'c-6c', 'c-6e', 'c-6a1']);
+        expect(state.threadsBelow('c-6a1')).toEqual([]);
+
+        state.applyEvent(event(1001, { type: 'chat.upserted', chat: { ...state.chats.get('c-6b')!, archivedAt: 5 } }));
+
+        expect(state.threadsOf('c-6').map(chat => chat.id)).toEqual(['c-6a', 'c-6b', 'c-6c', 'c-6e']);
     });
 
     it('adds and removes links by event', async () => {

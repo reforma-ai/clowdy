@@ -42,6 +42,7 @@ import type {
     Task,
     TaskDetail,
     TaskId,
+    ThreadNotice,
 } from '@clowdy/protocol';
 
 export interface FixtureTransportOptions {
@@ -83,6 +84,27 @@ const COMPACT_TEXT = 'Compact the conversation';
 
 const isCompact = (item: QueuedMessage) => item.command === 'compact';
 const REPLY = 'Got it. I will split this into tasks, start the independent ones in parallel, and report back here.';
+/** What the fixture's agent says when it is told that threads stopped. */
+const NOTICE_REPLY = 'Noted. I will look at what the thread found and carry on.';
+/** How much of a thread's last words its parent is told. */
+const NOTICE_TEXT_MAX = 600;
+
+/** The words of a notice's outcome, as the queue's summary says them. */
+const OUTCOME_SUMMARY: Record<ThreadNotice['outcome'], string> = { finished: 'finished', failed: 'failed', interrupted: 'was interrupted' };
+
+/** The one line a queued notice shows: `Thread "Fix login" finished`, or how many threads stopped. */
+function noticeSummary(threads: readonly ThreadNotice[]): string {
+    if (threads.length === 1) return `Thread "${ threads[0].title }" ${ OUTCOME_SUMMARY[threads[0].outcome] }`;
+
+    return `${ threads.length } threads stopped`;
+}
+
+/** The stream item a queued message becomes when the agent gets it: a notice has no words of its own, a thread's message keeps its sender. */
+function userBody(item: QueuedMessage): StreamItemBody {
+    const text = item.from?.kind === 'threadNotice' ? '' : item.text;
+
+    return { kind: 'user', text, ...(item.attachments && { attachments: item.attachments }), ...(item.from && { from: item.from }) };
+}
 
 /** Puts a message at the end of its own kind (or at `index` in it), the steers before the next turns, as the daemon does. */
 function placeQueued(queue: readonly QueuedMessage[], item: QueuedMessage, index?: number): QueuedMessage[] {
@@ -721,12 +743,19 @@ export class FixtureTransport implements Transport {
                 if (!chat) return fail('not_found', 'No such chat');
 
                 if (command.archived && chat.archivedAt === undefined) {
-                    const busy = data.runs.some(run => (run.chatId === chat.id || (chat.orchestratorRunId !== undefined && run.rootRunId === chat.orchestratorRunId)) && !isTerminalRunStatus(run.status));
+                    const threads = this.#threadsBelow(chat);
 
-                    if (busy) return fail('conflict', 'The agents of this chat are still working. Stop the chat first.');
+                    if (this.#isChatBusy(chat)) return fail('conflict', 'The agents of this chat are still working. Stop the chat first.');
 
-                    chat.archivedAt = Date.now();
-                    this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+                    if (threads.some(thread => this.#isChatBusy(thread))) return fail('conflict', 'A thread of this chat is still working. Stop it first.');
+
+                    // Like the daemon: the threads go with it, each before its parent, so no thread is ever listed without its parent.
+                    const now = Date.now();
+
+                    for (const archived of [...threads.filter(thread => thread.archivedAt === undefined).reverse(), chat]) {
+                        archived.archivedAt = now;
+                        this.#emit(archived.projectId, { type: 'chat.upserted', chat: archived });
+                    }
                 }
                 else if (!command.archived && chat.archivedAt !== undefined) {
                     delete chat.archivedAt;
@@ -740,18 +769,21 @@ export class FixtureTransport implements Transport {
 
                 if (!chat) return fail('not_found', 'No such chat');
 
-                const runs = data.runs.filter(run => run.chatId === chat.id || (chat.orchestratorRunId !== undefined && run.rootRunId === chat.orchestratorRunId));
+                // Like the daemon: the threads below go with it, archived ones too, once no agent of any of them works.
+                const gone = [...this.#threadsBelow(chat).reverse(), chat];
 
-                if (runs.some(run => !isTerminalRunStatus(run.status))) return fail('conflict', 'The agents of this chat are still working. Stop the chat first.');
+                if (gone.some(candidate => this.#isChatBusy(candidate))) return fail('conflict', 'The agents of this chat or of its threads are still working. Stop them first.');
 
-                const runIds = new Set(runs.map(run => run.id));
+                for (const deleted of gone) {
+                    const runIds = new Set(this.#runsOfChat(deleted).map(run => run.id));
 
-                data.chats = data.chats.filter(candidate => candidate.id !== chat.id);
-                data.runs = data.runs.filter(run => !runIds.has(run.id));
-                data.chatTaskLinks = data.chatTaskLinks.filter(link => link.chatId !== chat.id);
-                data.runTaskLinks = data.runTaskLinks.filter(link => !runIds.has(link.runId));
-                runIds.forEach(runId => delete data.items[runId]);
-                this.#emit(chat.projectId, { type: 'chat.deleted', chatId: chat.id, runIds: [...runIds] });
+                    data.chats = data.chats.filter(candidate => candidate.id !== deleted.id);
+                    data.runs = data.runs.filter(run => !runIds.has(run.id));
+                    data.chatTaskLinks = data.chatTaskLinks.filter(link => link.chatId !== deleted.id);
+                    data.runTaskLinks = data.runTaskLinks.filter(link => !runIds.has(link.runId));
+                    runIds.forEach(runId => delete data.items[runId]);
+                    this.#emit(deleted.projectId, { type: 'chat.deleted', chatId: deleted.id, runIds: [...runIds] });
+                }
 
                 return ok({ chatId: chat.id });
             }
@@ -908,6 +940,65 @@ export class FixtureTransport implements Transport {
         return this.#data.runs.filter(run => run.projectId === projectId && !isTerminalRunStatus(run.status)).length;
     }
 
+    /** The runs of a chat: its orchestrator and every run of its tree (native sub-agents). A thread's runs are its own chat's, not its parent's. */
+    #runsOfChat(chat: Chat): Run[] {
+        return this.#data.runs.filter(run => run.chatId === chat.id || (chat.orchestratorRunId !== undefined && run.rootRunId === chat.orchestratorRunId));
+    }
+
+    /** An agent of the chat still works: what the daemon refuses an archive or a delete for. */
+    #isChatBusy(chat: Chat): boolean {
+        return this.#runsOfChat(chat).some(run => !isTerminalRunStatus(run.status));
+    }
+
+    /** Every thread below the chat, at any depth and archived ones too, each after its parent. */
+    #threadsBelow(chat: Chat): Chat[] {
+        const found: Chat[] = [];
+        const seen = new Set([chat.id]);
+
+        for (let index = -1; index < found.length; index++) {
+            const parentId = index < 0 ? chat.id : found[index].id;
+
+            for (const thread of this.#data.chats.filter(candidate => candidate.parentChatId === parentId && !seen.has(candidate.id))) {
+                seen.add(thread.id);
+                found.push(thread);
+            }
+        }
+
+        return found;
+    }
+
+    /**
+     * A thread's turn ended: its parent is told, as the daemon does. A parent at rest (also one that waits for its background work) starts a turn with
+     * the notice at once; a busy one, or one whose queue is held, gets it in its queue, merged with the notices already waiting there (the latest of
+     * a thread wins). Nothing for a turn that said nothing, and nothing for a parent in the archive.
+     */
+    #notifyParent(thread: Chat, run: Run): void {
+        const parent = this.#data.chats.find(candidate => candidate.id === thread.parentChatId);
+        const parentRun = parent && this.#data.runs.find(candidate => candidate.id === parent.orchestratorRunId);
+        const said = this.#data.items[run.id]?.findLast(item => item.body.kind === 'assistant')?.body;
+        const text = said?.kind === 'assistant' ? said.text.trim().slice(0, NOTICE_TEXT_MAX) : '';
+
+        if (!parent || !parentRun || parent.archivedAt !== undefined || text === '') return;
+
+        const open = run.status === 'waiting_background' ? (run.background ?? []).map(item => item.title) : [];
+        const notice: ThreadNotice = { chatId: thread.id, title: thread.title, outcome: 'finished', text, ...(open.length > 0 && { background: open }) };
+
+        if (!isBusyRunStatus(parentRun.status) && !parent.queuePaused) {
+            this.#startTurn(parent, parentRun, { kind: 'user', text: '', from: { kind: 'threadNotice', threads: [notice] } }, NOTICE_REPLY);
+
+            return;
+        }
+
+        const waiting = parent.queue?.find(item => item.from?.kind === 'threadNotice');
+        const earlier = waiting?.from?.kind === 'threadNotice' ? waiting.from.threads.filter(entry => entry.chatId !== thread.id) : [];
+        const threads = [...earlier, notice];
+        const summary = noticeSummary(threads);
+        const item: QueuedMessage = { id: waiting?.id ?? this.#id('q'), mode: 'queue', text: summary, content: `${ summary }.`, from: { kind: 'threadNotice', threads }, createdAt: waiting?.createdAt ?? Date.now() };
+
+        parent.queue = waiting ? (parent.queue ?? []).map(entry => (entry.id === item.id ? item : entry)) : placeQueued(parent.queue ?? [], item);
+        this.#emit(parent.projectId, { type: 'chat.upserted', chat: parent });
+    }
+
     #addProject(name: string, paths: readonly string[]): Outcome {
         const prefix = name.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase() || 'TSK';
         const position = Math.max(0, ...this.#data.projects.map(candidate => candidate.position)) + 1;
@@ -996,8 +1087,8 @@ export class FixtureTransport implements Transport {
         return ok({ chatId: chat.id, runId: run.id });
     }
 
-    /** A turn of a chat's orchestrator: the person's bubble, a canned reply, and the end of the turn, after which the queue gives the next one. */
-    #startTurn(chat: Chat, run: Run, body: StreamItemBody): void {
+    /** A turn of a chat's orchestrator: the message that starts it, a canned reply, and the end of the turn, after which the queue gives the next one. */
+    #startTurn(chat: Chat, run: Run, body: StreamItemBody, reply = REPLY): void {
         const turn = (this.#turns.get(run.id) ?? 0) + 1;
 
         this.#turns.set(run.id, turn);
@@ -1010,7 +1101,7 @@ export class FixtureTransport implements Transport {
         }
 
         this.#appendItem(run, body);
-        this.#later(400, () => this.#streamReply(run, REPLY));
+        this.#later(400, () => this.#streamReply(run, reply));
         this.#later(TURN_MS, () => {
             if (this.#turns.get(run.id) !== turn || run.status !== 'running') return;
 
@@ -1020,9 +1111,10 @@ export class FixtureTransport implements Transport {
 
     /**
      * The turn is over. A session that has background work open stays alive and waits for it, as the daemon's driver does, so a message
-     * sent meanwhile reaches the same orchestrator; otherwise the run is done. The queue gives the next message in both cases.
+     * sent meanwhile reaches the same orchestrator; otherwise the run is done. The queue gives the next message in both cases, and the parent of a
+     * thread is told when the turn `said` something.
      */
-    #endTurn(chat: Chat, run: Run): void {
+    #endTurn(chat: Chat, run: Run, said = true): void {
         if ((run.background?.length ?? 0) > 0) {
             run.status = 'waiting_background';
             run.statusReason = 'Waiting for background work';
@@ -1033,6 +1125,9 @@ export class FixtureTransport implements Transport {
         }
 
         this.#saveRun(run);
+
+        if (said && chat.parentChatId !== undefined) this.#notifyParent(chat, run);
+
         this.#settleQueue(chat);
     }
 
@@ -1064,7 +1159,8 @@ export class FixtureTransport implements Transport {
 
             if (run.context && after !== undefined) run.context = { ...run.context, used: after };
 
-            this.#endTurn(chat, run);
+            // A compaction says nothing, so a thread's parent is not told.
+            this.#endTurn(chat, run, false);
         });
     }
 
@@ -1098,7 +1194,7 @@ export class FixtureTransport implements Transport {
         this.#emit(chat.projectId, { type: 'chat.upserted', chat });
 
         if (isCompact(item)) this.#startCompact(chat, run);
-        else this.#startTurn(chat, run, { kind: 'user', text: item.text, ...(item.attachments && { attachments: item.attachments }) });
+        else this.#startTurn(chat, run, userBody(item), item.from?.kind === 'threadNotice' ? NOTICE_REPLY : REPLY);
     }
 
     /** The agent took a steer: it leaves the queue, and its bubble goes where the agent got it. */
@@ -1111,7 +1207,7 @@ export class FixtureTransport implements Transport {
 
         this.#setQueue(chat, (chat.queue ?? []).filter(entry => entry.id !== itemId));
         this.#emit(chat.projectId, { type: 'chat.upserted', chat });
-        this.#appendItem(run, { kind: 'user', text: item.text, ...(item.attachments && { attachments: item.attachments }) });
+        this.#appendItem(run, userBody(item));
         this.#later(300, () => this.#streamReply(run, 'Noted. I will take that into account.'));
     }
 

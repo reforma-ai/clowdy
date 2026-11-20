@@ -1,3 +1,5 @@
+@reference '@clowdy/styles/rulesets';
+
 .center {
     display: flex;
     flex: 1;
@@ -25,4 +27,31 @@
 .composer {
     flex-shrink: 0;
     padding: 0 var(--spacing-xxl) var(--spacing-xl);
+}
+
+/* A thread's line over its stream: in the stream's column, quiet, one line. */
+.crumb {
+    flex-shrink: 0;
+    padding: var(--spacing-md) var(--spacing-xxl) 0;
+}
+
+.crumbLine {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+.crumbIcon {
+    flex-shrink: 0;
+}
+
+.crumbLink {
+    @ruleset typography-text-xs;
+
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

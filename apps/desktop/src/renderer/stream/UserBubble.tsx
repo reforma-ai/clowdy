@@ -1,10 +1,9 @@
 import { Attachments, PreviewableAttachment } from '@clowdy/components/Attachment';
-import { Button } from '@clowdy/components/Button';
 import { Show } from '@clowdy/components/Show';
-import { ChevronDown } from '@clowdy/icons/8';
-import { use, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { use } from 'react';
 
 import { formatTime } from '../shared/time';
+import { Clamp } from './Clamp';
 import { Markdown } from './Markdown';
 import { personMarkdown } from './personMarkdown';
 import { StreamLinksContext } from './StreamLinks';
@@ -16,41 +15,8 @@ import type { Attachment } from '@clowdy/protocol';
 /** A message longer than this is clamped under a fade until the person opens it. */
 const COLLAPSE_MIN_CHARS = 500;
 
-/** Clamps a long message under a fade. The toggle shows only when the clamp hides something. */
-function Clamp({ children }: { children: ReactNode }) {
-    const content = useRef<HTMLDivElement>(null);
-    const [expanded, setExpanded] = useState(false);
-    const [clipped, setClipped] = useState(false);
-
-    useLayoutEffect(() => {
-        const inner = content.current;
-        const clamp = inner?.parentElement;
-
-        if (!inner || !clamp || expanded) return;
-
-        const measure = () => setClipped(clamp.scrollHeight > clamp.clientHeight + 1);
-        const observer = new ResizeObserver(measure);
-
-        measure();
-        observer.observe(inner);
-
-        return () => observer.disconnect();
-    }, [expanded]);
-
-    return (
-        <>
-            <div className={ styles.clamp } data-expanded={ expanded } data-clipped={ clipped }>
-                <div ref={ content }>{ children }</div>
-            </div>
-            <Show when={ clipped }>
-                <Button variant="inline" color="secondary" className={ styles.toggle } aria-expanded={ expanded } onPress={ () => setExpanded(!expanded) }>
-                    { expanded ? 'Show less' : 'Show full message' }
-                    <ChevronDown className="chevron" aria-expanded={ expanded } aria-hidden />
-                </Button>
-            </Show>
-        </>
-    );
-}
+/** The lines a long message shows until it is opened. */
+const COLLAPSED_LINES = 16;
 
 export interface UserBubbleProps {
     text: string;
@@ -84,7 +50,7 @@ export function UserBubble({ text, attachments, at, animate, turn }: UserBubbleP
             <Show when={ text.trim() !== '' }>
                 <div className={ styles.bubble }>
                     <Show when={ text.length > COLLAPSE_MIN_CHARS } fallback={ body }>
-                        <Clamp>{ body }</Clamp>
+                        <Clamp lines={ COLLAPSED_LINES } moreLabel="Show full message">{ body }</Clamp>
                     </Show>
                 </div>
             </Show>

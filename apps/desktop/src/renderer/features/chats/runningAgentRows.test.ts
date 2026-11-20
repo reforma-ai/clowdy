@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { agentRowLabel, agentRowText, backgroundRowText, canStopAlone, offersStopAll, openBackground, runningAgents, unlistedBackground } from './runningAgentRows';
+import {
+    agentRowLabel,
+    agentRowText,
+    backgroundRowText,
+    canStopAlone,
+    offersStopAll,
+    openBackground,
+    runningAgents,
+    stripRows,
+    threadRowText,
+    threadsAtWork,
+    unlistedBackground,
+} from './runningAgentRows';
 
-import type { Run, RunStatus } from '@clowdy/protocol';
+import type { Chat, Run, RunStatus } from '@clowdy/protocol';
 
 const run = (id: string, status: RunStatus, rest: Partial<Run> = {}): Run => ({ id, projectId: 'p', rootRunId: 'orch', parentRunId: 'orch', role: 'executor', origin: 'native', name: id, summary: '', status, engine: 'claude', createdAt: 1, ...rest });
 
@@ -118,5 +130,50 @@ describe('Stop all', () => {
         expect(offersStopAll([fixed, fixed, fixed])).toBe(false);
         expect(offersStopAll([alone, fixed])).toBe(false);
         expect(offersStopAll([alone, fixed, alone])).toBe(true);
+    });
+
+    it('counts every thread at work, since each can be stopped alone', () => {
+        expect(offersStopAll([], 1)).toBe(false);
+        expect(offersStopAll([], 2)).toBe(true);
+        expect(offersStopAll([alone], 1)).toBe(true);
+        expect(offersStopAll([fixed], 1)).toBe(false);
+    });
+});
+
+describe('threads in the strip', () => {
+    const thread = (id: string, createdAt: number, rest: Partial<Chat> = {}): Chat => ({ id, projectId: 'p', title: `Thread ${ id }`, mode: 'autopilot', parentChatId: 'parent', orchestratorRunId: `run-${ id }`, createdAt, updatedAt: createdAt, ...rest });
+    const orchestrator = (id: string, status: RunStatus) => run(`run-${ id }`, status, { rootRunId: `run-${ id }`, parentRunId: undefined, origin: undefined, role: 'orchestrator' });
+
+    it('lists the threads that work, oldest first: queued, running, blocked, or waiting for the person or for background work', () => {
+        const statuses: Record<string, RunStatus> = { q: 'queued', r: 'running', b: 'blocked', u: 'waiting_user', w: 'waiting_background', s: 'succeeded', f: 'failed', c: 'cancelled', i: 'interrupted' };
+        const threads = Object.keys(statuses).map((id, index) => thread(id, 20 - index));
+        const runs = new Map(Object.entries(statuses).map(([id, status]) => [`run-${ id }`, orchestrator(id, status)]));
+
+        expect(threadsAtWork(threads, runs).map(({ chat }) => chat.id)).toEqual(['w', 'u', 'b', 'r', 'q']);
+    });
+
+    it('leaves out a thread that never started and one in the archive', () => {
+        const runs = new Map([['run-a', orchestrator('a', 'running')]]);
+
+        expect(threadsAtWork([thread('a', 1, { archivedAt: 2 }), thread('fresh', 2, { orchestratorRunId: undefined })], runs)).toEqual([]);
+    });
+
+    it('puts sub-agents and threads in one list, by when each was made', () => {
+        const agents = [run('agent-late', 'running', { createdAt: 30 }), run('agent-early', 'running', { createdAt: 10 })];
+        const threads = [{ chat: thread('t', 20), run: orchestrator('t', 'running') }];
+
+        expect(stripRows(agents, threads).map(row => `${ row.kind }:${ row.id }`)).toEqual(['agent:agent-early', 'thread:t', 'agent:agent-late']);
+    });
+
+    it('says what a thread does: its activity, that it works, that it waits for the person, for background work or a slot, or why it is blocked', () => {
+        const fix = { title: 'Fix login' };
+
+        expect(threadRowText(fix, { status: 'running' }, 'Running bun test')).toBe('Fix login · Running bun test');
+        expect(threadRowText(fix, { status: 'running' }, undefined)).toBe('Fix login working');
+        expect(threadRowText(fix, { status: 'waiting_user' }, 'Thinking…')).toBe('Fix login · Waiting for you');
+        expect(threadRowText(fix, { status: 'waiting_background' }, undefined)).toBe('Fix login · Waiting for background work');
+        expect(threadRowText(fix, { status: 'queued' }, undefined)).toBe('Fix login · Waiting for a free slot');
+        expect(threadRowText(fix, { status: 'blocked', statusReason: 'Usage limit until 14:00' }, undefined)).toBe('Fix login · Usage limit until 14:00');
+        expect(threadRowText(fix, { status: 'blocked' }, undefined)).toBe('Fix login · Blocked');
     });
 });

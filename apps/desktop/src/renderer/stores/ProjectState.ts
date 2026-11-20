@@ -213,6 +213,36 @@ export class ProjectState {
         return [...this.chats.values()].sort((a, b) => b.updatedAt - a.updatedAt);
     }
 
+    /** The threads of each chat (`Chat.parentChatId`), archived ones too, in the order they were made. A chat with none has no entry. */
+    get threadsByParent(): Map<ChatId, Chat[]> {
+        const threads = [...this.chats.values()].filter(chat => chat.parentChatId !== undefined).sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+
+        return group(threads, chat => chat.parentChatId!);
+    }
+
+    /** The threads a chat started directly, archived ones too, oldest first. */
+    threadsOf(chatId: ChatId): Chat[] {
+        return this.threadsByParent.get(chatId) ?? [];
+    }
+
+    /** Every thread below a chat, at any depth and archived ones too: what goes with it when it is deleted. */
+    threadsBelow(chatId: ChatId): Chat[] {
+        const found: Chat[] = [];
+        const seen = new Set<ChatId>([chatId]);
+
+        for (let index = -1; index < found.length; index++) {
+            for (const thread of this.threadsOf(index < 0 ? chatId : found[index].id)) {
+                // Chats form a tree by contract; the guard keeps a corrupt parent cycle from looping.
+                if (seen.has(thread.id)) continue;
+
+                seen.add(thread.id);
+                found.push(thread);
+            }
+        }
+
+        return found;
+    }
+
     get taskList(): Task[] {
         return [...this.tasks.values()].sort(byNumber);
     }

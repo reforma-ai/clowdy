@@ -161,6 +161,51 @@ describe('UiStore', () => {
         expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', chatSort: 'created', chatId: 'c-1', runId: 'r-1', docPath: 'a.md', docFolderId: 'fld-2' });
     });
 
+    it('folds every chat until its threads are opened, and keeps what the person opened per project across a restart', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        expect(ui.expandedChats).toEqual([]);
+
+        ui.toggleChatExpanded('c-1');
+        ui.toggleChatExpanded('c-2');
+        ui.toggleChatExpanded('c-1');
+        expect(ui.expandedChats).toEqual(['c-2']);
+        expect(store.forProject('p2').expandedChats).toEqual([]);
+
+        expect(new UiStore(storage).forProject('p1').expandedChats).toEqual(['c-2']);
+    });
+
+    it('opens the folds above a chat without closing any, and changes nothing when they are open', () => {
+        const ui = new UiStore().forProject('p1');
+
+        ui.toggleChatExpanded('a');
+        ui.expandChats(['b', 'a']);
+        expect(ui.expandedChats).toEqual(['a', 'b']);
+
+        const before = ui.expandedChats;
+
+        ui.expandChats(['a', 'b']);
+        expect(ui.expandedChats).toBe(before);
+    });
+
+    it('lists finished threads until the person hides them, and remembers it', () => {
+        const storage = memoryStorage();
+        const ui = new UiStore(storage).forProject('p1');
+
+        expect(ui.showFinishedThreads).toBe(true);
+
+        ui.setShowFinishedThreads(false);
+        expect(new UiStore(storage).forProject('p1').showFinishedThreads).toBe(false);
+    });
+
+    it('reads the folds and the filter of threads from the page URL, and drops what is damaged in storage', () => {
+        expect(initialUiFromSearch('?finished=0&expand=c-6,c-6a')).toEqual({ showFinishedThreads: false, expandedChats: ['c-6', 'c-6a'] });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":"c-1","showFinishedThreads":"no"}' })).forProject('p1')).toMatchObject({ expandedChats: [], showFinishedThreads: true });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":["c-1",5]}' })).forProject('p1').expandedChats).toEqual(['c-1']);
+    });
+
     it('ignores URL values that name no section or view', () => {
         expect(initialUiFromSearch('?section=nope&view=cards')).toEqual({});
         expect(initialUiFromSearch('')).toEqual({});

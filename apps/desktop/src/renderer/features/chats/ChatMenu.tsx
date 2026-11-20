@@ -3,8 +3,8 @@ import { PopoverScroll } from '@clowdy/components/Popover';
 import { Archive, EditPen, Trash } from '@clowdy/icons/14';
 
 export interface ChatMenuProps {
-    /** A chat whose agents are working can be neither archived nor deleted. */
-    isBusy: boolean;
+    /** Why the chat can be neither archived nor deleted now (its agents, or the agents of its threads, are working); absent when it can. */
+    busy?: string;
     /** Closes the popover the menu is in. Called before the action runs. */
     onClose: () => void;
     onRename: () => void;
@@ -13,7 +13,7 @@ export interface ChatMenuProps {
 }
 
 /** What can be done to a chat in the list: the content of its `⋯` popover and of its right-click menu. */
-export function ChatMenu({ isBusy, onClose, onRename, onArchive, onDelete }: ChatMenuProps) {
+export function ChatMenu({ busy, onClose, onRename, onArchive, onDelete }: ChatMenuProps) {
     return (
         <PopoverScroll>
             <Menu
@@ -32,8 +32,8 @@ export function ChatMenu({ isBusy, onClose, onRename, onArchive, onDelete }: Cha
                     id="archive"
                     icon={ <Archive /> }
                     textValue="Archive"
-                    isDisabled={ isBusy }
-                    description={ isBusy ? 'Stop the chat first' : undefined }
+                    isDisabled={ busy !== undefined }
+                    description={ busy }
                 >
                     Archive
                 </MenuItem>
@@ -43,8 +43,8 @@ export function ChatMenu({ isBusy, onClose, onRename, onArchive, onDelete }: Cha
                     icon={ <Trash /> }
                     textValue="Delete"
                     isDanger
-                    isDisabled={ isBusy }
-                    description={ isBusy ? 'Stop the chat first' : undefined }
+                    isDisabled={ busy !== undefined }
+                    description={ busy }
                 >
                     Delete
                 </MenuItem>

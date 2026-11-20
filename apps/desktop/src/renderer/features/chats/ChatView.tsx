@@ -3,11 +3,12 @@ import { Button } from '@clowdy/components/Button';
 import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
-import { AttentionCircle } from '@clowdy/icons/14';
+import { AttentionCircle, Split } from '@clowdy/icons/14';
 import { useMemo, useRef } from 'react';
 
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { StreamView } from '../../stream';
+import { openChat } from './archiveChat';
 import { ChatDropZone } from './ChatDropZone';
 import { canCompactChat, chatWritability } from './chatProvider';
 import { isRunActive, liveLine, overflowed } from './chatRun';
@@ -24,18 +25,22 @@ import type { Attachment, Chat } from '@clowdy/protocol';
 
 /**
  * One chat: the orchestrator's stream with the progress card in it, and the composer. When the chat's provider cannot run
- * (switched off, not installed, signed out) the stream stays as it is and a notice stands in place of the composer.
+ * (switched off, not installed, signed out) the stream stays as it is and a notice stands in place of the composer. A thread is a chat like
+ * any other, with a slim line over its stream that names the chat it belongs to and opens it.
  */
 export function ChatView({ chat }: { chat: Chat }) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
-    // A task key in a message is a chip that opens the task.
+    // A task key in a message is a chip that opens the task; a thread's card opens that thread.
     const links = useMemo(() => ({
         taskOfKey: (key: string) => project.taskList.find(task => task.key === key),
         onOpenTask: (taskId: string) => ui.openTask(taskId),
         attachmentBlob: (attachment: Attachment) => root.transport.getAttachment(project.id, attachment.id),
+        hasChat: (chatId: string) => project.chats.has(chatId),
+        onOpenChat: (chatId: string) => void openChat(root, project, ui, chatId),
     }), [project, ui, root]);
+    const parent = chat.parentChatId === undefined ? undefined : project.chats.get(chat.parentChatId);
     const composer = useRef<ComposerHandle>(null);
     const stream = useChatStream(chat);
     const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
@@ -50,6 +55,8 @@ export function ChatView({ chat }: { chat: Chat }) {
 
     return (
         <ChatDropZone disabled={ !writability.writable } onFiles={ files => composer.current?.addFiles(files) }>
+            { parent && <ThreadCrumb parent={ parent } onOpen={ () => links.onOpenChat(parent.id) } /> }
+
             { stream?.status === 'failed' && (
                 <div className={ styles.center }>
                     <Alert color="danger" className={ styles.alert }>
@@ -94,6 +101,21 @@ export function ChatView({ chat }: { chat: Chat }) {
                     : <ReadOnlyNotice chat={ chat } run={ run } message={ writability.message } /> }
             </ContentColumn>
         </ChatDropZone>
+    );
+}
+
+/** The line over a thread's stream: whose thread it is, and the parent's title, which opens the parent. */
+function ThreadCrumb({ parent, onOpen }: { parent: Chat; onOpen: () => void }) {
+    return (
+        <ContentColumn className={ styles.crumb }>
+            <nav aria-label="Parent chat" className={ styles.crumbLine }>
+                <Split aria-hidden className={ styles.crumbIcon } />
+                <Text variant="xs" color="secondary">Thread of</Text>
+                { /* Read as words; the flex gap draws the space. */ }
+                { ' ' }
+                <Button variant="inline" color="secondary" className={ styles.crumbLink } onPress={ onOpen }>{ parent.title }</Button>
+            </nav>
+        </ContentColumn>
     );
 }
 
