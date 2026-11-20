@@ -1,6 +1,6 @@
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
-import { deleteChatAndRuns, getChat, runsOfChat, upsertChat } from '../db/chats';
+import { deleteChatAndRuns, getChat, listChatDescendants, runsOfChat, upsertChat } from '../db/chats';
 import { getRun } from '../db/runs';
 import { conflict, invalid, notFound } from '../errors';
 import { newId } from '../ids';
@@ -58,7 +58,8 @@ export function choiceOf(run: Run): ChatChoice {
     return { engine: run.engine, ...(run.model && { model: run.model }), ...(run.effort && { effort: run.effort }) };
 }
 
-export function createChat(store: Store, input: { projectId: string; title?: string; mode?: ChatMode } & ChatChoice): Chat {
+/** A new chat; `parentChatId` makes it a thread of that chat (an agent of it started this one), which the caller has checked. */
+export function createChat(store: Store, input: { projectId: string; title?: string; mode?: ChatMode; parentChatId?: string } & ChatChoice): Chat {
     return store.tx(() => {
         requireProject(store, input.projectId);
 
@@ -72,39 +73,104 @@ export function createChat(store: Store, input: { projectId: string; title?: str
             ...(input.engine && { engine: input.engine }),
             ...(input.model && { model: input.model }),
             ...(input.effort && { effort: input.effort }),
+            ...(input.parentChatId && { parentChatId: input.parentChatId }),
             createdAt: now,
             updatedAt: now,
         });
     });
 }
 
+/* ------------------------------- Thread tree ------------------------------ */
+
 /**
- * Removes the chat and its runs, and the files sent in it. Their agents must have stopped: a live run would be left without its row.
- * The files' folders go once the transaction commits.
+ * The chats above `chat`, its parent first and its root chat last; none for a chat the person made. A thread's parent is set when the thread is made, to
+ * a chat that exists, so the chain cannot loop; the walk stops at a chat it has seen all the same, and at a parent that is gone.
+ */
+export function parentChain(store: Store, chat: Chat): Chat[] {
+    const chain: Chat[] = [];
+    const seen = new Set([chat.id]);
+    let parentId = chat.parentChatId;
+
+    while (parentId && !seen.has(parentId)) {
+        const parent = getChat(store.db, parentId);
+
+        if (!parent) {
+            break;
+        }
+
+        chain.push(parent);
+        seen.add(parent.id);
+        parentId = parent.parentChatId;
+    }
+
+    return chain;
+}
+
+/** The chat at the top of `chat`'s thread tree: the chat the person made, which is `chat` itself for a chat that is no thread. */
+export function rootChatOf(store: Store, chat: Chat): Chat {
+    return parentChain(store, chat).at(-1) ?? chat;
+}
+
+/** How deep `chat` is in its thread tree: a chat the person made is 1, its thread 2, a thread of that thread 3. */
+export function chatDepth(store: Store, chat: Chat): number {
+    return parentChain(store, chat).length + 1;
+}
+
+/** Whether `chat` is below `ancestorId`: a thread of it, or a thread of one of its threads. A chat is not below itself. */
+export function isBelow(store: Store, ancestorId: string, chat: Chat): boolean {
+    return parentChain(store, chat).some(parent => parent.id === ancestorId);
+}
+
+/** Whether two chats belong to the same thread tree: they have the same root chat. */
+export function inSameTree(store: Store, a: Chat, b: Chat): boolean {
+    return rootChatOf(store, a).id === rootChatOf(store, b).id;
+}
+
+/**
+ * The chat and every chat below it, a parent before its threads, once every run of them is over (one in `waiting_background` is not): refuses otherwise,
+ * naming the thread at work when it is not `chat` itself, the one the person acts on.
+ */
+function stoppedSubtree(store: Store, chat: Chat): Chat[] {
+    const chats = [chat, ...listChatDescendants(store.db, chat.id).map(entry => entry.chat)];
+    const busy = chats.find(candidate => runsOfChat(store.db, candidate.id).some(run => !isTerminalRunStatus(run.status)));
+
+    if (busy?.id === chat.id) {
+        throw conflict('The agents of this chat are still working. Stop the chat first.');
+    }
+
+    if (busy) {
+        throw conflict(`The thread "${ busy.title }" below this chat is still working. Stop it first.`);
+    }
+
+    return chats;
+}
+
+/**
+ * Removes the chat with every thread below it, their runs, and the files sent in them. Their agents must have stopped: a live run would be left without
+ * its row, so one at work anywhere in the tree refuses the whole delete. Each chat is announced on its own (`chat.deleted`, the deepest first), so a client
+ * drops them all. The files' folders go once the transaction commits. Returns the ids of every run removed.
  */
 export function deleteChat(store: Store, chatId: string, attachments: AttachmentsService): string[] {
     return store.tx(() => {
-        const chat = requireChat(store, chatId);
-        const runs = runsOfChat(store.db, chatId);
+        const chats = stoppedSubtree(store, requireChat(store, chatId));
 
-        if (runs.some(run => !isTerminalRunStatus(run.status))) {
-            throw conflict('The agents of this chat are still working. Stop the chat first.');
-        }
+        return chats.reverse().flatMap((each) => {
+            const runIds = runsOfChat(store.db, each.id).map(run => run.id);
 
-        const runIds = runs.map(run => run.id);
+            attachments.removeOfChat(each.id);
+            deleteChatAndRuns(store.db, each.id);
+            store.emit(each.projectId, { type: 'chat.deleted', chatId: each.id, runIds });
 
-        attachments.removeOfChat(chatId);
-        deleteChatAndRuns(store.db, chatId);
-        store.emit(chat.projectId, { type: 'chat.deleted', chatId, runIds });
-
-        return runIds;
+            return runIds;
+        });
     });
 }
 
 /**
- * Archives the chat, or brings it back. Only the flag changes: the runs, tasks and stream stay, and the chat keeps its place in
- * the order of activity. A chat whose agents are working cannot be archived, as it cannot be deleted: it would drop out of sight
- * while still busy. Setting what is set already changes nothing.
+ * Archives the chat with every thread below it, or brings the chat back. Only the flag changes: the runs, tasks and stream stay, and each chat keeps its
+ * place in the order of activity. A chat whose agents are working cannot be archived, as it cannot be deleted: it would drop out of sight while still
+ * busy, and so would a thread at work below it, which refuses the whole archive. Bringing a chat back brings only that chat: its threads stay archived.
+ * Setting what is set already changes nothing.
  */
 export function setChatArchived(store: Store, chatId: string, archived: boolean): Chat {
     return store.tx(() => {
@@ -114,13 +180,20 @@ export function setChatArchived(store: Store, chatId: string, archived: boolean)
             return chat;
         }
 
-        if (archived && runsOfChat(store.db, chatId).some(run => !isTerminalRunStatus(run.status))) {
-            throw conflict('The agents of this chat are still working. Stop the chat first.');
-        }
-
         const { archivedAt: _, ...rest } = chat;
 
-        return saveChat(store, archived ? { ...rest, archivedAt: Date.now() } : rest);
+        if (!archived) {
+            return saveChat(store, rest);
+        }
+
+        const chats = stoppedSubtree(store, chat);
+        const now = Date.now();
+
+        for (const thread of chats.slice(1).filter(candidate => candidate.archivedAt === undefined)) {
+            saveChat(store, { ...thread, archivedAt: now });
+        }
+
+        return saveChat(store, { ...rest, archivedAt: now });
     });
 }
 

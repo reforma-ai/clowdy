@@ -35,10 +35,10 @@ async function setup(script: Script = holding().script, overrides: Parameters<ty
 
     const project = h.openRepo();
     const { chat } = h.ok('chat.create', { projectId: project.id, mode });
-    const { store, runs } = h.daemon.services;
+    const { store, runs, threads } = h.daemon.services;
     const entity = getProject(store.db, project.id)!;
     const orchestrator = runs.createRun({ project: entity, role: 'orchestrator', chatId: chat.id, summary: 'Plan' });
-    const toolsOf = (run: Run) => toolsFor({ store, runs }, run, runs.modeOf(run));
+    const toolsOf = (run: Run) => toolsFor({ store, runs, threads }, run, runs.modeOf(run));
     const exec = async (run: Run, name: string, input: unknown = {}): Promise<any> => {
         const tool = toolsOf(run).find(candidate => candidate.name === name);
 
@@ -54,15 +54,16 @@ async function setup(script: Script = holding().script, overrides: Parameters<ty
 }
 
 describe('the tool vocabulary', () => {
-    test('an orchestrator has the task tools, and ask_user only in semi-manual', async () => {
+    test('an orchestrator has the task tools, the thread tools, and ask_user only in semi-manual', async () => {
         const { orchestrator, toolsOf } = await setup();
         const names = (run: Run) => toolsOf(run).map(tool => tool.name);
+        const threads = ['thread_spawn', 'thread_tell', 'thread_stop', 'thread_output', 'thread_log', 'thread_list'];
 
-        expect(names(orchestrator)).toEqual(['task_get', 'task_list', 'task_create', 'task_update']);
+        expect(names(orchestrator)).toEqual(['task_get', 'task_list', 'task_create', 'task_update', ...threads]);
 
         const semi = await setup(undefined, {}, 'semi');
 
-        expect(semi.toolsOf(semi.orchestrator).map(tool => tool.name)).toEqual(['task_get', 'task_list', 'task_create', 'task_update', 'ask_user']);
+        expect(semi.toolsOf(semi.orchestrator).map(tool => tool.name)).toEqual(['task_get', 'task_list', 'task_create', 'task_update', ...threads, 'ask_user']);
 
         // Every tool brings its schema in both forms and says how to use it.
         for (const tool of toolsOf(orchestrator)) {

@@ -11,7 +11,7 @@ import { newId } from '../ids';
 import { STOPPED_TURN_MESSAGE } from './prompts';
 import { STOPPED_TO_SEND_REASON } from './transitions';
 
-import type { Chat, QueuedMessage, QueuedMessageMode, QueuePause, Run } from '@clowdy/protocol';
+import type { Chat, MessageSource, QueuedMessage, QueuedMessageMode, QueuePause, Run } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { AttachmentRecord } from '../db/attachments';
 import type { Store } from '../store';
@@ -25,7 +25,7 @@ export interface QueueDeps {
     attachments: AttachmentsService;
 }
 
-/** A message for a busy orchestrator, as `chat.send` read it. */
+/** A message for a busy orchestrator, as `sendMessage` read it. */
 export interface QueueInput {
     mode: QueuedMessageMode;
     text: string;
@@ -33,6 +33,8 @@ export interface QueueInput {
     files: readonly AttachmentRecord[];
     /** What the agent is told. */
     content: string;
+    /** Who wrote it when the person did not (another thread); the stream's `user` item carries it once the agent gets the message. */
+    from?: MessageSource;
 }
 
 /**
@@ -82,6 +84,7 @@ export class ChatQueue {
             text: input.text,
             ...(input.files.length > 0 && { attachments: input.files.map(toAttachment) }),
             content: input.content,
+            ...(input.from && { from: input.from }),
             createdAt: Date.now(),
         };
 

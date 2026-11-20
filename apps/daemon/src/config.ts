@@ -23,6 +23,12 @@ export interface Config {
     defaultEngineCap: number;
     /** Hard cap of live engine processes: a guard against runaway sessions, far above the run caps. */
     maxProcesses: number;
+    /** How many levels a thread tree has at most, the chat the person made included: 3 is the chat, its threads and their threads. */
+    maxThreadDepth: number;
+    /** Threads of one chat (its direct ones) whose work is not over, at most; a thread whose run has not been made yet counts. */
+    maxActiveThreads: number;
+    /** Threads one chat may start over its life (its direct ones), finished ones included. */
+    maxThreads: number;
     timings: Timings;
     /** How the daemon answers an agent's permission requests: nobody is at a terminal, so it decides, the same for every agent. */
     agentPermissions: 'allow' | 'reject';
@@ -108,6 +114,9 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
         },
         defaultEngineCap: numberFrom(env, 'CLOWDY_MAX_RUNS_AGENT', 4, isCap, 'a positive integer'),
         maxProcesses: numberFrom(env, 'CLOWDY_MAX_PROCESSES', 24, isCap, 'a positive integer'),
+        maxThreadDepth: numberFrom(env, 'CLOWDY_MAX_THREAD_DEPTH', 3, isCap, 'a positive integer'),
+        maxActiveThreads: numberFrom(env, 'CLOWDY_MAX_ACTIVE_THREADS', 30, isCap, 'a positive integer'),
+        maxThreads: numberFrom(env, 'CLOWDY_MAX_THREADS', 300, isCap, 'a positive integer'),
         timings: { ...DEFAULT_TIMINGS },
         agentPermissions: permissions(env),
         fakeSpeed: numberFrom(env, 'CLOWDY_FAKE_SPEED', 1, v => v >= 0, 'a number of at least 0'),

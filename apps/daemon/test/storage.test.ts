@@ -3,6 +3,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { getChat, upsertChat } from '../src/db/chats';
 import { openDatabase } from '../src/db/connection';
 import { MIGRATIONS } from '../src/db/migrations';
 import { getRun, getRunWork } from '../src/db/runs';
@@ -188,6 +189,30 @@ describe('migrations', () => {
         expect(indexes).not.toContain('runs_idempotency');
         expect(indexes).not.toContain('run_mailbox_pending');
         expect((db.query('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys).toBe(1);
+        db.close();
+    });
+
+    test('version 16 gives the chats of an older database a parent column that reads as none, and keeps a thread\'s parent', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 16));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
+        before.close();
+
+        const db = openDatabase(path);
+        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(getChat(db, 'cht_1')).toEqual({ id: 'cht_1', projectId: 'prj_1', title: 'Hello', mode: 'autopilot', createdAt: 1, updatedAt: 1 });
+        expect(indexes).toContain('chats_parent');
+
+        upsertChat(db, { id: 'cht_2', projectId: 'prj_1', title: 'Thread', mode: 'autopilot', parentChatId: 'cht_1', createdAt: 2, updatedAt: 2 });
+        expect(getChat(db, 'cht_2')?.parentChatId).toBe('cht_1');
+
+        // The parent is fixed: a later write of the chat does not move it.
+        upsertChat(db, { id: 'cht_2', projectId: 'prj_1', title: 'Renamed', mode: 'autopilot', createdAt: 2, updatedAt: 3 });
+        expect(getChat(db, 'cht_2')).toMatchObject({ title: 'Renamed', parentChatId: 'cht_1' });
         db.close();
     });
 

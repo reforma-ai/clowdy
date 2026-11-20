@@ -19,6 +19,7 @@ import { ProvidersService } from './providers/service';
 import { RunDriver } from './runs/driver';
 import { ChatQueue } from './runs/queue';
 import { RunService } from './runs/service';
+import { ThreadService } from './runs/threads';
 import { toolsFor } from './runs/tools';
 import { SkillsService } from './skills/service';
 import { Store } from './store';
@@ -73,16 +74,18 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         }
 
         const runs = new RunService(store, config, engines);
-        const driver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs }, run, mode), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
+        // A turn asks for its tools when it starts, by which time the thread service below exists.
+        const driver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, threads }, run, mode), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
         const docs = new DocsService(store);
         const attachments = new AttachmentsService(store, config.dataDir);
         // Before the recovery: a turn the restart interrupted holds its chat's queue.
         const queue = new ChatQueue({ store, runs, driver, attachments });
+        const threads = new ThreadService({ store, config, runs, driver, queue, attachments, agents });
         const providers = options.providers ?? new ProvidersService({
             registry: agents,
             announce: () => announceAgentsChanged(store),
         });
-        const services: Services = { config, store, runs, driver, queue, docs, files: new FilesService(), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
+        const services: Services = { config, store, runs, driver, queue, threads, docs, files: new FilesService(), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
 
         await runs.recover();
         attachments.sweep();

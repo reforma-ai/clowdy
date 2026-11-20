@@ -32,6 +32,14 @@ describe('config', () => {
         }
     });
 
+    test('threads: three levels, 30 at work and 300 over the life of a chat, unless the environment says otherwise', () => {
+        expect(loadConfig({}, 'linux')).toMatchObject({ maxThreadDepth: 3, maxActiveThreads: 30, maxThreads: 300 });
+        expect(loadConfig({ CLOWDY_MAX_THREAD_DEPTH: '2', CLOWDY_MAX_ACTIVE_THREADS: '5', CLOWDY_MAX_THREADS: '50' }, 'linux')).toMatchObject({ maxThreadDepth: 2, maxActiveThreads: 5, maxThreads: 50 });
+        expect(() => loadConfig({ CLOWDY_MAX_THREAD_DEPTH: '0' })).toThrow(/CLOWDY_MAX_THREAD_DEPTH/);
+        expect(() => loadConfig({ CLOWDY_MAX_ACTIVE_THREADS: '1.5' })).toThrow(/CLOWDY_MAX_ACTIVE_THREADS/);
+        expect(() => loadConfig({ CLOWDY_MAX_THREADS: 'many' })).toThrow(/CLOWDY_MAX_THREADS/);
+    });
+
     test('environment variables override the defaults', () => {
         expect(loadConfig({
             CLOWDY_DATA_DIR: '/data',

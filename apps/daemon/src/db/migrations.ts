@@ -379,4 +379,15 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 16,
+        up(db) {
+            // A thread: a chat that an agent of another chat started (see `Chat.parentChatId`). NULL for a chat the person made, which every chat of an
+            // older database is. The index finds a chat's threads.
+            db.run(`
+                ALTER TABLE chats ADD COLUMN parent_chat_id TEXT;
+                CREATE INDEX chats_parent ON chats(parent_chat_id) WHERE parent_chat_id IS NOT NULL;
+            `);
+        },
+    },
 ];

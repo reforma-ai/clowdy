@@ -1,0 +1,640 @@
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
+
+import { getChat } from '../src/db/chats';
+import { listItems } from '../src/db/items';
+import { getRunWork } from '../src/db/runs';
+import { createChat } from '../src/domain/chats';
+import { clipOutput } from '../src/runs/threads';
+import { clip } from '../src/runs/tool-kit';
+import { toolsFor } from '../src/runs/tools';
+import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, tempDir, untilAborted, waitFor } from './helpers';
+
+import type { Chat, MessageSource, Run, StreamItemBody } from '@clowdy/protocol';
+import type { Harness, Script } from './helpers';
+
+afterAll(cleanTempDirs);
+
+const harnesses: Harness[] = [];
+
+afterEach(async () => {
+    await Promise.all(harnesses.splice(0).map(h => h.stop().catch(() => undefined)));
+});
+
+type Latch = ReturnType<typeof latch>;
+
+/** A turn that says `say`, then holds until `gate` is released (or the run is stopped), then ends. */
+function held(gate: Latch, say = 'working'): Script {
+    return async function* ({ number, signal }) {
+        yield { type: 'session', sessionId: `s-${ number }` };
+        yield { type: 'text', delta: say, done: true };
+        await gate.wait(signal);
+        yield { type: 'done', result: say };
+    };
+}
+
+/** A turn that says each text as a message of its own and ends. */
+function says(...texts: string[]): Script {
+    return async function* ({ number }) {
+        yield { type: 'session', sessionId: `s-${ number }` };
+
+        for (const text of texts) {
+            yield { type: 'text', delta: text, done: true };
+        }
+
+        yield { type: 'done', result: texts.at(-1) };
+    };
+}
+
+/**
+ * A daemon whose one engine runs a script per message: the turn whose prompt ends with a route's text runs that route (a first message is the entry line
+ * and then the text, a thread's message the line naming its sender and then the text), any other turn answers "Done".
+ */
+async function setup(overrides: Parameters<typeof startHarness>[0] = {}) {
+    const routes: [string, Script][] = [];
+    const engine = new ScriptEngine(async function* (turn) {
+        const route = routes.find(([ending]) => turn.options.prompt.endsWith(ending));
+
+        yield* (route ? route[1] : says('Done'))(turn);
+    });
+    const h = await startHarness(overrides, { engines: scriptEngines(engine) });
+
+    harnesses.push(h);
+
+    const project = h.openRepo();
+    const { store, runs, threads } = h.daemon.services;
+    const chatOf = (chatId: string) => getChat(store.db, chatId) as Chat;
+    const runOf = (chatId: string) => h.run(chatOf(chatId).orchestratorRunId as string);
+    const bodies = (runId: string): StreamItemBody[] => listItems(store.db, runId, 0).map(item => item.body);
+    const on = (ending: string, script: Script) => routes.push([ending, script]);
+    /** Runs a tool of `run` as its agent would: the very definition its turn gets. */
+    const exec = async (run: Run, name: string, input: Record<string, unknown> = {}): Promise<any> => {
+        const tool = toolsFor({ store, runs, threads }, run, runs.modeOf(run)).find(candidate => candidate.name === name);
+
+        if (!tool) {
+            throw new Error(`${ run.name } has no ${ name } tool`);
+        }
+
+        return tool.execute(input, new AbortController().signal);
+    };
+    const turnOf = (ending: string) => engine.turns.find(turn => turn.prompt.endsWith(ending));
+    /** Waits until the turn of the chat's message that ends with `ending` runs. */
+    const running = (chatId: string, ending: string) => waitFor(() => turnOf(ending) && runOf(chatId).status === 'running', `the turn on "${ ending }"`);
+
+    /** A chat the person starts with `text`, whose first turn holds until `gate` is released; resolves once it runs. */
+    const root = async (text: string, gate: Latch, fields: Record<string, unknown> = {}) => {
+        const { chat } = h.ok('chat.create', { projectId: project.id, ...fields }) as { chat: Chat };
+
+        on(text, held(gate));
+        h.ok('chat.send', { chatId: chat.id, text });
+        await running(chat.id, text);
+
+        return { chat: chatOf(chat.id), run: runOf(chat.id) };
+    };
+
+    /** A thread `caller` starts on `prompt`, whose turn runs `script` (a held turn by default); resolves once that turn runs, or ends with `settled`. */
+    const spawn = async (caller: Run, prompt: string, script: Script = held(latch()), extra: Record<string, unknown> = {}) => {
+        on(prompt, script);
+
+        const result = await exec(caller, 'thread_spawn', { prompt, ...extra });
+
+        await waitFor(() => turnOf(prompt), `the thread on "${ prompt }" to start`);
+
+        return { ...result, run: () => runOf(result.threadId) } as { threadId: string; title: string; state: string; note: string; run: () => Run };
+    };
+
+    return { h, engine, project, store, chatOf, runOf, bodies, on, exec, turnOf, running, root, spawn };
+}
+
+const fromChat = (chat: Chat): MessageSource => ({ kind: 'thread', chatId: chat.id, title: chat.title });
+const told = (sender: Chat, text: string) => `[Message from thread "${ sender.title }" (${ sender.id })]\n\n${ text }`;
+
+describe('thread_spawn', () => {
+    test('makes a chat below the caller\'s whose first message comes from the caller, and starts it on the caller\'s agent, model, level and mode', async () => {
+        const { h, chatOf, runOf, bodies, exec, turnOf, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch(), { model: 'big', effort: 'high', mode: 'semi' });
+        const thread = await spawn(parent.run, 'Look into the cache\nand report what you find');
+
+        expect(thread).toEqual({ threadId: expect.stringMatching(/^cht_/), title: 'Look into the cache', state: 'working', note: expect.stringContaining('Do not poll'), run: expect.any(Function) });
+        expect(chatOf(thread.threadId)).toMatchObject({ parentChatId: parent.chat.id, projectId: parent.chat.projectId, title: 'Look into the cache', mode: 'semi', engine: 'fake', model: 'big', effort: 'high' });
+
+        const run = thread.run();
+
+        // Its own root run, not a child of the caller's.
+        expect(run).toMatchObject({ chatId: thread.threadId, rootRunId: run.id, role: 'orchestrator', engine: 'fake', model: 'big', effort: 'high' });
+        expect(run.parentRunId).toBeUndefined();
+        expect(bodies(run.id)[0]).toEqual({ kind: 'user', text: 'Look into the cache\nand report what you find', from: fromChat(parent.chat) });
+        expect(turnOf('and report what you find')).toMatchObject({
+            prompt: 'Follow clowdy:orchestrate. Mode: semi-manual\n\nLook into the cache\nand report what you find',
+            model: 'big',
+            effort: 'high',
+        });
+        await waitFor(() => runOf(thread.threadId).status === 'running', 'the thread to run');
+
+        // The parent's chat is not touched: no item, no queue.
+        expect(chatOf(parent.chat.id).queue).toBeUndefined();
+        expect(bodies(parent.run.id).filter(body => body.kind === 'user')).toHaveLength(1);
+
+        // A title is the chat's own; a model of its own leaves the caller's level behind; a mode of its own.
+        const named = await spawn(parent.run, 'Audit the logs', says('Audited'), { title: 'Log audit', model: 'small', mode: 'autopilot' });
+
+        await waitFor(() => named.run().status === 'succeeded', 'the named thread to finish');
+        expect(chatOf(named.threadId)).toMatchObject({ title: 'Log audit', mode: 'autopilot', model: 'small' });
+        expect(named.run()).toMatchObject({ model: 'small' });
+        expect(named.run().effort).toBeUndefined();
+        expect(h.run(parent.run.id).status).toBe('running');
+    });
+
+    test('works in the folder it names, and refuses a folder that is not an absolute existing one, the fake engine and an unknown one, leaving nothing behind', async () => {
+        const { store, exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const folder = tempDir('clowdy-thread-cwd');
+        const thread = await spawn(parent.run, 'Work over there', held(latch()), { cwd: folder });
+
+        expect(getRunWork(store.db, thread.run().id).cwd).toBe(folder);
+        await waitFor(() => thread.run().status === 'running', 'the thread to run');
+
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', cwd: 'relative/path' })).rejects.toThrow('cwd must be the absolute path of an existing folder: relative/path');
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', cwd: join(folder, 'missing') })).rejects.toThrow(/absolute path of an existing folder/);
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', engine: 'fake' })).rejects.toThrow(/fake engine is not available to agents/);
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', engine: 'nobody' })).rejects.toThrow(/not available in this daemon/);
+        await expect(exec(parent.run, 'thread_spawn', {})).rejects.toThrow(/Invalid input for thread_spawn/);
+
+        expect((await exec(parent.run, 'thread_list')).threads.map((entry: { threadId: string }) => entry.threadId)).toEqual([thread.threadId]);
+    });
+
+    test('assigns the thread\'s run to its tasks and links its chat, refuses a task another run works on, and lets a chat started from a task hand it on', async () => {
+        const { h, store, chatOf, exec, root, spawn, running, on } = await setup();
+        const parent = await root('Plan the release', latch());
+        const { task: a } = await exec(parent.run, 'task_create', { title: 'A' });
+        const { task: b } = await exec(parent.run, 'task_create', { title: 'B', dependsOn: [a.key] });
+        const first = await spawn(parent.run, 'Do A', held(latch()), { tasks: [a.key] });
+
+        expect(store.db.query('SELECT run_id, relation FROM run_task_links WHERE task_id = ? AND relation = \'assigned\'').all(a.id)).toEqual([{ run_id: first.run().id, relation: 'assigned' }]);
+        expect(store.db.query('SELECT chat_id FROM chat_task_links WHERE task_id = ? ORDER BY rowid').all(a.id)).toContainEqual({ chat_id: first.threadId });
+        await waitFor(() => first.run().status === 'running', 'the thread on A to run');
+        expect((await exec(parent.run, 'task_get', { taskId: a.key })).task.category).toBe('active');
+
+        // A second thread on the same task would do the work twice.
+        const twice = exec(parent.run, 'thread_spawn', { prompt: 'Do A again', tasks: [a.key] });
+
+        await expect(twice).rejects.toMatchObject({ code: 'already_running', message: expect.stringContaining(`Task ${ a.key } already has an active run`) });
+
+        // A task whose dependency is not Done makes the thread wait.
+        const waiting = await exec(parent.run, 'thread_spawn', { prompt: 'Do B', tasks: [b.key] });
+
+        expect(waiting.state).toBe('working');
+        expect(h.run(chatOf(waiting.threadId).orchestratorRunId as string)).toMatchObject({ status: 'blocked', statusReason: `Waiting for ${ a.key }` });
+
+        // The run of a chat started from a task may give the task to a thread of its own; then the thread has it.
+        const { task: c } = await exec(parent.run, 'task_create', { title: 'C' });
+
+        on(`This chat is bound to ${ c.key }; read it with task_get, do the work, and finish with a short report.`, held(latch()));
+
+        const started = h.ok('task.start', { taskId: c.id });
+
+        await running(started.chatId, 'finish with a short report.');
+
+        const handed = await spawn(h.run(started.runId), 'Do C', held(latch()), { tasks: [c.key] });
+
+        expect(handed.state).toBe('working');
+        await expect(exec(h.run(started.runId), 'thread_spawn', { prompt: 'Do C twice', tasks: [c.key] })).rejects.toMatchObject({ code: 'already_running' });
+    });
+});
+
+describe('thread_tell', () => {
+    test('steers a busy thread, queues for its next turn, starts a turn of one at rest, and marks every message with its sender', async () => {
+        const { engine, chatOf, bodies, exec, running, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const gate = latch();
+        const thread = await spawn(parent.run, 'Fix the header', held(gate));
+        const users = () => bodies(thread.run().id).filter(body => body.kind === 'user');
+
+        await running(thread.threadId, 'Fix the header');
+        engine.steerAnswer = () => true;
+
+        // Steer, the default: the running turn takes it, and the stream shows it where the agent got it.
+        expect(await exec(parent.run, 'thread_tell', { thread: thread.threadId, message: 'Also check the footer' })).toEqual({ delivery: 'queued' });
+        await waitFor(() => users().length === 2, 'the steer to reach the stream');
+        expect(engine.steered).toEqual([told(parent.chat, 'Also check the footer')]);
+        expect(users()[1]).toEqual({ kind: 'user', text: 'Also check the footer', from: fromChat(parent.chat) });
+        expect(chatOf(thread.threadId).queue).toBeUndefined();
+
+        // Queue: it waits in the thread's queue with its sender, and is the next turn.
+        expect(await exec(parent.run, 'thread_tell', { thread: thread.threadId, message: 'Then the header', mode: 'queue' })).toEqual({ delivery: 'queued' });
+        expect(chatOf(thread.threadId).queue).toEqual([{
+            id: expect.stringMatching(/^que_/),
+            mode: 'queue',
+            text: 'Then the header',
+            content: told(parent.chat, 'Then the header'),
+            from: fromChat(parent.chat),
+            createdAt: expect.any(Number),
+        }]);
+        gate.release();
+        await waitFor(() => engine.turns.some(turn => turn.prompt === told(parent.chat, 'Then the header')), 'the queued turn');
+        await waitFor(() => thread.run().status === 'succeeded', 'the thread to rest');
+        expect(users()[2]).toEqual({ kind: 'user', text: 'Then the header', from: fromChat(parent.chat) });
+
+        // At rest: a turn starts on it at once.
+        expect(await exec(parent.run, 'thread_tell', { thread: thread.threadId, message: 'One more thing' })).toEqual({ delivery: 'started' });
+        await waitFor(() => engine.turns.some(turn => turn.prompt === told(parent.chat, 'One more thing')), 'the turn at rest');
+        expect(users()[3]).toEqual({ kind: 'user', text: 'One more thing', from: fromChat(parent.chat) });
+    });
+
+    test('reaches the parent and a sibling, and refuses a chat outside the tree, the caller itself, an archived chat, and a stopped caller', async () => {
+        const { h, project, chatOf, exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const first = await spawn(parent.run, 'First job', held(latch()));
+        const second = await spawn(parent.run, 'Second job', held(latch()));
+
+        await waitFor(() => first.run().status === 'running' && second.run().status === 'running', 'both threads to run');
+
+        // Up to the busy parent: it waits in the parent's queue, from the thread.
+        expect(await exec(first.run(), 'thread_tell', { thread: parent.chat.id, message: 'Found a bug', mode: 'queue' })).toEqual({ delivery: 'queued' });
+        expect(chatOf(parent.chat.id).queue?.[0]).toMatchObject({ text: 'Found a bug', content: told(chatOf(first.threadId), 'Found a bug'), from: fromChat(chatOf(first.threadId)) });
+
+        // Across to a sibling.
+        expect(await exec(first.run(), 'thread_tell', { thread: second.threadId, message: 'Use the new API', mode: 'queue' })).toEqual({ delivery: 'queued' });
+        expect(chatOf(second.threadId).queue?.[0]).toMatchObject({ text: 'Use the new API', from: fromChat(chatOf(first.threadId)) });
+
+        const { chat: stranger } = h.ok('chat.create', { projectId: project.id, title: 'Somebody else' });
+
+        await expect(exec(first.run(), 'thread_tell', { thread: stranger.id, message: 'Hi' })).rejects.toThrow(`Chat ${ stranger.id } is not in your thread tree`);
+        await expect(exec(first.run(), 'thread_tell', { thread: first.threadId, message: 'Hi' })).rejects.toThrow('That is your own chat');
+        await expect(exec(first.run(), 'thread_tell', { thread: 'cht_nope', message: 'Hi' })).rejects.toThrow('Thread cht_nope does not exist');
+
+        // An archived thread takes no messages from threads.
+        const done = await spawn(parent.run, 'Short job', says('Short answer'));
+
+        await waitFor(() => done.run().status === 'succeeded', 'the short thread to finish');
+        h.ok('chat.setArchived', { chatId: done.threadId, archived: true });
+        await expect(exec(parent.run, 'thread_tell', { thread: done.threadId, message: 'Hi' })).rejects.toThrow(/is archived and takes no messages from threads/);
+        expect(chatOf(done.threadId).archivedAt).toBeGreaterThan(0);
+
+        // A stopped orchestrator whose session still makes a call starts nothing.
+        h.ok('run.cancel', { runId: second.run().id });
+        await expect(exec(second.run(), 'thread_tell', { thread: parent.chat.id, message: 'Late' })).rejects.toThrow(/is cancelled and cannot start threads or message them/);
+        expect(chatOf(parent.chat.id).queue).toHaveLength(1);
+    });
+});
+
+describe('thread_stop', () => {
+    test('stops a thread below the caller as the person\'s Stop does, holds its queue, leaves its own threads going, and refuses one that is not below', async () => {
+        const { chatOf, exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const child = await spawn(parent.run, 'Child job', held(latch()));
+
+        await waitFor(() => child.run().status === 'running', 'the child to run');
+
+        const grandchild = await spawn(child.run(), 'Grandchild job', held(latch()));
+
+        await waitFor(() => grandchild.run().status === 'running', 'the grandchild to run');
+        await exec(parent.run, 'thread_tell', { thread: child.threadId, message: 'Waiting message', mode: 'queue' });
+
+        // Neither a chat above the caller nor the caller itself is below it.
+        await expect(exec(grandchild.run(), 'thread_stop', { thread: child.threadId })).rejects.toThrow(/is not below you/);
+        await expect(exec(child.run(), 'thread_stop', { thread: child.threadId })).rejects.toThrow(/is not below you/);
+
+        expect(await exec(parent.run, 'thread_stop', { thread: child.threadId })).toEqual({ stopped: true, state: 'stopped' });
+        await waitFor(() => child.run().status === 'cancelled', 'the child to stop');
+        expect(child.run().statusReason).toBe('Stopped by Plan the release');
+        expect(chatOf(child.threadId)).toMatchObject({ queuePaused: 'stopped', queue: [expect.objectContaining({ text: 'Waiting message' })] });
+
+        // Its thread goes on; the caller can stop that one too, and a thread whose work is over is left as it is.
+        expect(grandchild.run().status).toBe('running');
+        expect(await exec(parent.run, 'thread_stop', { thread: child.threadId })).toEqual({ stopped: false, state: 'stopped' });
+        expect(await exec(parent.run, 'thread_stop', { thread: grandchild.threadId })).toEqual({ stopped: true, state: 'stopped' });
+        await waitFor(() => grandchild.run().status === 'cancelled', 'the grandchild to stop');
+    });
+
+    test('stops a thread that waits for a task it depends on, and leaves one that has no run yet', async () => {
+        const { h, store, project, chatOf, exec, root } = await setup();
+        const parent = await root('Plan the release', latch());
+        const { task: a } = await exec(parent.run, 'task_create', { title: 'A' });
+        const { task: b } = await exec(parent.run, 'task_create', { title: 'B', dependsOn: [a.key] });
+        const waiting = await exec(parent.run, 'thread_spawn', { prompt: 'Do B', tasks: [b.key] });
+        const run = () => h.run(chatOf(waiting.threadId).orchestratorRunId as string);
+
+        expect(run().status).toBe('blocked');
+        expect(await exec(parent.run, 'thread_stop', { thread: waiting.threadId })).toEqual({ stopped: true, state: 'stopped' });
+        expect(run()).toMatchObject({ status: 'cancelled', statusReason: 'Stopped by Plan the release' });
+
+        const fresh = createChat(store, { projectId: project.id, title: 'Not started yet', parentChatId: parent.chat.id });
+
+        expect(await exec(parent.run, 'thread_stop', { thread: fresh.id })).toEqual({ stopped: false, state: 'new' });
+    });
+});
+
+describe('thread_output and thread_log', () => {
+    test('output is the latest turn\'s final answer, cut at 4,000 characters; a failed thread says why; background work it keeps open is listed', async () => {
+        const { engine, exec, root, spawn, on } = await setup();
+        const parent = await root('Plan the release', latch());
+        const answered = await spawn(parent.run, 'Check the cache', says(`First I looked around. ${ 'Still looking. '.repeat(300) }`, 'The cache is fine.'));
+
+        // Its final answer, whole: what it said on the way, however long, is not part of it.
+        await waitFor(() => answered.run().status === 'succeeded', 'the thread to answer');
+        expect(await exec(parent.run, 'thread_output', { thread: answered.threadId })).toEqual({
+            threadId: answered.threadId,
+            title: 'Check the cache',
+            state: 'idle',
+            text: 'The cache is fine.',
+            open: [],
+        });
+
+        // Only what the latest turn said.
+        on('And the database?', says('The database is fine too.'));
+        await exec(parent.run, 'thread_tell', { thread: answered.threadId, message: 'And the database?' });
+        await waitFor(() => engine.turns.some(turn => turn.prompt.endsWith('And the database?')) && answered.run().status === 'succeeded', 'the second answer');
+        expect((await exec(parent.run, 'thread_output', { thread: answered.threadId })).text).toBe('The database is fine too.');
+
+        const long = await spawn(parent.run, 'Write a lot', says('x'.repeat(5000)));
+
+        await waitFor(() => long.run().status === 'succeeded', 'the long answer');
+        expect((await exec(parent.run, 'thread_output', { thread: long.threadId })).text).toBe(`${ 'x'.repeat(4000) }\n\n[... 1000 more characters cut ...]`);
+
+        // A cut never splits an emoji (two UTF-16 units) in two: a lone half is not valid text, and a strict JSON reader refuses the result over it.
+        const emoji = `a${ '😀'.repeat(2500) }`;
+
+        expect(clipOutput(emoji)).toBe(`a${ '😀'.repeat(1999) }\n\n[... 1002 more characters cut ...]`);
+        expect(clip(`ab${ '😀'.repeat(5) }`, 4)).toBe('ab…');
+
+        const failed = await spawn(parent.run, 'Fall over', async function* ({ number }) {
+            yield { type: 'session', sessionId: `s-${ number }` };
+            yield { type: 'error', message: 'The agent fell over' };
+        });
+
+        await waitFor(() => failed.run().status === 'failed', 'the thread to fail');
+        expect(await exec(parent.run, 'thread_output', { thread: failed.threadId })).toMatchObject({ state: 'failed', text: null, error: 'The agent fell over' });
+
+        // A session that keeps background work open: idle, and its work is listed.
+        engine.sendAnswer = () => true;
+
+        const lingering = await spawn(parent.run, 'Start the build', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'text', delta: 'Started the build', done: true };
+            yield { type: 'background', items: [{ id: 'bg-1', kind: 'command', title: 'bun run build' }] };
+            yield { type: 'done', result: 'Started the build' };
+            await turn.hold(latch());
+        });
+
+        await waitFor(() => lingering.run().status === 'waiting_background', 'the thread to wait for its build');
+        expect(await exec(parent.run, 'thread_output', { thread: lingering.threadId })).toMatchObject({ state: 'idle', reason: 'Waiting for background work', text: 'Started the build', open: ['bun run build'] });
+        expect((await exec(parent.run, 'thread_list')).threads.find((entry: { threadId: string }) => entry.threadId === lingering.threadId)).toMatchObject({ state: 'idle', open: ['bun run build'] });
+    });
+
+    test('log shows the last lines with their numbers and who wrote each message', async () => {
+        const { h, exec, root, spawn, on } = await setup();
+        const parent = await root('Plan the release', latch());
+        const thread = await spawn(parent.run, 'Check the tasks', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield* turn.call('task_list');
+            yield { type: 'text', delta: 'All clear\nnothing to do', done: true };
+            yield { type: 'done', result: 'All clear' };
+        });
+
+        await waitFor(() => thread.run().status === 'succeeded', 'the thread to answer');
+        on('Person here', says('Hello'));
+        h.ok('chat.send', { chatId: thread.threadId, text: 'Person here' });
+        await waitFor(() => thread.run().status === 'succeeded' && h.run(thread.run().id).result === 'Hello', 'the answer to the person');
+
+        const { lines } = await exec(parent.run, 'thread_log', { thread: thread.threadId });
+
+        expect(lines).toEqual([
+            `#1 thread "Plan the release" (${ parent.chat.id }): Check the tasks`,
+            '#2 tool task_list (done)',
+            '#3 assistant: All clear nothing to do',
+            '#4 person: Person here',
+            '#5 assistant: Hello',
+        ]);
+        expect(await exec(parent.run, 'thread_log', { thread: thread.threadId, limit: 2 })).toEqual({ threadId: thread.threadId, title: 'Check the tasks', state: 'idle', lines: lines.slice(3) });
+        await expect(exec(parent.run, 'thread_log', { thread: thread.threadId, limit: 101 })).rejects.toThrow(/Invalid input for thread_log/);
+
+        // The thread reads its parent's log too: any chat of the tree.
+        expect((await exec(thread.run(), 'thread_log', { thread: parent.chat.id })).lines[0]).toBe('#1 person: Plan the release');
+    });
+});
+
+describe('thread_list', () => {
+    test('lists the caller\'s own threads, or every chat below it with its depth and parent', async () => {
+        const { exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const a = await spawn(parent.run, 'Job A', held(latch()));
+        const b = await spawn(parent.run, 'Job B', says('B is done'), { model: 'small' });
+
+        await waitFor(() => a.run().status === 'running' && b.run().status === 'succeeded', 'A to run and B to finish');
+
+        const a1 = await spawn(a.run(), 'Job A1', held(latch()));
+        const own = (await exec(parent.run, 'thread_list')).threads;
+
+        expect(own).toEqual([
+            { threadId: a.threadId, title: 'Job A', parent: parent.chat.id, state: 'working', engine: 'fake', open: [], updatedAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) },
+            { threadId: b.threadId, title: 'Job B', parent: parent.chat.id, state: 'idle', engine: 'fake', model: 'small', open: [], updatedAt: expect.any(String) },
+        ]);
+
+        const all = (await exec(parent.run, 'thread_list', { all: true })).threads;
+
+        expect(all.map((entry: { threadId: string; depth: number; parent: string }) => [entry.threadId, entry.depth, entry.parent])).toEqual([
+            [a.threadId, 1, parent.chat.id],
+            [b.threadId, 1, parent.chat.id],
+            [a1.threadId, 2, a.threadId],
+        ]);
+        expect((await exec(a.run(), 'thread_list')).threads.map((entry: { threadId: string }) => entry.threadId)).toEqual([a1.threadId]);
+        expect((await exec(a1.run(), 'thread_list', { all: true })).threads).toEqual([]);
+    });
+});
+
+describe('thread limits', () => {
+    test('a tree is three levels deep: a thread of a thread starts none', async () => {
+        const { exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const child = await spawn(parent.run, 'Child job', held(latch()));
+
+        await waitFor(() => child.run().status === 'running', 'the child to run');
+
+        const grandchild = await spawn(child.run(), 'Grandchild job', held(latch()));
+
+        await waitFor(() => grandchild.run().status === 'running', 'the grandchild to run');
+        await expect(exec(grandchild.run(), 'thread_spawn', { prompt: 'Too deep' })).rejects.toMatchObject({
+            code: 'conflict',
+            message: expect.stringContaining('Threads nest 3 levels deep at most, counting the chat the person started, and this chat is level 3'),
+        });
+        expect((await exec(grandchild.run(), 'thread_list')).threads).toEqual([]);
+    });
+
+    test('a chat has at most so many threads at work, a thread without a run counting, and room comes back when one stops', async () => {
+        const { store, project, exec, root, spawn } = await setup({ maxActiveThreads: 2 });
+        const parent = await root('Plan the release', latch());
+        const first = await spawn(parent.run, 'First job', held(latch()));
+
+        createChat(store, { projectId: project.id, title: 'Not started yet', parentChatId: parent.chat.id });
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Third job' })).rejects.toThrow('This chat has 2 threads at work, the most it may have at once. Wait until one stops');
+
+        await exec(parent.run, 'thread_stop', { thread: first.threadId });
+        await waitFor(() => first.run().status === 'cancelled', 'the first thread to stop');
+
+        expect((await spawn(parent.run, 'Third job', says('Third done'))).state).toBe('working');
+    });
+
+    test('a chat starts at most so many threads over its life, finished ones counting', async () => {
+        const { exec, root, spawn } = await setup({ maxThreads: 2 });
+        const parent = await root('Plan the release', latch());
+        const first = await spawn(parent.run, 'First job', says('One'));
+        const second = await spawn(parent.run, 'Second job', says('Two'));
+
+        await waitFor(() => first.run().status === 'succeeded' && second.run().status === 'succeeded', 'both threads to finish');
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Third job' })).rejects.toThrow('This chat has started 2 threads, the most one chat may start');
+    });
+});
+
+describe('archive and delete', () => {
+    /** A finished chat with a thread A and A's thread A1, both finished. */
+    async function tree() {
+        const context = await setup();
+        const { root, spawn } = context;
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const childGate = latch();
+        const child = await spawn(parent.run, 'Child job', held(childGate));
+
+        await waitFor(() => child.run().status === 'running', 'the child to run');
+
+        const grandchild = await spawn(child.run(), 'Grandchild job', says('Grandchild done'));
+
+        gate.release();
+        childGate.release();
+        await waitFor(() => [parent.run.id, child.run().id, grandchild.run().id].every(id => context.h.run(id).status === 'succeeded'), 'the tree to finish');
+
+        return { ...context, parent, child, grandchild };
+    }
+
+    test('archiving a chat archives its threads, bringing it back brings only the chat, and a thread at work refuses the archive', async () => {
+        const { h, chatOf, parent, child, grandchild, exec, on } = await tree();
+        const ids = [parent.chat.id, child.threadId, grandchild.threadId];
+
+        h.ok('chat.setArchived', { chatId: parent.chat.id, archived: true });
+
+        const archivedAt = chatOf(parent.chat.id).archivedAt;
+
+        expect(ids.map(id => chatOf(id).archivedAt)).toEqual([archivedAt, archivedAt, archivedAt]);
+
+        h.ok('chat.setArchived', { chatId: parent.chat.id, archived: false });
+        expect(ids.map(id => chatOf(id).archivedAt)).toEqual([undefined, archivedAt, archivedAt]);
+
+        // A message to the parent brings it to work again, and the thread it starts keeps the archive from happening.
+        on('Again', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield* turn.call('thread_spawn', { prompt: 'Busy job', title: 'Busy thread' });
+            yield { type: 'done', result: 'Started it' };
+        });
+        on('Busy job', async function* ({ number, signal }) {
+            yield { type: 'session', sessionId: `s-${ number }` };
+            await untilAborted(signal);
+        });
+        h.ok('chat.send', { chatId: parent.chat.id, text: 'Again' });
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded' && h.run(parent.run.id).result === 'Started it', 'the parent to start a thread');
+
+        const busy = (await exec(h.run(parent.run.id), 'thread_list')).threads.find((entry: { title: string }) => entry.title === 'Busy thread');
+
+        await waitFor(() => h.run(chatOf(busy.threadId).orchestratorRunId as string).status === 'running', 'the busy thread to run');
+        expect(h.send('chat.setArchived', { chatId: parent.chat.id, archived: true })).toMatchObject({
+            ok: false,
+            error: { code: 'conflict', message: 'The thread "Busy thread" below this chat is still working. Stop it first.' },
+        });
+        expect(ids.map(id => chatOf(id).archivedAt)).toEqual([undefined, archivedAt, archivedAt]);
+        expect(chatOf(busy.threadId).archivedAt).toBeUndefined();
+    });
+
+    test('deleting a chat deletes every thread below it with its runs, announcing each chat, the deepest first', async () => {
+        const { h, store, parent, child, grandchild } = await tree();
+        const runIds = [grandchild.run().id, child.run().id, parent.run.id];
+        const cursor = store.headCursor();
+
+        h.ok('chat.delete', { chatId: parent.chat.id });
+
+        const deleted = h.events(cursor).map(event => event.data as { type: string; chatId: string; runIds: string[] });
+
+        expect(deleted.map(event => [event.type, event.chatId, event.runIds])).toEqual([
+            ['chat.deleted', grandchild.threadId, [runIds[0]]],
+            ['chat.deleted', child.threadId, [runIds[1]]],
+            ['chat.deleted', parent.chat.id, [runIds[2]]],
+        ]);
+        expect([parent.chat.id, child.threadId, grandchild.threadId].map(id => getChat(store.db, id))).toEqual([undefined, undefined, undefined]);
+        expect(store.db.query(`SELECT COUNT(*) AS n FROM runs WHERE id IN (${ runIds.map(() => '?').join(', ') })`).get(...runIds)).toEqual({ n: 0 });
+    });
+
+    test('a delete is refused while a thread below the chat works, naming it, and deletes nothing', async () => {
+        const { h, store, chatOf, root, spawn } = await setup();
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const child = await spawn(parent.run, 'Long job', held(latch()), { title: 'Long thread' });
+
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded' && child.run().status === 'running', 'the parent to finish while its thread works');
+        expect(h.send('chat.delete', { chatId: parent.chat.id })).toMatchObject({
+            ok: false,
+            error: { code: 'conflict', message: 'The thread "Long thread" below this chat is still working. Stop it first.' },
+        });
+        expect(chatOf(parent.chat.id)).toBeDefined();
+        expect(chatOf(child.threadId)).toBeDefined();
+        expect(store.db.query('SELECT COUNT(*) AS n FROM chats WHERE parent_chat_id = ?').get(parent.chat.id)).toEqual({ n: 1 });
+    });
+});
+
+describe('a scripted orchestrator', () => {
+    test('spawns a thread, steers it, queues for it, reads its output and log, and stops it, each through its tools', async () => {
+        const { h, engine, project, chatOf, bodies, on, runOf } = await setup();
+        const results: Record<string, any> = {};
+
+        engine.steerAnswer = () => true;
+        on('Worker job', async function* ({ number, signal }) {
+            yield { type: 'session', sessionId: `s-${ number }` };
+            yield { type: 'text', delta: 'Working on it', done: true };
+            await untilAborted(signal);
+        });
+        on('Coordinate the work', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            results.spawned = yield* turn.call('thread_spawn', { prompt: 'Worker job', title: 'Worker' });
+
+            const thread = results.spawned.threadId as string;
+
+            await waitFor(() => runOf(thread).status === 'running' && engine.turns.some(options => options.prompt.endsWith('Worker job')), 'the worker to run');
+            results.steer = yield* turn.call('thread_tell', { thread, message: 'Steer this' });
+            await waitFor(() => engine.steered.length === 1, 'the steer to reach the worker');
+            results.queue = yield* turn.call('thread_tell', { thread, message: 'Queue this', mode: 'queue' });
+            results.output = yield* turn.call('thread_output', { thread });
+            results.log = yield* turn.call('thread_log', { thread });
+            results.stop = yield* turn.call('thread_stop', { thread });
+            yield { type: 'text', delta: 'Coordinated', done: true };
+            yield { type: 'done', result: 'Coordinated' };
+        });
+
+        const { chat } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Coordinate the work' });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish', 8000);
+
+        const thread = results.spawned.threadId as string;
+        const parent = chatOf(chat.id);
+
+        expect(results.spawned).toMatchObject({ title: 'Worker', state: 'working' });
+        expect(results.steer).toEqual({ delivery: 'queued' });
+        expect(results.queue).toEqual({ delivery: 'queued' });
+        expect(results.output).toMatchObject({ threadId: thread, title: 'Worker', state: 'working' });
+        expect(results.log.lines[0]).toBe(`#1 thread "Coordinate the work" (${ chat.id }): Worker job`);
+        expect(results.log.lines).toContain(`#3 thread "Coordinate the work" (${ chat.id }): Steer this`);
+        expect(results.stop).toEqual({ stopped: true, state: 'stopped' });
+        expect(engine.steered).toEqual([told(parent, 'Steer this')]);
+        expect(chatOf(thread)).toMatchObject({ parentChatId: chat.id, queuePaused: 'stopped', queue: [expect.objectContaining({ text: 'Queue this', from: fromChat(parent) })] });
+        await waitFor(() => runOf(thread).status === 'cancelled', 'the worker to stop');
+
+        // Each call is a tool card in the orchestrator's stream.
+        expect(bodies(runId).flatMap(body => (body.kind === 'tool' ? [[body.name, body.state]] : []))).toEqual([
+            ['thread_spawn', 'done'],
+            ['thread_tell', 'done'],
+            ['thread_tell', 'done'],
+            ['thread_output', 'done'],
+            ['thread_log', 'done'],
+            ['thread_stop', 'done'],
+        ]);
+    });
+});

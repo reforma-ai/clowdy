@@ -152,6 +152,12 @@ export interface ToolDefinition {
     inputSchema: Record<string, unknown>;
     /** The same schema as zod, for validating the input. */
     schema: z.ZodType;
+    /**
+     * Set on a tool that is also a shell command for the agent (`thread_tell` is `clowdy thread tell`): its input is flat, so each field is a flag.
+     * `positional` names the fields that may come as plain arguments instead, in their order (`clowdy thread tell <thread> <message>`). Absent on a tool
+     * that is only a tool.
+     */
+    cli?: { positional?: readonly string[] };
     /** Validates `input` and runs the tool. Rejects with an Error whose message the model may read. */
     execute(input: unknown, signal: AbortSignal): Promise<unknown>;
 }

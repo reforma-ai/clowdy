@@ -9,6 +9,7 @@ import type { ProvidersService } from '../providers/service';
 import type { RunDriver } from '../runs/driver';
 import type { ChatQueue } from '../runs/queue';
 import type { RunService } from '../runs/service';
+import type { ThreadService } from '../runs/threads';
 import type { SkillsService } from '../skills/service';
 import type { Store } from '../store';
 
@@ -20,6 +21,8 @@ export interface Services {
     driver: RunDriver;
     /** What the person writes while a chat's orchestrator works: the queue, its turns and its steers. */
     queue: ChatQueue;
+    /** Threads: chats an agent of another chat starts and drives with its `thread_*` tools. */
+    threads: ThreadService;
     docs: DocsService;
     files: FilesService;
     attachments: AttachmentsService;

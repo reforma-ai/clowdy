@@ -30,19 +30,20 @@ function skillTexts(dir = join(defaultSystemSkillsSource(), 'skills')): string[]
     ));
 }
 
-/** The tools of the orchestrator of a semi-manual chat (the one with the most), by name, with their fields and schemas. */
+/** The tools of the orchestrator of a semi-manual chat (the one with the most) that are not shell commands, by name, with their fields and schemas. */
 async function daemonTools() {
     const h = await startHarness();
 
     try {
         const project = h.openRepo();
         const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
-        const { store, runs } = h.daemon.services;
+        const { store, runs, threads } = h.daemon.services;
         const orchestrator = runs.createRun({ project: getProject(store.db, project.id)!, role: 'orchestrator', chatId: chat.id, summary: 'Plan' });
         const fields = new Map<string, Set<string>>();
         const schemas = new Map<string, ZodType[]>();
 
-        for (const tool of toolsFor({ store, runs }, orchestrator, runs.modeOf(orchestrator))) {
+        // The thread tools are shell commands for the agent too (`ToolDefinition.cli`); the skills teach them as `clowdy thread` commands, not as tools.
+        for (const tool of toolsFor({ store, runs, threads }, orchestrator, runs.modeOf(orchestrator)).filter(candidate => !candidate.cli)) {
             fields.set(tool.name, new Set(Object.keys((tool.inputSchema.properties ?? {}) as Record<string, unknown>)));
             schemas.set(tool.name, [tool.schema]);
         }

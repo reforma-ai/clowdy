@@ -5,8 +5,8 @@ import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
 import { createTask, deleteTask, linkChatTask, requireTask, updateTask } from '../domain/tasks';
 import { CommandError } from '../errors';
+import { requireEnabled } from '../runs/messages';
 import { firstMessage, taskMessage } from '../runs/prompts';
-import { requireEnabled } from './chat';
 
 import type { Handlers } from './context';
 

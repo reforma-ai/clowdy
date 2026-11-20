@@ -86,7 +86,7 @@ type Wait = { kind: 'limit'; until: number } | { kind: 'transient'; delayMs: num
 type Retry = Wait | { kind: 'resume' } | { kind: 'stopped' };
 
 /** Synchronous, because a turn reads it between counting the live sessions and starting its own: nothing may wait there. */
-function isFolder(path: string): boolean {
+export function isFolder(path: string): boolean {
     try {
         return statSync(path).isDirectory();
     }
