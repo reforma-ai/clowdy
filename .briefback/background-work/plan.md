@@ -244,11 +244,11 @@ Confirmed by the owner in chat (2026-11-19):
 
 **This stage:** In v2 a background sub-agent is a child session: `subagent_update` announces it and carries its state, and its messages and tool calls keep arriving after the parent's turn ended, which Stage 4 drops. This stage routes that traffic into native child runs, so the person can open a working sub-agent from the strip above the message box and read what it does, and so a child run ends when its sub-agent does, not when the call that started it returned.
 
-- [ ] Complete
-  - [ ] `subagent_update` becomes `subagent` events with the call's id as `parentToolCallId`, running while the sub-agent's state is `running` and done or error at its `idle`
-  - [ ] Updates of a child session reach its native run through `agentId`, in the parent's stream order, while the parent waits and while it works
-  - [ ] A background sub-agent's row above the message box shows its activity and call count (the existing `AgentRow`), and opens its run
-  - [ ] The mapper's old rule that drops what a sub-agent reports after its call ended no longer applies to v2, and `apps/daemon/AGENTS.md` ("Sub-agents") says so
+- [x] Complete
+  - [x] `subagent_update` becomes `subagent` events with the call's id as `parentToolCallId`, running while the sub-agent's state is `running` and done or error at its `idle`
+  - [x] Updates of a child session reach its native run through `agentId`, in the parent's stream order, while the parent waits and while it works
+  - [x] A background sub-agent's row above the message box shows its activity and call count (the existing `AgentRow`), and opens its run
+  - [x] The mapper's old rule that drops what a sub-agent reports after its call ended no longer applies to v2, and `apps/daemon/AGENTS.md` ("Sub-agents") says so
 
 **Files**
 
@@ -260,7 +260,9 @@ Confirmed by the owner in chat (2026-11-19):
 
 **Done when:** with a background sub-agent running in a real Claude Code chat, its tool calls appear in its own child run while the parent waits, and the child ends with the sub-agent.
 **Verify:** `cd apps/daemon && bun test test/native.test.ts test/acp-mapper.test.ts test/acp-session.test.ts && bun run typecheck && bun run lint`, and the real check
-**Commits:** None yet.
+**Commits:**
+
+- `50f72ca` feat(daemon): show the sub-agents of Claude Code on ACP v2 as child runs (merged in `96dbdb8`). New `engine/acp/children.ts`; a synthetic `Agent` card from the prompt message's id; the sub-agent item id is the call id; a foreground child ends at its `idle`, a background one when it leaves the list; an item that leaves and returns is the same item (debounce by identity, no timer); a sub-agent with a child run is its own row in the strip with "Stop all" and is not counted in the background row. Real Claude Code scenarios through a scratch daemon passed (foreground, background, two at once, Stop, a message while the child works, a child with its own command). Open for the owner: the wording of Stop on that row (see the chat).
 
 ## Stage 9 — Stop and send for agents that cannot steer
 
