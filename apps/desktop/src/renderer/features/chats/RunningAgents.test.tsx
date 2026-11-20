@@ -87,6 +87,72 @@ describe('RunningAgents', () => {
     });
 });
 
+/**
+ * c-5 waits for background work with a sub-agent among it: the orchestrator's Agent call `tc-agent-5` started the native child r-na-05, which works
+ * (its item in the list is named by that call), besides the command bg-1 that has no run of its own.
+ */
+function waitWithSubagent(items = [{ id: 'bg-1', kind: 'command' as const, title: 'bun run test' }, { id: 'tc-agent-5', kind: 'subagent' as const, title: 'Explore' }]) {
+    runs().set('r-orch-5', { ...runs().get('r-orch-5')!, background: items });
+    runs().set('r-na-05', {
+        id: 'r-na-05',
+        projectId: FIXTURE_PROJECT_ID,
+        rootRunId: 'r-orch-5',
+        parentRunId: 'r-orch-5',
+        role: 'executor',
+        origin: 'native',
+        parentToolCallId: 'tc-agent-5',
+        name: 'Explore',
+        summary: 'Find where the price is computed',
+        status: 'running',
+        engine: 'claude',
+        createdAt: 1,
+    });
+}
+
+describe('RunningAgents, a sub-agent of a session that waits', () => {
+    it('is one row of its own, which the background row does not count again', async () => {
+        waitWithSubagent();
+        await draw('c-5');
+
+        expect(rows().map(row => row.textContent)).toEqual(['Explore agent workingStop all', 'Background task runningStop']);
+    });
+
+    it('leaves no background row when every open item has a run, and the sub-agent\'s row has Stop all, which ends the orchestrator\'s run', async () => {
+        waitWithSubagent([{ id: 'tc-agent-5', kind: 'subagent', title: 'Explore' }]);
+        await draw('c-5');
+
+        expect(rows().map(row => [...row.querySelectorAll('button')].map(button => button.textContent))).toEqual([['Explore agent working', 'Stop all']]);
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => [...rows()[0].querySelectorAll('button')][1].click());
+        expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-orch-5' });
+    });
+
+    it('opens the sub-agent\'s run from its row', async () => {
+        waitWithSubagent([{ id: 'tc-agent-5', kind: 'subagent', title: 'Explore' }]);
+        await draw('c-5');
+        await act(async () => rows()[0].querySelector('button')!.click());
+        expect(ui().runId).toBe('r-na-05');
+    });
+
+    it('counts the sub-agent again when its run is not at work, so nothing open goes unlisted', async () => {
+        waitWithSubagent();
+        runs().set('r-na-05', { ...runs().get('r-na-05')!, status: 'succeeded' });
+        await draw('c-5');
+
+        expect(rows().map(row => row.textContent)).toEqual(['2 background tasks runningStop']);
+    });
+
+    it('has no Stop on the row while the orchestrator\'s own turn runs: the composer stops that', async () => {
+        waitWithSubagent([{ id: 'tc-agent-5', kind: 'subagent', title: 'Explore' }]);
+        runs().set('r-orch-5', { ...runs().get('r-orch-5')!, status: 'running' });
+        await draw('c-5');
+
+        expect(rows().map(row => [...row.querySelectorAll('button')].map(button => button.textContent))).toEqual([['Explore agent working']]);
+    });
+});
+
 describe('RunningAgents, the background row', () => {
     it('counts what the orchestrator has open in the background, with Stop', async () => {
         await draw('c-5');

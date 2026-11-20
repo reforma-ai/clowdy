@@ -1,3 +1,4 @@
+import { STOPPED_TOOL } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 
@@ -1331,6 +1332,190 @@ describe('sub-agents of the work that waits', () => {
             { kind: 'assistant', text: 'Found three callers', done: true },
         ]);
         expect(notes()).toEqual(['Background sub-agent finished: Explore']);
+    });
+
+    test('one that stops and is woken at once, out of the list and back in it, is the same sub-agent: no second note, no end in between, and what it says later is not a new one', async () => {
+        const finished = latch();
+        const input = { subagent_type: 'Explore', description: 'Look at the callers', prompt: 'Find them' };
+        const { h, runId, waits, status, notes } = await setup(async function* (turn) {
+            const item: BackgroundItem = { id: 'agent-1', kind: 'subagent', title: 'Explore' };
+            const card = (state: 'running' | 'done'): EngineEvent => ({ type: 'tool', toolCallId: 'call-1', name: 'Agent', input, state, ...(state === 'done' && { output: 'Reported' }) });
+
+            yield { type: 'session', sessionId: 's-1' };
+            yield card('running');
+            yield { type: 'subagent', agentId: 'agent-1', parentToolCallId: 'call-1', name: 'Explore', description: 'Look at the callers', state: 'running' };
+            yield { type: 'background', items: [item] };
+            yield { type: 'done', result: 'Started it' };
+
+            if (!await turn.hold(finished)) {
+                return;
+            }
+
+            // It stopped (its first report), and its own command woke it a few milliseconds later: the layer says its card is done, the list is
+            // empty, the card is running again, and the list has it again. Nothing the agent does comes between, not even the mark that ends its open
+            // message, which the layer says when it draws the card again.
+            yield { type: 'text', delta: 'First look', done: true, agentId: 'agent-1' };
+            yield card('done');
+            yield { type: 'background', items: [] };
+            yield { type: 'text', delta: '', done: true };
+            yield card('running');
+            yield { type: 'background', items: [item] };
+            yield { type: 'text', delta: 'Second look', done: true, agentId: 'agent-1' };
+            yield card('done');
+            yield { type: 'background', items: [] };
+            yield { type: 'text', delta: 'Reported', done: true };
+            // Anything it says after it is over is dropped, not taken for a sub-agent of its own.
+            yield { type: 'tool', toolCallId: 'late-1', name: 'Read', input: {}, state: 'running', agentId: 'agent-1' };
+            yield { type: 'done', result: 'Reported' };
+        });
+
+        await waits();
+
+        const natives = () => projectSnapshot(h.store, h.run(runId).projectId).runs.filter((run: Run) => run.origin === 'native');
+        const items = (id: string) => listItems(h.store.db, id, 0).map(item => item.body);
+
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+
+        const [explore] = natives();
+
+        expect(natives()).toHaveLength(1);
+        // It ended once, after its last word, and its result is the last thing it said.
+        expect(explore).toMatchObject({ status: 'succeeded', result: 'Second look', parentToolCallId: 'call-1' });
+        expect(items(explore.id)).toEqual([{ kind: 'assistant', text: 'First look', done: true }, { kind: 'assistant', text: 'Second look', done: true }]);
+        expect(notes()).toEqual(['Background sub-agent finished: Explore']);
+        expect(items(runId).filter(body => body.kind === 'tool')).toEqual([expect.objectContaining({ toolCallId: 'call-1', state: 'done', output: 'Reported' })]);
+    });
+
+    test('one that the list names before its first event comes still ends as finished when its item leaves, not as cancelled with the session', async () => {
+        const finished = latch();
+        const { h, runId, waits, status, notes } = await setup(async function* (turn) {
+            yield { type: 'session', sessionId: 's-1' };
+            yield { type: 'background', items: [{ id: 'call-1', kind: 'subagent', title: 'Explore' }] };
+            yield { type: 'subagent', agentId: 'agent-1', parentToolCallId: 'call-1', name: 'Explore', state: 'running' };
+            yield { type: 'text', delta: 'Looking', done: true, agentId: 'agent-1' };
+            yield { type: 'done', result: 'Started it' };
+
+            if (!await turn.hold(finished)) {
+                return;
+            }
+
+            yield { type: 'background', items: [] };
+            yield { type: 'text', delta: 'The sub-agent finished', done: true };
+            yield { type: 'done', result: 'Reported' };
+        });
+
+        await waits();
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+
+        expect(projectSnapshot(h.store, h.run(runId).projectId).runs.filter((run: Run) => run.origin === 'native').map(run => run.status)).toEqual(['succeeded']);
+        expect(notes()).toEqual(['Background sub-agent finished: Explore']);
+    });
+
+    test('one whose item is lost as the agent says nothing more ends as finished with the session, with its note', async () => {
+        const finished = latch();
+        const { h, runId, waits, status, notes } = await setup(async function* (turn) {
+            yield { type: 'session', sessionId: 's-1' };
+            yield { type: 'subagent', agentId: 'agent-1', parentToolCallId: 'call-1', name: 'Explore', state: 'running' };
+            yield { type: 'text', delta: 'Looking', done: true, agentId: 'agent-1' };
+            yield { type: 'background', items: [{ id: 'call-1', kind: 'subagent', title: 'Explore' }] };
+            yield { type: 'done', result: 'Started it' };
+
+            if (!await turn.hold(finished)) {
+                return;
+            }
+
+            // The list loses it and the agent never speaks again: the session ends.
+            yield { type: 'background', items: [] };
+        });
+
+        await waits();
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+
+        expect(projectSnapshot(h.store, h.run(runId).projectId).runs.filter((run: Run) => run.origin === 'native')).toEqual([expect.objectContaining({ status: 'succeeded', result: 'Looking' })]);
+        expect(notes()).toEqual(['Background sub-agent finished: Explore']);
+    });
+
+    test('one whose item is lost while the turn goes on ends when the agent does something next, and with the turn when it does nothing', async () => {
+        const { h, runId, status, notes } = await setup(async function* () {
+            const item = (id: string): BackgroundItem => ({ id, kind: 'subagent', title: id });
+
+            yield { type: 'session', sessionId: 's-1' };
+            yield { type: 'subagent', agentId: 'a', name: 'First', state: 'running' };
+            yield { type: 'subagent', agentId: 'b', name: 'Second', state: 'running' };
+            yield { type: 'background', items: [item('a'), item('b')] };
+            yield { type: 'background', items: [item('b')] };
+            yield { type: 'text', delta: 'Moving on', done: true };
+            yield { type: 'background', items: [] };
+            yield { type: 'done', result: 'Done' };
+        });
+
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+
+        const natives = projectSnapshot(h.store, h.run(runId).projectId).runs.filter((run: Run) => run.origin === 'native');
+
+        // Both finished, none was cancelled by the turn's end, each has its note, in the order they went.
+        expect(natives.map(run => [run.name, run.status])).toEqual([['First', 'succeeded'], ['Second', 'succeeded']]);
+        expect(notes()).toEqual(['Background sub-agent finished: a', 'Background sub-agent finished: b']);
+    });
+
+    test('its card in the parent\'s stream is not failed by the end of the turn, and ends with the sub-agent', async () => {
+        const finished = latch();
+        const input = { subagent_type: 'Explore', description: 'Look at the callers', prompt: 'Find them' };
+        const { h, runId, waits, status } = await setup(async function* (turn) {
+            yield { type: 'session', sessionId: 's-1' };
+            yield { type: 'tool', toolCallId: 'call-1', name: 'Agent', input, state: 'running' };
+            yield { type: 'subagent', agentId: 'agent-1', parentToolCallId: 'call-1', name: 'Explore', description: 'Look at the callers', state: 'running' };
+            yield { type: 'tool', toolCallId: 'call-2', name: 'Read', input: {}, state: 'running' };
+            yield { type: 'background', items: [{ id: 'agent-1', kind: 'subagent', title: 'Explore' }] };
+            yield { type: 'done', result: 'Started it' };
+
+            if (!await turn.hold(finished)) {
+                return;
+            }
+
+            yield { type: 'tool', toolCallId: 'call-1', name: 'Agent', input, state: 'done', output: 'Three callers' };
+            yield { type: 'background', items: [] };
+            yield { type: 'text', delta: 'It found three', done: true };
+            yield { type: 'done', result: 'Reported' };
+        });
+
+        await waits();
+
+        const tools = () => listItems(h.store.db, runId, 0).flatMap(item => item.body.kind === 'tool' ? [[item.body.toolCallId, item.body.state]] : []);
+
+        // The sub-agent's call goes on, another call the turn left running is failed as before.
+        expect(tools()).toEqual([['call-1', 'running'], ['call-2', 'error']]);
+
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+        expect(tools()).toEqual([['call-1', 'done'], ['call-2', 'error']]);
+    });
+
+    test('a Stop while one works ends its run and its card as stopped', async () => {
+        const finished = latch();
+        const { h, runId, waits } = await setup(async function* (turn) {
+            yield { type: 'session', sessionId: 's-1' };
+            yield { type: 'tool', toolCallId: 'call-1', name: 'Agent', input: {}, state: 'running' };
+            yield { type: 'subagent', agentId: 'agent-1', parentToolCallId: 'call-1', name: 'Explore', state: 'running' };
+            yield { type: 'text', delta: 'Working', done: true, agentId: 'agent-1' };
+            yield { type: 'background', items: [{ id: 'agent-1', kind: 'subagent', title: 'Explore' }] };
+            yield { type: 'done', result: 'Started it' };
+            await turn.hold(finished);
+        });
+
+        await waits();
+        h.ok('run.cancel', { runId });
+        await waitFor(() => h.run(runId).status === 'cancelled', 'the run to stop');
+
+        const natives = () => projectSnapshot(h.store, h.run(runId).projectId).runs.filter((run: Run) => run.origin === 'native');
+        const card = () => listItems(h.store.db, runId, 0).flatMap(item => item.body.kind === 'tool' ? [item.body] : []);
+
+        // The session's end closes both, a moment after the run is cancelled.
+        await waitFor(() => card()[0]?.state === 'error' && natives()[0]?.status === 'cancelled', 'the card and the sub-agent to end');
+        expect(card()).toEqual([expect.objectContaining({ toolCallId: 'call-1', state: 'error', error: STOPPED_TOOL })]);
     });
 
     test('end with the run when it is stopped while they work', async () => {

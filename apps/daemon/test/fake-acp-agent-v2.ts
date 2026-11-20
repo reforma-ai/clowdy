@@ -6,14 +6,24 @@ import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError
  *
  *   say, tool, call, perm, usage, context, /compact, limit, info, capabilities, choice, prompt, env, fail, sleep, crash, title, echo, late
  *
- * `fail` ends the turn with `idle` and `stopReason: error` (the failure rides on the update, as v2 reports one after the message went in). `subagent` is not
- * spoken: a sub-agent is a session of its own in v2. Directives only v2 has:
+ * `fail` ends the turn with `idle` and `stopReason: error` (the failure rides on the update, as v2 reports one after the message went in). The v1 `subagent`
+ * directive is not spoken as it is: a sub-agent is a session of its own in v2, told in the shape Claude's adapter tells it (see `subagent` below). Directives only v2 has:
  *
  *   pause <ms>                  `requires_action` for that long, then `running` again, as an agent waiting for a person does
  *   stop <reason>               ends the turn at once with that stop reason (`max_tokens`, `max_turn_requests`, `refusal`, ...)
+ *   subagent <ms> <title>       a foreground sub-agent, as Claude's adapter tells one: the parent never sees an `Agent` call, it announces the child with
+ *                               `subagent_update` (kind `general-purpose`, the title, `cancel` capability, state `running`), the prompt is a `session_message`
+ *                               (the parent's view with `recipientMessageId`, the child's with `senderMessageId`, its id the id of the call, which the
+ *                               child's own calls name as their `parentToolUseId`), the child says a message and calls a `Bash` tool on its own session, and
+ *                               <ms> after it began it sends its report as a `session_message`, `subagent_update` `idle` and its own `idle`. The parent's
+ *                               turn goes on meanwhile and its state never lists the child. A cancel (`session/cancel`) ends it with `stopReason: cancelled`
+ *   stray <text>                says <text> on a session that no `subagent_update` announced, which the client must not read
+ *   outcome <reason>            how the next sub-agent ends: `end_turn` (default), `cancelled` or `error`; the last two send no report
+ *   flap                        the next background sub-agent that ends is woken again at once, as one with a background command of its own is: its `idle`
+ *                               and the list without it, then `running` and the list with it again a moment later, and the real end 150 ms after that
  *   background <kind> <ms> <title>   starts work that runs on after the turn and ends <ms> later, listed in `background` of every state until then:
  *                               `terminal` (a command: `terminal_update` with its command, a `Bash` call that completes at once), `subagent` (a child
- *                               session announced with `subagent_update`, which says a message of its own on the child's session) or `workflow` (a
+ *                               session told as `subagent` above, listed in `background`, its calls and report coming after the parent's `idle`) or `workflow` (a
  *                               `Workflow` tool call that stays `in_progress`). When it ends the list says so (a repeated `idle` snapshot without a stop
  *                               reason, or `running` while a turn goes on) and, after the gap, the agent starts a turn of its own that reports it
  *   retitle <ms> <title>        <ms> from now gives the workflow started last a new title, with no state update after it, as a workflow's progress does
@@ -88,6 +98,9 @@ interface FakeSession {
     reporting: boolean;
     /** A prompt was inserted into the turn that runs. */
     landed: boolean;
+    /** How the next sub-agent ends (`outcome`), and whether it is woken again at once (`flap`). */
+    outcome: 'end_turn' | 'cancelled' | 'error';
+    flap: boolean;
 }
 
 /** One piece of background work. */
@@ -99,6 +112,10 @@ interface Work {
     kind: 'terminal' | 'subagent' | 'workflow';
     /** The id the work is known by: a terminal's, a child session's, a tool call's. */
     ref: string;
+    /** A sub-agent's: what it asked of the child (the id of the call too), how the child ends, and whether it wakes again. */
+    callId?: string;
+    outcome?: FakeSession['outcome'];
+    flap?: boolean;
 }
 
 const sessions = new Map<string, FakeSession>();
@@ -119,7 +136,7 @@ function systemText(content: unknown): string | undefined {
 }
 
 function open(id: string, params: { cwd: string; additionalDirectories?: string[]; mcpServers?: McpServer[]; systemPrompt?: { content?: unknown } | null; replayFrom?: unknown; _meta?: unknown }, resumed: boolean): FakeSession {
-    const session: FakeSession = { cwd: params.cwd, directories: params.additionalDirectories, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, replayFrom: params.replayFrom ?? undefined, resumed, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [], queue: [], id, work: [], reports: [], reportLines: [], gap: 40, reporting: false, landed: false };
+    const session: FakeSession = { cwd: params.cwd, directories: params.additionalDirectories, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, replayFrom: params.replayFrom ?? undefined, resumed, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [], queue: [], id, work: [], reports: [], reportLines: [], gap: 40, reporting: false, landed: false, outcome: 'end_turn', flap: false };
 
     sessions.set(id, session);
 
@@ -194,6 +211,103 @@ const NOTHING_SPENT = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedR
 
 let works = 0;
 
+type Send = (update: SessionUpdate, sessionId?: string) => Promise<unknown>;
+
+/**
+ * What the parent says when it starts a sub-agent, as Claude's adapter says it: the announcement, the child's first state on its own session, and the
+ * prompt as a `session_message`, once as the parent sends it and once as the child gets it. The parent is never shown an `Agent` call.
+ */
+async function announceChild(session: FakeSession, send: Send, ref: string, title: string): Promise<void> {
+    const callId = `toolu-${ ref }`;
+    const content = [{ type: 'text' as const, text: `Do this: ${ title }` }];
+
+    await send({ sessionUpdate: 'subagent_update', sessionId: ref, title, description: 'general-purpose', capabilities: { cancel: {} }, state: { state: 'running', background: [] } });
+    await send({ sessionUpdate: 'state_update', state: 'running', background: [] }, ref);
+    await send({ sessionUpdate: 'session_message', messageId: callId, senderSessionId: session.id, recipientSessionId: ref, content, recipientMessageId: callId });
+    await send({ sessionUpdate: 'session_message', messageId: callId, senderSessionId: session.id, recipientSessionId: ref, content, senderMessageId: callId }, ref);
+    await send({ sessionUpdate: 'agent_message_chunk', messageId: `m-${ ref }`, content: { type: 'text', text: `Looking into ${ title }` } }, ref);
+}
+
+/** The `Bash` call a child makes on its own session: it names the parent's call as its parent, the way Claude Code stamps a sub-agent's calls. */
+async function childCall(send: Send, ref: string, title: string, step: 'start' | 'end' | 'cancel'): Promise<void> {
+    const toolCallId = `${ ref }-bash`;
+    const terminalId = `${ ref }-term`;
+
+    if (step === 'start') {
+        await send({ sessionUpdate: 'terminal_update', terminalId, command: `echo ${ title }` }, ref);
+        await send({ sessionUpdate: 'tool_call_update', toolCallId, name: 'Bash', title: `echo ${ title }`, kind: 'execute', status: 'pending', rawInput: JSON.stringify({ command: `echo ${ title }` }), content: [{ type: 'terminal', terminalId }], _meta: { claudeCode: { parentToolUseId: `toolu-${ ref }` } } }, ref);
+    }
+    else if (step === 'end') {
+        await send({ sessionUpdate: 'terminal_update', terminalId, output: { data: Buffer.from(`${ title }\n`).toString('base64') } }, ref);
+        await send({ sessionUpdate: 'terminal_update', terminalId, exitStatus: { exitCode: 0 } }, ref);
+        await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'completed' }, ref);
+    }
+    else {
+        await send({ sessionUpdate: 'terminal_update', terminalId, exitStatus: {} }, ref);
+        await send({ sessionUpdate: 'tool_call_update', toolCallId, status: 'cancelled' }, ref);
+    }
+}
+
+/**
+ * A child's run is over: its report goes to the parent (a cancelled or failed one sends none), the parent mirrors its state in `subagent_update`, and the
+ * child says it on its own session. The parent's own state is the caller's.
+ */
+async function stopChild(session: FakeSession, send: Send, ref: string, title: string, outcome: FakeSession['outcome'], tag = ''): Promise<void> {
+    const reportId = `report${ tag }-${ ref }`;
+    const idle = outcome === 'error' ? { state: 'idle', stopReason: 'error', error: { code: -32000, message: 'The sub-agent failed' }, background: [] } : { state: 'idle', stopReason: outcome, background: [] };
+
+    if (outcome === 'end_turn') {
+        const content = [{ type: 'text' as const, text: `${ title } finished` }];
+
+        await send({ sessionUpdate: 'session_message', messageId: reportId, senderSessionId: ref, recipientSessionId: session.id, content, recipientMessageId: reportId }, ref);
+        await send({ sessionUpdate: 'session_message', messageId: reportId, senderSessionId: ref, recipientSessionId: session.id, content, senderMessageId: reportId });
+    }
+
+    await send({ sessionUpdate: 'subagent_update', sessionId: ref, state: idle } as SessionUpdate);
+    await send({ sessionUpdate: 'state_update', ...idle } as SessionUpdate, ref);
+}
+
+/** A foreground sub-agent: the turn goes on while it works, and its state never lists it. Settles with `false` when a cancel ended it. */
+async function foreground(session: FakeSession, client: AgentContext, ms: number, title: string): Promise<boolean> {
+    const send: Send = (update, sessionId = session.id) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
+    const ref = `child-${ ++works }`;
+    const { signal } = session.cancel;
+    const outcome = session.outcome;
+    const nap = (wait: number) => new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, wait);
+
+        signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            resolve();
+        }, { once: true });
+    });
+
+    session.outcome = 'end_turn';
+    await announceChild(session, send, ref, title);
+    await childCall(send, ref, title, 'start');
+    await nap(ms / 2);
+
+    if (signal.aborted) {
+        await childCall(send, ref, title, 'cancel');
+        await stopChild(session, send, ref, title, 'cancelled');
+
+        return false;
+    }
+
+    await childCall(send, ref, title, 'end');
+    await nap(ms / 2);
+
+    if (signal.aborted) {
+        await stopChild(session, send, ref, title, 'cancelled');
+
+        return false;
+    }
+
+    await stopChild(session, send, ref, title, outcome);
+
+    return true;
+}
+
 /** Starts a piece of background work that ends `ms` from now. */
 async function startWork(session: FakeSession, client: AgentContext, kind: Work['kind'], ms: number, title: string): Promise<void> {
     // A client that has gone is not an error of the work.
@@ -212,9 +326,11 @@ async function startWork(session: FakeSession, client: AgentContext, kind: Work[
     else if (kind === 'subagent') {
         ref = `child-${ n }`;
         item = { type: 'subagent', sessionId: ref };
-        await send({ sessionUpdate: 'subagent_update', sessionId: ref, title, description: 'A background sub-agent', capabilities: { cancel: {} }, state: { state: 'running', background: [] } });
-        // What the child says is on its own session, which the client does not read yet.
-        await send({ sessionUpdate: 'agent_message', messageId: `m-${ ref }`, content: [{ type: 'text', text: `${ title } is working` }] }, ref);
+        await announceChild(session, send, ref, title);
+
+        // The child's call starts soon after, and ends while it works: its traffic is on its own session, after the parent's turn is over.
+        setTimeout(() => void childCall(send, ref, title, 'start'), Math.min(30, ms / 4));
+        setTimeout(() => void childCall(send, ref, title, 'end'), ms / 2);
     }
     else {
         ref = `wf-${ n }`;
@@ -222,7 +338,12 @@ async function startWork(session: FakeSession, client: AgentContext, kind: Work[
         await send({ sessionUpdate: 'tool_call_update', toolCallId: ref, title: `Workflow: ${ title }`, kind: 'other', status: 'in_progress', _meta: { claudeCode: { toolName: 'Workflow' } } });
     }
 
-    const work: Work = { title, item, done: false, kind, ref };
+    const work: Work = { title, item, done: false, kind, ref, ...(kind === 'subagent' && { callId: `toolu-${ ref }`, outcome: session.outcome, flap: session.flap }) };
+
+    if (kind === 'subagent') {
+        session.outcome = 'end_turn';
+        session.flap = false;
+    }
 
     session.work.push(work);
     await send(state(session, { state: session.prompting ? 'running' : 'idle' }));
@@ -245,7 +366,19 @@ async function endWork(session: FakeSession, work: Work): Promise<void> {
         await send({ sessionUpdate: 'terminal_update', terminalId: work.ref, exitStatus: { exitCode: 0 } });
     }
     else if (work.kind === 'subagent') {
-        await send({ sessionUpdate: 'subagent_update', sessionId: work.ref, state: { state: 'idle', stopReason: 'end_turn', background: [] } });
+        if (work.flap) {
+            // The child stops and is out of the list; its own command wakes it before anything else is said, and it is listed again.
+            await stopChild(session, send, work.ref, work.title, 'end_turn', '-first');
+            await send(state(session, { state: session.prompting ? 'running' : 'idle' }));
+            work.done = false;
+            await send({ sessionUpdate: 'subagent_update', sessionId: work.ref, state: { state: 'running', background: [] } });
+            await send({ sessionUpdate: 'state_update', state: 'running', background: [] }, work.ref);
+            await send(state(session, { state: session.prompting ? 'running' : 'idle' }));
+            await Bun.sleep(150);
+            work.done = true;
+        }
+
+        await stopChild(session, send, work.ref, work.title, work.outcome ?? 'end_turn');
     }
     else {
         await send({ sessionUpdate: 'tool_call_update', toolCallId: work.ref, status: 'completed' });
@@ -286,7 +419,7 @@ function report(session: FakeSession): void {
 /** Runs one turn of a prompt: the directives of its text, and those of every prompt inserted into it. Ends with the `idle` that says why. */
 async function turn(session: FakeSession, sessionId: string, text: string, client: AgentContext): Promise<void> {
     // A client that has gone (a cancelled turn closes the agent's input) is not an error of the turn.
-    const send = (update: SessionUpdate) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
+    const send = (update: SessionUpdate, on = sessionId) => client.notify(methods.client.session.update, { sessionId: on, update }).catch(() => undefined);
     let said = '';
     let twice: false | 'chunk' | 'whole' = false;
     const say = async (what: string) => {
@@ -407,6 +540,26 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     await send(state(session, { state: 'requires_action' }));
                     await Bun.sleep(Number(argument));
                     await send(state(session, { state: 'running' }));
+                    break;
+                case 'subagent': {
+                    const [ms, ...title] = rest;
+
+                    if (!await foreground(session, client, Number(ms), title.join(' '))) {
+                        stopReason = 'cancelled';
+
+                        return;
+                    }
+
+                    break;
+                }
+                case 'stray':
+                    await send({ sessionUpdate: 'agent_message_chunk', messageId: 'stray', content: { type: 'text', text: argument } }, 'stranger');
+                    break;
+                case 'outcome':
+                    session.outcome = argument as FakeSession['outcome'];
+                    break;
+                case 'flap':
+                    session.flap = true;
                     break;
                 case 'background': {
                     const [kind, ms, ...title] = rest;

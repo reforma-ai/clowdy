@@ -23,7 +23,8 @@ What happens in Clowdy when an agent starts something in the background (a `Bash
 | --- | --- |
 | [turn-lifecycle.md](turn-lifecycle.md) | The code path from `done` to a killed process, the existing title linger, who else dies |
 | [acp-background-probe.md](acp-background-probe.md) | The live probes: Claude v1 and v2, sub-agents, steering, Workflow, Codex; timelines and gaps |
-| [probe-harness.ts.txt](probe-harness.ts.txt) | The probe client, to repeat or extend |
+| [probe-harness.ts.txt](probe-harness.ts.txt) | The probe client, to repeat or extend (scenarios `f1` to `f10` and `c3` record sub-agents on v2) |
+| [subagent-wire-v2.jsonl](../../../apps/daemon/test/fixtures/subagent-wire-v2.jsonl) | The raw `session/update`s of six sub-agent runs on v2 (foreground, background, two at once, cancelled, a failed call, a message meanwhile) |
 
 ## Important files
 

@@ -1,6 +1,7 @@
 import { BackgroundWork, ContentBlock, SessionUpdate, ToolCallContent } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 
-import { COMPACT_TOOL, Gauges, Message, ToolLedger, usageEvent } from './mapper-core';
+import { Children, textOf } from './children';
+import { COMPACT_TOOL, Gauges, isRecord, Message, patched, ToolLedger, usageEvent } from './mapper-core';
 
 import type { CompactionUpdate, ToolCallUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import type { BackgroundItem } from '@clowdy/protocol';
@@ -29,9 +30,6 @@ interface Call {
     meta?: Json;
 }
 
-/** `null` clears a field, an omitted one leaves it, a value replaces it. */
-const patched = <T>(old: T | undefined, next: T | null | undefined): T | undefined => next === undefined ? old : next ?? undefined;
-
 /** A patch of `_meta`: by top-level key, a key set to `null` is removed, and `null` clears all. */
 function patchedMeta(old: Json | undefined, next: Json | null | undefined): Json | undefined {
     if (next === undefined) {
@@ -52,18 +50,16 @@ function titled(text: string | null | undefined, fallback: string): string {
     return line.length > MAX_BACKGROUND_TITLE ? `${ line.slice(0, MAX_BACKGROUND_TITLE - 1) }…` : line || fallback;
 }
 
-/** The text of the text blocks among `content`, which an agent message holds as an array. */
-const textOf = (content: ContentBlock[]): string => content.map(block => ContentBlock.isText(block) ? block.text : '').join('');
-
 /**
  * Turns the `session/update`s of ACP v2 into engine events, the ones `UpdateMapper` makes for v1: the shared parts (tool names and
  * states, results, the message as it streams, the numbers) are in `mapper-core.ts`, and this reads v2's shapes.
  *
  * What differs from v1: a message has an id, and chunks append to it while a whole message replaces what it held (the stream only grows, so the part
  * that is new is what shows); there is no `tool_call`, the first `tool_call_update` of an id creates the call, and an update patches it; a terminal's
- * output arrives on its own and is shown as the result of a call that displays it. The turn's own lifecycle (`state_update`) is the layer's: the
- * mapper gets the updates of the session's own conversation and nothing else. A sub-agent is a session of its own in v2, whose updates the layer does
- * not pass on yet; plans, thoughts and modes are dropped as in v1.
+ * output arrives on its own and is shown as the result of a call that displays it. The turn's own lifecycle (`state_update`) is the layer's. A
+ * sub-agent is a session of its own in v2: the layer passes on what the sessions it announced say, with the id of the session as `from`, and `Children`
+ * (`children.ts`) turns them into a child run and the card of the call that started it; its calls and messages are mapped here, with the child's
+ * `agentId`. Plans, thoughts and modes are dropped as in v1. A sub-agent's background item is named by the call that started it (see `itemIdOf`).
  *
  * One mapper serves a whole session, which may go on for many turns (a turn the agent starts on its own, a prompt sent into the live session): `stop`
  * ends one, `next` starts the following. `background` turns the session's list of open work into the items the runtime shows, named from what the
@@ -77,8 +73,8 @@ export class UpdateMapperV2 {
     private terminals = new Map<string, Buffer>();
     /** The command of each terminal that said one. */
     private commands = new Map<string, string>();
-    /** What the parent session said of each of its sub-agents (`subagent_update`). */
-    private subagents = new Map<string, { title?: string; description?: string }>();
+    /** The sub-agents of the session: sessions of their own, which the session announced. */
+    private children = new Children(agentId => this.close(agentId));
     /** The session's cumulative cost at the end of the last turn: what the next turn's cost is measured from. */
     private costBefore?: number;
     /** The turn that follows a steer that landed may say the answer again: a message identical to the one before it is not shown twice. */
@@ -102,7 +98,15 @@ export class UpdateMapperV2 {
         return this.message.result();
     }
 
-    update(update: SessionUpdate): EngineEvent[] {
+    /**
+     * One update of the session, or of the sub-agent session `from` (which the session announced, and which this mapper knows by its `subagent_update`).
+     * What a sub-agent says is its own: its messages and calls carry its `agentId`, and its numbers (window, cost) are not the session's.
+     */
+    update(update: SessionUpdate, from?: string): EngineEvent[] {
+        if (from !== undefined) {
+            return this.fromChild(from, update);
+        }
+
         // The SDK's union keeps a catch-all for updates it does not know, so each kind is asked for by its guard.
         if (SessionUpdate.isAgentMessageChunk(update)) {
             return ContentBlock.isText(update.content) ? this.chunk(update.content.text, update.messageId) : [];
@@ -136,7 +140,10 @@ export class UpdateMapperV2 {
             this.print(update.terminalId, update.output?.data, 'replace');
         }
         else if (SessionUpdate.isSubagentUpdate(update)) {
-            this.announce(update.sessionId, update.title, update.description);
+            return this.children.announce(update);
+        }
+        else if (SessionUpdate.isSessionMessage(update)) {
+            return this.children.message(update);
         }
         else if (SessionUpdate.isTerminalOutputChunk(update)) {
             this.print(update.terminalId, update.data, 'append');
@@ -183,9 +190,7 @@ export class UpdateMapperV2 {
             }
 
             if (BackgroundWork.isSubagent(work)) {
-                const child = this.subagents.get(work.sessionId);
-
-                return [{ id: work.sessionId, kind: 'subagent', title: titled(child?.title || child?.description, 'Sub-agent') }];
+                return [{ id: this.children.itemIdOf(work.sessionId), kind: 'subagent', title: titled(this.children.titleOf(work.sessionId), 'Sub-agent') }];
             }
 
             if (BackgroundWork.isToolCall(work)) {
@@ -196,15 +201,80 @@ export class UpdateMapperV2 {
         });
     }
 
-    /** What the session says of one of its sub-agents: `null` clears a field, an omitted one leaves it. */
-    private announce(sessionId: string, title: string | null | undefined, description: string | null | undefined): void {
-        const known = this.subagents.get(sessionId);
-
-        this.subagents.set(sessionId, { title: patched(known?.title, title), description: patched(known?.description, description) });
+    /**
+     * The session's list of background work changed: a sub-agent it no longer lists has finished, and the card of its call says so. The layer asks
+     * after each list, before it tells the runtime the list.
+     */
+    listed(list: readonly BackgroundWork[]): EngineEvent[] {
+        return this.children.listed(list);
     }
 
-    /** Ends the open assistant message, if there is one. */
-    close(): EngineEvent[] {
+    /** Whether `sessionId` is a sub-agent this mapper knows: an announced session, whose updates `update` takes with it as `from`. */
+    knows(sessionId: string): boolean {
+        return this.children.has(sessionId);
+    }
+
+    /** One update of a sub-agent's session. Its first sign of life tells the runtime it exists, with the call that started it when its calls name one. */
+    private fromChild(agentId: string, update: SessionUpdate): EngineEvent[] {
+        if (!this.children.has(agentId)) {
+            return [];
+        }
+
+        if (SessionUpdate.isStateUpdate(update)) {
+            return this.children.state(agentId, update);
+        }
+
+        if (SessionUpdate.isSubagentUpdate(update)) {
+            // A sub-agent of its own: announced by the child that started it.
+            return this.children.announce(update, agentId);
+        }
+
+        if (SessionUpdate.isSessionMessage(update)) {
+            return this.children.message(update);
+        }
+
+        const stamp = (update as { _meta?: Json | null })._meta?.claudeCode;
+        const parentToolUseId = isRecord(stamp) && typeof stamp.parentToolUseId === 'string' ? stamp.parentToolUseId : undefined;
+        const message = this.children.messageOf(agentId) as Message;
+
+        if (SessionUpdate.isAgentMessageChunk(update)) {
+            return ContentBlock.isText(update.content) ? [...this.children.heard(agentId, parentToolUseId), ...message.append(update.content.text, update.messageId, agentId)] : [];
+        }
+
+        if (SessionUpdate.isAgentMessage(update)) {
+            return update.content ? [...this.children.heard(agentId, parentToolUseId), ...message.upsert(update.messageId, textOf(update.content), agentId)] : [];
+        }
+
+        if (SessionUpdate.isToolCallUpdate(update)) {
+            return [...this.children.heard(agentId, parentToolUseId), ...this.tool(update, undefined, agentId)];
+        }
+
+        if (SessionUpdate.isToolCallContentChunk(update)) {
+            return this.tool({ toolCallId: update.toolCallId }, update.content, agentId);
+        }
+
+        // What a child prints on a terminal is shown by the call that holds the terminal.
+        if (SessionUpdate.isTerminalUpdate(update)) {
+            if (update.command) {
+                this.commands.set(update.terminalId, update.command);
+            }
+
+            this.print(update.terminalId, update.output?.data, 'replace');
+        }
+        else if (SessionUpdate.isTerminalOutputChunk(update)) {
+            this.print(update.terminalId, update.data, 'append');
+        }
+
+        // Its thoughts, plans, options and numbers: nothing the runtime shows (the window and the cost are the session's).
+        return [];
+    }
+
+    /** Ends the open assistant message of the session, or of the sub-agent `agentId`, if there is one. */
+    close(agentId?: string): EngineEvent[] {
+        if (agentId !== undefined) {
+            return this.children.messageOf(agentId)?.close(agentId) ?? [];
+        }
+
         return [...this.settle(), ...this.message.close()];
     }
 
@@ -243,7 +313,7 @@ export class UpdateMapperV2 {
     }
 
     /** One update of a tool call, and the content item a chunk adds to it. The first update of an id is the call's start, which ends the message before it. */
-    private tool(update: ToolCallUpdate, added?: ToolCallContent): EngineEvent[] {
+    private tool(update: ToolCallUpdate, added?: ToolCallContent, agentId?: string): EngineEvent[] {
         const id = update.toolCallId;
         const known = this.calls.get(id);
         const call: Call = {
@@ -260,11 +330,11 @@ export class UpdateMapperV2 {
 
         this.calls.set(id, call);
 
-        return [...(known ? [] : this.close()), ...this.show(id, call)];
+        return [...(known ? [] : this.close(agentId)), ...this.show(id, call, agentId)];
     }
 
-    private show(toolCallId: string, call: Call): EngineEvent[] {
-        const event = this.tools.apply({ toolCallId, name: call.name, title: call.title, kind: call.kind, status: call.status, rawInput: call.rawInput, rawOutput: call.rawOutput, shown: this.shownOf(call.content), _meta: call.meta });
+    private show(toolCallId: string, call: Call, agentId?: string): EngineEvent[] {
+        const event = this.tools.apply({ toolCallId, name: call.name, title: call.title, kind: call.kind, status: call.status, rawInput: call.rawInput, rawOutput: call.rawOutput, shown: this.shownOf(call.content), _meta: call.meta }, agentId);
 
         return event ? [event] : [];
     }

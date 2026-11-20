@@ -1,10 +1,13 @@
+import { STOPPED_TOOL } from '@clowdy/protocol';
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { UpdateMapper } from '../src/engine/acp/mapper';
 import { UpdateMapperV2 } from '../src/engine/acp/mapper-v2';
 
 import type { BackgroundWork, SessionUpdate as SessionUpdateV2, Usage } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import type { PromptResponse, SessionUpdate } from '@agentclientprotocol/sdk/unstable';
+import type { BackgroundItem } from '@clowdy/protocol';
 import type { EngineEvent } from '../src/engine/types';
 
 const chunk = (text: string, messageId?: string): SessionUpdate => ({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text }, ...(messageId && { messageId }) });
@@ -685,6 +688,225 @@ describe('updates of ACP v2', () => {
                 { type: 'context', used: 22062, size: 1_000_000 },
                 { type: 'limit', status: 'rejected', kind: 'five_hour', utilization: 0.95, resetsAt: 1_900_000_000 },
             ]);
+        });
+    });
+});
+
+describe('sub-agents of ACP v2', () => {
+    /** What Claude's adapter said, recorded from real runs (`fixtures/subagent-wire-v2.jsonl`): the session the engine talks to and its sub-agents' sessions. */
+    interface Line {
+        scenario: string;
+        main: boolean;
+        sessionId: string;
+        update: SessionUpdateV2;
+    }
+
+    const wire = readFileSync(new URL('./fixtures/subagent-wire-v2.jsonl', import.meta.url), 'utf8').trim().split('\n').map(line => JSON.parse(line) as Line);
+
+    /**
+     * Feeds a recorded scenario to a mapper the way the layer does: the session's own updates as they come (its `state_update`s only for the list of background
+     * work they carry), a sub-agent's updates with its session id once the session has announced it.
+     */
+    function replay(scenario: string) {
+        const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+        const events: EngineEvent[] = [];
+        const lists: BackgroundItem[][] = [];
+
+        for (const line of wire.filter(candidate => candidate.scenario === scenario)) {
+            const { update } = line;
+
+            if (!line.main) {
+                if (mapper.knows(line.sessionId)) {
+                    events.push(...mapper.update(update, line.sessionId));
+                }
+            }
+            else if (update.sessionUpdate === 'state_update') {
+                if (Array.isArray(update.background)) {
+                    events.push(...mapper.listed(update.background));
+                    lists.push(mapper.background(update.background));
+                }
+            }
+            else {
+                events.push(...mapper.update(update));
+            }
+        }
+
+        return { mapper, events, lists };
+    }
+
+    const subagents = (events: EngineEvent[]) => events.filter(event => event.type === 'subagent');
+    const agentCard = (events: EngineEvent[]) => events.filter(event => event.type === 'tool' && event.name === 'Agent' && event.agentId === undefined);
+    const ofChild = (events: EngineEvent[]) => events.filter(event => 'agentId' in event && event.agentId !== undefined);
+
+    test('a foreground sub-agent: the parent is shown no call, so the card is made from the announcement and the prompt, and the child\'s calls and report are its own', () => {
+        const { events } = replay('foreground');
+        const id = 'aa54305126ff66ee2';
+        const call = 'toolu_01MkbchBAesZkmNaiqpoCGBp';
+        const input = { subagent_type: 'general-purpose', description: 'Run echo ONE and TWO', prompt: 'Use the Bash tool to run `echo ONE`. Then use the Bash tool again to run `echo TWO`. Report both outputs in one sentence.' };
+
+        expect(agentCard(events)).toEqual([
+            { type: 'tool', toolCallId: call, name: 'Agent', input, state: 'running' },
+            { type: 'tool', toolCallId: call, name: 'Agent', input, state: 'done', output: 'Ran `echo ONE` and `echo TWO` with the Bash tool; the outputs were ONE and TWO.' },
+        ]);
+        expect(subagents(events)).toEqual([
+            { type: 'subagent', agentId: id, parentToolCallId: call, name: 'general-purpose', description: 'Run echo ONE and TWO', state: 'running' },
+            { type: 'subagent', agentId: id, parentToolCallId: call, name: 'general-purpose', state: 'done', summary: 'Ran `echo ONE` and `echo TWO` with the Bash tool; the outputs were ONE and TWO.' },
+        ]);
+        // Two `Bash` calls, each running and done, with the terminal's output; the report is the child's last message; the session's own words are none of it.
+        expect(ofChild(events).filter(event => event.type === 'tool').map(event => event.type === 'tool' && [event.name, event.input, event.state, event.output])).toEqual([
+            ['Bash', { command: 'echo ONE', description: 'Print ONE' }, 'running', undefined],
+            ['Bash', { command: 'echo TWO', description: 'Print TWO' }, 'running', undefined],
+            ['Bash', { command: 'echo TWO', description: 'Print TWO' }, 'done', 'TWO'],
+            ['Bash', { command: 'echo ONE', description: 'Print ONE' }, 'done', 'ONE'],
+        ]);
+        expect(ofChild(events).filter(event => event.type === 'text').map(event => event.type === 'text' && [event.delta, event.done])).toEqual([['Ran `echo ONE` and `echo TWO` with the Bash tool; the outputs were ONE and TWO.', false], ['', true]]);
+        // The fixture keeps the first chunk of each message.
+        expect(events.filter(event => event.type === 'text' && event.agentId === undefined).map(event => event.type === 'text' && event.delta).join('')).toBe('The s');
+    });
+
+    test('a background sub-agent: the card is running until the parent no longer lists it, and the layer does not end the child run', () => {
+        const { events, lists } = replay('background');
+        const cards = agentCard(events);
+
+        expect(cards.map(event => event.type === 'tool' && event.state)).toEqual(['running', 'done']);
+        expect(cards[0]).toMatchObject({ toolCallId: 'toolu_017o2xvBFmdbsE9ybkR2fAwe', input: { subagent_type: 'general-purpose', description: 'Run echo ONE and sleep TWO' } });
+        expect(cards[1]).toMatchObject({ output: expect.stringContaining('ONE') });
+        // The run ends when the item leaves the list (the runtime reads that), not on the child's `idle`: a child may be woken a moment after it.
+        expect(subagents(events).map(event => event.type === 'subagent' && event.state)).toEqual(['running']);
+        // What the lists called it: the title the parent gave the task, and the id of the call that started it, which is its child run's `parentToolCallId`.
+        expect(lists.map(items => items.map(item => [item.id, item.kind, item.title]))).toContainEqual([['toolu_017o2xvBFmdbsE9ybkR2fAwe', 'subagent', 'Run echo ONE and sleep TWO']]);
+        // Its calls came after the parent's turn was over, and are still the child's.
+        expect(ofChild(events).filter(event => event.type === 'tool')).toHaveLength(4);
+    });
+
+    test('two background sub-agents are two cards and two child runs, told apart by their sessions', () => {
+        const { events } = replay('two-background');
+        const [first, second] = subagents(events);
+
+        expect(subagents(events)).toHaveLength(2);
+        expect(first).toMatchObject({ description: 'Run sleep 6 and echo AAA', state: 'running' });
+        expect(second).toMatchObject({ description: 'Run sleep 10 and echo BBB', state: 'running' });
+        expect(first.type === 'subagent' && first.agentId).not.toBe(second.type === 'subagent' && second.agentId);
+        expect(agentCard(events).map(event => event.type === 'tool' && [event.toolCallId, event.state])).toHaveLength(4);
+        expect(ofChild(events).filter(event => event.type === 'tool' && event.agentId === (first.type === 'subagent' ? first.agentId : '')).length).toBeGreaterThan(0);
+    });
+
+    test('a sub-agent that was cancelled ends its run and its card as cancelled', () => {
+        const { events } = replay('foreground-cancelled');
+
+        expect(subagents(events).map(event => event.type === 'subagent' && [event.state, event.summary])).toEqual([['running', undefined], ['cancelled', undefined]]);
+        expect(agentCard(events).map(event => event.type === 'tool' && [event.state, event.error])).toEqual([['running', undefined], ['error', STOPPED_TOOL]]);
+        // Its call was cancelled with it.
+        expect(ofChild(events).filter(event => event.type === 'tool').at(-1)).toMatchObject({ state: 'error', error: STOPPED_TOOL });
+    });
+
+    test('an `Agent` call that failed before it started a child is a plain tool call: nothing was announced', () => {
+        const { events } = replay('agent-call-failed');
+
+        expect(subagents(events)).toEqual([]);
+        expect(events.filter(event => event.type === 'tool')).toEqual([expect.objectContaining({ name: 'Agent', state: 'error' })]);
+    });
+
+    test('a message sent to the parent while a background sub-agent works does not touch the child', () => {
+        const { events } = replay('message-while-background');
+
+        expect(subagents(events)).toHaveLength(1);
+        expect(events.filter(event => event.type === 'text' && event.agentId === undefined).map(event => event.type === 'text' && event.delta)).toContain('4');
+    });
+
+    describe('what the layer cannot know', () => {
+        const announce = (extra: Partial<Extract<SessionUpdateV2, { sessionUpdate: 'subagent_update' }>> = {}): SessionUpdateV2 => ({ sessionUpdate: 'subagent_update', sessionId: 'child-1', title: 'Look around', description: 'Explore', ...extra });
+
+        test('a sub-agent that is announced and says nothing of its call is told to the runtime at its first call, named by the call it stamps', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            expect(mapper.update(announce())).toEqual([]);
+
+            const events = mapper.update({ sessionUpdate: 'tool_call_update', toolCallId: 'x1', name: 'Read', status: 'in_progress', _meta: { claudeCode: { parentToolUseId: 'call-9' } } }, 'child-1');
+
+            expect(events.map(event => event.type)).toEqual(['tool', 'subagent', 'tool']);
+            expect(events[1]).toEqual({ type: 'subagent', agentId: 'child-1', parentToolCallId: 'call-9', name: 'Explore', description: 'Look around', state: 'running' });
+            expect(events[2]).toMatchObject({ type: 'tool', toolCallId: 'x1', name: 'Read', agentId: 'child-1' });
+        });
+
+        test('an agent that sends no message between sessions (Codex) has its sub-agents known by their session id and no card', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(announce({ description: undefined }));
+
+            const events = [
+                ...mapper.update({ sessionUpdate: 'agent_message_chunk', messageId: 'm', content: { type: 'text', text: 'Looking' } }, 'child-1'),
+                ...mapper.update({ sessionUpdate: 'state_update', state: 'idle', stopReason: 'end_turn' }, 'child-1'),
+            ];
+
+            expect(events).toEqual([
+                { type: 'subagent', agentId: 'child-1', name: 'Sub-agent', description: 'Look around', state: 'running' },
+                { type: 'text', delta: 'Looking', done: false, agentId: 'child-1' },
+                { type: 'text', delta: '', done: true, agentId: 'child-1' },
+                { type: 'subagent', agentId: 'child-1', name: 'Sub-agent', state: 'done', summary: 'Looking' },
+            ]);
+        });
+
+        test('a session that was never announced says nothing the mapper takes, and the session\'s window and cost are not a child\'s', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            expect(mapper.knows('stranger')).toBe(false);
+            expect(mapper.update({ sessionUpdate: 'agent_message_chunk', messageId: 'm', content: { type: 'text', text: 'hi' } }, 'stranger')).toEqual([]);
+
+            mapper.update(announce());
+            expect(mapper.knows('child-1')).toBe(true);
+            expect(mapper.update({ sessionUpdate: 'usage_update', used: 5, size: 10, cost: { amount: 3, currency: 'USD' } }, 'child-1')).toEqual([]);
+            expect(mapper.cost).toBeUndefined();
+        });
+
+        test('a sub-agent that stopped for a reason other than an answer failed, and one that stopped for good cannot be woken', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(announce());
+            mapper.update({ sessionUpdate: 'agent_message_chunk', messageId: 'm', content: { type: 'text', text: 'a' } }, 'child-1');
+
+            const failed = mapper.update({ sessionUpdate: 'state_update', state: 'idle', stopReason: 'max_tokens' }, 'child-1');
+
+            expect(failed.at(-1)).toEqual({ type: 'subagent', agentId: 'child-1', name: 'Explore', state: 'error', summary: 'The sub-agent stopped: max tokens' });
+            expect(mapper.update({ sessionUpdate: 'state_update', state: 'running' }, 'child-1')).toEqual([]);
+        });
+
+        test('the id of a sub-agent\'s item does not change once the lists have said it, even when the call that started it becomes known later', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+            const list: BackgroundWork[] = [{ type: 'subagent', sessionId: 'child-1' }];
+
+            mapper.update(announce());
+            expect(mapper.background(list)[0].id).toBe('child-1');
+            mapper.update({ sessionUpdate: 'tool_call_update', toolCallId: 'x1', name: 'Read', status: 'in_progress', _meta: { claudeCode: { parentToolUseId: 'call-9' } } }, 'child-1');
+            expect(mapper.background(list)[0].id).toBe('child-1');
+        });
+
+        test('a sub-agent of a sub-agent is announced by the child that started it, and its card is in that child\'s stream', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(announce());
+            mapper.update({ sessionUpdate: 'session_message', messageId: 'call-1', senderSessionId: 'main', recipientSessionId: 'child-1', content: [{ type: 'text', text: 'go' }] });
+
+            const events = [
+                ...mapper.update({ sessionUpdate: 'subagent_update', sessionId: 'grandchild', title: 'Deeper', description: 'Explore' }, 'child-1'),
+                ...mapper.update({ sessionUpdate: 'session_message', messageId: 'call-2', senderSessionId: 'child-1', recipientSessionId: 'grandchild', content: [{ type: 'text', text: 'dig' }] }, 'child-1'),
+            ];
+
+            expect(events).toEqual([
+                { type: 'tool', toolCallId: 'call-2', name: 'Agent', input: { subagent_type: 'Explore', description: 'Deeper', prompt: 'dig' }, state: 'running', agentId: 'child-1' },
+                { type: 'subagent', agentId: 'grandchild', parentToolCallId: 'call-2', name: 'Explore', description: 'Deeper', state: 'running' },
+            ]);
+        });
+
+        test('the same message seen from both sessions is told once', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(announce());
+
+            const message = (view: Record<string, string>): SessionUpdateV2 => ({ sessionUpdate: 'session_message', messageId: 'r1', senderSessionId: 'child-1', recipientSessionId: 'main', content: [{ type: 'text', text: 'Found it' }], ...view });
+            const texts = [...mapper.update(message({ recipientMessageId: 'r1' }), 'child-1'), ...mapper.update(message({ senderMessageId: 'r1' }))].filter(event => event.type === 'text' && event.delta);
+
+            expect(texts).toEqual([{ type: 'text', delta: 'Found it', done: false, agentId: 'child-1' }]);
         });
     });
 });
