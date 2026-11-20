@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildRunTree } from '../../stores/runTree';
-import { agentRows, ancestorIds, archivedChats, chatDotTone, chatOfRun, countActiveChildren, describeRun, listedRunId, resolveSelection, visibleChats } from './agentTree';
+import { agentRows, ancestorChats, archivedChats, chatDotTone, chatOfRun, isActiveThread, isFinishedThread, resolveSelection, visibleChats, type AgentRowsInput } from './agentTree';
 
 import type { Chat, Run, RunStatus } from '@clowdy/protocol';
 
@@ -15,53 +14,17 @@ function chat(id: string, orchestratorRunId?: string): Chat {
     return { id, projectId: 'p', title: `Chat ${ id }`, orchestratorRunId, createdAt: 1, updatedAt: 1 } as Chat;
 }
 
-/** orch, with a (running, with a1 below it), b (done) and c (waiting). */
+/** orch, with the native sub-agents a (running, with a1 below it), b (done) and c (waiting), and the orchestrator of another chat. */
 const runs = [
-    run('orch', 'running', { createdAt: 1 }),
-    run('a', 'running', { parentRunId: 'orch', rootRunId: 'orch', createdAt: 2 }),
-    run('a1', 'running', { parentRunId: 'a', rootRunId: 'orch', createdAt: 3 }),
-    run('b', 'succeeded', { parentRunId: 'orch', rootRunId: 'orch', createdAt: 4 }),
-    run('c', 'waiting_user', { parentRunId: 'orch', rootRunId: 'orch', createdAt: 5 }),
-    run('other', 'running', { createdAt: 6 }),
+    run('orch', 'running', { role: 'orchestrator', createdAt: 1 }),
+    run('a', 'running', { parentRunId: 'orch', rootRunId: 'orch', origin: 'native', createdAt: 2 }),
+    run('a1', 'running', { parentRunId: 'a', rootRunId: 'orch', origin: 'native', createdAt: 3 }),
+    run('b', 'succeeded', { parentRunId: 'orch', rootRunId: 'orch', origin: 'native', createdAt: 4 }),
+    run('c', 'waiting_user', { parentRunId: 'orch', rootRunId: 'orch', origin: 'native', createdAt: 5 }),
+    run('other', 'running', { role: 'orchestrator', createdAt: 6 }),
 ];
 
 const chats = [chat('chat-1', 'orch'), chat('chat-2', 'other'), chat('chat-3')];
-
-describe('agentRows', () => {
-    it('lists each chat followed by the runs below its orchestrator, which is the chat itself', () => {
-        const rows = agentRows(chats, buildRunTree(runs), new Set());
-
-        expect(rows.map(row => [row.kind, row.id, row.depth, row.childCount])).toEqual([
-            ['chat', 'chat-1', 0, 3],
-            ['run', 'a', 1, 1],
-            ['run', 'a1', 2, 0],
-            ['run', 'b', 1, 0],
-            ['run', 'c', 1, 0],
-            ['chat', 'chat-2', 0, 0],
-            ['chat', 'chat-3', 0, 0],
-        ]);
-    });
-
-    it('keeps the order of the chats it is given, whatever the order of the runs', () => {
-        const rows = agentRows([chats[1], chats[0]], buildRunTree(runs), new Set());
-
-        expect(rows.filter(row => row.kind === 'chat').map(row => row.id)).toEqual(['chat-2', 'chat-1']);
-    });
-
-    it('hides what is below a collapsed chat or run, and says so', () => {
-        const tree = buildRunTree(runs);
-
-        expect(agentRows(chats, tree, new Set(['a'])).map(row => row.id)).toEqual(['chat-1', 'a', 'b', 'c', 'chat-2', 'chat-3']);
-        expect(agentRows(chats, tree, new Set(['chat-1'])).map(row => row.id)).toEqual(['chat-1', 'chat-2', 'chat-3']);
-        expect(agentRows(chats, tree, new Set(['chat-1'])).find(row => row.id === 'chat-1')).toMatchObject({ childCount: 3, isExpanded: false });
-    });
-
-    it('shows a chat with no orchestrator run, or whose run is gone, without children', () => {
-        const rows = agentRows([chat('lonely', 'missing')], buildRunTree(runs), new Set());
-
-        expect(rows).toEqual([expect.objectContaining({ kind: 'chat', id: 'lonely', childCount: 0 })]);
-    });
-});
 
 describe('visibleChats', () => {
     const list = [chats[0], { ...chats[1], archivedAt: 5 }, chats[2]];
@@ -107,7 +70,7 @@ describe('resolveSelection', () => {
         expect(resolve('chat-2', null)).toEqual({ chat: byChat.get('chat-2'), run: undefined, draft: false });
     });
 
-    it('shows a run below a chat, with its chat, wherever the chat remembered was', () => {
+    it('shows a sub-agent of a chat, with its chat, wherever the chat remembered was', () => {
         expect(resolve('chat-2', 'a1')).toEqual({ chat: byChat.get('chat-1'), run: byRun.get('a1'), draft: false });
     });
 
@@ -145,95 +108,9 @@ describe('resolveSelection', () => {
     });
 });
 
-describe('ancestorIds', () => {
-    const byId = new Map(runs.map(candidate => [candidate.id, candidate]));
-
-    it('lists the parents, nearest first', () => {
-        expect(ancestorIds(byId, 'a1')).toEqual(['a', 'orch']);
-        expect(ancestorIds(byId, 'orch')).toEqual([]);
-        expect(ancestorIds(byId, 'unknown')).toEqual([]);
-    });
-
-    it('stops at a parent cycle', () => {
-        const cyclic = new Map([run('x', 'running', { parentRunId: 'y' }), run('y', 'running', { parentRunId: 'x' })].map(candidate => [candidate.id, candidate]));
-
-        expect(ancestorIds(cyclic, 'x')).toEqual(['y', 'x']);
-    });
-});
-
-describe('countActiveChildren', () => {
-    it('counts the children that are still going', () => {
-        const counts = countActiveChildren(runs);
-
-        expect(counts.get('orch')).toBe(2);
-        expect(counts.get('a')).toBe(1);
-        expect(counts.has('b')).toBe(false);
-    });
-
-    it('leaves native sub-agents out', () => {
-        const counts = countActiveChildren([...runs, run('n1', 'running', { parentRunId: 'b', rootRunId: 'orch', origin: 'native' })]);
-
-        expect(counts.has('b')).toBe(false);
-    });
-});
-
-describe('listedRunId', () => {
-    const native = run('n1', 'running', { parentRunId: 'a', rootRunId: 'orch', origin: 'native' });
-    const nativeOfOrchestrator = run('n2', 'running', { parentRunId: 'orch', rootRunId: 'orch', origin: 'native' });
-    const byId = new Map([...runs, native, nativeOfOrchestrator].map(candidate => [candidate.id, candidate]));
-
-    it('is the run\'s own row, or for a native sub-agent the row of the run it lives in', () => {
-        expect(listedRunId(byId, byId.get('a1')!)).toBe('a1');
-        expect(listedRunId(byId, native)).toBe('a');
-    });
-
-    it('is nothing when that run is the orchestrator, whose row is the chat\'s', () => {
-        expect(listedRunId(byId, nativeOfOrchestrator)).toBeUndefined();
-        expect(listedRunId(byId, byId.get('orch')!)).toBeUndefined();
-    });
-});
-
-describe('describeRun', () => {
-    it('says a parent waits for its sub-agents, with how many are active', () => {
-        const parent = run('p', 'waiting_children');
-
-        expect(describeRun(parent, 3)).toEqual({ text: 'Waiting for sub-agents · 3 active', tone: 'warning' });
-        expect(describeRun(parent, 0)).toEqual({ text: 'Waiting for sub-agents', tone: 'warning' });
-    });
-
-    it('says a run waits for its background work, with how many items are open, and calmly', () => {
-        const background = [{ id: 'bg-1', kind: 'command' as const, title: 'bun run test' }, { id: 'bg-2', kind: 'task' as const, title: 'Workflow' }];
-
-        expect(describeRun(run('r', 'waiting_background', { background }), 0)).toEqual({ text: 'Waiting for background work · 2 open', tone: 'neutral' });
-        expect(describeRun(run('r', 'waiting_background'), 0)).toEqual({ text: 'Waiting for background work', tone: 'neutral' });
-    });
-
-    it('shows the reason of waiting, blocked, queued and interrupted runs', () => {
-        expect(describeRun(run('r', 'waiting_user', { statusReason: 'Asked which mail provider' }), 0)).toEqual({ text: 'Asked which mail provider', tone: 'warning' });
-        expect(describeRun(run('r', 'blocked', { statusReason: 'Blocked by CAR-24' }), 0)).toEqual({ text: 'Blocked by CAR-24', tone: 'warning' });
-        expect(describeRun(run('r', 'queued', { statusReason: 'Waiting for a free slot' }), 0)).toEqual({ text: 'Waiting for a free slot', tone: 'neutral' });
-        expect(describeRun(run('r', 'interrupted', { statusReason: 'The daemon restarted' }), 0)).toEqual({ text: 'The daemon restarted', tone: 'neutral' });
-    });
-
-    it('still says what a run waits for when the daemon sent no reason', () => {
-        expect(describeRun(run('r', 'waiting_user'), 0)?.text).toBe('Waiting for your answer');
-        expect(describeRun(run('r', 'blocked'), 0)).toBeUndefined();
-    });
-
-    it('shows the error of a failed run', () => {
-        expect(describeRun(run('r', 'failed', { error: 'Typecheck failed' }), 0)).toEqual({ text: 'Typecheck failed', tone: 'danger' });
-    });
-
-    it('says nothing about a run that is working or done', () => {
-        expect(describeRun(run('r', 'running'), 0)).toBeUndefined();
-        expect(describeRun(run('r', 'succeeded', { result: 'Done.' }), 0)).toBeUndefined();
-    });
-});
-
 describe('chatDotTone', () => {
-    it('is green while the orchestrator works or waits for its executors or for its background work', () => {
+    it('is green while the orchestrator works or waits for its background work', () => {
         expect(chatDotTone(run('r', 'running'))).toBe('success');
-        expect(chatDotTone(run('r', 'waiting_children'))).toBe('success');
         expect(chatDotTone(run('r', 'waiting_background'))).toBe('success');
     });
 
@@ -251,5 +128,158 @@ describe('chatDotTone', () => {
         expect(chatDotTone(undefined)).toBeUndefined();
 
         for (const status of ['succeeded', 'cancelled', 'interrupted'] as const) expect(chatDotTone(run('r', status))).toBeUndefined();
+    });
+
+    it('is green for a chat at rest whose threads work, and keeps the tone of a run that has one of its own', () => {
+        for (const status of ['succeeded', 'cancelled', 'interrupted'] as const) expect(chatDotTone(run('r', status), true)).toBe('success');
+
+        expect(chatDotTone(run('r', 'failed'), true)).toBe('danger');
+        expect(chatDotTone(run('r', 'waiting_user'), true)).toBe('accent');
+        expect(chatDotTone(run('r', 'succeeded'), false)).toBeUndefined();
+    });
+});
+
+/*
+ * A tree of threads: root (done) has t1 (working) and t2 (done); t1 has t11 (done) and t12 (failed); t2 has t21 (working); root2 has none.
+ * Threads are listed in the order they were made, whatever order they are given in.
+ */
+describe('agentRows', () => {
+    const thread = (id: string, parentChatId: string, createdAt: number, status?: RunStatus): Chat => ({ ...chat(id, status ? `run-${ id }` : undefined), parentChatId, createdAt });
+    const tree = [
+        { ...chat('root', 'run-root'), createdAt: 1 },
+        { ...chat('root2'), createdAt: 2 },
+        thread('t2', 'root', 4, 'succeeded'),
+        thread('t1', 'root', 3, 'running'),
+        thread('t11', 't1', 5, 'succeeded'),
+        thread('t12', 't1', 6, 'failed'),
+        thread('t21', 't2', 7, 'running'),
+    ];
+    const treeRuns = new Map<string, Run>([
+        ['run-root', run('run-root', 'succeeded')],
+        ...tree.filter(candidate => candidate.parentChatId).map(candidate => {
+            const status = { t1: 'running', t2: 'succeeded', t11: 'succeeded', t12: 'failed', t21: 'running' }[candidate.id] as RunStatus;
+
+            return [`run-${ candidate.id }`, run(`run-${ candidate.id }`, status)] as const;
+        }),
+    ]);
+    const threadsOf = (list: readonly Chat[]) => (chatId: string) => list.filter(candidate => candidate.parentChatId === chatId).sort((a, b) => a.createdAt - b.createdAt);
+    const rows = (input: Partial<AgentRowsInput> = {}, list: readonly Chat[] = tree) => agentRows({
+        roots: list.filter(candidate => !candidate.parentChatId),
+        threadsOf: threadsOf(list),
+        runs: treeRuns,
+        expanded: new Set(),
+        showFinished: true,
+        ...input,
+    });
+    const shape = (input: Partial<AgentRowsInput> = {}, list?: readonly Chat[]) => rows(input, list).map(row => `${ '  '.repeat(row.depth) }${ row.id }${ row.childCount > 0 ? (row.isExpanded ? ' -' : ' +') : '' }`);
+
+    it('folds every chat with threads until it is expanded: only the roots are rows, the ones with threads have a fold', () => {
+        expect(shape()).toEqual(['root +', 'root2']);
+        expect(rows()[0]).toMatchObject({ depth: 0, childCount: 2, isExpanded: false });
+    });
+
+    it('lists the threads of an expanded chat below it, one level in, in the order they were made', () => {
+        expect(shape({ expanded: new Set(['root']) })).toEqual(['root -', '  t1 +', '  t2 +', 'root2']);
+        expect(shape({ expanded: new Set(['root', 't1', 't2']) })).toEqual(['root -', '  t1 -', '    t11', '    t12', '  t2 -', '    t21', 'root2']);
+    });
+
+    it('hides what is below a folded thread even when a chat further down is expanded', () => {
+        expect(shape({ expanded: new Set(['t1']) })).toEqual(['root +', 'root2']);
+    });
+
+    it('leaves archived threads out, and a chat whose threads are all archived has no fold', () => {
+        const archived = tree.map(candidate => (candidate.parentChatId === 'root' ? { ...candidate, archivedAt: 9 } : candidate));
+
+        expect(shape({ expanded: new Set(['root']) }, archived)).toEqual(['root', 'root2']);
+    });
+
+    it('hides finished threads when asked, unless a thread below still works or it is the open chat', () => {
+        const all = new Set(['root', 't1', 't2']);
+
+        // t2 is done but t21 works; t11 and t12 are over and have nothing below.
+        expect(shape({ expanded: all, showFinished: false })).toEqual(['root -', '  t1', '  t2 -', '    t21', 'root2']);
+        expect(shape({ expanded: all, showFinished: false, openChatId: 't12' })).toEqual(['root -', '  t1 -', '    t12', '  t2 -', '    t21', 'root2']);
+    });
+
+    it('keeps a finished thread whose own finished thread is the open chat, so the open chat has its path', () => {
+        const done = tree.map(candidate => (candidate.id === 't21' ? { ...candidate, orchestratorRunId: 'run-t11' } : candidate));
+
+        expect(shape({ expanded: new Set(['root', 't2']), showFinished: false }, done)).toEqual(['root -', '  t1', 'root2']);
+        expect(shape({ expanded: new Set(['root', 't2']), showFinished: false, openChatId: 't21' }, done)).toEqual(['root -', '  t1', '  t2 -', '    t21', 'root2']);
+    });
+
+    it('never hides a root, whatever its run did', () => {
+        expect(shape({ showFinished: false }).map(line => line.split(' ')[0])).toEqual(['root', 'root2']);
+    });
+
+    it('lists a thread that never started, which is not finished', () => {
+        expect(shape({ expanded: new Set(['root2']), showFinished: false }, [...tree, thread('fresh', 'root2', 8)])).toEqual(['root +', 'root2 -', '  fresh']);
+    });
+
+    it('survives a parent cycle in corrupt data', () => {
+        const cycle = [{ ...chat('a'), createdAt: 1 }, thread('b', 'c', 2, 'running'), thread('c', 'b', 3, 'running'), thread('d', 'a', 4, 'running')];
+
+        expect(shape({ expanded: new Set(['a', 'b', 'c', 'd']) }, cycle)).toEqual(['a -', '  d']);
+    });
+});
+
+describe('isFinishedThread and isActiveThread', () => {
+    const runs = new Map(['queued', 'running', 'blocked', 'waiting_user', 'waiting_background', 'succeeded', 'failed', 'cancelled', 'interrupted'].map(status => [status, run(status, status as RunStatus)]));
+
+    it('takes a thread for working while its orchestrator is queued, running, blocked, or waits for the person or its background work', () => {
+        const active = [...runs.keys()].filter(status => isActiveThread(chat('t', status), runs));
+
+        expect(active).toEqual(['queued', 'running', 'blocked', 'waiting_user', 'waiting_background']);
+        expect(isActiveThread(chat('t'), runs)).toBe(false);
+    });
+
+    it('takes a thread for finished once its orchestrator\'s run is over, and one that never started for not finished', () => {
+        const finished = [...runs.keys()].filter(status => isFinishedThread(chat('t', status), runs));
+
+        expect(finished).toEqual(['succeeded', 'failed', 'cancelled', 'interrupted']);
+        expect(isFinishedThread(chat('t'), runs)).toBe(false);
+    });
+});
+
+describe('visibleChats and archivedChats, with threads', () => {
+    const thread = (id: string, parentChatId: string, rest: Partial<Chat> = {}): Chat => ({ ...chat(id), parentChatId, ...rest });
+
+    it('lists only the chats the person made at the top: a thread is a row below its parent', () => {
+        expect(visibleChats([chats[0], thread('t', 'chat-1'), chats[1]]).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-2']);
+    });
+
+    it('puts a thread at the top when its parent is not in use, so it is not lost', () => {
+        const list = [{ ...chats[0], archivedAt: 3 }, thread('t', 'chat-1'), thread('orphan', 'gone')];
+
+        expect(visibleChats(list).map(candidate => candidate.id)).toEqual(['t', 'orphan']);
+    });
+
+    it('lists a thread put away with its parent nowhere on its own, and one put away alone by its title', () => {
+        const list = [
+            { ...chats[0], archivedAt: 5 },
+            thread('with-parent', 'chat-1', { archivedAt: 5 }),
+            thread('deeper', 'with-parent', { archivedAt: 5 }),
+            chats[1],
+            thread('alone', 'chat-2', { archivedAt: 7 }),
+        ];
+
+        expect(archivedChats(list).map(candidate => candidate.id)).toEqual(['alone', 'chat-1']);
+    });
+});
+
+describe('ancestorChats', () => {
+    const map = (...list: Chat[]) => new Map(list.map(candidate => [candidate.id, candidate]));
+
+    it('lists the chats above a thread, nearest first, and none for a chat the person made', () => {
+        const chatsById = map(chat('root'), { ...chat('mid'), parentChatId: 'root' }, { ...chat('leaf'), parentChatId: 'mid' });
+
+        expect(ancestorChats(chatsById, 'leaf').map(candidate => candidate.id)).toEqual(['mid', 'root']);
+        expect(ancestorChats(chatsById, 'root')).toEqual([]);
+        expect(ancestorChats(chatsById, 'gone')).toEqual([]);
+    });
+
+    it('stops at a parent that is gone, and at a cycle', () => {
+        expect(ancestorChats(map({ ...chat('leaf'), parentChatId: 'gone' }), 'leaf')).toEqual([]);
+        expect(ancestorChats(map({ ...chat('a'), parentChatId: 'b' }, { ...chat('b'), parentChatId: 'a' }), 'a').map(candidate => candidate.id)).toEqual(['b']);
     });
 });

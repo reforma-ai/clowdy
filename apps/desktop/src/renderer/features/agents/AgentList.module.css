@@ -34,7 +34,7 @@
 
 /*
  * The chevron sits in the row's own left padding, so it takes no room from the row: the icon of every row stays where the
- * list puts it. A nested row's padding grows by one level (`--depth`), and the chevron moves with it.
+ * list puts it. A thread's padding grows by one level (`--depth`), and the chevron moves with it.
  */
 .fold {
     position: absolute;
@@ -67,7 +67,7 @@
     color: var(--color-text);
 }
 
-/* A run below a chat: one level in from the row it belongs to, per level. Doubled so it outranks the list's own padding. */
+/* A thread below a chat: one level in from the row it belongs to, per level. Doubled so it outranks the list's own padding. */
 .nested.nested {
     padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) + var(--depth) * var(--spacing-20));
 }

@@ -65,5 +65,5 @@ Customers asked to export their orders. The orders page has filters, the CSV lib
 Members have no export. Reopen if members need to export their own orders.
 
 ## Assumptions
-- Exports stay under about 10,000 rows because of the filter (unverified; checked by a verifier with a large filter).
+- Exports stay under about 10,000 rows because of the filter (unverified; to check with a large filter).
 ```

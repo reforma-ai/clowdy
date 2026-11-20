@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { activityOf, agentStatusLine, childOfCall, isSubagentTool, latestActivity, spawnedRunId, subagentLabel, subagentName, subagentTitle, toolActivity } from './subagents';
+import { activityOf, agentStatusLine, childOfCall, isSubagentTool, latestActivity, subagentLabel, subagentName, subagentTitle, toolActivity } from './subagents';
 
 import type { Run, StreamItem, StreamItemBody } from '@clowdy/protocol';
 
@@ -10,7 +10,7 @@ const item = (seq: number, body: StreamItemBody): StreamItem => ({ id: `i-${ seq
 describe('what a sub-agent call is called', () => {
     it('knows the sub-agent tools of the agents, and nothing else', () => {
         expect(['Agent', 'Task', 'spawnAgent', 'spawn_subagent'].every(isSubagentTool)).toBe(true);
-        expect(['run_spawn', 'agent', 'Read'].some(isSubagentTool)).toBe(false);
+        expect(['agent', 'Read'].some(isSubagentTool)).toBe(false);
     });
 
     it('labels the type the call asks for, capitalized, and a known id the way people say it', () => {
@@ -67,16 +67,7 @@ describe('a working agent\'s activity', () => {
     });
 });
 
-describe('the run a call started', () => {
-    it('reads the id of a spawned run from the tool\'s object, from its JSON text, and from text an agent wrapped around it', () => {
-        expect(spawnedRunId({ runId: 'run_1', name: 'Executor 01' })).toBe('run_1');
-        expect(spawnedRunId('{"runId":"run_2","status":"running"}')).toBe('run_2');
-        expect(spawnedRunId(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({ runId: 'run_3' }) }] }))).toBe('run_3');
-        expect(spawnedRunId({ content: [{ type: 'text', text: '{"runId": "run_4"}' }] })).toBe('run_4');
-        expect(spawnedRunId('Error: too many children')).toBeUndefined();
-        expect(spawnedRunId(undefined)).toBeUndefined();
-    });
-
+describe('the sub-agent a call started', () => {
     it('finds the native child of a call by its parent tool call id', () => {
         const runs = [run('a', { parentToolCallId: 'call-1', createdAt: 1 }), run('b', { parentToolCallId: 'call-2' }), run('c', { parentToolCallId: 'call-1', createdAt: 5 })];
 

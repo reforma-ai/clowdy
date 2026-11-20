@@ -3,9 +3,10 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { getChat, upsertChat } from '../src/db/chats';
 import { openDatabase } from '../src/db/connection';
 import { MIGRATIONS } from '../src/db/migrations';
-import { getRun } from '../src/db/runs';
+import { getRun, getRunWork } from '../src/db/runs';
 import { newId } from '../src/ids';
 import { Store } from '../src/store';
 import { cleanTempDirs, tempDir } from './helpers';
@@ -106,6 +107,115 @@ describe('migrations', () => {
         db.close();
     });
 
+    test('version 15 keeps what child runs left as history in the smaller model and drops the mailbox, the idempotency key and the outcome', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 15));
+        const background = JSON.stringify([{ id: 'bg-1', kind: 'command', title: 'sleep 60' }]);
+        const run = before.query(`
+            INSERT INTO runs (id, project_id, parent_run_id, root_run_id, role, origin, name, status, status_reason, engine, idempotency_key, outcome, background, created_at, finished_at)
+            VALUES (?, 'prj_1', ?, ?, ?, ?, ?, ?, ?, 'claude', ?, ?, ?, 1, ?)
+        `);
+        const status = before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, \'prj_1\', ?, ?, ?)');
+        const task = before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, \'prj_1\', ?, ?, ?, \'{"kind":"user"}\', 1, 1)');
+        const link = before.query('INSERT INTO run_task_links (run_id, task_id, relation) VALUES (?, ?, ?)');
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        status.run('sts_todo', 'To do', 'todo', 0);
+        status.run('sts_active', 'In progress', 'active', 1);
+        task.run('tsk_1', 1, 'A', 'sts_todo');
+        task.run('tsk_2', 2, 'B', 'sts_active');
+        task.run('tsk_3', 3, 'C', 'sts_active');
+        // A parent that waited for its children with background work open, a finished child, a child still at work, a verifier, a sub-agent, another
+        // chat's run, and a chat's run that still waits for a slot.
+        run.run('run_parent', null, 'run_parent', 'orchestrator', null, 'Orchestrator 01', 'waiting_children', 'Waiting for 1 child run', null, null, background, null);
+        run.run('run_done', 'run_parent', 'run_parent', 'executor', 'spawned', 'Executor 01', 'succeeded', null, 'k1', 'done', null, 5);
+        run.run('run_busy', 'run_parent', 'run_parent', 'executor', 'spawned', 'Executor 02', 'running', null, 'k2', null, background, null);
+        run.run('run_check', 'run_parent', 'run_parent', 'verifier', 'spawned', 'Verifier 01', 'failed', null, 'k3', 'blocked', null, 6);
+        run.run('run_native', 'run_parent', 'run_parent', 'executor', 'native', 'Explore', 'succeeded', null, null, null, null, 7);
+        run.run('run_other', null, 'run_other', 'orchestrator', null, 'Orchestrator 02', 'succeeded', null, null, null, null, 8);
+        run.run('run_queued', null, 'run_queued', 'orchestrator', null, 'Orchestrator 03', 'queued', 'Waiting for a free slot', null, null, null, null);
+        link.run('run_parent', 'tsk_1', 'created');
+        link.run('run_done', 'tsk_1', 'assigned');
+        link.run('run_check', 'tsk_1', 'verifies');
+        // The child still at work on two tasks: one nobody else works on, one that a chat's run waits to work on.
+        link.run('run_busy', 'tsk_2', 'assigned');
+        link.run('run_busy', 'tsk_3', 'assigned');
+        link.run('run_queued', 'tsk_3', 'assigned');
+        before.query('INSERT INTO run_mailbox (run_id, child_run_id, created_at) VALUES (?, ?, ?)').run('run_parent', 'run_done', 5);
+        before.close();
+
+        const db = openDatabase(path);
+        const columns = (db.query('PRAGMA table_info(runs)').all() as { name: string }[]).map(column => column.name);
+        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+
+        // The parent is finished, with nothing open; what it had open is kept for its next message.
+        expect(getRun(db, 'run_parent')).toMatchObject({ status: 'succeeded', finishedAt: expect.any(Number) });
+        expect(getRun(db, 'run_parent')?.statusReason).toBeUndefined();
+        expect(getRun(db, 'run_parent')?.background).toBeUndefined();
+        expect(getRunWork(db, 'run_parent').lostBackground).toEqual([{ id: 'bg-1', kind: 'command', title: 'sleep 60' }]);
+
+        // Every started child is a sub-agent now, a verifier an executor; the one still at work is stopped, the finished ones keep their end.
+        expect(getRun(db, 'run_done')).toMatchObject({ role: 'executor', origin: 'native', status: 'succeeded', finishedAt: 5 });
+        expect(getRun(db, 'run_busy')).toMatchObject({ role: 'executor', origin: 'native', status: 'cancelled', statusReason: 'Stopped by an update of Clowdy', finishedAt: expect.any(Number) });
+        expect(getRun(db, 'run_busy')?.background).toBeUndefined();
+        expect(getRun(db, 'run_check')).toMatchObject({ role: 'executor', origin: 'native', status: 'failed', finishedAt: 6 });
+        expect(getRun(db, 'run_native')).toMatchObject({ role: 'executor', origin: 'native', status: 'succeeded', finishedAt: 7 });
+        expect(getRun(db, 'run_other')).toMatchObject({ role: 'orchestrator', status: 'succeeded', finishedAt: 8 });
+        expect(getRun(db, 'run_other')?.origin).toBeUndefined();
+        expect(getRun(db, 'run_queued')).toMatchObject({ role: 'orchestrator', status: 'queued', statusReason: 'Waiting for a free slot' });
+        expect(db.query('SELECT COUNT(*) AS n FROM runs').get()).toEqual({ n: 7 });
+
+        // The task whose work stopped is To do again; the one a chat's run still waits to work on, and the one nobody was at, keep their column.
+        expect(db.query('SELECT id, status_id FROM tasks ORDER BY id').all()).toEqual([
+            { id: 'tsk_1', status_id: 'sts_todo' },
+            { id: 'tsk_2', status_id: 'sts_todo' },
+            { id: 'tsk_3', status_id: 'sts_active' },
+        ]);
+
+        // The links of the verifier go, the others stay; the mailbox, the idempotency key and the outcome are gone.
+        expect(db.query('SELECT run_id, task_id, relation FROM run_task_links ORDER BY run_id, task_id').all()).toEqual([
+            { run_id: 'run_busy', task_id: 'tsk_2', relation: 'assigned' },
+            { run_id: 'run_busy', task_id: 'tsk_3', relation: 'assigned' },
+            { run_id: 'run_done', task_id: 'tsk_1', relation: 'assigned' },
+            { run_id: 'run_parent', task_id: 'tsk_1', relation: 'created' },
+            { run_id: 'run_queued', task_id: 'tsk_3', relation: 'assigned' },
+        ]);
+        expect(tables(db)).not.toContain('run_mailbox');
+        expect(columns).not.toContain('idempotency_key');
+        expect(columns).not.toContain('outcome');
+        expect(columns).toEqual(expect.arrayContaining(['cwd', 'next_prompt', 'pid', 'lost_background', 'can_stop_alone']));
+        expect(indexes).not.toContain('runs_idempotency');
+        expect(indexes).not.toContain('run_mailbox_pending');
+        expect((db.query('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys).toBe(1);
+        db.close();
+    });
+
+    test('version 16 gives the chats of an older database a parent column that reads as none, and keeps a thread\'s parent', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 16));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
+        before.close();
+
+        const db = openDatabase(path);
+        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(getChat(db, 'cht_1')).toEqual({ id: 'cht_1', projectId: 'prj_1', title: 'Hello', mode: 'autopilot', createdAt: 1, updatedAt: 1 });
+        expect(indexes).toContain('chats_parent');
+
+        upsertChat(db, { id: 'cht_2', projectId: 'prj_1', title: 'Thread', mode: 'autopilot', parentChatId: 'cht_1', createdAt: 2, updatedAt: 2 });
+        expect(getChat(db, 'cht_2')?.parentChatId).toBe('cht_1');
+
+        // The parent is fixed: a later write of the chat does not move it.
+        upsertChat(db, { id: 'cht_2', projectId: 'prj_1', title: 'Renamed', mode: 'autopilot', createdAt: 2, updatedAt: 3 });
+        expect(getChat(db, 'cht_2')).toMatchObject({ title: 'Renamed', parentChatId: 'cht_1' });
+        db.close();
+    });
+
     test('a failing migration rolls back, keeps the version, and leaves the backup', () => {
         const path = join(tempDir(), 'clowdy.db');
 
@@ -172,7 +282,7 @@ describe('migrations', () => {
         const upgraded = openDatabase(path);
 
         expect(upgraded.query('SELECT name, origin, next_prompt, pid FROM runs').all()).toEqual([{ name: 'Executor 01', origin: null, next_prompt: null, pid: null }]);
-        expect(tables(upgraded)).toEqual(expect.arrayContaining(['run_mailbox', 'engine_pauses']));
+        expect(tables(upgraded)).toContain('engine_pauses');
         upgraded.close();
     });
 

@@ -3,7 +3,7 @@ import { ACTIVE_RUN_STATUSES, isTerminalRunStatus, projectEngine, STOPPED_TOOL }
 import { getChat } from '../db/chats';
 import { findQuestion, listRunningTools } from '../db/items';
 import { getProject } from '../db/projects';
-import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, insertMailbox, isDescendant, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, pendingMailbox, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
+import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
 import { getTask } from '../db/tasks';
 import { appendItem, updateItem } from '../domain/items';
 import { categoryOf, linkRunTask, moveTask, requireTask } from '../domain/tasks';
@@ -14,7 +14,7 @@ import { killSurvivor, signalProcess } from './processes';
 import { QUEUE_REASON, Scheduler } from './scheduler';
 import { canTransition, NEEDS_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 
-import type { BackgroundItem, ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunRole, RunStatus, RunUsage, Task } from '@clowdy/protocol';
+import type { BackgroundItem, ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunStatus, RunUsage, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunProcess } from '../db/runs';
 import type { EngineRegistry } from '../engine/types';
@@ -25,28 +25,22 @@ const CANCEL_REASON = 'Cancelled by user';
 /** Committed events that can change what a waiting run is waiting for. */
 const RELEVANT_EVENTS = new Set(['run.upserted', 'task.upserted', 'task.deleted', 'link.runTask']);
 
+/** A run the driver drives: a chat's orchestrator. A native sub-agent is made by `createNative`. */
 export interface NewRun {
     project: Project;
-    role: RunRole;
+    role: 'orchestrator';
     summary: string;
-    parent?: Run;
-    /** `spawned` for a run an orchestrator started with `run_spawn`. */
-    origin?: 'spawned';
     chatId?: string;
     engine?: EngineId;
     model?: string;
     /** The reasoning level, in the engine's own spelling. */
     effort?: string;
-    /** Where the engine works; the project's folder when absent. */
+    /** Where the engine works; the project's main folder when absent. */
     cwd?: string;
-    /** The same key under the same parent never creates a second run. */
-    idempotencyKey?: string;
     /** What the run's first turn is told. */
     nextPrompt?: string;
     /** Tasks the run executes. Unfinished dependencies of these tasks block the run. */
     assigned?: Task[];
-    /** Tasks the run checks. Verifiers wait for nothing: the work they check is already done. */
-    verifies?: Task[];
 }
 
 export interface StatusOptions {
@@ -59,13 +53,9 @@ export interface StatusOptions {
 
 const isActive = (status: RunStatus) => ACTIVE_RUN_STATUSES.includes(status);
 
-const ROLE_NAMES: Record<RunRole, string> = { orchestrator: 'Orchestrator', executor: 'Executor', verifier: 'Verifier' };
-
 /** Everything about a run's life that is not the engine conversation: creation, the status machine, slots, waiting, cancelling. */
 export class RunService {
     readonly limits: EngineLimits;
-    /** Called after the commit in which a run started by `run_spawn` finished, with its parent's id. */
-    onChildSettled: (parentRunId: string) => void = () => undefined;
     /** Called after the commit in which a chat's orchestrator changed status, with the run as it is now. */
     onOrchestratorStatus: (run: Run) => void = () => undefined;
     /**
@@ -126,10 +116,10 @@ export class RunService {
         return engine;
     }
 
-    /** Inserts a run, `queued` or `blocked`, with its task links. The caller launches it. */
+    /** Inserts a root run, `queued` or `blocked`, with its task links. The caller launches it. */
     createRun(input: NewRun): Run {
         return this.store.tx(() => {
-            const { project, parent } = input;
+            const { project } = input;
             const assigned = input.assigned ?? [];
             const blockers = this.unfinishedDependencies(assigned);
             const id = newId('run');
@@ -140,12 +130,10 @@ export class RunService {
             const run: Run = {
                 id,
                 projectId: project.id,
-                ...(parent && { parentRunId: parent.id }),
-                rootRunId: parent?.rootRunId ?? id,
+                rootRunId: id,
                 ...(input.chatId && { chatId: input.chatId }),
                 role: input.role,
-                ...(input.origin && { origin: input.origin }),
-                name: `${ ROLE_NAMES[input.role] } ${ String(number).padStart(2, '0') }`,
+                name: `Orchestrator ${ String(number).padStart(2, '0') }`,
                 summary: input.summary,
                 status: blockers.length > 0 ? 'blocked' : 'queued',
                 statusReason: blockers.length > 0 ? blockedReason(blockers) : QUEUE_REASON,
@@ -156,15 +144,11 @@ export class RunService {
             };
 
             upsertRun(this.store.db, run);
-            setRunWork(this.store.db, id, { cwd: input.cwd, idempotencyKey: input.idempotencyKey, nextPrompt: input.nextPrompt });
+            setRunWork(this.store.db, id, { cwd: input.cwd, nextPrompt: input.nextPrompt });
             this.store.emit(project.id, { type: 'run.upserted', run });
 
             for (const task of assigned) {
                 linkRunTask(this.store, project.id, { runId: id, taskId: task.id, relation: 'assigned' });
-            }
-
-            for (const task of input.verifies ?? []) {
-                linkRunTask(this.store, project.id, { runId: id, taskId: task.id, relation: 'verifies' });
             }
 
             return run;
@@ -269,20 +253,11 @@ export class RunService {
                 delete next.result;
                 delete next.error;
                 delete next.failureCode;
-                setRunWork(this.store.db, runId, { outcome: null });
             }
 
             upsertRun(this.store.db, next);
             this.store.emit(run.projectId, { type: 'run.upserted', run: next });
             this.syncTasks(run.status, next);
-
-            if (isTerminalRunStatus(status) && run.origin === 'spawned' && run.parentRunId) {
-                const parentId = run.parentRunId;
-
-                // Written with the status, so a crash right after cannot lose the news; the parent hears it when it can.
-                insertMailbox(this.store.db, parentId, runId);
-                this.store.afterCommit(() => this.onChildSettled(parentId));
-            }
 
             if (run.origin !== 'native' && (run.status === 'running' || status === 'queued')) {
                 this.store.afterCommit(() => this.scheduler.tick());
@@ -297,18 +272,13 @@ export class RunService {
         });
     }
 
-    /** Puts a finished or parked run back in the queue for its next turn, with the message that starts it (a wake-up has none). */
+    /** Puts a finished or waiting run back in the queue for its next turn, with the message that starts it (none continues the conversation). */
     resume(runId: string, prompt?: string): Run {
         return this.store.tx(() => {
             setRunWork(this.store.db, runId, { nextPrompt: prompt ?? null });
 
             return this.setStatus(runId, 'queued');
         });
-    }
-
-    /** Whether children finished that the run has not been told about: whatever its next turn is asked, their results are added to it. */
-    hasUnseenResults(runId: string): boolean {
-        return pendingMailbox(this.store.db, runId).length > 0;
     }
 
     /**
@@ -334,7 +304,7 @@ export class RunService {
         }
     }
 
-    /** Active runs assigned to or verifying the task, optionally leaving one out. */
+    /** Active runs assigned to the task (a chat started from it), optionally leaving one out. */
     activeRunsOfTask(taskId: string, exceptRunId?: string): Run[] {
         return linksOfTask(this.store.db, taskId)
             .filter(link => link.relation !== 'created' && link.runId !== exceptRunId)
@@ -388,12 +358,11 @@ export class RunService {
         this.scheduler.tick();
     }
 
-    /** Resolves after the next commit that can change run or task state, or after `timeoutMs`. */
-    private nextChange(signal: AbortSignal, timeoutMs?: number): Promise<void> {
+    /** Resolves after the next commit that can change run or task state. */
+    private nextChange(signal: AbortSignal): Promise<void> {
         return new Promise((resolve, reject) => {
             const stop = () => {
                 unsubscribe();
-                clearTimeout(timer);
                 signal.removeEventListener('abort', onAbort);
             };
             const onAbort = () => {
@@ -406,10 +375,6 @@ export class RunService {
                     resolve();
                 }
             });
-            const timer = timeoutMs === undefined ? undefined : setTimeout(() => {
-                stop();
-                resolve();
-            }, timeoutMs);
 
             if (signal.aborted) {
                 onAbort();
@@ -434,22 +399,6 @@ export class RunService {
         }
     }
 
-    /** Resolves when all the given runs are finished or after `timeoutMs`, and returns them as they are then. */
-    async waitForRuns(runIds: string[], timeoutMs: number, signal: AbortSignal): Promise<Run[]> {
-        const deadline = Date.now() + timeoutMs;
-
-        for (;;) {
-            const runs = runIds.map(id => this.require(id));
-            const remaining = deadline - Date.now();
-
-            if (runs.every(run => isTerminalRunStatus(run.status)) || remaining <= 0) {
-                return runs;
-            }
-
-            await this.nextChange(signal, remaining);
-        }
-    }
-
     /* -------------------------------- Questions -------------------------------- */
 
     /**
@@ -461,9 +410,9 @@ export class RunService {
             throw new Error('Another question is waiting for the user. Ask one question at a time and wait for its answer.');
         }
 
-        // A turn the agent starts by itself while the run waits has no way to park the run for an answer (neither wait leads to `waiting_user`).
-        if (['waiting_background', 'waiting_children'].includes(this.require(runId).status)) {
-            throw new Error('Can\'t ask a question while the run waits for background work or child runs');
+        // A turn the agent starts by itself while the run waits has no way to park the run for an answer (`waiting_background` does not lead to `waiting_user`).
+        if (this.require(runId).status === 'waiting_background') {
+            throw new Error('Can\'t ask a question while the run waits for background work');
         }
 
         const questionId = newId('qst');
@@ -583,38 +532,23 @@ export class RunService {
     }
 
     /**
-     * Stops the agents below `runId` and leaves `runId` itself going on, in one step: every run it spawned that is active (working, or waiting for a slot,
-     * a dependency or an answer, so none starts in the place of one that stopped), with what is below it, is cancelled, and every sub-agent inside the
-     * session that can be stopped alone (`Run.canStopAlone`) is asked to stop. A sub-agent that cannot be stopped alone is left (only its parent's cancel
-     * ends it). Returns the ids it cancelled or asked to stop, children first. The run is not cancelled and a chat's queue is not held: the agent
-     * hears what happened and goes on, from what the engine says of its sub-agents (Claude Code tells its parent itself) and from the mailbox for the
-     * spawned runs, whose results the run gets as for any run that ended, `cancelled` among them (`wakeMessage`). Everything is decided in one transaction,
-     * so no run starts or ends between the choice and the cancel.
+     * Stops the sub-agents below `runId` and leaves `runId` itself going on, in one step: every sub-agent inside the session that can be stopped alone
+     * (`Run.canStopAlone`) is asked to stop. A sub-agent that cannot be stopped alone is left (only its parent's cancel ends it). Returns the ids it asked
+     * to stop, the deepest first. The run is not cancelled and a chat's queue is not held: the agent hears what happened from what the engine says of its
+     * sub-agents (Claude Code tells its parent itself) and goes on. Everything is decided in one transaction, so no sub-agent starts or ends between the
+     * choice and the request.
      */
     stopAgents(runId: string, reason = CANCEL_REASON): string[] {
         return this.store.tx(() => {
             this.require(runId);
 
-            const below = listActiveRuns(this.store.db).filter(run => run.id !== runId && isDescendant(this.store.db, runId, run.id));
-            const stopped: string[] = [];
-
-            for (const run of below) {
-                // One that an earlier cancel ended with its parent is over by now.
-                if (run.origin === 'spawned' && isActive(this.require(run.id).status)) {
-                    stopped.push(...this.cancel(run.id, reason));
-                }
-            }
-
-            // Each sub-agent is asked once, the ones a sub-agent started first: the agent ends only the one it is asked about, so nothing is stopped twice.
-            const depth = (run: Run): number => (run.origin === 'native' && run.parentRunId !== undefined ? 1 + depth(this.require(run.parentRunId)) : 0);
-
-            for (const run of below.filter(candidate => candidate.origin === 'native').sort((a, b) => depth(b) - depth(a))) {
-                if (this.stopAlone(this.require(run.id), reason)) {
-                    stopped.push(run.id);
-                }
-            }
-
-            return stopped;
+            // Each sub-agent is asked once, the ones a sub-agent started first (`activeSubtree` is the deepest first): the agent ends only the one it is asked
+            // about, so nothing is stopped twice.
+            return activeSubtree(this.store.db, runId)
+                .filter(id => id !== runId)
+                .map(id => this.require(id))
+                .filter(run => run.origin === 'native' && this.stopAlone(run, reason))
+                .map(run => run.id);
         });
     }
 
@@ -700,8 +634,7 @@ export class RunService {
      * belongs to the process that was recorded), and runs that were mid-turn come back `interrupted`, the calls their turn left running failed as
      * `TurnWriter.finish` would have done (a crash never got to it). A run that waits for background work (`waiting_background`) has a live session
      * too, which no restart keeps, so it is interrupted whether or not a process was recorded for it, and the items it had open are kept in its work
-     * record until its next message tells the agent they are lost. Runs that only wait (queued, blocked, waiting
-     * for children) keep waiting; the driver starts them again.
+     * record until its next message tells the agent they are lost. Runs that only wait (queued, blocked) keep waiting; the driver starts them again.
      */
     async recover(): Promise<number> {
         for (const { process: survivor } of listRunsWithProcess(this.store.db)) {
@@ -833,7 +766,7 @@ export class RunService {
         });
     }
 
-    /** A line in the stream, such as "Started Executor 02 on CLW-2". */
+    /** A line in the stream, such as "Background command finished: bun test". */
     note(runId: string, text: string): void {
         appendItem(this.store, runId, { kind: 'note', text });
     }

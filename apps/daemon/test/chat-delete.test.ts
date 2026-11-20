@@ -58,7 +58,6 @@ describe('chat.delete', () => {
         expect(after.chatTaskLinks).toEqual([]);
         expect(after.tasks.map(task => task.id)).toEqual(before.tasks.map(task => task.id));
         expect(count(h, 'SELECT COUNT(*) AS n FROM stream_items')).toBe(0);
-        expect(count(h, 'SELECT COUNT(*) AS n FROM run_mailbox')).toBe(0);
 
         const [deleted] = h.events(cursor).map(event => event.data);
 

@@ -7,7 +7,7 @@ import { QUEUE_REASON } from '../src/runs/scheduler';
 import { BACKGROUND_REASON, canTransition, NEEDS_REASON, TRANSITIONS } from '../src/runs/transitions';
 import { cleanTempDirs, GateEngine, gateEngines, Harness, restartHarness, startHarness, waitFor } from './helpers';
 
-import type { BackgroundItem, ClowdyEvent, Run, RunStatus } from '@clowdy/protocol';
+import type { BackgroundItem, ClowdyEvent, RunStatus } from '@clowdy/protocol';
 
 afterAll(cleanTempDirs);
 
@@ -55,7 +55,7 @@ describe('status machine', () => {
             expect(to.includes('running')).toBe(from === 'queued');
         }
 
-        expect(canTransition('running', 'waiting_children')).toBe(true);
+        expect(canTransition('running', 'waiting_background')).toBe(true);
         expect(canTransition('queued', 'succeeded')).toBe(false);
         expect(canTransition('blocked', 'running')).toBe(false);
     });
@@ -151,14 +151,13 @@ describe('waiting for background work', () => {
         return { h, project, runs, create };
     }
 
-    test('is entered from running, or from the other wait while the session is open, and leaves by queued or an end, never straight to running', () => {
+    test('is entered from running, and leaves by queued or an end, never straight to running', () => {
         for (const from of Object.keys(TRANSITIONS) as RunStatus[]) {
-            expect(canTransition(from, 'waiting_background')).toBe(from === 'running' || from === 'waiting_background' || from === 'waiting_children');
+            expect(canTransition(from, 'waiting_background')).toBe(from === 'running' || from === 'waiting_background');
         }
 
-        // The two waits trade places as what the run waits for changes (children win), and a session that fails for a moment is retried through `blocked`.
-        expect(TRANSITIONS.waiting_background).toEqual(['waiting_background', 'waiting_children', 'queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']);
-        expect(TRANSITIONS.waiting_children).toEqual(['waiting_children', 'waiting_background', 'queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']);
+        // It repeats to refresh its reason, and a session that fails for a moment is retried through `blocked`.
+        expect(TRANSITIONS.waiting_background).toEqual(['waiting_background', 'queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']);
         expect(NEEDS_REASON).toContain('waiting_background');
     });
 
@@ -170,7 +169,6 @@ describe('waiting for background work', () => {
         // The statuses around it keep their meaning.
         expect(isBusyRunStatus('running')).toBe(true);
         expect(isBusyRunStatus('queued')).toBe(true);
-        expect(isBusyRunStatus('waiting_children')).toBe(false);
         expect(isBusyRunStatus('succeeded')).toBe(false);
     });
 
@@ -231,14 +229,11 @@ describe('waiting for background work', () => {
 
     test('refuses a question of a run that waits, in words a person can read, and keeps the run as it was', async () => {
         const { runs, create } = await runningRun();
+        const runId = create();
 
-        for (const status of ['waiting_background', 'waiting_children'] as const) {
-            const runId = create();
-
-            runs.setStatus(runId, status, { reason: 'Waiting' });
-            await expect(runs.ask(runId, { text: 'Which one?', options: [{ id: 'a', label: 'A' }] }, new AbortController().signal)).rejects.toThrow('Can\'t ask a question while the run waits for background work or child runs');
-            expect(runs.require(runId).status).toBe(status);
-        }
+        runs.setStatus(runId, 'waiting_background', { reason: 'Waiting' });
+        await expect(runs.ask(runId, { text: 'Which one?', options: [{ id: 'a', label: 'A' }] }, new AbortController().signal)).rejects.toThrow('Can\'t ask a question while the run waits for background work');
+        expect(runs.require(runId).status).toBe('waiting_background');
     });
 
     describe('the open items', () => {
@@ -461,26 +456,19 @@ describe('dependencies', () => {
 });
 
 describe('cancellation', () => {
-    test('cancels the whole active subtree, children first, aborts the engines, and keeps the history', async () => {
-        const { h, gate, project, task } = await setup();
-        const { runs, driver } = h.daemon.services;
-        const entity = getProject(h.store.db, project.id)!;
-        const root = runs.createRun({ project: entity, role: 'orchestrator', summary: 'root' });
-        const spawn = (parent: Run, title: string) => {
-            const created = task(title);
-            const run = runs.createRun({ project: entity, role: 'executor', origin: 'spawned', summary: title, parent, assigned: [created], nextPrompt: `Task ${ created.key }: ${ title }` });
+    test('cancels the whole active subtree, children first, aborts the engine, and keeps the history', async () => {
+        const { h, gate, task, start } = await setup();
+        const { runs } = h.daemon.services;
+        const root = h.run(start(task('Root').id));
 
-            driver.launch(run.id);
+        await waitFor(() => gate.isStarted('REP-1') && h.run(root.id).status === 'running', 'the engine');
 
-            return run;
-        };
-        const child = spawn(root, 'Child');
-        const grandchild = spawn(child, 'Grandchild');
-        const finished = spawn(root, 'Finished');
+        // Sub-agents inside the root's session, one of them started by another, and one that has finished.
+        const child = runs.createNative(h.run(root.id), { name: 'Explore', summary: 'Child' });
+        const grandchild = runs.createNative(child, { name: 'Explore', summary: 'Grandchild' });
+        const finished = runs.createNative(h.run(root.id), { name: 'Review', summary: 'Finished' });
 
-        await waitFor(() => gate.isStarted('REP-1') && gate.isStarted('REP-2') && gate.isStarted('REP-3'), 'all engines');
-        gate.release('REP-3');
-        await waitFor(() => h.run(finished.id).status === 'succeeded', 'the finished child');
+        runs.setStatus(finished.id, 'succeeded');
 
         const cursor = h.store.headCursor();
         const result = h.ok('run.cancel', { runId: root.id });
@@ -492,7 +480,7 @@ describe('cancellation', () => {
         const order = h.events(cursor).flatMap(event => (event.data.type === 'run.upserted' && event.data.run.status === 'cancelled' ? [event.data.run.id] : []));
 
         expect(order).toEqual([grandchild.id, child.id, root.id]);
-        await waitFor(() => gate.aborted.length === 2, 'both engines to be aborted');
+        await waitFor(() => gate.aborted.length === 1, 'the engine to be aborted');
         expect(h.run(grandchild.id).statusReason).toBe('Cancelled by user');
 
         // Cancelling again finds nothing active.

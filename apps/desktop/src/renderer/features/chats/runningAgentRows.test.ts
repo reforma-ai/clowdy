@@ -1,17 +1,32 @@
 import { describe, expect, it } from 'vitest';
 
-import { agentRowLabel, agentRowText, backgroundItemText, backgroundRows, backgroundRowText, canStopAlone, MAX_AGENT_ROWS, offersStopAll, openBackground, runningAgents, unlistedBackground } from './runningAgentRows';
+import {
+    agentRowLabel,
+    agentRowText,
+    backgroundItemText,
+    backgroundRows,
+    backgroundRowText,
+    canStopAlone,
+    MAX_AGENT_ROWS,
+    offersStopAll,
+    openBackground,
+    runningAgents,
+    stripRows,
+    threadRowText,
+    threadsAtWork,
+    unlistedBackground,
+} from './runningAgentRows';
 
-import type { BackgroundItem, Run, RunStatus } from '@clowdy/protocol';
+import type { BackgroundItem, Chat, Run, RunStatus } from '@clowdy/protocol';
 
-const run = (id: string, status: RunStatus, rest: Partial<Run> = {}): Run => ({ id, projectId: 'p', rootRunId: 'orch', parentRunId: 'orch', role: 'executor', name: id, summary: '', status, engine: 'claude', createdAt: 1, ...rest });
+const run = (id: string, status: RunStatus, rest: Partial<Run> = {}): Run => ({ id, projectId: 'p', rootRunId: 'orch', parentRunId: 'orch', role: 'executor', origin: 'native', name: id, summary: '', status, engine: 'claude', createdAt: 1, ...rest });
 
 describe('runningAgents', () => {
-    it('lists the chat\'s runs that work or wait for the person, spawned or native, oldest first', () => {
+    it('lists the chat\'s sub-agents that work or wait for the person, oldest first, those of a sub-agent too', () => {
         const runs = [
-            run('orch', 'running', { parentRunId: undefined }),
+            run('orch', 'running', { parentRunId: undefined, origin: undefined, role: 'orchestrator' }),
             run('late', 'running', { createdAt: 9 }),
-            run('native', 'running', { origin: 'native', createdAt: 5 }),
+            run('early', 'running', { createdAt: 5 }),
             run('asking', 'waiting_user', { createdAt: 3 }),
             run('grandchild', 'running', { parentRunId: 'late', createdAt: 10 }),
             run('queued', 'queued'),
@@ -20,26 +35,25 @@ describe('runningAgents', () => {
             run('elsewhere', 'running', { rootRunId: 'other', parentRunId: 'other' }),
         ];
 
-        expect(runningAgents(runs, 'orch').map(agent => agent.id)).toEqual(['asking', 'native', 'late', 'grandchild']);
+        expect(runningAgents(runs, 'orch').map(agent => agent.id)).toEqual(['asking', 'early', 'late', 'grandchild']);
         expect(runningAgents(runs, undefined)).toEqual([]);
     });
 });
 
 describe('a row\'s words', () => {
-    it('names a spawned run by its name and a native one by its type', () => {
-        expect(agentRowLabel({ name: 'Executor 07', origin: 'spawned' })).toBe('Executor 07');
-        expect(agentRowLabel({ name: 'Explore', origin: 'native' })).toBe('Explore agent');
-        expect(agentRowLabel({ name: 'general-purpose', origin: 'native' })).toBe('General agent');
-        expect(agentRowLabel({ name: 'Sub-agent', origin: 'native' })).toBe('Sub-agent');
+    it('names a sub-agent by its type', () => {
+        expect(agentRowLabel({ name: 'Explore' })).toBe('Explore agent');
+        expect(agentRowLabel({ name: 'general-purpose' })).toBe('General agent');
+        expect(agentRowLabel({ name: 'Sub-agent' })).toBe('Sub-agent');
     });
 
     it('says what the agent does and how many tools it called, that it works before its first step, and that it waits for the person', () => {
-        const explore = { name: 'Explore', origin: 'native' as const, status: 'running' as const };
+        const explore = { name: 'Explore', status: 'running' as const };
 
         expect(agentRowText(explore, 'Reading form.tsx', 4)).toBe('Explore agent · Reading form.tsx · 4 calls');
         expect(agentRowText(explore, 'Reading form.tsx', 1)).toBe('Explore agent · Reading form.tsx · 1 call');
         expect(agentRowText(explore, undefined, 0)).toBe('Explore agent working');
-        expect(agentRowText({ name: 'Executor 08', origin: 'spawned', status: 'waiting_user' }, 'Reading a.ts', 7)).toBe('Executor 08 · Waiting for you');
+        expect(agentRowText({ name: 'Plan', status: 'waiting_user' }, 'Reading a.ts', 7)).toBe('Plan agent · Waiting for you');
     });
 });
 
@@ -47,7 +61,7 @@ describe('the background row', () => {
     const open = [{ id: 'bg-1', kind: 'command' as const, title: 'bun run test' }, { id: 'bg-2', kind: 'subagent' as const, title: 'Explore' }];
 
     it('lists what a live orchestrator has open, whatever the kind of the item', () => {
-        for (const status of ['queued', 'running', 'waiting_children', 'waiting_background', 'waiting_user', 'blocked'] as const) {
+        for (const status of ['queued', 'running', 'waiting_background', 'waiting_user', 'blocked'] as const) {
             expect(openBackground(run('orch', status, { background: open })), status).toEqual(open);
         }
     });
@@ -75,23 +89,23 @@ describe('what the background row counts', () => {
     const workflow = { id: 'wf-1', kind: 'task' as const, title: 'Workflow' };
 
     it('leaves out a sub-agent whose child run is a row, by the call that started it, and counts everything else', () => {
-        const child = run('child', 'running', { origin: 'native', parentToolCallId: 'call-1' });
+        const child = run('child', 'running', { parentToolCallId: 'call-1' });
 
         expect(unlistedBackground([command, explore, workflow], [child])).toEqual([command, workflow]);
     });
 
     it('counts a sub-agent that has no child run at work, whatever other children there are', () => {
-        const other = run('other', 'running', { origin: 'native', parentToolCallId: 'call-9' });
-        const spawned = run('spawned', 'running', { parentToolCallId: 'call-1' });
+        const other = run('other', 'running', { parentToolCallId: 'call-9' });
+        const unnamed = run('unnamed', 'running');
 
         expect(unlistedBackground([explore], [])).toEqual([explore]);
         expect(unlistedBackground([explore], [other])).toEqual([explore]);
-        // Only a native child stands for a sub-agent of the session; a spawned run is its own work.
-        expect(unlistedBackground([explore], [spawned])).toEqual([explore]);
+        // A child that names no call stands for nothing in the list.
+        expect(unlistedBackground([explore], [unnamed])).toEqual([explore]);
     });
 
     it('leaves a command or a task alone even when a child run names the same id', () => {
-        const child = run('child', 'running', { origin: 'native', parentToolCallId: 'bg-1' });
+        const child = run('child', 'running', { parentToolCallId: 'bg-1' });
 
         expect(unlistedBackground([command], [child])).toEqual([command]);
     });
@@ -132,31 +146,71 @@ describe('the rows of background items', () => {
 });
 
 describe('Stop on a row', () => {
-    it('stops a spawned run, and a native sub-agent only when its session can end it alone', () => {
-        expect(canStopAlone({ origin: 'spawned' })).toBe(true);
-        expect(canStopAlone({ origin: undefined })).toBe(true);
-        expect(canStopAlone({ origin: 'native', canStopAlone: true })).toBe(true);
-        expect(canStopAlone({ origin: 'native', canStopAlone: false })).toBe(false);
-        expect(canStopAlone({ origin: 'native' })).toBe(false);
+    it('stops a sub-agent only when its session can end it alone', () => {
+        expect(canStopAlone({ canStopAlone: true })).toBe(true);
+        expect(canStopAlone({ canStopAlone: false })).toBe(false);
+        expect(canStopAlone({})).toBe(false);
     });
 });
 
 describe('Stop all', () => {
-    const spawned = { origin: 'spawned' as const };
-    const alone = { origin: 'native' as const, canStopAlone: true };
-    const fixed = { origin: 'native' as const };
+    const alone = { canStopAlone: true };
+    const fixed = {};
 
-    it('is offered from two agents that can stop alone, whatever their kind', () => {
+    it('is offered from two agents that can stop alone', () => {
         expect(offersStopAll([])).toBe(false);
-        expect(offersStopAll([spawned])).toBe(false);
-        expect(offersStopAll([spawned, spawned])).toBe(true);
+        expect(offersStopAll([alone])).toBe(false);
         expect(offersStopAll([alone, alone])).toBe(true);
-        expect(offersStopAll([spawned, alone])).toBe(true);
     });
 
     it('does not count an agent that cannot stop alone, so it neither makes the button appear nor is stopped by it', () => {
         expect(offersStopAll([fixed, fixed, fixed])).toBe(false);
-        expect(offersStopAll([spawned, fixed])).toBe(false);
-        expect(offersStopAll([alone, fixed, spawned])).toBe(true);
+        expect(offersStopAll([alone, fixed])).toBe(false);
+        expect(offersStopAll([alone, fixed, alone])).toBe(true);
+    });
+
+    it('counts every thread at work, since each can be stopped alone', () => {
+        expect(offersStopAll([], 1)).toBe(false);
+        expect(offersStopAll([], 2)).toBe(true);
+        expect(offersStopAll([alone], 1)).toBe(true);
+        expect(offersStopAll([fixed], 1)).toBe(false);
+    });
+});
+
+describe('threads in the strip', () => {
+    const thread = (id: string, createdAt: number, rest: Partial<Chat> = {}): Chat => ({ id, projectId: 'p', title: `Thread ${ id }`, mode: 'autopilot', parentChatId: 'parent', orchestratorRunId: `run-${ id }`, createdAt, updatedAt: createdAt, ...rest });
+    const orchestrator = (id: string, status: RunStatus) => run(`run-${ id }`, status, { rootRunId: `run-${ id }`, parentRunId: undefined, origin: undefined, role: 'orchestrator' });
+
+    it('lists the threads that work, oldest first: queued, running, blocked, or waiting for the person or for background work', () => {
+        const statuses: Record<string, RunStatus> = { q: 'queued', r: 'running', b: 'blocked', u: 'waiting_user', w: 'waiting_background', s: 'succeeded', f: 'failed', c: 'cancelled', i: 'interrupted' };
+        const threads = Object.keys(statuses).map((id, index) => thread(id, 20 - index));
+        const runs = new Map(Object.entries(statuses).map(([id, status]) => [`run-${ id }`, orchestrator(id, status)]));
+
+        expect(threadsAtWork(threads, runs).map(({ chat }) => chat.id)).toEqual(['w', 'u', 'b', 'r', 'q']);
+    });
+
+    it('leaves out a thread that never started and one in the archive', () => {
+        const runs = new Map([['run-a', orchestrator('a', 'running')]]);
+
+        expect(threadsAtWork([thread('a', 1, { archivedAt: 2 }), thread('fresh', 2, { orchestratorRunId: undefined })], runs)).toEqual([]);
+    });
+
+    it('puts sub-agents and threads in one list, by when each was made', () => {
+        const agents = [run('agent-late', 'running', { createdAt: 30 }), run('agent-early', 'running', { createdAt: 10 })];
+        const threads = [{ chat: thread('t', 20), run: orchestrator('t', 'running') }];
+
+        expect(stripRows(agents, threads).map(row => `${ row.kind }:${ row.id }`)).toEqual(['agent:agent-early', 'thread:t', 'agent:agent-late']);
+    });
+
+    it('says what a thread does: its activity, that it works, that it waits for the person, for background work or a slot, or why it is blocked', () => {
+        const fix = { title: 'Fix login' };
+
+        expect(threadRowText(fix, { status: 'running' }, 'Running bun test')).toBe('Fix login · Running bun test');
+        expect(threadRowText(fix, { status: 'running' }, undefined)).toBe('Fix login working');
+        expect(threadRowText(fix, { status: 'waiting_user' }, 'Thinking…')).toBe('Fix login · Waiting for you');
+        expect(threadRowText(fix, { status: 'waiting_background' }, undefined)).toBe('Fix login · Waiting for background work');
+        expect(threadRowText(fix, { status: 'queued' }, undefined)).toBe('Fix login · Waiting for a free slot');
+        expect(threadRowText(fix, { status: 'blocked', statusReason: 'Usage limit until 14:00' }, undefined)).toBe('Fix login · Usage limit until 14:00');
+        expect(threadRowText(fix, { status: 'blocked' }, undefined)).toBe('Fix login · Blocked');
     });
 });

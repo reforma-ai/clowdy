@@ -6,40 +6,33 @@ import type { TasksView } from '../../stores';
 
 /* ---------------------------------- Runs ---------------------------------- */
 
-/** A run that works on a task: `assigned` executes it, `verifies` checks it. A run that only created the task is not listed. */
-export interface TaskRun {
-    run: Run;
-    relation: 'assigned' | 'verifies';
-}
+const byCreatedAt = (a: Run, b: Run) => a.createdAt - b.createdAt || a.id.localeCompare(b.id);
 
-const byCreatedAt = (a: TaskRun, b: TaskRun) => a.run.createdAt - b.run.createdAt || a.run.id.localeCompare(b.run.id);
-
-/** Every task's runs, oldest first. A run linked twice to one task (`assigned` and `verifies`) counts as assigned. */
-export function runsByTask(links: Iterable<RunTaskLink>, runs: ReadonlyMap<RunId, Run>): Map<TaskId, TaskRun[]> {
-    const byTask = new Map<TaskId, Map<RunId, TaskRun>>();
+/**
+ * Every task's assigned runs (the orchestrators of the chats working on it), oldest first. A run that only created the task is not listed, and a run
+ * assigned twice to one task is listed once.
+ */
+export function runsByTask(links: Iterable<RunTaskLink>, runs: ReadonlyMap<RunId, Run>): Map<TaskId, Run[]> {
+    const byTask = new Map<TaskId, Map<RunId, Run>>();
 
     for (const { runId, taskId, relation } of links) {
         const run = runs.get(runId);
 
-        if (!run || relation === 'created') continue;
+        if (!run || relation !== 'assigned') continue;
 
-        const taskRuns = byTask.get(taskId) ?? new Map<RunId, TaskRun>();
-
-        if (taskRuns.get(runId)?.relation !== 'assigned') taskRuns.set(runId, { run, relation });
-
-        byTask.set(taskId, taskRuns);
+        byTask.set(taskId, (byTask.get(taskId) ?? new Map<RunId, Run>()).set(runId, run));
     }
 
     return new Map([...byTask].map(([taskId, taskRuns]) => [taskId, [...taskRuns.values()].sort(byCreatedAt)]));
 }
 
 /** The runs executing the task right now: what a card shows and what blocks another start. */
-export function activeExecutors(taskRuns: readonly TaskRun[] = []): Run[] {
-    return taskRuns.filter(({ run, relation }) => relation === 'assigned' && !isTerminalRunStatus(run.status)).map(({ run }) => run);
+export function activeExecutors(taskRuns: readonly Run[] = []): Run[] {
+    return taskRuns.filter(run => !isTerminalRunStatus(run.status));
 }
 
 /** Why "Start" is unavailable, or `null` when it is. The daemon allows one executing run per task. */
-export function startBlockedReason(taskRuns: readonly TaskRun[] = []): string | null {
+export function startBlockedReason(taskRuns: readonly Run[] = []): string | null {
     const active = activeExecutors(taskRuns);
 
     if (active.length === 0) return null;
@@ -68,7 +61,7 @@ export function isFiltering(filter: TaskFilter): boolean {
     return facetCount(filter) > 0 || filter.query.trim() !== '';
 }
 
-export function filterTasks(tasks: readonly Task[], filter: TaskFilter, runsOfTask: ReadonlyMap<TaskId, readonly TaskRun[]>): Task[] {
+export function filterTasks(tasks: readonly Task[], filter: TaskFilter, runsOfTask: ReadonlyMap<TaskId, readonly Run[]>): Task[] {
     const query = filter.query.trim().toLowerCase();
 
     return tasks.filter((task) => {
@@ -76,15 +69,15 @@ export function filterTasks(tasks: readonly Task[], filter: TaskFilter, runsOfTa
 
         if (filter.statusIds.length > 0 && !filter.statusIds.includes(task.statusId)) return false;
 
-        return filter.runIds.length === 0 || (runsOfTask.get(task.id) ?? []).some(({ run }) => filter.runIds.includes(run.id));
+        return filter.runIds.length === 0 || (runsOfTask.get(task.id) ?? []).some(run => filter.runIds.includes(run.id));
     });
 }
 
 /** The runs a person may filter by: those linked to some task, the working ones first. */
-export function agentOptions(runsOfTask: ReadonlyMap<TaskId, readonly TaskRun[]>): Run[] {
+export function agentOptions(runsOfTask: ReadonlyMap<TaskId, readonly Run[]>): Run[] {
     const runs = new Map<RunId, Run>();
 
-    for (const taskRuns of runsOfTask.values()) for (const { run } of taskRuns) runs.set(run.id, run);
+    for (const taskRuns of runsOfTask.values()) for (const run of taskRuns) runs.set(run.id, run);
 
     const rank = (run: Run) => (isTerminalRunStatus(run.status) ? 1 : 0);
 
@@ -243,7 +236,7 @@ function createdText(actor: Actor, creator: Run | undefined): string {
 }
 
 /** What happened to the task, newest first, derived from the task and the runs on it. */
-export function taskActivity(task: Task, taskRuns: readonly TaskRun[], runsById: ReadonlyMap<RunId, Run>, limit = 5): Activity[] {
+export function taskActivity(task: Task, taskRuns: readonly Run[], runsById: ReadonlyMap<RunId, Run>, limit = 5): Activity[] {
     const activity: Activity[] = [];
     const creator = task.createdBy.kind === 'run' ? runsById.get(task.createdBy.runId) : undefined;
 
@@ -251,12 +244,12 @@ export function taskActivity(task: Task, taskRuns: readonly TaskRun[], runsById:
 
     if (task.updatedAt - task.createdAt > 1000) activity.push({ id: 'updated', at: task.updatedAt, text: 'Task updated' });
 
-    for (const { run, relation } of taskRuns) {
+    for (const run of taskRuns) {
         if (run.startedAt === undefined) {
             activity.push({ id: `${ run.id }:queued`, at: run.createdAt, text: `${ run.name } is waiting to start`, run });
         }
         else {
-            activity.push({ id: `${ run.id }:started`, at: run.startedAt, text: `${ run.name } started ${ relation === 'assigned' ? 'working' : 'checking' }`, run });
+            activity.push({ id: `${ run.id }:started`, at: run.startedAt, text: `${ run.name } started working`, run });
         }
 
         if (run.finishedAt !== undefined && FINISHED_TEXT[run.status]) {

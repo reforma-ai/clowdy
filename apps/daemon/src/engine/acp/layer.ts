@@ -42,7 +42,10 @@ export interface LayerHost {
     /** Aborted when the turn's own signal is or the session is closed. The layer ends at once; stopping the process is the session's. */
     signal: AbortSignal;
     deps: Pick<SessionDeps, 'costs' | 'clientVersion' | 'initializeTimeoutMs' | 'backgroundHandoffMs' | 'backgroundReportMs' | 'log'>;
-    /** Registers the runtime's tools with the bridge, once the agent has shaken hands, and gives back the MCP server to name in the session. `undefined` when the run has none. */
+    /**
+     * The session's access to the tool bridge, registered before the process started (its `clowdy` command has the credential in its environment), with
+     * the MCP server to name in the session when the run has tools that are not shell commands. `undefined` when the run has no tools.
+     */
     openBridge(): BridgeAccess | undefined;
     /** Passes a title the agent gave to the runtime, which says whether it took it. */
     offerTitle(title: string): void;

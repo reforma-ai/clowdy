@@ -3,6 +3,7 @@ import { ToolBridge } from './acp/bridge';
 import { AcpEngine } from './acp/engine';
 import { FakeEngine } from './fake';
 
+import type { Shim } from '../cli/shim';
 import type { Config } from '../config';
 import type { AgentRegistry } from './acp/registry';
 import type { AgentEngine, EngineRegistry } from './types';
@@ -14,9 +15,10 @@ export interface Engines extends EngineRegistry {
 
 /**
  * The engines this daemon can run: the scripted fake, and every agent the registry knows, each an ACP engine. Programs are found when a run starts, not here, so a daemon starts on a machine with no
- * agent installed and an agent installed later works without a restart.
+ * agent installed and an agent installed later works without a restart. `shim` is where the `clowdy` command is (`installShim`), which the agents of
+ * sessions with shell commands get on their `PATH`.
  */
-export function createEngines(config: Config, agents: AgentRegistry, env: Record<string, string | undefined> = process.env): Engines {
+export function createEngines(config: Config, agents: AgentRegistry, env: Record<string, string | undefined> = process.env, shim?: Shim): Engines {
     const fake = new FakeEngine(config.fakeSpeed);
     const bridge = new ToolBridge();
     const engines = new Map<string, AgentEngine>();
@@ -24,6 +26,7 @@ export function createEngines(config: Config, agents: AgentRegistry, env: Record
     const create = (id: string): AgentEngine => new AcpEngine(id, {
         registry: agents,
         bridge,
+        shim,
         env,
         permissions: config.agentPermissions,
         clientVersion: pkg.version,

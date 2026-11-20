@@ -1,85 +1,147 @@
-import { ACTIVE_RUN_STATUSES, type Chat, type ChatId, type Run, type RunId } from '@clowdy/protocol';
+import { isTerminalRunStatus, type Chat, type ChatId, type Run, type RunId } from '@clowdy/protocol';
+
+import { isRunActive } from '../chats/chatRun';
 
 import type { StatusTone } from '../../shared';
 import type { ChatSort } from '../../stores';
-import type { RunNode } from '../../stores/runTree';
 
-/** One line of the Agents list: a chat, or a run nested under the chat that started it. */
-export type AgentRow =
-    | { kind: 'chat'; id: ChatId; chat: Chat; depth: 0; childCount: number; isExpanded: boolean }
-    | { kind: 'run'; id: RunId; run: Run; depth: number; childCount: number; isExpanded: boolean };
+/** One line of the Agents list: a chat, at the depth of the thread tree it sits in (0 for a chat the person made). */
+export interface AgentRow {
+    id: ChatId;
+    chat: Chat;
+    depth: number;
+    /** How many threads the list has below this row, shown or folded away. A row with none has no fold. */
+    childCount: number;
+    isExpanded: boolean;
+}
 
-/** A line under a run's summary, saying why it waits or stopped. */
-export interface RowNote {
-    text: string;
-    tone: 'warning' | 'danger' | 'neutral';
+export interface AgentRowsInput {
+    /** The chats at depth 0, in the list's order (`visibleChats`). */
+    roots: readonly Chat[];
+    /** The threads a chat started directly, oldest first; archived ones are left out here. */
+    threadsOf: (chatId: ChatId) => readonly Chat[];
+    runs: ReadonlyMap<RunId, Run>;
+    /** The chats whose threads are open. Every other chat is folded. */
+    expanded: ReadonlySet<ChatId>;
+    /** List a thread whose run is over. */
+    showFinished: boolean;
+    /** The chat the screen shows: it stays listed whatever the filter says. */
+    openChatId?: ChatId;
+}
+
+/** The orchestrator of a chat, once its first message started one. */
+export function orchestratorOf(chat: Chat, runs: ReadonlyMap<RunId, Run>): Run | undefined {
+    return chat.orchestratorRunId === undefined ? undefined : runs.get(chat.orchestratorRunId);
+}
+
+/** A thread is finished when its orchestrator's run is over: done, failed, stopped or interrupted. One that never started is not. */
+export function isFinishedThread(chat: Chat, runs: ReadonlyMap<RunId, Run>): boolean {
+    const run = orchestratorOf(chat, runs);
+
+    return run !== undefined && isTerminalRunStatus(run.status);
+}
+
+/** A thread works while its orchestrator is queued, running, blocked, waits for the person or for its background work. */
+export function isActiveThread(chat: Chat, runs: ReadonlyMap<RunId, Run>): boolean {
+    return isRunActive(orchestratorOf(chat, runs));
 }
 
 /**
- * The list as rows, top to bottom: the chats as they are given, each followed by the runs below its orchestrator (the
- * orchestrator is the chat itself, so it has no row of its own). A collapsed chat or run hides what is below it. Ids of
- * chats and runs never collide, so one set holds the folds of both.
+ * The list as rows, top to bottom: each root chat, followed by its threads (and theirs, at any depth) in the order they were made when it is
+ * expanded. Archived threads are not rows. Without `showFinished`, a finished thread is left out unless a thread below it is listed (it still
+ * works, or it is the open chat) or it is the open chat itself; a row's fold counts only the threads that are listed.
  */
-export function agentRows(chats: readonly Chat[], forest: readonly RunNode[], collapsed: ReadonlySet<string>): AgentRow[] {
-    const nodes = new Map<RunId, RunNode>();
-    const index = (level: readonly RunNode[]) => {
-        for (const node of level) {
-            nodes.set(node.run.id, node);
-            index(node.children);
-        }
-    };
+export function agentRows({ roots, threadsOf, runs, expanded, showFinished, openChatId }: AgentRowsInput): AgentRow[] {
+    const listed = new Map<ChatId, Chat[]>();
+    const visiting = new Set<ChatId>();
 
-    index(forest);
+    // The threads of a chat that the filter keeps, worked out bottom up so that a thread kept for its own sake keeps its parents too.
+    const listedThreads = (chatId: ChatId): Chat[] => {
+        const known = listed.get(chatId);
+
+        if (known) return known;
+
+        visiting.add(chatId);
+
+        const kept = threadsOf(chatId).filter((thread) => {
+            // Chats form a tree by contract; the guard keeps a corrupt parent cycle from looping.
+            if (thread.archivedAt !== undefined || visiting.has(thread.id)) return false;
+
+            const below = listedThreads(thread.id);
+
+            return showFinished || thread.id === openChatId || below.length > 0 || !isFinishedThread(thread, runs);
+        });
+
+        visiting.delete(chatId);
+        listed.set(chatId, kept);
+
+        return kept;
+    };
 
     const rows: AgentRow[] = [];
-    const walk = (children: readonly RunNode[], depth: number) => {
-        for (const { run, children: below } of children) {
-            const isExpanded = !collapsed.has(run.id);
+    const walk = (chat: Chat, depth: number) => {
+        const threads = listedThreads(chat.id);
+        const isExpanded = threads.length > 0 && expanded.has(chat.id);
 
-            rows.push({ kind: 'run', id: run.id, run, depth, childCount: below.length, isExpanded });
+        rows.push({ id: chat.id, chat, depth, childCount: threads.length, isExpanded });
 
-            if (isExpanded) walk(below, depth + 1);
-        }
+        if (isExpanded) threads.forEach(thread => walk(thread, depth + 1));
     };
 
-    for (const chat of chats) {
-        const below = (chat.orchestratorRunId ? nodes.get(chat.orchestratorRunId)?.children : undefined) ?? [];
-        const isExpanded = !collapsed.has(chat.id);
-
-        rows.push({ kind: 'chat', id: chat.id, chat, depth: 0, childCount: below.length, isExpanded });
-
-        if (isExpanded) walk(below, 1);
-    }
+    roots.forEach(root => walk(root, 0));
 
     return rows;
 }
 
 /**
- * The chats the list shows: the ones in use. A chat is either here, with its row, or in the archive, which has its own list;
- * there is no chat that is open and archived. `chatList` comes by last activity; `sort` `created` puts the newest chat first instead.
+ * The chats at the top of the list: the ones in use that the person made, newest first. A thread is never here: it is a row below the chat that
+ * started it. A chat is either in the list or in the archive, which has its own list; there is no chat that is open and archived. `chatList`
+ * comes by last activity; `sort` `created` puts the newest chat first instead. A thread whose parent is not in use (gone, or put away while the
+ * thread came back on its own) stands here, so it is not lost.
  */
 export function visibleChats(chatList: readonly Chat[], sort: ChatSort = 'activity'): Chat[] {
     const ordered = sort === 'created' ? [...chatList].sort((a, b) => b.createdAt - a.createdAt) : chatList;
+    const inUse = new Set(chatList.filter(chat => chat.archivedAt === undefined).map(chat => chat.id));
 
-    return ordered.filter(chat => chat.archivedAt === undefined);
+    return ordered.filter(chat => chat.archivedAt === undefined && (chat.parentChatId === undefined || !inUse.has(chat.parentChatId)));
 }
 
-/** The chats in the archive, the one put away last first. */
+/**
+ * The chats the archive lists, the one put away last first. A thread put away with its parent is part of the parent's cascade and has no entry of
+ * its own; one put away alone, while its parent is in use, has one.
+ */
 export function archivedChats(chatList: readonly Chat[]): (Chat & { archivedAt: number })[] {
+    const archived = new Set(chatList.filter(chat => chat.archivedAt !== undefined).map(chat => chat.id));
+
     return chatList
-        .filter((chat): chat is Chat & { archivedAt: number } => chat.archivedAt !== undefined)
+        .filter((chat): chat is Chat & { archivedAt: number } => chat.archivedAt !== undefined && (chat.parentChatId === undefined || !archived.has(chat.parentChatId)))
         .sort((a, b) => b.archivedAt - a.archivedAt);
 }
 
-/** The chat a run belongs to: the one whose orchestrator is the root of the run's tree. */
+/** The chats a thread sits below, nearest first: its parent, the parent's parent, up to the chat the person made. Empty for such a chat. */
+export function ancestorChats(chats: ReadonlyMap<ChatId, Chat>, chatId: ChatId): Chat[] {
+    const ancestors: Chat[] = [];
+
+    for (let parent = chats.get(chatId)?.parentChatId; parent !== undefined && parent !== chatId; parent = chats.get(parent)?.parentChatId) {
+        const chat = chats.get(parent);
+
+        if (!chat || ancestors.includes(chat)) break;
+
+        ancestors.push(chat);
+    }
+
+    return ancestors;
+}
+
+/** The chat a run belongs to: the one whose orchestrator is the root of the run's tree. A thread's orchestrator is a root run of its own. */
 export function chatOfRun(chats: Iterable<Chat>, run: Pick<Run, 'rootRunId'>): Chat | undefined {
     return [...chats].find(chat => chat.orchestratorRunId === run.rootRunId);
 }
 
-/** What the main pane shows: a chat, and a run of that chat when the person opened one below it, or the new-chat row. */
+/** What the main pane shows: a chat (a thread is one too), and a sub-agent's run of that chat when the person opened one, or the new-chat row. */
 export interface AgentSelection {
     chat: Chat | undefined;
-    /** A run below the chat's orchestrator. The orchestrator itself is the chat, so it is never here. */
+    /** A native sub-agent below the chat's orchestrator. The orchestrator itself is the chat, so it is never here. */
     run: Run | undefined;
     /** The new-chat row: asked for, or the only thing there is to show because the project has no chat yet. */
     draft: boolean;
@@ -87,7 +149,7 @@ export interface AgentSelection {
 
 /**
  * The selection the screen shows, from what the UI remembers. A remembered run wins when its chat is known (a run is
- * opened from a chip or from the list), and a root run is its chat. Anything gone, and a chat that is in the archive (it has
+ * opened from a chip or from an agent's card), and a root run is its chat. Anything gone, and a chat that is in the archive (it has
  * no page: opening one brings it back first, `openChat`), falls back to the chat that was selected, and then to the first
  * chat of `chatList`, the chats the list shows; with no chat at all the new-chat page is what shows.
  */
@@ -105,82 +167,15 @@ export function resolveSelection(chats: ReadonlyMap<ChatId, Chat>, chatList: rea
     return { chat, run: undefined, draft: chat === undefined };
 }
 
-/** The run's parents, nearest first. */
-export function ancestorIds(runs: ReadonlyMap<RunId, Run>, runId: RunId): RunId[] {
-    const ancestors: RunId[] = [];
-
-    for (let parent = runs.get(runId)?.parentRunId; parent !== undefined && !ancestors.includes(parent); parent = runs.get(parent)?.parentRunId) {
-        ancestors.push(parent);
-    }
-
-    return ancestors;
-}
-
 /**
- * The row of the list that stands for a run below a chat: its own, or, for a native sub-agent, which has no row, the row of the run whose session
- * it lives in. Nothing when that is the chat's orchestrator, whose row is the chat's.
- */
-export function listedRunId(runs: ReadonlyMap<RunId, Run>, run: Run): RunId | undefined {
-    // The daemon puts a sub-agent under the run of the session it came from, never under another sub-agent.
-    const listed = run.origin === 'native' && run.parentRunId !== undefined ? runs.get(run.parentRunId) : run;
-
-    return listed?.parentRunId === undefined ? undefined : listed.id;
-}
-
-/**
- * How many spawned children of each run are still going. Counted over every run, so what is folded away does not change it. Native sub-agents
- * are not counted: they are not rows, and they end with their parent's session (a background one, with the work that outlives the turn).
- */
-export function countActiveChildren(runs: Iterable<Run>): Map<RunId, number> {
-    const counts = new Map<RunId, number>();
-
-    for (const run of runs) {
-        if (run.parentRunId !== undefined && run.origin !== 'native' && ACTIVE_RUN_STATUSES.includes(run.status)) counts.set(run.parentRunId, (counts.get(run.parentRunId) ?? 0) + 1);
-    }
-
-    return counts;
-}
-
-/** Why the run waits or stopped, for the line under its summary. Nothing for a run that is simply working or done. */
-export function describeRun(run: Run, activeChildCount: number): RowNote | undefined {
-    switch (run.status) {
-        case 'waiting_children':
-            return { text: activeChildCount > 0 ? `Waiting for sub-agents · ${ activeChildCount } active` : 'Waiting for sub-agents', tone: 'warning' };
-        case 'waiting_background': {
-            const open = run.background?.length ?? 0;
-
-            // Nothing is stuck: the agent's own work goes on, so the note is calm.
-            return { text: open > 0 ? `Waiting for background work · ${ open } open` : 'Waiting for background work', tone: 'neutral' };
-        }
-        case 'waiting_user':
-            return { text: run.statusReason ?? 'Waiting for your answer', tone: 'warning' };
-        case 'blocked':
-            return run.statusReason ? { text: run.statusReason, tone: 'warning' } : undefined;
-        case 'queued':
-        case 'cancelled':
-        case 'interrupted':
-            return run.statusReason ? { text: run.statusReason, tone: 'neutral' } : undefined;
-        case 'failed': {
-            const reason = run.error ?? run.statusReason;
-
-            return reason ? { text: reason, tone: 'danger' } : undefined;
-        }
-        case 'running':
-        case 'succeeded':
-            return undefined;
-    }
-}
-
-/**
- * The dot on the icon of a chat's row, from what its orchestrator is doing: green while it works (or waits for its executors or for
- * its own background work), blue when it has asked the person something, red when it failed. A run that is blocked or queued shows
- * its usual tone.
+ * The dot on the icon of a chat's row, from what its orchestrator is doing: green while it works (or waits for its own background work),
+ * blue when it has asked the person something, red when it failed. A run that is blocked or queued shows its usual tone.
+ * A chat at rest whose own threads work (`threadsWorking`) is green too: its work goes on in them.
  * Nothing for a chat that has not started or whose run is over (done, stopped, interrupted): no news is no dot.
  */
-export function chatDotTone(run: Run | undefined): StatusTone | undefined {
+export function chatDotTone(run: Run | undefined, threadsWorking = false): StatusTone | undefined {
     switch (run?.status) {
         case 'running':
-        case 'waiting_children':
         case 'waiting_background':
             return 'success';
         case 'waiting_user':
@@ -192,6 +187,6 @@ export function chatDotTone(run: Run | undefined): StatusTone | undefined {
         case 'queued':
             return 'neutral';
         default:
-            return undefined;
+            return threadsWorking ? 'success' : undefined;
     }
 }

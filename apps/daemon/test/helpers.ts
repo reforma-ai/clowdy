@@ -56,7 +56,7 @@ export function makeRepo(parent: string, name = 'repo'): string {
 }
 
 /** Delays of the runtime shrunk for tests. */
-export const SHORT_TIMINGS = { wakeWindowMs: 15, killGraceMs: 150, retryBaseMs: 10, pauseJitterMs: 0 };
+export const SHORT_TIMINGS = { killGraceMs: 150, retryBaseMs: 10, pauseJitterMs: 0, noticeWindowMs: 30 };
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
     const root = tempDir();
@@ -74,8 +74,9 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
         defaultEngineCap: 4,
         agentPermissions: 'allow',
         maxProcesses: 24,
-        maxActiveChildren: 300,
-        maxChildren: 3000,
+        maxThreadDepth: 3,
+        maxActiveThreads: 30,
+        maxThreads: 300,
         timings: SHORT_TIMINGS,
         fakeSpeed: 0,
         ...overrides,
@@ -189,7 +190,7 @@ export async function waitFor<T>(check: () => T | undefined | false | null, what
 
 /**
  * An engine whose sessions block until the test releases them, for exercising the scheduler and cancellation.
- * A session is identified by a substring of its prompt (executors get `Task KEY: title`).
+ * A session is identified by a substring of its prompt (a chat started from a task gets `Complete task KEY: title`).
  */
 export class GateEngine implements AgentEngine {
     readonly id: EngineId = 'fake';

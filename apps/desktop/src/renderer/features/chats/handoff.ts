@@ -3,23 +3,33 @@ import { toast } from '@clowdy/components/Toast';
 import { MAX_ATTACHMENT_BYTES } from '@clowdy/protocol';
 import { when } from 'mobx';
 
+import { noticeLine } from '../../stream/threadMessages';
 import { chatProvider } from './chatProvider';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { admitFiles, filesOf } from './composerFiles';
 
-import type { Chat, ChatId, Run, StreamItem } from '@clowdy/protocol';
+import type { Chat, ChatId, MessageSource, Run, StreamItem } from '@clowdy/protocol';
 import type { ProjectUi, RootStore } from '../../stores';
 
-/** What the conversation is made of: who said it, and the words. */
+/** What the conversation is made of: who said it (the person, the chat's agent, or another thread of its tree), and the words. */
 export interface Turn {
-    role: 'person' | 'assistant';
+    role: 'person' | 'assistant' | 'thread';
     text: string;
 }
 
+/** What another thread told the chat, in words: who wrote and the message, or each thread that stopped with its last words and what it still runs. */
+function threadWords(from: MessageSource, text: string): string {
+    if (from.kind === 'thread') return [`Message from ${ oneLine(from.title) }`, text.trim()].filter(Boolean).join('\n\n');
+
+    return from.threads
+        .map(notice => [noticeLine(notice), notice.text?.trim(), notice.background?.length ? `Still running: ${ notice.background.join(', ') }` : ''].filter(Boolean).join('\n\n'))
+        .join('\n\n');
+}
+
 /**
- * The words of a conversation in order: the person's messages (the names of their files after them) and the assistant's text, with
- * a question the assistant asked and the person answered. Tool calls, notes and errors are left out, and so is a question nobody
- * answered. Text that follows from the same side is one turn.
+ * The words of a conversation in order: the person's messages (the names of their files after them), what other threads of the chat's tree told it
+ * (a thread's message, threads that stopped: never the person's words) and the assistant's text, with a question the assistant asked and the person
+ * answered. Tool calls, notes and errors are left out, and so is a question nobody answered. Text that follows from the same side is one turn.
  */
 export function turnsOf(items: readonly StreamItem[]): Turn[] {
     const turns: Turn[] = [];
@@ -37,6 +47,11 @@ export function turnsOf(items: readonly StreamItem[]): Turn[] {
     for (const { body } of [...items].sort((a, b) => a.seq - b.seq)) {
         switch (body.kind) {
             case 'user': {
+                if (body.from) {
+                    add('thread', threadWords(body.from, body.text));
+                    break;
+                }
+
                 const files = (body.attachments ?? []).map(file => file.name);
 
                 add('person', [body.text.trim(), files.length > 0 ? `Attached: ${ files.join(', ') }` : ''].filter(Boolean).join('\n\n'));
@@ -71,6 +86,9 @@ const bytesOf = (text: string): number => encoder.encode(text).length;
 
 /** A value on one line: a title with a line break in it must not start a line of the file's own. */
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim();
+
+/** The heading of a turn in the file: who spoke. */
+const HEADINGS: Record<Turn['role'], string> = { person: '## Person', assistant: '## Assistant', thread: '## Thread' };
 
 /**
  * The text in a block quote, every line. A turn is whatever somebody wrote: a heading, a line that reads `## Person`, a code fence
@@ -132,7 +150,7 @@ function newestThatFit(head: string, sections: readonly string[], maxBytes: numb
 export function transcriptOf(chat: Chat, turns: readonly Turn[], { provider = chat.engine, model = chat.model }: TranscriptContext = {}, maxBytes = MAX_ATTACHMENT_BYTES): string {
     const ranOn = oneLine([provider, model].filter(Boolean).join(', '));
     const head = `${ ['# Conversation from Clowdy', '', `Chat: ${ oneLine(chat.title) }`, ...(ranOn ? [`Ran on: ${ ranOn }`] : [])].join('\n') }\n`;
-    const sections = turns.map(({ role, text }) => `${ role === 'person' ? '## Person' : '## Assistant' }\n\n${ quoted(text) }\n`);
+    const sections = turns.map(({ role, text }) => `${ HEADINGS[role] }\n\n${ quoted(text) }\n`);
     const whole = [head, ...sections].join('\n');
 
     if (bytesOf(whole) <= maxBytes) return whole;

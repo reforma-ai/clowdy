@@ -72,7 +72,7 @@ describe('NavHistory recording', () => {
         root.ui.showSection(ui(), 'tasks');
         ui().openChat('c-1');
         ui().openTask('t-24');
-        ui().openRun('r-ex-07');
+        ui().openRun('r-na-02');
         ui().openDoc('decisions/pricing.md');
 
         const stops = [place()];
@@ -84,7 +84,7 @@ describe('NavHistory recording', () => {
 
         expect(stops).toEqual([
             'p-car/docs:decisions/pricing.md',
-            'p-car/agents:r-ex-07',
+            'p-car/agents:r-na-02',
             'p-car/tasks:t-24',
             'p-car/agents:c-1',
             'p-car/tasks:null',
@@ -107,9 +107,9 @@ describe('NavHistory recording', () => {
 
         expect(place()).toBe('p-car/agents:@new-chat');
 
-        ui().openRun('r-ex-07');
+        ui().openRun('r-na-02');
 
-        expect(place()).toBe('p-car/agents:r-ex-07');
+        expect(place()).toBe('p-car/agents:r-na-02');
         expect(ui().draft).toBe(false);
 
         root.history.back();
@@ -207,18 +207,16 @@ describe('NavHistory recording', () => {
         expect(place()).toBe('p-car/agents:null');
     });
 
-    it('does not record the view options: the Tasks view, the subthreads shown', () => {
+    it('does not record the view options: the Tasks view, the order of the chats', () => {
         ui().setTasksView('list');
-        ui().setShowFinished(false);
-        ui().setShowSubthreads(false);
+        ui().setChatSort('created');
         ui().setTasksView('board');
 
         expect(root.history.canGoBack).toBe(false);
 
         ui().openTask('t-24');
         ui().setTasksView('list');
-        ui().setShowFinished(true);
-        ui().setShowSubthreads(true);
+        ui().setChatSort('activity');
 
         expect(stepsBack()).toBe(1);
     });

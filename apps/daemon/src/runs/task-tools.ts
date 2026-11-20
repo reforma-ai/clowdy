@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { listStatuses } from '../db/projects';
-import { linksOfRun } from '../db/runs';
 import { getTask, listTasks } from '../db/tasks';
 import { categoryOf, createTask, linkRunTask, resolveTask, updateTask } from '../domain/tasks';
 import { clip, defineTool, taskRef } from './tool-kit';
@@ -35,7 +34,7 @@ export function resolveStatus(store: Store, projectId: string, value: string): T
 }
 
 /** The status a call asks for, if any. */
-export function requestedStatus(store: Store, projectId: string, input: { statusId?: string; status?: string }): TaskStatus | undefined {
+function requestedStatus(store: Store, projectId: string, input: { statusId?: string; status?: string }): TaskStatus | undefined {
     const value = input.statusId ?? input.status;
 
     return value === undefined ? undefined : resolveStatus(store, projectId, value);
@@ -58,15 +57,8 @@ export function describeTask({ store, runs }: ToolDeps, task: Task, descriptionC
     };
 }
 
-/** Adds a dated line under the task's `Notes` heading, the way the skills ask agents to leave a record. */
-export function appendNote(description: string, role: string, note: string): string {
-    const line = `${ new Date().toISOString().slice(0, 10) } (${ role }): ${ note.trim() }`;
-
-    return /^## Notes$/m.test(description) ? `${ description.trimEnd() }\n${ line }` : `${ description.trimEnd() }${ description.trim() ? '\n\n' : '' }## Notes\n${ line }`;
-}
-
-/** The tools that read tasks; every run has them. */
-export function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
+/** The tools that read tasks. */
+function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
     const { store } = deps;
 
     return [
@@ -119,7 +111,7 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
             return { task: describeTask(deps, task) };
         })),
 
-        defineTool('task_update', 'Changes a task: title, description (send the whole text; read it first to keep what is there), dependencies, or status. Only you set Done, after the work is verified; a run waiting for this task starts by itself once it is Done.', z.object({
+        defineTool('task_update', 'Changes a task: title, description (send the whole text; read it first to keep what is there), dependencies, or status. Set Done only after the work is verified; a run waiting for this task starts by itself once it is Done.', z.object({
             taskId: taskRef,
             title: z.string().min(1).optional(),
             description: z.string().optional(),
@@ -137,44 +129,4 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
             return { task: describeTask(deps, updated) };
         })),
     ];
-}
-
-/** Executors and verifiers change only the tasks they work on and may never mark them Done or Canceled. */
-export function workerTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
-    const { store } = deps;
-
-    return [
-        ...readTaskTools(deps, run),
-
-        defineTool('task_update', 'Changes one of your own tasks: its description (send the whole text, with your dated Notes entry added at the end; never remove the orchestrator\'s text) or its status, up to Review. You cannot set Done: only the orchestrator does that after verification.', z.object({
-            taskId: taskRef,
-            description: z.string().optional(),
-            ...statusField,
-        }), input => store.tx(() => {
-            const task = ownTask(deps, run, input.taskId);
-            const status = requestedStatus(store, run.projectId, input);
-
-            if (status) {
-                refuseFinalStatus(status);
-            }
-
-            return { task: describeTask(deps, updateTask(store, task.id, { description: input.description, statusId: status?.id })) };
-        })),
-    ];
-}
-
-export function ownTask({ store }: ToolDeps, run: Run, reference: string): Task {
-    const task = resolveTask(store, run.projectId, reference);
-
-    if (!linksOfRun(store.db, run.id).some(link => link.taskId === task.id)) {
-        throw new Error(`Task ${ task.key } is not one of this run's tasks. You may change only the tasks you were given.`);
-    }
-
-    return task;
-}
-
-export function refuseFinalStatus(status: TaskStatus): void {
-    if (status.category === 'done' || status.category === 'canceled') {
-        throw new Error(`Only the orchestrator moves a task to ${ status.name }, after the work is verified. Move it to Review and say so in your report.`);
-    }
 }

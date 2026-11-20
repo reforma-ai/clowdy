@@ -38,7 +38,7 @@ Superseded:
 ## Rules
 
 - Group by folder, newest first inside a group. Keep each line to one sentence ending with `Status: <word>` in lowercase (`accepted`, `current`, `outdated`, `passed`, `failed`, `blocked`).
-- The orchestrator is the only writer. It adds a line as soon as a document exists, from the paths that executors and verifiers report, with a small edit, never a rewrite. Working alone in a chat with no child runs, you are the orchestrator.
+- The orchestrator is the only writer, so you add a line as soon as a document exists, with a small edit, never a rewrite.
 - Superseded and outdated items move under a `Superseded:` or `Outdated:` list at the end of their group. They stay linked so old references still resolve.
 - Remove a line only when the document is deleted at the user's request.
 - When the file passes about 60 lines, group older items of one topic into one line that links to a topic note, or move rarely used groups into `Other`.

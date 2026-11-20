@@ -23,10 +23,12 @@ export interface Config {
     defaultEngineCap: number;
     /** Hard cap of live engine processes: a guard against runaway sessions, far above the run caps. */
     maxProcesses: number;
-    /** Runs one orchestrator may have unfinished at once (queued, running, waiting or blocked). The run caps decide how many really run. */
-    maxActiveChildren: number;
-    /** Runs one orchestrator may start with `run_spawn` over the life of its chat, finished ones included: a guard against a spawn loop. */
-    maxChildren: number;
+    /** How many levels a thread tree has at most, the chat the person made included: 3 is the chat, its threads and their threads. */
+    maxThreadDepth: number;
+    /** Threads of one chat (its direct ones) whose work is not over, at most; a thread whose run has not been made yet counts. */
+    maxActiveThreads: number;
+    /** Threads one chat may start over its life (its direct ones), finished ones included. */
+    maxThreads: number;
     timings: Timings;
     /** How the daemon answers an agent's permission requests: nobody is at a terminal, so it decides, the same for every agent. */
     agentPermissions: 'allow' | 'reject';
@@ -50,17 +52,17 @@ export interface Config {
 
 /** Delays of the run runtime, in milliseconds. Tests shrink them. */
 export interface Timings {
-    /** A parent waits this long after a child finished, so children finishing together arrive in one message. */
-    wakeWindowMs: number;
     /** Cancelling aborts the engine, then sends SIGTERM to its process group after this long, then SIGKILL after it again. */
     killGraceMs: number;
     /** First delay before a run retries after a transient engine error; it doubles up to five minutes. */
     retryBaseMs: number;
     /** After a subscription reset an engine resumes at a random moment within this long, so its runs do not all hit the limit together. */
     pauseJitterMs: number;
+    /** A parent is told of its threads that stopped this long after the first of them: those that stop meanwhile join the same message. */
+    noticeWindowMs: number;
 }
 
-export const DEFAULT_TIMINGS: Timings = { wakeWindowMs: 10_000, killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000 };
+export const DEFAULT_TIMINGS: Timings = { killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000, noticeWindowMs: 2000 };
 
 export class ConfigError extends Error {}
 
@@ -114,10 +116,13 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
         },
         defaultEngineCap: numberFrom(env, 'CLOWDY_MAX_RUNS_AGENT', 4, isCap, 'a positive integer'),
         maxProcesses: numberFrom(env, 'CLOWDY_MAX_PROCESSES', 24, isCap, 'a positive integer'),
-        maxActiveChildren: numberFrom(env, 'CLOWDY_MAX_ACTIVE_CHILDREN', 300, isCap, 'a positive integer'),
-        maxChildren: numberFrom(env, 'CLOWDY_MAX_CHILDREN', 3000, isCap, 'a positive integer'),
-        // Each wake-up is a resumed orchestrator turn that costs quota, so children that finish within this window share one.
-        timings: { ...DEFAULT_TIMINGS, wakeWindowMs: numberFrom(env, 'CLOWDY_WAKE_WINDOW_MS', DEFAULT_TIMINGS.wakeWindowMs, v => v >= 0, 'a number of milliseconds') },
+        maxThreadDepth: numberFrom(env, 'CLOWDY_MAX_THREAD_DEPTH', 3, isCap, 'a positive integer'),
+        maxActiveThreads: numberFrom(env, 'CLOWDY_MAX_ACTIVE_THREADS', 30, isCap, 'a positive integer'),
+        maxThreads: numberFrom(env, 'CLOWDY_MAX_THREADS', 300, isCap, 'a positive integer'),
+        timings: {
+            ...DEFAULT_TIMINGS,
+            noticeWindowMs: numberFrom(env, 'CLOWDY_THREAD_NOTICE_WINDOW_MS', DEFAULT_TIMINGS.noticeWindowMs, v => Number.isInteger(v) && v >= 0, 'a whole number of milliseconds, 0 or more'),
+        },
         agentPermissions: permissions(env),
         fakeSpeed: numberFrom(env, 'CLOWDY_FAKE_SPEED', 1, v => v >= 0, 'a number of at least 0'),
         systemSkillsSource: env.CLOWDY_SYSTEM_SKILLS_DIR || undefined,

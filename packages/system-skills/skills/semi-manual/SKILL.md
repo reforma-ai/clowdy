@@ -9,13 +9,13 @@ The user is a manager. They want a say in the decisions that shape the result an
 
 The mode is fixed for the cycle (your first message says `Mode: semi-manual`). The user can start the next cycle in another mode. A message like "decide the rest yourself" is an answer, not a mode switch: from then on decide and record as clowdy:autopilot does, mark the record `user (delegated)`, and say so in one line.
 
-This skill is for the orchestrator, the only run that has `ask_user`. Questions go through `ask_user` only: never repeat a card's question in chat text. Executors do not load it; section 7 says what you put in their prompts.
+This skill is for the orchestrator, the only run that has `ask_user` (a thread of a semi-manual chat is an orchestrator too, and has it in its own chat). Questions go through `ask_user` only: never repeat a card's question in chat text. Sub-agents and threads do not see this conversation; section 7 says what you put in their prompts and briefs.
 
 ## 1. Prepare: facts first
 
 1. Read `.clowdy/docs/index.md`, `decisions/`, the documents the request touches, and the code it touches. Facts are your job. Anything the code, the docs or a short experiment can answer is not a question.
 2. List what is already settled: accepted records in `decisions/`, and what the user said earlier in this chat. Do not ask these again.
-3. For a large area, start read-only research in parallel while you map the tree (see clowdy:orchestrate). Research needs no tasks.
+3. For a large area, start read-only sub-agents in parallel while you map the tree (see clowdy:orchestrate). Research needs no tasks and no threads.
 4. Restate in chat in five lines at most: the goal in the user's words, what is settled or implied, and the small assumptions you will make. No questions in this text.
 
 Skip the grill when the chat is only a question, or the request is one small change with no significant fork. Say in one line what you will do, and do it with autopilot discipline.
@@ -71,24 +71,25 @@ When the frontier is empty:
 4. Ask one confirmation card. The question holds the settled list. Options: start, or change something. Recommended: start.
 5. If the user changes something, reopen only the affected branch of the tree and go back to section 4. Nothing relies on the record until the confirmation, so correct it in place.
 
-Until the user confirms, create no tasks and start no run that changes anything.
+Until the user confirms, create no tasks and change no product code. Read-only research is fine.
 
 ## 6. Execute
 
 After the confirmation, follow clowdy:autopilot for everything routine: its sorting of forks, assumptions, scope, blockers and stop rules apply as written. Two differences:
 
-- A significant fork that the settled list does not cover is not yours to decide. Ask it as a card. Only the tasks that depend on it wait: start the independent ones before you ask, so the wait costs nothing.
+- A significant fork that the settled list does not cover is not yours to decide. Ask it as a card. Only the tasks that depend on it wait: do the independent ones before you ask, so the manager's answer never holds up work you could have done.
 - New facts that break a settled decision stop the affected tasks, then you ask one card about that decision only.
 
 Final report: the format of clowdy:orchestrate with the `Decided for you` line for your own significant choices, plus a `Decided with you` line naming the user's decisions in a few words each and the record that holds them.
 
-## 7. Executors and sub-agents
+## 7. Sub-agents and threads
 
-Parallel runs would ask duplicate or contradictory questions, so only you talk to the user.
+Parallel agents would ask duplicate or contradictory questions, so you talk to the user. Settle the significant forks before you hand work out.
 
-- Put `Mode: semi-manual` and the paths of the settled records in every `run_spawn` prompt and every engine sub-agent prompt.
-- An executor follows the settled list and decides routine matters alone. For a significant fork the list does not cover, it finishes what does not depend on it and ends with `report_result({ status: "blocked", summary })`, the fork written as card fields: title, facts, options with consequences, its pick.
-- You merge the forks from several children into one round, drop duplicates, and ask.
+- Put `Mode: semi-manual` and the paths of the settled records in every sub-agent prompt and thread brief.
+- A sub-agent follows the settled list and decides routine matters alone. For a significant fork the list does not cover, it finishes what does not depend on it and returns the fork written as card fields: title, facts, options with consequences, its pick.
+- A thread works the same way: say in its brief that it returns such a fork in its report rather than asking. A thread of a semi-manual chat still has `ask_user`; when it asks anyway, its question card waits in the thread's own chat, where the person answers it, and the thread shows as `asking` until then. Do not ask the same question again in your chat.
+- You merge the forks from several sub-agents and threads into one round, drop duplicates, and ask; then tell each waiting thread its answer with `clowdy thread tell`.
 
 ## Example
 

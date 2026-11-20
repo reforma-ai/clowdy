@@ -30,8 +30,8 @@ describe('turnsOf', () => {
             { kind: 'user', text: 'Simplify the booking flow' },
             { kind: 'assistant', text: 'I will read the form first.', done: true },
             { kind: 'tool', toolCallId: 't-1', name: 'Read', input: { file_path: 'src/form.tsx' }, state: 'done', output: 'SECRET TOOL OUTPUT' },
-            { kind: 'note', text: '2 executors started' },
-            { kind: 'error', text: 'Executor 10 failed' },
+            { kind: 'note', text: 'Background command finished: bun test' },
+            { kind: 'error', text: 'The agent stopped and was started again' },
             { kind: 'user', text: 'Thanks, go on' }
         ));
 
@@ -72,6 +72,34 @@ describe('turnsOf', () => {
             { role: 'assistant', text: 'Asked: Which mail provider?' },
             { role: 'person', text: 'Answered: Plain SMTP' },
         ]);
+    });
+
+    it('keeps what other threads told the chat apart from the person\'s words: who wrote, and each thread that stopped with its words', () => {
+        const turns = turnsOf(items(
+            { kind: 'user', text: 'Fix the rounding', from: { kind: 'thread', chatId: 'c-p', title: 'Ship the checkout' } },
+            { kind: 'assistant', text: 'On it.', done: true },
+            {
+                kind: 'user',
+                text: '',
+                from: {
+                    kind: 'threadNotice',
+                    threads: [
+                        { chatId: 'c-a', title: 'Refund tests', outcome: 'finished', text: '14 cases pass' },
+                        { chatId: 'c-b', title: 'Migration', outcome: 'failed' },
+                        { chatId: 'c-c', title: 'Load test', outcome: 'finished', text: 'Short run held', background: ['k6 run long.js'] },
+                    ],
+                },
+            },
+            { kind: 'user', text: 'Thanks' }
+        ));
+
+        expect(turns).toEqual([
+            { role: 'thread', text: 'Message from Ship the checkout\n\nFix the rounding' },
+            { role: 'assistant', text: 'On it.' },
+            { role: 'thread', text: 'Refund tests finished\n\n14 cases pass\n\nMigration failed\n\nLoad test finished\n\nShort run held\n\nStill running: k6 run long.js' },
+            { role: 'person', text: 'Thanks' },
+        ]);
+        expect(transcriptOf(chat, turns)).toContain('## Thread\n\n> Message from Ship the checkout');
     });
 
     it('puts items in the order of their sequence and drops empty text', () => {
@@ -322,12 +350,12 @@ describe('startHandoff', () => {
         expect(transcript).toContain('Chat: Simplify booking');
         expect(transcript).toContain('Ran on: Claude Code, claude-sonnet');
         expect(transcript).toContain('Simplify the booking flow: one form instead of three steps');
-        expect(transcript).toContain('Executor 07 is on the form');
+        expect(transcript).toContain('A sub-agent is on the form');
         expect(transcript).toContain('Attached: booking-sketch.svg, booking-error.log');
         // The tools, the notes and the errors are not part of it.
         expect(transcript).not.toContain('src/booking/steps.tsx:12');
-        expect(transcript).not.toContain('2 executors started');
-        expect(transcript).not.toContain('Typecheck failed');
+        expect(transcript).not.toContain('Background command finished');
+        expect(transcript).not.toContain('The agent stopped and was started again');
 
         expect(messageOf(draftOf(NEW_CHAT_KEY)))
             .toBe('Continue the work from the chat "Simplify booking". The conversation so far is attached as simplify-booking-conversation.md.');

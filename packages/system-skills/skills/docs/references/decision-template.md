@@ -1,6 +1,6 @@
 # Decision record template
 
-One shape for every record in `decisions/`, whoever writes it (autopilot, an executor, or the grill in semi-manual). One significant decision per file: `decisions/<YYYY-MM-DD>-<slug>.md`, in the project's main checkout. The slug is at most five kebab-case words and names the decision, not the topic: `keep-cookie-sessions-for-google-login`, not `auth`.
+One shape for every record in `decisions/`, whoever decides (autopilot or the grill in semi-manual). One significant decision per file: `decisions/<YYYY-MM-DD>-<slug>.md`, in the project's main checkout. The slug is at most five kebab-case words and names the decision, not the topic: `keep-cookie-sessions-for-google-login`, not `auth`.
 
 ```markdown
 # <The decision as a short statement>
@@ -44,7 +44,7 @@ One shape for every record in `decisions/`, whoever writes it (autopilot, an exe
 - Date from `date +%F`, not from memory. Keep it under about 40 lines. State what is true, what you assumed and what you chose in separate places.
 - `Supersedes` and `Superseded by` hold a relative link to the other file, for example `[Hosted database](2026-11-17-hosted-db.md)`, or `none`. How to supersede: clowdy:docs, section "Decisions".
 - Prose in the language of the project's documents; file names and field labels stay in English. No secrets, no pasted logs: summarize and name the file or command.
-- Add nothing to `index.md` yourself unless you are the orchestrator; an executor lists the path in its `report_result` summary.
+- Add the record's line to `index.md` once it is written (clowdy:docs).
 
 ## Example for a stack choice
 

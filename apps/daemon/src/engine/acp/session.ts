@@ -1,11 +1,12 @@
 import { errorMessage } from '../../errors';
 import { spawnInOwnGroup } from '../process';
-import { buildAgentEnv } from './env';
+import { buildAgentEnv, withCli } from './env';
 import { classifyThrown, failureEvent } from './failure';
 import { wait } from './layer';
 import { V1Layer } from './v1';
 import { V2Layer } from './v2';
 
+import type { Shim } from '../../cli/shim';
 import type { AgentProcess } from '../process';
 import type { EngineEvent, EngineSession, EngineStartOptions } from '../types';
 import type { BridgeAccess, ToolBridge } from './bridge';
@@ -34,6 +35,11 @@ export interface SessionDeps {
     agentId: string;
     registry: AgentRegistry;
     bridge: ToolBridge;
+    /**
+     * Where the `clowdy` command is (`installShim`). A session whose tools include shell commands gives its agent process the command's folder first on
+     * `PATH` and the variables it reaches the daemon with; without a shim the agent gets neither.
+     */
+    shim?: Shim;
     /** The daemon's own environment, which the agent's is built from. */
     env: Env;
     permissions: PermissionPolicy;
@@ -319,14 +325,20 @@ export class AcpSession implements EngineSession {
                 return;
             }
 
+            // Before the process: its shell gets the credential of this access for the `clowdy` command. Each start has an access of its own, so the
+            // process of an attempt that is over keeps none.
+            this.access?.dispose();
+            this.access = this.options.tools.length > 0 ? this.deps.bridge.register(this.options.tools, this.signal) : undefined;
+
             proc = await spawnInOwnGroup({
                 command: agent.command,
                 args: agent.args,
                 cwd: this.options.cwd,
-                env: buildAgentEnv({ daemonEnv: this.deps.env, path, scrub: agent.scrub, set: agent.env }),
+                env: withCli(buildAgentEnv({ daemonEnv: this.deps.env, path, scrub: agent.scrub, set: agent.env }), this.access?.cli, this.deps.shim),
             });
         }
         catch (error) {
+            this.access?.dispose();
             yield failureEvent(classifyThrown(error, { agent: agent.name, login: agent.login }));
 
             return;
@@ -410,11 +422,7 @@ export class AcpSession implements EngineSession {
             options,
             signal,
             deps,
-            openBridge: () => {
-                this.access = options.tools.length > 0 ? deps.bridge.register(options.tools, signal) : undefined;
-
-                return this.access;
-            },
+            openBridge: () => this.access,
             offerTitle: title => this.offerTitle(title),
             pickPermission: choices => this.pickPermission(choices),
             promptIs: state => this.promptIs(state),

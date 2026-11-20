@@ -5,12 +5,21 @@ import { perform } from './commands';
 import type { Chat } from '@clowdy/protocol';
 import type { RootStore } from '../../stores';
 
+/** What the confirmation says goes: the chat, the threads below it (the daemon deletes them with it), and the runs of their agents. */
+export function deleteMessage(chat: Pick<Chat, 'title'>, threadCount: number): string {
+    if (threadCount === 0) return `"${ chat.title }" and the runs of its agents are deleted for good. The tasks it made stay.`;
+
+    const threads = threadCount === 1 ? 'its thread' : `its ${ threadCount } threads`;
+
+    return `"${ chat.title }", ${ threads } and the runs of their agents are deleted for good. The tasks they made stay.`;
+}
+
 /**
- * Deletes a chat. One that never ran anything goes at once; one with a conversation asks first, since the conversation
- * and the runs of its agents go with it (the tasks it made stay).
+ * Deletes a chat. One that never ran anything goes at once; one with a conversation or threads asks first, since the conversation, the threads below it
+ * (`threadCount`, at any depth) and the runs of their agents go with it (the tasks they made stay).
  */
-export function deleteChat(root: RootStore, chat: Chat, hasRuns: boolean): void {
-    if (!hasRuns) {
+export function deleteChat(root: RootStore, chat: Chat, hasRuns: boolean, threadCount = 0): void {
+    if (!hasRuns && threadCount === 0) {
         void perform(root, { type: 'chat.delete', chatId: chat.id });
 
         return;
@@ -18,7 +27,7 @@ export function deleteChat(root: RootStore, chat: Chat, hasRuns: boolean): void 
 
     openConfirmModal({
         title: 'Delete chat?',
-        message: `"${ chat.title }" and the runs of its agents are deleted for good. The tasks it made stay.`,
+        message: deleteMessage(chat, threadCount),
         confirmLabel: 'Delete',
         destructive: true,
         onConfirm: async () => {

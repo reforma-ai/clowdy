@@ -16,15 +16,15 @@ import { Executors, LatestActivity, RelatedChats, Results, Section } from './Det
 import { EditableText } from './EditableText';
 import { StatusIcon } from './status';
 import { sendWithUndo } from './taskUndo';
-import { activeExecutors, dependencyCandidates, externalLink, startBlockedReason, taskActivity, type TaskRun } from './taskView';
+import { activeExecutors, dependencyCandidates, externalLink, startBlockedReason, taskActivity } from './taskView';
 
-import type { Task } from '@clowdy/protocol';
+import type { Run, Task } from '@clowdy/protocol';
 import type { CommandInput } from '../../daemon/transport';
 
 export interface DetailPanelProps {
     task: Task;
-    /** The runs on the task: assigned and verifying ones. */
-    taskRuns: readonly TaskRun[];
+    /** The runs assigned to the task. */
+    taskRuns: readonly Run[];
     /** The title field, for the rename key to put the keyboard in. */
     titleRef?: Ref<HTMLTextAreaElement | null>;
 }

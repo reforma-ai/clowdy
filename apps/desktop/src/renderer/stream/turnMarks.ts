@@ -1,12 +1,14 @@
+import { noticeLine } from './threadMessages';
+
 import type { StreamItem, StreamItemBody } from '@clowdy/protocol';
 
-/** The rail stays hidden until the person has this many messages. */
+/** The rail stays hidden until the stream has this many messages that start a turn (the person's, or a thread's). */
 export const TURN_RAIL_MIN = 7;
 
 /** How far above a message a jump lands, so the bubble is not flush with the top of the stream. */
 const JUMP_INSET = 16;
 
-/** One tick: the person's message, and the latest reply that followed it. */
+/** One tick: a message that starts a turn (the person's, or a thread's), and the latest reply that followed it. */
 export interface TurnMark {
     /** The stream item the tick scrolls to. */
     id: string;
@@ -52,6 +54,9 @@ function plainOf(item: StreamItem, text: string): string {
 }
 
 function titleOf(item: StreamItem, body: UserBody): string {
+    // A notice has no words of its own: its line is which threads stopped.
+    if (body.from?.kind === 'threadNotice') return body.from.threads.map(noticeLine).join(', ');
+
     const text = plainOf(item, body.text);
 
     if (text !== '') return text;
@@ -60,7 +65,7 @@ function titleOf(item: StreamItem, body: UserBody): string {
 }
 
 /**
- * One mark per message of the person's. Everything until the next message is that turn:
+ * One mark per message of the person's, or of a thread's (a thread's message, threads that stopped): each starts a turn. Everything until the next message is that turn:
  * the reply is the latest assistant text in it, and tools, notes, questions and errors are not marks.
  */
 export function turnMarks(items: readonly StreamItem[]): TurnMark[] {

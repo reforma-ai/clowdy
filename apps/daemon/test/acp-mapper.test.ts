@@ -13,7 +13,7 @@ import type { EngineEvent } from '../src/engine/types';
 const chunk = (text: string, messageId?: string): SessionUpdate => ({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text }, ...(messageId && { messageId }) });
 
 function run(updates: SessionUpdate[], options: Partial<ConstructorParameters<typeof UpdateMapper>[0]> = {}, response: PromptResponse = { stopReason: 'end_turn' }) {
-    const mapper = new UpdateMapper({ toolNames: ['task_create', 'run_spawn', 'ask_user'], costBefore: 0, ...options });
+    const mapper = new UpdateMapper({ toolNames: ['task_create', 'task_update', 'ask_user'], costBefore: 0, ...options });
     const events: EngineEvent[] = [];
 
     for (const update of updates) {
@@ -64,12 +64,12 @@ describe('tool calls', () => {
     test('the runtime\'s own tools keep their bare name whatever the agent calls them', () => {
         const { events } = run([
             { sessionUpdate: 'tool_call', toolCallId: '1', title: 'mcp__clowdy__task_create', _meta: { claudeCode: { toolName: 'mcp__clowdy__task_create' } } },
-            { sessionUpdate: 'tool_call', toolCallId: '2', title: 'Tool: clowdy/run_spawn' },
+            { sessionUpdate: 'tool_call', toolCallId: '2', title: 'Tool: clowdy/task_update' },
             { sessionUpdate: 'tool_call', toolCallId: '3', title: 'clowdy.ask_user', kind: 'other' },
             { sessionUpdate: 'tool_call', toolCallId: '4', title: 'Tool: linear/task_create' },
         ]);
 
-        expect(tools(events).map(event => event.type === 'tool' && event.name)).toEqual(['task_create', 'run_spawn', 'ask_user', 'Tool: linear/task_create']);
+        expect(tools(events).map(event => event.type === 'tool' && event.name)).toEqual(['task_create', 'task_update', 'ask_user', 'Tool: linear/task_create']);
     });
 
     test('the name comes from Claude\'s tool name, then the agent\'s name, then the kind', () => {
@@ -374,7 +374,7 @@ describe('updates of ACP v2', () => {
     const call = (update: Omit<Extract<SessionUpdateV2, { sessionUpdate: 'tool_call_update' }>, 'sessionUpdate'>): SessionUpdateV2 => ({ sessionUpdate: 'tool_call_update', ...update });
 
     function run2(updates: SessionUpdateV2[], options: Partial<ConstructorParameters<typeof UpdateMapperV2>[0]> = {}, usage?: Usage) {
-        const mapper = new UpdateMapperV2({ toolNames: ['task_create', 'run_spawn', 'ask_user'], costBefore: 0, ...options });
+        const mapper = new UpdateMapperV2({ toolNames: ['task_create', 'task_update', 'ask_user'], costBefore: 0, ...options });
         const events: EngineEvent[] = [];
 
         for (const update of updates) {

@@ -11,7 +11,7 @@ Use when the product has pages people click through and one codebase is enough.
 - Data: a local file database for the first milestone. A migration folder with numbered files. A seed script for demo data. All queries behind one module so the engine can change.
 - Config: environment variables read in one file; validate them at start and fail with a clear message.
 - Thin path: a page that loads data from an endpoint backed by the database, with one component test, one endpoint test and one end-to-end test.
-- `check`: typecheck, lint, unit and endpoint tests. The end-to-end test runs in `check` only if it takes seconds; otherwise it is a separate `test:e2e` command named in the README, and the verifier runs it.
+- `check`: typecheck, lint, unit and endpoint tests. The end-to-end test runs in `check` only if it takes seconds; otherwise it is a separate `test:e2e` command named in the README, and you run it when you verify.
 - Extension points: routes discovered from the routes folder; screens discovered from the screens folder; a shared UI folder for components used by two or more screens.
 - Pitfalls: a client and server that disagree about types (share the type file, or generate the client from the schema); styling decisions made per screen (decide once in the skeleton: one stylesheet approach, one set of tokens).
 

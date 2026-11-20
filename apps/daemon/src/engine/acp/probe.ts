@@ -67,7 +67,7 @@ export async function probeAgent(registry: AgentRegistry, bridge: ToolBridge, id
             clientInfo: { name: 'clowdy', title: 'Clowdy', version: '0' },
         }));
         const startedInMs = Date.now() - started;
-        const session = await within(connection.agent.request(methods.agent.session.new, { cwd, mcpServers: [access.server] }));
+        const session = await within(connection.agent.request(methods.agent.session.new, { cwd, mcpServers: access.server ? [access.server] : [] }));
 
         return {
             id,

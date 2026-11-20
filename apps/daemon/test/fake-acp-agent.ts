@@ -15,6 +15,9 @@ import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@a
  *   choice                      says the model and reasoning level the session ended up on and how many options it was asked to set, as JSON
  *   prompt                      says the whole text of the prompt, as JSON
  *   env <NAME>                  says the value of an environment variable
+ *   shell <command>             runs the command with `sh -c` in the session's folder and its own environment, as an agent's shell tool does, and
+ *                               says `{ code, stdout, stderr }` as JSON
+ *   tools                       says the names of the tools the first MCP server the session was given lists, as JSON
  *   fail <code> <message>       fails the prompt with a JSON-RPC error
  *   sleep <ms>                  waits; a cancel ends the prompt with `cancelled`
  *   crash                       writes to stderr and exits with code 3
@@ -408,6 +411,28 @@ const app = agent({ name: 'fake-acp-agent' })
                     case 'env':
                         await say(`${ argument }=${ process.env[argument] ?? '' }`);
                         break;
+                    case 'shell': {
+                        const child = Bun.spawn(['sh', '-c', argument], { cwd: session.cwd, env: process.env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
+                        const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+
+                        await say(JSON.stringify({ code, stdout, stderr }));
+                        break;
+                    }
+                    case 'tools': {
+                        const server = session.mcpServers[0];
+
+                        if (!server || !('command' in server)) {
+                            await say('no mcp server');
+                            break;
+                        }
+
+                        const mcp = new Client({ name: 'fake-agent', version: '1' });
+
+                        await mcp.connect(new StdioClientTransport({ command: server.command, args: server.args, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) }));
+                        await say(JSON.stringify((await mcp.listTools()).tools.map(entry => entry.name)));
+                        await mcp.close();
+                        break;
+                    }
                     case 'fail': {
                         const [code, ...message] = rest;
 

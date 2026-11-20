@@ -4,12 +4,12 @@ import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Archive, Check, Message, More, Plus } from '@clowdy/icons/14';
+import { Archive, Check, More, Plus } from '@clowdy/icons/14';
 import { ChevronDown, ChevronRight } from '@clowdy/icons/8';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 
 import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
-import { RUN_STATUS_VIEW, SidebarHeading, StatusDot } from '../../shared';
+import { SidebarHeading } from '../../shared';
 import { NEW_CHAT_COMMAND } from '../../shell/shellCommands';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { archiveChat } from '../chats/archiveChat';
@@ -17,17 +17,16 @@ import { ChatMenu } from '../chats/ChatMenu';
 import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
 import { deleteChat } from '../chats/deleteChat';
-import { ProviderIcon } from '../settings/providers/ProviderIcon';
-import { PROVIDER_IDS } from '../settings/providers/providerView';
+import { threadsAtWork } from '../chats/runningAgentRows';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
-import { agentRows, ancestorIds, chatDotTone, countActiveChildren, describeRun, listedRunId, type AgentRow, type AgentSelection } from './agentTree';
+import { agentRows, ancestorChats, isActiveThread, orchestratorOf, type AgentRow, type AgentSelection } from './agentTree';
 import { ArchiveButton } from './ArchiveButton';
 import { ChatIcon } from './ChatIcon';
 
-import type { Chat, ChatId, Run } from '@clowdy/protocol';
+import type { Chat, ChatId } from '@clowdy/protocol';
 
-/** The id of the first row, the one that starts a chat. Chat and run ids never look like it. */
+/** The id of the first row, the one that starts a chat. Chat ids never look like it. */
 export const NEW_CHAT_ROW = '@new-chat';
 
 /** A row's `⋯` button and the right-click menu are the same actions; a rename is a rename of the row it started on. */
@@ -35,12 +34,14 @@ interface ChatActions {
     rename: (chat: Chat) => void;
     archive: (chat: Chat) => void;
     remove: (chat: Chat) => void;
+    /** Why the chat can be neither archived nor deleted now; absent when it can. */
+    busy: (chat: Chat) => string | undefined;
 }
 
 /**
- * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the
- * heading's `⋯` asks for), each with the runs its orchestrator started below it (its subthreads). Archived chats are not
- * here, they are in the archive's list (the button in the heading, beside the filters), and take their subthreads with them.
+ * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the heading's `⋯` asks for), each with the
+ * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
+ * in the heading, beside the filters), and take their threads with them.
  */
 export function AgentList({ selection, chats }: { selection: AgentSelection; chats: readonly Chat[] }) {
     const root = useRootStore();
@@ -50,40 +51,40 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     const [menuChat, setMenuChat] = useState<Chat | null>(null);
     // The chat whose `⋯` menu is open: its row keeps the hover plate while the pointer is in the menu.
     const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
-    const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
     const list = useRef<HTMLDivElement>(null);
     const heading = useRef<HTMLDivElement>(null);
     const contextMenu = useContextMenu();
-    const runOf = (chat: Chat) => (chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined);
+    const runOf = (chat: Chat) => orchestratorOf(chat, project.runs);
     const actions: ChatActions = {
         // The popover hands focus back to its trigger as it closes: starting at once would have that blur end the rename.
         rename: chat => void setTimeout(() => setRenamingId(chat.id), 150),
         archive: chat => void archiveChat(root, ui, chat, selection.chat?.id === chat.id),
-        remove: chat => deleteChat(root, chat, runOf(chat) !== undefined),
+        remove: chat => deleteChat(root, chat, runOf(chat) !== undefined, project.threadsBelow(chat.id).length),
+        // The daemon refuses both while an agent of the chat works, or an agent of a thread that would go with it.
+        busy: (chat) => {
+            if (isRunActive(runOf(chat))) return 'Stop the chat first';
+
+            return project.threadsBelow(chat.id).some(thread => isActiveThread(thread, project.runs)) ? 'Stop its threads first' : undefined;
+        },
     };
 
-    const forest = ui.showSubthreads ? project.runTree(ui.showFinished) : [];
-    const rows = agentRows(chats, forest, collapsed);
-    const activeChildren = countActiveChildren(project.runs.values());
-    // A native sub-agent has no row: the run it lives in, or the chat, stays selected while its page is open. The new-chat page has none.
-    const selectedId = selection.draft ? NEW_CHAT_ROW : ((selection.run && listedRunId(project.runs, selection.run)) ?? selection.chat?.id);
-
-    // A run opened from elsewhere may sit below a fold: open the folds above it.
-    useEffect(() => {
-        if (!selection.run || !selection.chat) return;
-
-        const above = [selection.chat.id, ...ancestorIds(project.runs, selection.run.id)];
-
-        setCollapsed(current => (above.some(id => current.has(id)) ? new Set([...current].filter(id => !above.includes(id))) : current));
-    }, [selection.run?.id, selection.chat?.id, project.runs]);
-
-    const toggle = (id: string) => setCollapsed((current) => {
-        const next = new Set(current);
-
-        if (!next.delete(id)) next.add(id);
-
-        return next;
+    // A native sub-agent has no row: its chat stays selected while its page is open. The new-chat page has none.
+    const openChatId = selection.draft ? undefined : selection.chat?.id;
+    const selectedId = selection.draft ? NEW_CHAT_ROW : openChatId;
+    const rows = agentRows({
+        roots: chats,
+        threadsOf: chatId => project.threadsOf(chatId),
+        runs: project.runs,
+        expanded: new Set(ui.expandedChats),
+        showFinished: ui.showFinishedThreads,
+        openChatId,
     });
+
+    // A thread opened from elsewhere (a chip, a card, back and forward, the keyboard) may sit below a fold: open the folds above it. Only when the
+    // open chat changes, so the person can still fold the chat it sits in.
+    useEffect(() => {
+        if (openChatId !== undefined) ui.expandChats(ancestorChats(project.chats, openChatId).map(chat => chat.id));
+    }, [openChatId, project, ui]);
 
     useHotkeyScope(AGENTS_SCOPE);
     useCommands(AGENTS_SCOPE, agentCommands({
@@ -103,8 +104,9 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
         contextMenu.areaProps.onContextMenu(event);
     };
 
-    // The grid list keeps the arrows between rows; Right opens a fold and Left closes it.
-    const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // The grid list keeps the arrows between rows; Right opens a fold and Left closes it. Read in the capture phase, because a row with buttons moves
+    // the focus into them on these keys and stops the event there; one that toggles a fold does not reach the row.
+    const onKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
         const { target } = event;
 
         if (!(target instanceof HTMLElement) || target.getAttribute('role') !== 'row') return;
@@ -114,57 +116,41 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
         if (!row || row.childCount === 0) return;
 
         if ((event.key === 'ArrowRight' && !row.isExpanded) || (event.key === 'ArrowLeft' && row.isExpanded)) {
-            toggle(row.id);
+            ui.toggleChatExpanded(row.id);
             event.preventDefault();
+            event.stopPropagation();
         }
     };
 
     const select = (id: string) => {
         if (id === NEW_CHAT_ROW) ui.openDraft();
-        else if (project.chats.has(id)) ui.openChat(id);
-        else ui.openRun(id);
+        else ui.openChat(id);
     };
 
     const renderRow = (row: AgentRow) => {
-        // Only a row with rows below it has a chevron, and it takes no room: the icons stay where the list puts them.
-        const fold = row.childCount > 0 ? <Fold row={ row } onToggle={ () => toggle(row.id) } /> : undefined;
-
-        if (row.kind === 'chat') {
-            const { chat } = row;
-
-            return (
-                <GridListItem
-                    key={ chat.id }
-                    id={ chat.id }
-                    text={ chat.title }
-                    startAffix={ fold }
-                    icon={ <ChatIcon chat={ chat } run={ runOf(chat) } /> }
-                    endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } isOpen={ menuOpenId === chat.id } onOpenChange={ open => setMenuOpenId(open ? chat.id : null) } /> }
-                    // The row of an open menu, from its button or the right click, stays as if hovered: the pointer is in the menu, not on the row.
-                    data-open={ menuOpenId === chat.id || (contextMenu.isOpen && menuChat?.id === chat.id) || undefined }
-                >
-                    { renamingId === chat.id
-                        ? <RenameField chat={ chat } onDone={ () => setRenamingId(null) } />
-                        : <span className={ styles.title } onDoubleClick={ () => setRenamingId(chat.id) }>{ chat.title }</span> }
-                </GridListItem>
-            );
-        }
-
-        const { run } = row;
-        const note = describeRun(run, activeChildren.get(run.id) ?? 0);
+        const { chat } = row;
+        // Only a row with threads below it has a chevron, and it takes no room: the icons stay where the list puts them.
+        const fold = row.childCount > 0 ? <Fold row={ row } onToggle={ () => ui.toggleChatExpanded(chat.id) } /> : undefined;
+        // The same threads the strip above its message box lists.
+        const threadsWorking = threadsAtWork(project.threadsOf(chat.id), project.runs).length > 0;
 
         return (
             <GridListItem
-                key={ run.id }
-                id={ run.id }
-                text={ run.name }
+                key={ chat.id }
+                id={ chat.id }
+                text={ chat.title }
                 startAffix={ fold }
-                icon={ <StatusDot status={ run.status } /> }
-                description={ note?.text ?? (run.summary || undefined) }
-                className={ styles.nested }
+                icon={ <ChatIcon chat={ chat } run={ runOf(chat) } threadsWorking={ threadsWorking } /> }
+                endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } isOpen={ menuOpenId === chat.id } onOpenChange={ open => setMenuOpenId(open ? chat.id : null) } /> }
+                className={ row.depth > 0 ? styles.nested : undefined }
                 style={ { '--depth': row.depth } as CSSProperties }
+                // The row of an open menu, from its button or the right click, stays as if hovered: the pointer is in the menu, not on the row.
+                data-open={ menuOpenId === chat.id || (contextMenu.isOpen && menuChat?.id === chat.id) || undefined }
+                data-depth={ row.depth }
             >
-                <span className={ styles.title }>{ run.name }</span>
+                { renamingId === chat.id
+                    ? <RenameField chat={ chat } onDone={ () => setRenamingId(null) } />
+                    : <span className={ styles.title } onDoubleClick={ () => setRenamingId(chat.id) }>{ chat.title }</span> }
             </GridListItem>
         );
     };
@@ -177,7 +163,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
             </SidebarHeading>
 
             <PanelContent contentClass={ styles.content }>
-                <div ref={ list } onContextMenu={ openContextMenu } onKeyDown={ onKeyDown }>
+                <div ref={ list } onContextMenu={ openContextMenu } onKeyDownCapture={ onKeyDownCapture }>
                     <GridList
                         aria-label="Agents"
                         size="md"
@@ -213,7 +199,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                 { chat => (
                     <Popover { ...contextMenu.popoverProps } placement="bottom start" spacing="xs">
                         <ChatMenu
-                            isBusy={ isRunActive(runOf(chat)) }
+                            busy={ actions.busy(chat) }
                             onClose={ contextMenu.close }
                             onRename={ () => actions.rename(chat) }
                             onArchive={ () => actions.archive(chat) }
@@ -226,11 +212,11 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     );
 }
 
-/** The header's `⋯`: what the list shows (checked entries are on) and the order it comes in (the checked one). */
+/** The header's `⋯`: what the list shows (a checked entry is on) and the order the chats come in (the checked one). */
 function FilterMenu() {
     const ui = useProjectUi();
     const [isOpen, setIsOpen] = useState(false);
-    const on = new Set<string>([ui.showSubthreads && 'subthreads', ui.showFinished && 'finished'].filter((key): key is string => Boolean(key)));
+    const shown = ui.showFinishedThreads ? ['finished'] : [];
 
     return (
         <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
@@ -242,19 +228,11 @@ function FilterMenu() {
                     <Menu aria-label="Filters" size="sm">
                         <MenuSection
                             selectionMode="multiple"
-                            selectedKeys={ on }
-                            onSelectionChange={ (keys) => {
-                                const next = keys === 'all' ? new Set(['subthreads', 'finished']) : new Set(keys);
-
-                                ui.setShowSubthreads(next.has('subthreads'));
-                                ui.setShowFinished(next.has('finished'));
-                            } }
+                            selectedKeys={ shown }
+                            onSelectionChange={ keys => ui.setShowFinishedThreads(keys === 'all' || keys.has('finished')) }
                         >
                             <MenuHeader>Show</MenuHeader>
-                            <MenuItem id="subthreads" textValue="Show subthreads" endAffix={ on.has('subthreads') ? <Check /> : undefined }>Show subthreads</MenuItem>
-                            <MenuItem id="finished" textValue="Show finished subthreads" isDisabled={ !ui.showSubthreads } endAffix={ on.has('finished') ? <Check /> : undefined }>
-                                Show finished subthreads
-                            </MenuItem>
+                            <MenuItem id="finished" textValue="Finished threads" endAffix={ ui.showFinishedThreads ? <Check /> : undefined }>Finished threads</MenuItem>
                         </MenuSection>
                         <MenuSeparator />
                         <MenuSection
@@ -278,10 +256,8 @@ function FilterMenu() {
     );
 }
 
-/** The chevron of a row that has rows below it, drawn in the row's left padding. */
+/** The chevron of a row that has threads below it, drawn in the row's left padding. */
 function Fold({ row, onToggle }: { row: AgentRow; onToggle: () => void }) {
-    const name = row.kind === 'chat' ? row.chat.title : row.run.name;
-
     return (
         // The button is a React child of the row, so its clicks and keys would reach the row through the tree.
         <span
@@ -296,7 +272,7 @@ function Fold({ row, onToggle }: { row: AgentRow; onToggle: () => void }) {
                 type="button"
                 tabIndex={ -1 }
                 className={ styles.chevron }
-                aria-label={ row.isExpanded ? `Collapse ${ name }` : `Expand ${ name }` }
+                aria-label={ row.isExpanded ? `Collapse ${ row.chat.title } threads` : `Expand ${ row.chat.title } threads` }
                 aria-expanded={ row.isExpanded }
                 onClick={ onToggle }
             >
@@ -308,8 +284,7 @@ function Fold({ row, onToggle }: { row: AgentRow; onToggle: () => void }) {
 
 /** The end of a chat's row, on hover: Archive as a quick action, and the `⋯` menu button. */
 function RowEnd({ chat, actions, isOpen, onOpenChange }: { chat: Chat; actions: ChatActions; isOpen: boolean; onOpenChange: (isOpen: boolean) => void }) {
-    const project = useProjectState();
-    const busy = isRunActive(chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined);
+    const busy = actions.busy(chat);
     const close = () => onOpenChange(false);
 
     return (
@@ -328,8 +303,8 @@ function RowEnd({ chat, actions, isOpen, onOpenChange }: { chat: Chat; actions: 
                 size="xs"
                 iconOnly
                 aria-label="Archive"
-                tooltip={ busy ? 'Stop the chat first' : 'Archive' }
-                isDisabled={ busy }
+                tooltip={ busy ?? 'Archive' }
+                isDisabled={ busy !== undefined }
                 preventFocusOnPress
                 data-show={ listBoxItemDataShow.itemBoth }
                 onPress={ () => actions.archive(chat) }
@@ -351,7 +326,7 @@ function RowEnd({ chat, actions, isOpen, onOpenChange }: { chat: Chat; actions: 
                 </Button>
                 <Popover placement="bottom end" spacing="xs">
                     <ChatMenu
-                        isBusy={ busy }
+                        busy={ busy }
                         onClose={ close }
                         onRename={ () => actions.rename(chat) }
                         onArchive={ () => actions.archive(chat) }

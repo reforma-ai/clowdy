@@ -1026,7 +1026,7 @@ describe('Start', () => {
     it('is off while an agent is working on the task, and does not take the key', () => {
         const harness = setup(list, 'list');
 
-        harness.state.blocked.set('a1', 'Executor 01 is already working on this task.');
+        harness.state.blocked.set('a1', 'Orchestrator 01 is already working on this task.');
 
         expect(press('Enter', { metaKey: true })).toBe(false);
         expect(harness.started).toEqual([]);

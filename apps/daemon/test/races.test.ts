@@ -1,23 +1,21 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 
-import { getProject } from '../src/db/projects';
 import { getRunWork } from '../src/db/runs';
 import { isAlive } from '../src/runs/processes';
-import { toolsFor } from '../src/runs/tools';
-import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
+import { cleanTempDirs, latch, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, untilAborted, waitFor } from './helpers';
 
 import type { Harness, Script } from './helpers';
 
 afterAll(cleanTempDirs);
 
 const harnesses: Harness[] = [];
-const spawned: number[] = [];
+const pids: number[] = [];
 
 afterEach(async () => {
     await Promise.all(harnesses.splice(0).map(h => h.stop().catch(() => undefined)));
 
-    for (const pid of spawned.splice(0)) {
+    for (const pid of pids.splice(0)) {
         try {
             process.kill(-pid, 'SIGKILL');
         }
@@ -31,7 +29,7 @@ function startProcess(command: string): number {
     const child = spawn('sh', ['-c', command], { detached: true, stdio: 'ignore' });
 
     child.unref();
-    spawned.push(child.pid!);
+    pids.push(child.pid!);
 
     return child.pid!;
 }
@@ -103,26 +101,6 @@ describe('a subscription rejection', () => {
 });
 
 describe('cancelling', () => {
-    test('a cancelled orchestrator can no longer start child runs, even from a tool call already on its way', async () => {
-        const hold = latch();
-        const { h, project } = await setup(async function* ({ signal }) {
-            yield { type: 'session', sessionId: 's1' };
-            await hold.wait(signal);
-            yield { type: 'done' };
-        });
-        const { store, runs, driver } = h.daemon.services;
-        const { chat } = h.ok('chat.create', { projectId: project.id });
-        const orchestrator = runs.createRun({ project: getProject(store.db, project.id)!, role: 'orchestrator', chatId: chat.id, summary: 'Plan' });
-        const tools = toolsFor({ store, runs, driver }, orchestrator, 'autopilot');
-        const exec = (name: string, input: unknown) => tools.find(tool => tool.name === name)!.execute(input, new AbortController().signal) as Promise<any>;
-        const { task } = await exec('task_create', { title: 'A' });
-
-        runs.cancel(orchestrator.id);
-
-        await expect(exec('run_spawn', { taskIds: [task.key], prompt: 'Goal', idempotencyKey: 'k1' })).rejects.toThrow(/not running|cancelled/i);
-        expect(store.db.query('SELECT COUNT(*) AS n FROM runs WHERE parent_run_id = ?').get(orchestrator.id)).toEqual({ n: 0 });
-    });
-
     test('a run cancelled while its next turn waits behind the previous session leaves nothing registered behind', async () => {
         const { h, project } = await setup(async function* () {
             yield { type: 'session', sessionId: 's1' };
@@ -160,7 +138,7 @@ describe('cancelling', () => {
             }
 
             yield { type: 'done', result: 'ok' };
-        }, { timings: { wakeWindowMs: 15, killGraceMs: 200, retryBaseMs: 10, pauseJitterMs: 0 } });
+        }, { timings: { ...SHORT_TIMINGS, killGraceMs: 200 } });
         const { chat } = h.ok('chat.create', { projectId: project.id });
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'first' });
 

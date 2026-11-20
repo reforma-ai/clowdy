@@ -140,7 +140,7 @@ describe('the catalog', () => {
         const user = tempDir();
         const project = tempDir();
 
-        ['verify', 'docs'].forEach(folder => writeSkill(system, folder));
+        ['scaffold', 'docs'].forEach(folder => writeSkill(system, folder));
         ['b', 'a'].forEach(folder => writeSkill(user, folder));
         ['z', 'y'].forEach(folder => writeSkill(project, folder));
 
@@ -151,7 +151,7 @@ describe('the catalog', () => {
             disabled: new Set(),
         });
 
-        expect(names(catalog)).toEqual(['clowdy:docs', 'clowdy:verify', 'user:a', 'user:b', 'y', 'z']);
+        expect(names(catalog)).toEqual(['clowdy:docs', 'clowdy:scaffold', 'user:a', 'user:b', 'y', 'z']);
     });
 });
 
@@ -374,7 +374,8 @@ describe('materializing the system skills', () => {
         const { dir } = materializeSystemSkills(defaultSystemSkillsSource(), tempDir());
         const skills = readdirSync(join(dir, 'skills')).sort();
 
-        for (const skill of ['autopilot', 'docs', 'executor', 'orchestrate', 'scaffold', 'semi-manual', 'verify']) {
+        // `orchestrate` is in every run's system prompt, and `thread` in a thread's too (`skillPrompt`).
+        for (const skill of ['autopilot', 'docs', 'orchestrate', 'scaffold', 'semi-manual', 'thread']) {
             expect(skills).toContain(skill);
         }
 

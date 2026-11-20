@@ -11,7 +11,6 @@ export interface RunStatusView {
 export const RUN_STATUS_VIEW: Record<RunStatus, RunStatusView> = {
     queued: { label: 'Queued', tone: 'neutral' },
     running: { label: 'Working', tone: 'success' },
-    waiting_children: { label: 'Waiting', tone: 'warning' },
     // Not "Waiting": nobody is asked for anything and nothing is stuck, the agent's own work goes on after its turn (green, without the pulse of "Working").
     waiting_background: { label: 'Background', tone: 'success' },
     waiting_user: { label: 'Waiting', tone: 'accent' },

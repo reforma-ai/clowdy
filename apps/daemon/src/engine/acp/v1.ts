@@ -143,7 +143,7 @@ export class V1Layer implements ProtocolLayer {
             const directories = capabilities.sessionCapabilities?.additionalDirectories ? options.additionalDirectories ?? [] : [];
             const shared: NewSessionRequest = {
                 cwd: options.cwd,
-                mcpServers: access ? [access.server] : [],
+                mcpServers: access?.server ? [access.server] : [],
                 ...(directories.length > 0 && { additionalDirectories: directories }),
                 ...(agent.sessionMeta && { _meta: agent.sessionMeta }),
                 ...(supportsSystemPrompt && options.systemPrompt && { systemPrompt: { mode: 'append', content: [{ type: 'text', text: options.systemPrompt }] } }),

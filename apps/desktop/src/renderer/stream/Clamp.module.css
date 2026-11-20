@@ -1,0 +1,28 @@
+@reference '@clowdy/styles/rulesets';
+
+/* `--clamp-lines` lines of the text, the last ones fading out while more is hidden (three lines at most, half the clamp in a short one). */
+.clamp {
+    width: 100%;
+    min-width: 0;
+    max-height: calc(var(--clamp-lines) * 1lh);
+    overflow: hidden;
+}
+
+.clamp[data-expanded='true'] {
+    max-height: none;
+}
+
+.clamp[data-expanded='false'][data-clipped='true'] {
+    mask-image: linear-gradient(to bottom, black calc(100% - min(3lh, var(--clamp-lines) * 0.5lh)), transparent);
+}
+
+.toggle {
+    @ruleset typography-label-sm;
+
+    align-self: flex-end;
+    gap: var(--spacing-xxs);
+}
+
+.toggle[data-align='start'] {
+    align-self: flex-start;
+}

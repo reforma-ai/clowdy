@@ -226,18 +226,29 @@ describe('an agent that is asked for v2 and speaks v1', () => {
         }
     });
 
-    test('has none of the first attempt\'s doings repeated: one bridge token for the session, one title taken', async () => {
+    test('has none of the first attempt\'s doings repeated: one live bridge token for the session, one title taken', async () => {
         const rigged = v1Agent({ FAKE_ACP_TITLES: '1' });
         const register = spyOn(rigged.bridge, 'register');
         const titles: string[] = [];
-        const { session } = rigged.start('title Dark mode toggle\nsay done', { tools: [tool('task_list', async () => 'ok')], title: { onTitle: title => titles.push(title) > 0 } });
+        const { session } = rigged.start('title Dark mode toggle\ncall task_list\nsay done', { tools: [tool('task_list', async () => 'ok')], title: { onTitle: title => titles.push(title) > 0 } });
         const events = await collect(session);
+        // Each start of the process has a token of its own, since its environment carries the credential of the `clowdy` command.
+        const [first, second] = register.mock.results.map(result => result.value as ReturnType<typeof rigged.bridge.register>);
+        const status = async (access: typeof first) => {
+            const env = Object.fromEntries((access.server?.env ?? []).map(({ name, value }) => [name, value]));
+
+            return (await fetch(`${ env.CLOWDY_BRIDGE_URL }/tools`, { headers: { authorization: `Bearer ${ env.CLOWDY_BRIDGE_TOKEN }` } })).status;
+        };
+
+        expect(register).toHaveBeenCalledTimes(2);
+        // The first attempt's token ended with its process; the session's calls went through the second one's.
+        expect(await status(first)).toBe(401);
+        expect(textOf(events)).toContain('result: ok');
 
         await session.close();
 
+        expect(await status(second)).toBe(401);
         expect(events.at(-1)).toMatchObject({ type: 'done' });
-        // The failed handshake came before the tools were handed over.
-        expect(register).toHaveBeenCalledTimes(1);
         expect(titles).toEqual(['Dark mode toggle']);
     });
 

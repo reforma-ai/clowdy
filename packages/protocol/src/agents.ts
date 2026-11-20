@@ -10,7 +10,7 @@ export type AgentStatus = 'ready' | 'missing' | 'needs-runtime' | 'disabled';
 
 /** An agent the daemon knows about: a built-in entry, found or not, or one the user added. */
 export interface AgentInfo {
-    /** The id runs, project settings and `run_spawn` use (`claude`, `cursor`, `my-agent`). */
+    /** The id runs and project settings use (`claude`, `cursor`, `my-agent`). */
     id: EngineId;
     name: string;
     /** Added by the user rather than built in. */

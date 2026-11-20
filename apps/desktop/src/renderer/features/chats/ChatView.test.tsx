@@ -108,7 +108,7 @@ describe('a chat on a provider that cannot run', () => {
 
         // The messages are still there, above the notice.
         expect(container.textContent).toContain('Simplify the booking flow: one form instead of three steps');
-        expect(container.textContent).toContain('Executor 07 is on the form');
+        expect(container.textContent).toContain('A sub-agent is on the form');
     });
 
     it('says why for each reason', async () => {
@@ -369,5 +369,53 @@ describe('a chat whose orchestrator waits for background work', () => {
 
         expect(container.querySelector('[aria-label="Work in progress"]')).toBeNull();
         expect(container.textContent).not.toContain('Waiting for background work…');
+    });
+});
+
+describe('a thread', () => {
+    const crumb = () => container.querySelector<HTMLElement>('nav[aria-label="Parent chat"]');
+
+    it('has a line over its stream that names the chat it belongs to, whose title opens that chat', async () => {
+        await start();
+        await draw('c-6a1');
+
+        expect(crumb()?.textContent).toBe('Thread of Fix the price rounding');
+
+        await act(async () => [...crumb()!.querySelectorAll('button')].find(candidate => candidate.textContent === 'Fix the price rounding')!.click());
+
+        await vi.waitFor(() => expect(ui().chatId).toBe('c-6a'));
+    });
+
+    it('is a chat like any other: a message box, and the cards of the messages its parent sent', async () => {
+        await start();
+        await draw('c-6b');
+
+        expect(field()).not.toBeNull();
+        expect(container.querySelector('[data-slot="thread-message"]')?.textContent).toContain('Message from Ship the checkout');
+    });
+
+    it('sends what the person writes to the thread itself', async () => {
+        await start();
+        await draw('c-6b');
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => {
+            (container.querySelector('[contenteditable="true"]') as HTMLElement & { editor: { commands: { insertContent: (text: string) => void } } }).editor.commands.insertContent('One more case');
+        });
+        await act(async () => {
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+
+        expect(command).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat.send', chatId: 'c-6b', text: 'One more case' }));
+    });
+
+    it('has no such line on a chat the person made', async () => {
+        await start();
+        await draw('c-6');
+
+        expect(crumb()).toBeNull();
+        // Its threads at work are rows above the message box.
+        expect(container.querySelector('[aria-label="Work in progress"]')?.textContent).toContain('Fix the price rounding');
     });
 });

@@ -58,3 +58,8 @@ export function updateItemBody(db: Database, runId: string, seq: number, body: S
 export function nextSeq(db: Database, runId: string): number {
     return (db.query('SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM stream_items WHERE run_id = ?').get(runId) as { seq: number }).seq;
 }
+
+/** The number of the last `user` item of a run's stream, the message its latest turn answers; 0 when it has none. */
+export function lastUserSeq(db: Database, runId: string): number {
+    return (db.query('SELECT COALESCE(MAX(seq), 0) AS seq FROM stream_items WHERE run_id = ? AND json_extract(body, \'$.kind\') = \'user\'').get(runId) as { seq: number }).seq;
+}

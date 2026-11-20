@@ -1,5 +1,6 @@
 import { AcpSession } from './session';
 
+import type { Shim } from '../../cli/shim';
 import type { AgentEngine, EngineSession, EngineStartOptions } from '../types';
 import type { ToolBridge } from './bridge';
 import type { AgentRegistry } from './registry';
@@ -8,6 +9,8 @@ import type { PermissionPolicy } from './session';
 export interface AcpEngineDeps {
     registry: AgentRegistry;
     bridge: ToolBridge;
+    /** Where the `clowdy` command is; see `SessionDeps.shim`. */
+    shim?: Shim;
     /** The environment agents are built from; the daemon's own by default. */
     env?: Record<string, string | undefined>;
     permissions?: PermissionPolicy;
@@ -39,6 +42,7 @@ export class AcpEngine implements AgentEngine {
             agentId: this.id,
             registry: deps.registry,
             bridge: deps.bridge,
+            shim: deps.shim,
             env: deps.env ?? process.env,
             permissions: deps.permissions ?? 'allow',
             costs: this.costs,

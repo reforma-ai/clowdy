@@ -491,14 +491,10 @@ describe('Composer', () => {
             expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Later', mode: 'queue' }]);
         });
 
-        it('says the message will wait while the orchestrator works, and not while it waits for its executors or for background work', async () => {
+        it('says the message will wait while the orchestrator works, and not while it waits for background work', async () => {
             await mount(accepted, runWith('running'));
 
             expect(placeholder()).toBe('Queue another message…');
-
-            await mount(accepted, runWith('waiting_children'));
-
-            expect(placeholder()).toBe('Write a message…');
 
             await mount(accepted, runWith('waiting_background'));
 

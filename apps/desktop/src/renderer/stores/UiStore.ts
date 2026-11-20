@@ -42,9 +42,9 @@ interface StoredProjectUi {
     runId: RunId | null;
     docPath: string | null;
     docFolderId: FolderId | null;
-    showFinished: boolean;
-    showSubthreads: boolean;
     chatSort: ChatSort;
+    showFinishedThreads: boolean;
+    expandedChats: ChatId[];
     tasksView: TasksView;
 }
 
@@ -53,7 +53,7 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'showFinished' | 'showSubthreads' | 'chatSort' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'chatSort' | 'showFinishedThreads' | 'expandedChats' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -73,11 +73,11 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
 
     if (params.has('docFolder')) initial.docFolderId = params.get('docFolder');
 
-    if (params.has('finished')) initial.showFinished = params.get('finished') !== '0';
-
-    if (params.has('subthreads')) initial.showSubthreads = params.get('subthreads') !== '0';
-
     if (params.get('sort') === 'activity' || params.get('sort') === 'created') initial.chatSort = params.get('sort') as ChatSort;
+
+    if (params.has('finished')) initial.showFinishedThreads = params.get('finished') !== '0';
+
+    if (params.get('expand')) initial.expandedChats = params.get('expand')!.split(',').filter(Boolean);
 
     if (view === 'board' || view === 'list') initial.tasksView = view;
 
@@ -95,12 +95,12 @@ export class ProjectUi {
     docFolderId: FolderId | null = null;
     /** Agents: the new-chat row is selected, and the chat it starts does not exist until its first message is sent. Not kept between sessions. */
     draft = false;
-    /** Agents: list the runs below each chat, the chat's subthreads. */
-    showSubthreads = true;
-    /** Agents: list a subthread that has finished. */
-    showFinished = true;
     /** Agents: the order of the chats. Last activity, which is where a chat that just got a message goes up to the top, until the person picks the order they were made in. */
     chatSort: ChatSort = 'activity';
+    /** Agents: list a thread whose run is over. Off, such a thread is hidden unless something below it still works or it is the open chat. */
+    showFinishedThreads = true;
+    /** Agents: the chats whose threads the person opened in the list. A chat that is not here is folded, which is how every chat starts. */
+    expandedChats: readonly ChatId[] = [];
     tasksView: TasksView = 'board';
     /** Agents: files that a hand-off from another chat left for the new-chat page, which takes them once it is open. Not kept between sessions. */
     pendingFiles: readonly File[] = [];
@@ -116,14 +116,14 @@ export class ProjectUi {
             this.runId = idOrNull(stored.runId);
             this.docPath = idOrNull(stored.docPath);
             this.docFolderId = idOrNull(stored.docFolderId);
-            this.showFinished = stored.showFinished !== false;
-            this.showSubthreads = stored.showSubthreads !== false;
             this.chatSort = stored.chatSort === 'created' ? 'created' : 'activity';
+            this.showFinishedThreads = stored.showFinishedThreads !== false;
+            this.expandedChats = Array.isArray(stored.expandedChats) ? stored.expandedChats.filter(id => typeof id === 'string') : [];
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';
         }
 
         Object.assign(this, initial);
-        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef });
+        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, expandedChats: observableRef });
         reaction(
             (): StoredProjectUi => ({
                 section: this.section,
@@ -132,9 +132,9 @@ export class ProjectUi {
                 runId: this.runId,
                 docPath: this.docPath,
                 docFolderId: this.docFolderId,
-                showFinished: this.showFinished,
-                showSubthreads: this.showSubthreads,
                 chatSort: this.chatSort,
+                showFinishedThreads: this.showFinishedThreads,
+                expandedChats: [...this.expandedChats],
                 tasksView: this.tasksView,
             }),
             value => writeStored(storage, key, value)
@@ -206,16 +206,24 @@ export class ProjectUi {
         this.docFolderId = folderId;
     }
 
-    setShowFinished(show: boolean): void {
-        this.showFinished = show;
-    }
-
-    setShowSubthreads(show: boolean): void {
-        this.showSubthreads = show;
-    }
-
     setChatSort(sort: ChatSort): void {
         this.chatSort = sort;
+    }
+
+    setShowFinishedThreads(show: boolean): void {
+        this.showFinishedThreads = show;
+    }
+
+    /** Opens or folds the threads of a chat in the list. */
+    toggleChatExpanded(chatId: ChatId): void {
+        this.expandedChats = this.expandedChats.includes(chatId) ? this.expandedChats.filter(id => id !== chatId) : [...this.expandedChats, chatId];
+    }
+
+    /** Opens the threads of these chats, for a chat below them that was opened from elsewhere. Nothing changes when all are open already. */
+    expandChats(chatIds: readonly ChatId[]): void {
+        const closed = chatIds.filter(id => !this.expandedChats.includes(id));
+
+        if (closed.length > 0) this.expandedChats = [...this.expandedChats, ...closed];
     }
 
     setTasksView(view: TasksView): void {

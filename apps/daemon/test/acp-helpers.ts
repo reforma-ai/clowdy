@@ -5,6 +5,7 @@ import { Discovery } from '../src/engine/acp/discovery';
 import { AcpEngine } from '../src/engine/acp/engine';
 import { AgentRegistry } from '../src/engine/acp/registry';
 
+import type { Shim } from '../src/cli/shim';
 import type { AgentProtocol } from '../src/engine/acp/catalog';
 import type { PermissionPolicy } from '../src/engine/acp/session';
 import type { EngineEvent, EngineSession, EngineStartOptions, ToolDefinition } from '../src/engine/types';
@@ -50,6 +51,8 @@ export interface RigOptions {
     sessionMeta?: Record<string, unknown>;
     /** What the agent is told it can do in `initialize`, as the built-in catalog gives it to Cursor. */
     clientMeta?: Record<string, unknown>;
+    /** Where the `clowdy` command is, as `installShim` wrote it: a session with shell commands gives its agent the command. */
+    shim?: Shim;
 }
 
 export function rig(options: RigOptions = {}): Rig {
@@ -69,7 +72,7 @@ export function rig(options: RigOptions = {}): Rig {
 
     registry.add({ id: 'fake-acp', name: 'Fake ACP', command: options.command ?? process.execPath, args: options.args ?? [options.protocol === 'v2' ? FAKE_AGENT_V2 : FAKE_AGENT], env: options.agentEnv });
 
-    const engine = new AcpEngine('fake-acp', { registry, bridge, env, permissions: options.permissions, initializeTimeoutMs: options.initializeTimeoutMs, titleWaitMs: options.titleWaitMs, backgroundHandoffMs: options.backgroundHandoffMs ?? 400, backgroundReportMs: options.backgroundReportMs });
+    const engine = new AcpEngine('fake-acp', { registry, bridge, shim: options.shim, env, permissions: options.permissions, initializeTimeoutMs: options.initializeTimeoutMs, titleWaitMs: options.titleWaitMs, backgroundHandoffMs: options.backgroundHandoffMs ?? 400, backgroundReportMs: options.backgroundReportMs });
 
     return {
         engine,

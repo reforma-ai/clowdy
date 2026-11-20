@@ -1,6 +1,6 @@
 ---
 name: autopilot
-description: "How to work without asking the user. Sort every fork into answerable, everyday, significant or blocker; decide significant forks by explicit criteria and record each one in .clowdy/docs/decisions/; report only true blockers. Use when the first message says Mode: autopilot, in every run started from an autopilot run, and for the routine part of semi-manual work."
+description: "How to work without asking the user. Sort every fork into answerable, everyday, significant or blocker; decide significant forks by explicit criteria and record each one in .clowdy/docs/decisions/; report only true blockers. Use when the first message says Mode: autopilot, and for the routine part of semi-manual work."
 ---
 
 # Autopilot
@@ -34,11 +34,11 @@ When a question looks like it needs the user, first spend a few minutes making i
 5. Act on the decision. Do not wait for anyone to approve it.
 6. Give it one line in your report: the choice in plain words, plus the record's path.
 
-If the decision contradicts an existing record, write a new record that supersedes it (clowdy:docs says how). If the old record says `Decided by: user`, you may not supersede it: that is a blocker (section 5). An executor never supersedes: it follows the record or ends `blocked`.
+If the decision contradicts an existing record, write a new record that supersedes it (clowdy:docs says how). If the old record says `Decided by: user`, you may not supersede it: that is a blocker (section 5).
 
 ## 3. State assumptions
 
-When the brief leaves a gap you must fill to proceed, fill it with the most likely reading and write it down where the next reader will see it: an `Assumptions:` list in the description of each task it affects (`task_update`; an executor appends to the task's `Notes`). One line each, written so a verifier can check it. An assumption that is also a significant fork gets a decision record as well.
+When the brief leaves a gap you must fill to proceed, fill it with the most likely reading and write it down where the next reader will see it: an `Assumptions:` list in the description of each task it affects (`task_update`). One line each, written so a check can prove or break it. An assumption that is also a significant fork gets a decision record as well.
 
 A vague request ("make it better") gets the smallest slice with clear value, stated as your reading in the plan. Do not stretch it to cover every reading.
 
@@ -65,26 +65,26 @@ A blocker is one of three things:
 A blocker is never a reason to stop everything. Order of action:
 
 1. Finish all work that does not depend on it, and leave the blocked part in a clean, resumable state.
-2. Make the blocker visible on the task with `task_update`: what is needed, from whom, what unblocks it. An orchestrator puts it at the top of the description. An executor appends it to the task's `Notes` and never overwrites the orchestrator's text. There is no blocked column, so do not invent a status.
-3. Executors end with `report_result({status: "blocked", ...})`. An orchestrator says it in the final report. Never report blocked work as done, and never guess past a blocker.
+2. Make the blocker visible on the task with `task_update`: what is needed, from whom, what unblocks it. Put it at the top of the description. There is no blocked column, so do not invent a status.
+3. Say it in the final report. Never report blocked work as done, and never guess past a blocker.
 
-## 6. Parallel work
+## 6. Sub-agents and threads
 
-- Decide every fork that more than one task depends on before you fan out, and write the records first. Put `Mode: autopilot` and the record paths in each `run_spawn` prompt, and in the prompt of each engine sub-agent too, because they do not see this skill. Sub-agents do not write records: they return a significant fork in their result, and the parent decides.
-- Executors decide forks inside their own task and write each significant one as a new record file in `decisions/`; they name it in the `Notes` of `report_result`, so the orchestrator can reconcile two runs that chose differently and add the index line.
-- A child that fails or is cancelled is a fork too: retry once with the failure reason in the prompt (everyday), change the approach (significant when it changes scope or cost), or finish with a failure report. Never ignore it.
+- Decide every fork that more than one piece of work depends on before you hand any out, and write the records first. Put `Mode: autopilot` and the record paths in the prompt of each engine sub-agent and the brief of each thread, because they do not see your conversation. Sub-agents do not write records: they return a significant fork in their answer, and you decide. A thread decides the forks inside its own brief and records them; a fork that binds other pieces comes back to you in its report, and you decide it before the others build on it.
+- A sub-agent or thread that fails or answers off target is a fork too: retry once with the failure reason in the prompt, or in a `clowdy thread tell` to the thread (everyday), do it yourself or change the approach (significant when it changes scope or cost), or finish with a failure report. Never ignore it.
+- While threads work, end your turn: the daemon wakes you with each report. Ending a turn while threads run is not stopping; your cycle ends only as section 7 says.
 
 ## 7. Stop and report
 
 Stop when one of these is true:
 
-- The goal is met and verified by real commands or flows (see clowdy:verify), not by an author's "done".
+- The goal is met and verified by real commands or flows that you ran (see clowdy:orchestrate, Verify), not by anyone's "done".
 - Everything left is blocked, or out of scope and filed as follow-up tasks.
 - The third attempt at the same thing failed. Change the approach once and record the change when it is significant. If the new approach fails too, stop and report failed with the concrete reason.
 
-Do not stop to ask whether to continue, to post progress, or to confirm a choice the records already settle.
+Do not stop to ask whether to continue, to post progress, or to confirm a choice the records already settle. Do not report the cycle as finished while threads of it still work.
 
-The orchestrator's final report is for a manager: what changed and why, not how. Use the report format of clowdy:orchestrate and add the line `Decided for you:` with each significant decision in plain words, the reason in a few words, and the record's path under the docs folder. Blockers, risks and follow-up tasks go under `Open`. An executor ends with `report_result` in the format of clowdy:executor; decisions and follow-up tasks go in its `Notes` and `For the orchestrator` lines.
+The final report is for a manager: what changed and why, not how. Use the report format of clowdy:orchestrate and add the line `Decided for you:` with each significant decision in plain words, the reason in a few words, and the record's path under the docs folder. Blockers, risks and follow-up tasks go under `Open`.
 
 ## Example
 

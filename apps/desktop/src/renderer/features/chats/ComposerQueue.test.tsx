@@ -162,8 +162,8 @@ describe('the queue in the composer', () => {
             return document.querySelector('[role="tooltip"]')?.textContent;
         }
 
-        it.each(['running', 'waiting_children'] as const)('cannot be sent now while the orchestrator is %s, and says when it runs', async (status) => {
-            await mount(chatWith([compact]), status);
+        it('cannot be sent now while the orchestrator works, and says when it runs', async () => {
+            await mount(chatWith([compact]), 'running');
 
             expect(sendNow().disabled).toBe(true);
             expect(compactRow().querySelector('[role="button"][aria-disabled]')?.getAttribute('aria-label')).toBe('Send now');
@@ -191,6 +191,47 @@ describe('the queue in the composer', () => {
             await act(async () => sendNow().click());
 
             expect(sent).toEqual([{ type: 'chat.sendQueued', chatId: chat.id, itemId: 'q-c' }]);
+        });
+    });
+
+    describe('an item a thread sent', () => {
+        const notice = queued('q-n', 'Thread "Fix login" finished', {
+            from: { kind: 'threadNotice', threads: [{ chatId: 'c-t', title: 'Fix login', outcome: 'finished', text: 'Done' }] },
+            // A daemon never puts files on one; the row would not show them anyway.
+            attachments: [notes],
+        });
+        const noticeRow = () => container.querySelector<HTMLElement>('[data-thread]')!;
+
+        it('reads its summary after the thread mark, has nothing to edit and never shows files', async () => {
+            await mount(chatWith([notice, queued('q-1', 'Then this')]));
+
+            expect(noticeRow().textContent).toContain('Thread "Fix login" finished');
+            expect(noticeRow().querySelector('svg')).not.toBeNull();
+            expect(noticeRow().textContent).not.toContain('1 file');
+            expect(container.querySelector('[aria-label^="Edit: Thread"]')).toBeNull();
+            expect(buttonIn(noticeRow(), 'Edit')).toBeUndefined();
+            // The person's own message beside it keeps its Edit.
+            expect(buttonIn(rowOf('Then this'), 'Edit')).toBeDefined();
+        });
+
+        it('is sent now or removed like any queued message', async () => {
+            const chat = chatWith([notice]);
+
+            await mount(chat);
+            await act(async () => buttonIn(noticeRow(), 'Send now')!.click());
+            await act(async () => buttonIn(noticeRow(), 'Remove')!.click());
+
+            expect(sent).toEqual([
+                { type: 'chat.sendQueued', chatId: chat.id, itemId: 'q-n' },
+                { type: 'chat.removeQueued', chatId: chat.id, itemId: 'q-n' },
+            ]);
+        });
+
+        it('draws a thread\'s message the same way, by its words and the title of the thread that wrote them', async () => {
+            await mount(chatWith([queued('q-m', 'Use the staging keys', { from: { kind: 'thread', chatId: 'c-t', title: 'Fix login' } })]));
+
+            expect(noticeRow().textContent).toContain('Fix login: Use the staging keys');
+            expect(buttonIn(noticeRow(), 'Edit')).toBeUndefined();
         });
     });
 });

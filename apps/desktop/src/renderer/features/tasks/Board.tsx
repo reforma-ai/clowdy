@@ -3,9 +3,9 @@ import { useState, type DragEvent } from 'react';
 import styles from './Board.module.css';
 import { StatusPill } from './status';
 import { TaskCard } from './TaskCard';
-import { activeExecutors, type TaskRun } from './taskView';
+import { activeExecutors } from './taskView';
 
-import type { Task, TaskId, TaskStatus } from '@clowdy/protocol';
+import type { Run, Task, TaskId, TaskStatus } from '@clowdy/protocol';
 
 const DRAG_TYPE = 'application/x-clowdy-task';
 
@@ -16,7 +16,7 @@ export interface BoardColumn {
 
 export interface BoardProps {
     columns: BoardColumn[];
-    runsOfTask: ReadonlyMap<TaskId, readonly TaskRun[]>;
+    runsOfTask: ReadonlyMap<TaskId, readonly Run[]>;
     /** The task the detail panel shows. */
     openId: TaskId | null;
     /** The tasks the keyboard selected, for a bulk action. */

@@ -12,6 +12,7 @@ interface ChatRow {
     model: string | null;
     effort: string | null;
     orchestrator_run_id: string | null;
+    parent_chat_id: string | null;
     archived_at: number | null;
     queue: string | null;
     queue_paused: Chat['queuePaused'] | null;
@@ -28,6 +29,7 @@ const toChat = (row: ChatRow): Chat => clean({
     model: row.model,
     effort: row.effort,
     orchestratorRunId: row.orchestrator_run_id,
+    parentChatId: row.parent_chat_id,
     archivedAt: row.archived_at,
     queue: parseJson<QueuedMessage[]>(row.queue),
     queuePaused: row.queue_paused,
@@ -45,17 +47,40 @@ export function listChats(db: Database, projectId: string): Chat[] {
     return (db.query('SELECT * FROM chats WHERE project_id = ? ORDER BY created_at, id').all(projectId) as ChatRow[]).map(toChat);
 }
 
+/** A chat's parent is set when the chat is made and never changes, so an update leaves it alone. */
 export function upsertChat(db: Database, chat: Chat): void {
     db.query(`
-        INSERT INTO chats (id, project_id, title, mode, engine, model, effort, orchestrator_run_id, archived_at, queue, queue_paused, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO chats (id, project_id, title, mode, engine, model, effort, orchestrator_run_id, parent_chat_id, archived_at, queue, queue_paused, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET title = excluded.title, mode = excluded.mode, engine = excluded.engine, model = excluded.model, effort = excluded.effort,
             orchestrator_run_id = excluded.orchestrator_run_id, archived_at = excluded.archived_at, queue = excluded.queue, queue_paused = excluded.queue_paused,
             updated_at = excluded.updated_at
     `).run(
-        chat.id, chat.projectId, chat.title, chat.mode, chat.engine ?? null, chat.model ?? null, chat.effort ?? null,
-        chat.orchestratorRunId ?? null, chat.archivedAt ?? null, chat.queue?.length ? toJson(chat.queue) : null, chat.queuePaused ?? null, chat.createdAt, chat.updatedAt
+        chat.id, chat.projectId, chat.title, chat.mode, chat.engine ?? null, chat.model ?? null, chat.effort ?? null, chat.orchestratorRunId ?? null,
+        chat.parentChatId ?? null, chat.archivedAt ?? null, chat.queue?.length ? toJson(chat.queue) : null, chat.queuePaused ?? null, chat.createdAt, chat.updatedAt
     );
+}
+
+/** The threads a chat started, oldest first: its direct children, not theirs. */
+export function listChildChats(db: Database, chatId: string): Chat[] {
+    return (db.query('SELECT * FROM chats WHERE parent_chat_id = ? ORDER BY created_at, id').all(chatId) as ChatRow[]).map(toChat);
+}
+
+/**
+ * Every chat below `chatId`, threads of threads included, each with its depth below it (1 is a thread of that chat, 2 a thread of one of those).
+ * Shallower chats come first, so a parent always comes before its threads.
+ */
+export function listChatDescendants(db: Database, chatId: string): { chat: Chat; depth: number }[] {
+    const rows = db.query(`
+        WITH RECURSIVE tree(id, depth) AS (
+            SELECT id, 1 FROM chats WHERE parent_chat_id = ?
+            UNION ALL
+            SELECT c.id, tree.depth + 1 FROM chats c JOIN tree ON c.parent_chat_id = tree.id
+        )
+        SELECT chats.*, tree.depth AS tree_depth FROM tree JOIN chats ON chats.id = tree.id ORDER BY tree.depth, chats.created_at, chats.id
+    `).all(chatId) as (ChatRow & { tree_depth: number })[];
+
+    return rows.map(({ tree_depth: depth, ...row }) => ({ chat: toChat(row), depth }));
 }
 
 export function listChatTaskLinks(db: Database, projectId: string): ChatTaskLink[] {
@@ -74,7 +99,7 @@ export function insertChatTaskLink(db: Database, link: ChatTaskLink): boolean {
     return db.query('INSERT OR IGNORE INTO chat_task_links (chat_id, task_id) VALUES (?, ?)').run(link.chatId, link.taskId).changes > 0;
 }
 
-/** The chat's runs: its orchestrator and everything below it. */
+/** The chat's runs: its orchestrator and everything below it. A thread's runs are its own chat's, not its parent's. */
 export function runsOfChat(db: Database, chatId: string): { id: string; status: Run['status'] }[] {
     return db.query(`
         SELECT id, status FROM runs
@@ -84,8 +109,8 @@ export function runsOfChat(db: Database, chatId: string): { id: string; status: 
 }
 
 /**
- * Deletes the chat and its runs. Streams, run-task links and mailbox rows go with the runs, and chat-task links with the chat.
- * The runs go in one statement, which SQLite checks at its end, so parents and children may go together.
+ * Deletes the chat and its runs, its sub-agents' runs too. Streams and run-task links go with the runs, and chat-task links with the chat.
+ * The runs go in one statement, which SQLite checks at its end, so parents and children may go together. The chat's threads are not touched.
  */
 export function deleteChatAndRuns(db: Database, chatId: string): void {
     db.query('DELETE FROM runs WHERE chat_id = ?1 OR root_run_id IN (SELECT id FROM runs WHERE chat_id = ?1)').run(chatId);

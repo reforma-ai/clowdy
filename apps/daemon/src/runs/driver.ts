@@ -1,34 +1,31 @@
 import { isTerminalRunStatus, mainFolder, STOPPED_TOOL } from '@clowdy/protocol';
 import { statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
 
 import { getChat } from '../db/chats';
 import { listItems, nextSeq } from '../db/items';
-import { countActiveSpawnedChildren, countSpawnedChildren, depthOf, findSpawnedChild, getRun, getRunWork, listActiveRuns, listRunsWithProcess, markMailboxDelivered, pendingMailbox, setRunWork } from '../db/runs';
+import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } from '../db/runs';
 import { appendItem } from '../domain/items';
-import { queueOf } from '../domain/queue';
-import { CommandError, conflict, EngineFailure, errorMessage, invalid } from '../errors';
+import { EngineFailure, errorMessage } from '../errors';
 import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
 import { NativeAgents } from './native';
 import { describeProcess, killSurvivor } from './processes';
-import { BACKGROUND_KINDS, backgroundEndedMessage, backgroundStoppedMessage, CONTINUE_MESSAGE, firstMessage, lostBackgroundMessage, namedTitle, skillPrompt, systemPrompt } from './prompts';
-import { childReport, wakeMessage } from './reports';
+import { BACKGROUND_KINDS, backgroundEndedMessage, backgroundStoppedMessage, CONTINUE_MESSAGE, lostBackgroundMessage, namedTitle, skillPrompt, systemPrompt } from './prompts';
+import { lastTurnText } from './threads';
 import { sessionTitle } from './titles';
 import { ASK_USER } from './tools';
 import { BACKGROUND_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 import { TurnWriter, UNFINISHED_TOOL } from './writer';
 
-import type { BackgroundItem, ChatMode, EngineId, Project, Run, RunContext, RunRole, Task } from '@clowdy/protocol';
+import type { BackgroundItem, ChatMode, EngineId, Project, Run, RunContext } from '@clowdy/protocol';
 import type { Config } from '../config';
-import type { RunOutcome, RunWork } from '../db/runs';
+import type { RunWork } from '../db/runs';
 import type { EngineRegistry, EngineSession, ToolDefinition } from '../engine/types';
 import type { Store } from '../store';
 import type { LimitSignal } from './limits';
+import type { PromptChat } from './prompts';
 import type { RunService } from './service';
 
-/** Runs nested below a root, counting the root: an orchestrator starts executors and verifiers, and they start nothing. */
-export const MAX_DEPTH = 2;
 /** A run that fails this many times in a row on passing engine errors (overload, rate limit) is failed for good. */
 const MAX_TRANSIENT_FAILURES = 4;
 
@@ -37,29 +34,12 @@ export interface DriverDeps {
     config: Config;
     runs: RunService;
     engines: EngineRegistry;
-    /** The tools a run gets: an orchestrator's, or an executor's or verifier's. */
+    /** The tools a run gets: a chat orchestrator's. */
     tools(run: Run, mode: ChatMode): ToolDefinition[];
     /** The message that makes the engine's agent compact its conversation, or `undefined` for an agent with no such command. */
     compactCommand(engine: EngineId): string | undefined;
     /** Whether the person left the agent's chat titles on, or `undefined` for an agent that has no such switch: a chat of it keeps the first words of its message. */
     namesChats(engine: EngineId): boolean | undefined;
-}
-
-export interface SpawnInput {
-    parent: Run;
-    tasks: Task[];
-    prompt: string;
-    role: Extract<RunRole, 'executor' | 'verifier'>;
-    idempotencyKey: string;
-    engine?: EngineId;
-    model?: string;
-    cwd?: string;
-}
-
-/** How a run ended its work with `report_result`. */
-export interface Report {
-    status: RunOutcome;
-    summary: string;
 }
 
 interface LiveRun {
@@ -73,8 +53,6 @@ interface LiveRun {
     interrupted?: boolean;
     /** Set when the engine is at its subscription limit: the turn stops and the run waits for the reset. */
     pausedUntil?: number;
-    report?: Report;
-    reportTimer?: ReturnType<typeof setTimeout>;
     native?: NativeAgents;
     /** What the running turn was told, so a retry before the session id is known can say it again. */
     prompt?: string;
@@ -92,7 +70,7 @@ interface LiveRun {
     finishing?: Map<string, BackgroundItem>;
     /** The background commands and tasks the person stopped alone this turn (`stopCommand`), by item id: their end is a stop, and the agent was told of it already. */
     stopped?: Map<string, BackgroundItem>;
-    /** The session outlived a turn and the run waits for its background work (`waiting_background`, or `waiting_children` when children win): a message goes to the session. */
+    /** The session outlived a turn and the run waits for its background work (`waiting_background`): a message goes to the session. */
     lingering?: boolean;
     /** Messages handed to the session that its `done` has not answered yet: the engine sends one `done` for each. */
     sent?: number;
@@ -103,6 +81,11 @@ interface LiveRun {
     restart?: boolean;
     /** Whether this session counts toward `maxProcesses`: it does not while the run waits for background work. */
     counted?: boolean;
+    /**
+     * The session's latest `done` went through `turnEnded`: whether background work was still open then, and the stream's last item at that moment, after
+     * which a turn the agent starts by itself says its own words.
+     */
+    told?: { open: boolean; seq: number };
 }
 
 /** Why a turn has to be repeated after a wait. */
@@ -114,8 +97,8 @@ type Wait = { kind: 'limit'; until: number } | { kind: 'transient'; delayMs: num
  */
 type Retry = Wait | { kind: 'resume' } | { kind: 'stopped' };
 
-/** Synchronous, because `spawn` reads it in its transaction and a turn between counting the live sessions and starting its own: nothing may wait there. */
-function isFolder(path: string): boolean {
+/** Synchronous, because a turn reads it between counting the live sessions and starting its own: nothing may wait there. */
+export function isFolder(path: string): boolean {
     try {
         return statSync(path).isDirectory();
     }
@@ -132,16 +115,36 @@ function additionalFolders(project: Project, cwd: string): string[] {
     return project.folders.flatMap(folder => folder.path !== cwd && isFolder(folder.path) ? [folder.path] : []);
 }
 
+/** What the system prompt says about a run's chat: none for a run without one, the parent's id and title for a thread (`Chat.parentChatId`). */
+function promptChat(store: Store, run: Run): PromptChat | undefined {
+    const chat = run.chatId ? getChat(store.db, run.chatId) : undefined;
+
+    if (!chat) {
+        return undefined;
+    }
+
+    const parent = chat.parentChatId ? getChat(store.db, chat.parentChatId) : undefined;
+
+    return chat.parentChatId ? { parent: { id: chat.parentChatId, title: parent?.title ?? chat.parentChatId } } : {};
+}
+
 const firstLine = (text: string) => text.split('\n')[0].trim().slice(0, 300);
 
 /**
- * Drives runs: takes a run through its slot, feeds the engine session one turn at a time, maps its events to stream
- * items, and settles the run's status. A turn that ends while children work parks the run (`waiting_children`); a
- * later wake-up starts a new turn of the same session. Everything durable goes through `RunService` and the stream writer.
+ * Drives runs: takes a run through its slot, feeds the engine session one turn at a time, maps its events to stream items, and settles the run's
+ * status. A session whose agent keeps background work open outlives its turn (`waiting_background`), and a message goes into it; any other turn ends
+ * its session, and the next message starts a new turn of the same conversation. Everything durable goes through `RunService` and the stream writer.
  */
 export class RunDriver {
     /** Called once a turn's engine session has started, with the run's id: messages steered while the run had no session can go to it now. */
     onTurnStarted: (runId: string) => void = () => undefined;
+    /**
+     * Called after the commit in which a turn of a chat's orchestrator ended at a `done` and left the run `succeeded` or `waiting_background` (also a turn
+     * the agent started by itself while its session waits), with the run as that commit left it and the turn's final text (see `turnEnded`). A Stop, a
+     * failure, a turn ended to send a message and a compact turn are not turn ends here, and neither is one with nothing to tell: no text, nothing open,
+     * and no earlier word that work was still open.
+     */
+    onTurnEnd: (run: Run, text: string | undefined) => void = () => undefined;
     private live = new Map<string, LiveRun>();
     /** The last flight of each run. A new one starts behind it, so a run never has two turns at once. */
     private flights = new Map<string, Promise<void>>();
@@ -157,87 +160,10 @@ export class RunDriver {
 
     /* --------------------------------- Starting -------------------------------- */
 
-    /** Creates a run for an orchestrator's `run_spawn` and starts it once the surrounding transaction commits. A repeated key returns the first run. */
-    spawn(input: SpawnInput): { run: Run; duplicate: boolean } {
-        const { store, runs, config } = this.deps;
-
-        return store.tx(() => {
-            const { parent, tasks } = input;
-            const status = runs.require(parent.id).status;
-
-            // A cancelled orchestrator's session may still deliver a tool call: it must not start work nobody is watching.
-            if (isTerminalRunStatus(status)) {
-                throw conflict(`${ parent.name } is ${ status } and cannot start more runs`);
-            }
-
-            const existing = findSpawnedChild(store.db, parent.id, input.idempotencyKey);
-
-            if (existing) {
-                return { run: existing, duplicate: true };
-            }
-
-            if (depthOf(store.db, parent.id) + 2 > MAX_DEPTH) {
-                throw conflict(`Runs nest ${ MAX_DEPTH } levels deep at most: ${ parent.name } is itself a child run and cannot start more`);
-            }
-
-            // Sub-agents inside the orchestrator's own session count toward neither limit.
-            if (countActiveSpawnedChildren(store.db, parent.id) >= config.maxActiveChildren) {
-                throw conflict(`${ parent.name } has ${ config.maxActiveChildren } runs unfinished, the most it may have at once. End your turn so they can finish, then start the rest.`);
-            }
-
-            if (countSpawnedChildren(store.db, parent.id) >= config.maxChildren) {
-                throw conflict(`${ parent.name } already started ${ config.maxChildren } runs, the most one orchestrator may start over the life of its chat (finished ones count too); continue the work in a new chat`);
-            }
-
-            if (input.cwd !== undefined && !(isAbsolute(input.cwd) && isFolder(input.cwd))) {
-                throw invalid(`cwd must be the absolute path of an existing folder: ${ input.cwd }`);
-            }
-
-            if (input.role === 'executor') {
-                for (const task of tasks) {
-                    // A chat started from a task is itself assigned to it; the orchestrator may still hand the work to an executor.
-                    const [active] = runs.activeRunsOfTask(task.id, parent.id);
-
-                    if (active) {
-                        throw new CommandError('already_running', `Task ${ task.key } already has an active run (${ active.name }). Wait for it, or run_cancel it first.`);
-                    }
-                }
-            }
-
-            const [first] = tasks;
-            const engine = input.engine ?? parent.engine;
-            // A child on the parent's own engine goes on running what the chat chose. On another engine the parent's model means nothing,
-            // and a model the child names has levels of its own; those children get what they name, else the project's model (`createRun`).
-            const inherits = engine === parent.engine && input.model === undefined;
-            const run = runs.createRun({
-                project: runs.projectOf(parent),
-                role: input.role,
-                origin: 'spawned',
-                summary: tasks.length > 1 ? `${ first.title } (+${ tasks.length - 1 } more)` : first.title,
-                parent,
-                engine,
-                model: inherits ? parent.model : input.model,
-                effort: inherits ? parent.effort : undefined,
-                cwd: input.cwd,
-                idempotencyKey: input.idempotencyKey,
-                nextPrompt: firstMessage(input.role, runs.modeOf(parent), input.prompt),
-                ...(input.role === 'executor' ? { assigned: tasks } : { verifies: tasks }),
-            });
-            const keys = tasks.map(task => task.key).join(', ');
-
-            appendItem(store, run.id, { kind: 'user', text: input.prompt });
-            runs.note(parent.id, run.status === 'blocked' ? `${ run.name } is waiting: ${ run.statusReason }` : `Started ${ run.name } on ${ keys }`);
-            this.launch(run.id);
-
-            return { run, duplicate: false };
-        });
-    }
-
     /**
-     * Starts the next turn of a `queued` or `blocked` run once the surrounding transaction commits. The turn begins with
-     * the message stored on the run, followed by the results of finished children it has not seen. A run whose session outlived its turn (it waits for
-     * background work) takes the message into that session instead: the flight that reads the session ends only with it, so a new flight queued behind
-     * it would never start.
+     * Starts the next turn of a `queued` or `blocked` run once the surrounding transaction commits. The turn begins with the message stored on the run.
+     * A run whose session outlived its turn (it waits for background work) takes the message into that session instead: the flight that reads the session
+     * ends only with it, so a new flight queued behind it would never start.
      */
     launch(runId: string): void {
         this.deps.store.afterCommit(() => {
@@ -327,8 +253,8 @@ export class RunDriver {
     /**
      * Ends the turn the run is working on, on purpose, so that a message the agent cannot take meanwhile (`cannotSteer`) can be the next one: stop and send.
      * The session is aborted as a Stop would, and the run is left at rest (`cancelled`, "Stopped to send a message"; see `rest`) once the turn has wound
-     * down, which is when the queue sends the message. It is not a Stop: the run's own signal stays, so nothing else of the run ends (the runs it spawned go on and report
-     * to it as ever), and nothing holds the queue. Returns whether there was a running turn to end.
+     * down, which is when the queue sends the message. It is not a Stop: the run's own signal stays, and nothing holds the queue. Returns whether there was
+     * a running turn to end.
      */
     interrupt(runId: string): boolean {
         const live = this.live.get(runId);
@@ -479,26 +405,6 @@ export class RunDriver {
         return typeof prompt === 'string' && prompt === this.deps.compactCommand(engine);
     }
 
-    /** `report_result`: the run's work is over with this outcome. The session gets a moment to end its turn, then is closed. */
-    report(runId: string, report: Report): void {
-        const live = this.live.get(runId);
-
-        if (!live?.session) {
-            throw new Error('This run has no live session to report from');
-        }
-
-        if (live.report) {
-            throw new Error('This run already reported its result');
-        }
-
-        if (isTerminalRunStatus(this.deps.runs.require(runId).status)) {
-            throw new Error('This run was stopped; its result is not recorded');
-        }
-
-        live.report = report;
-        live.reportTimer = setTimeout(() => void live.close?.(), this.deps.config.timings.killGraceMs);
-    }
-
     /** Aborts every live run without changing statuses (the next start marks them interrupted) and waits for them to settle. */
     async stop(): Promise<void> {
         const { runs, config, store } = this.deps;
@@ -544,7 +450,7 @@ export class RunDriver {
                 }
 
                 if (retry.kind === 'stopped') {
-                    this.rest(runId, live);
+                    this.rest(runId);
 
                     return;
                 }
@@ -594,14 +500,10 @@ export class RunDriver {
             throw new EngineFailure(`The ${ run.engine } engine is not available in this daemon`);
         }
 
-        // The stream as it is before this turn adds its own lines (a note per child that finished): what the agent was told so far.
+        // The stream as it is before this turn adds its own lines: what the agent was told so far.
         const told = nextSeq(store.db, runId) - 1;
         const work = getRunWork(store.db, runId);
-        const { prompt, pending, children, lost } = this.compose(run, work);
-
-        for (const child of children) {
-            runs.note(runId, `${ child.name } finished: ${ childReport(store, child).state }`);
-        }
+        const { prompt, lost } = this.compose(work, run.engine);
 
         const turnAbort = new AbortController();
         const ended = AbortSignal.any([signal, turnAbort.signal, this.stopping.signal]);
@@ -624,15 +526,17 @@ export class RunDriver {
         live.delivery = undefined;
         live.restart = false;
         live.interrupted = false;
+        live.told = undefined;
 
         // The message this turn sends is in the stream already; the record leaves it out, as the agent gets it in the prompt.
         const incoming = [prompt];
         const cwd = work.cwd ?? mainFolder(project).path;
+        const chat = promptChat(store, run);
         const session = engine.start({
             cwd,
             additionalDirectories: additionalFolders(project, cwd),
             prompt,
-            systemPrompt: [systemPrompt(run.role, mode, project, cwd), skillPrompt(run.role, config.systemSkillsDir)].filter(Boolean).join('\n\n'),
+            systemPrompt: [systemPrompt(mode, project, cwd, chat), skillPrompt(config.systemSkillsDir, chat?.parent !== undefined)].filter(Boolean).join('\n\n'),
             resumeSessionId: run.sessionId,
             ...(run.sessionId && { history: () => conversationRecord(listItems(store.db, runId, 0).filter(item => item.seq <= told), incoming) }),
             model: run.model,
@@ -663,11 +567,7 @@ export class RunDriver {
         live.session = session;
         live.close = close;
         ended.addEventListener('abort', onEnded, { once: true });
-        store.tx(() => {
-            setRunWork(store.db, runId, { nextPrompt: null, ...(lost && { lostBackground: null }) });
-            markMailboxDelivered(store.db, pending.map(entry => entry.id));
-        });
-
+        store.tx(() => setRunWork(store.db, runId, { nextPrompt: null, ...(lost && { lostBackground: null }) }));
         this.onTurnStarted(runId);
 
         try {
@@ -691,12 +591,6 @@ export class RunDriver {
                 return { kind: 'resume' };
             }
 
-            if (live.report) {
-                this.settle(runId, live, undefined);
-
-                return undefined;
-            }
-
             if (live.pausedUntil !== undefined && !signal.aborted) {
                 return { kind: 'limit', until: live.pausedUntil };
             }
@@ -716,7 +610,6 @@ export class RunDriver {
             throw error;
         }
         finally {
-            clearTimeout(live.reportTimer);
             ended.removeEventListener('abort', onEnded);
             // Whatever the agent and its sub-agents left running ends with the session: a Stop or a failure mid-call would otherwise leave the call shimmering.
             const reason = signal.aborted || live.interrupted ? STOPPED_TOOL : UNFINISHED_TOOL;
@@ -741,49 +634,32 @@ export class RunDriver {
 
     /**
      * The turn was ended on purpose (`interrupt`) and has wound down: its message is closed, its calls are stopped and its session is gone. The run rests as
-     * `cancelled` with the reason, which is what the chat's queue waits for to send its next message; no run below it is cancelled, and the queue is not
-     * paused (a Stop does both). A run that ended some other way meanwhile (a Stop) stays as it is. When the message is not in the queue any more (the person
-     * took it back while the turn ended) nothing is sent, and nothing would wake a `cancelled` run for the runs it started: it waits for them as at the end of
-     * any turn instead (`settle`), and their results start its next turn.
+     * `cancelled` with the reason, which is what the chat's queue waits for to send its next message; the queue is not paused (a Stop pauses it). A run that
+     * ended some other way meanwhile (a Stop) stays as it is. When the message is not in the queue any more (the person took it back while the turn ended)
+     * nothing is sent, and the run stays at rest until the next message.
      */
-    private rest(runId: string, live: LiveRun): void {
+    private rest(runId: string): void {
         const { store, runs } = this.deps;
 
         store.tx(() => {
-            const run = runs.require(runId);
-
-            if (isTerminalRunStatus(run.status)) {
-                return;
-            }
-
-            const chat = run.chatId ? getChat(store.db, run.chatId) : undefined;
-            const hasChildren = countActiveSpawnedChildren(store.db, runId) > 0 || pendingMailbox(store.db, runId).length > 0;
-
-            if (hasChildren && (chat ? queueOf(chat).length : 0) === 0) {
-                this.settle(runId, live, undefined);
-            }
-            else {
+            if (!isTerminalRunStatus(runs.require(runId).status)) {
                 runs.setStatus(runId, 'cancelled', { reason: STOPPED_TO_SEND_REASON });
             }
         });
     }
 
     /**
-     * What a turn tells the agent: the message stored on the run, then what its finished children report, then the background work its session lost
-     * (`forgetBackground`, `recover`). A turn with none of these is a continuation. Nothing is written: the caller does that once the agent has the
-     * message, and clears the record of lost work only when `lost` says it was told.
+     * What a turn tells the agent: the message stored on the run, then the background work its session lost (`forgetBackground`, `recover`). A turn with
+     * neither is a continuation. Nothing is written: the caller does that once the agent has the message, and clears the record of lost work only when
+     * `lost` says it was told.
      */
-    private compose(run: Run, work: RunWork) {
-        const { store } = this.deps;
-        // A compact turn is the command alone. Children that finished while it waited for its slot, and work its session lost, are told in the turn after
-        // it (`settle` parks the run for the children).
-        const compact = this.isCompactCommand(run.engine, work.nextPrompt);
-        const pending = compact ? [] : pendingMailbox(store.db, run.id);
-        const children = pending.flatMap(entry => getRun(store.db, entry.childRunId) ?? []);
+    private compose(work: RunWork, engine: EngineId) {
+        // A compact turn is the command alone: work its session lost is told in the turn after it.
+        const compact = this.isCompactCommand(engine, work.nextPrompt);
         const lostItems = compact || !work.lostBackground?.length ? undefined : work.lostBackground;
-        const prompt = [work.nextPrompt, children.length > 0 && wakeMessage(store, children), lostItems && lostBackgroundMessage(lostItems)].filter(Boolean).join('\n\n') || CONTINUE_MESSAGE;
+        const prompt = [work.nextPrompt, lostItems && lostBackgroundMessage(lostItems)].filter(Boolean).join('\n\n') || CONTINUE_MESSAGE;
 
-        return { prompt, pending, children, lost: lostItems !== undefined };
+        return { prompt, lost: lostItems !== undefined };
     }
 
     /**
@@ -854,7 +730,7 @@ export class RunDriver {
             return;
         }
 
-        const { prompt, pending, children, lost } = this.compose(runs.require(runId), getRunWork(store.db, runId));
+        const { prompt, lost } = this.compose(getRunWork(store.db, runId), runs.require(runId).engine);
 
         // The session takes a turn: it counts toward `maxProcesses` again (it is running already, so the cap cannot refuse it). The answer is counted
         // before the message goes, since the agent's events can come back before the call returns.
@@ -880,14 +756,9 @@ export class RunDriver {
 
         live.prompt = prompt;
         live.delivering = false;
-        store.tx(() => {
-            setRunWork(store.db, runId, { nextPrompt: null, ...(lost && { lostBackground: null }) });
-            markMailboxDelivered(store.db, pending.map(entry => entry.id));
-
-            for (const child of children) {
-                runs.note(runId, `${ child.name } finished: ${ childReport(store, child).state }`);
-            }
-        });
+        // The answer to this message is a turn end of its own, whatever the turns before it told.
+        live.told = undefined;
+        store.tx(() => setRunWork(store.db, runId, { nextPrompt: null, ...(lost && { lostBackground: null }) }));
         this.onTurnStarted(runId);
     }
 
@@ -1068,7 +939,7 @@ export class RunDriver {
             return;
         }
 
-        if (!['waiting_background', 'waiting_children'].includes(this.deps.runs.require(run.id).status)) {
+        if (this.deps.runs.require(run.id).status !== 'waiting_background') {
             return;
         }
 
@@ -1112,22 +983,21 @@ export class RunDriver {
     /**
      * A `done`. Returns whether the session stays open for the background work its agent still has, which the iterator goes on being read for; `false` ends
      * it, and the run settles as the turn's result decides. A turn the agent started by itself (the session waits, and no message of ours is out) ends
-     * with its own `done`, which can only change what the run waits for (children it started or read); the answer to a message sent into the session,
-     * like the session's first turn, is what decides between waiting on and settling.
+     * with its own `done` and leaves the run waiting as it was; the answer to a message sent into the session, like the session's first turn, is what
+     * decides between waiting on and settling.
      */
     private async onDone(run: Run, live: LiveRun, session: EngineSession, writer: TurnWriter, native: NativeAgents, result: string | undefined): Promise<boolean> {
         writer.end();
 
         if (live.lingering && !live.sent) {
             writer.finish(undefined, this.openTasks(live));
+            native.finish(undefined, true);
 
-            // The agent's own turn may have started children or read what they reported, which decides what the run waits for now. A message on its way
-            // holds the run in `queued` or `running`: its answer decides.
-            if (['waiting_background', 'waiting_children'].includes(this.deps.runs.require(run.id).status)) {
-                this.settle(run.id, live, result, true);
-            }
-            else {
-                native.finish(undefined, true);
+            // The run waits on as it was, and the turn has ended all the same; a Stop that ended the run meanwhile made it no turn end.
+            const current = this.deps.runs.require(run.id);
+
+            if (current.status === 'waiting_background') {
+                this.turnEnded(current, live, result);
             }
 
             return true;
@@ -1135,12 +1005,12 @@ export class RunDriver {
 
         if (live.sent) {
             live.sent--;
-            // The agent can answer before the hand-over has written down that it has the message (the children's results it carried): settling comes after.
+            // The agent can answer before the hand-over has written down that it has the message: settling comes after.
             await live.delivery;
         }
 
-        // Only a chat's orchestrator waits: executors, verifiers and spawned runs end their session here, as does an agent that cannot take another prompt.
-        const waits = run.role === 'orchestrator' && run.chatId !== undefined && !live.report && !live.ended?.aborted
+        // Only a chat's orchestrator waits; a run with no chat ends its session here, as does an agent that cannot take another prompt.
+        const waits = run.role === 'orchestrator' && run.chatId !== undefined && !live.ended?.aborted
             && typeof session.send === 'function' && (live.background?.length ?? 0) > 0;
 
         if (!waits) {
@@ -1240,10 +1110,8 @@ export class RunDriver {
     /* ---------------------------------- Settling --------------------------------- */
 
     /**
-     * The turn ended normally. A run that reported ends with its report. An orchestrator with children still working,
-     * or with results it has not seen, parks in `waiting_children` and is woken for them. Anything else succeeds, unless `lingers`: the agent still has
-     * background work open and its session stays, so the run waits in `waiting_background` (children win, as above) and keeps the sub-agents that
-     * the work includes. Returns whether the run waits with its session open.
+     * The turn ended normally: the run succeeds with the turn's result, unless `lingers`: the agent still has background work open and its session stays,
+     * so the run waits in `waiting_background` and keeps the sub-agents that the work includes. Returns whether the run waits with its session open.
      */
     private settle(runId: string, live: LiveRun, result: string | undefined, lingers = false): boolean {
         const { store, runs } = this.deps;
@@ -1251,52 +1119,52 @@ export class RunDriver {
         return store.tx(() => {
             live.native?.finish(undefined, lingers);
 
-            const run = runs.require(runId);
-
-            if (isTerminalRunStatus(run.status)) {
+            if (isTerminalRunStatus(runs.require(runId).status)) {
                 return false;
-            }
-
-            const { report } = live;
-
-            if (report) {
-                setRunWork(store.db, runId, { outcome: report.status });
-
-                if (report.status === 'done') {
-                    runs.setStatus(runId, 'succeeded', { result: report.summary });
-                }
-                else {
-                    runs.setStatus(runId, 'failed', { result: report.summary, error: `${ report.status === 'blocked' ? 'Blocked: ' : '' }${ firstLine(report.summary) }` });
-                }
-
-                return false;
-            }
-
-            if (run.role === 'orchestrator') {
-                const active = countActiveSpawnedChildren(store.db, runId);
-                const unseen = pendingMailbox(store.db, runId).length;
-
-                if (active > 0 || unseen > 0) {
-                    runs.setStatus(runId, 'waiting_children', { reason: active > 0 ? `Waiting for ${ active } child ${ active === 1 ? 'run' : 'runs' }` : 'Child results are ready' });
-
-                    if (unseen > 0) {
-                        store.afterCommit(() => runs.onChildSettled(runId));
-                    }
-
-                    return lingers;
-                }
             }
 
             if (lingers) {
-                runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
+                this.turnEnded(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON }), live, result);
 
                 return true;
             }
 
-            runs.setStatus(runId, 'succeeded', { result });
+            const { told } = live;
+            const run = runs.setStatus(runId, 'succeeded', { result });
+
+            // A session that ends after a `done` that was told already (it waited for background work) is no new turn end. It is told once more only when
+            // that `done` left work open, so the parent learns that no report is coming.
+            if (!told || told.open) {
+                this.turnEnded(run, live, result);
+            }
 
             return false;
         });
+    }
+
+    /**
+     * A turn of `run` ended at a `done` (`settle`, or `onDone` for a turn the agent started by itself): `onTurnEnd` hears of it once the transaction
+     * commits, with the turn's final text: the engine's result, else the turn's last message (`lastTurnText`, after the turn told before it in this
+     * session: a turn the agent started answers no message), read now, before the chat's queue can give the run its next message. A turn that says nothing
+     * and leaves nothing open has nothing to tell, unless the turn told before it left work open: the thread is done then, with no report. The agent's
+     * compact command only compacted the context: it is not told.
+     */
+    private turnEnded(run: Run, live: LiveRun, result: string | undefined): void {
+        const { store } = this.deps;
+
+        if (this.isCompactCommand(run.engine, live.prompt)) {
+            return;
+        }
+
+        const open = run.status === 'waiting_background' && (run.background?.length ?? 0) > 0;
+        const text = result?.trim() || lastTurnText(store.db, run.id, live.told?.seq);
+        const tells = text !== undefined || open || live.told?.open === true;
+
+        live.told = { open, seq: nextSeq(store.db, run.id) - 1 };
+
+        if (tells) {
+            store.afterCommit(() => this.onTurnEnd(run, text));
+        }
     }
 
     private fail(runId: string, error: unknown): void {

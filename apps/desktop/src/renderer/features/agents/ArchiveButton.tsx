@@ -19,7 +19,8 @@ import type { Chat, ChatId } from '@clowdy/protocol';
 /**
  * The archive, in the heading beside the filters: a button (the history mark) that drops down the chats that were put away, the last one first, each with how long
  * ago and a `⋯` with Unarchive and Delete. Picking a row brings the chat back into the list and opens it, so a chat is either in the list or here,
- * never both. The list opens under the `anchor`, the heading, and is as wide as it, so it stays inside the column and is as close to the button as the filters' menu is.
+ * never both. Threads put away with their parent are part of its entry and have none of their own (`archivedChats`); a thread put away alone has one.
+ * The list opens under the `anchor`, the heading, and is as wide as it, so it stays inside the column and is as close to the button as the filters' menu is.
  */
 export function ArchiveButton({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
     const root = useRootStore();
@@ -64,9 +65,9 @@ export function ArchiveButton({ anchor }: { anchor: RefObject<HTMLElement | null
                                                 ago={ formatElapsed(now - chat.archivedAt) }
                                                 onUnarchive={ () => void unarchiveChat(root, chat) }
                                                 onDelete={ () => {
-                                                    // A chat that ran asks first, and the dialog should not open over the list.
+                                                    // A chat that ran asks first, saying how many threads go with it, and the dialog should not open over the list.
                                                     setIsOpen(false);
-                                                    deleteChat(root, chat, chat.orchestratorRunId !== undefined && project.runs.has(chat.orchestratorRunId));
+                                                    deleteChat(root, chat, chat.orchestratorRunId !== undefined && project.runs.has(chat.orchestratorRunId), project.threadsBelow(chat.id).length);
                                                 } }
                                             />
                                         ) }

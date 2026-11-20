@@ -8,10 +8,11 @@ import { appendItem } from '../domain/items';
 import { placeQueued, queueOf, settleSteers, userItemOf, withQueue } from '../domain/queue';
 import { conflict, errorMessage, notFound } from '../errors';
 import { newId } from '../ids';
+import { mergeNotices, noticeContent, noticeSummary } from './notices';
 import { STOPPED_TURN_MESSAGE } from './prompts';
 import { STOPPED_TO_SEND_REASON } from './transitions';
 
-import type { Chat, QueuedMessage, QueuedMessageMode, QueuePause, Run } from '@clowdy/protocol';
+import type { Chat, MessageSource, QueuedMessage, QueuedMessageMode, QueuePause, Run, ThreadNotice } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { AttachmentRecord } from '../db/attachments';
 import type { Store } from '../store';
@@ -25,7 +26,7 @@ export interface QueueDeps {
     attachments: AttachmentsService;
 }
 
-/** A message for a busy orchestrator, as `chat.send` read it. */
+/** A message for a busy orchestrator, as `sendMessage` read it. */
 export interface QueueInput {
     mode: QueuedMessageMode;
     text: string;
@@ -33,11 +34,13 @@ export interface QueueInput {
     files: readonly AttachmentRecord[];
     /** What the agent is told. */
     content: string;
+    /** Who wrote it when the person did not (another thread); the stream's `user` item carries it once the agent gets the message. */
+    from?: MessageSource;
 }
 
 /**
- * Whether a chat's orchestrator takes a message at once: its work is over, or it only waits for its children or for background work its session keeps open
- * (`isBusyRunStatus`). A message to one whose session is open goes into that session (`RunDriver.launch`), not into a new one.
+ * Whether a chat's orchestrator takes a message at once: its work is over, or it only waits for background work its session keeps open (`isBusyRunStatus`).
+ * A message to one whose session is open goes into that session (`RunDriver.launch`), not into a new one.
  */
 export function isAtRest(run: Run): boolean {
     return !isBusyRunStatus(run.status);
@@ -47,6 +50,24 @@ export function isAtRest(run: Run): boolean {
 const COMPACT_TEXT = 'Compact the conversation';
 
 const isCompact = (item: QueuedMessage) => item.command === 'compact';
+
+/** The threads a queued notice reports; none for any other message. */
+const noticesOf = (item: QueuedMessage): ThreadNotice[] => (item.from?.kind === 'threadNotice' ? item.from.threads : []);
+
+/** A queued notice of `threads`: its one line, what the agent reads, and the entries the stream's card is drawn from. */
+const noticeFields = (threads: ThreadNotice[]) => ({ text: noticeSummary(threads), content: noticeContent(threads), from: { kind: 'threadNotice' as const, threads } });
+
+/**
+ * How the queue of an orchestrator that is over already waits for a notice that arrives now: held as a Stop or a failure would have held it, since
+ * the person decides what comes after those. A run that only rests until the message that stopped it goes (`STOPPED_TO_SEND_REASON`) is not held.
+ */
+function holdFor(run: Run): QueuePause | undefined {
+    if (run.status === 'failed' || run.status === 'interrupted') {
+        return 'failed';
+    }
+
+    return run.status === 'cancelled' && run.statusReason !== STOPPED_TO_SEND_REASON ? 'stopped' : undefined;
+}
 
 /**
  * What the person writes while a chat's orchestrator works waits on the chat (`Chat.queue`), and its bubble reaches the stream only when the agent gets
@@ -82,6 +103,7 @@ export class ChatQueue {
             text: input.text,
             ...(input.files.length > 0 && { attachments: input.files.map(toAttachment) }),
             content: input.content,
+            ...(input.from && { from: input.from }),
             createdAt: Date.now(),
         };
 
@@ -97,9 +119,54 @@ export class ChatQueue {
     }
 
     /**
+     * Puts a notice of threads that stopped (`ThreadNotices`) in the queue of an orchestrator that cannot take it now. It joins the notice that waits
+     * there already, the same thread's entry replaced and the others kept in their order, or becomes one at the end of the next turns: one message for
+     * all of them. It goes as the next turn when the orchestrator rests, like any queued message; one that is over already (a Stop, a failure, a
+     * restart) holds it for the person. Call it in a transaction.
+     */
+    enqueueNotice(chat: Chat, run: Run, threads: readonly ThreadNotice[]): void {
+        const { store } = this.deps;
+        const queue = queueOf(chat);
+        // A notice the agent is taking as a steer (the person sent it now) is the agent's already.
+        const waiting = queue.find(item => item.from?.kind === 'threadNotice' && !this.steering.has(item.id));
+        const merged = mergeNotices(waiting ? noticesOf(waiting) : [], threads);
+        const next = waiting
+            ? queue.map(item => (item.id === waiting.id ? { ...item, ...noticeFields(merged) } : item))
+            : placeQueued(queue, { id: newId('que'), mode: 'queue', ...noticeFields(merged), createdAt: Date.now() });
+        const paused = chat.queuePaused ?? holdFor(run);
+
+        saveChat(store, withQueue({ ...chat, updatedAt: Date.now() }, next, paused));
+
+        // An orchestrator at rest whose queue flows (a compact item waits for its background work to end, say) takes it with its next settle, which is now.
+        if (!paused && isAtRest(run)) {
+            store.afterCommit(() => this.settle(run));
+        }
+    }
+
+    /** Takes one thread's entry out of the notice that waits in the queue, and the notice with it when it was the last; the parent read that thread itself. */
+    dropNotice(chatId: string, threadId: string): void {
+        const { store } = this.deps;
+
+        store.tx(() => {
+            const chat = getChat(store.db, chatId);
+            const queue = chat ? queueOf(chat) : [];
+            const item = queue.find(entry => !this.steering.has(entry.id) && noticesOf(entry).some(notice => notice.chatId === threadId));
+
+            if (!chat || !item) {
+                return;
+            }
+
+            const rest = noticesOf(item).filter(notice => notice.chatId !== threadId);
+            const next = rest.length === 0 ? queue.filter(entry => entry.id !== item.id) : queue.map(entry => (entry.id === item.id ? { ...entry, ...noticeFields(rest) } : entry));
+
+            saveChat(store, withQueue(chat, next, chat.queuePaused));
+        });
+    }
+
+    /**
      * `chat.compact`: the agent's own compact command (`command`) as a turn of the orchestrator, with no `user` item (the person wrote nothing). A finished
-     * orchestrator gets it at once, and a compact item that waited in its queue goes with it. One that works or waits for its children gets it later, as a
-     * compact item at the end of the queue (`QueuedMessage.command`), which runs once it has finished; asked again while one waits, or while the agent is
+     * orchestrator gets it at once, and a compact item that waited in its queue goes with it. One that works or waits for background work gets it later, as
+     * a compact item at the end of the queue (`QueuedMessage.command`), which runs once it has finished; asked again while one waits, or while the agent is
      * compacting already, it changes nothing. Call it in the transaction of the command.
      */
     compact(chat: Chat, run: Run, command: string): void {
@@ -115,8 +182,6 @@ export class ChatQueue {
 
             return;
         }
-
-        this.requireCompactable(run);
 
         if (queue.some(isCompact)) {
             saveChat(store, withQueue(chat, queue.filter(item => !isCompact(item)), chat.queuePaused));
@@ -167,9 +232,9 @@ export class ChatQueue {
      * Send now. A busy orchestrator gets the message as a steer: it moves to the end of the steers and goes to the running turn when the agent can take it.
      * When the orchestrator is running and its agent cannot take a steer at all (`RunDriver.cannotSteer`), the message would wait for the turn's end however
      * long that is, so Send now is stop and send, which the button says: the message moves to the head of the steers, the turn is ended on purpose
-     * (`RunDriver.interrupt`), and the orchestrator's coming to rest gives the message to its next turn. Only the orchestrator's turn ends: the runs it spawned
-     * go on, and the queue is not paused. One at rest gets the message at once as its next turn, and a paused queue flows again. A compact item steers nothing:
-     * while the orchestrator is busy it keeps its place, and at rest it runs when the orchestrator can compact and is refused as `chat.compact` is when it cannot.
+     * (`RunDriver.interrupt`), and the orchestrator's coming to rest gives the message to its next turn. Only the orchestrator's turn ends, and the queue is
+     * not paused. One at rest gets the message at once as its next turn, and a paused queue flows again. A compact item steers nothing:
+     * while the orchestrator is busy it keeps its place, and at rest it runs once the orchestrator has finished, and is refused while it waits for background work.
      */
     sendNow(chatId: string, itemId: string): { chatId: string; runId: string } {
         const { store, runs, driver } = this.deps;
@@ -207,7 +272,11 @@ export class ChatQueue {
 
             // Like `chat.compact`, it is not activity: the chat keeps its place.
             if (isCompact(item)) {
-                this.requireCompactable(run);
+                // At rest but not finished: the session waits for background work, and the command must be a turn of its own.
+                if (!this.canCompact(run)) {
+                    throw conflict('The orchestrator is waiting for background work. Compact the chat when it has finished');
+                }
+
                 this.dispatch(chat, run, item);
 
                 return { chatId, runId: run.id };
@@ -289,8 +358,8 @@ export class ChatQueue {
                 return;
             }
             const settled = withQueue(chat, settleSteers(queue), paused);
-            // One item per turn, in order. A compact item waits for an orchestrator that can compact (finished, every child result read), and the messages
-            // behind it go first meanwhile: the turn that reads the results comes before the compaction.
+            // One item per turn, in order. A compact item waits for an orchestrator that can compact (finished, its session over), and the messages
+            // behind it go first meanwhile.
             const next = paused ? undefined : queueOf(settled).find(item => !isCompact(item) || this.canCompact(current));
 
             if (next) {
@@ -325,22 +394,11 @@ export class ChatQueue {
     }
 
     /**
-     * Whether the orchestrator can take a compact turn now: it has finished, and has read what its children did, because a turn starts with their results and
-     * the command must be the whole prompt.
+     * Whether the orchestrator can take a compact turn now: it has finished. One that waits for background work has its session open, and the command must
+     * be a turn of its own.
      */
     private canCompact(run: Run): boolean {
-        return isTerminalRunStatus(run.status) && !this.deps.runs.hasUnseenResults(run.id);
-    }
-
-    /** Refuses a compact turn an orchestrator at rest cannot take now (`canCompact`), saying what it waits for. */
-    private requireCompactable(run: Run): void {
-        if (!isTerminalRunStatus(run.status)) {
-            throw conflict('The orchestrator is waiting for its child runs. Compact the chat when they have finished');
-        }
-
-        if (this.deps.runs.hasUnseenResults(run.id)) {
-            throw conflict('Some child runs finished that the orchestrator has not read yet. Send it a message first, then compact the chat');
-        }
+        return isTerminalRunStatus(run.status);
     }
 
     /* -------------------------------- Steering -------------------------------- */

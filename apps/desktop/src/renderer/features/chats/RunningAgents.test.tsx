@@ -8,7 +8,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { RunningAgents } from './RunningAgents';
 
-import type { BackgroundItem, Run } from '@clowdy/protocol';
+import type { BackgroundItem, Chat, Run } from '@clowdy/protocol';
 import type { KeyValueStorage } from '../../stores/storage';
 
 vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), show: vi.fn() } }));
@@ -16,9 +16,9 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), warning: v
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /*
- * The strip above the message box of c-1, whose orchestrator r-orch-1 has Executor 07 working, Executor 08 waiting for the person and the
- * native Explore sub-agent r-na-02 searching, and of c-5, whose orchestrator r-orch-5 waits for two commands it started in the background.
- * The test build has no MobX observer plugin, so the view is drawn again by hand after a change.
+ * The strip above the message box of c-1, whose orchestrator r-orch-1 has the native sub-agents r-na-03 (a general-purpose one, writing) and r-na-02
+ * (Explore, searching) at work, and of c-5, whose orchestrator r-orch-5 waits for two commands it started in the background. The test build has no
+ * MobX observer plugin, so the view is drawn again by hand after a change.
  */
 
 const memoryStorage = (): KeyValueStorage => {
@@ -73,12 +73,11 @@ async function draw(chatId = 'c-1') {
 }
 
 describe('RunningAgents', () => {
-    it('has a row per agent at work with what it does, and a Stop on each that can stop alone, a sub-agent of the session among them', async () => {
+    it('has a row per sub-agent at work with what it does, and a Stop on each that can stop alone', async () => {
         await draw();
 
         expect(rows().map(row => [row.querySelector('button')?.textContent, [...row.querySelectorAll('button')].at(1)?.textContent])).toEqual([
-            ['Executor 07 · Finishing reply · 5 calls', 'Stop'],
-            ['Executor 08 · Waiting for you', 'Stop'],
+            ['General agent · Finishing reply · 5 calls', 'Stop'],
             ['Explore agent · Searching useBookingPrice · 1 call', 'Stop'],
         ]);
     });
@@ -87,16 +86,16 @@ describe('RunningAgents', () => {
         await draw();
 
         const command = vi.spyOn(store, 'command');
-        const [executor07, , explore] = rows();
+        const [general, explore] = rows();
 
         await act(async () => explore.querySelector('button')!.click());
         expect(ui().runId).toBe('r-na-02');
 
-        await act(async () => [...executor07.querySelectorAll('button')][1].click());
-        expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-ex-07' });
-        await vi.waitFor(() => expect(runs().get('r-ex-07')?.status).toBe('cancelled'));
+        await act(async () => [...general.querySelectorAll('button')][1].click());
+        expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-na-03' });
+        await vi.waitFor(() => expect(runs().get('r-na-03')?.status).toBe('cancelled'));
         // Nothing else stopped, the orchestrator included.
-        expect([runs().get('r-orch-1')?.status, runs().get('r-ex-08')?.status, runs().get('r-na-02')?.status]).toEqual(['running', 'waiting_user', 'running']);
+        expect([runs().get('r-orch-1')?.status, runs().get('r-na-02')?.status]).toEqual(['running', 'running']);
     });
 
     it('stops a sub-agent of the session alone from its row, with the orchestrator\'s turn running', async () => {
@@ -104,17 +103,17 @@ describe('RunningAgents', () => {
 
         const command = vi.spyOn(store, 'command');
 
-        await act(async () => [...rows()[2].querySelectorAll('button')][1].click());
+        await act(async () => [...rows()[1].querySelectorAll('button')][1].click());
         expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-na-02' });
         await vi.waitFor(() => expect(runs().get('r-na-02')?.status).toBe('cancelled'));
-        expect([runs().get('r-orch-1')?.status, runs().get('r-ex-07')?.status, runs().get('r-ex-08')?.status]).toEqual(['running', 'running', 'waiting_user']);
+        expect([runs().get('r-orch-1')?.status, runs().get('r-na-03')?.status]).toEqual(['running', 'running']);
     });
 
     it('has no Stop on a sub-agent whose session cannot end it alone: the composer stops the run', async () => {
         put({ ...runs().get('r-na-02')!, canStopAlone: undefined });
         await draw();
 
-        expect(rows().map(row => buttons(row).slice(1))).toEqual([['Stop'], ['Stop'], []]);
+        expect(rows().map(row => buttons(row).slice(1))).toEqual([['Stop'], []]);
     });
 
     it('draws nothing while no agent of the chat works', async () => {
@@ -128,13 +127,12 @@ describe('RunningAgents, the header', () => {
     it('says Agents running over the rows, with Stop all when two or more of them can stop alone', async () => {
         await draw();
 
-        expect(lines().map(line => line.textContent)).toEqual([expect.stringMatching(/^Agents runningStop all$/), expect.stringContaining('Executor 07'), expect.stringContaining('Executor 08'), expect.stringContaining('Explore agent')]);
+        expect(lines().map(line => line.textContent)).toEqual([expect.stringMatching(/^Agents runningStop all$/), expect.stringContaining('General agent'), expect.stringContaining('Explore agent')]);
         expect(lines()[0]).toBe(header());
     });
 
     it('has no button with one agent that can stop alone: its own Stop does it', async () => {
-        put({ ...runs().get('r-ex-07')!, status: 'succeeded' });
-        put({ ...runs().get('r-ex-08')!, status: 'succeeded' });
+        put({ ...runs().get('r-na-03')!, status: 'succeeded' });
         await draw();
 
         expect(lines().map(line => line.textContent)).toEqual(['Agents running', expect.stringContaining('Explore agent')]);
@@ -144,10 +142,9 @@ describe('RunningAgents, the header', () => {
 
     it('does not count an agent that cannot stop alone: it makes no button, and with one that can the header has none either', async () => {
         put({ ...runs().get('r-na-02')!, canStopAlone: undefined });
-        put({ ...runs().get('r-ex-08')!, status: 'succeeded' });
         await draw();
 
-        expect(lines().map(line => line.textContent)).toEqual(['Agents running', expect.stringContaining('Executor 07'), expect.stringContaining('Explore agent')]);
+        expect(lines().map(line => line.textContent)).toEqual(['Agents running', expect.stringContaining('General agent'), expect.stringContaining('Explore agent')]);
         expect(buttons(header())).toEqual([]);
     });
 
@@ -160,7 +157,7 @@ describe('RunningAgents, the header', () => {
         expect(command).toHaveBeenCalledWith({ type: 'run.stopAgents', runId: 'r-orch-1' });
         expect(command).toHaveBeenCalledTimes(1);
 
-        await vi.waitFor(() => expect(['r-ex-07', 'r-ex-08', 'r-na-02'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled', 'cancelled']));
+        await vi.waitFor(() => expect(['r-na-03', 'r-na-02'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled']));
         expect(runs().get('r-orch-1')?.status).toBe('running');
         expect(store.selectedProject!.chats.get('c-1')?.queuePaused).toBeUndefined();
 
@@ -171,19 +168,20 @@ describe('RunningAgents, the header', () => {
 
     it('leaves a sub-agent that cannot stop alone at work', async () => {
         put({ ...runs().get('r-na-02')!, canStopAlone: undefined });
+        put({ ...runs().get('r-na-03')!, id: 'r-na-07', parentToolCallId: 'tc-agent-7', createdAt: 5 });
         await draw();
 
         await act(async () => header()!.querySelector('button')!.click());
-        await vi.waitFor(() => expect(['r-ex-07', 'r-ex-08'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled']));
+        await vi.waitFor(() => expect(['r-na-03', 'r-na-07'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled']));
         expect(runs().get('r-na-02')?.status).toBe('running');
         expect(runs().get('r-orch-1')?.status).toBe('running');
     });
 
     it('is one line over eight agents, and the line that counts the ones beyond the fifth has no button', async () => {
-        for (const id of ['r-ex-07', 'r-ex-08', 'r-na-02']) runs().set(id, { ...runs().get(id)!, status: 'succeeded' });
+        for (const id of ['r-na-03', 'r-na-02']) runs().set(id, { ...runs().get(id)!, status: 'succeeded' });
 
         for (let index = 1; index <= 8; index++) {
-            put({ ...runs().get('r-ex-07')!, id: `r-many-${ index }`, name: `Executor ${ 20 + index }`, status: 'running', createdAt: 100 + index });
+            put({ ...runs().get('r-na-03')!, id: `r-many-${ index }`, name: 'Explore', status: 'running', createdAt: 100 + index });
         }
 
         await draw();
@@ -347,8 +345,7 @@ describe('RunningAgents, the background row', () => {
         await draw();
 
         expect(rows().map(row => row.textContent)).toEqual([
-            expect.stringContaining('Executor 07'),
-            expect.stringContaining('Executor 08'),
+            expect.stringContaining('General agent'),
             expect.stringContaining('Explore agent'),
             'Background task runningStop',
         ]);
@@ -380,6 +377,109 @@ describe('RunningAgents, the background row', () => {
         await draw('c-5');
 
         expect(container.innerHTML).toBe('');
+    });
+});
+
+/**
+ * c-6 (Ship the checkout) rests while its threads work: c-6a (Fix the price rounding) runs `bun test src/checkout` and holds a queued notice, c-6e
+ * (Load test the checkout) waits for its background work. Its other threads are over, and c-6a1, the thread of c-6a, belongs to c-6a's strip.
+ */
+describe('RunningAgents, threads', () => {
+    /** Sets a chat in the demo daemon and in what the app shows of it. */
+    function putChat(chat: Chat) {
+        const index = data.chats.findIndex(candidate => candidate.id === chat.id);
+
+        if (index >= 0) data.chats[index] = structuredClone(chat);
+        else data.chats.push(structuredClone(chat));
+
+        store.selectedProject!.chats.set(chat.id, chat);
+    }
+
+    it('has a row per thread at work, with what it does and a Stop, under the header with Stop all', async () => {
+        await draw('c-6');
+
+        expect(rows().map(row => buttons(row))).toEqual([
+            ['Fix the price rounding · Running bun test src/checkout', 'Stop'],
+            ['Load test the checkout · Waiting for background work', 'Stop'],
+        ]);
+        expect(buttons(header())).toEqual(['Stop all']);
+    });
+
+    it('opens the thread\'s chat from its row', async () => {
+        await draw('c-6');
+        await act(async () => rows()[1].querySelector('button')!.click());
+
+        await vi.waitFor(() => expect(ui().chatId).toBe('c-6e'));
+    });
+
+    it('stops one thread alone from its row: its run is cancelled and its queue held, the parent and the other thread go on', async () => {
+        await draw('c-6');
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => [...rows()[0].querySelectorAll('button')][1].click());
+        expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-orch-6a' });
+        await vi.waitFor(() => expect(runs().get('r-orch-6a')?.status).toBe('cancelled'));
+        await vi.waitFor(() => expect(store.selectedProject!.chats.get('c-6a')?.queuePaused).toBe('stopped'));
+        expect([runs().get('r-orch-6')?.status, runs().get('r-orch-6e')?.status]).toEqual(['succeeded', 'waiting_background']);
+    });
+
+    it('stops every thread from Stop all, one cancel each, and asks no sub-agent to stop when there is none', async () => {
+        await draw('c-6');
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => header()!.querySelector('button')!.click());
+        expect(command.mock.calls.map(([input]) => input)).toEqual([{ type: 'run.cancel', runId: 'r-orch-6a' }, { type: 'run.cancel', runId: 'r-orch-6e' }]);
+        await vi.waitFor(() => expect(['r-orch-6a', 'r-orch-6e'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled']));
+    });
+
+    it('stops the sub-agents and the threads together from Stop all', async () => {
+        putChat({ ...store.selectedProject!.chats.get('c-6e')!, parentChatId: 'c-1' });
+        await draw();
+
+        // Oldest first, by when each was made: the thread before the two sub-agents.
+        expect(rows().map(row => row.textContent?.split(' ·')[0])).toEqual(['Load test the checkout', 'General agent', 'Explore agent']);
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => header()!.querySelector('button')!.click());
+        expect(command).toHaveBeenCalledWith({ type: 'run.stopAgents', runId: 'r-orch-1' });
+        expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-orch-6e' });
+        expect(command).toHaveBeenCalledTimes(2);
+    });
+
+    it('lists only the chat\'s own threads: a thread of a thread is in its parent\'s strip', async () => {
+        put({ ...runs().get('r-orch-6a1')!, status: 'running', finishedAt: undefined });
+        await draw('c-6');
+
+        expect(rows().map(row => row.textContent)).not.toContainEqual(expect.stringContaining('Check the currency table'));
+
+        await draw('c-6a');
+
+        // Its stream ends with its answer, which reads as thinking about the next step.
+        expect(rows().map(row => buttons(row))).toEqual([['Check the currency table · Thinking…', 'Stop']]);
+    });
+
+    it('has a Stop all with a single sub-agent that can stop alone and one thread', async () => {
+        put({ ...runs().get('r-na-03')!, status: 'succeeded' });
+        putChat({ ...store.selectedProject!.chats.get('c-6e')!, parentChatId: 'c-1' });
+        await draw();
+
+        expect(buttons(header())).toEqual(['Stop all']);
+    });
+
+    it('counts threads in the five rows and in the line that counts the rest', async () => {
+        for (let index = 1; index <= 4; index++) {
+            putChat({ ...store.selectedProject!.chats.get('c-6e')!, id: `c-many-${ index }`, title: `Thread ${ index }`, parentChatId: 'c-1', orchestratorRunId: `r-many-${ index }`, createdAt: Date.now() + index });
+            put({ ...runs().get('r-orch-6e')!, id: `r-many-${ index }`, rootRunId: `r-many-${ index }`, chatId: `c-many-${ index }` });
+        }
+
+        await draw();
+
+        expect(rows()).toHaveLength(6);
+        expect(rows().slice(0, 5).map(row => row.textContent?.split(' ·')[0])).toEqual(['General agent', 'Explore agent', 'Thread 1', 'Thread 2', 'Thread 3']);
+        expect(rows().at(-1)?.textContent).toBe('1 more agent at work');
     });
 });
 
@@ -417,7 +517,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         put({ ...runs().get('r-orch-1')!, background: [command(1)] });
         await draw();
         expect(header()).toBeDefined();
-        expect(rows().map(row => row.textContent?.split(' · ')[0])).toEqual(['Executor 07', 'Executor 08', 'Explore agent', 'Command']);
+        expect(rows().map(row => row.textContent?.split(' · ')[0])).toEqual(['General agent', 'Explore agent', 'Command']);
         expect(buttons(header())).toEqual(['Stop all']);
 
         const spy = vi.spyOn(store, 'command');

@@ -62,7 +62,7 @@
     -webkit-box-orient: vertical;
 }
 
-/* A compact item is not a message: nothing to press, and its mark before the words. */
+/* A compact item, or an item a thread sent, is not the person's message: nothing to press, and its mark before the words. */
 .preview[data-command] {
     cursor: default;
 }
