@@ -86,6 +86,8 @@ interface LiveRun {
     close?: () => Promise<void>;
     /** The latest complete list of what the session has open in the background. */
     background?: BackgroundItem[];
+    /** The items the latest lists lost and nothing has confirmed finished yet: one that comes back with the next list is the same item (`settleFinished`). */
+    finishing?: Map<string, BackgroundItem>;
     /** The session outlived a turn and the run waits for its background work (`waiting_background`, or `waiting_children` when children win): a message goes to the session. */
     lingering?: boolean;
     /** Messages handed to the session that its `done` has not answered yet: the engine sends one `done` for each. */
@@ -486,6 +488,7 @@ export class RunDriver {
         live.prompt = prompt;
         live.ended = ended;
         live.background = undefined;
+        live.finishing = new Map();
         live.lingering = false;
         live.sent = 0;
         live.delivering = false;
@@ -793,6 +796,12 @@ export class RunDriver {
                         break;
                     case 'text':
                         if (event.agentId === undefined) {
+                            // Only the agent's words say that what a list lost stayed away: a sub-agent's are its own, and the mark that ends the
+                            // agent's open message (the layer ends it when a card is drawn) is no word.
+                            if (event.delta !== '') {
+                                this.settleFinished(run, live, writer, native);
+                            }
+
                             writer.text(event.delta, event.done);
                         }
                         else {
@@ -807,6 +816,11 @@ export class RunDriver {
                         }
 
                         if (event.agentId === undefined) {
+                            // The card of a sub-agent's call is bookkeeping of the sub-agent that may have just come back, not something the agent did.
+                            if (!native.isCard(event.toolCallId)) {
+                                this.settleFinished(run, live, writer, native);
+                            }
+
                             writer.tool(event);
                         }
                         else {
@@ -828,11 +842,12 @@ export class RunDriver {
                         runs.setContext(run.id, context);
                         break;
                     case 'background':
-                        this.onBackground(run, live, writer, native, event.items);
+                        this.onBackground(run, live, native, event.items);
                         break;
                     case 'done':
                         result = event.result;
                         answered = true;
+                        this.settleFinished(run, live, writer, native);
 
                         // The number shown after a turn is the last one it reported, whatever the throttle skipped on the way.
                         if (context) {
@@ -859,30 +874,60 @@ export class RunDriver {
         }
         finally {
             // However the turn ended (a result, a failure, a cancel, an engine that threw), the number shown afterwards is the last one it reported,
-            // whatever the throttle skipped on the way.
+            // whatever the throttle skipped on the way, and what the last list lost is gone for good.
             if (context) {
                 runs.setContext(run.id, context, true);
             }
+
+            this.settleFinished(run, live, writer, native);
 
             // Nothing more can be handed to a session that is over.
             live.lingering = false;
         }
     }
 
-    /** A `background` snapshot: the run keeps it, a note names each item that left it, and sub-agents kept past a turn's end hear of it. */
-    private onBackground(run: Run, live: LiveRun, writer: TurnWriter, native: NativeAgents, items: BackgroundItem[]): void {
+    /**
+     * A `background` snapshot: the run keeps it, and the sub-agents that follow it hear of it. An item that left it is finished only once something else
+     * happens (`settleFinished`): a sub-agent that stops and is woken at once by a command of its own is out of the list and back in it within a
+     * millisecond, and that is the same item, not one that finished twice.
+     */
+    private onBackground(run: Run, live: LiveRun, native: NativeAgents, items: BackgroundItem[]): void {
         const { store, runs } = this.deps;
-        const finished = (live.background ?? []).filter(known => !items.some(item => item.id === known.id));
+        const finishing = live.finishing ?? new Map<string, BackgroundItem>();
 
+        for (const known of live.background ?? []) {
+            if (!items.some(item => item.id === known.id)) {
+                finishing.set(known.id, known);
+            }
+        }
+
+        for (const item of items) {
+            finishing.delete(item.id);
+        }
+
+        live.finishing = finishing;
         live.background = items;
         native.background(items);
-        store.tx(() => {
-            runs.setBackground(run.id, items);
+        store.tx(() => runs.setBackground(run.id, items));
+    }
 
-            if (finished.length > 0) {
-                // The line comes after what the agent said so far, and what it says next is a new message.
-                writer.end();
-            }
+    /**
+     * What a snapshot lost stayed away, because the agent did something after it (an answer, a call of its own, the end of the turn or of the session):
+     * a note names each item, after what the agent said so far, and the sub-agents of those items end. What the agent says next is a new message. What a
+     * sub-agent says or does is not that: it is the item that may come back.
+     */
+    private settleFinished(run: Run, live: LiveRun, writer: TurnWriter, native: NativeAgents): void {
+        const { store, runs } = this.deps;
+        const finished = [...(live.finishing?.values() ?? [])];
+
+        if (finished.length === 0) {
+            return;
+        }
+
+        live.finishing?.clear();
+        native.settle();
+        store.tx(() => {
+            writer.end();
 
             for (const item of finished) {
                 runs.note(run.id, `Background ${ BACKGROUND_KINDS[item.kind] } finished: ${ namedTitle(item.title) }`);
@@ -947,9 +992,12 @@ export class RunDriver {
         return true;
     }
 
-    /** The calls of the turn that are background tasks the session waits for (a `Workflow`): they run on after the turn, so the turn's end does not fail them. */
+    /**
+     * The calls of the turn that are background work the session waits for (a `Workflow`, the call that started a sub-agent that goes on): they run on after
+     * the turn, so the turn's end does not fail them.
+     */
     private openTasks(live: LiveRun): ReadonlySet<string> {
-        return new Set((live.background ?? []).filter(item => item.kind === 'task').map(item => item.id));
+        return new Set([...(live.background ?? []).filter(item => item.kind === 'task').map(item => item.id), ...(live.native?.openCalls() ?? [])]);
     }
 
     /* ----------------------------- Limits and retries ---------------------------- */

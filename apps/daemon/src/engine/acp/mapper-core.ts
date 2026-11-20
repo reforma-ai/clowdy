@@ -14,6 +14,9 @@ const MAX_OUTPUT_CHARS = 20_000;
 export type ToolEvent = Extract<EngineEvent, { type: 'tool' }>;
 export type Json = { [key: string]: unknown };
 
+/** `null` clears a field, an omitted one leaves it, a value replaces it: how an update of ACP v2 patches what an earlier one said. */
+export const patched = <T>(old: T | undefined, next: T | null | undefined): T | undefined => next === undefined ? old : next ?? undefined;
+
 export const isRecord = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 function clip(text: string): string {

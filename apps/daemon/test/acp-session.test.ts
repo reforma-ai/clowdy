@@ -1,3 +1,4 @@
+import { STOPPED_TOOL } from '@clowdy/protocol';
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -1140,7 +1141,10 @@ describe('an ACP v2 session that outlives its turn', () => {
             await until(() => !alive(pidOf(events)), 'the agent to stop');
         });
 
-        test('a sub-agent is a `subagent` item named by its title, and what it says on its own session is not the turn\'s', async () => {
+        /** The id of the item of the first sub-agent the fake agent starts: the id of the call that started it. */
+        const CALL_OF_CHILD_1 = 'toolu-child-1';
+
+        test('a sub-agent is a `subagent` item named by its title and by the call that started it, and what it says on its own session is not the turn\'s', async () => {
             const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground subagent 300 Map the docs\nreport say mapped');
             const { events, ended, until: untilDone } = follow(session);
 
@@ -1148,9 +1152,9 @@ describe('an ACP v2 session that outlives its turn', () => {
             await ended;
             await session.close();
 
-            expect(backgrounds(events)).toEqual([[{ id: 'child-1', kind: 'subagent', title: 'Map the docs' }], []]);
-            expect(turns(events)).toEqual(['started', 'done:started', 'mapped', 'done:mapped']);
-            expect(textOf(events)).not.toContain('is working');
+            expect(backgrounds(events)).toEqual([[{ id: CALL_OF_CHILD_1, kind: 'subagent', title: 'Map the docs' }], []]);
+            expect(turns(events.filter(event => !('agentId' in event)))).toEqual(['started', 'done:started', 'mapped', 'done:mapped']);
+            expect(textOf(events.filter(event => !('agentId' in event)))).not.toContain('Looking into');
         });
 
         test('a workflow is a `task` item named by its call, and the call goes on after the turn and ends with the work', async () => {
@@ -1190,11 +1194,11 @@ describe('an ACP v2 session that outlives its turn', () => {
             await session.close();
 
             const first: BackgroundItem = { id: 'term-1', kind: 'command', title: 'first' };
-            const second: BackgroundItem = { id: 'child-2', kind: 'subagent', title: 'second' };
+            const second: BackgroundItem = { id: 'toolu-child-2', kind: 'subagent', title: 'second' };
 
             expect(backgrounds(events)).toEqual([[first], [first, second], [second], []]);
             // The report of the first is a turn that goes by while the second is still open.
-            expect(turns(events)).toEqual(['started', 'done:started', 'reported', 'done:reported', 'second finished', 'done:second finished']);
+            expect(turns(events.filter(event => !('agentId' in event)))).toEqual(['started', 'done:started', 'reported', 'done:reported', 'second finished', 'done:second finished']);
         });
 
         test('a report turn that says what the turn before it said is a message of its own: only a landed steer makes a repeat', async () => {
@@ -1322,6 +1326,146 @@ describe('an ACP v2 session that outlives its turn', () => {
 
             expect(turns(events)).toEqual(['one', 'done:one', 'two', 'done:two', 'second finished', 'done:second finished']);
             expect(backgrounds(events).map(items => items.map(item => item.title))).toEqual([['first'], [], ['second'], []]);
+        });
+    });
+
+    describe('sub-agents', () => {
+        const CALL = 'toolu-child-1';
+        const own = (events: EngineEvent[], agentId = 'child-1') => events.filter(event => 'agentId' in event && event.agentId === agentId);
+        /** The card of the call that started a sub-agent, as the parent's stream shows it, by the state it passed through. */
+        const card = (events: EngineEvent[], id = CALL) => events.flatMap(event => event.type === 'tool' && event.toolCallId === id && event.agentId === undefined ? [event] : []);
+        const subagents = (events: EngineEvent[]) => events.filter(event => event.type === 'subagent');
+
+        test('a foreground sub-agent has a card and a child run with its calls, and both end with its report, while the turn goes on around it', async () => {
+            const { session } = use().start('say before\nsubagent 200 Map the docs\nsay after');
+            const events = await collect(session);
+
+            await session.close();
+
+            // The parent is never shown the call: the card is made from the announcement and the prompt, and names the call by the prompt's message.
+            expect(card(events)).toEqual([
+                { type: 'tool', toolCallId: CALL, name: 'Agent', input: { subagent_type: 'general-purpose', description: 'Map the docs', prompt: 'Do this: Map the docs' }, state: 'running' },
+                { type: 'tool', toolCallId: CALL, name: 'Agent', input: { subagent_type: 'general-purpose', description: 'Map the docs', prompt: 'Do this: Map the docs' }, state: 'done', output: 'Map the docs finished' },
+            ]);
+            expect(subagents(events)).toEqual([
+                { type: 'subagent', agentId: 'child-1', parentToolCallId: CALL, name: 'general-purpose', description: 'Map the docs', state: 'running' },
+                { type: 'subagent', agentId: 'child-1', parentToolCallId: CALL, name: 'general-purpose', state: 'done', summary: 'Map the docs finished' },
+            ]);
+            // What the child says, calls and reports is its own, in the order it came; the parent's own words are around it.
+            expect(own(events).map(event => event.type === 'text' ? ['text', event.delta, event.done] : event.type === 'tool' ? ['tool', event.name, event.state] : [event.type])).toEqual([
+                ['subagent'],
+                ['text', 'Looking into Map the docs', false],
+                ['text', '', true],
+                ['tool', 'Bash', 'running'],
+                ['tool', 'Bash', 'done'],
+                ['text', 'Map the docs finished', false],
+                ['text', '', true],
+                ['subagent'],
+            ]);
+            expect(own(events).find(event => event.type === 'tool' && event.state === 'done')).toMatchObject({ output: 'Map the docs\n' });
+            expect(turns(events.filter(event => !('agentId' in event)))).toEqual(['before', 'after', 'done:after']);
+            expect(backgrounds(events)).toEqual([]);
+        });
+
+        test('a foreground sub-agent that was cancelled or failed ends its run and its card so, and sends no report', async () => {
+            const { session } = use().start('outcome cancelled\nsubagent 100 First\noutcome error\nsubagent 100 Second\nsay after');
+            const events = await collect(session);
+
+            await session.close();
+
+            expect(subagents(events).map(event => event.type === 'subagent' && [event.agentId, event.state, event.summary])).toEqual([
+                ['child-1', 'running', undefined],
+                ['child-1', 'cancelled', undefined],
+                ['child-2', 'running', undefined],
+                ['child-2', 'error', 'The sub-agent failed'],
+            ]);
+            expect(card(events).map(event => event.state === 'running' ? 'running' : event.error)).toEqual(['running', STOPPED_TOOL]);
+            expect(card(events, 'toolu-child-2').at(-1)).toMatchObject({ state: 'error', error: 'The sub-agent failed' });
+            // Nothing was reported, so nothing is said as the report.
+            expect(own(events).filter(event => event.type === 'text').map(event => event.type === 'text' && event.delta)).toEqual(['Looking into First', '']);
+        });
+
+        test('a background sub-agent keeps its card running after the turn, takes its calls and report after it, and the list ends it', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground subagent 400 Map the docs\nreport say mapped');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+
+            const afterFirst = events.length;
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            // The turn was over when its child's calls were made: they come after the first `done`, with the child's id.
+            expect(events.slice(afterFirst).filter(event => event.type === 'tool' && event.agentId === 'child-1').map(event => event.type === 'tool' && [event.name, event.state])).toEqual([['Bash', 'running'], ['Bash', 'done']]);
+            expect(events.slice(0, afterFirst).filter(event => event.type === 'tool').map(event => event.type === 'tool' && event.state)).toEqual(['running']);
+            // The layer does not end the child run: the runtime does, when the list loses the sub-agent (a sub-agent can be woken a moment after it stops).
+            expect(subagents(events).map(event => event.type === 'subagent' && event.state)).toEqual(['running']);
+            expect(card(events).map(event => event.state)).toEqual(['running', 'done']);
+            expect(card(events).at(-1)).toMatchObject({ output: 'Map the docs finished' });
+            expect(backgrounds(events)).toEqual([[{ id: CALL, kind: 'subagent', title: 'Map the docs' }], []]);
+            // The card says it is done before the list says nothing is open.
+            expect(events.findIndex(event => event.type === 'tool' && event.state === 'done' && event.toolCallId === CALL)).toBeLessThan(events.findIndex(event => event.type === 'background' && event.items.length === 0));
+        });
+
+        test('two sub-agents at once each have their own card, child run and calls', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground subagent 300 First\nbackground subagent 600 Second\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(subagents(events).map(event => event.type === 'subagent' && [event.agentId, event.parentToolCallId, event.description])).toEqual([['child-1', 'toolu-child-1', 'First'], ['child-2', 'toolu-child-2', 'Second']]);
+            expect(own(events, 'child-1').filter(event => event.type === 'tool')).toHaveLength(2);
+            expect(own(events, 'child-2').filter(event => event.type === 'tool')).toHaveLength(2);
+            expect(card(events, 'toolu-child-1').map(event => event.state)).toEqual(['running', 'done']);
+            expect(card(events, 'toolu-child-2').map(event => event.state)).toEqual(['running', 'done']);
+            expect(backgrounds(events).map(items => items.map(item => item.id))).toEqual([['toolu-child-1'], ['toolu-child-1', 'toolu-child-2'], ['toolu-child-2'], []]);
+        });
+
+        test('a sub-agent that is woken at once after it stopped shows its card done and running again, and is out of the list and back in it', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nflap\nbackground subagent 300 Waits for its command\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            const ids = backgrounds(events).map(items => items.map(item => item.id));
+
+            // Listed, then out and in again, then out for good.
+            expect(ids).toEqual([[CALL], [], [CALL], []]);
+            expect(card(events).map(event => event.state)).toEqual(['running', 'done', 'running', 'done']);
+            expect(subagents(events).map(event => event.type === 'subagent' && event.state)).toEqual(['running']);
+        });
+
+        test('what a session says that no `subagent_update` announced is not read', async () => {
+            const { session } = use().start('stray hello\nsay own words');
+            const events = await collect(session);
+
+            await session.close();
+
+            expect(textOf(events)).toBe('own words');
+        });
+
+        test('a message sent while a background sub-agent works is answered, and the sub-agent goes on', async () => {
+            const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground subagent 700 Slow work\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            expect(await session.send!('say answered')).toBe(true);
+            await untilDone(2);
+
+            expect(turns(events.filter(event => !('agentId' in event)))).toEqual(['started', 'done:started', 'answered', 'done:answered']);
+            // The child was not told anything by it and has not ended.
+            expect(subagents(events).map(event => event.type === 'subagent' && event.state)).toEqual(['running']);
+
+            await untilDone(3);
+            await ended;
+            await session.close();
+            expect(own(events).filter(event => event.type === 'tool' && event.state === 'done')).toHaveLength(1);
         });
     });
 

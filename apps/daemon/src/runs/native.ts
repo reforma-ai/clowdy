@@ -21,8 +21,13 @@ type StreamEvent = Extract<EngineEvent, { type: 'text' | 'tool' }> & { agentId: 
 interface Agent {
     run: Run;
     writer: TurnWriter;
-    /** It outlived the end of a turn because its background item was still open: the item leaving the snapshot ends it. */
-    kept?: boolean;
+    /** Its item has been in a snapshot: from then on the item leaving the snapshot is the end of the sub-agent. */
+    seen?: boolean;
+    /** Its item is not in the snapshot any more, and nothing has said it ended otherwise. It ends when `settle` says the item stayed away. */
+    left?: boolean;
+    /** What it said: the message that is open and the last one that was closed, which is its result when it ends without one. */
+    open?: string;
+    last?: string;
 }
 
 /**
@@ -50,9 +55,32 @@ export class NativeAgents {
         this.push(() => this.applyStream(event));
     }
 
-    /** The session's latest complete list of what it has open in the background; a sub-agent that was kept past a turn's end ends once its item is gone. */
+    /**
+     * The session's latest complete list of what it has open in the background. A sub-agent whose item was in a list ends when its item is not in
+     * the latest one; `settle` says it stayed away (an item that comes back within a moment is the same sub-agent: its agent woke it again).
+     */
     background(items: BackgroundItem[]): void {
         this.push(() => this.applyBackground(items));
+    }
+
+    /** What the snapshots lost stayed away: the sub-agents whose items are gone have ended. */
+    settle(): void {
+        this.push(() => this.applySettle());
+    }
+
+    /** Whether `toolCallId` is the call that started a sub-agent, which the engine draws a card for: a call the sub-agent's state is, not something the agent did. */
+    isCard(toolCallId: string): boolean {
+        return [...this.agents.values()].some(agent => agent.run.parentToolCallId === toolCallId);
+    }
+
+    /**
+     * The calls that started the sub-agents whose items are in the latest snapshot: the cards of those calls go on after the turn that began them, so
+     * the turn's end does not fail them.
+     */
+    openCalls(): Set<string> {
+        this.flush();
+
+        return new Set([...this.agents].flatMap(([agentId, agent]) => agent.run.parentToolCallId !== undefined && this.isListed(agentId, agent) ? [agent.run.parentToolCallId] : []));
     }
 
     /**
@@ -67,13 +95,19 @@ export class NativeAgents {
         this.store.tx(() => {
             for (const [agentId, agent] of this.agents) {
                 if (keepOpen && this.isListed(agentId, agent)) {
-                    agent.kept = true;
-
                     continue;
                 }
 
                 agent.writer.finish(reason);
-                this.close(agent, 'cancelled', 'The parent run ended its turn');
+
+                // Its item went away before the turn ended: it finished, whatever the turn does.
+                if (agent.left) {
+                    this.close(agent, 'done', agent.last);
+                }
+                else {
+                    this.close(agent, 'cancelled', 'The parent run ended its turn');
+                }
+
                 this.agents.delete(agentId);
             }
 
@@ -121,6 +155,8 @@ export class NativeAgents {
         const run = this.runs.createNative(this.parent, { name, summary: description ?? name, parentToolCallId });
         const agent: Agent = { run, writer: new TurnWriter(this.store, run.id, TEXT_THROTTLE_MS) };
 
+        // The list may have named it before its first event came.
+        agent.seen = this.isListed(agentId, agent);
         this.agents.set(agentId, agent);
 
         return agent;
@@ -130,10 +166,24 @@ export class NativeAgents {
         this.listed = new Set(items.filter(item => item.kind === 'subagent').map(item => item.id));
 
         for (const [agentId, agent] of this.agents) {
-            if (agent.kept && !this.isListed(agentId, agent)) {
-                // Its item is gone: it finished. A failure or a cancel was reported by its own `subagent` event, which closed it already.
-                this.close(agent, 'done');
-                this.agents.delete(agentId);
+            if (this.isListed(agentId, agent)) {
+                agent.seen = true;
+                agent.left = false;
+            }
+            else if (agent.seen) {
+                // Its item is gone: it finished, unless the item is back before anything else happens. A failure or a cancel was reported by its own
+                // `subagent` event, which closed it already.
+                agent.left = true;
+            }
+        }
+    }
+
+    private applySettle(): void {
+        // An ended sub-agent stays known until the turn's end, so what it says after it is dropped, not taken for a new sub-agent.
+        for (const agent of this.agents.values()) {
+            if (agent.left) {
+                agent.left = false;
+                this.close(agent, 'done', agent.last);
             }
         }
     }
@@ -169,6 +219,13 @@ export class NativeAgents {
         }
 
         if (event.type === 'text') {
+            agent.open = (agent.open ?? '') + event.delta;
+
+            if (event.done) {
+                agent.last = agent.open.trim() || agent.last;
+                agent.open = undefined;
+            }
+
             agent.writer.text(event.delta, event.done);
         }
         else {

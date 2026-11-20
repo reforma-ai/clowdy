@@ -129,7 +129,7 @@ export function listedRunId(runs: ReadonlyMap<RunId, Run>, run: Run): RunId | un
 
 /**
  * How many spawned children of each run are still going. Counted over every run, so what is folded away does not change it. Native sub-agents
- * are not counted: they are not rows, and they end with their parent's turn.
+ * are not counted: they are not rows, and they end with their parent's session (a background one, with the work that outlives the turn).
  */
 export function countActiveChildren(runs: Iterable<Run>): Map<RunId, number> {
     const counts = new Map<RunId, number>();

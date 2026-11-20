@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { agentRowLabel, agentRowText, backgroundRowText, openBackground, runningAgents } from './runningAgentRows';
+import { agentRowLabel, agentRowText, backgroundRowText, openBackground, runningAgents, stopRunOf, unlistedBackground } from './runningAgentRows';
 
 import type { Run, RunStatus } from '@clowdy/protocol';
 
@@ -66,5 +66,47 @@ describe('the background row', () => {
         expect(backgroundRowText(1)).toBe('Background task running');
         expect(backgroundRowText(2)).toBe('2 background tasks running');
         expect(backgroundRowText(12)).toBe('12 background tasks running');
+    });
+});
+
+describe('what the background row counts', () => {
+    const command = { id: 'bg-1', kind: 'command' as const, title: 'bun run test' };
+    const explore = { id: 'call-1', kind: 'subagent' as const, title: 'Explore' };
+    const workflow = { id: 'wf-1', kind: 'task' as const, title: 'Workflow' };
+
+    it('leaves out a sub-agent whose child run is a row, by the call that started it, and counts everything else', () => {
+        const child = run('child', 'running', { origin: 'native', parentToolCallId: 'call-1' });
+
+        expect(unlistedBackground([command, explore, workflow], [child])).toEqual([command, workflow]);
+    });
+
+    it('counts a sub-agent that has no child run at work, whatever other children there are', () => {
+        const other = run('other', 'running', { origin: 'native', parentToolCallId: 'call-9' });
+        const spawned = run('spawned', 'running', { parentToolCallId: 'call-1' });
+
+        expect(unlistedBackground([explore], [])).toEqual([explore]);
+        expect(unlistedBackground([explore], [other])).toEqual([explore]);
+        // Only a native child stands for a sub-agent of the session; a spawned run is its own work.
+        expect(unlistedBackground([explore], [spawned])).toEqual([explore]);
+    });
+
+    it('leaves a command or a task alone even when a child run names the same id', () => {
+        const child = run('child', 'running', { origin: 'native', parentToolCallId: 'bg-1' });
+
+        expect(unlistedBackground([command], [child])).toEqual([command]);
+    });
+});
+
+describe('Stop on a row', () => {
+    it('stops a spawned run itself, and a native sub-agent only through the orchestrator while its session waits', () => {
+        const orchestrator = (status: RunStatus) => ({ id: 'orch', status });
+
+        expect(stopRunOf({ id: 'ex', origin: 'spawned' }, orchestrator('running'))).toBe('ex');
+        expect(stopRunOf({ id: 'ex', origin: undefined }, undefined)).toBe('ex');
+        expect(stopRunOf({ id: 'na', origin: 'native' }, orchestrator('waiting_background'))).toBe('orch');
+        expect(stopRunOf({ id: 'na', origin: 'native' }, orchestrator('waiting_children'))).toBe('orch');
+        // A turn that runs has its own Stop in the composer, and no sub-agent stops alone.
+        expect(stopRunOf({ id: 'na', origin: 'native' }, orchestrator('running'))).toBeUndefined();
+        expect(stopRunOf({ id: 'na', origin: 'native' }, undefined)).toBeUndefined();
     });
 });

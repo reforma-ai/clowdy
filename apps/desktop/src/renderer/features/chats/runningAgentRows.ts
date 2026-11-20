@@ -27,6 +27,28 @@ export function openBackground(run: Run | undefined): BackgroundItem[] {
     return run === undefined || isTerminalRunStatus(run.status) ? [] : run.background ?? [];
 }
 
+/**
+ * The open background items that no row of an agent shows already. A sub-agent has a child run, which is its row (it opens the run and shows what it
+ * does), so it is not counted a second time in the background row: its item names the call that started it, as the child run's `parentToolCallId`
+ * does (the daemon uses that call's id as the item's). A sub-agent with no running child run, and every command and task, is counted.
+ */
+export function unlistedBackground(items: readonly BackgroundItem[], agents: readonly Pick<Run, 'origin' | 'parentToolCallId'>[]): BackgroundItem[] {
+    const shown = new Set(agents.flatMap(agent => agent.origin === 'native' && agent.parentToolCallId !== undefined ? [agent.parentToolCallId] : []));
+
+    return items.filter(item => item.kind !== 'subagent' || !shown.has(item.id));
+}
+
+/**
+ * Whether Stop on a row is offered, and which run it stops. A spawned run stops alone. A native sub-agent cannot: it lives in its parent's session, and
+ * while a turn runs the composer's Stop ends that. While the session only waits (for background work or for children) the sub-agent's row offers a Stop
+ * of its own, which ends the orchestrator's run: everything that session has open ends with it, as with the background row's Stop.
+ */
+export function stopRunOf(run: Pick<Run, 'id' | 'origin'>, orchestrator: Pick<Run, 'id' | 'status'> | undefined): RunId | undefined {
+    if (run.origin !== 'native') return run.id;
+
+    return orchestrator?.status === 'waiting_background' || orchestrator?.status === 'waiting_children' ? orchestrator.id : undefined;
+}
+
 /** The words of the background row: `Background task running`, `2 background tasks running`. Items of every kind are tasks to the person. */
 export function backgroundRowText(count: number): string {
     return count === 1 ? 'Background task running' : `${ count } background tasks running`;

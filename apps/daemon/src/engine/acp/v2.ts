@@ -28,7 +28,8 @@ const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCap
 type Wake = 'handoff' | 'release';
 
 type Item =
-    | { kind: 'update'; update: SessionUpdate }
+    /** An update of the session the engine talks to, or, with `from`, of a sub-agent's session. */
+    | { kind: 'update'; update: SessionUpdate; from?: string }
     | { kind: 'failed'; error: unknown }
     | { kind: 'exited' }
     | { kind: 'aborted' }
@@ -94,6 +95,10 @@ function isResumeWarningUpdate(update: SessionUpdate): boolean {
  * message was inserted (`{ messageId }`). The turn is told by `state_update`: `running` while the agent works, `requires_action` while it waits for a
  * person, `idle` with a `stopReason` (and the turn's `usage`) when it is over. A prompt sent while a turn runs is inserted into it, which is how a
  * steer goes in. The SDK's v2 `client()` carries it. See `mapper-v2.ts` for the updates.
+ *
+ * A sub-agent is a session of its own: its parent announces it with `subagent_update` and what it says comes on its session, which the layer reads
+ * from then on, in the order the agent said things (the sessions share one stream), and gives the mapper with the child's id (`mapper-v2.ts`,
+ * `children.ts`). An update of any other session is not ours and is dropped.
  *
  * The conversation does not end with the first turn. Every `state_update` may carry the agent's background work as a complete list, which becomes a
  * `background` event whenever it changes. While that list has items, or a turn runs, the layer keeps reading: a `running` after an `idle` is a turn the
@@ -295,16 +300,37 @@ export class V2Layer implements ProtocolLayer {
         let current: string | undefined;
         // What the session says before the prompt is in (the state it resumed in, a replay of its history) is not news of the turn.
         let listening = false;
+        // The sessions of the sub-agents the session announced, in the order the agent said so: a child's first word comes after its announcement.
+        const children = new Set<string>();
 
         const app = client({ name: 'clowdy' })
             .onNotification(methods.client.session.update, ({ params }) => {
-                // A sub-agent is a session of its own in v2: what it says is dropped for now.
-                if (listening && params.sessionId === current && !isResumeWarningUpdate(params.update)) {
+                if (!listening) {
+                    return;
+                }
+
+                if (params.sessionId === current) {
+                    if (isResumeWarningUpdate(params.update)) {
+                        return;
+                    }
+
                     if (params.update.sessionUpdate === 'session_info_update' && typeof params.update.title === 'string') {
                         host.offerTitle(params.update.title);
                     }
 
+                    if (SessionUpdate.isSubagentUpdate(params.update)) {
+                        children.add(params.update.sessionId);
+                    }
+
                     channel.push({ kind: 'update', update: params.update });
+                }
+                else if (children.has(params.sessionId)) {
+                    // A sub-agent of a sub-agent is announced on the session of the one that started it.
+                    if (SessionUpdate.isSubagentUpdate(params.update)) {
+                        children.add(params.update.sessionId);
+                    }
+
+                    channel.push({ kind: 'update', update: params.update, from: params.sessionId });
                 }
             })
             .onRequest(methods.client.session.requestPermission, ({ params }) => {
@@ -498,7 +524,7 @@ export class V2Layer implements ProtocolLayer {
 
         switch (item.kind) {
             case 'update':
-                return yield* this.heard(item.update, id, course, mapper);
+                return item.from === undefined ? yield* this.heard(item.update, id, course, mapper) : yield* this.heardOfChild(item.update, item.from, mapper);
             case 'timer':
                 return yield* this.timed(item, id, course, mapper);
             case 'nudge':
@@ -570,6 +596,13 @@ export class V2Layer implements ProtocolLayer {
         return yield* this.ended(update, id, course, mapper);
     }
 
+    /** One update of a sub-agent's session. What it does is the child's own: the session's turn, its state and its list of background work are not touched by it. */
+    private async *heardOfChild(update: SessionUpdate, from: string, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent, boolean> {
+        yield* mapper.update(update, from);
+
+        return false;
+    }
+
     /** The agent says a turn is in progress. After an `idle` that is a new one: a turn it starts on its own, or the one a message sent into the session leads to. */
     private begin(course: Course): void {
         if (course.working) {
@@ -589,6 +622,9 @@ export class V2Layer implements ProtocolLayer {
 
     /** Tells the runtime the background work when it changed, with the names the mapper knows by now. */
     private *publish(course: Course, mapper: UpdateMapperV2): Generator<EngineEvent> {
+        // A sub-agent the list lost has finished: the card of its call says so, before the list does.
+        yield* mapper.listed(course.listed);
+
         const items = mapper.background(course.listed);
 
         if (JSON.stringify(items) !== JSON.stringify(course.items)) {

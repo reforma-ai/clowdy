@@ -3,6 +3,11 @@
 // (saved as .txt so the repo tooling does not lint it). Each scenario is one adapter process and a few small model calls (haiku for Claude, the user's default model for Codex).
 // s1 bg Bash | s2 bg Agent, backgroundSubagents declared | s3 bg Agent, held turn + steer | s4 prompts while a task runs and during an autonomous turn | s5 Workflow
 // s6 ACP v2 | s7/s8 native sub-agent sessions (AIR form / RFD form) | s9 steer while idle and during an autonomous turn | c1/c2 Codex on v1 / v2
+// Sub-agents on v2 (every `session/update` is logged with the session it came on: `[child xxxx]` when it is not the main one; the raw lines go to raw-<scenario>.jsonl):
+// f1 foreground sub-agent with two tool calls | f2 background sub-agent with tool calls | f3 two foreground sub-agents in one message | f4 two background sub-agents
+// f5 Stop (`session/cancel`) while a foreground sub-agent works | f6 Stop while a background sub-agent works | f7 an `Agent` call that fails at once | f8 a message sent to the main agent while a background sub-agent works
+// f9 background sub-agent that starts a background command of its own and ends its turn (the child wakes when the command ends) | f10 foreground sub-agent that does the same
+// c3 Codex v2 with a sub-agent (spawn_agent)
 import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
@@ -11,9 +16,11 @@ const scenario = process.argv[2] ?? 's1';
 const root = process.env.PROBE_DIR ?? '/tmp/acp-bg-probe';
 const work = `${ root }/work-${ scenario }`;
 const logFile = `${ root }/log-${ scenario }.txt`;
+const rawFile = `${ root }/raw-${ scenario }.jsonl`;
 
 mkdirSync(work, { recursive: true });
 writeFileSync(logFile, '');
+writeFileSync(rawFile, '');
 
 const t0 = Date.now();
 const log = (...a: unknown[]) => {
@@ -69,7 +76,7 @@ const request = (method: string, params: unknown) => new Promise<any>((resolve, 
 });
 
 let sid = '';
-let onUpdate: (u: any) => void = () => undefined;
+let onUpdate: (u: any, from: string) => void = () => undefined;
 const SKIP = new Set(['agent_thought_chunk', 'available_commands_update', 'usage_update']);
 
 const brief = (u: any) => {
@@ -100,12 +107,15 @@ createInterface({ input: child.stdout }).on('line', (line) => {
     else if (m.method) {
         if (m.method === 'session/update') {
             const u = m.params.update;
+            const from: string = m.params.sessionId;
+
+            appendFileSync(rawFile, `${ JSON.stringify({ t: +((Date.now() - t0) / 1000).toFixed(3), method: m.method, params: m.params }) }\n`);
 
             if (!SKIP.has(u.sessionUpdate)) {
-                log('UPD', brief(u));
+                log(from === sid ? 'UPD' : `UPD [child ${ from.slice(0, 6) }]`, brief(u));
             }
 
-            onUpdate(u);
+            onUpdate(u, from);
         }
         else {
             log('NOTIF', m.method, JSON.stringify(m.params).slice(0, 200));
@@ -150,6 +160,15 @@ const prompt = (label: string, text: string) => {
 const BG_BASH = (secs: number) => `Use the Bash tool with run_in_background set to true to run exactly: sleep ${ secs }; echo BGDONE. Then end your turn at once with just the word OK. Do not wait for it and do not poll it.`;
 const BG_AGENT = 'Use the Agent tool with run_in_background set to true to start a sub-agent whose task is: run `sleep 10; echo SUBDONE` with the Bash tool and then report the output in one sentence. Then end your turn at once with just the word OK. Do not wait for the sub-agent.';
 const BOTH = ['asyncTasks', 'backgroundSubagents'];
+const FG_AGENT = 'Use the Agent tool to start ONE sub-agent in the foreground (pass run_in_background: false explicitly) whose task is: use the Bash tool to run `echo ONE`, then use the Bash tool again to run `echo TWO`, then report both outputs in one sentence. Wait for it, then answer with its report in one short sentence.';
+const BG_AGENT_TOOLS = 'Use the Agent tool with run_in_background set to true to start a sub-agent whose task is: use the Bash tool to run `echo ONE`, then use the Bash tool to run `sleep 8; echo TWO`, then report both outputs in one sentence. Then end your turn at once with just the word OK. Do not wait for the sub-agent.';
+const TWO_FG = 'In ONE message, call the Agent tool twice in parallel (foreground, pass run_in_background: false explicitly): sub-agent A runs `echo AAA` with the Bash tool and reports it; sub-agent B runs `echo BBB` with the Bash tool and reports it. When both return, answer in one sentence naming both outputs.';
+const TWO_BG = 'In ONE message, call the Agent tool twice in parallel, each with run_in_background set to true: sub-agent A runs `sleep 6; echo AAA` with the Bash tool and reports it; sub-agent B runs `sleep 10; echo BBB` with the Bash tool and reports it. Then end your turn at once with just the word OK. Do not wait for them.';
+const LONG_FG = 'Use the Agent tool to start ONE sub-agent in the foreground (pass run_in_background: false explicitly) whose task is: use the Bash tool to run `python3 -c "import time; time.sleep(40)"` and then report DONE. Wait for it, then answer with its report.';
+const LONG_BG = 'Use the Agent tool with run_in_background set to true to start a sub-agent whose task is: use the Bash tool to run `python3 -c "import time; time.sleep(40)"` and then report DONE. Then end your turn at once with just the word OK. Do not wait for the sub-agent.';
+const BG_AGENT_OWN_BG = 'Use the Agent tool with run_in_background set to true to start a sub-agent whose task is: use the Bash tool with run_in_background set to true to run `sleep 12; echo SUBDONE`, then end your turn at once and, when that command finishes, report its output in one sentence. Then end your own turn at once with just the word OK. Do not wait for the sub-agent.';
+const FG_AGENT_OWN_BG = 'Use the Agent tool to start ONE sub-agent in the foreground (pass run_in_background: false explicitly) whose task is: use the Bash tool with run_in_background set to true to run `sleep 12; echo SUBDONE`, then end your turn at once and, when that command finishes, report its output in one sentence. Wait for the sub-agent, then answer with its report.';
+const cancel = () => write({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: sid } });
 const CODEX_BG = 'Run the shell command `sleep 15; echo CODEXDONE` in the background (as a background terminal / without waiting for it), then end your turn right away with just the word OK. Do not wait for it and do not poll it.';
 
 async function main() {
@@ -268,6 +287,75 @@ async function main() {
             void prompt('1', CODEX_BG);
             setTimeout(() => void prompt('2-during-running', 'Also add the word BANANA at the very end of your answer.'), 6000);
             await sleep(90_000);
+            break;
+        }
+        case 'f1': {
+            await boot({ v2: true });
+            void prompt('1', FG_AGENT);
+            await sleep(30_000);
+            break;
+        }
+        case 'f2': {
+            await boot({ v2: true });
+            void prompt('1', BG_AGENT_TOOLS);
+            await sleep(45_000);
+            break;
+        }
+        case 'f3': {
+            await boot({ v2: true });
+            void prompt('1', TWO_FG);
+            await sleep(35_000);
+            break;
+        }
+        case 'f4': {
+            await boot({ v2: true });
+            void prompt('1', TWO_BG);
+            await sleep(50_000);
+            break;
+        }
+        case 'f5': {
+            await boot({ v2: true });
+            void prompt('1', LONG_FG);
+            setTimeout(() => { log('CANCEL sent'); cancel(); }, 12_000);
+            await sleep(30_000);
+            break;
+        }
+        case 'f6': {
+            await boot({ v2: true });
+            void prompt('1', LONG_BG);
+            setTimeout(() => { log('CANCEL sent'); cancel(); }, 12_000);
+            await sleep(30_000);
+            break;
+        }
+        case 'f7': {
+            await boot({ v2: true });
+            void prompt('1', 'Use the Agent tool with subagent_type "does-not-exist-xyz" and prompt "hi". Report in one sentence what happened.');
+            await sleep(20_000);
+            break;
+        }
+        case 'f8': {
+            await boot({ v2: true });
+            void prompt('1', BG_AGENT_TOOLS);
+            setTimeout(() => void prompt('2-while-subagent-works', 'What is 2+2? Reply with only the number.'), 9_000);
+            await sleep(50_000);
+            break;
+        }
+        case 'f9': {
+            await boot({ v2: true });
+            void prompt('1', BG_AGENT_OWN_BG);
+            await sleep(60_000);
+            break;
+        }
+        case 'f10': {
+            await boot({ v2: true });
+            void prompt('1', FG_AGENT_OWN_BG);
+            await sleep(60_000);
+            break;
+        }
+        case 'c3': {
+            await boot({ v2: true });
+            void prompt('1', 'Spawn one sub-agent (use your sub-agent / spawn_agent tool; if you have none, reply NO_SUBAGENT_TOOL and stop) whose task is to run `echo HI` and report the output. Wait for it, then answer with its report in one sentence.');
+            await sleep(60_000);
             break;
         }
         default:
