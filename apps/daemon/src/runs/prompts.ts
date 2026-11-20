@@ -4,27 +4,22 @@ import { join } from 'node:path';
 
 import { clip } from './tool-kit';
 
-import type { BackgroundItem, ChatMode, Project, RunRole, Task } from '@clowdy/protocol';
+import type { BackgroundItem, ChatMode, Project, Task } from '@clowdy/protocol';
 
-/** The system skill each role starts from. It is named in the first message and its text is in the system prompt, because a skill listing alone is advisory. */
-const ENTRY_SKILL: Record<RunRole, string> = {
-    orchestrator: 'orchestrate',
-    executor: 'executor',
-    verifier: 'verify',
-};
+/**
+ * The system skill every run the daemon drives starts from: each one is a chat's orchestrator. It is named in the first message and its text is in the
+ * system prompt, because a skill listing alone is advisory.
+ */
+const ENTRY_SKILL = 'orchestrate';
 
-const ROLE_INTRO: Record<RunRole, string> = {
-    orchestrator: 'You are the orchestrator of a Clowdy chat. Follow clowdy:orchestrate; it names the other system skills (clowdy:autopilot, clowdy:semi-manual, clowdy:scaffold, clowdy:docs).',
-    executor: 'You are an executor run started by an orchestrator. Follow clowdy:executor. Never ask the user; finish with report_result.',
-    verifier: 'You are a verifier run started by an orchestrator. Follow clowdy:verify. Never ask the user; fix nothing; finish with report_result.',
-};
+const INTRO = 'You are the orchestrator of a Clowdy chat. Follow clowdy:orchestrate; it names the other system skills (clowdy:autopilot, clowdy:semi-manual, clowdy:scaffold, clowdy:docs).';
 
 const modeLabel = (mode: ChatMode) => (mode === 'semi' ? 'semi-manual' : 'autopilot');
 
 /**
  * What the agent is told about the project. No folder is called a repository: any folder can be a project's. Several folders are each named by
  * absolute path: an agent that takes no additional folders reaches the others only that way, and none reads another folder's instructions unless
- * told to. The folder the run works in is marked, which is not the main one for a child that `run_spawn` started elsewhere.
+ * told to. The folder the run works in is marked, which is not the main one for a run whose `cwd` is another folder.
  */
 function projectFacts(project: Project, cwd: string): string {
     const keys = `task keys ${ project.taskPrefix }-<number>`;
@@ -54,10 +49,10 @@ function projectFacts(project: Project, cwd: string): string {
  * The system prompt: where the system skills are, the mode and the facts about the project. Everything else is in the skills. `cwd` is the folder
  * the run works in.
  */
-export function systemPrompt(role: RunRole, mode: ChatMode, project: Project, cwd = mainFolder(project).path): string {
+export function systemPrompt(mode: ChatMode, project: Project, cwd = mainFolder(project).path): string {
     return [
         'Clowdy is a desktop app where a person who manages software work chats with an orchestrator and watches tasks, agents and documents while agents do the engineering.',
-        ROLE_INTRO[role],
+        INTRO,
         `Mode: ${ modeLabel(mode) }.`,
         projectFacts(project, cwd),
     ].join('\n');
@@ -77,29 +72,28 @@ function skillBody(skillsDir: string, name: string): string | undefined {
 }
 
 /**
- * The entry skill of a role, in the system prompt, with where the other system skills are. No agent is asked to load a
- * plugin: the skill it starts from is here, and the rest are files it reads when that skill says to follow them.
+ * The entry skill, in the system prompt, with where the other system skills are. No agent is asked to load a plugin: the skill it starts from is here,
+ * and the rest are files it reads when that skill says to follow them.
  */
-export function skillPrompt(role: RunRole, skillsDir: string | undefined): string {
+export function skillPrompt(skillsDir: string | undefined): string {
     if (!skillsDir) {
         return '';
     }
 
-    const entry = ENTRY_SKILL[role];
-    const body = skillBody(skillsDir, entry);
+    const body = skillBody(skillsDir, ENTRY_SKILL);
 
     return [
         `System skills are plain files: \`clowdy:<name>\` is ${ join(skillsDir, 'skills', '<name>', 'SKILL.md') }, and a skill's references/ folder is beside its SKILL.md. The skill you start from is below; read any other one with your file tool when a skill tells you to follow it.`,
-        body && `<skill name="clowdy:${ entry }">\n${ body }\n</skill>`,
+        body && `<skill name="clowdy:${ ENTRY_SKILL }">\n${ body }\n</skill>`,
     ].filter(Boolean).join('\n\n');
 }
 
-/** What every first message of a run starts with, whatever the role. */
+/** What every first message of a run starts with. */
 export const FIRST_MESSAGE_START = 'Follow clowdy:';
 
-/** The first message of a run: the entry skill, the mode and the content (the user's message, or what an orchestrator wrote for a child). */
-export function firstMessage(role: RunRole, mode: ChatMode, content: string): string {
-    return `${ FIRST_MESSAGE_START }${ ENTRY_SKILL[role] }. Mode: ${ modeLabel(mode) }\n\n${ content }`;
+/** The first message of a run: the entry skill, the mode and the content (the user's message, or the task a chat was started from). */
+export function firstMessage(mode: ChatMode, content: string): string {
+    return `${ FIRST_MESSAGE_START }${ ENTRY_SKILL }. Mode: ${ modeLabel(mode) }\n\n${ content }`;
 }
 
 /** What a task started from the task list says to its new chat's orchestrator. */

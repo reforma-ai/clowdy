@@ -108,7 +108,7 @@ describe('a chat on a provider that cannot run', () => {
 
         // The messages are still there, above the notice.
         expect(container.textContent).toContain('Simplify the booking flow: one form instead of three steps');
-        expect(container.textContent).toContain('Executor 07 is on the form');
+        expect(container.textContent).toContain('A sub-agent is on the form');
     });
 
     it('says why for each reason', async () => {

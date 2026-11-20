@@ -40,7 +40,7 @@ export interface ComposerQueueProps {
     chat: Chat;
     /** The orchestrator works, so Send now steers its turn; at rest Send now sends the message as the next turn. */
     busy: boolean;
-    /** The orchestrator has not finished (it works, or waits for its executors): a compact item cannot go yet. */
+    /** The orchestrator has not finished: a compact item cannot go yet. */
     running: boolean;
     /** Edit: the message has left the queue, and its words and files go back into the message box. */
     onEdit: (item: QueuedMessage) => void;

@@ -333,4 +333,50 @@ export const MIGRATIONS: Migration[] = [
             db.run('ALTER TABLE runs ADD COLUMN can_stop_alone INTEGER');
         },
     },
+    {
+        version: 15,
+        up(db) {
+            // Runs no longer start child runs of their own (`run_spawn` is gone), and what such runs left behind stays as history in the smaller model. A
+            // child that was still active is stopped, since nothing drives it any more; then every started child reads as a sub-agent (`native`), a verifier
+            // as an executor, and a parent that waited for its children as finished, what it had open in the background kept for its next message. The links
+            // of the verifiers go, and so do the mailbox of finished children, the idempotency key of a start and the outcome a child reported.
+            const now = Date.now();
+
+            // A task In progress whose work stops here goes back to To do, as a run that ends without finishing moves its task (`RunService.syncTasks`):
+            // the update does not go through the status machine. A task that another run still works on, one that stays active, keeps its column.
+            db.query(`
+                UPDATE tasks SET updated_at = ?, status_id = (
+                    SELECT s.id FROM task_statuses s WHERE s.project_id = tasks.project_id AND s.category = 'todo' ORDER BY s.position LIMIT 1
+                )
+                WHERE status_id IN (SELECT id FROM task_statuses WHERE category = 'active')
+                AND EXISTS (SELECT 1 FROM task_statuses s WHERE s.project_id = tasks.project_id AND s.category = 'todo')
+                AND id IN (
+                    SELECT l.task_id FROM run_task_links l JOIN runs r ON r.id = l.run_id
+                    WHERE l.relation = 'assigned' AND r.origin = 'spawned' AND r.status IN ('queued', 'running', 'waiting_children', 'waiting_background', 'waiting_user', 'blocked')
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM run_task_links l JOIN runs r ON r.id = l.run_id
+                    WHERE l.task_id = tasks.id AND l.relation = 'assigned' AND r.origin IS NOT 'spawned' AND r.status IN ('queued', 'running', 'waiting_background', 'waiting_user', 'blocked')
+                )
+            `).run(now);
+            db.query(`
+                UPDATE runs SET status = 'cancelled', status_reason = 'Stopped by an update of Clowdy', finished_at = ?, background = NULL
+                WHERE origin = 'spawned' AND status IN ('queued', 'running', 'waiting_children', 'waiting_background', 'waiting_user', 'blocked')
+            `).run(now);
+            db.query(`
+                UPDATE runs SET status = 'succeeded', status_reason = NULL, finished_at = ?, lost_background = COALESCE(lost_background, background), background = NULL
+                WHERE status = 'waiting_children'
+            `).run(now);
+            db.run(`
+                UPDATE runs SET origin = 'native' WHERE origin = 'spawned';
+                UPDATE runs SET role = 'executor' WHERE role = 'verifier';
+                DELETE FROM run_task_links WHERE relation = 'verifies';
+                DROP INDEX IF EXISTS run_mailbox_pending;
+                DROP TABLE IF EXISTS run_mailbox;
+                DROP INDEX IF EXISTS runs_idempotency;
+                ALTER TABLE runs DROP COLUMN idempotency_key;
+                ALTER TABLE runs DROP COLUMN outcome;
+            `);
+        },
+    },
 ];

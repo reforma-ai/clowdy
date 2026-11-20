@@ -13,12 +13,12 @@ import type { Harness } from './helpers';
 afterAll(cleanTempDirs);
 
 const harnesses: Harness[] = [];
-const spawned: number[] = [];
+const leftovers: number[] = [];
 
 afterEach(async () => {
     await Promise.all(harnesses.splice(0).map(h => h.stop().catch(() => undefined)));
 
-    for (const pid of spawned.splice(0)) {
+    for (const pid of leftovers.splice(0)) {
         try {
             process.kill(-pid, 'SIGKILL');
         }
@@ -33,7 +33,7 @@ function startProcess(command: string): number {
     const child = spawn('sh', ['-c', command], { detached: true, stdio: 'ignore' });
 
     child.unref();
-    spawned.push(child.pid!);
+    leftovers.push(child.pid!);
 
     return child.pid!;
 }
@@ -56,7 +56,7 @@ describe('cancelling a run whose engine does not stop', () => {
             await new Promise(() => undefined);
             yield { type: 'done', result: String(options.prompt.length) };
         });
-        const h = await startHarness({ timings: { wakeWindowMs: 15, killGraceMs: 300, retryBaseMs: 10, pauseJitterMs: 0 } }, { engines: scriptEngines(engine) });
+        const h = await startHarness({ timings: { killGraceMs: 300, retryBaseMs: 10, pauseJitterMs: 0 } }, { engines: scriptEngines(engine) });
 
         harnesses.push(h);
 
@@ -94,7 +94,7 @@ describe('cancelling a run whose engine does not stop', () => {
             yield { type: 'process', pid, pgid: pid };
             await untilAborted(signal);
         });
-        const h = await startHarness({ timings: { wakeWindowMs: 15, killGraceMs: 200, retryBaseMs: 10, pauseJitterMs: 0 } }, { engines: scriptEngines(engine) });
+        const h = await startHarness({ timings: { killGraceMs: 200, retryBaseMs: 10, pauseJitterMs: 0 } }, { engines: scriptEngines(engine) });
 
         harnesses.push(h);
 
@@ -238,7 +238,7 @@ describe('a tool that left the agent\'s process group', () => {
 
     async function startAgent(script = AGENT_WITH_DETACHED_TOOL) {
         const agent = await spawnInOwnGroup({ command: process.execPath, args: ['-e', script], cwd: tempDir(), env: { PATH: process.env.PATH ?? '' } });
-        spawned.push(agent.pid);
+        leftovers.push(agent.pid);
 
         const tool = await toolOf(agent.child);
 
@@ -324,7 +324,7 @@ describe('a tool that left the agent\'s process group', () => {
         const child = spawn(process.execPath, ['-e', AGENT_WITH_DETACHED_TOOL], { detached: true, stdio: ['ignore', 'pipe', 'ignore'] });
 
         child.unref();
-        spawned.push(child.pid!);
+        leftovers.push(child.pid!);
 
         const tool = await toolOf(child);
 

@@ -2,13 +2,11 @@ import { z } from 'zod';
 
 import type { ToolDefinition } from '../engine/types';
 import type { Store } from '../store';
-import type { RunDriver } from './driver';
 import type { RunService } from './service';
 
 export interface ToolDeps {
     store: Store;
     runs: RunService;
-    driver: RunDriver;
 }
 
 /** A tool with a zod schema: the model's input is checked first and a bad call answers with what to fix. */

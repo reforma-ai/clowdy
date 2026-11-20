@@ -18,7 +18,7 @@ const run = (status: RunStatus): Run => ({
 
 describe('isRunActive', () => {
     it('is true for every status that has not ended', () => {
-        for (const status of ['queued', 'running', 'waiting_children', 'waiting_background', 'waiting_user', 'blocked'] as const) {
+        for (const status of ['queued', 'running', 'waiting_background', 'waiting_user', 'blocked'] as const) {
             expect(isRunActive(run(status)), status).toBe(true);
         }
     });
@@ -39,8 +39,8 @@ describe('isRunBusy', () => {
         }
     });
 
-    it('is false while it only waits for its executors or for background work, which take a message at once, and once it has ended', () => {
-        for (const status of ['waiting_children', 'waiting_background', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
+    it('is false while it only waits for background work, which takes a message at once, and once it has ended', () => {
+        for (const status of ['waiting_background', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
             expect(isRunBusy(run(status)), status).toBe(false);
         }
 
@@ -52,7 +52,6 @@ describe('liveLine', () => {
     it('shows the default line while working and names what a waiting or queued run waits for', () => {
         expect(liveLine('running')).toBe(true);
         expect(liveLine('queued')).toMatch(/free slot/);
-        expect(liveLine('waiting_children')).toMatch(/executors/);
         expect(liveLine('waiting_background')).toBe('Waiting for background work…');
     });
 

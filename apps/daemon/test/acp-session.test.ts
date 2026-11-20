@@ -663,9 +663,9 @@ eachProtocol('cancelling', () => {
         expect(failed).toMatchObject({ type: 'error' });
         expect((failed as { message: string }).message).toMatch(/did not answer the ACP handshake.*not an agent/s);
 
-        const spawned = events.find(event => event.type === 'process');
+        const launched = events.find(event => event.type === 'process');
 
-        await until(() => spawned === undefined || !alive(spawned.pid), 'the process to be gone');
+        await until(() => launched === undefined || !alive(launched.pid), 'the process to be gone');
     });
 
     test('aborting while the agent is still starting ends the session and leaves no process', async () => {
@@ -689,9 +689,9 @@ eachProtocol('cancelling', () => {
         expect(types(events)).not.toContain('session');
         expect(types(events)).not.toContain('error');
 
-        const spawned = events.find(event => event.type === 'process');
+        const launched = events.find(event => event.type === 'process');
 
-        await until(() => spawned === undefined || !alive(spawned.pid), 'the agent to be gone');
+        await until(() => launched === undefined || !alive(launched.pid), 'the agent to be gone');
     });
 
     test('a reader that stops right at the process event does not leave the process behind', async () => {
@@ -743,7 +743,7 @@ eachProtocol('the runtime\'s tools', () => {
     test('cancelling the run aborts a tool call that is still running', async () => {
         let entered = false;
         let aborted = false;
-        const tools = [tool('run_wait', (_input, signal) => new Promise((_resolve, reject) => {
+        const tools = [tool('ask_user', (_input, signal) => new Promise((_resolve, reject) => {
             entered = true;
             signal.addEventListener('abort', () => {
                 aborted = true;
@@ -751,7 +751,7 @@ eachProtocol('the runtime\'s tools', () => {
             });
         }))];
 
-        const { session, abort } = use().start('call run_wait {}', { tools });
+        const { session, abort } = use().start('call ask_user {}', { tools });
         const reading = collect(session);
 
         await until(() => entered, 'the agent to call the tool');

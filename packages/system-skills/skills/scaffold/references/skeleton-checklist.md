@@ -1,6 +1,6 @@
 # Skeleton checklist
 
-The skeleton is the smallest repository in which every later agent can add a feature, run one command, and know whether it broke something. Build it with one agent, in order, and tick each item only after you saw it work. Names such as `check` and `run` are the roles; use the ecosystem's usual script names (`bun run check`, `make check`, `cargo test`) and write the real ones in the README.
+The skeleton is the smallest repository in which every later agent can add a feature, run one command, and know whether it broke something. Build it yourself, in order, and tick each item only after you saw it work. Names such as `check` and `run` are the roles; use the ecosystem's usual script names (`bun run check`, `make check`, `cargo test`) and write the real ones in the README.
 
 ## 1. Repository
 
@@ -52,7 +52,7 @@ Nothing else. No badges, no roadmap, no aspirational features.
 ## 7. Documents
 
 - [ ] `architecture.md` written from the repository as it is now (layout, commands, conventions, shared files, contracts), using the template of clowdy:docs, in the project's main checkout. Every command in it is one you ran.
-- [ ] `product.md` and `index.md` exist (the orchestrator writes them; read them, do not rewrite them). Do not edit `index.md`; the orchestrator adds the `architecture.md` line when you report.
+- [ ] `product.md` and `index.md` exist (you wrote them in steps 1 and 4 of the skill). `index.md` has the `architecture.md` line.
 
 ## 8. Prove it
 
@@ -69,6 +69,6 @@ Do this last, from a clean state, and write down what you saw.
 - [ ] One initial commit with a plain message, for example "Project skeleton: checks, run command, layout". It contains the lockfile and no secrets, build output or local data. Afterwards `git status` is clean.
 - [ ] If git refuses because no author identity is set, do not invent one and do not change global settings. Leave the skeleton uncommitted and say so in the report ("Not run: initial commit, no git identity; the user needs to set one"). Everything else still counts as done.
 
-## 10. Report (executor)
+## 10. Report
 
-End with `report_result({ status: "done", summary })`. The summary names: the check and run commands, the runtime version, the layout in one line, the shared files, any dependency you added beyond the stack decision, and what you saw in step 8. If a part could not be proven, say which and why, and use `blocked` or `failed` instead of `done` when the check or run does not work.
+Put in the task note and the report to the manager: the check and run commands, the runtime version, the layout in one line, the shared files, any dependency you added beyond the stack decision, and what you saw in step 8. If a part could not be proven, say which and why; when the check or run does not work, the skeleton is not done.

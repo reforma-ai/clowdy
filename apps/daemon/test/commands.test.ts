@@ -24,7 +24,7 @@ const failure = (result: ReturnType<Harness['send']>) => {
     return result.error;
 };
 
-describe('idempotency', () => {
+describe('a repeated request id', () => {
     test('a repeated requestId returns the first result without acting twice', () => {
         const { id } = h.openRepo();
         const first = h.send('chat.create', { requestId: 'req-idempotent-1', projectId: id, title: 'Once' });

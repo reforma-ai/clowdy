@@ -8,10 +8,10 @@ import { RunStatusPill } from '../../shared';
 import { AgentAvatar } from '../../stream';
 import styles from './DetailSections.module.css';
 import { Pill, PillLabel } from './Pill';
-import { formatAgo, resultRows, type Activity, type ResultRow, type TaskRun } from './taskView';
+import { formatAgo, resultRows, type Activity, type ResultRow } from './taskView';
 import { useTaskArtifacts } from './useTaskArtifacts';
 
-import type { Artifact, Chat, TaskId } from '@clowdy/protocol';
+import type { Artifact, Chat, Run, TaskId } from '@clowdy/protocol';
 
 export function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
     return (
@@ -28,19 +28,19 @@ export function Section({ title, count, children }: { title: string; count?: num
 const None = ({ children }: { children: ReactNode }) => <span className={ styles.none }>{ children }</span>;
 
 /** The agents on the task, each with its status. A press selects the run in Agents. */
-export function Executors({ taskRuns, onOpen }: { taskRuns: readonly TaskRun[]; onOpen: (runId: string) => void }) {
+export function Executors({ taskRuns, onOpen }: { taskRuns: readonly Run[]; onOpen: (runId: string) => void }) {
     return (
         <Section title="Executors" count={ taskRuns.length }>
             { taskRuns.length === 0
                 ? <None>No agent has worked on this task yet.</None>
                 : (
                     <div className={ styles.rows }>
-                        { taskRuns.map(({ run, relation }) => (
+                        { taskRuns.map(run => (
                             <button key={ run.id } type="button" className={ styles.row } onClick={ () => onOpen(run.id) } title={ run.summary || run.name }>
                                 <span aria-hidden className={ styles.icon }><User /></span>
                                 <span className={ styles.rowText }>
                                     <span className={ styles.rowName }>{ run.name }</span>
-                                    <span className={ styles.rowSummary }>{ relation === 'verifies' ? 'Checks the work' : run.summary }</span>
+                                    <span className={ styles.rowSummary }>{ run.summary }</span>
                                 </span>
                                 <RunStatusPill status={ run.status } reason={ run.statusReason } />
                             </button>

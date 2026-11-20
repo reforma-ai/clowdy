@@ -39,6 +39,6 @@ One note per question, in `research/<YYYY-MM-DD>-<topic>.md`. A note is for a re
 - Quote little. A one-line excerpt with its source beats a pasted page. No raw logs.
 - Web sources: record the access date. Prefer official documentation over blog posts, and say which one you used.
 - When the note stops being true, change its `Status` to `outdated`, add a line saying what changed, and move its entry in `index.md` under `Outdated:`. Do not delete it.
-- Read-only sub-agents return findings to their parent, who writes one note citing the sources. Separate research runs (executors) each write their own note and report its path; the orchestrator links them from `index.md` and, when they overlap, writes one short synthesis note that cites them.
+- Read-only sub-agents return findings to you; you write one note citing the sources, and link it from `index.md`.
 - A chat that only answers a question writes no note unless the user asks for one; offer it in a sentence when the answer was costly to find.
 - Write the note before you build on it. A finding that lives only in chat is lost.

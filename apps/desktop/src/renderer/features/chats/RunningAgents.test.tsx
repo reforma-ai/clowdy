@@ -16,9 +16,9 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), warning: v
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /*
- * The strip above the message box of c-1, whose orchestrator r-orch-1 has Executor 07 working, Executor 08 waiting for the person and the
- * native Explore sub-agent r-na-02 searching, and of c-5, whose orchestrator r-orch-5 waits for two commands it started in the background.
- * The test build has no MobX observer plugin, so the view is drawn again by hand after a change.
+ * The strip above the message box of c-1, whose orchestrator r-orch-1 has the native sub-agents r-na-03 (a general-purpose one, writing) and r-na-02
+ * (Explore, searching) at work, and of c-5, whose orchestrator r-orch-5 waits for two commands it started in the background. The test build has no
+ * MobX observer plugin, so the view is drawn again by hand after a change.
  */
 
 const memoryStorage = (): KeyValueStorage => {
@@ -73,12 +73,11 @@ async function draw(chatId = 'c-1') {
 }
 
 describe('RunningAgents', () => {
-    it('has a row per agent at work with what it does, and a Stop on each that can stop alone, a sub-agent of the session among them', async () => {
+    it('has a row per sub-agent at work with what it does, and a Stop on each that can stop alone', async () => {
         await draw();
 
         expect(rows().map(row => [row.querySelector('button')?.textContent, [...row.querySelectorAll('button')].at(1)?.textContent])).toEqual([
-            ['Executor 07 · Finishing reply · 5 calls', 'Stop'],
-            ['Executor 08 · Waiting for you', 'Stop'],
+            ['General agent · Finishing reply · 5 calls', 'Stop'],
             ['Explore agent · Searching useBookingPrice · 1 call', 'Stop'],
         ]);
     });
@@ -87,16 +86,16 @@ describe('RunningAgents', () => {
         await draw();
 
         const command = vi.spyOn(store, 'command');
-        const [executor07, , explore] = rows();
+        const [general, explore] = rows();
 
         await act(async () => explore.querySelector('button')!.click());
         expect(ui().runId).toBe('r-na-02');
 
-        await act(async () => [...executor07.querySelectorAll('button')][1].click());
-        expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-ex-07' });
-        await vi.waitFor(() => expect(runs().get('r-ex-07')?.status).toBe('cancelled'));
+        await act(async () => [...general.querySelectorAll('button')][1].click());
+        expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-na-03' });
+        await vi.waitFor(() => expect(runs().get('r-na-03')?.status).toBe('cancelled'));
         // Nothing else stopped, the orchestrator included.
-        expect([runs().get('r-orch-1')?.status, runs().get('r-ex-08')?.status, runs().get('r-na-02')?.status]).toEqual(['running', 'waiting_user', 'running']);
+        expect([runs().get('r-orch-1')?.status, runs().get('r-na-02')?.status]).toEqual(['running', 'running']);
     });
 
     it('stops a sub-agent of the session alone from its row, with the orchestrator\'s turn running', async () => {
@@ -104,17 +103,17 @@ describe('RunningAgents', () => {
 
         const command = vi.spyOn(store, 'command');
 
-        await act(async () => [...rows()[2].querySelectorAll('button')][1].click());
+        await act(async () => [...rows()[1].querySelectorAll('button')][1].click());
         expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-na-02' });
         await vi.waitFor(() => expect(runs().get('r-na-02')?.status).toBe('cancelled'));
-        expect([runs().get('r-orch-1')?.status, runs().get('r-ex-07')?.status, runs().get('r-ex-08')?.status]).toEqual(['running', 'running', 'waiting_user']);
+        expect([runs().get('r-orch-1')?.status, runs().get('r-na-03')?.status]).toEqual(['running', 'running']);
     });
 
     it('has no Stop on a sub-agent whose session cannot end it alone: the composer stops the run', async () => {
         put({ ...runs().get('r-na-02')!, canStopAlone: undefined });
         await draw();
 
-        expect(rows().map(row => buttons(row).slice(1))).toEqual([['Stop'], ['Stop'], []]);
+        expect(rows().map(row => buttons(row).slice(1))).toEqual([['Stop'], []]);
     });
 
     it('draws nothing while no agent of the chat works', async () => {
@@ -128,13 +127,12 @@ describe('RunningAgents, the header', () => {
     it('says Agents running over the rows, with Stop all when two or more of them can stop alone', async () => {
         await draw();
 
-        expect(lines().map(line => line.textContent)).toEqual([expect.stringMatching(/^Agents runningStop all$/), expect.stringContaining('Executor 07'), expect.stringContaining('Executor 08'), expect.stringContaining('Explore agent')]);
+        expect(lines().map(line => line.textContent)).toEqual([expect.stringMatching(/^Agents runningStop all$/), expect.stringContaining('General agent'), expect.stringContaining('Explore agent')]);
         expect(lines()[0]).toBe(header());
     });
 
     it('has no button with one agent that can stop alone: its own Stop does it', async () => {
-        put({ ...runs().get('r-ex-07')!, status: 'succeeded' });
-        put({ ...runs().get('r-ex-08')!, status: 'succeeded' });
+        put({ ...runs().get('r-na-03')!, status: 'succeeded' });
         await draw();
 
         expect(lines().map(line => line.textContent)).toEqual(['Agents running', expect.stringContaining('Explore agent')]);
@@ -144,10 +142,9 @@ describe('RunningAgents, the header', () => {
 
     it('does not count an agent that cannot stop alone: it makes no button, and with one that can the header has none either', async () => {
         put({ ...runs().get('r-na-02')!, canStopAlone: undefined });
-        put({ ...runs().get('r-ex-08')!, status: 'succeeded' });
         await draw();
 
-        expect(lines().map(line => line.textContent)).toEqual(['Agents running', expect.stringContaining('Executor 07'), expect.stringContaining('Explore agent')]);
+        expect(lines().map(line => line.textContent)).toEqual(['Agents running', expect.stringContaining('General agent'), expect.stringContaining('Explore agent')]);
         expect(buttons(header())).toEqual([]);
     });
 
@@ -160,7 +157,7 @@ describe('RunningAgents, the header', () => {
         expect(command).toHaveBeenCalledWith({ type: 'run.stopAgents', runId: 'r-orch-1' });
         expect(command).toHaveBeenCalledTimes(1);
 
-        await vi.waitFor(() => expect(['r-ex-07', 'r-ex-08', 'r-na-02'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled', 'cancelled']));
+        await vi.waitFor(() => expect(['r-na-03', 'r-na-02'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled']));
         expect(runs().get('r-orch-1')?.status).toBe('running');
         expect(store.selectedProject!.chats.get('c-1')?.queuePaused).toBeUndefined();
 
@@ -171,19 +168,20 @@ describe('RunningAgents, the header', () => {
 
     it('leaves a sub-agent that cannot stop alone at work', async () => {
         put({ ...runs().get('r-na-02')!, canStopAlone: undefined });
+        put({ ...runs().get('r-na-03')!, id: 'r-na-07', parentToolCallId: 'tc-agent-7', createdAt: 5 });
         await draw();
 
         await act(async () => header()!.querySelector('button')!.click());
-        await vi.waitFor(() => expect(['r-ex-07', 'r-ex-08'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled']));
+        await vi.waitFor(() => expect(['r-na-03', 'r-na-07'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled']));
         expect(runs().get('r-na-02')?.status).toBe('running');
         expect(runs().get('r-orch-1')?.status).toBe('running');
     });
 
     it('is one line over eight agents, and the line that counts the ones beyond the fifth has no button', async () => {
-        for (const id of ['r-ex-07', 'r-ex-08', 'r-na-02']) runs().set(id, { ...runs().get(id)!, status: 'succeeded' });
+        for (const id of ['r-na-03', 'r-na-02']) runs().set(id, { ...runs().get(id)!, status: 'succeeded' });
 
         for (let index = 1; index <= 8; index++) {
-            put({ ...runs().get('r-ex-07')!, id: `r-many-${ index }`, name: `Executor ${ 20 + index }`, status: 'running', createdAt: 100 + index });
+            put({ ...runs().get('r-na-03')!, id: `r-many-${ index }`, name: 'Explore', status: 'running', createdAt: 100 + index });
         }
 
         await draw();
@@ -336,8 +334,7 @@ describe('RunningAgents, the background row', () => {
         await draw();
 
         expect(rows().map(row => row.textContent)).toEqual([
-            expect.stringContaining('Executor 07'),
-            expect.stringContaining('Executor 08'),
+            expect.stringContaining('General agent'),
             expect.stringContaining('Explore agent'),
             'Background task runningStop',
         ]);

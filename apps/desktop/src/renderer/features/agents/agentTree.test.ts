@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildRunTree } from '../../stores/runTree';
-import { agentRows, ancestorIds, archivedChats, chatDotTone, chatOfRun, countActiveChildren, describeRun, listedRunId, resolveSelection, visibleChats } from './agentTree';
+import { archivedChats, chatDotTone, chatOfRun, resolveSelection, visibleChats } from './agentTree';
 
 import type { Chat, Run, RunStatus } from '@clowdy/protocol';
 
@@ -15,53 +14,17 @@ function chat(id: string, orchestratorRunId?: string): Chat {
     return { id, projectId: 'p', title: `Chat ${ id }`, orchestratorRunId, createdAt: 1, updatedAt: 1 } as Chat;
 }
 
-/** orch, with a (running, with a1 below it), b (done) and c (waiting). */
+/** orch, with the native sub-agents a (running, with a1 below it), b (done) and c (waiting), and the orchestrator of another chat. */
 const runs = [
-    run('orch', 'running', { createdAt: 1 }),
-    run('a', 'running', { parentRunId: 'orch', rootRunId: 'orch', createdAt: 2 }),
-    run('a1', 'running', { parentRunId: 'a', rootRunId: 'orch', createdAt: 3 }),
-    run('b', 'succeeded', { parentRunId: 'orch', rootRunId: 'orch', createdAt: 4 }),
-    run('c', 'waiting_user', { parentRunId: 'orch', rootRunId: 'orch', createdAt: 5 }),
-    run('other', 'running', { createdAt: 6 }),
+    run('orch', 'running', { role: 'orchestrator', createdAt: 1 }),
+    run('a', 'running', { parentRunId: 'orch', rootRunId: 'orch', origin: 'native', createdAt: 2 }),
+    run('a1', 'running', { parentRunId: 'a', rootRunId: 'orch', origin: 'native', createdAt: 3 }),
+    run('b', 'succeeded', { parentRunId: 'orch', rootRunId: 'orch', origin: 'native', createdAt: 4 }),
+    run('c', 'waiting_user', { parentRunId: 'orch', rootRunId: 'orch', origin: 'native', createdAt: 5 }),
+    run('other', 'running', { role: 'orchestrator', createdAt: 6 }),
 ];
 
 const chats = [chat('chat-1', 'orch'), chat('chat-2', 'other'), chat('chat-3')];
-
-describe('agentRows', () => {
-    it('lists each chat followed by the runs below its orchestrator, which is the chat itself', () => {
-        const rows = agentRows(chats, buildRunTree(runs), new Set());
-
-        expect(rows.map(row => [row.kind, row.id, row.depth, row.childCount])).toEqual([
-            ['chat', 'chat-1', 0, 3],
-            ['run', 'a', 1, 1],
-            ['run', 'a1', 2, 0],
-            ['run', 'b', 1, 0],
-            ['run', 'c', 1, 0],
-            ['chat', 'chat-2', 0, 0],
-            ['chat', 'chat-3', 0, 0],
-        ]);
-    });
-
-    it('keeps the order of the chats it is given, whatever the order of the runs', () => {
-        const rows = agentRows([chats[1], chats[0]], buildRunTree(runs), new Set());
-
-        expect(rows.filter(row => row.kind === 'chat').map(row => row.id)).toEqual(['chat-2', 'chat-1']);
-    });
-
-    it('hides what is below a collapsed chat or run, and says so', () => {
-        const tree = buildRunTree(runs);
-
-        expect(agentRows(chats, tree, new Set(['a'])).map(row => row.id)).toEqual(['chat-1', 'a', 'b', 'c', 'chat-2', 'chat-3']);
-        expect(agentRows(chats, tree, new Set(['chat-1'])).map(row => row.id)).toEqual(['chat-1', 'chat-2', 'chat-3']);
-        expect(agentRows(chats, tree, new Set(['chat-1'])).find(row => row.id === 'chat-1')).toMatchObject({ childCount: 3, isExpanded: false });
-    });
-
-    it('shows a chat with no orchestrator run, or whose run is gone, without children', () => {
-        const rows = agentRows([chat('lonely', 'missing')], buildRunTree(runs), new Set());
-
-        expect(rows).toEqual([expect.objectContaining({ kind: 'chat', id: 'lonely', childCount: 0 })]);
-    });
-});
 
 describe('visibleChats', () => {
     const list = [chats[0], { ...chats[1], archivedAt: 5 }, chats[2]];
@@ -107,7 +70,7 @@ describe('resolveSelection', () => {
         expect(resolve('chat-2', null)).toEqual({ chat: byChat.get('chat-2'), run: undefined, draft: false });
     });
 
-    it('shows a run below a chat, with its chat, wherever the chat remembered was', () => {
+    it('shows a sub-agent of a chat, with its chat, wherever the chat remembered was', () => {
         expect(resolve('chat-2', 'a1')).toEqual({ chat: byChat.get('chat-1'), run: byRun.get('a1'), draft: false });
     });
 
@@ -145,95 +108,9 @@ describe('resolveSelection', () => {
     });
 });
 
-describe('ancestorIds', () => {
-    const byId = new Map(runs.map(candidate => [candidate.id, candidate]));
-
-    it('lists the parents, nearest first', () => {
-        expect(ancestorIds(byId, 'a1')).toEqual(['a', 'orch']);
-        expect(ancestorIds(byId, 'orch')).toEqual([]);
-        expect(ancestorIds(byId, 'unknown')).toEqual([]);
-    });
-
-    it('stops at a parent cycle', () => {
-        const cyclic = new Map([run('x', 'running', { parentRunId: 'y' }), run('y', 'running', { parentRunId: 'x' })].map(candidate => [candidate.id, candidate]));
-
-        expect(ancestorIds(cyclic, 'x')).toEqual(['y', 'x']);
-    });
-});
-
-describe('countActiveChildren', () => {
-    it('counts the children that are still going', () => {
-        const counts = countActiveChildren(runs);
-
-        expect(counts.get('orch')).toBe(2);
-        expect(counts.get('a')).toBe(1);
-        expect(counts.has('b')).toBe(false);
-    });
-
-    it('leaves native sub-agents out', () => {
-        const counts = countActiveChildren([...runs, run('n1', 'running', { parentRunId: 'b', rootRunId: 'orch', origin: 'native' })]);
-
-        expect(counts.has('b')).toBe(false);
-    });
-});
-
-describe('listedRunId', () => {
-    const native = run('n1', 'running', { parentRunId: 'a', rootRunId: 'orch', origin: 'native' });
-    const nativeOfOrchestrator = run('n2', 'running', { parentRunId: 'orch', rootRunId: 'orch', origin: 'native' });
-    const byId = new Map([...runs, native, nativeOfOrchestrator].map(candidate => [candidate.id, candidate]));
-
-    it('is the run\'s own row, or for a native sub-agent the row of the run it lives in', () => {
-        expect(listedRunId(byId, byId.get('a1')!)).toBe('a1');
-        expect(listedRunId(byId, native)).toBe('a');
-    });
-
-    it('is nothing when that run is the orchestrator, whose row is the chat\'s', () => {
-        expect(listedRunId(byId, nativeOfOrchestrator)).toBeUndefined();
-        expect(listedRunId(byId, byId.get('orch')!)).toBeUndefined();
-    });
-});
-
-describe('describeRun', () => {
-    it('says a parent waits for its sub-agents, with how many are active', () => {
-        const parent = run('p', 'waiting_children');
-
-        expect(describeRun(parent, 3)).toEqual({ text: 'Waiting for sub-agents · 3 active', tone: 'warning' });
-        expect(describeRun(parent, 0)).toEqual({ text: 'Waiting for sub-agents', tone: 'warning' });
-    });
-
-    it('says a run waits for its background work, with how many items are open, and calmly', () => {
-        const background = [{ id: 'bg-1', kind: 'command' as const, title: 'bun run test' }, { id: 'bg-2', kind: 'task' as const, title: 'Workflow' }];
-
-        expect(describeRun(run('r', 'waiting_background', { background }), 0)).toEqual({ text: 'Waiting for background work · 2 open', tone: 'neutral' });
-        expect(describeRun(run('r', 'waiting_background'), 0)).toEqual({ text: 'Waiting for background work', tone: 'neutral' });
-    });
-
-    it('shows the reason of waiting, blocked, queued and interrupted runs', () => {
-        expect(describeRun(run('r', 'waiting_user', { statusReason: 'Asked which mail provider' }), 0)).toEqual({ text: 'Asked which mail provider', tone: 'warning' });
-        expect(describeRun(run('r', 'blocked', { statusReason: 'Blocked by CAR-24' }), 0)).toEqual({ text: 'Blocked by CAR-24', tone: 'warning' });
-        expect(describeRun(run('r', 'queued', { statusReason: 'Waiting for a free slot' }), 0)).toEqual({ text: 'Waiting for a free slot', tone: 'neutral' });
-        expect(describeRun(run('r', 'interrupted', { statusReason: 'The daemon restarted' }), 0)).toEqual({ text: 'The daemon restarted', tone: 'neutral' });
-    });
-
-    it('still says what a run waits for when the daemon sent no reason', () => {
-        expect(describeRun(run('r', 'waiting_user'), 0)?.text).toBe('Waiting for your answer');
-        expect(describeRun(run('r', 'blocked'), 0)).toBeUndefined();
-    });
-
-    it('shows the error of a failed run', () => {
-        expect(describeRun(run('r', 'failed', { error: 'Typecheck failed' }), 0)).toEqual({ text: 'Typecheck failed', tone: 'danger' });
-    });
-
-    it('says nothing about a run that is working or done', () => {
-        expect(describeRun(run('r', 'running'), 0)).toBeUndefined();
-        expect(describeRun(run('r', 'succeeded', { result: 'Done.' }), 0)).toBeUndefined();
-    });
-});
-
 describe('chatDotTone', () => {
-    it('is green while the orchestrator works or waits for its executors or for its background work', () => {
+    it('is green while the orchestrator works or waits for its background work', () => {
         expect(chatDotTone(run('r', 'running'))).toBe('success');
-        expect(chatDotTone(run('r', 'waiting_children'))).toBe('success');
         expect(chatDotTone(run('r', 'waiting_background'))).toBe('success');
     });
 

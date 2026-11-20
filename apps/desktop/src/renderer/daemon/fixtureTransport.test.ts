@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, docHash, FIXTURE_PROJECT_ID } from './fixtureData';
+import { createFixtureData, docHash, FIXTURE_LIVE_RUN_ID, FIXTURE_LIVE_TEXT_ID, FIXTURE_LIVE_TOOL_ID, FIXTURE_PROJECT_ID } from './fixtureData';
 import { FixtureTransport } from './fixtureTransport';
 
 import type { ClowdyEvent } from '@clowdy/protocol';
@@ -25,14 +25,17 @@ async function connected(options: ConstructorParameters<typeof FixtureTransport>
 }
 
 describe('FixtureTransport', () => {
-    it('covers every run status and every task status, with dependencies and executors', async () => {
+    it('covers the states of a chat and its sub-agents, and every task status, with dependencies and assigned runs', async () => {
         const transport = new FixtureTransport();
         const snapshot = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
 
-        expect(new Set(snapshot.runs.map(run => run.status))).toEqual(new Set(['queued', 'running', 'waiting_background', 'waiting_user', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']));
+        expect(new Set(snapshot.runs.map(run => run.status))).toEqual(new Set(['running', 'waiting_background', 'waiting_user', 'succeeded', 'failed']));
+        // A run below another is a native sub-agent; every other run is a chat's orchestrator.
+        expect(snapshot.runs.filter(run => run.parentRunId).every(run => run.origin === 'native' && run.role === 'executor')).toBe(true);
+        expect(snapshot.runs.filter(run => !run.parentRunId).every(run => run.role === 'orchestrator' && run.chatId !== undefined)).toBe(true);
         expect(new Set(snapshot.tasks.map(task => task.statusId))).toEqual(new Set(snapshot.statuses.map(status => status.id)));
         expect(snapshot.tasks.some(task => task.dependsOn.length > 0)).toBe(true);
-        expect(snapshot.runs.some(run => run.parentRunId && snapshot.runs.some(parent => parent.id === run.parentRunId && parent.parentRunId))).toBe(true);
+        expect(snapshot.runTaskLinks.some(link => link.relation === 'assigned')).toBe(true);
     });
 
     it('hands out copies, so a client cannot change what the next snapshot shows', async () => {
@@ -75,10 +78,19 @@ describe('FixtureTransport', () => {
         expect(await transport.command({ type: 'task.start', taskId: 't-24', force: true })).toMatchObject({ ok: true });
     });
 
-    it('runs a started task to the Review column', async () => {
+    it('opens a chat for a started task, with its orchestrator assigned to it, and runs it to the Review column', async () => {
         const { transport, events } = await connected();
+        const started = await transport.command({ type: 'task.start', taskId: 't-28' });
 
-        await transport.command({ type: 'task.start', taskId: 't-28' });
+        expect(started).toMatchObject({ ok: true, data: { runId: expect.any(String), chatId: expect.any(String) } });
+
+        const { runId, chatId } = (started as { data: { runId: string; chatId: string } }).data;
+        const snapshot = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+
+        expect(snapshot.chats.find(chat => chat.id === chatId)).toMatchObject({ title: 'Search by location', orchestratorRunId: runId });
+        expect(snapshot.runs.find(run => run.id === runId)).toMatchObject({ role: 'orchestrator', chatId });
+        expect(snapshot.runTaskLinks).toContainEqual({ runId, taskId: 't-28', relation: 'assigned' });
+
         await vi.advanceTimersByTimeAsync(3000);
 
         const taskStatuses = events.flatMap(event => (event.data.type === 'task.upserted' && event.data.task.id === 't-28' ? [event.data.task.statusId] : []));
@@ -90,44 +102,44 @@ describe('FixtureTransport', () => {
     it('answers a question: the item gets its answer and the run goes on', async () => {
         const { transport, events } = await connected();
 
-        expect(await transport.command({ type: 'run.answer', runId: 'r-ex-08', questionId: 'q-mail', answer: 'Plain SMTP' })).toMatchObject({ ok: true });
+        expect(await transport.command({ type: 'run.answer', runId: 'r-orch-3', questionId: 'q-store', answer: 'SQLite' })).toMatchObject({ ok: true });
         await vi.advanceTimersByTimeAsync(1500);
 
-        const items = await transport.getItems({ runId: 'r-ex-08' });
+        const items = await transport.getItems({ runId: 'r-orch-3' });
 
-        expect(items.find(item => item.body.kind === 'question')?.body).toMatchObject({ answer: 'Plain SMTP' });
-        expect(events.some(event => event.data.type === 'run.upserted' && event.data.run.id === 'r-ex-08' && event.data.run.status === 'running')).toBe(true);
+        expect(items.find(item => item.body.kind === 'question')?.body).toMatchObject({ answer: 'SQLite' });
+        expect(events.some(event => event.data.type === 'run.upserted' && event.data.run.id === 'r-orch-3' && event.data.run.status === 'running')).toBe(true);
         expect(items.at(-1)?.body).toMatchObject({ kind: 'assistant', done: true });
     });
 
-    it('cancels a run together with the runs below it, and leaves finished ones alone', async () => {
+    it('cancels an orchestrator together with the sub-agents below it, and leaves finished ones alone', async () => {
         const { transport } = await connected();
 
-        await transport.command({ type: 'run.cancel', runId: 'r-ex-07' });
+        await transport.command({ type: 'run.cancel', runId: 'r-orch-1' });
 
         const { runs } = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
         const status = (id: string) => runs.find(run => run.id === id)?.status;
 
-        expect([status('r-ex-07'), status('r-ver-02'), status('r-ex-09'), status('r-orch-1')]).toEqual(['cancelled', 'cancelled', 'succeeded', 'running']);
+        expect([status('r-orch-1'), status('r-na-02'), status('r-na-03'), status('r-na-01'), status('r-na-04')]).toEqual(['cancelled', 'cancelled', 'cancelled', 'succeeded', 'failed']);
     });
 
     it('stops a sub-agent of the session alone when its session can end it, refuses one that cannot, and keeps the orchestrator at work', async () => {
         const data = createFixtureData();
 
-        data.runs.push({ ...structuredClone(data.runs.find(run => run.id === 'r-na-02')!), id: 'r-na-03', canStopAlone: undefined });
+        data.runs.push({ ...structuredClone(data.runs.find(run => run.id === 'r-na-02')!), id: 'r-na-09', canStopAlone: undefined });
 
         const { transport } = await connected({ data });
         const status = async (id: string) => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === id)?.status;
 
-        expect(await transport.command({ type: 'run.cancel', runId: 'r-na-03' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(await transport.command({ type: 'run.cancel', runId: 'r-na-09' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
         expect(await transport.command({ type: 'run.cancel', runId: 'r-na-02' })).toMatchObject({ ok: true, data: { cancelled: ['r-na-02'] } });
-        expect([await status('r-na-02'), await status('r-na-03'), await status('r-ex-07'), await status('r-orch-1')]).toEqual(['cancelled', 'running', 'running', 'running']);
+        expect([await status('r-na-02'), await status('r-na-09'), await status('r-na-03'), await status('r-orch-1')]).toEqual(['cancelled', 'running', 'running', 'running']);
     });
 
-    it('stops the agents of an orchestrator and not the orchestrator: spawned runs with what is below them, sub-agents that can stop alone', async () => {
+    it('stops the sub-agents of an orchestrator that can stop alone, and not the orchestrator', async () => {
         const data = createFixtureData();
 
-        data.runs.push({ ...structuredClone(data.runs.find(run => run.id === 'r-na-02')!), id: 'r-na-03', canStopAlone: undefined });
+        data.runs.push({ ...structuredClone(data.runs.find(run => run.id === 'r-na-02')!), id: 'r-na-09', canStopAlone: undefined });
 
         const { transport } = await connected({ data });
         const result = await transport.command({ type: 'run.stopAgents', runId: 'r-orch-1' });
@@ -135,8 +147,8 @@ describe('FixtureTransport', () => {
         const status = (id: string) => runs.find(run => run.id === id)?.status;
 
         expect(result).toMatchObject({ ok: true });
-        expect(result.ok && new Set((result.data as { stopped: string[] }).stopped)).toEqual(new Set(['r-ex-07', 'r-ver-02', 'r-ex-08', 'r-ex-12', 'r-na-02']));
-        expect([status('r-ex-07'), status('r-ver-02'), status('r-ex-08'), status('r-ex-12'), status('r-na-02'), status('r-na-03'), status('r-orch-1'), status('r-ex-09')]).toEqual(['cancelled', 'cancelled', 'cancelled', 'cancelled', 'cancelled', 'running', 'running', 'succeeded']);
+        expect(result.ok && new Set((result.data as { stopped: string[] }).stopped)).toEqual(new Set(['r-na-02', 'r-na-03']));
+        expect([status('r-na-02'), status('r-na-03'), status('r-na-09'), status('r-orch-1'), status('r-na-01')]).toEqual(['cancelled', 'cancelled', 'running', 'running', 'succeeded']);
         expect(await transport.command({ type: 'run.stopAgents', runId: 'r-missing' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
     });
 
@@ -321,12 +333,17 @@ describe('FixtureTransport', () => {
 
         await vi.advanceTimersByTimeAsync(7000);
 
-        const items = await transport.getItems({ runId: 'r-ex-07' });
-        const tool = items.find(item => item.id === 'r-ex-07-8');
-        const text = items.find(item => item.id === 'r-ex-07-9');
+        const items = await transport.getItems({ runId: FIXTURE_LIVE_RUN_ID });
+        const tool = items.find(item => item.id === FIXTURE_LIVE_TOOL_ID);
+        const text = items.find(item => item.id === FIXTURE_LIVE_TEXT_ID);
+        const { runs } = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        const call = (await transport.getItems({ runId: 'r-orch-1' })).find(item => item.body.kind === 'tool' && item.body.toolCallId === 'tc-agent-3');
 
         expect(tool?.body).toMatchObject({ kind: 'tool', state: 'done' });
         expect(text?.body).toMatchObject({ kind: 'assistant', done: true });
+        // The sub-agent ends, and the call that started it returns its report.
+        expect(runs.find(run => run.id === FIXTURE_LIVE_RUN_ID)?.status).toBe('succeeded');
+        expect(call?.body).toMatchObject({ kind: 'tool', state: 'done' });
         expect(events.filter(event => event.data.type === 'stream.item').length).toBeGreaterThanOrEqual(4);
     });
 

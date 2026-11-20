@@ -21,10 +21,10 @@ export function requireEnabled(agents: AgentRegistry, engine: string): void {
 }
 
 /**
- * The first message creates the chat's orchestrator run and names the chat after it (unless it was renamed). A message to a finished chat, or to an
- * orchestrator parked until its children finish, starts a new turn of the same run: its stream keeps growing and its session is resumed. A message to
- * a busy orchestrator waits in the chat's queue, as a steer of the running turn or for the next turn (`mode`), and reaches the stream only when the
- * agent gets it (`ChatQueue`).
+ * The first message creates the chat's orchestrator run and names the chat after it (unless it was renamed). A message to a finished chat starts a new
+ * turn of the same run: its stream keeps growing and its session is resumed; one to an orchestrator that waits for background work goes into the session
+ * it keeps open. A message to a busy orchestrator waits in the chat's queue, as a steer of the running turn or for the next turn (`mode`), and reaches
+ * the stream only when the agent gets it (`ChatQueue`).
  *
  * A message may carry files uploaded to the chat's project (`attachmentIds`), with no text at all. The stream shows the
  * person's own text and the files; the agent gets the text and, after a blank line, the list of where the files are
@@ -51,7 +51,7 @@ function send({ store, runs, driver, attachments, agents, queue }: Services, cha
 
     if (!chat.orchestratorRunId) {
         const title = chat.title === DEFAULT_CHAT_TITLE ? firstWords({ text, attachments: body.attachments }) : chat.title;
-        const run = runs.createRun({ project, role: 'orchestrator', chatId, summary: title, engine: chat.engine, model: chat.model, effort: chat.effort, nextPrompt: firstMessage('orchestrator', chat.mode, content) });
+        const run = runs.createRun({ project, role: 'orchestrator', chatId, summary: title, engine: chat.engine, model: chat.model, effort: chat.effort, nextPrompt: firstMessage(chat.mode, content) });
 
         attachments.markSent(files, chatId, run.id);
         appendItem(store, run.id, body);
@@ -115,7 +115,7 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
 
     /**
      * The agent's own compact command, as a turn of the orchestrator: the person's message is not in the stream (they did not write it), and the agent's
-     * report of the compaction is what the stream shows. An orchestrator that works or waits for its children gets it once it has finished, through the
+     * report of the compaction is what the stream shows. An orchestrator that works or waits for background work gets it once it has finished, through the
      * chat's queue (`ChatQueue.compact`). Like `chat.setModel` it is not activity, so the chat's `updatedAt` stays.
      */
     'chat.compact': ({ store, runs, agents, queue }, command) => {

@@ -26,7 +26,6 @@ import {
     taskGrid,
     tasksSource,
     toggleDependency,
-    type TaskRun,
 } from './taskView';
 
 import type { Artifact, Run, RunTaskLink, Task, TaskStatus } from '@clowdy/protocol';
@@ -51,7 +50,7 @@ function task(number: number, rest: Partial<Task> = {}): Task {
 }
 
 function run(id: string, status: Run['status'], rest: Partial<Run> = {}): Run {
-    return { id, projectId: 'p', rootRunId: id, role: 'executor', name: `Executor ${ id }`, summary: '', status, engine: 'fake', createdAt: 1000, ...rest };
+    return { id, projectId: 'p', rootRunId: id, role: 'orchestrator', name: `Orchestrator ${ id }`, summary: '', status, engine: 'fake', createdAt: 1000, ...rest };
 }
 
 const link = (runId: string, taskId: string, relation: RunTaskLink['relation']): RunTaskLink => ({ runId, taskId, relation });
@@ -61,18 +60,19 @@ function runMap(...runs: Run[]): Map<string, Run> {
 }
 
 describe('runsByTask', () => {
-    it('lists assigned and verifying runs, oldest first, and leaves out runs that only created the task', () => {
+    it('lists the assigned runs, oldest first, and leaves out runs that only created the task', () => {
         const runs = runMap(run('a', 'running', { createdAt: 30 }), run('b', 'queued', { createdAt: 10 }), run('orch', 'running'));
-        const byTask = runsByTask([link('a', 't-1', 'assigned'), link('b', 't-1', 'verifies'), link('orch', 't-1', 'created')], runs);
+        const byTask = runsByTask([link('a', 't-1', 'assigned'), link('b', 't-1', 'assigned'), link('orch', 't-1', 'created')], runs);
 
-        expect(byTask.get('t-1')?.map(({ run: item, relation }) => [item.id, relation])).toEqual([['b', 'verifies'], ['a', 'assigned']]);
+        expect(byTask.get('t-1')?.map(item => item.id)).toEqual(['b', 'a']);
     });
 
-    it('counts a run linked as both assigned and verifying as assigned, in either order', () => {
+    it('lists a run once when it created the task and is assigned to it too, in either order', () => {
         const runs = runMap(run('a', 'running'));
 
-        expect(runsByTask([link('a', 't-1', 'assigned'), link('a', 't-1', 'verifies')], runs).get('t-1')).toEqual([{ run: runs.get('a'), relation: 'assigned' }]);
-        expect(runsByTask([link('a', 't-1', 'verifies'), link('a', 't-1', 'assigned')], runs).get('t-1')?.[0].relation).toBe('assigned');
+        expect(runsByTask([link('a', 't-1', 'assigned'), link('a', 't-1', 'created')], runs).get('t-1')).toEqual([runs.get('a')]);
+        expect(runsByTask([link('a', 't-1', 'created'), link('a', 't-1', 'assigned')], runs).get('t-1')).toEqual([runs.get('a')]);
+        expect(runsByTask([link('a', 't-1', 'assigned'), link('a', 't-1', 'assigned')], runs).get('t-1')).toEqual([runs.get('a')]);
     });
 
     it('skips links to runs that are not known', () => {
@@ -81,21 +81,19 @@ describe('runsByTask', () => {
 });
 
 describe('start', () => {
-    const taskRuns = (...entries: Array<[Run, TaskRun['relation']]>): TaskRun[] => entries.map(([item, relation]) => ({ run: item, relation }));
-
     it('is blocked by an active assigned run, and names it', () => {
-        expect(startBlockedReason(taskRuns([run('07', 'running', { name: 'Executor 07' }), 'assigned']))).toBe('Executor 07 is already working on this task.');
-        expect(startBlockedReason(taskRuns([run('a', 'queued'), 'assigned'], [run('b', 'waiting_user'), 'assigned']))).toBe('2 agents are already working on this task.');
+        expect(startBlockedReason([run('07', 'running', { name: 'Orchestrator 07' })])).toBe('Orchestrator 07 is already working on this task.');
+        expect(startBlockedReason([run('a', 'queued'), run('b', 'waiting_user')])).toBe('2 agents are already working on this task.');
     });
 
-    it('is open when the runs finished, or only a verifier is active, or there are no runs', () => {
-        expect(startBlockedReason(taskRuns([run('a', 'failed'), 'assigned'], [run('b', 'cancelled'), 'assigned']))).toBeNull();
-        expect(startBlockedReason(taskRuns([run('v', 'running'), 'verifies']))).toBeNull();
+    it('is open when the runs finished, or there are no runs', () => {
+        expect(startBlockedReason([run('a', 'failed'), run('b', 'cancelled')])).toBeNull();
+        expect(startBlockedReason([])).toBeNull();
         expect(startBlockedReason(undefined)).toBeNull();
     });
 
-    it('shows only the executors that are still active on the card', () => {
-        const list = taskRuns([run('a', 'running'), 'assigned'], [run('b', 'succeeded'), 'assigned'], [run('c', 'running'), 'verifies']);
+    it('shows only the runs that are still active on the card', () => {
+        const list = [run('a', 'running'), run('b', 'succeeded')];
 
         expect(activeExecutors(list).map(item => item.id)).toEqual(['a']);
     });
@@ -135,11 +133,11 @@ describe('filters', () => {
 
     it('offers the agents linked to tasks, working ones first', () => {
         const options = agentOptions(runsByTask(
-            [link('b', 't-1', 'assigned'), link('a', 't-2', 'assigned'), link('c', 't-2', 'verifies')],
-            runMap(run('a', 'succeeded', { name: 'Executor 02' }), run('b', 'running', { name: 'Executor 10' }), run('c', 'running', { name: 'Executor 09' }))
+            [link('b', 't-1', 'assigned'), link('a', 't-2', 'assigned'), link('c', 't-2', 'assigned')],
+            runMap(run('a', 'succeeded', { name: 'Orchestrator 02' }), run('b', 'running', { name: 'Orchestrator 10' }), run('c', 'running', { name: 'Orchestrator 09' }))
         ));
 
-        expect(options.map(item => item.name)).toEqual(['Executor 09', 'Executor 10', 'Executor 02']);
+        expect(options.map(item => item.name)).toEqual(['Orchestrator 09', 'Orchestrator 10', 'Orchestrator 02']);
     });
 
     it('groups tasks by status in the order given', () => {
@@ -293,21 +291,17 @@ describe('taskActivity', () => {
 
     it('lists what happened, newest first, with the run behind each event', () => {
         const orch = run('orch', 'running', { name: 'Orchestrator 01' });
-        const done = run('x', 'succeeded', { name: 'Executor 09', startedAt: now - 60 * MINUTE, finishedAt: now - 30 * MINUTE, result: 'Added the table.' });
-        const live = run('y', 'running', { name: 'Executor 07', startedAt: now - 20 * MINUTE });
-        const queued = run('z', 'queued', { name: 'Verifier 02', createdAt: now - MINUTE });
-        const activity = taskActivity(t, [
-            { run: done, relation: 'assigned' },
-            { run: live, relation: 'assigned' },
-            { run: queued, relation: 'verifies' },
-        ], runMap(orch, done, live, queued));
+        const done = run('x', 'succeeded', { name: 'Orchestrator 09', startedAt: now - 60 * MINUTE, finishedAt: now - 30 * MINUTE, result: 'Added the table.' });
+        const live = run('y', 'running', { name: 'Orchestrator 07', startedAt: now - 20 * MINUTE });
+        const queued = run('z', 'queued', { name: 'Orchestrator 02', createdAt: now - MINUTE });
+        const activity = taskActivity(t, [done, live, queued], runMap(orch, done, live, queued));
 
         expect(activity.map(item => item.text)).toEqual([
-            'Verifier 02 is waiting to start',
+            'Orchestrator 02 is waiting to start',
             'Task updated',
-            'Executor 07 started working',
-            'Executor 09 finished',
-            'Executor 09 started working',
+            'Orchestrator 07 started working',
+            'Orchestrator 09 finished',
+            'Orchestrator 09 started working',
         ]);
         expect(activity[3]).toMatchObject({ detail: 'Added the table.', run: done });
     });
@@ -323,10 +317,10 @@ describe('taskActivity', () => {
 
     it('reports a failed run with its error and keeps to the limit', () => {
         const failed = run('f', 'failed', { startedAt: 1, finishedAt: 2, error: 'Typecheck failed' });
-        const activity = taskActivity(task(1, { createdAt: 0, updatedAt: 0 }), [{ run: failed, relation: 'assigned' }], runMap(failed), 2);
+        const activity = taskActivity(task(1, { createdAt: 0, updatedAt: 0 }), [failed], runMap(failed), 2);
 
         expect(activity).toHaveLength(2);
-        expect(activity[0]).toMatchObject({ text: 'Executor f failed', detail: 'Typecheck failed' });
+        expect(activity[0]).toMatchObject({ text: 'Orchestrator f failed', detail: 'Typecheck failed' });
     });
 });
 

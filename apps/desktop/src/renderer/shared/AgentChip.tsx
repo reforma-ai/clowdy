@@ -13,7 +13,7 @@ export interface AgentChipProps {
     className?: string;
 }
 
-/** A run as a chip: person icon and its name (`Executor 07`). */
+/** A run as a chip: person icon and its name (`Orchestrator 01`). */
 export function AgentChip({ run, onPress, className }: AgentChipProps) {
     const ui = useProjectUi();
 

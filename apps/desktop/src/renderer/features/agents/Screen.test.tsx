@@ -21,9 +21,9 @@ vi.mock('./RunDetail', () => ({ RunDetail: ({ run }: { run: { id: string; name: 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /*
- * The Agents screen on the fixture project. Chats by activity: c-1 (Simplify booking, orchestrator r-orch-1), c-4 (empty), c-3, c-2.
- * Below r-orch-1: Executor 07 (r-ex-07), with Verifier 02 (r-ver-02) under it, and more. The test build has no MobX observer plugin,
- * so the screen is drawn again by hand after a change, as the observer does in the app.
+ * The Agents screen on the fixture project. Chats by activity: c-1 (Simplify booking, orchestrator r-orch-1), c-4 (empty), c-5, c-3, c-2.
+ * Native sub-agents live in r-orch-1's session (r-na-01 to r-na-04): cards in its stream, never rows. The test build has no MobX observer
+ * plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
  */
 
 const memoryStorage = (): KeyValueStorage => {
@@ -75,21 +75,9 @@ afterEach(() => {
 });
 
 describe('the list', () => {
-    it('starts with the new-chat row, then the chats, and nests the runs of a chat below it', () => {
-        const keys = rowKeys();
-
-        expect(keys[0]).toBe('@new-chat');
-        expect(keys.filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-4', 'c-5', 'c-3', 'c-2']);
-
-        // The orchestrator is the chat, so it has no row; its runs follow the chat, and a run's own runs follow it.
-        const below = keys.slice(keys.indexOf('c-1') + 1, keys.indexOf('c-4'));
-
-        expect(keys).not.toContain('r-orch-1');
-        expect(below).toContain('r-ex-07');
-        // Native sub-agents are cards on the calls that started them, not rows.
-        expect(keys).not.toContain('r-na-01');
-        expect(keys).not.toContain('r-na-02');
-        expect(below.indexOf('r-ver-02')).toBe(below.indexOf('r-ex-07') + 1);
+    it('starts with the new-chat row, then the chats, and has no row for a run', () => {
+        // The orchestrator is the chat, and a native sub-agent is a card on the call that started it: neither is a row.
+        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-5', 'c-3', 'c-2']);
     });
 
     it('marks a chat that started with the provider it runs on, and one that has not with the speech bubble', async () => {
@@ -119,8 +107,6 @@ describe('the list', () => {
 
         await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
 
-        // The menu has the two groups: what to show, and the order.
-        expect(document.body.textContent).toContain('Show');
         expect(document.body.textContent).toContain('Sort by');
         expect(menuItem('Last activity').getAttribute('aria-checked')).toBe('true');
         expect(menuItem('Created').getAttribute('aria-checked')).toBe('false');
@@ -158,70 +144,25 @@ describe('the list', () => {
         expect(isSelected('c-1')).toBe(true);
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
     });
-
-    it('folds the runs of a chat away and brings them back', async () => {
-        await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Collapse Simplify booking"]')!.click());
-
-        expect(rowKeys()).not.toContain('r-ex-07');
-        expect(rowKeys()).toContain('c-1');
-
-        await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Expand Simplify booking"]')!.click());
-
-        expect(rowKeys()).toContain('r-ex-07');
-    });
-
-    it('shows no runs at all when subthreads are switched off, and no finished ones when only those are', async () => {
-        const all = rowKeys().filter(key => key?.startsWith('r-'));
-
-        await draw(() => ui().setShowFinished(false));
-
-        const active = rowKeys().filter(key => key?.startsWith('r-'));
-
-        expect(active.length).toBeLessThan(all.length);
-        expect(active).toContain('r-ex-07');
-
-        await draw(() => ui().setShowSubthreads(false));
-
-        expect(rowKeys().filter(key => key?.startsWith('r-'))).toEqual([]);
-        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-4', 'c-5', 'c-3', 'c-2']);
-    });
 });
 
 describe('what is open', () => {
-    it('opens a run below its chat: the run is selected and its page shows, whichever chat was open', async () => {
+    it('opens a sub-agent beside its chat, whichever chat was open: its page shows and its chat is the selected row', async () => {
         await draw(() => {
             ui().openChat('c-3');
-            ui().openRun('r-ver-02');
+            ui().openRun('r-na-04');
         });
 
-        expect(container.querySelector('[data-testid="run"]')?.getAttribute('data-run-id')).toBe('r-ver-02');
+        expect(container.querySelector('[data-testid="run"]')?.getAttribute('data-run-id')).toBe('r-na-04');
         expect(container.querySelector('[data-testid="chat"]')).toBeNull();
-        expect(isSelected('r-ver-02')).toBe(true);
-        expect(isSelected('c-1')).toBe(false);
+        expect(isSelected('c-1')).toBe(true);
+        expect(isSelected('c-3')).toBe(false);
     });
 
     it('takes the orchestrator for its chat', async () => {
         await draw(() => ui().openRun('r-orch-1'));
 
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
-        expect(isSelected('c-1')).toBe(true);
-    });
-
-    it('unfolds the chat of a run that is opened from elsewhere', async () => {
-        await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Collapse Simplify booking"]')!.click());
-
-        expect(rowKeys()).not.toContain('r-ex-07');
-
-        await draw(() => ui().openRun('r-ver-02'));
-
-        expect(rowKeys()).toContain('r-ver-02');
-        expect(isSelected('r-ver-02')).toBe(true);
-    });
-
-    it('opens a native sub-agent beside its chat, which stays selected since the sub-agent has no row', async () => {
-        await draw(() => ui().openRun('r-na-02'));
-
-        expect(container.querySelector('[data-testid="run"]')?.getAttribute('data-run-id')).toBe('r-na-02');
         expect(isSelected('c-1')).toBe(true);
     });
 
@@ -344,11 +285,11 @@ describe('the archive', () => {
     const titles = () => archiveRows().map(row => row.textContent);
     const archiveRow = (title: string) => archiveRows().find(row => row.textContent?.startsWith(title))!;
 
-    it('takes a chat out of the list, with its subthreads, and lists it, last put away first, with how long ago', async () => {
+    it('takes a chat out of the list and lists it, last put away first, with how long ago', async () => {
         await archive('c-2', true);
         await archive('c-4', true);
 
-        expect(rowKeys()).toEqual(expect.not.arrayContaining(['c-2', 'c-4', 'r-ex-15']));
+        expect(rowKeys()).toEqual(expect.not.arrayContaining(['c-2', 'c-4']));
         expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-5', 'c-3']);
 
         await press(buttonNamed('Archive'));

@@ -162,8 +162,8 @@ describe('the queue in the composer', () => {
             return document.querySelector('[role="tooltip"]')?.textContent;
         }
 
-        it.each(['running', 'waiting_children'] as const)('cannot be sent now while the orchestrator is %s, and says when it runs', async (status) => {
-            await mount(chatWith([compact]), status);
+        it('cannot be sent now while the orchestrator works, and says when it runs', async () => {
+            await mount(chatWith([compact]), 'running');
 
             expect(sendNow().disabled).toBe(true);
             expect(compactRow().querySelector('[role="button"][aria-disabled]')?.getAttribute('aria-label')).toBe('Send now');

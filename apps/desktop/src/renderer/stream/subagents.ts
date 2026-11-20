@@ -1,15 +1,12 @@
 import { basename } from '@clowdy/lib';
 
 import { COMPACT_TOOL } from './compaction';
-import { describeTool, firstString, isRecord } from './toolView';
+import { describeTool, firstString } from './toolView';
 
 import type { Run, StreamItem, StreamItemBody } from '@clowdy/protocol';
 
 /** The tools agents start their own sub-agents with: Claude's `Agent` (once `Task`), Codex's `spawnAgent`, and the common `spawn_subagent`. */
 const SUBAGENT_TOOLS = new Set(['Agent', 'Task', 'spawnAgent', 'spawn_subagent']);
-
-/** Clowdy's own tool for a child run with its own process and session. */
-export const RUN_SPAWN = 'run_spawn';
 
 export const isSubagentTool = (name: string): boolean => SUBAGENT_TOOLS.has(name);
 
@@ -101,30 +98,6 @@ export function agentStatusLine({ live, failed, stalled, activity }: { live: boo
     if (!live) return 'Finished';
 
     return activity ?? 'Starting…';
-}
-
-/**
- * The id of the run a `run_spawn` call started, from its output: the object the daemon's tool returned, or that object as JSON text, which is
- * how most agents hand a tool's result back, sometimes wrapped in a content block of their own.
- */
-export function spawnedRunId(output: unknown): string | undefined {
-    let value = output;
-
-    if (typeof output === 'string') {
-        try {
-            value = JSON.parse(output);
-        }
-        catch {
-            value = undefined;
-        }
-    }
-
-    if (isRecord(value) && typeof value.runId === 'string' && value.runId !== '') return value.runId;
-
-    // A wrapper the agent put around the text, or the text quoted inside another JSON string.
-    const text = typeof output === 'string' ? output : JSON.stringify(output) ?? '';
-
-    return /\\*"runId\\*"\s*:\s*\\*"([^"\\]+)/.exec(text)?.[1];
 }
 
 /** The native child a sub-agent call started: the run of the project that names the call as its `parentToolCallId`. */

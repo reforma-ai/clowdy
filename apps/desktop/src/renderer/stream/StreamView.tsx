@@ -13,8 +13,8 @@ import { NoteLine } from './NoteLine';
 import { QuestionCard } from './QuestionCard';
 import { NO_LINKS, StreamLinksContext, type StreamLinks } from './StreamLinks';
 import styles from './StreamView.module.css';
-import { SpawnCard, SubagentCard } from './SubagentCard';
-import { isSubagentTool, RUN_SPAWN } from './subagents';
+import { SubagentCard } from './SubagentCard';
+import { isSubagentTool } from './subagents';
 import { ToolCard } from './ToolCard';
 import { turnMarks } from './turnMarks';
 import { TurnRail } from './TurnRail';
@@ -74,9 +74,7 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
             case 'assistant':
                 return <AssistantMessage text={ body.text } streaming={ !body.done } />;
             case 'tool':
-                // A call that started another agent is that agent's card, a compaction is a quiet line of its own; every other call is a tool line.
-                if (body.name === RUN_SPAWN) return <SpawnCard call={ body } />;
-
+                // A call that started a sub-agent is that agent's card, a compaction is a quiet line of its own; every other call is a tool line.
                 if (body.name === COMPACT_TOOL) return <CompactionLine call={ body } active={ active } />;
 
                 return isSubagentTool(body.name) ? <SubagentCard call={ body } active={ active } /> : <ToolCard call={ body } />;

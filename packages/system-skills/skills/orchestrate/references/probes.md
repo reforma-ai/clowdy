@@ -34,7 +34,7 @@ cd "$TMPDIR/base-check" && <install if needed> && <the same command>
 cd - && git worktree remove --force "$TMPDIR/base-check"
 ```
 
-Uncommitted work is not in that copy. A failure there existed before the uncommitted changes. Record it under "Known limits" of the check report. A pre-existing failure is not the author's defect, but it can make a criterion unverifiable: then it is `blocked` for that criterion, with the exact command and output.
+Uncommitted work is not in that copy. A failure there existed before the uncommitted changes. Record it under "Known limits" of the check report. A pre-existing failure is not a defect of the change, but it can make a criterion unverifiable: then it is `blocked` for that criterion, with the exact command and output.
 
 ## Flaky results
 
@@ -44,5 +44,5 @@ Run the failing test or step three times. Fails every time: a defect. Fails some
 
 - "It compiles" for a behavior change.
 - A unit test that passes while the real flow was never run.
-- The author's summary, a green badge, or a result you did not see yourself.
+- A sub-agent's summary, a green badge, or a result you did not see yourself.
 - Output from an earlier state: rerun after any change.

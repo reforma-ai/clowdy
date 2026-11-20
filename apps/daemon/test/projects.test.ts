@@ -54,7 +54,6 @@ const OWNED_BY_PROJECT: Record<string, string> = {
     chat_task_links: 'chat_id IN (SELECT id FROM chats WHERE project_id = ?1)',
     runs: 'project_id = ?1',
     run_task_links: 'run_id IN (SELECT id FROM runs WHERE project_id = ?1)',
-    run_mailbox: 'run_id IN (SELECT id FROM runs WHERE project_id = ?1)',
     stream_items: 'run_id IN (SELECT id FROM runs WHERE project_id = ?1)',
     artifacts: 'project_id = ?1',
     attachments: 'project_id = ?1',
@@ -214,8 +213,8 @@ describe('the personal space', () => {
     test('the system prompt calls it a personal space, and a project of one folder the folder at its path even when it is a repository', async () => {
         const h = await setup();
         const repo = h.openRepo('shop');
-        const personal = systemPrompt('orchestrator', 'autopilot', h.personal);
-        const regular = systemPrompt('orchestrator', 'autopilot', projectsOf(h).find(project => project.id === repo.id) as Project);
+        const personal = systemPrompt('autopilot', h.personal);
+        const regular = systemPrompt('autopilot', projectsOf(h).find(project => project.id === repo.id) as Project);
 
         expect(personal).toContain(`Project: Personal, the person's personal space, a folder at ${ pathOf(h.personal) } that belongs to no repository, task keys PER-<number>, project documents in .clowdy/docs/.`);
         expect(regular).toContain(`Project: shop, folder at ${ repo.path }, task keys SHO-<number>`);
@@ -298,7 +297,7 @@ describe('the order of projects', () => {
 });
 
 describe('project.delete', () => {
-    /** A project with everything that hangs from one: a chat run by the fake engine (orchestrator and children, tasks, links, streams), a task chain, an artifact, a mailbox row and files. */
+    /** A project with everything that hangs from one: a chat run by the fake engine (orchestrator and its sub-agents, tasks, links, streams), a task chain, an artifact and files. */
     async function fill(h: Harness, name: string) {
         const project = h.openRepo(name);
         const { chat } = h.ok('chat.create', { projectId: project.id });
@@ -313,7 +312,6 @@ describe('project.delete', () => {
         const childId = (h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ? LIMIT 1').get(runId) as { id: string }).id;
 
         h.store.db.query('INSERT INTO artifacts (id, project_id, run_id, task_id, kind, title, ref, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(`art_${ name }`, project.id, childId, first.id, 'file', 'Notes', 'notes.md', 1);
-        h.store.db.query('INSERT OR IGNORE INTO run_mailbox (run_id, child_run_id, created_at) VALUES (?, ?, ?)').run(runId, childId, 1);
 
         return { project, chat, runId, files: [unsent.id, sent.id], tasks: [first.id, second.id] };
     }

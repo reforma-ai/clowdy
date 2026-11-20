@@ -1,13 +1,12 @@
 # Check report template
 
-One report per verification run, in `checks/<YYYY-MM-DD>-<what-was-checked>.md`. It is evidence, not a status message: someone who did not see the run must be able to tell what was done and trust the result. Reports are not edited afterwards. A new run gets a new file, and the older one stays as history.
+One report per verification, in `checks/<YYYY-MM-DD>-<what-was-checked>.md`. It is evidence, not a status message: someone who did not see the run must be able to tell what was done and trust the result. Reports are not edited afterwards. A new run gets a new file, and the older one stays as history.
 
 ```markdown
 # Check: <what was verified, in user terms>
 
 - Result: passed
 - Date: 2026-11-20
-- Checked by: <verifier run, orchestrator, or executor>
 - Tasks: <CLW-2, CLW-3, CLW-4>
 - State checked: <the combined result of which tasks, where it was run>
 
@@ -40,5 +39,5 @@ One report per verification run, in `checks/<YYYY-MM-DD>-<what-was-checked>.md`.
 - Check the integrated result, not each piece. Say which tasks the state includes.
 - Run real commands and real user flows. If a step could not run, the report says so under Known limits and the result is not `passed` for that step.
 - No secrets, no raw logs, no personal data in the report, in screenshots either.
-- The same summary goes on the task (`task_update`) and in the final report, with the path of this file. The orchestrator adds the report to `index.md`; a verifier run lists the path in its report instead.
-- How to verify is in clowdy:verify; this file only fixes the shape of the record.
+- The same summary goes on the task (`task_update`) and in the final report, with the path of this file. Add the report to `index.md`.
+- How to verify is in clowdy:orchestrate (Verify); this file only fixes the shape of the record.

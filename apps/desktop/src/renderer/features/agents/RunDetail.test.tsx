@@ -16,8 +16,8 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), warning: v
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /*
- * The header of a run's page, on the fixture project: Executor 07 (r-ex-07, spawned) and the native Explore sub-agent r-na-02, which its session can
- * end alone. The test build has no MobX observer plugin, so the view is drawn again by hand after a change.
+ * The header of a sub-agent's page, on the fixture project: the native Explore sub-agent r-na-02, which its session can end alone. The test build
+ * has no MobX observer plugin, so the view is drawn again by hand after a change.
  */
 
 const memoryStorage = (): KeyValueStorage => {
@@ -49,15 +49,6 @@ afterEach(() => {
 });
 
 describe('RunDetail, Stop', () => {
-    it('stops a spawned run', async () => {
-        await draw(runOf('r-ex-07'));
-
-        const command = vi.spyOn(store, 'command');
-
-        await act(async () => (stopButton() as HTMLButtonElement).click());
-        expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-ex-07' });
-    });
-
     it('stops a sub-agent of a session alone when its session can end it', async () => {
         expect(runOf('r-na-02').canStopAlone).toBe(true);
         await draw(runOf('r-na-02'));

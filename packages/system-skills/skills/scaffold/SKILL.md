@@ -1,17 +1,15 @@
 ---
 name: scaffold
-description: "Start a new application from nothing for someone who describes a product, not a stack. Turns the brief into a product statement and a checkable first milestone, chooses the stack, has one agent build a verified skeleton with a one-command check and run, writes the starting documents, and plans the first task graph so independent slices are built in parallel. Use when the project folder has no app yet and the user asks to build one."
+description: "Start a new application from nothing for someone who describes a product, not a stack. Turns the brief into a product statement and a checkable first milestone, chooses the stack, builds a verified skeleton with a one-command check and run, writes the starting documents, and plans the first task graph of slices that can each be built and checked on its own. Use when the project folder has no app yet and the user asks to build one."
 ---
 
 # Scaffold a new application
 
-You turn "I want an app that does X" into a working skeleton that many agents can then build on at the same time. ONE agent builds the skeleton first, so every later agent finds the same layout, commands and conventions.
+You turn "I want an app that does X" into a working skeleton that all later work builds on. ONE agent builds the skeleton first, so every later piece, yours, a sub-agent's or another chat's, finds the same layout, commands and conventions.
 
 Use it when the folder is empty (or holds only a README or licence) and the user wants a new application. If an app already exists, do not scaffold: read its documents (clowdy:docs) and plan with clowdy:orchestrate. Never overwrite existing files.
 
 Your first message says `Mode: autopilot` or `Mode: semi-manual`. It decides who answers the forks below (clowdy:autopilot, clowdy:semi-manual).
-
-Two roles use this skill. The orchestrator does steps 1, 2 and 4 to 7. The skeleton builder (you, for a small app, or the executor you spawn) does step 3. If your prompt says you were spawned to build the skeleton, read "Done looks like", step 3 and the [skeleton checklist](references/skeleton-checklist.md); the rest is not yours.
 
 ## Done looks like
 
@@ -58,33 +56,19 @@ ask_user({
 })
 ```
 
-### 3. Build the skeleton (one agent)
+### 3. Build the skeleton
 
 Follow the [skeleton checklist](references/skeleton-checklist.md). Stack-specific starting points are in [recipes](references/recipes.md). Check current versions at scaffold time: add dependencies without a version so the package manager resolves the current release, and never copy a version from memory.
 
 The skeleton has: repository, package manager and lockfile, strict typing (or the language's equivalent), formatter and linter, a test runner with one real test, a `check` command (types + lint + tests), a `run` command, a config example with no secrets, `.gitignore`, one thin end-to-end path through every layer, a README with exactly those commands. It is laid out so that adding a feature means adding files, not editing shared ones.
 
-The orchestrator first creates the task "Build the skeleton" and moves it to In progress, so the work has a record. Then:
+First create the task "Build the skeleton" and move it to In progress, so the work has a record. Build it yourself, small or large: one agent in one session keeps the layout coherent, so split the slices later, not the skeleton. Read-only sub-agents may research an outside service or draft copy alongside. Nothing that touches the repository may start before the skeleton passes its check.
 
-- Small (one package, about 30 files): do it yourself.
-- Larger: start ONE executor bound to that task, end your turn and wait for its summary.
-
-```js
-run_spawn({
-  taskIds: [skeletonTaskId],
-  role: "executor",
-  idempotencyKey: "CLW-1-executor-1",
-  prompt: "Mode: <this chat's mode>. Build the project skeleton. Brief and milestone: .clowdy/docs/product.md. Settled decisions: .clowdy/docs/decisions/<files>. Load clowdy:scaffold and clowdy:docs. Follow the whole skeleton checklist of scaffold, including the README, architecture.md and the initial commit. Finish with report_result: the check and run commands, and what you saw when you ran them."
-})
-```
-
-Nothing that touches the repository may start before the skeleton passes its check. Work that does not (research notes on an outside service, copy drafts) may run alongside.
-
-When the executor reports, do not trust "done". Run the check and run commands yourself and look at the result.
+Do not trust your own "done": run the check and run commands and look at the result (checklist section 8).
 
 ### 4. Documents and conventions
 
-Load clowdy:docs. You wrote `product.md` and the stack decision in steps 1 and 2; create `index.md` for them before the skeleton starts (you are its only writer). The skeleton builder writes `architecture.md` from what it actually built, and the README; when it reports, add the `architecture.md` line to `index.md`. Before any fan-out, `architecture.md` must say, in about a page: the layout, one line per folder; the commands (check, run, test, build); where a new route, screen, table or test goes and how it is named; how errors, config and logging work; which files are shared and who may edit them, plus the dependency rule (add what your task needs, never upgrade the rest); and the contracts two slices will both rely on (API shapes, data tables). A convention that is not written there does not exist for the next agent.
+Load clowdy:docs. You wrote `product.md` and the stack decision in steps 1 and 2; create `index.md` for them before the skeleton starts (you are its only writer). When the skeleton stands, write `architecture.md` from what you actually built, and the README, and add its line to `index.md`. Before any slice starts, `architecture.md` must say, in about a page: the layout, one line per folder; the commands (check, run, test, build); where a new route, screen, table or test goes and how it is named; how errors, config and logging work; which files are shared and who may edit them, plus the dependency rule (add what your task needs, never upgrade the rest); and the contracts two slices will both rely on (API shapes, data tables). A convention that is not written there does not exist for the next agent.
 
 ### 5. Plan the first task graph
 
@@ -92,13 +76,13 @@ After the skeleton passes its check, so that Owns paths are real. Slice catalog 
 
 - Slice by what can be built and verified on its own: data model, API, UI shell, each feature screen, auth, deployment script, demo data. Not by layer for its own sake.
 - Create tasks with `task_create`, in dependency order, each description in the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, Out of scope).
-- Two tasks are independent when they own different paths and neither needs the other's output. A contract both need is written into `architecture.md` first, so the two can build against it in parallel.
+- Two tasks are independent when they own different paths and neither needs the other's output. A contract both need is written into `architecture.md` first, so the two can be built against it in any order, or by sub-agents side by side.
 - Aim for 4 to 8 tasks for the first milestone, each about an hour of agent work. Small parts inside a slice go to engine sub-agents.
-- Verification is not a task: verify the first milestone on the combined result (step 6). Move the skeleton task to Done only after you saw its check pass.
+- Verification is not a task: you verify the first milestone on the combined result (step 6). Move the skeleton task to Done only after you saw its check pass.
 
-### 6. Fan out
+### 6. Build the slices
 
-Continue the loop in clowdy:orchestrate at step 4: start every ready task at once, one executor per coarse slice, each with its task keys, owned paths, contracts, and a pointer to `architecture.md` and the check command. End the turn and handle each result as it arrives. When the slices are Done, a verifier bound to the slice tasks runs the milestone flow from `product.md` on the combined result (clowdy:verify). Then move the verified behavior to Implemented in `product.md` and let the check report go to `checks/`.
+Continue the loop in clowdy:orchestrate at step 4: take the ready tasks in order and build each yourself. Slices with disjoint Owns paths may go to engine sub-agents, each prompt with the task keys, owned paths, contracts, and a pointer to `architecture.md` and the check command. When the slices are Done, run the milestone flow from `product.md` on the combined result yourself (clowdy:orchestrate, Verify). Then move the verified behavior to Implemented in `product.md` and let the check report go to `checks/`.
 
 ### 7. Tell the user
 
@@ -111,14 +95,14 @@ Semi-manual. Brief: "Build an invoicing app for my consulting business." Empty f
 1. Draft milestone: "I create a client and an invoice with two lines, download it as a PDF, and see it in the list as unpaid."
 2. One round, four cards. Browser or installed (recommend browser). Tax lines on invoices (recommend yes, one rate per invoice). How the client gets it: a PDF you download, or the app emails it (recommend download; email needs a mail account). Who signs in: only you with one password (recommend). Language, framework and database are not asked: decided and recorded.
 3. Answers: browser, yes, "download", "only me". Write `product.md`, the record `2026-11-17-invoicing-scope.md` (`Decided by: user (semi-manual)`) and the stack record. Confirmation card holds the milestone and the four answers. Answer: "go".
-4. Create "Build the skeleton" (CLW-1), one executor, check and run proven. Then the slices: invoice data and API (CLW-2), invoice editor screen (CLW-3), PDF export (CLW-4), client list screen (CLW-5, depends on CLW-2), sign-in (CLW-6). CLW-2, 3, 4 and 6 start together; CLW-5 waits for CLW-2. When all are Done, a verifier walks the milestone on the combined result.
+4. Create "Build the skeleton" (CLW-1), build it, check and run proven. Then the slices: invoice data and API (CLW-2), invoice editor screen (CLW-3), PDF export (CLW-4), client list screen (CLW-5, depends on CLW-2), sign-in (CLW-6). Build CLW-2 first, since CLW-5 waits for it; CLW-3, 4 and 6 own other paths and can go to sub-agents. When all are Done, walk the milestone on the combined result yourself.
 5. Report: "Done: you can create clients and invoices, add tax and download a PDF. Decided with you: browser app, tax per invoice, PDF download only, one password (decisions/2026-11-17-invoicing-scope.md). Open: emailing invoices is not built (CLW-9)."
 
 Autopilot differs only in step 2 of the example: no cards, it decides and writes the records at once, and the report says `Decided for you`. A full graph with owned paths and dependencies (a bakery ordering site) is in [task-graph](references/task-graph.md).
 
 ## Avoid
 
-- Starting parallel agents before the skeleton passes its own check.
+- Starting slices, or sub-agents, before the skeleton passes its own check.
 - Adding features the milestone does not need (payments, roles, admin panels) because the template had them. Delete generator output the product does not use.
 - Fashionable or exotic stacks, two languages without a reason, services that need an account before anything runs.
 - Asking the manager technology questions, or asking in autopilot at all.

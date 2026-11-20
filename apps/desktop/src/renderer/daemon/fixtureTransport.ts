@@ -479,8 +479,17 @@ export class FixtureTransport implements Transport {
         this.#later(4500, () => say('Checking confirmation handling. The confirmation view reads the saved booking, so a reload keeps it.', true));
         this.#later(6000, () => {
             const parent = this.#data.runs.find(candidate => candidate.id === run.parentRunId);
+            const call = parent && this.#data.items[parent.id]?.find(item => item.body.kind === 'tool' && item.body.toolCallId === run.parentToolCallId);
 
-            if (parent) this.#appendItem(parent, { kind: 'note', text: `${ run.name } passed the typecheck` });
+            // The sub-agent is done: its run ends and the call that started it returns its report, as a session reports a sub-agent.
+            if (run.status !== 'running') return;
+
+            run.status = 'succeeded';
+            run.result = 'The form is one view now, and the typecheck passes.';
+            run.finishedAt = Date.now();
+            this.#saveRun(run);
+
+            if (parent && call?.body.kind === 'tool') this.#saveItem(parent, { ...call, body: { ...call.body, state: 'done', output: run.result } });
         });
     }
 
@@ -1153,7 +1162,7 @@ export class FixtureTransport implements Transport {
         if (isCompact(item)) {
             if (isBusyRunStatus(run.status)) return ok({ chatId: chat.id, runId: run.id });
 
-            if (!isTerminalRunStatus(run.status)) return fail('conflict', 'The orchestrator is waiting for its child runs. Compact the chat when they have finished');
+            if (!isTerminalRunStatus(run.status)) return fail('conflict', 'The orchestrator is waiting for background work. Compact the chat when it has finished');
 
             this.#dispatch(chat, run, item);
 
@@ -1183,15 +1192,27 @@ export class FixtureTransport implements Transport {
 
         if (!force && data.runs.some(run => runIds.has(run.id) && !isTerminalRunStatus(run.status))) return fail('already_running', `${ task.key } already has an active run`);
 
-        const number = data.runs.filter(candidate => candidate.role === 'executor').length + 1;
-        const id = this.#id('r-ex');
+        // Like the daemon: the task opens a chat named after it, and the chat's orchestrator is the run assigned to the task.
+        const number = data.runs.filter(candidate => candidate.role === 'orchestrator').length + 1;
+        const id = this.#id('r-orch');
         const now = Date.now();
+        const chat: Chat = {
+            id: this.#id('c'),
+            projectId: task.projectId,
+            title: task.title,
+            mode: 'autopilot',
+            engine: 'fake',
+            orchestratorRunId: id,
+            createdAt: now,
+            updatedAt: now,
+        };
         const run: Run = {
             id,
             projectId: task.projectId,
             rootRunId: id,
-            role: 'executor',
-            name: `Executor ${ String(number).padStart(2, '0') }`,
+            chatId: chat.id,
+            role: 'orchestrator',
+            name: `Orchestrator ${ String(number).padStart(2, '0') }`,
             summary: task.title,
             status: 'running',
             engine: 'fake',
@@ -1199,11 +1220,16 @@ export class FixtureTransport implements Transport {
             startedAt: now,
         };
         const link = { runId: id, taskId, relation: 'assigned' as const };
+        const chatLink = { chatId: chat.id, taskId };
         const active = (data.statuses[task.projectId] ?? DEFAULT_STATUSES).find(status => status.category === 'active');
 
+        data.chats.push(chat);
         data.runs.push(run);
         data.runTaskLinks.push(link);
+        data.chatTaskLinks.push(chatLink);
+        this.#emit(task.projectId, { type: 'chat.upserted', chat });
         this.#saveRun(run);
+        this.#emit(task.projectId, { type: 'link.chatTask', link: chatLink, present: true });
         this.#emit(task.projectId, { type: 'link.runTask', link, present: true });
 
         if (active) {
@@ -1229,7 +1255,8 @@ export class FixtureTransport implements Transport {
             }
         });
 
-        return ok(structuredClone(run));
+        // Like the daemon: `{ runId, chatId }`.
+        return ok({ runId: run.id, chatId: chat.id });
     }
 
     #cancelRun(runId: RunId): Outcome {
@@ -1256,32 +1283,21 @@ export class FixtureTransport implements Transport {
         return ok({ cancelled: [...cancelled] });
     }
 
-    /**
-     * Like the daemon's `run.stopAgents`: the runs the orchestrator spawned are cancelled with what is below them, and its sub-agents that can stop alone
-     * stop; the orchestrator itself goes on, and so does its queue.
-     */
+    /** Like the daemon's `run.stopAgents`: the sub-agents of the orchestrator's session that can stop alone stop; the orchestrator itself goes on, and so does its queue. */
     #stopAgents(runId: RunId): Outcome {
         const data = this.#data;
 
         if (!data.runs.some(candidate => candidate.id === runId)) return fail('not_found', 'No such run');
 
-        const below = [...this.#subtree(runId)].filter(id => id !== runId).map(id => data.runs.find(candidate => candidate.id === id)!);
         const stopped: RunId[] = [];
 
-        for (const run of below.filter(candidate => candidate.origin !== 'native' && !isTerminalRunStatus(candidate.status))) {
-            for (const id of this.#subtree(run.id)) {
-                const descendant = data.runs.find(candidate => candidate.id === id)!;
+        for (const id of this.#subtree(runId)) {
+            const run = data.runs.find(candidate => candidate.id === id)!;
 
-                if (!isTerminalRunStatus(descendant.status)) {
-                    this.#endRun(descendant);
-                    stopped.push(id);
-                }
+            if (id !== runId && run.canStopAlone && !isTerminalRunStatus(run.status)) {
+                this.#endRun(run);
+                stopped.push(id);
             }
-        }
-
-        for (const run of below.filter(candidate => candidate.origin === 'native' && candidate.canStopAlone && !isTerminalRunStatus(candidate.status))) {
-            this.#endRun(run);
-            stopped.push(run.id);
         }
 
         return ok({ stopped });

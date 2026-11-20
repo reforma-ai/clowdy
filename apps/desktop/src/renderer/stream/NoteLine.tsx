@@ -9,7 +9,7 @@ export interface NoteLineProps {
     at: number;
 }
 
-/** A system line in the stream, such as "2 executors started". */
+/** A system line in the stream, such as "Background command finished: bun test". */
 export function NoteLine({ text, at }: NoteLineProps) {
     return (
         <Marker className={ styles.note }>

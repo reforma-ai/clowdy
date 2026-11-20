@@ -70,7 +70,7 @@ function BackgroundRow({ runId, count }: { runId: RunId; count: number }) {
 /**
  * The work of the chat that goes on now, one row each above the message box (Reforma's `ChatComposerSubagents`): under a line that says "Agents running"
  * (with Stop all when two or more rows can stop alone), the agents, who it is, what it does, how many tools it called (a row opens the agent's run,
- * and Stop ends that agent alone, spawned or a sub-agent of the session, when its session can end it), then one row for the rest of the background
+ * and Stop ends that sub-agent alone when its session can end it), then one row for the rest of the background
  * work the orchestrator has open. Each thing is in one row: a sub-agent with a child run is its row, not a count. Nothing while there is none of either.
  */
 export function RunningAgents({ chat }: { chat: Chat }) {

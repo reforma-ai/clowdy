@@ -47,7 +47,7 @@ describe('GET /v1/skills', () => {
         const h = await start();
         const { entries, tokens, warnings } = await catalogOf(h);
 
-        expect(entries.map(entry => entry.name)).toEqual(['autopilot', 'docs', 'executor', 'orchestrate', 'scaffold', 'semi-manual', 'verify'].map(name => `clowdy:${ name }`));
+        expect(entries.map(entry => entry.name)).toEqual(['autopilot', 'docs', 'orchestrate', 'scaffold', 'semi-manual'].map(name => `clowdy:${ name }`));
         expect(entries.every(entry => entry.source === 'system' && entry.enabled && entry.tokens > 0 && entry.path === undefined)).toBe(true);
         expect(entries[0].engines).toEqual(['claude', 'codex']);
         expect(tokens).toBe(entries.reduce((sum, entry) => sum + entry.tokens, 0));

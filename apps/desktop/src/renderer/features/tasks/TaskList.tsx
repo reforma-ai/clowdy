@@ -3,9 +3,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AgentChip } from '../../shared';
 import { StatusPill } from './status';
 import styles from './TaskList.module.css';
-import { activeExecutors, type TaskRun } from './taskView';
+import { activeExecutors } from './taskView';
 
-import type { Task, TaskId, TaskStatus } from '@clowdy/protocol';
+import type { Run, Task, TaskId, TaskStatus } from '@clowdy/protocol';
 import type { SyntheticEvent } from 'react';
 
 /** A press on an agent chip belongs to the chip: left to bubble, it would also select the row and undo the chip's jump. */
@@ -14,7 +14,7 @@ const stop = (event: SyntheticEvent) => event.stopPropagation();
 export interface TaskListProps {
     tasks: Task[];
     statuses: readonly TaskStatus[];
-    runsOfTask: ReadonlyMap<TaskId, readonly TaskRun[]>;
+    runsOfTask: ReadonlyMap<TaskId, readonly Run[]>;
     /** The task the detail panel shows. */
     openId: TaskId | null;
     /** The tasks the keyboard selected, for a bulk action. */

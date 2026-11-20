@@ -36,8 +36,8 @@ export interface QueueInput {
 }
 
 /**
- * Whether a chat's orchestrator takes a message at once: its work is over, or it only waits for its children or for background work its session keeps open
- * (`isBusyRunStatus`). A message to one whose session is open goes into that session (`RunDriver.launch`), not into a new one.
+ * Whether a chat's orchestrator takes a message at once: its work is over, or it only waits for background work its session keeps open (`isBusyRunStatus`).
+ * A message to one whose session is open goes into that session (`RunDriver.launch`), not into a new one.
  */
 export function isAtRest(run: Run): boolean {
     return !isBusyRunStatus(run.status);
@@ -98,8 +98,8 @@ export class ChatQueue {
 
     /**
      * `chat.compact`: the agent's own compact command (`command`) as a turn of the orchestrator, with no `user` item (the person wrote nothing). A finished
-     * orchestrator gets it at once, and a compact item that waited in its queue goes with it. One that works or waits for its children gets it later, as a
-     * compact item at the end of the queue (`QueuedMessage.command`), which runs once it has finished; asked again while one waits, or while the agent is
+     * orchestrator gets it at once, and a compact item that waited in its queue goes with it. One that works or waits for background work gets it later, as
+     * a compact item at the end of the queue (`QueuedMessage.command`), which runs once it has finished; asked again while one waits, or while the agent is
      * compacting already, it changes nothing. Call it in the transaction of the command.
      */
     compact(chat: Chat, run: Run, command: string): void {
@@ -115,8 +115,6 @@ export class ChatQueue {
 
             return;
         }
-
-        this.requireCompactable(run);
 
         if (queue.some(isCompact)) {
             saveChat(store, withQueue(chat, queue.filter(item => !isCompact(item)), chat.queuePaused));
@@ -167,9 +165,9 @@ export class ChatQueue {
      * Send now. A busy orchestrator gets the message as a steer: it moves to the end of the steers and goes to the running turn when the agent can take it.
      * When the orchestrator is running and its agent cannot take a steer at all (`RunDriver.cannotSteer`), the message would wait for the turn's end however
      * long that is, so Send now is stop and send, which the button says: the message moves to the head of the steers, the turn is ended on purpose
-     * (`RunDriver.interrupt`), and the orchestrator's coming to rest gives the message to its next turn. Only the orchestrator's turn ends: the runs it spawned
-     * go on, and the queue is not paused. One at rest gets the message at once as its next turn, and a paused queue flows again. A compact item steers nothing:
-     * while the orchestrator is busy it keeps its place, and at rest it runs when the orchestrator can compact and is refused as `chat.compact` is when it cannot.
+     * (`RunDriver.interrupt`), and the orchestrator's coming to rest gives the message to its next turn. Only the orchestrator's turn ends, and the queue is
+     * not paused. One at rest gets the message at once as its next turn, and a paused queue flows again. A compact item steers nothing:
+     * while the orchestrator is busy it keeps its place, and at rest it runs once the orchestrator has finished, and is refused while it waits for background work.
      */
     sendNow(chatId: string, itemId: string): { chatId: string; runId: string } {
         const { store, runs, driver } = this.deps;
@@ -207,7 +205,11 @@ export class ChatQueue {
 
             // Like `chat.compact`, it is not activity: the chat keeps its place.
             if (isCompact(item)) {
-                this.requireCompactable(run);
+                // At rest but not finished: the session waits for background work, and the command must be a turn of its own.
+                if (!this.canCompact(run)) {
+                    throw conflict('The orchestrator is waiting for background work. Compact the chat when it has finished');
+                }
+
                 this.dispatch(chat, run, item);
 
                 return { chatId, runId: run.id };
@@ -289,8 +291,8 @@ export class ChatQueue {
                 return;
             }
             const settled = withQueue(chat, settleSteers(queue), paused);
-            // One item per turn, in order. A compact item waits for an orchestrator that can compact (finished, every child result read), and the messages
-            // behind it go first meanwhile: the turn that reads the results comes before the compaction.
+            // One item per turn, in order. A compact item waits for an orchestrator that can compact (finished, its session over), and the messages
+            // behind it go first meanwhile.
             const next = paused ? undefined : queueOf(settled).find(item => !isCompact(item) || this.canCompact(current));
 
             if (next) {
@@ -325,22 +327,11 @@ export class ChatQueue {
     }
 
     /**
-     * Whether the orchestrator can take a compact turn now: it has finished, and has read what its children did, because a turn starts with their results and
-     * the command must be the whole prompt.
+     * Whether the orchestrator can take a compact turn now: it has finished. One that waits for background work has its session open, and the command must
+     * be a turn of its own.
      */
     private canCompact(run: Run): boolean {
-        return isTerminalRunStatus(run.status) && !this.deps.runs.hasUnseenResults(run.id);
-    }
-
-    /** Refuses a compact turn an orchestrator at rest cannot take now (`canCompact`), saying what it waits for. */
-    private requireCompactable(run: Run): void {
-        if (!isTerminalRunStatus(run.status)) {
-            throw conflict('The orchestrator is waiting for its child runs. Compact the chat when they have finished');
-        }
-
-        if (this.deps.runs.hasUnseenResults(run.id)) {
-            throw conflict('Some child runs finished that the orchestrator has not read yet. Send it a message first, then compact the chat');
-        }
+        return isTerminalRunStatus(run.status);
     }
 
     /* -------------------------------- Steering -------------------------------- */

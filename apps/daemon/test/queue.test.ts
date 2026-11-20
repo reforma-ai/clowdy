@@ -5,7 +5,6 @@ import { join } from 'node:path';
 
 import { getChat } from '../src/db/chats';
 import { listItems } from '../src/db/items';
-import { pendingMailbox } from '../src/db/runs';
 import { placeQueued, settleSteers } from '../src/domain/queue';
 import { projectSnapshot } from '../src/domain/snapshots';
 import { STOPPED_TURN_MESSAGE } from '../src/runs/prompts';
@@ -14,7 +13,7 @@ import { STOPPED_TO_SEND_REASON } from '../src/runs/transitions';
 import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
 
 import type { Attachment, Chat, QueuedMessage, Run, StreamItemBody } from '@clowdy/protocol';
-import type { Harness, Script, Turn } from './helpers';
+import type { Harness, Script } from './helpers';
 
 afterAll(cleanTempDirs);
 
@@ -570,60 +569,6 @@ describe('stop and send for an agent that cannot steer', () => {
         expect(bodies(runId).some(body => body.kind === 'error')).toBe(false);
     });
 
-    test('the runs the orchestrator spawned go on, and report to it as ever', async () => {
-        const executor = latch();
-        const isOrchestrator = (turn: Turn) => turn.options.tools.some(tool => tool.name === 'run_spawn');
-        const { h, engine, chat, send, chatNow, queue, start } = await setup(undefined, {}, {
-            script: async function* (turn) {
-                if (!isOrchestrator(turn)) {
-                    yield { type: 'session', sessionId: 's-executor' };
-                    await executor.wait(turn.signal);
-                    yield* turn.call('report_result', { status: 'done', summary: 'The footer is fixed' });
-                    yield { type: 'done' };
-
-                    return;
-                }
-
-                yield { type: 'session', sessionId: 's1' };
-
-                if (!turn.options.resumeSessionId) {
-                    const { task } = yield* turn.call('task_create', { title: 'Task 1' });
-
-                    yield* turn.call('run_spawn', { taskIds: [task.key], prompt: `Goal: ${ task.key }`, idempotencyKey: 'executor-1' });
-                    await untilAborted(turn.signal);
-                }
-
-                yield { type: 'done', result: 'Understood' };
-            },
-        });
-        const orchestratorTurns = () => engine.turns.filter(options => options.tools.some(tool => tool.name === 'run_spawn'));
-        const executorRun = () => projectSnapshot(h.store, h.run(runId).projectId).runs.find(run => run.origin === 'spawned') as Run;
-        const { runId } = send('Start');
-
-        await waitFor(() => engine.turns.length === 2 && h.run(runId).status === 'running', 'the orchestrator to start its executor');
-
-        const executorId = executorRun().id;
-
-        send('Change of plan');
-        h.ok('chat.sendQueued', { chatId: chat.id, itemId: queue()[0].id });
-        await waitFor(() => orchestratorTurns().length === 2, 'the message as the next turn of the orchestrator');
-
-        // The orchestrator ended its turn for the message; the executor never noticed, and the queue is not held.
-        expect(orchestratorTurns()[1]).toMatchObject({ prompt: `${ STOPPED_TURN_MESSAGE }\n\nChange of plan`, resumeSessionId: 's1' });
-        await waitFor(() => h.run(runId).status === 'waiting_children', 'the orchestrator to wait for its executor again');
-
-        expect(h.run(executorId).status).toBe('running');
-        expect(trail(h, executorId)).not.toContain('cancelled');
-        expect(chatNow().queuePaused).toBeUndefined();
-
-        executor.release();
-        await waitFor(() => h.run(runId).status === 'succeeded' && orchestratorTurns().length === 3, 'the orchestrator to hear the executor\'s result');
-
-        expect(h.run(executorId).status).toBe('succeeded');
-        expect(orchestratorTurns()[2].prompt).toContain('The footer is fixed');
-        expect(orchestratorTurns()[2].prompt).not.toContain(STOPPED_TURN_MESSAGE);
-    });
-
     test('a second Send now while the turn is ending goes after the first, not before it', async () => {
         const { h, engine, chat, send, queue, start, release } = await setup(undefined, {}, { closeMs: 150 });
 
@@ -692,150 +637,7 @@ describe('stop and send for an agent that cannot steer', () => {
         expect(trail(h, runId)).toContain('succeeded');
     });
 
-    /**
-     * An orchestrator that starts one executor on its first turn and then works until it is stopped; the stopped turn winds down only when the test says
-     * (`winding`), which holds the run `running` with its turn ended, as a process that takes its time to leave does. Its second turn ends when the test
-     * says (`second`), and any later one at once. The executor reports when the test releases it.
-     */
-    function orchestration() {
-        const executor = latch();
-        const winding = latch();
-        const second = latch();
-        let orchestratorTurns = 0;
-        const script: Script = async function* (turn) {
-            if (!turn.options.tools.some(tool => tool.name === 'run_spawn')) {
-                yield { type: 'session', sessionId: 's-executor' };
-                await executor.wait(turn.signal);
-                yield* turn.call('report_result', { status: 'done', summary: 'The footer is fixed' });
-                yield { type: 'done' };
-
-                return;
-            }
-
-            yield { type: 'session', sessionId: 's1' };
-
-            const number = ++orchestratorTurns;
-
-            if (number === 1) {
-                const { task } = yield* turn.call('task_create', { title: 'Task 1' });
-
-                yield* turn.call('run_spawn', { taskIds: [task.key], prompt: `Goal: ${ task.key }`, idempotencyKey: 'executor-1' });
-                await untilAborted(turn.signal).catch(() => undefined);
-                await winding.wait();
-
-                return;
-            }
-
-            if (number === 2) {
-                await second.wait();
-            }
-
-            yield { type: 'done', result: `turn ${ number }` };
-        };
-
-        return { script, executor, winding, second };
-    }
-
-    /** The orchestration with its first turn running and the executor started; a message is queued and Send now pressed, so the turn is winding down. */
-    async function stopping(options: { release?: boolean } = {}) {
-        const o = orchestration();
-        const rig = await setup(undefined, {}, { script: o.script });
-        const { h, engine, chat, send, queue } = rig;
-        const { runId } = send('Start');
-
-        await waitFor(() => engine.turns.length === 2 && h.run(runId).status === 'running', 'the orchestrator to start its executor');
-
-        const executorId = projectSnapshot(h.store, rig.project.id).runs.find(run => run.origin === 'spawned')!.id;
-        const orchestratorTurns = () => engine.turns.filter(turn => turn.tools.some(tool => tool.name === 'run_spawn'));
-
-        send('Change of plan');
-
-        const itemId = queue()[0].id;
-
-        h.ok('chat.sendQueued', { chatId: chat.id, itemId });
-
-        if (options.release) {
-            o.executor.release();
-            await waitFor(() => h.run(executorId).status === 'succeeded', 'the executor to report');
-        }
-
-        return { ...rig, ...o, runId, executorId, itemId, orchestratorTurns };
-    }
-
-    test('a child that finishes while the turn is being stopped is told in the turn that sends the message', async () => {
-        const { h, runId, executorId, winding, second, orchestratorTurns, engine } = await stopping({ release: true });
-
-        // The turn has not wound down: the run is still `running`, and the finished child waits in its mailbox.
-        expect(h.run(runId).status).toBe('running');
-        expect(orchestratorTurns()).toHaveLength(1);
-
-        winding.release();
-        await waitFor(() => orchestratorTurns().length === 2, 'the message as the next turn');
-
-        expect(h.run(executorId).status).toBe('succeeded');
-        expect(orchestratorTurns()[1].prompt).toStartWith(`${ STOPPED_TURN_MESSAGE }\n\nChange of plan`);
-        expect(orchestratorTurns()[1].prompt).toContain('The footer is fixed');
-
-        second.release();
-        await waitFor(() => h.run(runId).status === 'succeeded', 'the turn to end');
-        await Bun.sleep(80);
-
-        // Told once: nothing is owed after it.
-        expect(engine.turns.filter(turn => turn.prompt.includes('The footer is fixed'))).toHaveLength(1);
-        expect(orchestratorTurns()).toHaveLength(2);
-    });
-
-    test('a child that finishes while the turn that sends the message runs wakes the orchestrator when that turn ends', async () => {
-        const { h, runId, executor, winding, second, orchestratorTurns } = await stopping();
-
-        winding.release();
-        await waitFor(() => orchestratorTurns().length === 2, 'the message as the next turn');
-
-        expect(orchestratorTurns()[1].prompt).toBe(`${ STOPPED_TURN_MESSAGE }\n\nChange of plan`);
-
-        executor.release();
-        await waitFor(() => pendingMailbox(h.store.db, runId).length === 1, 'the result to wait in the mailbox');
-        second.release();
-        await waitFor(() => orchestratorTurns().length === 3, 'the wake-up turn');
-
-        expect(orchestratorTurns()[2].prompt).toContain('The footer is fixed');
-        expect(orchestratorTurns()[2].prompt).not.toContain(STOPPED_TURN_MESSAGE);
-        await waitFor(() => h.run(runId).status === 'succeeded', 'the wake-up turn to end');
-    });
-
-    test('a message taken back while the turn ends leaves the orchestrator waiting for the runs it started, and their result wakes it', async () => {
-        const { h, chat, runId, executorId, itemId, executor, winding, orchestratorTurns, chatNow } = await stopping();
-
-        h.ok('chat.removeQueued', { chatId: chat.id, itemId });
-        winding.release();
-        await waitFor(() => h.run(runId).status === 'waiting_children', 'the orchestrator to wait for its executor');
-
-        // Not left stopped, where nothing would wake it; the executor goes on.
-        expect(h.run(runId).statusReason).toBe('Waiting for 1 child run');
-        expect(h.run(executorId).status).toBe('running');
-        expect(orchestratorTurns()).toHaveLength(1);
-        expect(chatNow().queuePaused).toBeUndefined();
-
-        executor.release();
-        await waitFor(() => orchestratorTurns().length === 2, 'the wake-up turn');
-
-        expect(orchestratorTurns()[1].prompt).toContain('The footer is fixed');
-        expect(orchestratorTurns()[1].prompt).not.toContain(STOPPED_TURN_MESSAGE);
-    });
-
-    test('a message taken back after a child had finished leaves its result to wake the orchestrator at once', async () => {
-        const { h, chat, runId, itemId, winding, orchestratorTurns } = await stopping({ release: true });
-
-        h.ok('chat.removeQueued', { chatId: chat.id, itemId });
-        winding.release();
-        await waitFor(() => orchestratorTurns().length === 2, 'the wake-up turn');
-
-        expect(orchestratorTurns()[1].prompt).toContain('The footer is fixed');
-        expect(orchestratorTurns()[1].prompt).not.toContain(STOPPED_TURN_MESSAGE);
-        expect(h.run(runId).status).not.toBe('cancelled');
-    });
-
-    test('a message taken back while the turn ends, with no run below it, leaves the orchestrator stopped, and the next message is an ordinary turn', async () => {
+    test('a message taken back while the turn ends leaves the orchestrator stopped, and the next message is an ordinary turn', async () => {
         const { h, engine, chat, send, chatNow, queue, start } = await setup(undefined, {}, { closeMs: 150 });
         const runId = await start();
 
@@ -962,10 +764,10 @@ describe('the queue commands', () => {
 describe('queue rules', () => {
     const item = (id: string, mode: QueuedMessage['mode']): QueuedMessage => ({ id, mode, text: id, content: id, createdAt: 0 });
 
-    test('busy is any status but the terminal ones and waiting for children', () => {
+    test('busy is any status but the terminal ones and waiting for background work', () => {
         const at = (status: Run['status']) => isAtRest({ status } as Run);
 
-        expect(['succeeded', 'failed', 'cancelled', 'interrupted', 'waiting_children'].map(status => at(status as Run['status']))).toEqual([true, true, true, true, true]);
+        expect(['succeeded', 'failed', 'cancelled', 'interrupted', 'waiting_background'].map(status => at(status as Run['status']))).toEqual([true, true, true, true, true]);
         expect(['queued', 'running', 'waiting_user', 'blocked'].map(status => at(status as Run['status']))).toEqual([false, false, false, false]);
     });
 

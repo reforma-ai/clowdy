@@ -86,11 +86,9 @@ function fixtureSkills(projectId: ProjectId): FixtureSkill[] {
     return [
         skill('system', 'clowdy:autopilot', 'How to work without asking the user. Sort every fork, decide significant ones by explicit criteria and record them, and report only true blockers.'),
         skill('system', 'clowdy:docs', 'The contract for a project\'s documents: layout, file names, facts versus plans, decisions and how to supersede them, and how to edit them safely.'),
-        skill('system', 'clowdy:executor', 'Manual for a spawned executor run: stay inside the owned scope, work in small verified steps, never ask the user, and finish with real evidence.'),
-        skill('system', 'clowdy:orchestrate', 'Entry skill of every chat: classify the message, plan a task graph, run agents in parallel, verify the result independently, and report briefly.'),
+        skill('system', 'clowdy:orchestrate', 'Entry skill of every chat: classify the message, plan a task graph, do the work yourself or with your own sub-agents, verify the result with commands, and report briefly.'),
         skill('system', 'clowdy:scaffold', 'Start a new application from nothing: product statement, stack, one verified skeleton, then the first task graph.'),
         skill('system', 'clowdy:semi-manual', 'Involve the user in the decisions that matter through question cards, then build with autopilot discipline.'),
-        skill('system', 'clowdy:verify', 'Verify work independently with real commands, record the evidence, and give a verdict of pass, fail or blocked.'),
         skill('user', 'user:deploy', 'Build the app, run every check and push it to the staging server when asked to ship.', { path: '/Users/dev/.claude/skills/deploy' }),
         skill('user', 'user:release-notes', 'Write release notes in plain words from the merged work since the last release.', { path: '/Users/dev/.agents/skills/release-notes' }),
         skill('user', 'user:sql-review', 'Review a database migration for locks, missing indexes and data loss before it runs.', { path: '/Users/dev/.claude/skills/sql-review', enabled: false }),
@@ -103,10 +101,10 @@ function fixtureSkills(projectId: ProjectId): FixtureSkill[] {
 export const FIXTURE_PROJECT_ID = 'p-car';
 export const FIXTURE_EMPTY_PROJECT_ID = 'p-clowdy';
 export const FIXTURE_PERSONAL_PROJECT_ID = 'p-personal';
-/** The run, and the two items of its stream, that the fixture timeline keeps changing. */
-export const FIXTURE_LIVE_RUN_ID = 'r-ex-07';
-export const FIXTURE_LIVE_TOOL_ID = 'r-ex-07-8';
-export const FIXTURE_LIVE_TEXT_ID = 'r-ex-07-9';
+/** The run (a native sub-agent), and the two items of its stream, that the fixture timeline keeps changing. */
+export const FIXTURE_LIVE_RUN_ID = 'r-na-03';
+export const FIXTURE_LIVE_TOOL_ID = 'r-na-03-7';
+export const FIXTURE_LIVE_TEXT_ID = 'r-na-03-8';
 
 const MINUTE = 60_000;
 
@@ -416,7 +414,6 @@ export function createFixtureData(now = Date.now()): FixtureData {
         { id: 'c-5', projectId, title: 'Check the booking changes', mode: 'autopilot', orchestratorRunId: 'r-orch-5', createdAt: ago(30), updatedAt: ago(5) },
     ];
 
-    const worktree = (slug: string) => ({ path: `/Users/dev/.clowdy/worktrees/car-rental/${ slug }`, branch: `clowdy/${ slug }`, baseCommit: 'a1b2c3d' });
     const run = (id: string, name: string, role: Run['role'], status: Run['status'], rest: Partial<Run> = {}): Run => ({
         id,
         projectId,
@@ -433,14 +430,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
 
     const runs: Run[] = [
         run('r-orch-1', 'Orchestrator 01', 'orchestrator', 'running', { chatId: 'c-1', summary: 'Simplify booking', createdAt: ago(94), startedAt: ago(94), context: { used: 53000, size: 250000 } }),
-        run('r-ex-07', 'Executor 07', 'executor', 'running', {
-            parentRunId: 'r-orch-1',
-            summary: 'Update the booking form',
-            worktree: worktree('car-24-booking-form'),
-            createdAt: ago(21),
-            startedAt: ago(21),
-        }),
-        // Sub-agents of the orchestrator's own `Agent` calls (tc-agent-1, tc-agent-2 in its stream): cards there, not rows of the tree.
+        // Sub-agents of the orchestrator's own `Agent` calls (tc-agent-1 to tc-agent-4 in its stream): cards there, never rows of the Agents list.
         run('r-na-01', 'Explore', 'executor', 'succeeded', {
             parentRunId: 'r-orch-1',
             origin: 'native',
@@ -461,59 +451,25 @@ export function createFixtureData(now = Date.now()): FixtureData {
             createdAt: ago(2),
             startedAt: ago(2),
         }),
-        run('r-ver-02', 'Verifier 02', 'verifier', 'queued', {
-            parentRunId: 'r-ex-07',
-            summary: 'Check the form against the spec',
-            statusReason: 'Waiting for a free slot (4 of 4 in use)',
-            createdAt: ago(1),
-        }),
-        run('r-ex-08', 'Executor 08', 'executor', 'waiting_user', {
+        // The one the timeline plays: it types the form while the app is open (its stream is the long one).
+        run('r-na-03', 'general-purpose', 'executor', 'running', {
             parentRunId: 'r-orch-1',
-            summary: 'Confirmation email and cancellation',
-            statusReason: 'Asked which mail provider to use',
-            worktree: worktree('car-25-confirmation-email'),
+            origin: 'native',
+            parentToolCallId: 'tc-agent-3',
+            canStopAlone: true,
+            summary: 'Update the booking form',
             createdAt: ago(21),
             startedAt: ago(21),
         }),
-        run('r-ex-09', 'Executor 09', 'executor', 'succeeded', {
+        run('r-na-04', 'general-purpose', 'executor', 'failed', {
             parentRunId: 'r-orch-1',
-            summary: 'Set up the booking schema',
-            result: 'Added the `bookings` table and its migration. Typecheck and tests pass.',
-            worktree: { ...worktree('car-21-booking-schema'), headCommit: 'f00dcafe' },
-            createdAt: ago(80),
-            startedAt: ago(80),
-            finishedAt: ago(52),
-        }),
-        run('r-ex-10', 'Executor 10', 'executor', 'failed', {
-            parentRunId: 'r-orch-1',
+            origin: 'native',
+            parentToolCallId: 'tc-agent-4',
             summary: 'Weekend pricing rules',
             error: 'Typecheck failed in 3 files and the run could not repair them.',
-            worktree: worktree('car-23-weekend-pricing'),
             createdAt: ago(70),
             startedAt: ago(70),
             finishedAt: ago(41),
-        }),
-        run('r-ex-12', 'Executor 12', 'executor', 'blocked', {
-            parentRunId: 'r-orch-1',
-            summary: 'Insurance options',
-            statusReason: 'Blocked by CAR-24, which is still in progress',
-            createdAt: ago(20),
-        }),
-        run('r-ex-13', 'Executor 13', 'executor', 'cancelled', {
-            parentRunId: 'r-orch-1',
-            summary: 'Print invoice as PDF',
-            worktree: worktree('car-29-invoice-pdf'),
-            createdAt: ago(75),
-            startedAt: ago(75),
-            finishedAt: ago(60),
-        }),
-        run('r-ex-14', 'Executor 14', 'executor', 'interrupted', {
-            parentRunId: 'r-orch-1',
-            summary: 'Search by location',
-            statusReason: 'The daemon restarted while it was running',
-            createdAt: ago(30),
-            startedAt: ago(30),
-            finishedAt: ago(25),
         }),
         run('r-orch-2', 'Orchestrator 02', 'orchestrator', 'succeeded', {
             chatId: 'c-2',
@@ -523,10 +479,13 @@ export function createFixtureData(now = Date.now()): FixtureData {
             startedAt: ago(60 * 24 * 5),
             finishedAt: ago(60 * 24 * 4),
         }),
-        run('r-ex-15', 'Executor 15', 'executor', 'succeeded', {
+        run('r-na-06', 'general-purpose', 'executor', 'succeeded', {
             parentRunId: 'r-orch-2',
             rootRunId: 'r-orch-2',
+            origin: 'native',
+            parentToolCallId: 'tc-o2-agent',
             summary: 'Fleet list',
+            result: 'The fleet list renders every car with its status.',
             createdAt: ago(60 * 24 * 5),
             startedAt: ago(60 * 24 * 5),
             finishedAt: ago(60 * 24 * 4 + 90),
@@ -550,34 +509,21 @@ export function createFixtureData(now = Date.now()): FixtureData {
             startedAt: ago(30),
             context: { used: 31000, size: 250000 },
         }),
-        run('r-ex-17', 'Executor 17', 'executor', 'succeeded', {
-            summary: 'Admin: fleet table',
-            result: 'The table renders the fleet with sorting.',
-            createdAt: ago(60 * 3),
-            startedAt: ago(60 * 3),
-            finishedAt: ago(60 * 2),
-        }),
     ];
 
     const chatTaskLinks: ChatTaskLink[] = [20, 21, 22, 23, 24, 25, 26, 27].map(number => ({ chatId: 'c-1', taskId: `t-${ number }` }));
 
     chatTaskLinks.push({ chatId: 'c-2', taskId: 't-28' }, { chatId: 'c-2', taskId: 't-29' });
 
+    // The runs on a task are the orchestrators of the chats working on it: two runs on one task, and one run on two tasks.
     const runTaskLinks: RunTaskLink[] = [
         { runId: 'r-orch-1', taskId: 't-24', relation: 'created' },
         { runId: 'r-orch-1', taskId: 't-25', relation: 'created' },
         { runId: 'r-orch-1', taskId: 't-21', relation: 'created' },
-        { runId: 'r-ex-07', taskId: 't-24', relation: 'assigned' },
-        { runId: 'r-ver-02', taskId: 't-24', relation: 'verifies' },
-        // Two runs on one task, and one run on two tasks.
-        { runId: 'r-ex-08', taskId: 't-25', relation: 'assigned' },
-        { runId: 'r-ex-08', taskId: 't-26', relation: 'assigned' },
-        { runId: 'r-ex-09', taskId: 't-21', relation: 'assigned' },
-        { runId: 'r-ex-10', taskId: 't-23', relation: 'assigned' },
-        { runId: 'r-ex-12', taskId: 't-27', relation: 'assigned' },
-        { runId: 'r-ex-13', taskId: 't-29', relation: 'assigned' },
-        { runId: 'r-ex-14', taskId: 't-28', relation: 'assigned' },
-        { runId: 'r-ex-17', taskId: 't-30', relation: 'assigned' },
+        { runId: 'r-orch-1', taskId: 't-24', relation: 'assigned' },
+        { runId: 'r-orch-1', taskId: 't-25', relation: 'assigned' },
+        { runId: 'r-orch-5', taskId: 't-24', relation: 'assigned' },
+        { runId: 'r-orch-2', taskId: 't-20', relation: 'assigned' },
     ];
 
     const items: Record<string, StreamItem[]> = {};
@@ -599,28 +545,25 @@ export function createFixtureData(now = Date.now()): FixtureData {
         }],
         [92, { kind: 'tool', toolCallId: 'tc-2', name: 'Read', state: 'done', input: { file_path: 'src/booking/index.tsx' }, output: 'export function Booking() {\n    return <Steps />;\n}' }],
         [90, { kind: 'tool', toolCallId: 'tc-3', name: 'create_task', state: 'done', input: { title: 'Update the booking form', dependsOn: ['CAR-22'] }, output: { key: 'CAR-24' } }],
-        [89, { kind: 'note', text: '2 executors started' }],
-        [60, { kind: 'assistant', done: true, text: 'Executor 09 finished the schema in `src/db/schema.ts`. Executor 10 failed on the pricing rules; I will look at its report before I retry.\n\n### What changed\n\n| File | Change |\n| --- | --- |\n| `src/db/schema.ts` | adds the `bookings` table |\n| `src/booking/price.ts` | weekend surcharge |\n\n```src/booking/price.ts\nexport const weekendRate = 1.15;\n```\n\n> The price must be visible before the person commits.\n\nSee [the decision](https://example.com/decision) and `CAR-23`.' }],
-        [41, { kind: 'error', text: 'Executor 10 failed: Typecheck failed in 3 files and the run could not repair them.' }],
-        // The result of `run_spawn` as agents hand it back: JSON text for the first, the tool's own object for the second.
+        [70, {
+            kind: 'tool',
+            toolCallId: 'tc-agent-4',
+            name: 'Agent',
+            state: 'error',
+            input: { subagent_type: 'general-purpose', description: 'Weekend pricing rules', prompt: 'Add the weekend surcharge to the price helper and keep the typecheck green.' },
+            error: 'Typecheck failed in 3 files and the run could not repair them.',
+        }],
+        [60, { kind: 'assistant', done: true, text: 'The schema is in `src/db/schema.ts`. The pricing rules failed the typecheck; I will look at the report before I retry.\n\n### What changed\n\n| File | Change |\n| --- | --- |\n| `src/db/schema.ts` | adds the `bookings` table |\n| `src/booking/price.ts` | weekend surcharge |\n\n```src/booking/price.ts\nexport const weekendRate = 1.15;\n```\n\n> The price must be visible before the person commits.\n\nSee [the decision](https://example.com/decision) and `CAR-23`.' }],
+        [41, { kind: 'note', text: 'Background command finished: bun run typecheck' }],
+        [41, { kind: 'error', text: 'The agent stopped and was started again' }],
         [21, {
             kind: 'tool',
-            toolCallId: 'tc-spawn-07',
-            name: 'run_spawn',
-            state: 'done',
-            input: { taskIds: ['CAR-24'], role: 'executor', prompt: 'Update the booking form: one view with dates, car and live price.', idempotencyKey: 'car-24-form' },
-            output: JSON.stringify({ runId: 'r-ex-07', name: 'Executor 07', role: 'executor', status: 'running', duplicate: false }),
+            toolCallId: 'tc-agent-3',
+            name: 'Agent',
+            state: 'running',
+            input: { subagent_type: 'general-purpose', description: 'Update the booking form', prompt: 'Update the booking form (CAR-24): one view with dates, car and live price. Keep the existing validation messages.' },
         }],
-        [21, {
-            kind: 'tool',
-            toolCallId: 'tc-spawn-08',
-            name: 'run_spawn',
-            state: 'done',
-            input: { taskIds: ['CAR-25', 'CAR-26'], role: 'executor', prompt: 'Write the confirmation email and the cancellation flow.', idempotencyKey: 'car-25-email' },
-            output: { runId: 'r-ex-08', name: 'Executor 08', role: 'executor', status: 'running', duplicate: false },
-        }],
-        [21, { kind: 'note', text: '2 executors started' }],
-        [20, { kind: 'assistant', done: true, text: 'Executor 07 is on the form, and Executor 08 asked which mail provider to use. I am waiting on you for that one.' }],
+        [20, { kind: 'assistant', done: true, text: 'A sub-agent is on the form. I will check what it hands back before I move on.' }],
         [2, { kind: 'tool', toolCallId: 'tc-agent-2', name: 'Agent', state: 'running', input: { subagent_type: 'Explore', description: 'Find where the price is computed', prompt: 'Find where the booking price is computed and who calls it.' } }],
     ]);
 
@@ -635,8 +578,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         [1, { kind: 'tool', toolCallId: 'tc-1', name: 'Grep', state: 'running', input: { pattern: 'useBookingPrice', path: 'src' } }],
     ]);
 
-    stream('r-ex-07', [
-        [21, { kind: 'user', text: 'Update the booking form (CAR-24): one view with dates, car and live price. Keep the existing validation messages.' }],
+    stream('r-na-03', [
         [21, { kind: 'assistant', done: true, text: 'I will start by reading the current form and the price helper.' }],
         [20, { kind: 'tool', toolCallId: 'tc-1', name: 'Read', state: 'done', input: { file_path: 'src/booking/form.tsx' }, output: 'export function BookingForm() {\n    // ...\n}' }],
         [19, { kind: 'tool', toolCallId: 'tc-2', name: 'Grep', state: 'done', input: { pattern: 'useBookingPrice', path: 'src' }, output: 'src/booking/price.ts:4' }],
@@ -654,32 +596,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         [1, { kind: 'assistant', done: false, text: 'Checking confirmation handling' }],
     ]);
 
-    stream('r-ex-08', [
-        [21, { kind: 'user', text: 'Write the confirmation email (CAR-25) and the cancellation flow (CAR-26).' }],
-        [20, { kind: 'tool', toolCallId: 'tc-1', name: 'Glob', state: 'done', input: { pattern: 'src/**/mail*' }, output: [] }],
-        [19, { kind: 'assistant', done: true, text: 'There is no mail code in the repository yet, so I need to know which provider to use.' }],
-        [19, {
-            kind: 'question',
-            questionId: 'q-mail',
-            text: 'Which mail provider should the confirmation email use?',
-            options: [
-                { id: 'smtp', label: 'Plain SMTP', consequence: 'No new dependency; you configure the host once.' },
-                { id: 'resend', label: 'Resend', consequence: 'Adds an SDK and an API key to the setup.' },
-                { id: 'postmark', label: 'Postmark', consequence: 'Adds an SDK; better delivery tracking.' },
-            ],
-            recommended: 'smtp',
-        }],
-    ]);
-
-    stream('r-ex-09', [
-        [80, { kind: 'user', text: 'Set up the booking schema (CAR-21).' }],
-        [75, { kind: 'tool', toolCallId: 'tc-1', name: 'Write', state: 'done', input: { file_path: 'db/migrations/004_bookings.sql' }, output: { added: 18, removed: 0 } }],
-        [60, { kind: 'tool', toolCallId: 'tc-2', name: 'Bash', state: 'done', input: { command: 'bun test' }, output: '12 pass\n0 fail' }],
-        [52, { kind: 'assistant', done: true, text: 'Added the `bookings` table and its migration. Typecheck and tests pass.' }],
-    ]);
-
-    stream('r-ex-10', [
-        [70, { kind: 'user', text: 'Weekend pricing rules (CAR-23).' }],
+    stream('r-na-04', [
         [60, { kind: 'tool', toolCallId: 'tc-1', name: 'Bash', state: 'error', input: { command: 'bun run typecheck' }, error: 'src/booking/price.ts(31,9): error TS2322: Type string is not assignable to type number.' }],
         [41, { kind: 'error', text: 'Typecheck failed in 3 files and the run could not repair them.' }],
     ]);
@@ -716,7 +633,14 @@ export function createFixtureData(now = Date.now()): FixtureData {
         [60 * 24 * 5 - 1, { kind: 'assistant', done: true, text: 'I will start with the fleet list, then the booking page.' }],
         [60 * 24 * 5 - 2, { kind: 'tool', toolCallId: 'tc-o2-1', name: 'Read', state: 'done', input: { file_path: 'src/fleet/index.tsx' }, output: 'export function Fleet() {}' }],
         [60 * 24 * 5 - 9, { kind: 'tool', toolCallId: 'tc-o2-2', name: 'create_task', state: 'done', input: { title: 'Fleet list' }, output: { key: 'CAR-15' } }],
-        [60 * 24 * 5 - 12, { kind: 'note', text: '1 executor started' }],
+        [60 * 24 * 5 - 12, {
+            kind: 'tool',
+            toolCallId: 'tc-o2-agent',
+            name: 'Agent',
+            state: 'done',
+            input: { subagent_type: 'general-purpose', description: 'Fleet list', prompt: 'Build the fleet list page from the cars table.' },
+            output: 'The fleet list renders every car with its status.',
+        }],
         [60 * 24 * 5 - 14, { kind: 'assistant', done: true, text: 'The booking page, the fleet list and the price calculation are in.' }],
         // Compact, pressed once the work was done: the agent's call with what it saved, as Claude reports it.
         [60 * 24 * 4 + 5, {
@@ -737,9 +661,9 @@ export function createFixtureData(now = Date.now()): FixtureData {
     };
 
     const artifacts: Artifact[] = [
-        { id: 'a-1', projectId, runId: 'r-ex-09', taskId: 't-21', kind: 'commit', title: 'Add the bookings table', ref: { sha: 'f00dcafe', branch: 'clowdy/car-21-booking-schema' }, createdAt: ago(52) },
-        { id: 'a-2', projectId, runId: 'r-ex-07', taskId: 't-24', kind: 'diff', title: 'Changes in the booking form', ref: { files: 2, added: 42, removed: 118 }, createdAt: ago(14) },
-        { id: 'a-3', projectId, runId: 'r-ex-10', taskId: 't-23', kind: 'check', title: 'Typecheck', ref: { command: 'bun run typecheck', exitCode: 2 }, createdAt: ago(41) },
+        { id: 'a-1', projectId, runId: 'r-orch-1', taskId: 't-21', kind: 'commit', title: 'Add the bookings table', ref: { sha: 'f00dcafe', branch: 'clowdy/car-21-booking-schema' }, createdAt: ago(52) },
+        { id: 'a-2', projectId, runId: 'r-na-03', taskId: 't-24', kind: 'diff', title: 'Changes in the booking form', ref: { files: 2, added: 42, removed: 118 }, createdAt: ago(14) },
+        { id: 'a-3', projectId, runId: 'r-na-04', taskId: 't-23', kind: 'check', title: 'Typecheck', ref: { command: 'bun run typecheck', exitCode: 2 }, createdAt: ago(41) },
     ];
 
     return {

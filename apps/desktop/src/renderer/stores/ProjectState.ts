@@ -1,7 +1,5 @@
 import { makeAutoObservable, observableRef, observableShallow, runInAction } from 'mobx';
 
-import { buildRunTree, type RunNode } from './runTree';
-
 import type {
     Chat,
     ChatId,
@@ -245,7 +243,7 @@ export class ProjectState {
         return this.#join(this.chatTaskLinks.values(), link => link.taskId, link => this.chats.get(link.chatId), (a, b) => b.updatedAt - a.updatedAt);
     }
 
-    /** Runs that work on the task, whatever the relation: executors first by when they started. */
+    /** Runs linked to the task, whatever the relation (`assigned` or `created`), by when they were made. */
     runsOfTask(taskId: TaskId): Run[] {
         return this.runsByTask.get(taskId) ?? [];
     }
@@ -262,14 +260,9 @@ export class ProjectState {
         return this.chatsByTask.get(taskId) ?? [];
     }
 
-    /** The links of one run, for the relation (`assigned`, `created`, `verifies`) that a bare task list loses. */
+    /** The links of one run, for the relation (`assigned`, `created`) that a bare task list loses. */
     linksOfRun(runId: RunId): RunTaskLink[] {
         return [...this.runTaskLinks.values()].filter(link => link.runId === runId);
-    }
-
-    /** The run tree for the Agents screen. */
-    runTree(showFinished: boolean): RunNode[] {
-        return buildRunTree(this.runs.values(), { showFinished });
     }
 
     #join<L, T>(links: Iterable<L>, keyOf: (link: L) => string, target: (link: L) => T | undefined, order: (a: T, b: T) => number): Map<string, T[]> {
@@ -283,7 +276,7 @@ export class ProjectState {
             const key = keyOf(link);
             const list = joined.get(key) ?? [];
 
-            // The same run may be linked to a task twice (`assigned` and `verifies`).
+            // The same run may be linked to a task twice (`assigned` and `created`).
             if (!list.includes(entity)) list.push(entity);
 
             joined.set(key, list);

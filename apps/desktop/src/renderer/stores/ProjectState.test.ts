@@ -79,7 +79,7 @@ describe('ProjectState', () => {
     it('drops a deleted task together with its links', async () => {
         const { state } = await loadedProject();
 
-        expect(state.runsOfTask('t-24').map(run => run.id)).toEqual(['r-orch-1', 'r-ex-07', 'r-ver-02']);
+        expect(state.runsOfTask('t-24').map(run => run.id)).toEqual(['r-orch-1', 'r-orch-5']);
         state.applyEvent(event(1001, { type: 'task.deleted', taskId: 't-24' }));
 
         expect(state.tasks.has('t-24')).toBe(false);
@@ -120,21 +120,21 @@ describe('ProjectState', () => {
     it('answers many-to-many questions: tasks of a run, runs of a task', async () => {
         const { state } = await loadedProject();
 
-        // One run on two tasks.
-        expect(state.tasksOfRun('r-ex-08').map(task => task.key)).toEqual(['CAR-25', 'CAR-26']);
-        // Three runs on one task: the orchestrator that created it, the executor, and the verifier of its work.
-        expect(state.runsOfTask('t-24').map(run => run.name)).toEqual(['Orchestrator 01', 'Executor 07', 'Verifier 02']);
-        expect(state.linksOfRun('r-ver-02')).toEqual([{ runId: 'r-ver-02', taskId: 't-24', relation: 'verifies' }]);
+        // One run on several tasks: the ones its orchestrator created and works on.
+        expect(state.tasksOfRun('r-orch-1').map(task => task.key)).toEqual(['CAR-21', 'CAR-24', 'CAR-25']);
+        // Two runs on one task: the orchestrator that created it and works on it, and another chat's orchestrator assigned to it.
+        expect(state.runsOfTask('t-24').map(run => run.name)).toEqual(['Orchestrator 01', 'Orchestrator 05']);
+        expect(state.linksOfRun('r-orch-5')).toEqual([{ runId: 'r-orch-5', taskId: 't-24', relation: 'assigned' }]);
         expect(state.runsOfTask('t-999')).toEqual([]);
     });
 
     it('does not list a run twice when it is linked to one task under two relations', async () => {
         const { state } = await loadedProject();
 
-        state.applyEvent(event(1001, { type: 'link.runTask', link: { runId: 'r-ex-07', taskId: 't-24', relation: 'created' }, present: true }));
+        state.applyEvent(event(1001, { type: 'link.runTask', link: { runId: 'r-orch-5', taskId: 't-24', relation: 'created' }, present: true }));
 
-        expect(state.runsOfTask('t-24').filter(run => run.id === 'r-ex-07')).toHaveLength(1);
-        expect(state.linksOfRun('r-ex-07')).toHaveLength(2);
+        expect(state.runsOfTask('t-24').filter(run => run.id === 'r-orch-5')).toHaveLength(1);
+        expect(state.linksOfRun('r-orch-5')).toHaveLength(2);
     });
 
     it('groups tasks by status in workflow order, with empty columns kept', async () => {
@@ -156,21 +156,13 @@ describe('ProjectState', () => {
         expect(state.tasksByStatus.get('review')?.map(candidate => candidate.number)).toEqual([23, 24]);
     });
 
-    it('builds the run tree from its runs and follows run upserts', async () => {
+    it('follows run upserts', async () => {
         const { state } = await loadedProject();
-
-        expect(state.runTree(true).map(node => node.run.id)).toEqual(['r-orch-3', 'r-ex-17', 'r-orch-2', 'r-orch-1', 'r-orch-5'].sort((a, b) => state.runs.get(b)!.createdAt - state.runs.get(a)!.createdAt));
-
-        const orchestrator = state.runTree(false).find(node => node.run.id === 'r-orch-1')!;
-
-        expect(orchestrator.children.map(node => node.run.id)).toEqual(['r-ex-07', 'r-ex-08', 'r-ex-12']);
-
-        const finished: Run = { ...state.runs.get('r-ex-07')!, status: 'succeeded' };
+        const finished: Run = { ...state.runs.get('r-na-03')!, status: 'succeeded' };
 
         state.applyEvent(event(1001, { type: 'run.upserted', run: finished }));
 
-        // Its verifier child is still queued, so the finished run stays in the tree.
-        expect(state.runTree(false).find(node => node.run.id === 'r-orch-1')!.children.map(node => node.run.id)).toContain('r-ex-07');
+        expect(state.runs.get('r-na-03')?.status).toBe('succeeded');
     });
 
     it('notes docs changes and artifacts for the screens that show them', async () => {

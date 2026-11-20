@@ -81,16 +81,16 @@ describe('openRun', () => {
         await store.command({ type: 'chat.setArchived', chatId: 'c-2', archived: true });
         await archived('c-2', true);
 
-        await openRun(store, project(), ui(), 'r-ex-15');
+        await openRun(store, project(), ui(), 'r-na-06');
         await archived('c-2', false);
 
-        expect(ui().runId).toBe('r-ex-15');
+        expect(ui().runId).toBe('r-na-06');
     });
 
     it('shows a run of a chat in use at once', async () => {
-        await openRun(store, project(), ui(), 'r-ex-07');
+        await openRun(store, project(), ui(), 'r-na-02');
 
-        expect(ui().runId).toBe('r-ex-07');
+        expect(ui().runId).toBe('r-na-02');
     });
 });
 

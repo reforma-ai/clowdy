@@ -62,10 +62,10 @@ export const commandSchema = z.discriminatedUnion('type', [
      */
     z.object({ ...base, type: z.literal('chat.setModel'), chatId: z.string(), engine: engine.optional(), model: model.nullable().optional(), effort: effort.nullable().optional() }),
     /**
-     * Asks the chat's agent to compact its context (its own `/compact`) as a turn of the orchestrator, which the stream shows. An orchestrator that works or waits
-     * for its children gets it later: it joins the chat's queue as a compact item (`QueuedMessage.command`), which runs once the orchestrator has finished, and
-     * asking again while one waits or runs does nothing more. Refused (`conflict`) for a finished orchestrator with child results it has not read (a message reads
-     * them), (`invalid`) for a chat that has not started or whose agent has no such command. It is not activity: the chat keeps its place in the order.
+     * Asks the chat's agent to compact its context (its own `/compact`) as a turn of the orchestrator, which the stream shows. An orchestrator that works
+     * gets it later: it joins the chat's queue as a compact item (`QueuedMessage.command`), which runs once the orchestrator has finished, and
+     * asking again while one waits or runs does nothing more. Refused (`invalid`) for a chat that has not started or whose agent has no such command.
+     * It is not activity: the chat keeps its place in the order.
      */
     z.object({ ...base, type: z.literal('chat.compact'), chatId: z.string() }),
     /** Hides the chat from the lists without deleting anything (refused while any of its runs is active), or brings it back. */
@@ -74,7 +74,7 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('chat.delete'), chatId: z.string() }),
     /**
      * `text` may be empty when `attachmentIds` (files uploaded to the chat's project, not sent yet) name at least one file. A chat at rest (no orchestrator yet,
-     * a finished one, or one waiting for its children) gets the message at once, whatever `mode` says. A busy orchestrator gets it later: `mode` puts it in the
+     * a finished one, or one waiting for background work) gets the message at once, whatever `mode` says. A busy orchestrator gets it later: `mode` puts it in the
      * chat's queue as a steer of the running turn or as a next turn (`queue` when left out), and it shows in the stream once the agent has it.
      */
     z.object({ ...base, type: z.literal('chat.send'), chatId: z.string(), text: z.string(), attachmentIds: z.array(z.string()).max(MAX_ATTACHMENTS_PER_MESSAGE).optional(), mode: queuedMode.optional() }),
@@ -120,9 +120,9 @@ export const commandSchema = z.discriminatedUnion('type', [
     /* Runs */
     z.object({ ...base, type: z.literal('run.cancel'), runId: z.string() }),
     /**
-     * Stops the agents of the run `runId` (a chat's orchestrator) and lets the run go on, knowing they were stopped: every run it spawned that is active is
-     * cancelled, and every sub-agent in its session that can be stopped alone (`Run.canStopAlone`) is asked to stop; the run is not cancelled and its chat's
-     * queue is not held. Answers `{ stopped: RunId[] }`, what it cancelled or asked to stop.
+     * Stops the sub-agents of the run `runId` (a chat's orchestrator) and lets the run go on, knowing they were stopped: every sub-agent in its session that
+     * can be stopped alone (`Run.canStopAlone`) is asked to stop; the run is not cancelled and its chat's queue is not held. Answers `{ stopped: RunId[] }`,
+     * what it asked to stop.
      */
     z.object({ ...base, type: z.literal('run.stopAgents'), runId: z.string() }),
     /** Answers a `question` stream item of a run in `waiting_user`. */

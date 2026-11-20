@@ -30,7 +30,7 @@ export interface EngineStartOptions {
      * says it takes them; the system prompt names every folder for all agents.
      */
     additionalDirectories?: string[];
-    /** The user's message or the executor's assignment. */
+    /** The user's message, or the task a chat was started from. */
     prompt: string;
     systemPrompt?: string;
     /** A session id the engine reported earlier; continue that conversation. */

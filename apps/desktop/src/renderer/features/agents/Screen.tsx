@@ -8,8 +8,8 @@ import { RunDetail } from './RunDetail';
 import styles from './Screen.module.css';
 
 /**
- * Agents: the tree of chats and the runs below them on the left, and beside it the selected one: a chat with its message
- * box, a run of a chat (its work, read only), or the new-chat row.
+ * Agents: the list of chats on the left, and beside it the selected one: a chat with its message box, a sub-agent's run of a
+ * chat (its work, read only), or the new-chat row.
  */
 export function Screen() {
     const project = useProjectState();
@@ -20,7 +20,7 @@ export function Screen() {
 
     return (
         <SidebarLayout screen="agents" defaultWidth={ 270 } sidebar={ <AgentList selection={ selection } chats={ visibleChats(project.chatList, ui.chatSort) } /> }>
-            <section className={ styles.main } aria-label={ run ? 'Subthread' : 'Chat' }>
+            <section className={ styles.main } aria-label={ run ? 'Sub-agent' : 'Chat' }>
                 { run
                     ? <RunDetail key={ run.id } run={ run } />
                     : chat

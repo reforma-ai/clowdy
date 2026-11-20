@@ -42,8 +42,6 @@ interface StoredProjectUi {
     runId: RunId | null;
     docPath: string | null;
     docFolderId: FolderId | null;
-    showFinished: boolean;
-    showSubthreads: boolean;
     chatSort: ChatSort;
     tasksView: TasksView;
 }
@@ -53,7 +51,7 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'showFinished' | 'showSubthreads' | 'chatSort' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'chatSort' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -73,10 +71,6 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
 
     if (params.has('docFolder')) initial.docFolderId = params.get('docFolder');
 
-    if (params.has('finished')) initial.showFinished = params.get('finished') !== '0';
-
-    if (params.has('subthreads')) initial.showSubthreads = params.get('subthreads') !== '0';
-
     if (params.get('sort') === 'activity' || params.get('sort') === 'created') initial.chatSort = params.get('sort') as ChatSort;
 
     if (view === 'board' || view === 'list') initial.tasksView = view;
@@ -95,10 +89,6 @@ export class ProjectUi {
     docFolderId: FolderId | null = null;
     /** Agents: the new-chat row is selected, and the chat it starts does not exist until its first message is sent. Not kept between sessions. */
     draft = false;
-    /** Agents: list the runs below each chat, the chat's subthreads. */
-    showSubthreads = true;
-    /** Agents: list a subthread that has finished. */
-    showFinished = true;
     /** Agents: the order of the chats. Last activity, which is where a chat that just got a message goes up to the top, until the person picks the order they were made in. */
     chatSort: ChatSort = 'activity';
     tasksView: TasksView = 'board';
@@ -116,8 +106,6 @@ export class ProjectUi {
             this.runId = idOrNull(stored.runId);
             this.docPath = idOrNull(stored.docPath);
             this.docFolderId = idOrNull(stored.docFolderId);
-            this.showFinished = stored.showFinished !== false;
-            this.showSubthreads = stored.showSubthreads !== false;
             this.chatSort = stored.chatSort === 'created' ? 'created' : 'activity';
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';
         }
@@ -132,8 +120,6 @@ export class ProjectUi {
                 runId: this.runId,
                 docPath: this.docPath,
                 docFolderId: this.docFolderId,
-                showFinished: this.showFinished,
-                showSubthreads: this.showSubthreads,
                 chatSort: this.chatSort,
                 tasksView: this.tasksView,
             }),
@@ -204,14 +190,6 @@ export class ProjectUi {
         this.section = 'docs';
         this.docPath = path;
         this.docFolderId = folderId;
-    }
-
-    setShowFinished(show: boolean): void {
-        this.showFinished = show;
-    }
-
-    setShowSubthreads(show: boolean): void {
-        this.showSubthreads = show;
     }
 
     setChatSort(sort: ChatSort): void {

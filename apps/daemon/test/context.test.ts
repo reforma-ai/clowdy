@@ -9,7 +9,7 @@ import { getRun } from '../src/db/runs';
 import { CONTINUE_MESSAGE } from '../src/runs/prompts';
 import { cleanTempDirs, latch, restartHarness, ScriptEngine, startHarness, tempDir, untilAborted, waitFor } from './helpers';
 
-import type { Chat } from '@clowdy/protocol';
+import type { BackgroundItem, Chat } from '@clowdy/protocol';
 import type { Config } from '../src/config';
 import type { EngineEvent } from '../src/engine/types';
 import type { Harness, Script } from './helpers';
@@ -45,11 +45,6 @@ const reporting = (...readings: Reading[]): Script => perTurn(readings);
 
 /** A turn that ends at once. */
 const finishing = reporting();
-
-/** The rest of a turn that has done its work. */
-const ending: Script = async function* () {
-    yield { type: 'done', result: 'ok' };
-};
 
 /** Claude's script stands in for its program, which is not on this machine; `other` is an agent with no compact command. */
 async function setup(script: Script, other: Script = finishing, config: Partial<Config> = {}) {
@@ -88,34 +83,6 @@ const shown = (h: Harness, runId: string) => h.events()
 const chatOf = (h: Harness, chatId: string) => getChat(h.store.db, chatId) as Chat;
 
 const storedStream = (h: Harness, runId: string) => h.store.db.query('SELECT body FROM stream_items WHERE run_id = ? ORDER BY seq').all(runId).map(row => JSON.parse((row as { body: string }).body));
-
-/** An orchestrator (the session that has `run_spawn`) starts one executor and does what `afterSpawn` says; an executor runs `child`. Later turns of the orchestrator just end. */
-const spawning = (child: Script, afterSpawn: Script = ending): Script => async function* (turn) {
-    if (!turn.options.tools.some(tool => tool.name === 'run_spawn')) {
-        yield* child(turn);
-
-        return;
-    }
-
-    if (turn.options.resumeSessionId) {
-        yield* finishing(turn);
-
-        return;
-    }
-
-    yield session(turn);
-
-    const { task } = yield* turn.call('task_create', { title: 'A task' });
-
-    yield* turn.call('run_spawn', { taskIds: [task.key], prompt: 'Goal: the task', idempotencyKey: 'k1' });
-    yield* afterSpawn(turn);
-};
-
-/** A turn that opens its session and holds it until the run is cancelled. */
-const holding: Script = async function* (turn) {
-    yield session(turn);
-    await untilAborted(turn.signal);
-};
 
 describe('the context reading of a run', () => {
     test('is kept on the run, and a reading that moved less than a percent is not written until the turn ends', async () => {
@@ -229,26 +196,6 @@ describe('the context reading of a run', () => {
         expect(h.run(runId).status).toBe('cancelled');
     });
 
-    test('a child run has a reading of its own, and the parent keeps its own', async () => {
-        const { h, project } = await setup(spawning(
-            async function* (turn) {
-                yield session(turn);
-                yield context(5_000, 200_000);
-                yield* turn.call('report_result', { status: 'done', summary: 'Done' });
-                yield { type: 'done' };
-            },
-            async function* ({ signal }) {
-                yield context(30_000, 1_000_000);
-                await untilAborted(signal);
-            }
-        ));
-        const { runId } = await start(h, project.id);
-        const childId = await waitFor(() => (h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ?').get(runId) as { id: string } | null)?.id, 'the child to start');
-
-        await waitFor(() => h.run(childId).status === 'succeeded' && h.run(runId).context !== undefined, 'the child to end and the parent to report');
-        expect(h.run(childId).context).toEqual({ used: 5_000, size: 200_000 });
-        expect(h.run(runId).context).toEqual({ used: 30_000, size: 1_000_000 });
-    });
 });
 
 describe('the context migration', () => {
@@ -362,55 +309,6 @@ describe('chat.compact', () => {
         expect(failure(h.send('chat.compact', { chatId: claude.chat.id })).code).toBe('unavailable');
     });
 
-
-    test('waits until the orchestrator has been told what its children did, because their results would join the command', async () => {
-        const { h, claude, project } = await setup(spawning(holding, holding));
-        const { chat, runId } = await start(h, project.id);
-
-        await waitFor(() => h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ? AND status = \'running\'').get(runId), 'the executor to run');
-
-        // Stopping the orchestrator stops the executor, and the orchestrator has not heard about it yet.
-        h.ok('run.cancel', { runId });
-        await waitFor(() => h.run(runId).status === 'cancelled', 'the orchestrator to stop');
-
-        const refused = failure(h.send('chat.compact', { chatId: chat.id }));
-
-        expect(refused.code).toBe('conflict');
-        expect(refused.message).toMatch(/child/i);
-        expect(chatOf(h, chat.id).queue).toBeUndefined();
-
-        // A message tells it; then the command is the whole prompt.
-        h.ok('chat.send', { chatId: chat.id, text: 'carry on' });
-        await waitFor(() => h.run(runId).status === 'succeeded', 'the message to be answered');
-        expect(claude.turns.at(-1)?.prompt).toContain('A child run has finished.');
-        h.ok('chat.compact', { chatId: chat.id });
-        await waitFor(() => claude.turns.at(-1)?.prompt === '/compact' && h.run(runId).status === 'succeeded', 'the compact turn to end');
-    });
-
-    test('leaves the results of children that finish while it waits to start for the turn after it, so the command stays the whole prompt', async () => {
-        const child = latch();
-        // One slot: the executor holds it while the compact turn waits for it, and lets it go as it finishes.
-        const { h, claude, project } = await setup(spawning(async function* (turn) {
-            yield session(turn);
-            await child.wait(turn.signal);
-            yield { type: 'done', result: 'child done' };
-        }, async function* () {
-            yield { type: 'error', message: 'The conversation no longer fits the model\'s context window.', code: 'context_too_long' };
-        }), finishing, { maxRuns: 1 });
-        const { chat, runId } = await start(h, project.id);
-
-        // The overflow fails the orchestrator; its executor goes on, and nothing is unread yet.
-        await waitFor(() => h.run(runId).status === 'failed' && h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ? AND status = \'running\'').get(runId), 'the executor to run after the failure');
-        h.ok('chat.compact', { chatId: chat.id });
-        expect(h.run(runId).status).toBe('queued');
-        child.release();
-        await waitFor(() => claude.turns.filter(turn => turn.tools.some(tool => tool.name === 'run_spawn')).length === 3 && h.run(runId).status === 'succeeded', 'the turn after the compaction');
-
-        const prompts = claude.turns.filter(turn => turn.tools.some(tool => tool.name === 'run_spawn')).map(turn => turn.prompt);
-
-        expect(prompts[1]).toBe('/compact');
-        expect(prompts[2]).toContain('A child run has finished.');
-    });
 
     test('works on a chat whose run was interrupted by a restart', async () => {
         const held = latch();
@@ -559,35 +457,46 @@ describe('chat.compact', () => {
         });
     });
 
-    describe('while the orchestrator waits for its children', () => {
-        test('it waits in the queue for the turn that reads their results, and runs after it', async () => {
-            const child = latch();
-            const { h, claude, project } = await setup(spawning(async function* (turn) {
+    describe('while the orchestrator waits for background work', () => {
+        test('it waits in the queue for the session to end, and runs after it', async () => {
+            const finished = latch();
+            const command: BackgroundItem = { id: 'bg-1', kind: 'command', title: 'bun test' };
+            const { h, claude, project } = await setup(async function* (turn) {
                 yield session(turn);
-                await child.wait(turn.signal);
-                yield { type: 'done', result: 'child done' };
-            }));
+
+                if (turn.number > 1) {
+                    yield { type: 'done', result: 'ok' };
+
+                    return;
+                }
+
+                yield { type: 'background', items: [command] };
+                yield { type: 'done', result: 'Started the tests' };
+
+                if (await turn.hold(finished)) {
+                    yield { type: 'background', items: [] };
+                    yield { type: 'done', result: 'The tests passed' };
+                }
+            });
+
+            // An agent that takes a prompt after its turn keeps its session for the background work.
+            claude.sendAnswer = () => true;
+
             const { chat, runId } = await start(h, project.id);
 
-            await waitFor(() => h.run(runId).status === 'waiting_children', 'the orchestrator to park');
+            await waitFor(() => h.run(runId).status === 'waiting_background', 'the orchestrator to wait for background work');
             expect(h.ok('chat.compact', { chatId: chat.id })).toEqual({ chatId: chat.id, runId });
             expect(chatOf(h, chat.id).queue?.map(item => item.command)).toEqual(['compact']);
 
-            // Send now cannot run it before the children have reported.
+            // Send now cannot run it while the session is open.
             const [item] = chatOf(h, chat.id).queue ?? [];
             const refused = failure(h.send('chat.sendQueued', { chatId: chat.id, itemId: item.id }));
 
-            expect(refused.code).toBe('conflict');
-            expect(refused.message).toMatch(/child runs/);
+            expect(refused).toMatchObject({ code: 'conflict', message: 'The orchestrator is waiting for background work. Compact the chat when it has finished' });
 
-            child.release();
+            finished.release();
             await waitFor(() => claude.turns.at(-1)?.prompt === '/compact' && h.run(runId).status === 'succeeded', 'the compact turn to end');
-
-            // The orchestrator's turns: the executor's session has no `run_spawn`.
-            const prompts = claude.turns.filter(turn => turn.tools.some(tool => tool.name === 'run_spawn')).map(turn => turn.prompt);
-
-            expect(prompts.at(-2)).toContain('A child run has finished.');
-            expect(prompts.at(-1)).toBe('/compact');
+            expect(claude.turns.map(turn => turn.prompt)).toEqual(['Follow clowdy:orchestrate. Mode: autopilot\n\nhello', '/compact']);
             expect(chatOf(h, chat.id).queue).toBeUndefined();
         });
     });

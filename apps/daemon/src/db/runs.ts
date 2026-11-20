@@ -112,19 +112,6 @@ export function activeSubtree(db: Database, runId: string): string[] {
     return rows.map(row => row.id);
 }
 
-export function isDescendant(db: Database, ancestorId: string, runId: string): boolean {
-    const row = db.query(`
-        WITH RECURSIVE up(id) AS (
-            SELECT parent_run_id FROM runs WHERE id = ?
-            UNION ALL
-            SELECT r.parent_run_id FROM runs r JOIN up ON r.id = up.id
-        )
-        SELECT 1 AS found FROM up WHERE id = ? LIMIT 1
-    `).get(runId, ancestorId);
-
-    return row !== null;
-}
-
 /** Runs holding a slot, by engine and project. Sub-agents inside a session (`native`) never hold one. */
 export function runningCounts(db: Database): { engine: string; projectId: string; count: number }[] {
     return db.query(`
@@ -140,35 +127,6 @@ export function countActiveRuns(db: Database): number {
 
 export function countRunsWithRole(db: Database, projectId: string, role: RunRole): number {
     return (db.query('SELECT COUNT(*) AS n FROM runs WHERE project_id = ? AND role = ? AND origin IS NOT \'native\'').get(projectId, role) as { n: number }).n;
-}
-
-/** Runs another run started with `run_spawn`. */
-export function countSpawnedChildren(db: Database, runId: string): number {
-    return (db.query('SELECT COUNT(*) AS n FROM runs WHERE parent_run_id = ? AND origin = \'spawned\'').get(runId) as { n: number }).n;
-}
-
-export function countActiveSpawnedChildren(db: Database, runId: string): number {
-    return (db.query(`SELECT COUNT(*) AS n FROM runs WHERE parent_run_id = ? AND origin = 'spawned' AND status IN (${ ACTIVE })`).get(runId) as { n: number }).n;
-}
-
-export function findSpawnedChild(db: Database, parentRunId: string, idempotencyKey: string): Run | undefined {
-    const row = db.query('SELECT * FROM runs WHERE parent_run_id = ? AND idempotency_key = ?').get(parentRunId, idempotencyKey) as RunRow | null;
-
-    return row ? toRun(row) : undefined;
-}
-
-/** How many runs sit above this one: 0 for a root. */
-export function depthOf(db: Database, runId: string): number {
-    const row = db.query(`
-        WITH RECURSIVE up(id) AS (
-            SELECT parent_run_id FROM runs WHERE id = ?
-            UNION ALL
-            SELECT r.parent_run_id FROM runs r JOIN up ON r.id = up.id
-        )
-        SELECT COUNT(*) AS n FROM up WHERE id IS NOT NULL
-    `).get(runId) as { n: number };
-
-    return row.n;
 }
 
 export function listRunTaskLinks(db: Database, projectId: string): RunTaskLink[] {
@@ -197,8 +155,6 @@ export function runIdsOfTask(db: Database, taskId: string): string[] {
 
 /* ---------------------- Details the protocol does not show ---------------------- */
 
-export type RunOutcome = 'done' | 'failed' | 'blocked';
-
 export interface RunProcess {
     pid: number;
     pgid?: number;
@@ -207,13 +163,10 @@ export interface RunProcess {
 
 /** What the runtime keeps about a run besides the entity clients see. */
 export interface RunWork {
-    /** Working directory the run's engine starts in; the project path when absent. */
+    /** Working directory the run's engine starts in; the project's main folder when absent. */
     cwd?: string;
-    idempotencyKey?: string;
     /** The user message or assignment of the turn that has not started yet. */
     nextPrompt?: string;
-    /** How the run itself reported its end with `report_result`. */
-    outcome?: RunOutcome;
     process?: RunProcess;
     /** What the run had open in the background when a restart ended its session: the next turn's message names it, then the record is cleared. */
     lostBackground?: BackgroundItem[];
@@ -221,9 +174,7 @@ export interface RunWork {
 
 interface WorkRow {
     cwd: string | null;
-    idempotency_key: string | null;
     next_prompt: string | null;
-    outcome: RunOutcome | null;
     pid: number | null;
     pgid: number | null;
     process_started_at: number | null;
@@ -231,7 +182,7 @@ interface WorkRow {
 }
 
 export function getRunWork(db: Database, runId: string): RunWork {
-    const row = db.query('SELECT cwd, idempotency_key, next_prompt, outcome, pid, pgid, process_started_at, lost_background FROM runs WHERE id = ?').get(runId) as WorkRow | null;
+    const row = db.query('SELECT cwd, next_prompt, pid, pgid, process_started_at, lost_background FROM runs WHERE id = ?').get(runId) as WorkRow | null;
 
     if (!row) {
         return {};
@@ -239,9 +190,7 @@ export function getRunWork(db: Database, runId: string): RunWork {
 
     return clean({
         cwd: row.cwd,
-        idempotencyKey: row.idempotency_key,
         nextPrompt: row.next_prompt,
-        outcome: row.outcome,
         process: row.pid === null ? undefined : clean({ pid: row.pid, pgid: row.pgid, startedAt: row.process_started_at }),
         lostBackground: parseJson<BackgroundItem[]>(row.lost_background),
     }) as RunWork;
@@ -253,7 +202,7 @@ type WorkPatch = { [K in keyof RunWork]?: RunWork[K] | null };
 export function setRunWork(db: Database, runId: string, work: WorkPatch): void {
     const columns: [string, string | number | null][] = [];
 
-    for (const [key, column] of [['cwd', 'cwd'], ['idempotencyKey', 'idempotency_key'], ['nextPrompt', 'next_prompt'], ['outcome', 'outcome']] as const) {
+    for (const [key, column] of [['cwd', 'cwd'], ['nextPrompt', 'next_prompt']] as const) {
         if (work[key] !== undefined) {
             columns.push([column, work[key]]);
         }
@@ -277,44 +226,6 @@ export function listRunsWithProcess(db: Database): { runId: string; process: Run
     const rows = db.query('SELECT id, pid, pgid, process_started_at FROM runs WHERE pid IS NOT NULL').all() as { id: string; pid: number; pgid: number | null; process_started_at: number | null }[];
 
     return rows.map(row => ({ runId: row.id, process: clean({ pid: row.pid, pgid: row.pgid, startedAt: row.process_started_at }) as RunProcess }));
-}
-
-/* ----------------------------------- Mailbox ----------------------------------- */
-
-/** A finished child waiting to be told to its parent. Written in the transaction that finishes the child. */
-export function insertMailbox(db: Database, runId: string, childRunId: string): void {
-    db.query('INSERT OR IGNORE INTO run_mailbox (run_id, child_run_id, created_at) VALUES (?, ?, ?)').run(runId, childRunId, Date.now());
-}
-
-/** Children of `runId` whose result the parent has not seen yet, oldest first. */
-export function pendingMailbox(db: Database, runId: string): { id: number; childRunId: string }[] {
-    const rows = db.query('SELECT id, child_run_id FROM run_mailbox WHERE run_id = ? AND delivered_at IS NULL ORDER BY id').all(runId) as { id: number; child_run_id: string }[];
-
-    return rows.map(row => ({ id: row.id, childRunId: row.child_run_id }));
-}
-
-export function markMailboxDelivered(db: Database, ids: number[]): void {
-    const update = db.query('UPDATE run_mailbox SET delivered_at = ? WHERE id = ? AND delivered_at IS NULL');
-    const now = Date.now();
-
-    for (const id of ids) {
-        update.run(now, id);
-    }
-}
-
-/** Marks the entries of these children delivered: the parent has seen them some other way (`run_wait`, `run_cancel`). */
-export function markChildrenDelivered(db: Database, runId: string, childRunIds: string[]): void {
-    const update = db.query('UPDATE run_mailbox SET delivered_at = ? WHERE run_id = ? AND child_run_id = ? AND delivered_at IS NULL');
-    const now = Date.now();
-
-    for (const childRunId of childRunIds) {
-        update.run(now, runId, childRunId);
-    }
-}
-
-/** Parents with undelivered results, for waking them after a restart. */
-export function runsWithPendingMailbox(db: Database): string[] {
-    return (db.query('SELECT DISTINCT run_id FROM run_mailbox WHERE delivered_at IS NULL').all() as { run_id: string }[]).map(row => row.run_id);
 }
 
 /* ------------------------------- Engine pauses -------------------------------- */

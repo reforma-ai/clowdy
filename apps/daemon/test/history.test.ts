@@ -15,8 +15,8 @@ describe('conversationRecord', () => {
             person('Add a footer'),
             agent('I will look at the layout first.'),
             { kind: 'tool', toolCallId: 't1', name: 'Read', input: { path: 'src/App.tsx' }, state: 'done', output: 'export function App() {}' },
-            { kind: 'tool', toolCallId: 't2', name: 'run_spawn', input: { prompt: 'x' }, state: 'error', error: 'no slot' },
-            { kind: 'note', text: 'Executor 01 finished: succeeded' },
+            { kind: 'tool', toolCallId: 't2', name: 'task_create', input: { title: 'x' }, state: 'error', error: 'no slot' },
+            { kind: 'note', text: 'Background command finished: bun test' },
             { kind: 'question', questionId: 'q1', text: 'Which colour?', options: [], answer: 'Blue' },
             { kind: 'error', text: 'The agent stopped' }
         ), []);
@@ -25,8 +25,8 @@ describe('conversationRecord', () => {
             'Person: Add a footer',
             'You: I will look at the layout first.',
             'Tool Read (done): {"path":"src/App.tsx"} → export function App() {}',
-            'Tool run_spawn (error): {"prompt":"x"} → failed: no slot',
-            'Clowdy: Executor 01 finished: succeeded',
+            'Tool task_create (error): {"title":"x"} → failed: no slot',
+            'Clowdy: Background command finished: bun test',
             'You asked the person: Which colour? They answered: Blue',
             'Error: The agent stopped',
         ].join('\n'));

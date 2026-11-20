@@ -73,12 +73,11 @@ describe('native sub-agents as child runs', () => {
         ]);
         expect(items(runId).flatMap(item => (item.body.kind === 'assistant' ? [item.body.text] : []))).toEqual(['The parent speaks.']);
 
-        // They are not Clowdy runs: no numbering, no mailbox, no slot, no count in the work in progress.
-        expect(h.store.db.query('SELECT COUNT(*) AS n FROM run_mailbox').get()).toEqual({ n: 0 });
+        // They are not Clowdy runs: no numbering, no slot, no count in the work in progress.
         expect(h.run(runId).result).toBe('Looked into it.');
     });
 
-    test('they take no slot, do not count as active work, and do not number the executors', async () => {
+    test('they take no slot, do not count as active work, and are not numbered', async () => {
         const gate = latch();
         const { h, engine, project, runId, natives } = await setup(async function* ({ signal }) {
             yield { type: 'session', sessionId: 's1' };
@@ -104,7 +103,9 @@ describe('native sub-agents as child runs', () => {
         expect(engine.turns).toHaveLength(2);
         gate.release();
         await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
-        expect((h.store.db.query('SELECT COUNT(*) AS n FROM runs WHERE role = \'executor\' AND origin IS NOT \'native\'').get() as { n: number }).n).toBe(0);
+        // A sub-agent keeps the name its engine gave it, and the next orchestrator's number counts orchestrators only.
+        expect(natives().every(run => run.name === 'Explore')).toBe(true);
+        expect(h.run(other).name).toBe('Orchestrator 02');
     });
 
     test('a burst of hundreds is written in a few batches and listed up to a cap', async () => {

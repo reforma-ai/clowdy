@@ -20,7 +20,6 @@ import { RunDriver } from './runs/driver';
 import { ChatQueue } from './runs/queue';
 import { RunService } from './runs/service';
 import { toolsFor } from './runs/tools';
-import { Wakeups } from './runs/wake';
 import { SkillsService } from './skills/service';
 import { Store } from './store';
 
@@ -74,8 +73,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         }
 
         const runs = new RunService(store, config, engines);
-        const driver: RunDriver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, driver }, run, mode), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
-        const wakes = new Wakeups(store, runs, driver, config.timings.wakeWindowMs);
+        const driver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs }, run, mode), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
         const docs = new DocsService(store);
         const attachments = new AttachmentsService(store, config.dataDir);
         // Before the recovery: a turn the restart interrupted holds its chat's queue.
@@ -93,14 +91,12 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         docs.watchExisting(listProjects(store.db));
         skills.watchFolders(listProjects(store.db));
         driver.resumeWaiting();
-        wakes.resumePending();
         queue.resumePending();
 
         let stopping: Promise<void> | undefined;
 
         const stop = () => stopping ??= (async () => {
             await server.stop(true);
-            wakes.stop();
             await driver.stop();
             created?.stop();
             providers.stop();

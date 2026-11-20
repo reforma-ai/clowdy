@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { executeCommand } from '../src/commands';
 import { getChat } from '../src/db/chats';
 import { listItems } from '../src/db/items';
-import { getRunWork, pendingMailbox, runningCounts } from '../src/db/runs';
+import { getRunWork, runningCounts } from '../src/db/runs';
 import { projectSnapshot } from '../src/domain/snapshots';
 import { cleanTempDirs, latch, command as makeCommand, restartHarness, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
 
@@ -16,12 +16,12 @@ import type { Harness, Script, Turn } from './helpers';
 afterAll(cleanTempDirs);
 
 const harnesses: Harness[] = [];
-const spawned: number[] = [];
+const pids: number[] = [];
 
 afterEach(async () => {
     await Promise.all(harnesses.splice(0).map(h => h.stop().catch(() => undefined)));
 
-    for (const pid of spawned.splice(0)) {
+    for (const pid of pids.splice(0)) {
         try {
             process.kill(-pid, 'SIGKILL');
         }
@@ -38,7 +38,7 @@ function startProcess(command: string): number {
     const child = spawn('sh', ['-c', command], { detached: true, stdio: 'ignore' });
 
     child.unref();
-    spawned.push(child.pid!);
+    pids.push(child.pid!);
 
     return child.pid!;
 }
@@ -288,7 +288,7 @@ describe('a run that waits for background work', () => {
         finished.release();
         await waitFor(() => status() === 'succeeded', 'the run to end after its report');
 
-        expect(refusals).toEqual(['Can\'t ask a question while the run waits for background work or child runs']);
+        expect(refusals).toEqual(['Can\'t ask a question while the run waits for background work']);
         expect(bodies().some(body => body.kind === 'question')).toBe(false);
         expect(history()).not.toContain('waiting_user');
     });
@@ -304,30 +304,6 @@ describe('a run that waits for background work', () => {
         expect(h.run(runId).background).toBeUndefined();
     });
 
-    test('is ended at the first done for every role but a chat\'s orchestrator: a spawned executor does not wait', async () => {
-        const { h, runId, status } = await setup(async function* (turn) {
-            yield { type: 'session', sessionId: `s-${ turn.number }` };
-
-            if (turn.options.tools.some(tool => tool.name === 'run_spawn') && !turn.options.resumeSessionId) {
-                const { task } = yield* turn.call('task_create', { title: 'Task 1' });
-
-                yield* turn.call('run_spawn', { taskIds: [task.key], prompt: `Goal: ${ task.key }`, idempotencyKey: 'executor-1' });
-            }
-            else if (!turn.options.tools.some(tool => tool.name === 'run_spawn')) {
-                yield { type: 'background', items: [command] };
-            }
-
-            yield { type: 'done', result: 'ok' };
-        });
-
-        await waitFor(() => status() === 'succeeded', 'the orchestrator to finish after its executor');
-
-        const [child] = projectSnapshot(h.store, h.run(runId).projectId).runs.filter(run => run.origin === 'spawned');
-
-        expect(child).toMatchObject({ role: 'executor', status: 'succeeded' });
-        expect(child.background).toBeUndefined();
-        expect(h.run(runId).background).toBeUndefined();
-    });
 });
 
 describe('the notes of finished background work', () => {
@@ -1063,199 +1039,6 @@ describe('a message that joins a turn the agent started', () => {
     });
 });
 
-describe('an orchestrator with children and background work', () => {
-    function orchestrating(options: { finished: Latch; child: Latch; pid?: number }): Script {
-        const isOrchestrator = (turn: Turn) => turn.options.tools.some(tool => tool.name === 'run_spawn');
-
-        return async function* (turn) {
-            if (!isOrchestrator(turn)) {
-                yield { type: 'session', sessionId: 's-child' };
-                await options.child.wait(turn.signal);
-                yield* turn.call('report_result', { status: 'done', summary: 'Result: the footer is fixed' });
-                yield { type: 'done' };
-
-                return;
-            }
-
-            if (turn.options.resumeSessionId) {
-                yield { type: 'session', sessionId: 's-1' };
-                yield { type: 'done', result: 'Resumed' };
-
-                return;
-            }
-
-            yield { type: 'session', sessionId: 's-1' };
-
-            if (options.pid) {
-                yield { type: 'process', pid: options.pid, pgid: options.pid };
-            }
-
-            const { task } = yield* turn.call('task_create', { title: 'Task 1' });
-
-            yield* turn.call('run_spawn', { taskIds: [task.key], prompt: `Goal: ${ task.key }`, idempotencyKey: 'executor-1' });
-            yield { type: 'background', items: [command] };
-            yield { type: 'done', result: 'Spawned' };
-
-            let message = turn.received();
-            const finished = turn.hold(options.finished);
-
-            for (;;) {
-                const next = await Promise.race([message.then(text => ({ text })), finished.then(released => ({ released }))]);
-
-                if (!('text' in next)) {
-                    return;
-                }
-
-                if (next.text === undefined) {
-                    return;
-                }
-
-                yield { type: 'text', delta: 'Got the results', done: true };
-                yield { type: 'done', result: 'Got the results' };
-                message = turn.received();
-            }
-        };
-    }
-
-    test('shows waiting_children and keeps its session, and the wake-up reaches that session; the run then waits for the background work', async () => {
-        const finished = latch();
-        const child = latch();
-        const pid = startProcess('sleep 60');
-        const { h, engine, runId, notes, status } = await setup(orchestrating({ finished, child, pid }));
-
-        await waitFor(() => status() === 'waiting_children', 'the orchestrator to wait for its child');
-
-        // Children win the status, and the background work is still in the run, the session open and its process recorded.
-        expect(h.run(runId)).toMatchObject({ statusReason: 'Waiting for 1 child run', background: [command] });
-        expect(getRunWork(h.store.db, runId).process).toMatchObject({ pid });
-        expect(runningCounts(h.store.db).reduce((sum, row) => sum + row.count, 0)).toBe(1);
-
-        child.release();
-        await waitFor(() => engine.sent.length === 1, 'the wake-up to be handed to the session');
-
-        expect(engine.sent[0]).toContain('A child run has finished.');
-        expect(engine.sent[0]).toContain('Summary: Result: the footer is fixed');
-        await waitFor(() => status() === 'waiting_background', 'the run to wait for the background work alone');
-
-        // The parent's session is the first one and the child's the second: nothing was started to take the message.
-        expect(engine.turns).toHaveLength(2);
-        expect(pendingMailbox(h.store.db, runId)).toEqual([]);
-        expect(notes().filter(text => text.endsWith('finished: succeeded'))).toEqual(['Executor 01 finished: succeeded']);
-        expect(h.run(runId).background).toEqual([command]);
-
-        // A Stop closes the one session of the parent once, and the child's own is closed already.
-        h.ok('run.cancel', { runId });
-        await waitFor(() => engine.closed === 2, 'both sessions to be closed');
-        await Bun.sleep(40);
-        expect(engine.closed).toBe(2);
-        expect(status()).toBe('cancelled');
-    });
-
-    test('takes a message of the person into its session while the children work, and waits for them again after the answer', async () => {
-        const finished = latch();
-        const child = latch();
-        const { h, engine, runId, send, status } = await setup(orchestrating({ finished, child }));
-
-        await waitFor(() => status() === 'waiting_children', 'the orchestrator to wait for its child');
-        send('Any news');
-        await waitFor(() => engine.sent.length === 1, 'the message to reach the session');
-        await waitFor(() => status() === 'waiting_children' && h.run(runId).statusReason === 'Waiting for 1 child run', 'the orchestrator to wait for its child again');
-
-        expect(engine.sent).toEqual(['Any news']);
-        expect(engine.turns).toHaveLength(2);
-        expect(h.run(runId).background).toEqual([command]);
-        expect(engine.closed).toBe(0);
-    });
-
-    test('is left waiting for its children by a daemon stop, and the turn that the next start gives it tells what the session lost', async () => {
-        const finished = latch();
-        const child = latch();
-        const { h, engine, runId, status } = await setup(orchestrating({ finished, child }));
-
-        await waitFor(() => status() === 'waiting_children' && h.run(runId).background !== undefined, 'the orchestrator to wait for its child');
-        await h.stop();
-
-        const second = await restartHarness(h, { engines: scriptEngines(engine) });
-
-        harnesses.push(second);
-
-        // The executor was mid-turn when the daemon went: it is interrupted, and its parent hears of it in a session of its own, as a parent always does.
-        await waitFor(() => engine.turns.length === 3 && second.run(runId).status === 'succeeded', 'the parent to be woken by the next start', 8000);
-        expect(engine.turns[2]).toMatchObject({ resumeSessionId: 's-1' });
-        expect(engine.turns[2].prompt).toContain('interrupted');
-        expect(engine.turns[2].prompt).toContain('- command: sleep 60');
-        expect(second.run(runId).background).toBeUndefined();
-        expect(getRunWork(second.store.db, runId).lostBackground).toBeUndefined();
-    });
-
-    test('is parked by its first done when its engine cannot take a prompt after a turn, with no stale list of background work', async () => {
-        const finished = latch();
-        const child = latch();
-        const { h, engine, runId, status } = await setup(orchestrating({ finished, child }), {}, false);
-
-        await waitFor(() => status() === 'waiting_children', 'the orchestrator to wait for its child');
-        await waitFor(() => engine.closed === 1, 'the session to be closed');
-        expect(h.run(runId).background).toBeUndefined();
-        expect(getRunWork(h.store.db, runId).process).toBeUndefined();
-
-        child.release();
-        await waitFor(() => engine.turns.length === 3, 'the wake-up to start a session of its own');
-        expect(engine.turns[2]).toMatchObject({ resumeSessionId: 's-1' });
-    });
-});
-
-describe('children started in a turn the agent started', () => {
-    test('are waited for while the background work goes on, and their result is handed to the live session', async () => {
-        const agentTurn = latch();
-        const child = latch();
-        const build: BackgroundItem = { id: 'bg-2', kind: 'task', title: 'Build' };
-        const { h, engine, runId, status } = await setup(async function* (turn) {
-            if (!turn.options.tools.some(tool => tool.name === 'run_spawn')) {
-                yield { type: 'session', sessionId: 's-child' };
-                await child.wait(turn.signal);
-                yield* turn.call('report_result', { status: 'done', summary: 'Result: the footer is fixed' });
-                yield { type: 'done' };
-
-                return;
-            }
-
-            yield { type: 'session', sessionId: 's-1' };
-            yield { type: 'background', items: [command, build] };
-            yield { type: 'done', result: 'Started them' };
-
-            if (!await turn.hold(agentTurn)) {
-                return;
-            }
-
-            // The agent's own turn: the command finished, and the report starts an executor.
-            yield { type: 'background', items: [build] };
-
-            const { task } = yield* turn.call('task_create', { title: 'Task 1' });
-
-            yield* turn.call('run_spawn', { taskIds: [task.key], prompt: `Goal: ${ task.key }`, idempotencyKey: 'executor-1' });
-            yield { type: 'text', delta: 'Started an executor', done: true };
-            yield { type: 'done', result: 'Started an executor' };
-
-            await turn.received();
-            yield { type: 'text', delta: 'Got the result', done: true };
-            yield { type: 'done', result: 'Got the result' };
-            await turn.hold(latch());
-        });
-
-        await waitFor(() => status() === 'waiting_background', 'the run to wait for background work');
-        agentTurn.release();
-        await waitFor(() => status() === 'waiting_children', 'the run to wait for its executor');
-        expect(h.run(runId)).toMatchObject({ statusReason: 'Waiting for 1 child run', background: [build] });
-
-        child.release();
-        await waitFor(() => engine.sent.length === 1, 'the result of the executor to reach the session');
-        expect(engine.sent[0]).toContain('Summary: Result: the footer is fixed');
-        await waitFor(() => status() === 'waiting_background' && pendingMailbox(h.store.db, runId).length === 0, 'the run to wait for the build alone');
-        expect(engine.turns).toHaveLength(2);
-        expect(h.run(runId).background).toEqual([build]);
-    });
-});
-
 describe('the number of live processes', () => {
     test('does not include a session that waits, and includes it again while it answers a message', async () => {
         const finished = latch();
@@ -1906,86 +1689,55 @@ describe('stopping one sub-agent of the work that waits', () => {
 });
 
 describe('stopping the agents of a run that waits, and nothing else', () => {
-    /** Executors that wait, and a sub-agent that can be stopped alone next to one that cannot: an orchestrator with all of them, whose session stays for the sub-agents. */
-    function mixed(options: { finished: Latch; child: Latch }): Script {
-        const isOrchestrator = (turn: Turn) => turn.options.tools.some(tool => tool.name === 'run_spawn');
-
+    /** A sub-agent that can be stopped alone next to one that cannot: an orchestrator with both, whose session stays for them. */
+    function mixed(options: { finished: Latch }): Script {
         return async function* (turn) {
-            if (!isOrchestrator(turn)) {
-                yield { type: 'session', sessionId: `s-child-${ turn.number }` };
-                await options.child.wait(turn.signal);
-                yield* turn.call('report_result', { status: 'done', summary: 'Result: done' });
-                yield { type: 'done' };
-
-                return;
-            }
-
             yield { type: 'session', sessionId: 's-1' };
-
-            const { task } = yield* turn.call('task_create', { title: 'Task 1' });
-
-            yield* turn.call('run_spawn', { taskIds: [task.key], prompt: `Goal: ${ task.key }`, idempotencyKey: 'executor-1' });
             yield* starts(1);
             yield* starts(2, false);
             yield { type: 'background', items: [agentItem(1), agentItem(2)] };
-            yield { type: 'done', result: 'Spawned' };
+            yield { type: 'done', result: 'Started them' };
 
             let stop = turn.stopRequested();
-            let message = turn.received();
             const finished = turn.hold(options.finished);
 
             for (;;) {
-                const next = await Promise.race([stop.then(agentId => ({ agentId })), message.then(text => ({ text })), finished.then(released => ({ released }))]);
+                const next = await Promise.race([stop.then(agentId => ({ agentId })), finished.then(released => ({ released }))]);
 
-                if ('agentId' in next) {
-                    if (next.agentId === undefined) {
-                        return;
-                    }
-
-                    yield { type: 'subagent', agentId: next.agentId, parentToolCallId: agentCall(1).id, name: 'Explore', state: 'cancelled' };
-                    yield { type: 'background', items: [agentItem(2)] };
-                    stop = turn.stopRequested();
-                }
-                else if ('text' in next) {
-                    if (next.text === undefined) {
-                        return;
-                    }
-
-                    yield { type: 'text', delta: 'Heard what stopped', done: true };
-                    yield { type: 'done', result: 'Heard what stopped' };
-                    message = turn.received();
-                }
-                else {
+                if (!('agentId' in next) || next.agentId === undefined) {
                     return;
                 }
+
+                yield { type: 'subagent', agentId: next.agentId, parentToolCallId: agentCall(1).id, name: 'Explore', state: 'cancelled' };
+                yield { type: 'background', items: [agentItem(2)] };
+                stop = turn.stopRequested();
             }
         };
     }
 
-    test('cancels the executors it spawned and asks the sub-agents that can stop alone to stop, leaves the run and the sub-agent that cannot, and tells the run what happened', async () => {
+    test('asks the sub-agents that can stop alone to stop, and leaves the run and the sub-agent that cannot', async () => {
         const finished = latch();
-        const child = latch();
-        const { h, engine, chat, runId, status, history } = await setup(mixed({ finished, child }), {}, () => true, undefined, () => true);
+        const { h, engine, chat, runId, status, history, waits } = await setup(mixed({ finished }), {}, () => true, undefined, () => true);
         const natives = () => projectSnapshot(h.store, h.run(runId).projectId).runs.filter((run: Run) => run.origin === 'native');
 
-        await waitFor(() => status() === 'waiting_children' && natives().length === 2, 'the orchestrator to wait for its executor and sub-agents');
+        await waits();
+        await waitFor(() => natives().length === 2, 'both sub-agents');
 
-        const executor = h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ? AND origin = \'spawned\'').get(runId) as { id: string };
         const [stoppable, fixed] = natives();
         const { stopped } = h.ok('run.stopAgents', { runId });
 
         // Everything that can stop is asked once; the run itself is untouched, and so is the sub-agent that cannot stop alone.
-        expect(new Set(stopped)).toEqual(new Set([executor.id, stoppable.id]));
+        expect(stopped).toEqual([stoppable.id]);
         expect(h.run(runId).status).not.toBe('cancelled');
-        expect(h.run(executor.id)).toMatchObject({ status: 'cancelled', statusReason: 'Cancelled by user' });
         await waitFor(() => h.run(stoppable.id).status === 'cancelled', 'the sub-agent to be stopped');
+        expect(h.run(stoppable.id).statusReason).toBe('Cancelled by user');
         expect(engine.stopRequests).toEqual(['agent-1']);
         expect(h.run(fixed.id).status).toBe('running');
         expect(getChat(h.store.db, chat.id)?.queuePaused).toBeUndefined();
 
-        // The executor's end is told to the run as any child's is, with the instruction not to restart what someone stopped: its session answers it and waits on.
-        await waitFor(() => engine.sent.some(text => text.includes(': cancelled') && text.includes('Do not restart it silently')), 'the run to be told');
-        await waitFor(() => status() === 'waiting_background', 'the run to wait for what is left');
+        // The run waits on for what is left, and was never cancelled.
+        await waitFor(() => h.run(runId).background?.length === 1, 'the list without the stopped sub-agent');
+        expect(status()).toBe('waiting_background');
         expect(h.run(runId).background).toEqual([agentItem(2)]);
         expect(history()).not.toContain('cancelled');
 

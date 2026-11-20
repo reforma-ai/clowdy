@@ -11,11 +11,10 @@ const CONTEXT_BASE = 6_000;
 const CONTEXT_PER_TURN = 4_000;
 
 /**
- * A scripted engine for building the UI and testing the runtime without spending a subscription. It follows the
- * contract of the real engines and the system skills: an orchestrator plans three tasks (the third depends on the
- * first), starts an executor for each with `run_spawn` and ends its turn; the daemon resumes the same session with each
- * finished child's summary, and the orchestrator marks the tasks done. An executor reads its tasks with `task_get`,
- * works (with one sub-agent inside its session), and ends with `report_result`. `speed` scales every delay; 0 removes them.
+ * A scripted engine for building the UI and testing the runtime without spending a subscription. It follows the contract of the real engines and the
+ * system skills: an orchestrator plans three tasks (the third depends on the first) and does them itself, one after another, each with one sub-agent
+ * inside its session, moving each task through In progress and Review to Done. A chat started from a task reads it with `task_get` and does that one.
+ * `speed` scales every delay; 0 removes them.
  */
 export class FakeEngine implements AgentEngine {
     readonly id = 'fake';
@@ -37,18 +36,11 @@ export class FakeEngine implements AgentEngine {
 type Step<T = void> = AsyncGenerator<EngineEvent, T>;
 
 interface CreatedTask {
-    task: { id: string; key: string };
+    task: { id: string; key: string; title: string };
 }
 
 interface TaskList {
     tasks: { key: string; category: string }[];
-}
-
-interface Child {
-    name: string;
-    state: string;
-    keys: string[];
-    reason?: string;
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -73,19 +65,10 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 /** The first words of the user's message, as a topic for the scripted prose. */
 function topicOf(prompt: string): string {
-    const message = prompt.replace(/^\/clowdy:\S+ Mode: \S+\s*/, '').replace(/^(Complete task|Goal:|Task) \S+: /m, '');
+    const message = prompt.replace(/^(?:Follow )?\/?clowdy:\S+ Mode: \S+\s*/, '').replace(/^(Complete task|Task) \S+: /m, '');
     const words = message.split(/\s+/).filter(Boolean).slice(0, 6).join(' ').replace(/[.,;:!?]+$/, '');
 
     return words || 'the request';
-}
-
-/** The children a wake-up message reports, one per numbered block. */
-function childrenOf(message: string): Child[] {
-    return message.split(/\n\n(?=\d+\. )/).flatMap((block) => {
-        const header = /^\d+\. (.+?) \(run_\w+\)(?: on ([^:\n]+))?: (\w+)$/m.exec(block);
-
-        return header ? [{ name: header[1], state: header[3], keys: header[2]?.split(', ') ?? [], reason: /^Reason: (.+)$/m.exec(block)?.[1] }] : [];
-    });
 }
 
 const joinKeys = (keys: string[]) => (keys.length > 1 ? `${ keys.slice(0, -1).join(', ') } and ${ keys.at(-1) }` : keys.join());
@@ -137,19 +120,12 @@ class FakeSession implements EngineSession {
         try {
             yield { type: 'session', sessionId: this.sessionId };
 
-            const orchestrator = this.has('run_spawn');
             let result: string;
 
-            if (!orchestrator) {
-                result = yield* this.execute();
-            }
-            else if (!this.options.resumeSessionId) {
+            if (!this.options.resumeSessionId) {
                 const bound = /Complete task (\S+-\d+): /.exec(this.options.prompt)?.[1];
 
                 result = yield* bound ? this.orchestrateBound(bound) : this.orchestrate();
-            }
-            else if (childrenOf(this.options.prompt).length > 0) {
-                result = yield* this.collect();
             }
             else {
                 result = yield* this.followUp();
@@ -168,7 +144,7 @@ class FakeSession implements EngineSession {
 
     /* --------------------------------- Scripts -------------------------------- */
 
-    /** Plans three tasks, starts an executor for each, and ends the turn: the daemon resumes this session when children finish. */
+    /** Plans three tasks and does them itself, the dependency first, then checks that all are done. */
     private async *orchestrate(): Step<string> {
         const topic = topicOf(this.options.prompt);
 
@@ -180,8 +156,8 @@ class FakeSession implements EngineSession {
             const { answer } = yield* this.call<{ answer: string }>('ask_user', {
                 question: `How should I split "${ topic }"?`,
                 options: [
-                    { id: 'small', label: 'Small, focused tasks', consequence: 'More executors in parallel, easier to review' },
-                    { id: 'single', label: 'One larger task', consequence: 'Fewer moving parts, slower to finish' },
+                    { id: 'small', label: 'Small, focused tasks', consequence: 'Easier to review, one at a time' },
+                    { id: 'single', label: 'One larger task', consequence: 'Fewer moving parts, harder to review' },
                 ],
                 recommended: 'small',
             });
@@ -193,104 +169,54 @@ class FakeSession implements EngineSession {
         const { task: implementation } = yield* this.call<CreatedTask>('task_create', { title: `Implement ${ topic }`, description: 'The main change, independent of the groundwork.' });
         const { task: check } = yield* this.call<CreatedTask>('task_create', { title: `Verify and document ${ topic }`, description: 'Check the result and write it down.', dependsOn: [groundwork.key] });
 
-        yield* this.say(`Created ${ groundwork.key }, ${ implementation.key } and ${ check.key }. ${ check.key } depends on ${ groundwork.key }, so its executor will wait for it.`);
+        yield* this.say(`Created ${ groundwork.key }, ${ implementation.key } and ${ check.key }. ${ check.key } depends on ${ groundwork.key }, so ${ groundwork.key } goes first. I'll do them myself.`);
         yield* this.checkpoint();
 
-        for (const [task, instructions] of [[groundwork, 'Keep the change small and run the checks.'], [implementation, 'Keep the change small and run the checks.'], [check, 'Verify the result of the groundwork and document it.']] as const) {
-            yield* this.call('run_spawn', { taskIds: [task.key], prompt: `Goal: ${ task.key }. ${ instructions }`, idempotencyKey: `${ task.key }-executor-1` });
+        for (const task of [groundwork, implementation, check]) {
+            yield* this.work(task.key, task.title);
         }
-
-        const text = 'Executors are on it. I\'ll mark each task done as its executor reports.';
-
-        yield* this.say(text);
-
-        return text;
-    }
-
-    /** A chat started from a task: the task is the request, so one executor does it. */
-    private async *orchestrateBound(key: string): Step<string> {
-        yield* this.say(`This chat is bound to ${ key }. Let me read it.`);
-
-        const { task } = yield* this.call<{ task: { title: string } }>('task_get', { taskId: key });
-
-        yield* this.say(`"${ task.title }" is one piece of work, so one executor takes it.`);
-        yield* this.checkpoint();
-        yield* this.call('run_spawn', { taskIds: [key], prompt: `Goal: ${ task.title }. Keep the change small and run the checks.`, idempotencyKey: `${ key }-executor-1` });
-
-        const text = `An executor is working on ${ key }. I'll check its result when it reports.`;
-
-        yield* this.say(text);
-
-        return text;
-    }
-
-    /** Resumed with the summaries of finished children: marks their tasks done, or fails when a child did not finish. */
-    private async *collect(): Step<string> {
-        const children = childrenOf(this.options.prompt);
-        const failed = children.filter(child => child.state !== 'succeeded');
-
-        if (failed.length > 0) {
-            throw new Error(`${ failed.map(child => child.name).join(', ') } did not finish: ${ failed.map(child => child.reason ?? child.state).join('; ') }`);
-        }
-
-        const keys = children.flatMap(child => child.keys);
-
-        yield* this.say(`${ joinKeys(keys) } ${ keys.length > 1 ? 'are' : 'is' } in review. Marking ${ keys.length > 1 ? 'them' : 'it' } done, which lets anything waiting on ${ keys.length > 1 ? 'them' : 'it' } start.`);
-
-        for (const key of keys) {
-            yield* this.call('task_update', { taskId: key, status: 'done' });
-        }
-
-        yield* this.checkpoint();
 
         const { tasks } = yield* this.call<TaskList>('task_list', {});
         const open = tasks.filter(task => task.category !== 'done');
-
-        if (open.length > 0) {
-            const text = `Waiting for ${ joinKeys(open.map(task => task.key)) }.`;
-
-            yield* this.say(text);
-
-            return text;
-        }
-
-        const summary = `Done: ${ joinKeys(tasks.map(task => task.key)) } are complete and checked.`;
+        const summary = open.length > 0 ? `${ joinKeys(open.map(task => task.key)) } ${ open.length > 1 ? 'are' : 'is' } still open.` : `Done: ${ joinKeys(tasks.map(task => task.key)) } are complete and checked.`;
 
         yield* this.say(summary);
 
         return summary;
     }
 
-    /** Reads its tasks, works with one sub-agent inside its session, and ends with `report_result`. */
-    private async *execute(): Step<string> {
-        const keys = [...new Set(this.options.prompt.match(/\b[A-Z][A-Z0-9]*-\d+\b/g) ?? [])];
-        const titles: string[] = [];
+    /** A chat started from a task: the task is the request, and the orchestrator does it itself. */
+    private async *orchestrateBound(key: string): Step<string> {
+        yield* this.say(`This chat is bound to ${ key }. Let me read it.`);
 
-        for (const key of keys) {
-            const { task } = yield* this.call<{ task: { title: string } }>('task_get', { taskId: key });
+        const { task } = yield* this.call<{ task: { title: string } }>('task_get', { taskId: key });
 
-            titles.push(task.title);
-        }
+        yield* this.say(`"${ task.title }" is one piece of work, so I'll do it myself.`);
+        yield* this.checkpoint();
 
-        const title = titles[0] ?? topicOf(this.options.prompt);
+        return yield* this.work(key, task.title);
+    }
+
+    /** Does one task: moves it to In progress, reads, checks the callers with a sub-agent, edits, moves it to Review, runs the checks, and marks it Done. */
+    private async *work(key: string, title: string): Step<string> {
         const path = `src/${ slug(title) }.ts`;
         const seed = hash(title);
         const added = 12 + (seed % 60);
         const removed = seed % 20;
 
-        yield* this.say(`Starting on "${ title }". I'll read the relevant code first.`);
+        yield* this.call('task_update', { taskId: key, status: 'active' });
+        yield* this.say(`Starting on ${ key }: "${ title }". I'll read the relevant code first.`);
         yield* this.tool('read_file', { path }, async () => ({ path, lines: 80 + (seed % 200) }));
         yield* this.subagent(path);
         yield* this.say('The change is contained. Editing now.');
         yield* this.tool('edit_file', { path }, async () => ({ path, added, removed }));
-        yield* this.checkpoint();
+        yield* this.call('task_update', { taskId: key, status: 'review' });
         yield* this.tool('bash', { command: 'bun run typecheck' }, async () => ({ command: 'bun run typecheck', exitCode: 0 }));
-        yield* this.say('Typecheck passes.');
 
-        const result = `${ keys.join(', ') || 'The task' } is done: edited ${ path } (+${ added } -${ removed }) and the typecheck passes.`;
+        const result = `${ key } is done: edited ${ path } (+${ added } -${ removed }) and the typecheck passes.`;
 
         yield* this.say(result);
-        yield* this.call('report_result', { status: 'done', summary: `Result: done - ${ result }`, taskUpdates: keys.map(key => ({ taskId: key, status: 'review', note: `Edited ${ path }; typecheck passes.` })) });
+        yield* this.call('task_update', { taskId: key, status: 'done' });
 
         return result;
     }

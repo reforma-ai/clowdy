@@ -113,7 +113,7 @@ function ContextPanel({ chat, fill, running, canCompact }: PanelProps) {
                 <div className={ styles.compact }>
                     { /* The hint opens below the button: above it would cover the readout. */ }
                     <Unavailable label="Compact" hint={ queued ? QUEUED_HINT : undefined } placement="bottom">
-                        { /* The daemon's refusal (unread results from the executors) is the usual toast; the popover closes either way. */ }
+                        { /* The daemon's refusal, if any, is the usual toast; the popover closes either way. */ }
                         <Button
                             variant="bordered"
                             color="secondary"

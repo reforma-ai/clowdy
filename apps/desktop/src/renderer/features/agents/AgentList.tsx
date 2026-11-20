@@ -1,15 +1,14 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
-import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem, MenuSection, MenuSeparator, useCellEditMode } from '@clowdy/components/List';
+import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem, MenuSection, useCellEditMode } from '@clowdy/components/List';
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { Archive, Check, Message, More, Plus } from '@clowdy/icons/14';
-import { ChevronDown, ChevronRight } from '@clowdy/icons/8';
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
+import { useRef, useState, type MouseEvent } from 'react';
 
 import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
-import { RUN_STATUS_VIEW, SidebarHeading, StatusDot } from '../../shared';
+import { SidebarHeading } from '../../shared';
 import { NEW_CHAT_COMMAND } from '../../shell/shellCommands';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { archiveChat } from '../chats/archiveChat';
@@ -21,13 +20,13 @@ import { ProviderIcon } from '../settings/providers/ProviderIcon';
 import { PROVIDER_IDS } from '../settings/providers/providerView';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
-import { agentRows, ancestorIds, chatDotTone, countActiveChildren, describeRun, listedRunId, type AgentRow, type AgentSelection } from './agentTree';
 import { ArchiveButton } from './ArchiveButton';
 import { ChatIcon } from './ChatIcon';
 
-import type { Chat, ChatId, Run } from '@clowdy/protocol';
+import type { Chat, ChatId } from '@clowdy/protocol';
+import type { AgentSelection } from './agentTree';
 
-/** The id of the first row, the one that starts a chat. Chat and run ids never look like it. */
+/** The id of the first row, the one that starts a chat. Chat ids never look like it. */
 export const NEW_CHAT_ROW = '@new-chat';
 
 /** A row's `⋯` button and the right-click menu are the same actions; a rename is a rename of the row it started on. */
@@ -38,9 +37,8 @@ interface ChatActions {
 }
 
 /**
- * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the
- * heading's `⋯` asks for), each with the runs its orchestrator started below it (its subthreads). Archived chats are not
- * here, they are in the archive's list (the button in the heading, beside the filters), and take their subthreads with them.
+ * The project's agents: the row that starts a chat, then the chats in use, in the order the menu of the heading's `⋯` asks for.
+ * Archived chats are not here, they are in the archive's list (the button in the heading, beside the filters).
  */
 export function AgentList({ selection, chats }: { selection: AgentSelection; chats: readonly Chat[] }) {
     const root = useRootStore();
@@ -50,7 +48,6 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     const [menuChat, setMenuChat] = useState<Chat | null>(null);
     // The chat whose `⋯` menu is open: its row keeps the hover plate while the pointer is in the menu.
     const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
-    const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
     const list = useRef<HTMLDivElement>(null);
     const heading = useRef<HTMLDivElement>(null);
     const contextMenu = useContextMenu();
@@ -62,33 +59,13 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
         remove: chat => deleteChat(root, chat, runOf(chat) !== undefined),
     };
 
-    const forest = ui.showSubthreads ? project.runTree(ui.showFinished) : [];
-    const rows = agentRows(chats, forest, collapsed);
-    const activeChildren = countActiveChildren(project.runs.values());
-    // A native sub-agent has no row: the run it lives in, or the chat, stays selected while its page is open. The new-chat page has none.
-    const selectedId = selection.draft ? NEW_CHAT_ROW : ((selection.run && listedRunId(project.runs, selection.run)) ?? selection.chat?.id);
-
-    // A run opened from elsewhere may sit below a fold: open the folds above it.
-    useEffect(() => {
-        if (!selection.run || !selection.chat) return;
-
-        const above = [selection.chat.id, ...ancestorIds(project.runs, selection.run.id)];
-
-        setCollapsed(current => (above.some(id => current.has(id)) ? new Set([...current].filter(id => !above.includes(id))) : current));
-    }, [selection.run?.id, selection.chat?.id, project.runs]);
-
-    const toggle = (id: string) => setCollapsed((current) => {
-        const next = new Set(current);
-
-        if (!next.delete(id)) next.add(id);
-
-        return next;
-    });
+    // A native sub-agent has no row: its chat stays selected while its page is open. The new-chat page has none.
+    const selectedId = selection.draft ? NEW_CHAT_ROW : selection.chat?.id;
 
     useHotkeyScope(AGENTS_SCOPE);
     useCommands(AGENTS_SCOPE, agentCommands({
         list: () => list.current,
-        ids: () => [NEW_CHAT_ROW, ...rows.map(row => row.id)],
+        ids: () => [NEW_CHAT_ROW, ...chats.map(chat => chat.id)],
         openId: () => selectedId,
     }));
 
@@ -103,71 +80,26 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
         contextMenu.areaProps.onContextMenu(event);
     };
 
-    // The grid list keeps the arrows between rows; Right opens a fold and Left closes it.
-    const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-        const { target } = event;
-
-        if (!(target instanceof HTMLElement) || target.getAttribute('role') !== 'row') return;
-
-        const row = rows.find(candidate => candidate.id === target.dataset.key);
-
-        if (!row || row.childCount === 0) return;
-
-        if ((event.key === 'ArrowRight' && !row.isExpanded) || (event.key === 'ArrowLeft' && row.isExpanded)) {
-            toggle(row.id);
-            event.preventDefault();
-        }
-    };
-
     const select = (id: string) => {
         if (id === NEW_CHAT_ROW) ui.openDraft();
-        else if (project.chats.has(id)) ui.openChat(id);
-        else ui.openRun(id);
+        else ui.openChat(id);
     };
 
-    const renderRow = (row: AgentRow) => {
-        // Only a row with rows below it has a chevron, and it takes no room: the icons stay where the list puts them.
-        const fold = row.childCount > 0 ? <Fold row={ row } onToggle={ () => toggle(row.id) } /> : undefined;
-
-        if (row.kind === 'chat') {
-            const { chat } = row;
-
-            return (
-                <GridListItem
-                    key={ chat.id }
-                    id={ chat.id }
-                    text={ chat.title }
-                    startAffix={ fold }
-                    icon={ <ChatIcon chat={ chat } run={ runOf(chat) } /> }
-                    endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } isOpen={ menuOpenId === chat.id } onOpenChange={ open => setMenuOpenId(open ? chat.id : null) } /> }
-                    // The row of an open menu, from its button or the right click, stays as if hovered: the pointer is in the menu, not on the row.
-                    data-open={ menuOpenId === chat.id || (contextMenu.isOpen && menuChat?.id === chat.id) || undefined }
-                >
-                    { renamingId === chat.id
-                        ? <RenameField chat={ chat } onDone={ () => setRenamingId(null) } />
-                        : <span className={ styles.title } onDoubleClick={ () => setRenamingId(chat.id) }>{ chat.title }</span> }
-                </GridListItem>
-            );
-        }
-
-        const { run } = row;
-        const note = describeRun(run, activeChildren.get(run.id) ?? 0);
-
-        return (
-            <GridListItem
-                key={ run.id }
-                id={ run.id }
-                text={ run.name }
-                startAffix={ fold }
-                icon={ <StatusDot status={ run.status } /> }
-                description={ note?.text ?? (run.summary || undefined) }
-                className={ styles.nested }
-                style={ { '--depth': row.depth } as CSSProperties }
-            >
-                <span className={ styles.title }>{ run.name }</span>
-            </GridListItem>
-        );
-    };
+    const renderChat = (chat: Chat) => (
+        <GridListItem
+            key={ chat.id }
+            id={ chat.id }
+            text={ chat.title }
+            icon={ <ChatIcon chat={ chat } run={ runOf(chat) } /> }
+            endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } isOpen={ menuOpenId === chat.id } onOpenChange={ open => setMenuOpenId(open ? chat.id : null) } /> }
+            // The row of an open menu, from its button or the right click, stays as if hovered: the pointer is in the menu, not on the row.
+            data-open={ menuOpenId === chat.id || (contextMenu.isOpen && menuChat?.id === chat.id) || undefined }
+        >
+            { renamingId === chat.id
+                ? <RenameField chat={ chat } onDone={ () => setRenamingId(null) } />
+                : <span className={ styles.title } onDoubleClick={ () => setRenamingId(chat.id) }>{ chat.title }</span> }
+        </GridListItem>
+    );
 
     return (
         <Panel side="left">
@@ -177,7 +109,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
             </SidebarHeading>
 
             <PanelContent contentClass={ styles.content }>
-                <div ref={ list } onContextMenu={ openContextMenu } onKeyDown={ onKeyDown }>
+                <div ref={ list } onContextMenu={ openContextMenu }>
                     <GridList
                         aria-label="Agents"
                         size="md"
@@ -204,7 +136,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                         >
                             <span className={ styles.title }>New chat</span>
                         </GridListItem>
-                        { rows.map(renderRow) }
+                        { chats.map(renderChat) }
                     </GridList>
                 </div>
             </PanelContent>
@@ -226,12 +158,10 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     );
 }
 
-/** The header's `⋯`: what the list shows (checked entries are on) and the order it comes in (the checked one). */
+/** The header's `⋯`: the order the chats come in (the checked one). */
 function FilterMenu() {
     const ui = useProjectUi();
     const [isOpen, setIsOpen] = useState(false);
-    const on = new Set<string>([ui.showSubthreads && 'subthreads', ui.showFinished && 'finished'].filter((key): key is string => Boolean(key)));
-
     return (
         <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
             <Button variant="filling" size="sm" iconOnly aria-label="Filters" tooltip="Filters">
@@ -240,23 +170,6 @@ function FilterMenu() {
             <Popover placement="bottom end" spacing="xs" width={ 240 }>
                 <PopoverScroll>
                     <Menu aria-label="Filters" size="sm">
-                        <MenuSection
-                            selectionMode="multiple"
-                            selectedKeys={ on }
-                            onSelectionChange={ (keys) => {
-                                const next = keys === 'all' ? new Set(['subthreads', 'finished']) : new Set(keys);
-
-                                ui.setShowSubthreads(next.has('subthreads'));
-                                ui.setShowFinished(next.has('finished'));
-                            } }
-                        >
-                            <MenuHeader>Show</MenuHeader>
-                            <MenuItem id="subthreads" textValue="Show subthreads" endAffix={ on.has('subthreads') ? <Check /> : undefined }>Show subthreads</MenuItem>
-                            <MenuItem id="finished" textValue="Show finished subthreads" isDisabled={ !ui.showSubthreads } endAffix={ on.has('finished') ? <Check /> : undefined }>
-                                Show finished subthreads
-                            </MenuItem>
-                        </MenuSection>
-                        <MenuSeparator />
                         <MenuSection
                             selectionMode="single"
                             disallowEmptySelection
@@ -275,34 +188,6 @@ function FilterMenu() {
                 </PopoverScroll>
             </Popover>
         </PopoverTrigger>
-    );
-}
-
-/** The chevron of a row that has rows below it, drawn in the row's left padding. */
-function Fold({ row, onToggle }: { row: AgentRow; onToggle: () => void }) {
-    const name = row.kind === 'chat' ? row.chat.title : row.run.name;
-
-    return (
-        // The button is a React child of the row, so its clicks and keys would reach the row through the tree.
-        <span
-            className={ styles.fold }
-            onClick={ event => event.stopPropagation() }
-            onDoubleClick={ event => event.stopPropagation() }
-            onPointerDown={ event => event.stopPropagation() }
-            onKeyDown={ event => event.stopPropagation() }
-            onContextMenu={ event => event.stopPropagation() }
-        >
-            <button
-                type="button"
-                tabIndex={ -1 }
-                className={ styles.chevron }
-                aria-label={ row.isExpanded ? `Collapse ${ name }` : `Expand ${ name }` }
-                aria-expanded={ row.isExpanded }
-                onClick={ onToggle }
-            >
-                { row.isExpanded ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden /> }
-            </button>
-        </span>
     );
 }
 

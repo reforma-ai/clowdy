@@ -15,16 +15,16 @@ A project can have several folders. The system prompt then lists them by path an
 
 Create files only when there is something to say. No empty placeholders.
 
-| Path | Holds | Write it when | Who writes |
-| --- | --- | --- | --- |
-| `index.md` | Map: one line per document (link, what it answers, status) | Any document is added, replaced or removed | Orchestrator only |
-| `product.md` | What the product is for, who uses it, what it does today, what is planned, what is not | Behavior the user sees changes | Orchestrator |
-| `architecture.md` | Stack, folder layout, commands, conventions, how to add things, constraints | Structure, conventions or commands change | Orchestrator; the skeleton builder writes the first one |
-| `decisions/` | One file per significant decision | The moment you decide | Whoever decides, as new files only |
-| `research/` | One note per investigated question, with sources | You finish investigating, before you build on it | Whoever investigated, one file each |
-| `checks/` | One report per verification: what ran, result, evidence, limits | After each verification (clowdy:verify) | The verifier, or whoever verified |
+| Path | Holds | Write it when |
+| --- | --- | --- |
+| `index.md` | Map: one line per document (link, what it answers, status) | Any document is added, replaced or removed |
+| `product.md` | What the product is for, who uses it, what it does today, what is planned, what is not | Behavior the user sees changes |
+| `architecture.md` | Stack, folder layout, commands, conventions, how to add things, constraints | Structure, conventions or commands change |
+| `decisions/` | One file per significant decision, as new files only | The moment you decide |
+| `research/` | One note per investigated question, with sources | You finish investigating, before you build on it |
+| `checks/` | One report per verification: what ran, result, evidence, limits | After each significant verification (clowdy:orchestrate, Verify) |
 
-Working alone in a chat with no child runs, you are the orchestrator. Executors, verifiers and sub-agents never edit `index.md`, `product.md` or `architecture.md`: they put proposed changes under "Docs to update" in their report, and list the path of every file they created. Sub-agents write no documents; they return findings to their parent.
+You are the orchestrator, so you write the documents. Sub-agents write none: they return findings and proposed changes in their answers.
 
 Other topic documents (a runbook, a glossary) are fine at top level or in a new folder if `index.md` lists them. Templates are in [references/](references/): [index.md](references/index-template.md), [product.md and architecture.md](references/product-and-architecture.md), [research note](references/research-template.md), [decision record](references/decision-template.md), [check report](references/check-template.md).
 
@@ -56,7 +56,7 @@ To supersede:
 
 1. Write the new record with `Supersedes:` pointing at the old file, and say in its Context why the old one no longer fits.
 2. In the old file change only two lines: `Status: superseded` and `Superseded by:` pointing at the new file. Leave the rest unchanged.
-3. In `index.md` list the new record, and move the old one under `Superseded`. The orchestrator makes the edit; anyone else reports both paths.
+3. In `index.md` list the new record, and move the old one under `Superseded`.
 
 Fix a typo in an accepted record in place. If the choice changed, supersede. Before you rely on a decision, check its status. A record with `Decided by: user` is replaced only on the user's word.
 
@@ -91,7 +91,7 @@ Summarize instead: the excerpt that proves the point, the command to reproduce, 
 - Changed what the user sees: `product.md` Implemented, in the same task.
 - Changed structure, conventions or commands: `architecture.md`.
 - Verified a result: `checks/` report.
-- Created a document: it needs a line in `index.md`, added by the orchestrator from the paths that others report.
+- Created a document: it needs a line in `index.md`.
 
 Before you finish a task, spend a minute on this: what would a new chat need that only you know? Is `index.md` still true? Did a Plan item you built move to Implemented?
 
@@ -103,7 +103,6 @@ The user and other agents edit the same files, and the daemon reports a conflict
 2. Change existing files with a targeted edit (your Edit or patch tool) anchored on a small unique snippet. Write a whole file only when it is new. An edit that fails means the text changed under you: re-read and redo it.
 3. Never replace a document wholesale or delete text you did not write unless the user asked. Keep the user's wording. If you disagree, add your view under a `Proposed change` heading or say it in chat.
 4. If the user says they are editing a document, or your edits to it keep failing, stop touching it. Put your change in a new file and name it in your report.
-5. If your task gives you part of `index.md`, `product.md` or `architecture.md`, change only your own lines and do not restructure the file while other runs are active.
 
 ## Telling the user
 
@@ -134,6 +133,6 @@ Keep orders in a single SQLite file inside the app folder.
 Runs locally, so agents can verify it. Easy to replace later: all queries live in `src/db/`.
 ```
 
-Then the orchestrator adds one line for it under `## Decisions` in `index.md` (an executor lists the path in its report instead). The format is in the [index template](references/index-template.md).
+Then you add one line for it under `## Decisions` in `index.md`. The format is in the [index template](references/index-template.md).
 
 A later chat opens `index.md`, sees the line, reads only that decision, opens the cited code to confirm the database file exists, and goes on. If the shop outgrows SQLite, a new record carries `Supersedes:` and the old one gets `Status: superseded`.

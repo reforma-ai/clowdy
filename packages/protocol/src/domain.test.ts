@@ -28,7 +28,7 @@ describe('run statuses', () => {
             expect(isBusyRunStatus(status)).toBe(true);
         }
 
-        for (const status of ['waiting_children', 'waiting_background', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
+        for (const status of ['waiting_background', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
             expect(isBusyRunStatus(status)).toBe(false);
         }
     });

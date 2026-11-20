@@ -154,6 +154,12 @@ export interface Chat {
     effort?: string;
     /** The orchestrator run that answers this chat, once the first message started one. */
     orchestratorRunId?: RunId;
+    /**
+     * Set on a thread: a chat that an agent of this chat started (`clowdy thread spawn`). The thread is a chat like any other, with its own agent, queue
+     * and composer, which the person may open and write to; the link only places it below this chat in the list and decides who is told when it stops.
+     * Absent on a chat the person made.
+     */
+    parentChatId?: ChatId;
     /** When the person archived the chat; absent for a chat in use. An archived chat keeps its runs, tasks and stream, and a message to it brings it back. */
     archivedAt?: number;
     /**
@@ -166,6 +172,29 @@ export interface Chat {
     createdAt: number;
     updatedAt: number;
 }
+
+/** How a thread ended its turn, as its parent is told. */
+export type ThreadOutcome = 'finished' | 'failed' | 'interrupted';
+
+/** What a parent is told of one thread that stopped. Notices of the same thread that the parent has not read yet are merged: the latest wins. */
+export interface ThreadNotice {
+    chatId: ChatId;
+    /** The thread's title when it stopped. */
+    title: string;
+    outcome: ThreadOutcome;
+    /** The thread's last words (clipped), or why it failed; absent when it said nothing. */
+    text?: string;
+    /** Titles of what the thread still has open in the background: its text is then not its final result. */
+    background?: string[];
+}
+
+/**
+ * Where a message came from when the person did not write it. `thread` is a message another thread of the same tree sent (`clowdy thread tell`, or the
+ * first message a parent gave when it started the thread); `threadNotice` is what a parent is told when threads below it stop, one entry per thread.
+ */
+export type MessageSource =
+    | { kind: 'thread'; chatId: ChatId; title: string }
+    | { kind: 'threadNotice'; threads: ThreadNotice[] };
 
 /** How a message written while the orchestrator works reaches it: `steer` hands it to the turn in flight when the agent can take one, `queue` waits for the next turn. */
 export type QueuedMessageMode = 'steer' | 'queue';
@@ -185,7 +214,7 @@ export interface QueuedMessage {
     mode: QueuedMessageMode;
     /**
      * Set on a compact item (`chat.compact` while the orchestrator worked): always a next turn (`queue`), never a steer, and it runs only once the orchestrator
-     * has finished and read its children's results. Its turn is the command alone, with no `user` item; `text` is what the queue shows, `content` the command.
+     * has finished. Its turn is the command alone, with no `user` item; `text` is what the queue shows, `content` the command.
      */
     command?: QueuedCommand;
     /** What the person wrote, as the stream's `user` item will show it; may be empty when files are attached. */
@@ -194,6 +223,8 @@ export interface QueuedMessage {
     attachments?: Attachment[];
     /** What the agent is told: the text and, after a blank line, where the files are (as `chat.send` tells it). */
     content: string;
+    /** Set when another thread wrote it, or it reports threads that stopped (`text` is then a one-line summary): the stream's `user` item carries it. */
+    from?: MessageSource;
     createdAt: number;
 }
 
@@ -242,15 +273,16 @@ export interface ChatTaskLink {
 
 /* ---------------------------------- Runs ---------------------------------- */
 
-export type RunRole = 'orchestrator' | 'executor' | 'verifier';
+/** `executor` is the role of a native sub-agent's child run; every other run is a chat's orchestrator. */
+export type RunRole = 'orchestrator' | 'executor';
 
-export type RunOrigin = 'spawned' | 'native';
+/** A run's origin: `native` is a sub-agent that lives inside its parent's engine session. Absent for a chat's orchestrator. */
+export type RunOrigin = 'native';
 
 /** What a run is doing, or why it is not. `waiting_*` and `blocked` always carry a reason on the run. */
 export type RunStatus =
     | 'queued'
     | 'running'
-    | 'waiting_children'
     | 'waiting_background'
     | 'waiting_user'
     | 'blocked'
@@ -259,7 +291,7 @@ export type RunStatus =
     | 'cancelled'
     | 'interrupted';
 
-export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = ['queued', 'running', 'waiting_children', 'waiting_background', 'waiting_user', 'blocked'];
+export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = ['queued', 'running', 'waiting_background', 'waiting_user', 'blocked'];
 export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = ['succeeded', 'failed', 'cancelled', 'interrupted'];
 
 export function isTerminalRunStatus(status: RunStatus): boolean {
@@ -268,17 +300,16 @@ export function isTerminalRunStatus(status: RunStatus): boolean {
 
 /**
  * Whether a chat's orchestrator in this status takes a message only later, so the message waits in the chat's queue (`Chat.queue`): it works, or waits
- * for an answer, a slot or a reset. One that has finished, or only waits for its children or for background work its session keeps open, is at rest
- * and takes a message at once.
+ * for an answer, a slot or a reset. One that has finished, or only waits for background work its session keeps open, is at rest and takes a message at once.
  */
 export function isBusyRunStatus(status: RunStatus): boolean {
-    return !isTerminalRunStatus(status) && status !== 'waiting_children' && status !== 'waiting_background';
+    return !isTerminalRunStatus(status) && status !== 'waiting_background';
 }
 
 export interface Run {
     id: RunId;
     projectId: ProjectId;
-    /** The run that spawned this one; absent for roots (a chat's orchestrator, a task started by the user). */
+    /** The run whose engine session this native sub-agent lives in; absent for roots (a chat's orchestrator, a task started by the user). */
     parentRunId?: RunId;
     rootRunId: RunId;
     /** The chat this run answers, for orchestrators started from a chat. */
@@ -286,8 +317,7 @@ export interface Run {
     role: RunRole;
     /**
      * `native` marks a sub-agent that lives inside its parent's engine session (Claude's `Agent` tool and the like): it
-     * has no process, no slot and no tasks of its own. `spawned` marks a run another run started with `run_spawn`.
-     * Absent for roots (a chat's orchestrator).
+     * has no process, no slot and no tasks of its own. Absent for roots (a chat's orchestrator).
      */
     origin?: RunOrigin;
     /**
@@ -301,12 +331,12 @@ export interface Run {
      * sub-agent): `run.cancel` of such a run is refused, and only its parent's cancel ends it. Set when the run is made and never changed.
      */
     canStopAlone?: boolean;
-    /** Short label: an agent name such as `Executor 07`, or the orchestrator's. */
+    /** Short label: the orchestrator's (`Orchestrator 01`), or a sub-agent's type as its engine names it (`Explore`). */
     name: string;
     /** One line on the current work. */
     summary: string;
     status: RunStatus;
-    /** Why it waits: a question, a dependency, a limit, a child run. */
+    /** Why it waits: a question, a dependency, a limit, background work. */
     statusReason?: string;
     engine: EngineId;
     model?: string;
@@ -371,8 +401,8 @@ export interface RunWorktree {
 export interface RunTaskLink {
     runId: RunId;
     taskId: TaskId;
-    /** `assigned` runs execute the task; `created` runs created it; `verifies` runs check it. */
-    relation: 'assigned' | 'created' | 'verifies';
+    /** `assigned` runs execute the task; `created` runs created it. */
+    relation: 'assigned' | 'created';
 }
 
 /**
@@ -401,10 +431,10 @@ export interface Attachment {
 
 export type StreamItemBody =
     /** `text` is what the person wrote, and may be empty when files are attached; the line that tells the agent where the files are is not part of it. */
-    | { kind: 'user'; text: string; attachments?: Attachment[] }
+    | { kind: 'user'; text: string; attachments?: Attachment[]; from?: MessageSource }
     | { kind: 'assistant'; text: string; done: boolean }
     | { kind: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string }
-    /** A system line such as "2 executors started". */
+    /** A system line such as "Background command finished: bun test". */
     | { kind: 'note'; text: string }
     /** A question the run is waiting on (semi-manual mode); `answer` is set once the user replied. */
     | { kind: 'question'; questionId: string; text: string; options: QuestionOption[]; recommended?: string; answer?: string }

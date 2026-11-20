@@ -25,7 +25,7 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
  */
 
 const accepted: CommandResult = { ok: true, requestId: 'request-1', data: {} };
-const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'conflict', message: 'Some child runs finished that the orchestrator has not read yet. Send it a message first, then compact the chat' } };
+const refused: CommandResult = { ok: false, requestId: 'request-1', error: { code: 'conflict', message: 'The orchestrator is waiting for background work. Compact the chat when it has finished' } };
 
 const transport = {
     getDocsTree: vi.fn(async () => []),

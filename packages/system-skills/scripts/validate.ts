@@ -20,12 +20,7 @@ const TOOLS = new Set([
     'task_update',
     'task_list',
     'task_get',
-    'run_spawn',
-    'run_inspect',
-    'run_wait',
-    'run_cancel',
     'ask_user',
-    'report_result',
 ]);
 /** A snake_case word that looks like a tool name but is not one of ours. */
 const TOOL_LIKE = /^(task|run|ask|report|spawn|wait|create|update|list|cancel|get|merge|git|worktree)_[a-z_]+$/;
@@ -34,6 +29,7 @@ const FORBIDDEN: Array<[RegExp, string]> = [
     [/\$ARGUMENTS|\$\{CLAUDE_|!`/, 'Claude-only substitution syntax (Codex leaves it literal)'],
     [/context:\s*fork/, '`context: fork` is not supported by Codex'],
     [/merge queue|integration branch/i, 'the daemon has no git machinery'],
+    [/\bexecutors?\b|\bverifiers?\b|child runs?|spawned runs?|waiting_children/i, 'spawned runs are gone: the orchestrator works itself or with the engine\'s own sub-agents'],
     [/\blinear\b/i, 'external trackers are out of scope for the skills'],
 ];
 

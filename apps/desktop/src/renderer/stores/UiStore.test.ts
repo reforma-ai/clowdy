@@ -94,15 +94,13 @@ describe('UiStore', () => {
 
         first.forProject('p1').openTask('t7');
         first.forProject('p1').setTasksView('list');
-        first.forProject('p1').setShowFinished(false);
-        first.forProject('p1').setShowSubthreads(false);
         first.forProject('p1').setChatSort('created');
         first.forProject('p2').openChat('c3');
 
         const second = new UiStore(storage);
 
-        expect(second.forProject('p1')).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list', showFinished: false, showSubthreads: false, chatSort: 'created' });
-        expect(second.forProject('p2')).toMatchObject({ section: 'agents', chatId: 'c3', tasksView: 'board', showFinished: true, showSubthreads: true, chatSort: 'activity' });
+        expect(second.forProject('p1')).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list', chatSort: 'created' });
+        expect(second.forProject('p2')).toMatchObject({ section: 'agents', chatId: 'c3', tasksView: 'board', chatSort: 'activity' });
         expect(second.forProject('p3').section).toBe('agents');
     });
 
@@ -157,10 +155,10 @@ describe('UiStore', () => {
     });
 
     it('starts from what the page URL preselects, ahead of the stored state', () => {
-        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&finished=1&subthreads=0&chat=c-1&run=r-1&doc=a.md&docFolder=fld-2');
+        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&sort=created&chat=c-1&run=r-1&doc=a.md&docFolder=fld-2');
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","tasksView":"board"}' }), initial).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', showFinished: true, showSubthreads: false, chatId: 'c-1', runId: 'r-1', docPath: 'a.md', docFolderId: 'fld-2' });
+        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', chatSort: 'created', chatId: 'c-1', runId: 'r-1', docPath: 'a.md', docFolderId: 'fld-2' });
     });
 
     it('ignores URL values that name no section or view', () => {

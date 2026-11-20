@@ -71,17 +71,6 @@ button.body:focus-visible {
     white-space: nowrap;
 }
 
-.aside {
-    flex: 1;
-    min-width: 0;
-}
-
-.trailing {
-    display: inline-flex;
-    flex-shrink: 0;
-    margin-left: auto;
-}
-
 .error {
     overflow-wrap: anywhere;
 }

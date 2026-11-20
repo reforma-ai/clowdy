@@ -3,7 +3,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { projectSnapshot } from '../src/domain/snapshots';
 import { cleanTempDirs, Harness, startHarness, waitFor } from './helpers';
 
-import type { ChatTaskLink, ClowdyEvent, ProjectSnapshot, Run, RunTaskLink, StreamItem, Task, TaskStatusCategory } from '@clowdy/protocol';
+import type { ChatTaskLink, ClowdyEvent, ProjectSnapshot, Run, StreamItem, Task, TaskStatusCategory } from '@clowdy/protocol';
 
 afterAll(cleanTempDirs);
 
@@ -37,7 +37,7 @@ function categoryTrail(h: Harness, projectId: string, taskId: string): TaskStatu
 }
 
 describe('the scripted orchestrator', () => {
-    test('a chat message becomes three linked tasks, executors, and a finished orchestrator', async () => {
+    test('a chat message becomes three linked tasks that the orchestrator does itself, and a finished orchestrator', async () => {
         const { h, project, chat } = await setup();
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Simplify the booking flow so users book in two steps' });
 
@@ -45,7 +45,7 @@ describe('the scripted orchestrator', () => {
 
         const state = snapshot(h, project.id);
         const orchestrator = state.runs.find(run => run.id === runId)!;
-        const executors = state.runs.filter(run => run.origin === 'spawned');
+        const natives = state.runs.filter(run => run.origin === 'native');
         const [first, second, third] = state.tasks;
         const categories = new Map(state.statuses.map(status => [status.id, status.category]));
 
@@ -63,30 +63,22 @@ describe('the scripted orchestrator', () => {
         expect(state.tasks.every(task => categories.get(task.statusId) === 'done')).toBe(true);
         expect(state.tasks.every(task => task.createdBy.kind === 'run' && task.createdBy.runId === runId)).toBe(true);
 
-        // Links: chat <-> tasks, orchestrator created tasks, each executor is assigned to one task
+        // Links: chat <-> tasks, the orchestrator created the tasks, and no run is assigned to them
         const chatLinks = (link: ChatTaskLink) => [link.chatId, link.taskId];
 
         expect(state.chatTaskLinks.map(chatLinks)).toEqual(state.tasks.map(task => [chat.id, task.id]));
-        expect(state.runTaskLinks.filter(link => link.relation === 'created')).toEqual(state.tasks.map(task => ({ runId, taskId: task.id, relation: 'created' })));
+        expect(state.runTaskLinks).toEqual(state.tasks.map(task => ({ runId, taskId: task.id, relation: 'created' })));
 
-        const assigned = state.runTaskLinks.filter((link: RunTaskLink) => link.relation === 'assigned');
+        // The only other runs are its sub-agents, one per task, all finished
+        expect(state.runs.filter(run => run.origin !== 'native')).toEqual([orchestrator]);
+        expect(natives).toHaveLength(3);
 
-        expect(assigned).toHaveLength(3);
-        expect(executors).toHaveLength(3);
-        expect(state.tasks.map(task => assigned.find(link => link.taskId === task.id)?.runId)).toEqual(executors.map(run => run.id));
-
-        // Executors are children of the orchestrator and all finished
-        for (const executor of executors) {
-            expect(executor).toMatchObject({ role: 'executor', origin: 'spawned', parentRunId: runId, rootRunId: runId, status: 'succeeded', engine: 'fake' });
-            expect(executor.startedAt).toBeNumber();
-            expect(executor.finishedAt).toBeNumber();
-            expect(executor.result).toContain('typecheck passes');
+        for (const native of natives) {
+            expect(native).toMatchObject({ role: 'executor', origin: 'native', name: 'Explore', parentRunId: runId, rootRunId: runId, status: 'succeeded', engine: 'fake' });
         }
-
-        expect(executors.map(run => run.name)).toEqual(['Executor 01', 'Executor 02', 'Executor 03']);
     });
 
-    test('the dependent executor waits blocked with a reason and starts only after its dependency is done', async () => {
+    test('the orchestrator does the dependency first, and the dependent task starts only after it is done', async () => {
         const { h, project, chat } = await setup();
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });
 
@@ -95,25 +87,16 @@ describe('the scripted orchestrator', () => {
         const state = snapshot(h, project.id);
         const events = h.events();
         const [first, , third] = state.tasks;
-        const thirdRun = state.runs.find(run => run.role === 'executor' && state.runTaskLinks.some(link => link.runId === run.id && link.taskId === third.id))!;
-        const trail = upserts(events, thirdRun.id);
+        const category = (name: TaskStatusCategory) => state.statuses.find(status => status.category === name)!.id;
+        const cursorOf = (taskId: string, statusId: string) => events.find(event => event.data.type === 'task.upserted' && event.data.task.id === taskId && event.data.task.statusId === statusId)!.cursor;
 
-        expect(trail[0]).toMatchObject({ status: 'blocked', statusReason: 'Waiting for REP-1' });
+        expect(cursorOf(third.id, category('active'))).toBeGreaterThan(cursorOf(first.id, category('done')));
 
-        const doneCursor = events.find(event => event.data.type === 'task.upserted' && event.data.task.id === first.id && event.data.task.statusId === state.statuses.find(status => status.category === 'done')!.id)!.cursor;
-        const startCursor = events.find(event => event.data.type === 'run.upserted' && event.data.run.id === thirdRun.id && event.data.run.status === 'running')!.cursor;
-
-        expect(startCursor).toBeGreaterThan(doneCursor);
-        expect(trail.map(run => run.status).filter((status, index, all) => status !== all[index - 1])).toEqual(['blocked', 'queued', 'running', 'succeeded']);
-
-        // The orchestrator sat in waiting_children, and said how many children it waited for
-        const parentTrail = upserts(events, state.runs.find(run => run.role === 'orchestrator')!.id);
-
-        expect(parentTrail.some(run => run.status === 'waiting_children' && /^Waiting for \d child runs?$/.test(run.statusReason!))).toBe(true);
-        expect(parentTrail.map(run => run.status).filter((status, index, all) => status !== all[index - 1])).toEqual(['queued', 'running', 'waiting_children', 'queued', 'running', 'waiting_children', 'queued', 'running', 'succeeded']);
+        // One turn from start to end: nothing it waited for.
+        expect(upserts(events, runId).map(run => run.status).filter((status, index, all) => status !== all[index - 1])).toEqual(['queued', 'running', 'succeeded']);
     });
 
-    test('tasks move through To do, In progress, Review and Done as their executors work', async () => {
+    test('tasks move through To do, In progress, Review and Done as the orchestrator works', async () => {
         const { h, project, chat } = await setup();
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });
 
@@ -136,18 +119,11 @@ describe('the scripted orchestrator', () => {
 
         expect(list.map(item => item.seq)).toEqual(list.map((_, index) => index + 1));
         expect(list[0].body).toEqual({ kind: 'user', text: 'Add dark mode' });
-        expect(counts).toEqual({ read_file: 1, task_create: 3, run_spawn: 3, task_update: 3, task_list: 2 });
+        expect(counts).toEqual({ read_file: 4, task_create: 3, task_update: 9, Agent: 3, edit_file: 3, bash: 3, task_list: 1 });
         expect(tools.every(tool => tool.state === 'done')).toBe(true);
         expect(new Set(tools.map(tool => tool.toolCallId)).size).toBe(tools.length);
         expect(list.filter(item => item.body.kind === 'assistant').every(item => item.body.kind === 'assistant' && item.body.done)).toBe(true);
-        expect(list.filter(item => item.body.kind === 'note').map(item => (item.body as { text: string }).text)).toEqual([
-            'Started Executor 01 on REP-1',
-            'Started Executor 02 on REP-2',
-            'Executor 03 is waiting: Waiting for REP-1',
-            expect.stringMatching(/^Executor 0[12] finished: succeeded$/),
-            expect.stringMatching(/^Executor 0[12] finished: succeeded$/),
-            'Executor 03 finished: succeeded',
-        ]);
+        expect(list.some(item => item.body.kind === 'note')).toBe(false);
 
         // The log agrees with the table: the last event per item is the stored item.
         const last = new Map<string, StreamItem>();
@@ -162,32 +138,31 @@ describe('the scripted orchestrator', () => {
         expect(project.id).toBeTruthy();
     });
 
-    test('executors read, edit with a diff-like output, and run a command', async () => {
+    test('the orchestrator reads, checks the callers with a sub-agent, edits with a diff-like output, and runs a command', async () => {
         const { h, project, chat } = await setup();
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });
 
         await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to succeed', 8000);
 
-        const executor = snapshot(h, project.id).runs.find(run => run.origin === 'spawned')!;
-        const tools = toolItems(items(h, executor.id));
+        // The work on the first task: from moving it to In progress to marking it Done.
+        const tools = toolItems(items(h, runId));
+        const start = tools.findIndex(tool => tool.name === 'task_update');
+        const work = tools.slice(start, start + 8);
 
-        expect(tools.map(tool => [tool.name, tool.state])).toEqual([['task_get', 'done'], ['read_file', 'done'], ['Agent', 'done'], ['edit_file', 'done'], ['bash', 'done'], ['report_result', 'done']]);
-        expect(tools[3].output).toEqual({ path: expect.stringMatching(/^src\/.*\.ts$/), added: expect.any(Number), removed: expect.any(Number) });
-        expect(tools[4]).toMatchObject({ input: { command: 'bun run typecheck' }, output: { command: 'bun run typecheck', exitCode: 0 } });
+        expect(work.map(tool => [tool.name, tool.state])).toEqual([['task_update', 'done'], ['read_file', 'done'], ['Agent', 'done'], ['edit_file', 'done'], ['task_update', 'done'], ['bash', 'done'], ['task_update', 'done'], ['task_update', 'done']]);
+        expect(work[0].input).toEqual({ taskId: 'REP-1', status: 'active' });
+        expect(work[3].output).toEqual({ path: expect.stringMatching(/^src\/.*\.ts$/), added: expect.any(Number), removed: expect.any(Number) });
+        expect(work[4].input).toEqual({ taskId: 'REP-1', status: 'review' });
+        expect(work[5]).toMatchObject({ input: { command: 'bun run typecheck' }, output: { command: 'bun run typecheck', exitCode: 0 } });
+        expect(work[6].input).toEqual({ taskId: 'REP-1', status: 'done' });
 
-        // The sub-agent is a native child of the executor, known by the `Agent` call that started it, and that call's result is its report.
-        const agent = tools[2];
-        const native = snapshot(h, project.id).runs.find(run => run.origin === 'native' && run.parentRunId === executor.id)!;
+        // The sub-agent is a native child of the orchestrator, known by the `Agent` call that started it, and that call's result is its report.
+        const agent = work[2];
+        const native = snapshot(h, project.id).runs.find(run => run.origin === 'native' && run.parentToolCallId === agent.toolCallId)!;
 
         expect(agent).toMatchObject({ input: { subagent_type: 'Explore' }, output: expect.stringContaining('none affected') });
-        expect(native).toMatchObject({ parentToolCallId: agent.toolCallId, name: 'Explore', status: 'succeeded', result: agent.output });
+        expect(native).toMatchObject({ parentRunId: runId, name: 'Explore', status: 'succeeded', result: agent.output });
         expect(toolItems(items(h, native.id)).map(tool => tool.name)).toEqual(['grep']);
-
-        const stream = items(h, executor.id);
-
-        expect(stream.some(item => item.body.kind === 'assistant')).toBe(true);
-        // The orchestrator's assignment is the first thing in the executor's stream.
-        expect(stream[0].body).toEqual({ kind: 'user', text: expect.stringContaining('Goal: REP-1') });
     });
 
     test('a second message in a finished chat runs another turn on the same orchestrator run', async () => {
@@ -212,25 +187,19 @@ describe('the scripted orchestrator', () => {
         expect(h.run(runId).result).toContain('Nothing else is needed');
         expect(h.run(runId).sessionId).toMatch(/^fake-/);
         expect(snapshot(h, project.id).tasks).toHaveLength(3);
-        expect(snapshot(h, project.id).runs.filter(run => run.origin !== 'native')).toHaveLength(4);
+        expect(snapshot(h, project.id).runs.filter(run => run.origin !== 'native')).toHaveLength(1);
         expect(h.run(runId).error).toBeUndefined();
     });
 
-    test('every run reports how full its context is, and the reading grows by the same step with each turn of a conversation', async () => {
-        const { h, project, chat } = await setup();
+    test('the orchestrator reports how full its context is, and the reading grows by the same step with each turn of a conversation', async () => {
+        const { h, chat } = await setup();
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });
 
         await waitFor(() => h.run(runId).status === 'succeeded', 'the first turn', 8000);
 
-        // An executor has one turn; the orchestrator has had several by now, each one a step above the first.
-        for (const executor of snapshot(h, project.id).runs.filter(run => run.origin === 'spawned')) {
-            expect(executor.context).toEqual({ used: 10_000, size: 200_000 });
-        }
-
         const before = h.run(runId);
 
-        expect(before.context?.size).toBe(200_000);
-        expect(before.context!.used).toBeGreaterThan(10_000);
+        expect(before.context).toEqual({ used: 10_000, size: 200_000 });
 
         h.ok('chat.send', { chatId: chat.id, text: 'And what about contrast?' });
         // A message makes the run `queued` at once, so `succeeded` is the end of the second turn.
@@ -249,13 +218,13 @@ describe('the scripted orchestrator', () => {
         const texts = items(h, runId).flatMap(item => (item.body.kind === 'user' || item.body.kind === 'assistant' ? [item.body.text] : []));
         const noted = texts.indexOf('Noted: "Also keep it accessible". I\'ll take that into account.');
 
-        // The bubble is where the agent took the steer, before the first resume with the children's results: the plan's turn answered it.
+        // The bubble is where the agent took the steer, before the work on the tasks: the plan answered it.
         expect(texts.indexOf('Also keep it accessible')).toBeGreaterThan(0);
         expect(noted).toBeGreaterThan(texts.indexOf('Also keep it accessible'));
-        expect(texts.indexOf('Executors are on it. I\'ll mark each task done as its executor reports.')).toBeGreaterThan(noted);
+        expect(texts.findIndex(text => text.startsWith('Starting on REP-1'))).toBeGreaterThan(noted);
     });
 
-    test('a message queued while the orchestrator works is its next turn once it parks for its executors', async () => {
+    test('a message queued while the orchestrator works is its next turn once it has finished', async () => {
         const { h, chat } = await setup({ fakeSpeed: 0.05 });
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });
 
@@ -265,7 +234,7 @@ describe('the scripted orchestrator', () => {
 
         const texts = items(h, runId).flatMap(item => (item.body.kind === 'user' || item.body.kind === 'assistant' ? [item.body.text] : []));
 
-        expect(texts.indexOf('Also keep it accessible')).toBeGreaterThan(texts.indexOf('Executors are on it. I\'ll mark each task done as its executor reports.'));
+        expect(texts.indexOf('Also keep it accessible')).toBeGreaterThan(texts.findIndex(text => text.startsWith('Done: REP-1, REP-2 and REP-3')));
         expect(texts.some(text => text.startsWith('Got it: "Also keep it accessible'))).toBe(true);
     });
 });
@@ -325,16 +294,16 @@ describe('semi-manual mode', () => {
 });
 
 describe('cancelling scripted work', () => {
-    test('stops the orchestrator and its executors promptly without failing anything', async () => {
+    test('stops the orchestrator and its sub-agent promptly without failing anything', async () => {
         const { h, project, chat } = await setup({ fakeSpeed: 0.2 });
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });
 
-        await waitFor(() => snapshot(h, project.id).runs.filter(run => run.role === 'executor' && run.status === 'running').length === 2, 'two running executors', 15_000);
+        await waitFor(() => snapshot(h, project.id).runs.some(run => run.origin === 'native' && run.status === 'running'), 'a running sub-agent', 15_000);
         h.ok('run.cancel', { runId });
 
         const state = snapshot(h, project.id);
 
-        expect(state.runs.map(run => run.status)).toEqual(['cancelled', 'cancelled', 'cancelled']);
+        expect(state.runs.map(run => run.status)).toEqual(['cancelled', 'cancelled']);
 
         await Bun.sleep(100);
 
@@ -345,33 +314,17 @@ describe('cancelling scripted work', () => {
         expect(snapshot(h, project.id).runs.every(run => run.status === 'cancelled' && run.finishedAt)).toBe(true);
         expect(h.events().some(event => event.data.type === 'run.upserted' && event.data.run.status === 'failed')).toBe(false);
 
-        // Work stopped half way: no assistant message is left open, and tasks that were in progress go back to To do.
+        // Work stopped half way: no assistant message is left open, and the tasks stay where the agent put them (no run was assigned to them).
         expect(items(h, runId).filter(item => item.body.kind === 'assistant').every(item => item.body.kind === 'assistant' && item.body.done)).toBe(true);
 
         const categories = new Map(state.statuses.map(status => [status.id, status.category]));
 
-        expect(state.tasks.map(task => categories.get(task.statusId))).toEqual(['todo', 'todo', 'todo']);
-    });
-
-    test('cancelling one executor leaves the orchestrator to carry on and fail clearly', async () => {
-        const { h, project, chat } = await setup({ fakeSpeed: 0.2 });
-        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Add dark mode' });
-
-        await waitFor(() => snapshot(h, project.id).runs.some(run => run.role === 'executor' && run.status === 'running'), 'a running executor', 15_000);
-
-        const executor = snapshot(h, project.id).runs.find(run => run.role === 'executor' && run.status === 'running')!;
-
-        h.ok('run.cancel', { runId: executor.id });
-        await waitFor(() => h.run(runId).status === 'failed', 'the orchestrator to notice', 15_000);
-
-        expect(h.run(executor.id).status).toBe('cancelled');
-        expect(h.run(runId).error).toContain('did not finish');
-        expect(items(h, runId).some(item => item.body.kind === 'error')).toBe(true);
+        expect(state.tasks.map(task => categories.get(task.statusId))).toEqual(['active', 'todo', 'todo']);
     });
 });
 
 describe('a task started by the user', () => {
-    test('opens a chat bound to the task, which one executor completes', async () => {
+    test('opens a chat bound to the task, whose orchestrator completes it itself', async () => {
         const { h, project } = await setup();
         const task = h.ok('task.create', { projectId: project.id, title: 'Fix the footer' }).task;
         const { runId, chatId } = h.ok('task.start', { taskId: task.id });
@@ -380,14 +333,13 @@ describe('a task started by the user', () => {
 
         const state = snapshot(h, project.id);
         const run = h.run(runId);
-        const executors = state.runs.filter(candidate => candidate.origin === 'spawned');
 
         expect(run).toMatchObject({ role: 'orchestrator', rootRunId: runId, chatId, summary: 'Fix the footer', name: 'Orchestrator 01' });
         expect(state.chats.find(chat => chat.id === chatId)).toMatchObject({ title: 'Fix the footer', mode: 'autopilot', orchestratorRunId: runId });
         expect(state.tasks).toHaveLength(1);
-        expect(executors).toHaveLength(1);
-        expect(executors[0]).toMatchObject({ parentRunId: runId, status: 'succeeded' });
-        expect(toolItems(items(h, runId)).map(tool => tool.name)).toEqual(['task_get', 'run_spawn', 'task_update', 'task_list']);
+        expect(state.runs.filter(candidate => candidate.origin !== 'native')).toEqual([run]);
+        expect(run.result).toContain('REP-1 is done');
+        expect(toolItems(items(h, runId)).map(tool => tool.name)).toEqual(['task_get', 'task_update', 'read_file', 'Agent', 'edit_file', 'task_update', 'bash', 'task_update']);
         expect(categoryTrail(h, project.id, task.id)).toEqual(['todo', 'active', 'review', 'done']);
     });
 

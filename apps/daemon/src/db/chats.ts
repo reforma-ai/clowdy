@@ -84,7 +84,7 @@ export function runsOfChat(db: Database, chatId: string): { id: string; status: 
 }
 
 /**
- * Deletes the chat and its runs. Streams, run-task links and mailbox rows go with the runs, and chat-task links with the chat.
+ * Deletes the chat and its runs, its sub-agents' runs too. Streams and run-task links go with the runs, and chat-task links with the chat.
  * The runs go in one statement, which SQLite checks at its end, so parents and children may go together.
  */
 export function deleteChatAndRuns(db: Database, chatId: string): void {

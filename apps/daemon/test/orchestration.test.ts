@@ -143,28 +143,25 @@ describe('the prompts of a run', () => {
     const project: Project = { id: 'prj_1', name: 'Car Rental', folders: [{ id: 'fld_1', path: '/work/cars' }], taskPrefix: 'CAR', settings: {}, createdAt: 1, position: 1 };
 
     test('the first message names the entry skill and the mode, then the content', () => {
-        expect(firstMessage('orchestrator', 'autopilot', 'Add dark mode')).toBe('Follow clowdy:orchestrate. Mode: autopilot\n\nAdd dark mode');
-        expect(firstMessage('orchestrator', 'semi', 'Add dark mode')).toBe('Follow clowdy:orchestrate. Mode: semi-manual\n\nAdd dark mode');
-        expect(firstMessage('executor', 'autopilot', 'Goal: x')).toBe('Follow clowdy:executor. Mode: autopilot\n\nGoal: x');
-        expect(firstMessage('verifier', 'semi', 'Claim: y')).toBe('Follow clowdy:verify. Mode: semi-manual\n\nClaim: y');
+        expect(firstMessage('autopilot', 'Add dark mode')).toBe('Follow clowdy:orchestrate. Mode: autopilot\n\nAdd dark mode');
+        expect(firstMessage('semi', 'Add dark mode')).toBe('Follow clowdy:orchestrate. Mode: semi-manual\n\nAdd dark mode');
     });
 
     test('the system prompt points to the skill, states the mode and the project facts, and stays short', () => {
-        const prompt = systemPrompt('orchestrator', 'semi', project);
+        const prompt = systemPrompt('semi', project);
 
-        expect(prompt).toContain('Follow clowdy:orchestrate');
+        expect(prompt).toContain('You are the orchestrator of a Clowdy chat. Follow clowdy:orchestrate');
         expect(prompt).toContain('Mode: semi-manual.');
         // Any folder can be a project's, so none is called a repository.
         expect(prompt).toContain('Project: Car Rental, folder at /work/cars, task keys CAR-<number>, project documents in .clowdy/docs/.');
         expect(prompt).not.toContain('repository');
         expect(prompt.length).toBeLessThan(900);
-        expect(systemPrompt('executor', 'autopilot', project)).toContain('Follow clowdy:executor. Never ask the user; finish with report_result.');
-        expect(systemPrompt('verifier', 'autopilot', project)).toContain('Follow clowdy:verify.');
+        expect(systemPrompt('autopilot', project)).toContain('Mode: autopilot.');
     });
 
     test('a project of several folders names each by path, marks the main one and the one the run works in, and says where instructions and documents are', () => {
         const several = { ...project, folders: [{ id: 'fld_1', path: '/work/cars' }, { id: 'fld_2', path: '/work/cars-api' }, { id: 'fld_3', path: '/notes/fleet' }] };
-        const prompt = systemPrompt('orchestrator', 'semi', several);
+        const prompt = systemPrompt('semi', several);
 
         expect(prompt).toContain([
             'Project: Car Rental, task keys CAR-<number>, folders (use absolute paths outside the folder you work in):',
@@ -176,26 +173,27 @@ describe('the prompts of a run', () => {
         ].join('\n'));
         expect(prompt).not.toContain('repository');
         expect(prompt.length).toBeLessThan(1200);
-        // A child that `run_spawn` started in another folder works there, and one started in a copy outside the project works in none of them.
-        expect(systemPrompt('executor', 'semi', several, '/notes/fleet')).toContain('- /work/cars (main)\n- /work/cars-api\n- /notes/fleet (you work here)\n');
-        expect(systemPrompt('executor', 'semi', several, '/tmp/cars-copy')).toContain('- /work/cars (main)\n- /work/cars-api\n- /notes/fleet\n');
+        // A run whose `cwd` is another folder of the project works there, and one in a copy outside the project works in none of them.
+        expect(systemPrompt('semi', several, '/notes/fleet')).toContain('- /work/cars (main)\n- /work/cars-api\n- /notes/fleet (you work here)\n');
+        expect(systemPrompt('semi', several, '/tmp/cars-copy')).toContain('- /work/cars (main)\n- /work/cars-api\n- /notes/fleet\n');
     });
 
-    test('the entry skill of the role is inlined without its front matter, with where the other skills are; no folder, no skill text', () => {
+    test('the entry skill is inlined without its front matter, with where the other skills are; no folder, no skill text', () => {
         const dir = tempDir();
+        const empty = tempDir();
 
-        mkdirSync(join(dir, 'skills', 'executor'), { recursive: true });
-        writeFileSync(join(dir, 'skills', 'executor', 'SKILL.md'), '---\nname: executor\ndescription: Do the work\n---\n\n# Executor\n\nRead the task first.\n');
+        mkdirSync(join(dir, 'skills', 'orchestrate'), { recursive: true });
+        writeFileSync(join(dir, 'skills', 'orchestrate', 'SKILL.md'), '---\nname: orchestrate\ndescription: Run the chat\n---\n\n# Orchestrate\n\nRead the request first.\n');
 
-        const prompt = skillPrompt('executor', dir);
+        const prompt = skillPrompt(dir);
 
         expect(prompt).toContain(`${ join(dir, 'skills', '<name>', 'SKILL.md') }`);
-        expect(prompt).toContain('<skill name="clowdy:executor">\n# Executor\n\nRead the task first.\n</skill>');
-        expect(prompt).not.toContain('description: Do the work');
-        // The orchestrator's skill is not in this folder: the pointer stays, the text does not.
-        expect(skillPrompt('orchestrator', dir)).not.toContain('<skill');
-        expect(skillPrompt('orchestrator', dir)).toContain('System skills are plain files');
-        expect(skillPrompt('verifier', undefined)).toBe('');
+        expect(prompt).toContain('<skill name="clowdy:orchestrate">\n# Orchestrate\n\nRead the request first.\n</skill>');
+        expect(prompt).not.toContain('description: Run the chat');
+        // A folder without the skill: the pointer stays, the text does not.
+        expect(skillPrompt(empty)).not.toContain('<skill');
+        expect(skillPrompt(empty)).toContain('System skills are plain files');
+        expect(skillPrompt(undefined)).toBe('');
     });
 
     test('a task becomes the first message of its chat', () => {
@@ -204,7 +202,7 @@ describe('the prompts of a run', () => {
         expect(taskMessage(task)).toBe('Complete task CAR-3: Fix the footer\n\nThis chat is bound to CAR-3; read it with task_get, do the work, and finish with a short report.');
     });
 
-    test('every turn of a run is told its system prompt, with the run\'s own role and the chat\'s mode', async () => {
+    test('every turn of a run is told its system prompt, with the chat\'s mode', async () => {
         const { h, engine, project: opened } = await setup();
         const { chat } = h.ok('chat.create', { projectId: opened.id, mode: 'semi' });
 
@@ -217,18 +215,7 @@ describe('the prompts of a run', () => {
     });
 
     test('a turn gets the project\'s other folders that are still there, in order, but not the one it works in', async () => {
-        let notes = '';
-        const { h, engine } = await setup(async function* (turn) {
-            yield { type: 'session', sessionId: `s${ turn.number }` };
-
-            if (turn.number === 1) {
-                const { task } = yield* turn.call('task_create', { title: 'Tidy the notes' });
-
-                yield* turn.call('run_spawn', { taskIds: [task.key], prompt: 'Goal: tidy the notes', idempotencyKey: 'notes-1', cwd: notes });
-            }
-
-            await untilAborted(turn.signal);
-        });
+        const { h, engine } = await setup();
         const parent = tempDir();
 
         for (const name of ['web', 'api', 'notes']) {
@@ -236,20 +223,25 @@ describe('the prompts of a run', () => {
         }
 
         const { project } = h.ok('project.add', { name: 'Shop', folders: ['web', 'api', 'notes'].map(name => join(parent, name)) }) as { project: Project };
-        const [web, api] = project.folders.map(folder => folder.path);
+        const [web, api, notes] = project.folders.map(folder => folder.path);
 
-        notes = project.folders[2].path;
         rmSync(api, { recursive: true });
 
         const { chat } = h.ok('chat.create', { projectId: project.id });
 
         h.ok('chat.send', { chatId: chat.id, text: 'Hello' });
-        await waitFor(() => engine.turns.length === 2, 'the orchestrator and its child to start');
+        await waitFor(() => engine.turns.length === 1, 'the orchestrator to start');
 
         // The orchestrator works in the main folder; the missing folder is left out of what the agent gets, not of what it is told.
         expect(engine.turns[0]).toMatchObject({ cwd: web, additionalDirectories: [notes] });
         expect(engine.turns[0].systemPrompt).toContain(`- ${ web } (main, you work here)\n- ${ api }\n- ${ notes }\n`);
-        // A child that works in another folder of the project gets the main folder instead of its own, and is told where it works.
+
+        // A run that works in another folder of the project (`cwd`) gets the main folder instead of its own, and is told where it works.
+        const { runs, driver } = h.daemon.services;
+        const elsewhere = runs.createRun({ project, role: 'orchestrator', summary: 'Tidy the notes', cwd: notes, nextPrompt: 'Tidy the notes' });
+
+        driver.launch(elsewhere.id);
+        await waitFor(() => engine.turns.length === 2, 'the run in the notes folder to start');
         expect(engine.turns[1]).toMatchObject({ cwd: notes, additionalDirectories: [web] });
         expect(engine.turns[1].systemPrompt).toContain(`- ${ web } (main)\n- ${ api }\n- ${ notes } (you work here)\n`);
     });

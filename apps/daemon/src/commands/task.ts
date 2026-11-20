@@ -22,8 +22,8 @@ export const taskHandlers: Pick<Handlers, 'task.create' | 'task.update' | 'task.
     },
 
     /**
-     * Opens a new chat named after the task, linked to it, with an orchestrator bound to the task whose first message
-     * is the task itself. One active run per task unless `force`.
+     * Opens a new chat named after the task, linked to it, with an orchestrator assigned to the task (it waits while the task's dependencies are not Done)
+     * whose first message is the task itself. One active run per task unless `force`: the run of a chat already started from it.
      */
     'task.start': ({ store, runs, driver, agents }, command) => {
         const task = requireTask(store, command.taskId);
@@ -46,7 +46,7 @@ export const taskHandlers: Pick<Handlers, 'task.create' | 'task.update' | 'task.
             summary: title,
             engine: command.engine,
             assigned: [task],
-            nextPrompt: firstMessage('orchestrator', chat.mode, text),
+            nextPrompt: firstMessage(chat.mode, text),
         });
 
         linkChatTask(store, project.id, { chatId: chat.id, taskId: task.id });
