@@ -1591,6 +1591,208 @@ describe('an ACP v2 session that outlives its turn', () => {
         });
     });
 
+    /** A file the fake agent writes what it is asked to do to (`session/cancel`, `terminal/cancel`, a steer, a held prompt), a line each. */
+    function agentLog() {
+        const dir = mkdtempSync(join(tmpdir(), 'clowdy-agent-log-'));
+        const log = join(dir, 'log');
+
+        return { log, lines: () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []), clean: () => rmSync(dir, { recursive: true, force: true }) };
+    }
+
+    describe('stopping one background command', () => {
+        const cancelling = { FAKE_ACP_TERMINAL_CANCEL: '1' };
+
+        test('asks the agent to cancel that terminal alone: the list loses it, the session and the other command go on, and no report is owed for it', async () => {
+            const { log, lines, clean } = agentLog();
+            const { session } = use({ backgroundHandoffMs: 300, backgroundReportMs: 4000, agentEnv: { ...cancelling, FAKE_ACP_LOG: log } }).start('say started\nbackground terminal 5000 first\nbackground terminal 900 second\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => backgrounds(events).at(-1)?.length === 2, 'both commands to be listed');
+
+            // The agent said it can cancel them, and the runtime was told: that is what a row's Stop is offered for.
+            expect(backgrounds(events).at(-1)).toEqual([{ id: 'term-1', kind: 'command', title: 'first', canStopAlone: true }, { id: 'term-2', kind: 'command', title: 'second', canStopAlone: true }]);
+            expect(await session.stopItem!('term-1')).toBe(true);
+            await until(() => backgrounds(events).at(-1)?.length === 1, 'the list to lose it');
+            expect(backgrounds(events).at(-1)).toEqual([{ id: 'term-2', kind: 'command', title: 'second', canStopAlone: true }]);
+            expect(lines()).toEqual(['terminal-cancel term-1']);
+            expect(alive(pidOf(events))).toBe(true);
+
+            // The other one ends on its own and is reported as usual; the one that was stopped is not part of that report.
+            await untilDone(2);
+            await ended;
+            await session.close();
+            expect(turns(events)).toEqual(['started', 'done:started', 'reported', 'done:reported']);
+            clean();
+        });
+
+        test('the last command stopped owes the agent no report: the session ends after the short guard, not after the wait for a report', async () => {
+            const { session } = use({ backgroundHandoffMs: 200, backgroundReportMs: 6000, agentEnv: cancelling }).start('say started\nbackground terminal 8000 first\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => backgrounds(events).at(-1)?.length === 1, 'the command to be listed');
+
+            const stopped = Date.now();
+
+            expect(await session.stopItem!('term-1')).toBe(true);
+            await ended;
+            await session.close();
+
+            expect(backgrounds(events).at(-1)).toEqual([]);
+            expect(turns(events)).toEqual(['started', 'done:started']);
+            expect(Date.now() - stopped).toBeLessThan(3000);
+        });
+
+        test('a terminal the agent did not say it can cancel is not asked about, and the item does not say it can be stopped alone', async () => {
+            const { log, lines, clean } = agentLog();
+            const { session } = use({ backgroundHandoffMs: 300, agentEnv: { FAKE_ACP_LOG: log } }).start('say started\nbackground terminal 600 plain\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => backgrounds(events).at(-1)?.length === 1, 'the command to be listed');
+            expect(backgrounds(events).at(-1)).toEqual([{ id: 'term-1', kind: 'command', title: 'plain' }]);
+            expect(await session.stopItem!('term-1')).toBe(false);
+            expect(lines()).toEqual([]);
+            await untilDone(2);
+            await ended;
+            await session.close();
+            clean();
+        });
+
+        test('a terminal the agent says is gone answers false, with the item still listed and nothing thrown', async () => {
+            const { log, lines, clean } = agentLog();
+            const { session } = use({ backgroundHandoffMs: 300, agentEnv: { FAKE_ACP_TERMINAL_CANCEL: 'refuse', FAKE_ACP_LOG: log } }).start('say started\nbackground terminal 700 plain\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => backgrounds(events).at(-1)?.length === 1, 'the command to be listed');
+            expect(await session.stopItem!('term-1')).toBe(false);
+            expect(lines()).toEqual(['terminal-cancel term-1']);
+            expect(backgrounds(events).at(-1)).toHaveLength(1);
+            await untilDone(2);
+            await ended;
+            await session.close();
+            clean();
+        });
+
+        test('answers false for a command that ended, and for one nobody listed, without asking the agent', async () => {
+            const { log, lines, clean } = agentLog();
+            const { session } = use({ backgroundHandoffMs: 300, agentEnv: { ...cancelling, FAKE_ACP_LOG: log } }).start('say started\nbackground terminal 150 short\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => backgrounds(events).at(-1)?.length === 0, 'the command to end');
+            expect(await session.stopItem!('term-1')).toBe(false);
+            expect(await session.stopItem!('nobody')).toBe(false);
+            expect(lines()).toEqual([]);
+            await untilDone(2);
+            await ended;
+            await session.close();
+            clean();
+        });
+
+        test('stops a background task alone the same way, with `tool_call/cancel` for the call that stands for it: the call ends cancelled, the list loses it, and no report is owed', async () => {
+            const { log, lines, clean } = agentLog();
+            const { session } = use({ backgroundHandoffMs: 200, backgroundReportMs: 6000, agentEnv: { ...cancelling, FAKE_ACP_LOG: log } }).start('say started\nbackground workflow 8000 verify\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => backgrounds(events).at(-1)?.length === 1, 'the task to be listed');
+            expect(backgrounds(events).at(-1)).toEqual([{ id: 'wf-1', kind: 'task', title: 'Workflow: verify', canStopAlone: true }]);
+
+            const stopped = Date.now();
+
+            expect(await session.stopItem!('wf-1')).toBe(true);
+            await ended;
+            await session.close();
+
+            expect(lines()).toEqual(['tool-call-cancel wf-1']);
+            expect(backgrounds(events).at(-1)).toEqual([]);
+            expect(events.filter(event => event.type === 'tool' && event.toolCallId === 'wf-1').at(-1)).toMatchObject({ state: 'error' });
+            expect(turns(events)).toEqual(['started', 'done:started']);
+            expect(Date.now() - stopped).toBeLessThan(3000);
+            clean();
+        });
+
+        test('a task whose call did not say it can be cancelled is not asked about', async () => {
+            const { log, lines, clean } = agentLog();
+            const { session } = use({ backgroundHandoffMs: 300, agentEnv: { FAKE_ACP_LOG: log } }).start('say started\nbackground workflow 600 verify\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => backgrounds(events).at(-1)?.length === 1, 'the task to be listed');
+            expect(backgrounds(events).at(-1)).toEqual([{ id: 'wf-1', kind: 'task', title: 'Workflow: verify' }]);
+            expect(await session.stopItem!('wf-1')).toBe(false);
+            expect(lines()).toEqual([]);
+            await untilDone(2);
+            await ended;
+            await session.close();
+            clean();
+        });
+
+        test('answers false once the session is over', async () => {
+            const { session } = use({ agentEnv: cancelling }).start('say plain');
+
+            await collect(session);
+            await session.close();
+            expect(await session.stopItem!('term-1')).toBe(false);
+        });
+    });
+
+    describe('an agent that starts no turn to report work that ended', () => {
+        test('does not wait for a report that never comes: it ends after the short guard, not the report wait', async () => {
+            const { session } = use({ wakesOnBackgroundEnd: true, backgroundHandoffMs: 100, backgroundReportMs: 6000 }).start('say started\nbackground terminal 100 sleep\nreport none');
+            const started = Date.now();
+            const { events, ended } = follow(session);
+
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['started', 'done:started']);
+            expect(Date.now() - started).toBeLessThan(3000);
+            await until(() => !alive(pidOf(events)), 'the agent to stop');
+        });
+
+        test('is told by a prompt sent when the work ended: one `done` for its answer, with the session held for it while it is on its way', async () => {
+            const { session } = use({ wakesOnBackgroundEnd: true, backgroundHandoffMs: 150, backgroundReportMs: 6000 }).start('say started\nbackground terminal 200 sleep\nreport none');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => backgrounds(events).at(-1)?.length === 0, 'the work to end');
+
+            // What the runtime does on the empty list (`RunDriver`): hand the agent a note, from inside the guard.
+            expect(await session.send!('Background command finished: sleep')).toBe(true);
+            await untilDone(2);
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['started', 'done:started', 'ok', 'done:ok']);
+        });
+
+        test('a prompt sent while idle is answered by the turn it begins, whether the agent echoes it before or after `running`', async () => {
+            for (const echo of [{}, { FAKE_ACP_ECHO_LATE: '1' }] as Record<string, string>[]) {
+                const guard = 600;
+                const { session } = use({ backgroundHandoffMs: guard, agentEnv: echo }).start('say first\nbackground terminal 100 sleep\nreport say reported');
+                const { events, ended, until: untilDone } = follow(session);
+
+                await untilDone(2);
+                await until(() => backgrounds(events).at(-1)?.length === 0, 'the work to end');
+
+                const sentAt = Date.now();
+
+                expect(await session.send!('say answer')).toBe(true);
+                await untilDone(3);
+
+                // The turn that the prompt began is its own: its `done` came when it ended, not a guard later (the guard is 600 ms).
+                expect(Date.now() - sentAt).toBeLessThan(guard);
+                await ended;
+                await session.close();
+                expect(turns(events).slice(-2)).toEqual(['answer', 'done:answer']);
+            }
+        });
+    });
+
     describe('send', () => {
         test('a prompt sent while the work runs is taken at once and answered by one `done`, and the work goes on', async () => {
             const { session } = use({ backgroundHandoffMs: 300 }).start('say started\nbackground terminal 1000 long\nreport say all done');
@@ -1988,6 +2190,92 @@ describe('an ACP v2 session that outlives its turn', () => {
             await ended;
             await session.close();
             expect(textOf(events)).toBe('first');
+        });
+    });
+
+    describe('steering through the extension', () => {
+        /** A turn of two lines the agent says slowly, with the steer sent once it has said the first. */
+        async function steeredWith(env: Record<string, string>, canSteer?: boolean) {
+            const { log, lines, clean } = agentLog();
+            const { session } = use({ agentEnv: { ...env, FAKE_ACP_LOG: log } }).start('say first\nsleep 300\nsay last');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await until(() => textOf(events).includes('first'), 'the agent to say first');
+
+            const taken = await session.steer!('say steered');
+
+            if (canSteer !== undefined) {
+                expect(session.canSteer).toBe(canSteer);
+            }
+
+            await untilDone(1);
+            await ended;
+            await session.close();
+
+            const result = { events, taken, lines: lines() };
+
+            clean();
+
+            return result;
+        }
+
+        test('an agent that advertises it is asked with `_session/steering`, and what it answers `injected` is part of the turn that runs: one `done`, no second turn', async () => {
+            const { events, taken, lines } = await steeredWith({ FAKE_ACP_STEERING: '1', FAKE_ACP_QUEUE: '1' }, true);
+
+            expect(taken).toBe(true);
+            expect(lines).toEqual(['steering say steered']);
+            // The steer's lines ran in the turn it landed in, after the line that was running, and the agent held no prompt for a turn of its own.
+            expect(turns(events)).toEqual(['first', 'steered', 'last', 'done:last']);
+            expect(types(events).filter(type => type === 'done')).toHaveLength(1);
+        });
+
+        test('it does not wait the guard for a turn that never comes: the `done` follows the turn\'s own `idle`', async () => {
+            const started = Date.now();
+            const { events } = await steeredWith({ FAKE_ACP_STEERING: '1', FAKE_ACP_QUEUE: '1' });
+
+            expect(events.at(-1)).toEqual({ type: 'done', result: 'last' });
+            // Turn: first, 300 ms, steered, last. A hold of a 400 ms guard would put the end past 700 ms.
+            expect(Date.now() - started).toBeLessThan(1500);
+        });
+
+        test('an agent that does not advertise it is sent a plain prompt, which it inserts into the turn: the extension is never asked', async () => {
+            const { events, taken, lines } = await steeredWith({}, true);
+
+            expect(taken).toBe(true);
+            expect(lines).toEqual(['steer say steered']);
+            expect(turns(events).filter(told => told.startsWith('done:'))).toHaveLength(1);
+            expect(textOf(events)).toContain('steered');
+        });
+
+        test('a steer after the turn is over is refused without a request, and with no turn running the agent\'s `promptRequired` is a refusal too', async () => {
+            const { log, lines, clean } = agentLog();
+            const { session } = use({ backgroundHandoffMs: 100, agentEnv: { FAKE_ACP_STEERING: '1', FAKE_ACP_LOG: log } }).start('say first');
+            const { ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            expect(await session.steer!('say late')).toBe(false);
+            expect(lines()).toEqual([]);
+            await ended;
+            await session.close();
+            clean();
+        });
+
+        test('an agent that steers by the extension and holds a plain prompt does not need one: the held prompt is the runtime\'s, sent later', async () => {
+            // The control: a plain prompt to an agent that queues it is not part of the turn, which is why the extension is used.
+            const { log, lines, clean } = agentLog();
+            const { session } = use({ agentEnv: { FAKE_ACP_QUEUE: '1', FAKE_ACP_LOG: log } }).start('say first\nsleep 400\nsay last');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await until(() => textOf(events).includes('first'), 'the agent to say first');
+
+            const steering = session.steer!('say steered');
+
+            await untilDone(1);
+            expect(lines()).toEqual(['queued say steered']);
+            expect(await steering).toBe(false);
+            await ended;
+            await session.close();
+            clean();
         });
     });
 

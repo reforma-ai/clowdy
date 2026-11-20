@@ -167,6 +167,26 @@ const MAX_NAMED_TITLE = 80;
 export const namedTitle = (title: string) => clip(title.replace(/\s+/g, ' ').trim(), MAX_NAMED_TITLE);
 
 /**
+ * Told to an agent that starts no turn of its own when its background work ends (`wakesOnBackgroundEnd`, Codex), in a prompt of the runtime's own, once the
+ * last item has left the list and nothing runs: one line per item that is over, so that it looks at what came of it and reports. Claude Code starts that
+ * turn itself and is never sent this. `stopped` is an item the person ended with a Stop of its own. Only the agent reads it; the stream has a note per item.
+ */
+export function backgroundEndedMessage(ended: readonly { item: BackgroundItem; stopped: boolean }[]): string {
+    return [
+        ...ended.map(({ item, stopped }) => `Background ${ BACKGROUND_KINDS[item.kind] } ${ stopped ? 'stopped by the user' : 'finished' }: ${ namedTitle(item.title) }`),
+        `Check how ${ ended.length === 1 ? 'it' : 'they' } went and tell the user what came of ${ ended.length === 1 ? 'it' : 'them' }, briefly.`,
+    ].join('\n');
+}
+
+/**
+ * Told to the agent, in a prompt of the runtime's own, when the person stopped one background item alone (a Stop on its row): that item is over, but a
+ * stopped command gives the agent no report of its own (Claude Code starts no turn for it), so nothing would tell it.
+ */
+export function backgroundStoppedMessage(item: BackgroundItem): string {
+    return `The user stopped the background ${ BACKGROUND_KINDS[item.kind] }: ${ namedTitle(item.title) }\nIt did not finish, and no result of it will arrive. Carry on without it, and say in one short sentence what that changes for your work.`;
+}
+
+/**
  * Told to the agent with the first message after its session was cut off (a Stop, a restart, a failure): what it had running in the background is gone,
  * whatever its state was, and nobody will report on it. The agent decides whether to start it again.
  */

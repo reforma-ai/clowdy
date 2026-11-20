@@ -19,6 +19,48 @@ describe('the turns that messages sent into a live session lead to', () => {
         expect(turns.sending).toBe(false);
     });
 
+    test('a send made while no turn ran is answered by the turn it begins, whether the agent echoes it before or after saying that turn is running', () => {
+        for (const echoAfterRunning of [false, true]) {
+            const turns = new Turns();
+
+            // An earlier turn ended; the session is idle when the send goes out.
+            turns.begin();
+
+            const send = turns.add('send', true);
+
+            if (!echoAfterRunning) {
+                turns.echo('m1');
+            }
+
+            // The agent says its turn is running, then echoes the message and answers the prompt (Codex's adapter); or has echoed it already (Claude's).
+            turns.begin();
+
+            if (echoAfterRunning) {
+                turns.echo('m1');
+            }
+
+            turns.took(send, 'm1');
+            turns.echo('m1');
+            expect(turns.review()).toEqual({ landed: 0, queued: 0, answered: 1 });
+            expect(turns.release(false)).toBe(1);
+        }
+    });
+
+    test('a send made while idle is placed by its own count even when the agent answers the turn before it says anything of the message', () => {
+        const turns = new Turns();
+
+        turns.begin();
+
+        const send = turns.add('send', true);
+
+        turns.begin();
+        // The turn ended and nothing is known of the message yet: it is behind the turn.
+        expect(turns.review()).toEqual({ landed: 0, queued: 1, answered: 0 });
+        // Its answer comes after the `idle`: the turn that ended was its own.
+        turns.took(send, 'm1');
+        expect(turns.review()).toEqual({ landed: 0, queued: 0, answered: 1 });
+    });
+
     test('a message echoed while a turn ran has a turn of its own to come, and an agent that folded it in is given up on', () => {
         const turns = new Turns();
         const steer = turns.add('steer');

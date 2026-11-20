@@ -12,7 +12,7 @@ Snapshot 2026-11-19. Research only. Codex `codex-cli 0.166.0` (the owner's own l
 - **The app-server facts are the same ones `codex-acp` uses.** It polls `thread/backgroundTerminals/list` and watches `item/completed`. An own adapter or engine would read the same facts, with no new capability for background work.
 - **Cost of the alternatives (estimates):** own v2 adapter 4.5k to 6.5k lines of source plus 8k to 12k of tests, against 38k lines (and 69k of tests) in `codex-acp`; native engine 2.5k to 3.5k lines plus tests, and it reopens the owner's "one ACP path" decision, made on 2026-11-18.
 - **Upstream is the live option.** `codex-acp` shipped 8 minor releases in 7 weeks, and the maintainer wrote the v2 background work and `terminal/cancel` (PR #777) today, 14 minutes from opening to merge. Outside PRs are rarely merged (4 of the last 100; 100 PRs open, the oldest from June), so the contribution that fits is an issue, not a PR.
-- **Not checked:** the daemon itself with Codex on v2 and 2.8.0 (only raw probes of the adapter and of app-server). That is the smallest next step.
+- **Not checked when this page was written:** the daemon itself with Codex on v2 and 2.8.0 (only raw probes of the adapter and of app-server). **Done afterwards** (Stage 10, 2026-11-19 and 20): the scenarios of the smallest next step pass through the daemon, and the runtime sends the wake note; see `acp-background-probe.md`, "Codex on v2 through the daemon (2.8.0)".
 
 ## Corrections to the earlier notes
 
@@ -270,11 +270,11 @@ Scratch evidence (may be cleared): `/private/tmp/claude-501/-Users-bionic-WORK-M
 
 ## Open questions
 
-- Does the daemon, with Codex on v2 and 2.8.0, pass the scenarios the Claude layer passed? Not run.
-- How does Clowdy's `Children` behave with Codex's flavor of child sessions (ids `<parent>:subagent:<id>`, messages from the child, no `Agent` call card)? Not run.
+- Does the daemon, with Codex on v2 and 2.8.0, pass the scenarios the Claude layer passed? **Answered:** yes, with two findings (a resume right after a chat's first turn is refused while the previous process still runs for the chat's title (`AcpSession.linger`, up to 10 s), on v1 too, see the review note in `acp-background-probe.md`; the call of a command that outlived its turn stays running and was failed with the turn, fixed). `acp-background-probe.md`, "Codex on v2 through the daemon (2.8.0)".
+- How does Clowdy's `Children` behave with Codex's flavor of child sessions (ids `<parent>:subagent:<id>`, messages from the child, no `Agent` call card)? **Answered:** a child run made at the child's first word, named `Sub-agent`, ended by the loss of its item, stopped alone with `session/cancel` of the child (its running command is not stopped with it). Same page.
 - Does the flap (list emptied, then refilled) seen with Claude happen with Codex when a child starts its own command? Not tried.
 - Which Codex version first has `thread/backgroundTerminals/*`, and what does 2.8.0 do on an older Codex? Not checked.
-- What does the model learn on its next turn about a command that ended while idle? Not checked (matters for the wake policy).
+- What does the model learn on its next turn about a command that ended while idle? Still not isolated: the runtime sends the note, and the model's answers quoted the output (it read it itself, once with an extra `echo`).
 - Does the `codex-acp` v1 AIR path of 2.8.0 still work? Not run (not needed for A+).
 
 ## Assumptions and limits

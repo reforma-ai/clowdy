@@ -65,6 +65,12 @@ export class RunService {
      * rollback cannot take that back. The sub-agent's run ends later, through the engine's own `subagent` event, not here.
      */
     stopNative: (run: Run, reason: string) => (() => void) | undefined = () => undefined;
+    /**
+     * Prepares the request that asks the live session of the run `runId` to end its background command `itemId` alone (the driver sets it). Answers the
+     * function that sends it, or `undefined` when the request cannot be made (the session is not live, cannot end that command, or has not got it open).
+     * It sends nothing itself: the caller sends once its transaction has committed (`stopBackground`), as for a sub-agent.
+     */
+    stopCommand: (runId: string, itemId: string) => (() => void) | undefined = () => undefined;
     private scheduler: Scheduler;
     private controllers = new Map<string, AbortController>();
     private answers = new Map<string, (answer: string) => void>();
@@ -547,6 +553,32 @@ export class RunService {
     }
 
     /**
+     * Stops one background command of the orchestrator `runId` and nothing else: the run goes on, its other work too, and its chat's queue is not held. The
+     * item is the one the run lists with the agent's permission to end it alone (`BackgroundItem.canStopAlone`) and the run's session is live and has it
+     * open; the request to the agent goes out once the transaction commits, so a rollback asks nothing of it, and the command's end comes back as the
+     * engine's own snapshot without it. Answers whether a request is made or already on its way for that command, so a repeated press is one request and
+     * answers the same; `false` for an item that is gone, cannot be stopped alone, or has no live session.
+     */
+    stopBackground(runId: string, itemId: string): boolean {
+        return this.store.tx(() => {
+            const run = this.require(runId);
+            const item = run.background?.find(candidate => candidate.id === itemId);
+
+            if (!isActive(run.status) || !item?.canStopAlone || item.kind === 'subagent') {
+                return false;
+            }
+
+            const send = this.stopCommand(runId, itemId);
+
+            if (send) {
+                this.store.afterCommit(send);
+            }
+
+            return send !== undefined;
+        });
+    }
+
+    /**
      * Asks the session to end the native sub-agent `run` alone, and answers whether it will: the run is active and was made stoppable, and its session is
      * live and has it open. The request goes out once the transaction commits (like the abort of a cancelled run), so a Stop that rolls back asks nothing of
      * the agent, and each call is one request.
@@ -706,7 +738,7 @@ export class RunService {
     setBackground(runId: string, items: BackgroundItem[]): void {
         // Only the protocol's fields are kept, so whatever else an engine put on an item does not reach the row or the clients. The list and each title
         // are bounded: a command's title may be a whole script, and the list rides in every `run.upserted` that the event log keeps.
-        const kept = items.slice(0, MAX_BACKGROUND_ITEMS).map(({ id, kind, title }) => ({ id, kind, title: title.slice(0, MAX_BACKGROUND_TITLE) }));
+        const kept = items.slice(0, MAX_BACKGROUND_ITEMS).map(({ id, kind, title, canStopAlone }) => ({ id, kind, title: title.slice(0, MAX_BACKGROUND_TITLE), ...(canStopAlone === true && { canStopAlone: true as const }) }));
         const run = this.require(runId);
 
         if (isTerminalRunStatus(run.status) || sameItems(run.background ?? [], kept)) {
@@ -755,7 +787,7 @@ const MAX_BACKGROUND_ITEMS = 50;
 const MAX_BACKGROUND_TITLE = 200;
 
 function sameItems(a: BackgroundItem[], b: BackgroundItem[]): boolean {
-    return a.length === b.length && a.every((item, index) => item.id === b[index].id && item.kind === b[index].kind && item.title === b[index].title);
+    return a.length === b.length && a.every((item, index) => item.id === b[index].id && item.kind === b[index].kind && item.title === b[index].title && item.canStopAlone === b[index].canStopAlone);
 }
 
 function blockedReason(blockers: Task[]): string {

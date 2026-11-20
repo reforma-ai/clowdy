@@ -152,6 +152,24 @@ describe('FixtureTransport', () => {
         expect(await transport.command({ type: 'run.stopAgents', runId: 'r-missing' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
     });
 
+    it('stops one background command that can be stopped alone: it leaves the list with a note, and the run and the rest of its work go on', async () => {
+        const { transport } = await connected();
+        const orchestrator = async () => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === 'r-orch-5')!;
+
+        // The other one cannot be stopped alone, and an item that is not listed is no stop.
+        expect(await transport.command({ type: 'run.stopBackground', runId: 'r-orch-5', itemId: 'bg-2' })).toMatchObject({ ok: true, data: { stopped: false } });
+        expect(await transport.command({ type: 'run.stopBackground', runId: 'r-orch-5', itemId: 'nobody' })).toMatchObject({ ok: true, data: { stopped: false } });
+        expect((await orchestrator()).background).toHaveLength(2);
+
+        expect(await transport.command({ type: 'run.stopBackground', runId: 'r-orch-5', itemId: 'bg-1' })).toMatchObject({ ok: true, data: { stopped: true } });
+        expect(await orchestrator()).toMatchObject({ status: 'waiting_background', background: [{ id: 'bg-2' }] });
+        expect((await transport.getItems({ runId: 'r-orch-5' })).some(item => item.body.kind === 'note' && item.body.text === 'Background command stopped: bun run test')).toBe(true);
+
+        // Gone now: a repeat stops nothing, and the last one that cannot be stopped alone stays.
+        expect(await transport.command({ type: 'run.stopBackground', runId: 'r-orch-5', itemId: 'bg-1' })).toMatchObject({ ok: true, data: { stopped: false } });
+        expect(await transport.command({ type: 'run.stopBackground', runId: 'r-missing', itemId: 'bg-1' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    });
+
     it('streams a reply to a chat message, starting an orchestrator for a chat that had none', async () => {
         const { transport, events } = await connected();
 

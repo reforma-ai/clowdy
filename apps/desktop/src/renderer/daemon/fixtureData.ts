@@ -208,8 +208,8 @@ function fixtureAgents(now: number): AgentInfo[] {
             status: 'ready',
             path: '/opt/homebrew/bin/codex',
             version: '0.166.0',
-            launch: 'bun x --bun @agentclientprotocol/codex-acp@2.6.0',
-            fetches: '@agentclientprotocol/codex-acp@2.6.0',
+            launch: 'bun x --bun @agentclientprotocol/codex-acp@2.8.0',
+            fetches: '@agentclientprotocol/codex-acp@2.8.0',
             login: 'codex login',
             canSignIn: true,
             canCompact: true,
@@ -536,7 +536,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
             summary: 'Check the booking changes',
             statusReason: 'Waiting for background work',
             background: [
-                { id: 'bg-1', kind: 'command', title: 'bun run test' },
+                // The first can be stopped alone (a terminal the agent lets the client cancel): its row has a Stop of its own. The second only ends with the run.
+                { id: 'bg-1', kind: 'command', title: 'bun run test', canStopAlone: true },
                 { id: 'bg-2', kind: 'command', title: 'bun run typecheck' },
             ],
             createdAt: ago(30),

@@ -73,14 +73,23 @@ export interface AgentSpec {
     compact?: string;
     /** The ACP version the engine speaks to the agent: `v1` unless set. */
     protocol?: AgentProtocol;
+    /**
+     * The agent starts no turn of its own to report background work that ended (a command or a sub-agent): its app-server has nothing that wakes a thread
+     * when one ends, so the model would never learn of it and its run would end with the work unreported. Set, the runtime tells the agent: when the last
+     * item has left the background list and the session is idle, it sends one note through `send` ("Background command finished: ...") and the agent
+     * reports in a turn of that note's own, and the layer does not wait `BACKGROUND_REPORT_MS` for a report that never comes. Unset for an agent that
+     * reports by itself (Claude Code starts a report turn). Only means something for an agent whose protocol reports background work (`v2`).
+     */
+    wakesOnBackgroundEnd?: boolean;
 }
 
 /**
  * The agents Clowdy knows how to start. Most run their own program in ACP mode; Claude Code and Codex have no ACP mode of
  * their own and run through the official adapters, pinned here (read the adapter's changelog before bumping it). Pin a
- * version at least three days old: `bun x` reads the `bunfig.toml` of the folder the run works in, and this repository's
- * `minimumReleaseAge` refuses anything newer ("No version matching ... blocked by minimum-release-age"), which ends the
- * run before the agent starts. `npm view <package> time` shows when each version was published.
+ * version at least three days old: on a machine whose global `~/.bunfig.toml` sets `minimumReleaseAge`, `bun x` refuses
+ * anything newer when its cache lacks that exact version ("No version matching ... blocked by minimum-release-age"), which
+ * ends the run before the agent starts, in any folder (measured with Bun 1.4.4: `bun x` does not read the `bunfig.toml` of
+ * the folder the run works in). `npm view <package> time` shows when each version was published.
  */
 export const KNOWN_AGENTS: readonly AgentSpec[] = [
     {
@@ -151,10 +160,16 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         id: 'codex',
         name: 'Codex',
         programs: ['codex'],
-        launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.6.0', pathEnv: 'CODEX_PATH' },
-        // ACP v1 for now: its adapter injects a steer into the running turn through `_session/steering`, while a plain prompt on v2 is held until the turn
-        // ends. `codex-acp` 2.8.0 reports background commands and sub-agents on v2 and takes `_session/steering` there too: Stage 10 of the background-work
-        // plan moves Codex to v2 once the layer steers that way and the pin can be raised.
+        launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.8.0', pathEnv: 'CODEX_PATH' },
+        // ACP v2: `codex-acp` 2.8.0 reports a command that outlives its call and a sub-agent as `background` (`terminal/cancel` stops a command, `session/cancel`
+        // of the child a sub-agent) and takes `_session/steering`, which the v2 layer uses when an agent advertises it (a plain prompt on v2 is held until the
+        // turn ends). Codex never starts a turn to report that the work ended, so the runtime sends it a note (`wakesOnBackgroundEnd`). Checked through the
+        // daemon on 2.8.0 ("Codex on v2 through the daemon (2.8.0)" in `acp-background-probe.md`, under `.briefback/background-work/research/`).
+        // Pinned before it was three days old, by the owner's decision of 2026-11-20 (it turns three days old on 2026-11-22): until then a first Codex chat on a
+        // machine whose global `~/.bunfig.toml` sets `minimumReleaseAge` fails with "blocked by minimum-release-age", in any folder, unless the bunx cache already
+        // holds 2.8.0.
+        protocol: 'v2',
+        wakesOnBackgroundEnd: true,
         compact: '/compact',
         settings: [
             {

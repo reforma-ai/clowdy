@@ -31,6 +31,8 @@ export interface ResolvedAgent {
     login?: string;
     /** The ACP version the engine speaks to it: `AgentSpec.protocol`, and `v1` for a custom agent. */
     protocol: AgentProtocol;
+    /** `AgentSpec.wakesOnBackgroundEnd`: the agent starts no report turn for background work that ended, so the runtime tells it. */
+    wakesOnBackgroundEnd?: boolean;
     /** The `_meta` of `session/new`, for the options its adapter reads. */
     sessionMeta?: Record<string, unknown>;
     /** The `_meta` of the client capabilities in `initialize` (see `AgentSpec.clientMeta`). */
@@ -318,7 +320,7 @@ export class AgentRegistry {
         }
 
         const applied = appliedSettings(spec, override);
-        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, protocol: spec.protocol ?? 'v1', sessionMeta: withDisallowedTools(spec.sessionMeta, applied.disallowedTools), ...(spec.clientMeta && { clientMeta: spec.clientMeta }) };
+        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, protocol: spec.protocol ?? 'v1', ...(spec.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), sessionMeta: withDisallowedTools(spec.sessionMeta, applied.disallowedTools), ...(spec.clientMeta && { clientMeta: spec.clientMeta }) };
 
         if (spec.launch.kind === 'binary') {
             return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: withoutRemoved({ ...spec.env, ...apart?.env, ...applied.env, ...codexConfigEnv(applied.codexConfig), ...override.env }) } };

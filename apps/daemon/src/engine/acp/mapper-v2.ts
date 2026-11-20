@@ -3,7 +3,7 @@ import { BackgroundWork, ContentBlock, SessionUpdate, ToolCallContent } from '@a
 import { Children, textOf } from './children';
 import { COMPACT_TOOL, Gauges, isRecord, Message, patched, ToolLedger, usageEvent } from './mapper-core';
 
-import type { CompactionUpdate, ToolCallUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
+import type { CompactionUpdate, TerminalUpdate, ToolCallUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import type { BackgroundItem } from '@clowdy/protocol';
 import type { EngineEvent } from '../types';
 import type { MapperOptions } from './mapper';
@@ -14,6 +14,9 @@ const MAX_TERMINAL_BYTES = 80_000;
 
 /** A background item's title is cut here; the runtime bounds it again. */
 const MAX_BACKGROUND_TITLE = 200;
+
+/** The states in which a tool call is over. */
+const FINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
 
 /** The state of a tool call for each state a compaction is in; one the draft adds later is taken as still going. */
 const COMPACTION_STATES: Record<string, string> = { in_progress: 'in_progress', completed: 'completed', failed: 'failed', cancelled: 'cancelled' };
@@ -73,6 +76,10 @@ export class UpdateMapperV2 {
     private terminals = new Map<string, Buffer>();
     /** The command of each terminal that said one. */
     private commands = new Map<string, string>();
+    /** The terminals of the session that say the client may cancel them (`terminal/cancel`) and have not exited: a background command that can be stopped alone. */
+    private cancellable = new Set<string>();
+    /** The tool calls of the session that say the client may cancel them (`tool_call/cancel`) and have not ended: a background task (Claude's `Workflow`) that can be stopped alone. */
+    private cancellableCalls = new Set<string>();
     /** The sub-agents of the session: sessions of their own, which the session announced. */
     private children = new Children(agentId => this.close(agentId));
     /** The session's cumulative cost at the end of the last turn: what the next turn's cost is measured from. */
@@ -137,6 +144,7 @@ export class UpdateMapperV2 {
                 this.commands.set(update.terminalId, update.command);
             }
 
+            this.permit(update);
             this.print(update.terminalId, update.output?.data, 'replace');
         }
         else if (SessionUpdate.isSubagentUpdate(update)) {
@@ -186,7 +194,7 @@ export class UpdateMapperV2 {
     background(list: readonly BackgroundWork[]): BackgroundItem[] {
         return list.flatMap((work): BackgroundItem[] => {
             if (BackgroundWork.isTerminal(work)) {
-                return [{ id: work.terminalId, kind: 'command', title: titled(this.commands.get(work.terminalId), 'Background command') }];
+                return [{ id: work.terminalId, kind: 'command', title: titled(this.commands.get(work.terminalId), 'Background command'), ...(this.cancellable.has(work.terminalId) && { canStopAlone: true }) }];
             }
 
             if (BackgroundWork.isSubagent(work)) {
@@ -194,11 +202,21 @@ export class UpdateMapperV2 {
             }
 
             if (BackgroundWork.isToolCall(work)) {
-                return [{ id: work.toolCallId, kind: 'task', title: titled(this.calls.get(work.toolCallId)?.title || this.tools.get(work.toolCallId)?.name, 'Background task') }];
+                return [{ id: work.toolCallId, kind: 'task', title: titled(this.calls.get(work.toolCallId)?.title || this.tools.get(work.toolCallId)?.name, 'Background task'), ...(this.cancellableCalls.has(work.toolCallId) && { canStopAlone: true }) }];
             }
 
             return [];
         });
+    }
+
+    /**
+     * The tool calls that are still running and show a terminal the list names: the call of a command that outlived its turn, which Codex keeps running
+     * until the command ends (Claude's `Bash` call completes at once). The runtime does not fail them when the turn ends.
+     */
+    openCalls(list: readonly BackgroundWork[]): string[] {
+        const listed = new Set(list.flatMap(work => BackgroundWork.isTerminal(work) ? [work.terminalId] : []));
+
+        return [...this.calls].filter(([, call]) => !FINAL_STATES.has(call.status ?? '') && call.content.some(item => ToolCallContent.isTerminal(item) && listed.has(item.terminalId))).map(([id]) => id);
     }
 
     /**
@@ -217,6 +235,36 @@ export class UpdateMapperV2 {
     /** Whether the client may ask the sub-agent `sessionId` to stop: announced with the permission to, and not ended. */
     stoppable(sessionId: string): boolean {
         return this.children.stoppable(sessionId);
+    }
+
+    /** Whether the client may ask the agent to cancel the terminal `terminalId`: it said so and has not reported the terminal exited. */
+    stoppableCommand(terminalId: string): boolean {
+        return this.cancellable.has(terminalId);
+    }
+
+    /** Whether the client may ask the agent to cancel the tool call `toolCallId`: it said so and has not ended the call. */
+    stoppableTask(toolCallId: string): boolean {
+        return this.cancellableCalls.has(toolCallId);
+    }
+
+    /**
+     * What a terminal says the client may do with it: `capabilities.cancel` (an object, even an empty one) lets the client cancel it; omitted leaves it as
+     * it was, `null` takes it away, and an exit status ends it ("Agents SHOULD stop advertising it" then, but a cancelled terminal is no longer one to cancel
+     * whatever they say).
+     */
+    private permit({ terminalId, capabilities, exitStatus }: TerminalUpdate): void {
+        if (capabilities !== undefined) {
+            if (capabilities?.cancel != null) {
+                this.cancellable.add(terminalId);
+            }
+            else {
+                this.cancellable.delete(terminalId);
+            }
+        }
+
+        if (exitStatus) {
+            this.cancellable.delete(terminalId);
+        }
     }
 
     /** One update of a sub-agent's session. Its first sign of life tells the runtime it exists, with the call that started it when its calls name one. */
@@ -334,6 +382,23 @@ export class UpdateMapperV2 {
         };
 
         this.calls.set(id, call);
+
+        // What a call of the session says the client may do with it (`capabilities.cancel`: an object, even an empty one, lets the client cancel it; a call that
+        // ended cannot be, whatever the agent still advertises). A sub-agent's calls are its own.
+        if (agentId === undefined) {
+            if (update.capabilities !== undefined) {
+                if (update.capabilities?.cancel != null) {
+                    this.cancellableCalls.add(id);
+                }
+                else {
+                    this.cancellableCalls.delete(id);
+                }
+            }
+
+            if (FINAL_STATES.has(call.status ?? '')) {
+                this.cancellableCalls.delete(id);
+            }
+        }
 
         return [...(known ? [] : this.close(agentId)), ...this.show(id, call, agentId)];
     }

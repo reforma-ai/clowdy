@@ -3,14 +3,13 @@ import { Readable, Writable } from 'node:stream';
 
 import { errorMessage } from '../../errors';
 import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
-import { applyChoices, isResumeWarning, keepTitle, prefaceOf, stopFailure } from './conversation';
+import { advertisesSteering, applyChoices, isResumeWarning, keepTitle, prefaceOf, STEER_METHOD, steerByExtension, steerRequest, stopFailure } from './conversation';
 import { classifyThrown, failureEvent, processEnded } from './failure';
-import { wait } from './layer';
 import { UpdateMapper } from './mapper';
 
 import type { ClientCapabilities, ClientConnection, ContentBlock, NewSessionRequest, PromptResponse, SessionConfigOption, SessionUpdate } from '@agentclientprotocol/sdk/unstable';
 import type { EngineEvent } from '../types';
-import type { SelectOption } from './conversation';
+import type { SelectOption, SteerRequest, SteerResponse } from './conversation';
 import type { LayerHost, ProtocolLayer } from './layer';
 import type { ResolvedAgent } from './registry';
 
@@ -23,35 +22,6 @@ type Item =
     | { kind: 'failed'; error: unknown }
     | { kind: 'exited' }
     | { kind: 'aborted' };
-
-/**
- * The extension both pinned adapters (Claude Code's and Codex's) implement to hand a message to the turn in flight; the SDK has no types for it. An agent
- * that can do it says `_meta.steering.supported` in its answer to `initialize`. `promptRequired` as the idle behaviour makes an agent with no turn running
- * answer so instead of starting a turn of its own that no request of the client owns.
- */
-const STEER_METHOD = '_session/steering';
-
-interface SteerRequest {
-    sessionId: string;
-    prompt: ContentBlock[];
-    _meta: { steering: { idleBehavior: 'promptRequired' } };
-}
-
-type SteerResponse = { outcome: 'injected' } | { outcome: 'startedNewTurn' } | { outcome: 'promptRequired'; reason?: string };
-
-/** Whether the agent's answer to `initialize` says it can take a steer. */
-function canSteer(init: { _meta?: Record<string, unknown> | null }): boolean {
-    const steering = init._meta?.steering as { supported?: unknown } | undefined;
-
-    return steering?.supported === true;
-}
-
-/**
- * An agent may not have begun the turn of a prompt it has just been sent, and answers a steer then with `promptRequired`. While the prompt is still
- * running the steer is asked again this often, this many times.
- */
-const STEER_RETRY_MS = 100;
-const STEER_ATTEMPTS = 20;
 
 /** The select options among an agent's, each with its choices (the members of its groups included) in one list. */
 function selectsOf(options: SessionConfigOption[] | null | undefined): SelectOption[] {
@@ -95,23 +65,7 @@ export class V1Layer implements ProtocolLayer {
         }
 
         try {
-            for (let attempt = 1; ; attempt++) {
-                const answer = await connection.agent.request<SteerResponse, SteerRequest>(STEER_METHOD, {
-                    sessionId,
-                    prompt: [{ type: 'text', text }],
-                    _meta: { steering: { idleBehavior: 'promptRequired' } },
-                });
-
-                if (answer?.outcome !== 'promptRequired' || attempt >= STEER_ATTEMPTS) {
-                    return answer?.outcome === 'injected';
-                }
-
-                await wait(STEER_RETRY_MS);
-
-                if (!host.promptRunning() || host.signal.aborted) {
-                    return false;
-                }
-            }
+            return await steerByExtension(() => connection.agent.request<SteerResponse, SteerRequest>(STEER_METHOD, steerRequest(sessionId, text)), { running: () => host.promptRunning(), aborted: () => host.signal.aborted });
         }
         catch (error) {
             host.deps.log?.(`${ host.agent.id } refused a steer: ${ errorMessage(error) }`);
@@ -179,7 +133,7 @@ export class V1Layer implements ProtocolLayer {
 
             const capabilities = init.agentCapabilities ?? {};
 
-            this.steerable = canSteer(init);
+            this.steerable = advertisesSteering(init);
 
             const access = host.openBridge();
             const supportsSystemPrompt = Boolean(capabilities.sessionCapabilities?.systemPrompt);

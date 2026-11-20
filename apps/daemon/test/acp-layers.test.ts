@@ -74,9 +74,53 @@ describe('the protocol of an agent', () => {
         }
     });
 
-    test('Claude Code is on v2, and every other built-in agent stays on v1: Codex holds a steer on v2 where v1 injects it', () => {
-        expect(KNOWN_AGENTS.filter(spec => spec.protocol === 'v2').map(spec => spec.id)).toEqual(['claude']);
+    test('a built-in agent resolves with the wake flag its catalog entry names, and without one when it names none', async () => {
+        const reg = registry();
+        const [spec] = KNOWN_AGENTS;
+        const named = spec.wakesOnBackgroundEnd;
+
+        program(spec.programs[0]);
+
+        const flagOf = async () => {
+            const resolved = await reg.resolve(spec.id);
+
+            return resolved.ok && resolved.agent.wakesOnBackgroundEnd;
+        };
+
+        try {
+            delete spec.wakesOnBackgroundEnd;
+            expect(await flagOf()).toBeUndefined();
+
+            spec.wakesOnBackgroundEnd = true;
+            expect(await flagOf()).toBe(true);
+        }
+        finally {
+            if (named) {
+                spec.wakesOnBackgroundEnd = named;
+            }
+            else {
+                delete spec.wakesOnBackgroundEnd;
+            }
+        }
+    });
+
+    test('Claude Code reports finished background work by itself, so the runtime does not tell it', () => {
+        expect(KNOWN_AGENTS.find(spec => spec.id === 'claude')?.wakesOnBackgroundEnd).toBeUndefined();
+    });
+
+    test('Claude Code and Codex are on v2, and every other built-in agent stays on v1', () => {
+        expect(KNOWN_AGENTS.filter(spec => spec.protocol === 'v2').map(spec => spec.id)).toEqual(['claude', 'codex']);
         expect(KNOWN_AGENTS.find(spec => spec.id === 'cursor')?.protocol).toBeUndefined();
+    });
+
+    test('Codex starts no turn to report background work that ended, so the runtime tells it, and Claude Code does start one', () => {
+        expect(KNOWN_AGENTS.filter(spec => spec.wakesOnBackgroundEnd).map(spec => spec.id)).toEqual(['codex']);
+    });
+
+    test('Codex is pinned to an adapter that reports background work on v2', () => {
+        const launch = KNOWN_AGENTS.find(spec => spec.id === 'codex')?.launch;
+
+        expect(launch).toMatchObject({ kind: 'package', package: '@agentclientprotocol/codex-acp@2.8.0' });
     });
 
     test('a custom agent speaks v1', async () => {

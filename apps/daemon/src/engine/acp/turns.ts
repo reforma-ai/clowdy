@@ -8,6 +8,11 @@ interface Sent {
     id?: string;
     /** How many turns had begun when the agent echoed the message back as the person's: the next turn is the one that answers it. */
     echoed?: number;
+    /**
+     * For a send made while no turn ran: how many turns had begun then. The turn that begins after it is its own, whenever the agent echoes it: Claude's
+     * adapter echoes the message first, Codex's says `running` and echoes it after, which must not look like a message that landed in a turn that ran.
+     */
+    idleAt?: number;
 }
 
 /** What stands behind the turn that just ended. */
@@ -47,7 +52,7 @@ export class Turns {
 
         for (const entry of this.sent) {
             if (entry.id === id) {
-                entry.echoed ??= this.count;
+                entry.echoed ??= entry.idleAt ?? this.count;
             }
         }
 
@@ -61,9 +66,9 @@ export class Turns {
         return this.echoes.has(id);
     }
 
-    /** A message is on its way to the agent. */
-    add(kind: Sent['kind']): Sent {
-        const entry: Sent = { kind };
+    /** A message is on its way to the agent. `idle`: no turn ran when it was sent, so the turn it leads to is its own. */
+    add(kind: Sent['kind'], idle = false): Sent {
+        const entry: Sent = { kind, ...(idle && { idleAt: this.count }) };
 
         this.sent.add(entry);
 
@@ -76,7 +81,7 @@ export class Turns {
      */
     took(entry: Sent, id: string): void {
         entry.id = id;
-        entry.echoed = this.echoes.get(id) ?? (entry.kind === 'send' ? this.count : undefined);
+        entry.echoed = entry.idleAt ?? this.echoes.get(id) ?? (entry.kind === 'send' ? this.count : undefined);
     }
 
     /** The message was refused, or was a steer that did not land: the agent owes no turn for it. */

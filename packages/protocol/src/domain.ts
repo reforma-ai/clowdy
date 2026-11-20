@@ -381,6 +381,12 @@ export interface BackgroundItem {
     kind: 'command' | 'subagent' | 'task';
     /** What it is, in a few words: the command, the sub-agent's name, the task's. */
     title: string;
+    /**
+     * The agent lets the client end this item alone (`run.stopBackground`), leaving the session and everything else it has open running. Set by the engine
+     * from what the agent said of the item (an ACP terminal that advertises `terminal/cancel`); absent when it cannot be stopped alone, and for a
+     * sub-agent that has a child run (its row stops it through the child run, `Run.canStopAlone`). An item without it is ended only with the run.
+     */
+    canStopAlone?: boolean;
 }
 
 export interface RunUsage {

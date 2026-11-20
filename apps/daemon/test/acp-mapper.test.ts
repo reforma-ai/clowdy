@@ -562,6 +562,99 @@ describe('updates of ACP v2', () => {
         });
     });
 
+    describe('a command that can be stopped alone', () => {
+        const work: BackgroundWork[] = [{ type: 'terminal', terminalId: 't' }];
+        const mapperWith = (...updates: SessionUpdateV2[]) => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            for (const update of updates) {
+                mapper.update(update);
+            }
+
+            return mapper;
+        };
+
+        test('is a terminal that said the client may cancel it: its item says so, and the mapper says it may be asked', () => {
+            const mapper = mapperWith({ sessionUpdate: 'terminal_update', terminalId: 't', command: 'sleep 60', capabilities: { cancel: {} } });
+
+            expect(mapper.background(work)).toEqual([{ id: 't', kind: 'command', title: 'sleep 60', canStopAlone: true }]);
+            expect(mapper.stoppableCommand('t')).toBe(true);
+        });
+
+        test('is not a terminal that said nothing of it, or took the permission away, or has exited', () => {
+            expect(mapperWith({ sessionUpdate: 'terminal_update', terminalId: 't', command: 'sleep 60' }).background(work)).toEqual([{ id: 't', kind: 'command', title: 'sleep 60' }]);
+            expect(mapperWith({ sessionUpdate: 'terminal_update', terminalId: 't', capabilities: { cancel: {} } }, { sessionUpdate: 'terminal_update', terminalId: 't', capabilities: null }).stoppableCommand('t')).toBe(false);
+            // An update that omits `capabilities` leaves what was said; one that names others and not `cancel` takes it away.
+            expect(mapperWith({ sessionUpdate: 'terminal_update', terminalId: 't', capabilities: { cancel: {} } }, { sessionUpdate: 'terminal_update', terminalId: 't', output: { data: 'aGk=' } }).stoppableCommand('t')).toBe(true);
+            expect(mapperWith({ sessionUpdate: 'terminal_update', terminalId: 't', capabilities: { cancel: {} } }, { sessionUpdate: 'terminal_update', terminalId: 't', capabilities: {} }).stoppableCommand('t')).toBe(false);
+            // Exited: cancelled or over, whatever the agent still advertises.
+            expect(mapperWith({ sessionUpdate: 'terminal_update', terminalId: 't', capabilities: { cancel: {} } }, { sessionUpdate: 'terminal_update', terminalId: 't', exitStatus: { exitCode: 0 } }).stoppableCommand('t')).toBe(false);
+            expect(mapperWith({ sessionUpdate: 'terminal_update', terminalId: 't', capabilities: { cancel: {} } }, { sessionUpdate: 'terminal_update', terminalId: 't', exitStatus: {} }).stoppableCommand('t')).toBe(false);
+        });
+
+        test('belongs to the session: a terminal of a sub-agent is its own, and does not make an item of the session stoppable', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update({ sessionUpdate: 'subagent_update', sessionId: 'child-1', title: 'Child' });
+            mapper.update({ sessionUpdate: 'terminal_update', terminalId: 't', command: 'ls', capabilities: { cancel: {} } }, 'child-1');
+            expect(mapper.stoppableCommand('t')).toBe(false);
+        });
+    });
+
+    describe('a task that can be stopped alone', () => {
+        const work: BackgroundWork[] = [{ type: 'tool_call', toolCallId: 'wf-1' }];
+        const workflow = (...updates: SessionUpdateV2[]) => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            for (const update of [call({ toolCallId: 'wf-1', title: 'Workflow: verify', kind: 'other', status: 'in_progress' }), ...updates]) {
+                mapper.update(update);
+            }
+
+            return mapper;
+        };
+
+        test('is a call that said the client may cancel it: its item says so, and the mapper says it may be asked', () => {
+            const mapper = workflow(call({ toolCallId: 'wf-1', capabilities: { cancel: {} } }));
+
+            expect(mapper.background(work)).toEqual([{ id: 'wf-1', kind: 'task', title: 'Workflow: verify', canStopAlone: true }]);
+            expect(mapper.stoppableTask('wf-1')).toBe(true);
+        });
+
+        test('is not a call that said nothing, took the permission away, or ended', () => {
+            expect(workflow().background(work)).toEqual([{ id: 'wf-1', kind: 'task', title: 'Workflow: verify' }]);
+            expect(workflow(call({ toolCallId: 'wf-1', capabilities: { cancel: {} } }), call({ toolCallId: 'wf-1', capabilities: null })).stoppableTask('wf-1')).toBe(false);
+            // An update that leaves `capabilities` out leaves what was said; a call that ended cannot be cancelled, whatever the agent still advertises.
+            expect(workflow(call({ toolCallId: 'wf-1', capabilities: { cancel: {} } }), call({ toolCallId: 'wf-1', title: 'Workflow: verify 2' })).stoppableTask('wf-1')).toBe(true);
+            expect(workflow(call({ toolCallId: 'wf-1', capabilities: { cancel: {} } }), call({ toolCallId: 'wf-1', status: 'cancelled' })).stoppableTask('wf-1')).toBe(false);
+            expect(workflow(call({ toolCallId: 'wf-1', capabilities: { cancel: {} }, status: 'completed' })).stoppableTask('wf-1')).toBe(false);
+        });
+
+        test('belongs to the session: a call of a sub-agent is its own', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update({ sessionUpdate: 'subagent_update', sessionId: 'child-1', title: 'Child' });
+            mapper.update(call({ toolCallId: 'wf-1', status: 'in_progress', capabilities: { cancel: {} } }), 'child-1');
+            expect(mapper.stoppableTask('wf-1')).toBe(false);
+        });
+    });
+
+    describe('the calls that stand for a command', () => {
+        const terminal = (id: string): BackgroundWork[] => [{ type: 'terminal', terminalId: id }];
+
+        test('a call that shows a listed terminal and has not ended is open, as Codex keeps the call of a command that outlived its turn; one that ended is not', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update({ sessionUpdate: 'terminal_update', terminalId: 't', command: 'sleep 40' });
+            mapper.update(call({ toolCallId: 'exec-1', name: 'exec_command', kind: 'execute', status: 'in_progress', content: [{ type: 'terminal', terminalId: 't' }] }));
+            expect(mapper.openCalls(terminal('t'))).toEqual(['exec-1']);
+            // The terminal is not listed (the command was never background work), or the call ended (Claude's `Bash` call completes at once).
+            expect(mapper.openCalls([])).toEqual([]);
+            expect(mapper.openCalls(terminal('other'))).toEqual([]);
+            mapper.update(call({ toolCallId: 'exec-1', status: 'completed' }));
+            expect(mapper.openCalls(terminal('t'))).toEqual([]);
+        });
+    });
+
     describe('turns after the first', () => {
         test('each turn\'s cost is the rise over where the turn before it left the session\'s, and a turn that says nothing has no result of its own', () => {
             const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 1 });
