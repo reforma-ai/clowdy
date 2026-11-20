@@ -24,6 +24,15 @@ describe('classifyFailure', () => {
         expect(classifyFailure({ ...agent, ...input })).toMatchObject({ code, retryable });
     });
 
+    test('an adapter that bun x refuses for its age is a plain, final failure, not a crash to retry', () => {
+        const stderr = 'Resolving dependencies\nerror: No version matching "2.8.0" found for specifier "@agentclientprotocol/codex-acp" (blocked by minimum-release-age: 259200 seconds)\nerror: @agentclientprotocol/codex-acp@2.8.0 failed to resolve';
+        const failed = classifyThrown(new Error('ACP connection closed'), agent, stderr);
+
+        expect(failed).toMatchObject({ code: 'adapter_unavailable', retryable: false });
+        expect(failed.message).toBe('The Codex adapter (@agentclientprotocol/codex-acp@2.8.0) could not be installed, because Bun\'s minimum release age blocks a version that new. Try again once it is old enough, or lower the setting in ~/.bunfig.toml.');
+        expect(processEnded(agent, 'exited with code 1', stderr)).toMatchObject({ code: 'adapter_unavailable', retryable: false });
+    });
+
     test('a signed-out agent says which command signs it in', () => {
         expect(classifyFailure({ ...agent, rpcCode: -32000 }).message).toBe('Codex is not signed in. Run `codex login` in a terminal, then start again.');
         expect(classifyFailure({ agent: 'Mine', rpcCode: -32000 }).message).toBe('Mine is not signed in. Sign in with its own command, then start again.');

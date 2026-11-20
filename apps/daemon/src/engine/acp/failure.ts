@@ -18,6 +18,7 @@ export type FailureCode =
     | 'invalid_request'
     | 'session_not_found'
     | 'engine_missing'
+    | 'adapter_unavailable'
     | 'process_crashed'
     | 'unknown';
 
@@ -60,6 +61,9 @@ const OVERLOADED = /overloaded/i;
 const CONTEXT = /prompt (?:is )?too long|context (?:length|window)|maximum context|exceeds? (?:the )?(?:context|maximum)|request_too_large|input is too long/i;
 const SESSION_NOT_FOUND = /no conversation found|session .{0,60}not found|resource not found/i;
 const MISSING_EXECUTABLE = /ENOENT|executable not found|command not found|not found on path/i;
+/** `bun x` refusing the adapter's pinned version: a global `minimumReleaseAge` newer than the pin. It cannot succeed until the version ages or the setting changes. */
+const INSTALL_BLOCKED = /blocked by minimum-release-age|No version matching "[^"]+" found for specifier/i;
+const INSTALL_VERSION = /No version matching "([^"]+)" found for specifier "([^"]+)"/i;
 const CRASH = /exited with code|terminated by signal|process exited|connection closed|stream closed/i;
 const API_STATUS = /\b(?:API Error|status|HTTP)[: ]*(\d{3})\b/i;
 const ACCOUNT_KINDS = ['oauth_org_not_allowed', 'account_on_hold', 'verification_required', 'cloud_credential_error'];
@@ -92,6 +96,12 @@ export function classifyFailure({ agent, login, kind, rpcCode, text = '' }: Fail
 
     if (kind !== undefined && ACCOUNT_KINDS.includes(kind)) {
         return failure('auth_failed', detail || `The ${ agent } account cannot be used right now.`);
+    }
+
+    if (INSTALL_BLOCKED.test(text)) {
+        const [, version, name] = INSTALL_VERSION.exec(text) ?? [];
+
+        return failure('adapter_unavailable', `The ${ agent } adapter${ name && version ? ` (${ name }@${ version })` : '' } could not be installed, because Bun's minimum release age blocks a version that new. Try again once it is old enough, or lower the setting in ~/.bunfig.toml.`);
     }
 
     if (USAGE_LIMIT.test(text)) {
