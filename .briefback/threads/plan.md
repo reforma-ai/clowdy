@@ -31,6 +31,7 @@
 
 - `fork`, `notifyParent` policy, `chat.setParent` (detach), answering a thread's question from its parent, per-thread worktrees, a cap on lingering thread sessions, remote hosts.
 - Windows (the `.cmd` shim is written, not checked), a Cursor-specific path beyond what its ACP session already does.
+- Follow-ups noticed, not done: a notice to the parent when a semi-manual thread waits for the person's answer (bb sends it at once, not merged); a `wait`/`output` read dropping a notice only when its text matches; `run_spawn` calls in old streams show as plain tool lines; a command-line install of `clowdy` for the person's own terminal (the owner said not needed).
 
 ## Stage 1 — Delete `run_spawn` and the child-run machinery
 
@@ -97,12 +98,12 @@ Carried to later stages: restore `describeItem` (the old `run_inspect` line form
 
 **This stage:** The parent learns that a thread stopped. A turn-end hook in the driver (every turn of a thread's orchestrator, including agent-started ones and the stop into `waiting_background`) hands the thread's text to a `ThreadNotices` buffer; a failed or interrupted thread notifies too, a Stop does not. The buffer merges per thread, waits `CLOWDY_THREAD_NOTICE_WINDOW_MS`, then delivers one message through the parent's queue (turn at rest, merged queued item when busy). `thread_wait` blocks until the thread rests and removes the thread's pending notice, as `thread_output` does.
 
-- [ ] Complete
-  - [ ] Turn-end hook in `RunDriver` and failed/interrupted status hook
-  - [ ] `ThreadNotices`: merge per thread, window, at-rest turn, merged queue item, held queue
-  - [ ] `thread_wait` and consumption of a pending notice
-  - [ ] Restart: a queued notice survives (it is a queue item); a buffered one is lost by design
-  - [ ] Tests: one stop, two stops, two threads in the window, background wait notice, empty stop, Stop, failed, busy parent, held queue, wait consumes
+- [x] Complete
+  - [x] Turn-end hook in `RunDriver` and failed/interrupted status hook
+  - [x] `ThreadNotices`: merge per thread, window, at-rest turn, merged queue item, held queue
+  - [x] `thread_wait` and consumption of a pending notice
+  - [x] Restart: a queued notice survives (it is a queue item); a buffered one is lost by design
+  - [x] Tests: one stop, two stops, two threads in the window, background wait notice, empty stop, Stop, failed, busy parent, held queue, wait consumes
 
 **Files**
 
@@ -114,7 +115,9 @@ Carried to later stages: restore `describeItem` (the old `run_inspect` line form
 
 **Done when:** a thread that stops (also a second time while its session waits for background work) wakes a parent at rest once per window with its text, and a parent that waited or read the output is not told again.
 **Verify:** `cd apps/daemon && bun test && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Commits:**
+
+- Stages 3 and 4 share `driver.ts`, `daemon.ts`, `thread-tools.ts` and `AGENTS.md`, so they are one commit (message in the commit, see the PR). Review of Stage 3 found and fixed: a stale text in a turn the agent starts itself, the closing notice lost after an empty agent turn, a `wait`/`output` that dropped the notice without having the answer. A parent whose agent is switched off loses the notice (logged, documented). Open, rare: a read still drops a notice early when a silent or compact turn sits between.
 
 ## Stage 4 — The `clowdy` command, prompts and skills
 
@@ -122,12 +125,12 @@ Carried to later stages: restore `describeItem` (the old `run_inspect` line form
 
 **This stage:** Agents can actually call the thread tools from a shell. The daemon writes a `clowdy` shim into its data folder at start; the bridge registers each session's CLI tools under a credential and hands `CLOWDY_CLI_AUTH`, `CLOWDY_CLI_URL`, `CLOWDY_CLI` and `PATH` to the agent process; a small CLI (`cli/main.ts`, shipped as `cli.js` in the bundle) turns `clowdy thread <command> --flag value` into a call by the tool's schema. Skills and prompts teach it (`clowdy:orchestrate` fan-out through threads, a thread's own intro). A real check with Claude Code, Codex and Cursor shows whether each reaches the daemon.
 
-- [ ] Complete
-  - [ ] Bridge: CLI tools per session, not listed over MCP, env for the agent process
-  - [ ] Shim written at start (`bin/clowdy`, `.cmd`), bundle entry `cli.js`
-  - [ ] CLI: schema-driven flags, `--json`, `--prompt-file`, stdin, exit codes, `--help`
-  - [ ] Skills `orchestrate`, `autopilot`, `semi-manual`, `scaffold` use threads; `thread` intro in the system prompt of a thread's run; vocabulary test covers `clowdy thread` commands
-  - [ ] Real check: Claude Code, Codex, Cursor call `clowdy thread list` from their shell, results recorded under `.briefback/threads/research/`
+- [x] Complete
+  - [x] Bridge: CLI tools per session, not listed over MCP, env for the agent process
+  - [x] Shim written at start (`bin/clowdy`, `.cmd`), bundle entry `cli.js`
+  - [x] CLI: schema-driven flags, `--json`, `--prompt-file`, stdin, exit codes, `--help`
+  - [x] Skills `orchestrate`, `autopilot`, `semi-manual`, `scaffold` use threads; `thread` intro in the system prompt of a thread's run; vocabulary test covers `clowdy thread` commands
+  - [x] Real check: Claude Code, Codex, Cursor call `clowdy thread list` from their shell, results recorded under `.briefback/threads/research/`
 
 **Files**
 
@@ -138,7 +141,11 @@ Carried to later stages: restore `describeItem` (the old `run_inspect` line form
 
 **Done when:** a test starts the CLI against a real daemon harness and spawns, tells, waits and reads a thread with the fake engine, and the real check says which agents reach the daemon.
 **Verify:** `cd apps/daemon && bun test && bun run typecheck && bun run lint`, then the real check by hand
-**Commits:** None yet.
+**Commits:**
+
+- (same commit as Stage 3.) Review of Stage 4 found and fixed: `thread wait` died after five minutes of silence (Bun's fetch idle limit; `timeout: false`), wording of steer and notices in the skills, the vocabulary test did not check options in their own code span. Beyond the plan: `ask_user` over MCP had the same five-minute limit (fixed); `thread wait` defaults to 90 s, under an agent shell's 120 s; the real check below.
+
+Real check with a scratch daemon and the real adapters (`.briefback/threads/research/cli-reach.md`): Claude Code and Cursor spawn, are woken by the notice, and Claude Code is woken again when the thread's background command ends; Codex's sandbox refuses loopback (`EPERM`, exit 4), so the command's error and the system prompt tell it to run the command again with escalated permissions, which works. A Codex session setting cannot open the sandbox in `codex-acp` 2.6.0.
 
 ## Stage 5 — Threads in the desktop
 
