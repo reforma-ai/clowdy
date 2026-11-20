@@ -4,7 +4,7 @@
  * (`buildOtaBundle`, published by `publish-ota.ts`) is all three in one folder, packed into `bundle-<version>.tar.gz`:
  *
  *   renderer/                             the renderer, served from `app://clowdy`
- *   daemon/main.js, daemon/mcp-stdio.js   the daemon, run by the Bun the shell ships (`bun-runtime.ts`)
+ *   daemon/main.js, mcp-stdio.js, clowdy.js   the daemon and the two programs an agent starts, run by the Bun the shell ships (`bun-runtime.ts`)
  *   system-skills/                        the system skills plugin: `.claude-plugin/plugin.json` and `skills/`
  *
  * Its version is the number of first-parent commits on the branch it was built from: it grows with every commit on

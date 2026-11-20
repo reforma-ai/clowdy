@@ -1,6 +1,6 @@
 # Verification
 
-Load this when you verify: the integrated result of a cycle, a foundation task that others wait on, or a small change (compact steps at the end).
+Load this when you verify: the integrated result of a cycle, a foundation task that others wait on, or a small change (compact steps at the end). A thread you started to check the work follows the same steps.
 
 You wrote or integrated the work, so your claim that it works is a hypothesis. It earns a pass only with commands you ran in this turn. Take an adversarial stance toward your own result: your job is to find what is wrong with it.
 
@@ -12,6 +12,7 @@ Rules that always apply:
 - A failure goes back into the task with a concrete reason. An external blocker is `blocked`, never pass.
 - Never put secrets or raw logs in a document.
 - A read-only sub-agent may review the diff cold or probe a flow. Its findings are leads; the verdict rests on what you ran.
+- For a user flow or a risky change, a fresh thread may run these steps for you ([threads](threads.md), "Check what a thread built"): give it the claim, the acceptance criteria and where the result is, never the author's reasoning. Its check report, with the commands and their output, is evidence; its "passed" without them is not.
 
 ## Steps
 

@@ -56,7 +56,7 @@ export function makeRepo(parent: string, name = 'repo'): string {
 }
 
 /** Delays of the runtime shrunk for tests. */
-export const SHORT_TIMINGS = { killGraceMs: 150, retryBaseMs: 10, pauseJitterMs: 0 };
+export const SHORT_TIMINGS = { killGraceMs: 150, retryBaseMs: 10, pauseJitterMs: 0, noticeWindowMs: 30 };
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
     const root = tempDir();

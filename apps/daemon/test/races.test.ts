@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 
 import { getRunWork } from '../src/db/runs';
 import { isAlive } from '../src/runs/processes';
-import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, untilAborted, waitFor } from './helpers';
+import { cleanTempDirs, latch, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, untilAborted, waitFor } from './helpers';
 
 import type { Harness, Script } from './helpers';
 
@@ -138,7 +138,7 @@ describe('cancelling', () => {
             }
 
             yield { type: 'done', result: 'ok' };
-        }, { timings: { killGraceMs: 200, retryBaseMs: 10, pauseJitterMs: 0 } });
+        }, { timings: { ...SHORT_TIMINGS, killGraceMs: 200 } });
         const { chat } = h.ok('chat.create', { projectId: project.id });
         const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'first' });
 

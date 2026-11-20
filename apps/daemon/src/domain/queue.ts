@@ -33,7 +33,12 @@ export function settleSteers(queue: readonly QueuedMessage[]): QueuedMessage[] {
     return queue.map(item => (item.mode === 'steer' ? { ...item, mode: 'queue' } : item));
 }
 
-/** The stream's `user` item of a queued message, written when the agent gets it; it says who wrote the message when the person did not. */
+/**
+ * The stream's `user` item of a queued message, written when the agent gets it; it says who wrote the message when the person did not. A notice of
+ * threads that stopped has no words of its own (its `text` is the queue's one line): the stream draws it from `from`, as when it went out at once.
+ */
 export function userItemOf(item: QueuedMessage): StreamItemBody {
-    return { kind: 'user', text: item.text, ...(item.attachments?.length && { attachments: item.attachments }), ...(item.from && { from: item.from }) };
+    const text = item.from?.kind === 'threadNotice' ? '' : item.text;
+
+    return { kind: 'user', text, ...(item.attachments?.length && { attachments: item.attachments }), ...(item.from && { from: item.from }) };
 }

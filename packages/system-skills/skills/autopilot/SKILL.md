@@ -68,10 +68,11 @@ A blocker is never a reason to stop everything. Order of action:
 2. Make the blocker visible on the task with `task_update`: what is needed, from whom, what unblocks it. Put it at the top of the description. There is no blocked column, so do not invent a status.
 3. Say it in the final report. Never report blocked work as done, and never guess past a blocker.
 
-## 6. Sub-agents
+## 6. Sub-agents and threads
 
-- Decide every fork that more than one piece of work depends on before you hand any out, and write the records first. Put `Mode: autopilot` and the record paths in the prompt of each engine sub-agent, because they do not see this skill. Sub-agents do not write records: they return a significant fork in their answer, and you decide.
-- A sub-agent that fails or answers off target is a fork too: retry once with the failure reason in the prompt (everyday), do it yourself or change the approach (significant when it changes scope or cost), or finish with a failure report. Never ignore it.
+- Decide every fork that more than one piece of work depends on before you hand any out, and write the records first. Put `Mode: autopilot` and the record paths in the prompt of each engine sub-agent and the brief of each thread, because they do not see your conversation. Sub-agents do not write records: they return a significant fork in their answer, and you decide. A thread decides the forks inside its own brief and records them; a fork that binds other pieces comes back to you in its report, and you decide it before the others build on it.
+- A sub-agent or thread that fails or answers off target is a fork too: retry once with the failure reason in the prompt, or in a `clowdy thread tell` to the thread (everyday), do it yourself or change the approach (significant when it changes scope or cost), or finish with a failure report. Never ignore it.
+- While threads work, end your turn: the daemon wakes you with each report. Ending a turn while threads run is not stopping; your cycle ends only as section 7 says.
 
 ## 7. Stop and report
 
@@ -81,7 +82,7 @@ Stop when one of these is true:
 - Everything left is blocked, or out of scope and filed as follow-up tasks.
 - The third attempt at the same thing failed. Change the approach once and record the change when it is significant. If the new approach fails too, stop and report failed with the concrete reason.
 
-Do not stop to ask whether to continue, to post progress, or to confirm a choice the records already settle.
+Do not stop to ask whether to continue, to post progress, or to confirm a choice the records already settle. Do not report the cycle as finished while threads of it still work.
 
 The final report is for a manager: what changed and why, not how. Use the report format of clowdy:orchestrate and add the line `Decided for you:` with each significant decision in plain words, the reason in a few words, and the record's path under the docs folder. Blockers, risks and follow-up tasks go under `Open`.
 

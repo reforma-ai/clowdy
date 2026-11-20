@@ -82,7 +82,7 @@ export async function runMcpBridge(io: McpBridgeIo): Promise<void> {
                 calls.set(id, controller);
 
                 try {
-                    const response = await io.fetch(`${ base }/call`, { method: 'POST', headers, body: JSON.stringify({ name: params.name, arguments: params.arguments }), signal: controller.signal });
+                    const response = await io.fetch(`${ base }/call`, { method: 'POST', headers, body: JSON.stringify({ name: params.name, arguments: params.arguments }), signal: controller.signal, timeout: false });
 
                     if (!response.ok) {
                         fail(id, -32603, `The daemon refused the call (${ response.status })`);

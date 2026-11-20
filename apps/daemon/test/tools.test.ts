@@ -57,7 +57,7 @@ describe('the tool vocabulary', () => {
     test('an orchestrator has the task tools, the thread tools, and ask_user only in semi-manual', async () => {
         const { orchestrator, toolsOf } = await setup();
         const names = (run: Run) => toolsOf(run).map(tool => tool.name);
-        const threads = ['thread_spawn', 'thread_tell', 'thread_stop', 'thread_output', 'thread_log', 'thread_list'];
+        const threads = ['thread_spawn', 'thread_tell', 'thread_stop', 'thread_wait', 'thread_output', 'thread_log', 'thread_list'];
 
         expect(names(orchestrator)).toEqual(['task_get', 'task_list', 'task_create', 'task_update', ...threads]);
 

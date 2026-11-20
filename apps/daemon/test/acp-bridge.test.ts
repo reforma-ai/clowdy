@@ -10,7 +10,7 @@ afterEach(() => bridge.stop());
 
 /** Runs the MCP server over an in-memory pipe: `send` writes a line to it, `received` is what it wrote back. */
 function pipe(access: ReturnType<ToolBridge['register']>) {
-    const env = Object.fromEntries(access.server.env.map(({ name, value }) => [name, value]));
+    const env = Object.fromEntries((access.server?.env ?? []).map(({ name, value }) => [name, value]));
     const lines: string[] = [];
     let push: (line: string) => void = () => undefined;
     let end: () => void = () => undefined;
@@ -120,8 +120,8 @@ describe('the MCP server an agent starts', () => {
 describe('the bridge listener', () => {
     test('refuses a caller without the session\'s token, and stops answering when the session ends', async () => {
         const access = bridge.register([tool('echo', async () => 'hi')], new AbortController().signal);
-        const url = access.server.env.find(entry => entry.name === 'CLOWDY_BRIDGE_URL')?.value as string;
-        const token = access.server.env.find(entry => entry.name === 'CLOWDY_BRIDGE_TOKEN')?.value as string;
+        const url = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_URL')?.value as string;
+        const token = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_TOKEN')?.value as string;
         const headers = { authorization: `Bearer ${ token }` };
 
         expect((await fetch(`${ url }/tools`)).status).toBe(401);
@@ -135,8 +135,8 @@ describe('the bridge listener', () => {
 
     test('a call without a usable body is refused as a bad request', async () => {
         const access = bridge.register([tool('echo', async () => 'hi')], new AbortController().signal);
-        const url = access.server.env.find(entry => entry.name === 'CLOWDY_BRIDGE_URL')?.value as string;
-        const token = access.server.env.find(entry => entry.name === 'CLOWDY_BRIDGE_TOKEN')?.value as string;
+        const url = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_URL')?.value as string;
+        const token = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_TOKEN')?.value as string;
         const post = (body?: string) => fetch(`${ url }/call`, { method: 'POST', headers: { authorization: `Bearer ${ token }` }, body });
 
         expect((await post()).status).toBe(400);
@@ -156,8 +156,8 @@ describe('the bridge listener', () => {
                 reject(new Error('session over'));
             });
         }))], new AbortController().signal);
-        const url = access.server.env.find(entry => entry.name === 'CLOWDY_BRIDGE_URL')?.value as string;
-        const token = access.server.env.find(entry => entry.name === 'CLOWDY_BRIDGE_TOKEN')?.value as string;
+        const url = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_URL')?.value as string;
+        const token = access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_TOKEN')?.value as string;
         const call = fetch(`${ url }/call`, { method: 'POST', headers: { authorization: `Bearer ${ token }` }, body: '{"name":"slow"}' });
 
         await until(() => entered, 'the call to reach the tool');
@@ -188,5 +188,61 @@ describe('the bridge listener', () => {
 
         expect(aborted).toBe(true);
         expect(mcp.received()[0].result).toEqual({ content: [{ type: 'text', text: 'run cancelled' }], isError: true });
+    });
+});
+
+describe('the shell commands of a session', () => {
+    /** A tool that is also a shell command (`ToolDefinition.cli`). */
+    const command = (name: string, positional?: string[]) => ({ ...tool(name, async input => ({ ran: name, input })), cli: positional ? { positional } : {} });
+
+    test('are left out of the MCP list, listed for the CLI with their positional fields, and run by the same call with the same credential', async () => {
+        const access = bridge.register([tool('task_list', async () => 'tasks'), command('thread_tell', ['thread', 'message']), command('thread_list')], new AbortController().signal);
+        const mcp = pipe(access);
+
+        mcp.send({ id: 1, method: 'tools/list' });
+        await until(() => mcp.received().length === 1, 'the MCP list');
+        await mcp.finish();
+
+        expect(mcp.received()[0].result.tools.map((entry: { name: string }) => entry.name)).toEqual(['task_list']);
+
+        const { url, auth } = access.cli as { url: string; auth: string };
+        const headers = { authorization: `Bearer ${ auth }` };
+
+        // The CLI's credential is the session's one token, on the same listener.
+        expect(url).toBe(access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_URL')?.value as string);
+        expect(auth).toBe(access.server?.env.find(entry => entry.name === 'CLOWDY_BRIDGE_TOKEN')?.value as string);
+        expect(await (await fetch(`${ url }/cli/tools`, { headers })).json()).toEqual({
+            tools: [
+                { name: 'thread_tell', description: 'The thread_tell tool', inputSchema: { type: 'object', properties: {} }, positional: ['thread', 'message'] },
+                { name: 'thread_list', description: 'The thread_list tool', inputSchema: { type: 'object', properties: {} }, positional: [] },
+            ],
+        });
+
+        const call = async (name: string) => (await fetch(`${ url }/call`, { method: 'POST', headers, body: JSON.stringify({ name, arguments: { a: 1 } }) })).json();
+
+        expect(await call('thread_tell')).toEqual({ isError: false, text: '{"ran":"thread_tell","input":{"a":1}}' });
+        expect(await call('task_list')).toEqual({ isError: false, text: 'tasks' });
+    });
+
+    test('a session of shell commands only names no MCP server, one without them gets no CLI access, and the CLI listing needs the credential', async () => {
+        const commands = bridge.register([command('thread_list')], new AbortController().signal);
+        const tools = bridge.register([tool('task_list', async () => 'tasks')], new AbortController().signal);
+
+        expect(commands.server).toBeUndefined();
+        expect(commands.cli).toEqual({ url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+$/), auth: expect.stringMatching(/^[0-9a-f]{64}$/) });
+        expect(tools.server).toBeDefined();
+        expect(tools.cli).toBeUndefined();
+
+        const { url, auth } = commands.cli as { url: string; auth: string };
+
+        expect((await fetch(`${ url }/cli/tools`)).status).toBe(401);
+        expect((await fetch(`${ url }/cli/tools`, { headers: { authorization: 'Bearer wrong' } })).status).toBe(401);
+        expect((await fetch(`${ url }/tools`, { headers: { authorization: `Bearer ${ auth }` } })).status).toBe(200);
+        expect(await (await fetch(`${ url }/tools`, { headers: { authorization: `Bearer ${ auth }` } })).json()).toEqual({ tools: [] });
+
+        commands.dispose();
+
+        expect((await fetch(`${ url }/cli/tools`, { headers: { authorization: `Bearer ${ auth }` } })).status).toBe(401);
+        expect((await fetch(`${ url }/call`, { method: 'POST', headers: { authorization: `Bearer ${ auth }` }, body: '{"name":"thread_list"}' })).status).toBe(401);
     });
 });

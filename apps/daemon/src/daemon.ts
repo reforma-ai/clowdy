@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import pkg from '../package.json';
 import { AttachmentsService } from './attachments/service';
+import { installShimOrWarn } from './cli/shim';
 import { openDatabase } from './db/connection';
 import { listProjects } from './db/projects';
 import { DocsService } from './docs/service';
@@ -17,6 +18,7 @@ import { announceAgentsChanged } from './providers/announce';
 import { ModelCatalog } from './providers/models';
 import { ProvidersService } from './providers/service';
 import { RunDriver } from './runs/driver';
+import { ThreadNotices } from './runs/notices';
 import { ChatQueue } from './runs/queue';
 import { RunService } from './runs/service';
 import { ThreadService } from './runs/threads';
@@ -66,7 +68,9 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         // Before the engines: runs read `config.systemSkillsDir` when they start.
         const skills = new SkillsService(store, config);
         const agents = options.agents ?? new AgentRegistry({ dataDir: config.dataDir });
-        const created = options.engines ? undefined : createEngines(config, agents);
+        // Before the engines: the agents of sessions with shell commands get the `clowdy` command on their `PATH`.
+        const shim = installShimOrWarn(config.dataDir);
+        const created = options.engines ? undefined : createEngines(config, agents, process.env, shim);
         const engines = options.engines ?? created as EngineRegistry;
 
         if (!engines.has(config.engine)) {
@@ -80,7 +84,9 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         const attachments = new AttachmentsService(store, config.dataDir);
         // Before the recovery: a turn the restart interrupted holds its chat's queue.
         const queue = new ChatQueue({ store, runs, driver, attachments });
-        const threads = new ThreadService({ store, config, runs, driver, queue, attachments, agents });
+        // After the queue, whose status hook it extends, and before the recovery, whose interrupted threads it tells their parents of.
+        const notices = new ThreadNotices({ store, config, runs, driver, queue, attachments, agents });
+        const threads = new ThreadService({ store, config, runs, driver, queue, attachments, agents, notices });
         const providers = options.providers ?? new ProvidersService({
             registry: agents,
             announce: () => announceAgentsChanged(store),
@@ -99,6 +105,8 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         let stopping: Promise<void> | undefined;
 
         const stop = () => stopping ??= (async () => {
+            // Notices still in their window are lost: their timers must not write to a store that is closing.
+            notices.stop();
             await server.stop(true);
             await driver.stop();
             created?.stop();

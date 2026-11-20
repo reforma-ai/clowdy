@@ -7,13 +7,13 @@ The reason: the manager is using the running app while you change its source. Re
 ## Rules
 
 1. **Never replace files of the running build.** Do not edit, rebuild in place or delete the daemon and app sources the running instance uses, its build output, or its data directory. Do not stop, restart or kill the running app or daemon.
-2. **Work in a copy** outside the running checkout (a plain-git worktree or a clone), install dependencies there, and edit and run commands only by paths inside it. Every sub-agent of this cycle gets the copy's absolute path in its prompt.
+2. **Work in a copy** outside the running checkout (a plain-git worktree or a clone), install dependencies there, and edit and run commands only by paths inside it. Every sub-agent of this cycle gets the copy's absolute path in its prompt, and every thread is started in the copy (`--cwd <copy>`).
 3. **Build a candidate from the copy** with the project's build command (see AGENTS.md; the output must land inside the copy). Name it by the copy's folder and short commit.
 4. **Verify the candidate**, not the running app. If you start it, give it its own scratch data directory and port: two daemons must never share one database, and a candidate must never touch the manager's live data.
 5. **Do not merge into the running checkout** unless the manager asks. Leave the work in the copy and say so.
 6. **Say when stored data changes.** A migration or a changed schema means: back up first, and the old version may not read the new data.
 
-Sub-agents work as usual inside the copy: disjoint file ownership, the copy's path in each prompt.
+Sub-agents and threads work as usual inside the copy: disjoint file ownership, the copy's path in each prompt and brief.
 
 ## Handing over
 

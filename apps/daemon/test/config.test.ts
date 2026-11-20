@@ -40,6 +40,14 @@ describe('config', () => {
         expect(() => loadConfig({ CLOWDY_MAX_THREADS: 'many' })).toThrow(/CLOWDY_MAX_THREADS/);
     });
 
+    test('a parent hears of its threads that stopped 2 s after the first one, unless the environment says otherwise; the other timings keep their defaults', () => {
+        expect(loadConfig({}, 'linux').timings).toEqual({ killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000, noticeWindowMs: 2000 });
+        expect(loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '0' }, 'linux').timings.noticeWindowMs).toBe(0);
+        expect(loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '500' }, 'linux').timings).toMatchObject({ noticeWindowMs: 500, killGraceMs: 5000 });
+        expect(() => loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '-1' })).toThrow(/CLOWDY_THREAD_NOTICE_WINDOW_MS/);
+        expect(() => loadConfig({ CLOWDY_THREAD_NOTICE_WINDOW_MS: '1.5' })).toThrow(/CLOWDY_THREAD_NOTICE_WINDOW_MS/);
+    });
+
     test('environment variables override the defaults', () => {
         expect(loadConfig({
             CLOWDY_DATA_DIR: '/data',

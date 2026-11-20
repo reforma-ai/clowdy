@@ -3,11 +3,13 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { getChat } from '../src/db/chats';
 import { infoPath, lockPath } from '../src/instance';
 import { firstMessage, skillPrompt, systemPrompt, taskMessage } from '../src/runs/prompts';
+import { toolsFor } from '../src/runs/tools';
 import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, tempDir, untilAborted, waitFor } from './helpers';
 
-import type { Project, Task } from '@clowdy/protocol';
+import type { Chat, Project, Task } from '@clowdy/protocol';
 import type { Harness, Script } from './helpers';
 
 afterAll(cleanTempDirs);
@@ -194,6 +196,73 @@ describe('the prompts of a run', () => {
         expect(skillPrompt(empty)).not.toContain('<skill');
         expect(skillPrompt(empty)).toContain('System skills are plain files');
         expect(skillPrompt(undefined)).toBe('');
+    });
+
+    test('a run of a chat is told about threads and the command, and a thread\'s run whose thread it is, how to report and whom it may write to', () => {
+        const parent = { id: 'cht_parent', title: 'Plan the release' };
+        const none = systemPrompt('autopilot', project);
+        const chat = systemPrompt('autopilot', project, undefined, {});
+        const thread = systemPrompt('autopilot', project, undefined, { parent });
+
+        // A run without a chat has no thread commands.
+        expect(none).not.toContain('clowdy thread');
+
+        expect(chat).toContain('Threads: you can hand work to other agents as threads');
+        expect(chat).toContain('`clowdy thread --help`');
+        expect(chat).toContain('`"$CLOWDY_CLI"` is the same command if your shell does not find `clowdy`');
+        expect(chat).toContain('if a sandboxed shell refuses it (`EPERM`), run the same command again with escalated permissions, outside the sandbox');
+        expect(chat).toContain('Delegate only when the person asked for it or the work really splits');
+        expect(chat).toContain('self-contained brief');
+        expect(chat).toContain('Its last message of a turn is its report');
+        expect(chat).toContain('never poll');
+        expect(chat).toContain('Never send a thread acknowledgements or thanks');
+        expect(chat).not.toContain('This chat is a thread');
+        expect(chat.length).toBeLessThan(1600);
+
+        expect(thread).toContain('This chat is a thread: the chat "Plan the release" (cht_parent) started it, and the first message is your assignment from that chat.');
+        expect(thread).toContain('Your last message of each turn is your report to it, delivered when you stop: the verdict first');
+        expect(thread).toContain('`clowdy thread tell cht_parent "<question>"` only when you are blocked');
+        expect(thread).toContain('Write to no other chat unless your assignment says so');
+        expect(thread).toContain('threads of your own while the depth limit allows');
+        expect(thread).toContain('Follow clowdy:thread');
+        expect(thread).toContain('Threads: you can hand work');
+        expect(thread.length).toBeLessThan(2300);
+    });
+
+    test('a thread\'s run starts from the thread skill too', () => {
+        const dir = tempDir();
+
+        for (const [name, body] of [['orchestrate', 'Read the request first.'], ['thread', 'Report to your parent.']]) {
+            mkdirSync(join(dir, 'skills', name), { recursive: true });
+            writeFileSync(join(dir, 'skills', name, 'SKILL.md'), `---\nname: ${ name }\ndescription: The ${ name } skill\n---\n\n${ body }\n`);
+        }
+
+        expect(skillPrompt(dir)).not.toContain('clowdy:thread');
+        expect(skillPrompt(dir, true)).toContain('The skills you start from are below');
+        expect(skillPrompt(dir, true)).toContain('<skill name="clowdy:orchestrate">\nRead the request first.\n</skill>\n\n<skill name="clowdy:thread">\nReport to your parent.\n</skill>');
+    });
+
+    test('every turn of a thread is told whose thread it is, with the thread skill, and its parent only about threads', async () => {
+        const { h, engine, project: opened } = await setup();
+        const { store, runs, threads } = h.daemon.services;
+        const { chat } = h.ok('chat.create', { projectId: opened.id, title: 'Plan the release' }) as { chat: Chat };
+
+        h.ok('chat.send', { chatId: chat.id, text: 'Hello' });
+        await waitFor(() => engine.turns.length === 1, 'the parent to start');
+
+        const parent = runs.require(getChat(store.db, chat.id)?.orchestratorRunId as string);
+        const spawn = toolsFor({ store, runs, threads }, parent, 'autopilot').find(candidate => candidate.name === 'thread_spawn');
+
+        await spawn?.execute({ prompt: 'Look into the cache' }, new AbortController().signal);
+        await waitFor(() => engine.turns.length === 2, 'the thread to start');
+
+        expect(engine.turns[0].systemPrompt).toContain('Threads: you can hand work');
+        expect(engine.turns[0].systemPrompt).not.toContain('This chat is a thread');
+        expect(engine.turns[0].systemPrompt).not.toContain('<skill name="clowdy:thread">');
+        expect(engine.turns[1].systemPrompt).toContain(`This chat is a thread: the chat "Plan the release" (${ chat.id }) started it`);
+        expect(engine.turns[1].systemPrompt).toContain(`clowdy thread tell ${ chat.id }`);
+        expect(engine.turns[1].systemPrompt).toContain('<skill name="clowdy:orchestrate">');
+        expect(engine.turns[1].systemPrompt).toContain('<skill name="clowdy:thread">');
     });
 
     test('a task becomes the first message of its chat', () => {

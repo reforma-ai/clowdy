@@ -1,6 +1,7 @@
 import { isTerminalRunStatus, mainFolder, STOPPED_TOOL } from '@clowdy/protocol';
 import { statSync } from 'node:fs';
 
+import { getChat } from '../db/chats';
 import { listItems, nextSeq } from '../db/items';
 import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } from '../db/runs';
 import { appendItem } from '../domain/items';
@@ -10,6 +11,7 @@ import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './lim
 import { NativeAgents } from './native';
 import { describeProcess, killSurvivor } from './processes';
 import { BACKGROUND_KINDS, CONTINUE_MESSAGE, lostBackgroundMessage, namedTitle, skillPrompt, systemPrompt } from './prompts';
+import { lastTurnText } from './threads';
 import { sessionTitle } from './titles';
 import { ASK_USER } from './tools';
 import { BACKGROUND_REASON, STOPPED_TO_SEND_REASON } from './transitions';
@@ -21,6 +23,7 @@ import type { RunWork } from '../db/runs';
 import type { EngineRegistry, EngineSession, ToolDefinition } from '../engine/types';
 import type { Store } from '../store';
 import type { LimitSignal } from './limits';
+import type { PromptChat } from './prompts';
 import type { RunService } from './service';
 
 /** A run that fails this many times in a row on passing engine errors (overload, rate limit) is failed for good. */
@@ -74,6 +77,11 @@ interface LiveRun {
     restart?: boolean;
     /** Whether this session counts toward `maxProcesses`: it does not while the run waits for background work. */
     counted?: boolean;
+    /**
+     * The session's latest `done` went through `turnEnded`: whether background work was still open then, and the stream's last item at that moment, after
+     * which a turn the agent starts by itself says its own words.
+     */
+    told?: { open: boolean; seq: number };
 }
 
 /** Why a turn has to be repeated after a wait. */
@@ -103,6 +111,19 @@ function additionalFolders(project: Project, cwd: string): string[] {
     return project.folders.flatMap(folder => folder.path !== cwd && isFolder(folder.path) ? [folder.path] : []);
 }
 
+/** What the system prompt says about a run's chat: none for a run without one, the parent's id and title for a thread (`Chat.parentChatId`). */
+function promptChat(store: Store, run: Run): PromptChat | undefined {
+    const chat = run.chatId ? getChat(store.db, run.chatId) : undefined;
+
+    if (!chat) {
+        return undefined;
+    }
+
+    const parent = chat.parentChatId ? getChat(store.db, chat.parentChatId) : undefined;
+
+    return chat.parentChatId ? { parent: { id: chat.parentChatId, title: parent?.title ?? chat.parentChatId } } : {};
+}
+
 const firstLine = (text: string) => text.split('\n')[0].trim().slice(0, 300);
 
 /**
@@ -113,6 +134,13 @@ const firstLine = (text: string) => text.split('\n')[0].trim().slice(0, 300);
 export class RunDriver {
     /** Called once a turn's engine session has started, with the run's id: messages steered while the run had no session can go to it now. */
     onTurnStarted: (runId: string) => void = () => undefined;
+    /**
+     * Called after the commit in which a turn of a chat's orchestrator ended at a `done` and left the run `succeeded` or `waiting_background` (also a turn
+     * the agent started by itself while its session waits), with the run as that commit left it and the turn's final text (see `turnEnded`). A Stop, a
+     * failure, a turn ended to send a message and a compact turn are not turn ends here, and neither is one with nothing to tell: no text, nothing open,
+     * and no earlier word that work was still open.
+     */
+    onTurnEnd: (run: Run, text: string | undefined) => void = () => undefined;
     private live = new Map<string, LiveRun>();
     /** The last flight of each run. A new one starts behind it, so a run never has two turns at once. */
     private flights = new Map<string, Promise<void>>();
@@ -410,15 +438,17 @@ export class RunDriver {
         live.delivery = undefined;
         live.restart = false;
         live.interrupted = false;
+        live.told = undefined;
 
         // The message this turn sends is in the stream already; the record leaves it out, as the agent gets it in the prompt.
         const incoming = [prompt];
         const cwd = work.cwd ?? mainFolder(project).path;
+        const chat = promptChat(store, run);
         const session = engine.start({
             cwd,
             additionalDirectories: additionalFolders(project, cwd),
             prompt,
-            systemPrompt: [systemPrompt(mode, project, cwd), skillPrompt(config.systemSkillsDir)].filter(Boolean).join('\n\n'),
+            systemPrompt: [systemPrompt(mode, project, cwd, chat), skillPrompt(config.systemSkillsDir, chat?.parent !== undefined)].filter(Boolean).join('\n\n'),
             resumeSessionId: run.sessionId,
             ...(run.sessionId && { history: () => conversationRecord(listItems(store.db, runId, 0).filter(item => item.seq <= told), incoming) }),
             model: run.model,
@@ -638,6 +668,8 @@ export class RunDriver {
 
         live.prompt = prompt;
         live.delivering = false;
+        // The answer to this message is a turn end of its own, whatever the turns before it told.
+        live.told = undefined;
         store.tx(() => setRunWork(store.db, runId, { nextPrompt: null, ...(lost && { lostBackground: null }) }));
         this.onTurnStarted(runId);
     }
@@ -829,6 +861,13 @@ export class RunDriver {
             writer.finish(undefined, this.openTasks(live));
             native.finish(undefined, true);
 
+            // The run waits on as it was, and the turn has ended all the same; a Stop that ended the run meanwhile made it no turn end.
+            const current = this.deps.runs.require(run.id);
+
+            if (current.status === 'waiting_background') {
+                this.turnEnded(current, live, result);
+            }
+
             return true;
         }
 
@@ -953,15 +992,47 @@ export class RunDriver {
             }
 
             if (lingers) {
-                runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
+                this.turnEnded(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON }), live, result);
 
                 return true;
             }
 
-            runs.setStatus(runId, 'succeeded', { result });
+            const { told } = live;
+            const run = runs.setStatus(runId, 'succeeded', { result });
+
+            // A session that ends after a `done` that was told already (it waited for background work) is no new turn end. It is told once more only when
+            // that `done` left work open, so the parent learns that no report is coming.
+            if (!told || told.open) {
+                this.turnEnded(run, live, result);
+            }
 
             return false;
         });
+    }
+
+    /**
+     * A turn of `run` ended at a `done` (`settle`, or `onDone` for a turn the agent started by itself): `onTurnEnd` hears of it once the transaction
+     * commits, with the turn's final text: the engine's result, else the turn's last message (`lastTurnText`, after the turn told before it in this
+     * session: a turn the agent started answers no message), read now, before the chat's queue can give the run its next message. A turn that says nothing
+     * and leaves nothing open has nothing to tell, unless the turn told before it left work open: the thread is done then, with no report. The agent's
+     * compact command only compacted the context: it is not told.
+     */
+    private turnEnded(run: Run, live: LiveRun, result: string | undefined): void {
+        const { store } = this.deps;
+
+        if (this.isCompactCommand(run.engine, live.prompt)) {
+            return;
+        }
+
+        const open = run.status === 'waiting_background' && (run.background?.length ?? 0) > 0;
+        const text = result?.trim() || lastTurnText(store.db, run.id, live.told?.seq);
+        const tells = text !== undefined || open || live.told?.open === true;
+
+        live.told = { open, seq: nextSeq(store.db, run.id) - 1 };
+
+        if (tells) {
+            store.afterCommit(() => this.onTurnEnd(run, text));
+        }
     }
 
     private fail(runId: string, error: unknown): void {

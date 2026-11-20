@@ -1,3 +1,8 @@
+import { delimiter } from 'node:path';
+
+import type { Shim } from '../../cli/shim';
+import type { CliAccess } from './bridge';
+
 type Env = Record<string, string | undefined>;
 
 /**
@@ -43,4 +48,23 @@ export function buildAgentEnv({ daemonEnv, path, scrub = [], set = {} }: AgentEn
     env.PATH = path;
 
     return { ...env, ...set };
+}
+
+/**
+ * The environment of an agent process whose session has shell commands (`clowdy`, see `cli/clowdy.ts`), after `buildAgentEnv`: where the CLI reaches
+ * the daemon, the session's credential, the command's absolute path, and its folder first on `PATH`. The names carry no `KEY`, `TOKEN` or `SECRET`,
+ * which Codex's default filter of a shell command's environment drops. Without commands or without a shim the environment stays as it is.
+ */
+export function withCli(env: Record<string, string>, cli: CliAccess | undefined, shim: Shim | undefined): Record<string, string> {
+    if (!cli || !shim) {
+        return env;
+    }
+
+    return {
+        ...env,
+        CLOWDY_CLI_URL: cli.url,
+        CLOWDY_CLI_AUTH: cli.auth,
+        CLOWDY_CLI: shim.command,
+        PATH: env.PATH ? `${ shim.dir }${ delimiter }${ env.PATH }` : shim.dir,
+    };
 }

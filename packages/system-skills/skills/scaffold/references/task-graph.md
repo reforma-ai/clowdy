@@ -63,8 +63,8 @@ CLW-5 Deployment script                      Owns: deploy/**
         Check: running it on a clean machine produces a build that starts and answers /health
 ```
 
-You build CLW-2 first. CLW-3 and CLW-5 own other paths, so sub-agents can build them meanwhile (CLW-3 against the fixtures). CLW-4 starts when CLW-2 is Done. When all four are Done, you walk the full milestone flow on the combined result (clowdy:orchestrate, Verify); a failure goes back to the owning task with the exact step that broke.
+You build CLW-2 first. CLW-3 and CLW-5 own other paths, so two threads build them meanwhile (`clowdy thread spawn --tasks CLW-3`, CLW-3 against the fixtures), started in one step. CLW-4 starts when CLW-2 is Done, as a thread or by you. When all four are Done, you walk the full milestone flow on the combined result (clowdy:orchestrate, Verify); a failure goes back to the owning task with the exact step that broke.
 
 ## Replanning
 
-Slices reveal facts. When one does (a missing table, a wrong contract, a slice that is bigger than thought), stop the affected sub-agents, fix `architecture.md` Contracts first, then replan as in clowdy:orchestrate. Do not let two slices keep building against different versions of a contract.
+Slices reveal facts. When one does (a missing table, a wrong contract, a slice that is bigger than thought), stop the affected threads (`clowdy thread stop`) and sub-agents, fix `architecture.md` Contracts first, tell the threads that go on what changed (`clowdy thread tell`), then replan as in clowdy:orchestrate. Do not let two slices keep building against different versions of a contract.

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { getRunWork } from '../src/db/runs';
 import { processesBelow, spawnInOwnGroup } from '../src/engine/process';
 import { isAlive, killSurvivor, startTimeOf } from '../src/runs/processes';
-import { cleanTempDirs, restartHarness, ScriptEngine, scriptEngines, startHarness, tempDir, untilAborted, waitFor } from './helpers';
+import { cleanTempDirs, restartHarness, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, tempDir, untilAborted, waitFor } from './helpers';
 
 import type { Harness } from './helpers';
 
@@ -56,7 +56,7 @@ describe('cancelling a run whose engine does not stop', () => {
             await new Promise(() => undefined);
             yield { type: 'done', result: String(options.prompt.length) };
         });
-        const h = await startHarness({ timings: { killGraceMs: 300, retryBaseMs: 10, pauseJitterMs: 0 } }, { engines: scriptEngines(engine) });
+        const h = await startHarness({ timings: { ...SHORT_TIMINGS, killGraceMs: 300 } }, { engines: scriptEngines(engine) });
 
         harnesses.push(h);
 
@@ -94,7 +94,7 @@ describe('cancelling a run whose engine does not stop', () => {
             yield { type: 'process', pid, pgid: pid };
             await untilAborted(signal);
         });
-        const h = await startHarness({ timings: { killGraceMs: 200, retryBaseMs: 10, pauseJitterMs: 0 } }, { engines: scriptEngines(engine) });
+        const h = await startHarness({ timings: { ...SHORT_TIMINGS, killGraceMs: 200 } }, { engines: scriptEngines(engine) });
 
         harnesses.push(h);
 

@@ -66,7 +66,8 @@ export function sendMessage(deps: MessageDeps, chatId: string, input: MessageInp
     const text = input.text.trim();
     const attachmentIds = input.attachmentIds ?? [];
 
-    if (!text && attachmentIds.length === 0) {
+    // A notice of threads that stopped has no words of its own: the stream draws it from `from`, and the agent reads `content`.
+    if (!text && attachmentIds.length === 0 && input.from?.kind !== 'threadNotice') {
         throw invalid('The message is empty');
     }
 

@@ -3,7 +3,7 @@
  *
  * Per skill folder `skills/<name>/SKILL.md`: front matter with `name` equal to the folder, a one-line `description`, only the
  * allowed keys, a body under the size cap, links that resolve, no orphaned `references/` files, no engine-specific syntax,
- * and no tool the agents do not have.
+ * no tool the agents do not have, and no `clowdy thread` command the daemon does not have.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -22,8 +22,21 @@ const TOOLS = new Set([
     'task_get',
     'ask_user',
 ]);
+/**
+ * The commands of `clowdy thread` an agent may be told to run in its shell. They are the daemon's thread tools marked as shell commands, which no skill
+ * names as tools (`thread_spawn` is caught below); `apps/daemon/test/skills-vocabulary.test.ts` checks this list against the daemon.
+ */
+const THREAD_COMMANDS = new Set([
+    'spawn',
+    'tell',
+    'stop',
+    'wait',
+    'output',
+    'log',
+    'list',
+]);
 /** A snake_case word that looks like a tool name but is not one of ours. */
-const TOOL_LIKE = /^(task|run|ask|report|spawn|wait|create|update|list|cancel|get|merge|git|worktree)_[a-z_]+$/;
+const TOOL_LIKE = /^(task|run|ask|report|thread|spawn|wait|create|update|list|cancel|get|merge|git|worktree)_[a-z_]+$/;
 const FORBIDDEN: Array<[RegExp, string]> = [
     [/mcp__/, 'name tools by their bare name, not `mcp__...`'],
     [/\$ARGUMENTS|\$\{CLAUDE_|!`/, 'Claude-only substitution syntax (Codex leaves it literal)'],
@@ -62,7 +75,7 @@ function linksOf(text: string): string[] {
     return [...prose.matchAll(/\]\((?!https?:|#)([^)\s]+)\)/g)].map(match => match[1].split('#')[0]);
 }
 
-/** Problems in text that an agent will read: invented tools and syntax the engines do not share. */
+/** Problems in text that an agent will read: invented tools and commands, and syntax the engines do not share. */
 function lintText(label: string, text: string) {
     for (const [pattern, reason] of FORBIDDEN) {
         if (pattern.test(text)) problems.push(`${ label }: ${ reason }`);
@@ -70,6 +83,10 @@ function lintText(label: string, text: string) {
 
     for (const match of text.matchAll(/`([a-z]+(?:_[a-z]+)+)(?:\(|`)/g)) {
         if (TOOL_LIKE.test(match[1]) && !TOOLS.has(match[1])) problems.push(`${ label }: \`${ match[1] }\` is not a Clowdy tool`);
+    }
+
+    for (const match of text.matchAll(/\bclowdy thread ([a-z][a-z-]*)/g)) {
+        if (!THREAD_COMMANDS.has(match[1])) problems.push(`${ label }: \`clowdy thread ${ match[1] }\` is not a command (${ [...THREAD_COMMANDS].join(', ') })`);
     }
 }
 

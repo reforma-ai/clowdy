@@ -12,7 +12,38 @@ import type { BackgroundItem, ChatMode, Project, Task } from '@clowdy/protocol';
  */
 const ENTRY_SKILL = 'orchestrate';
 
+/** The system skill a thread's orchestrator also has in its system prompt: how a thread takes its assignment and reports to its parent. */
+const THREAD_SKILL = 'thread';
+
 const INTRO = 'You are the orchestrator of a Clowdy chat. Follow clowdy:orchestrate; it names the other system skills (clowdy:autopilot, clowdy:semi-manual, clowdy:scaffold, clowdy:docs).';
+
+/** What every chat's orchestrator is told about threads; clowdy:orchestrate says how to delegate. */
+const THREADS = [
+    'Threads: you can hand work to other agents as threads, chats below yours that run alongside you, with the shell command `clowdy thread` (`clowdy thread --help` lists its commands; `"$CLOWDY_CLI"` is the same command if your shell does not find `clowdy`). It reaches the Clowdy daemon over a loopback connection: if a sandboxed shell refuses it (`EPERM`), run the same command again with escalated permissions, outside the sandbox.',
+    'Delegate only when the person asked for it or the work really splits into independent pieces. A thread does not see this conversation, so give it a self-contained brief.',
+    'Its last message of a turn is its report, which the daemon delivers to you as a message each time it stops: end your turn instead of waiting, and never poll. Never send a thread acknowledgements or thanks.',
+].join(' ');
+
+/** The chat a thread's orchestrator reports to. */
+export interface PromptParent {
+    id: string;
+    title: string;
+}
+
+/** What the system prompt says about the run's chat: present for every run of a chat, with the parent when the chat is a thread. */
+export interface PromptChat {
+    parent?: PromptParent;
+}
+
+/** What the orchestrator of a thread is told about its place: who started it, what its report is, and whom it may write to. */
+function threadIntro(parent: PromptParent): string {
+    return [
+        `This chat is a thread: the chat "${ parent.title }" (${ parent.id }) started it, and the first message is your assignment from that chat.`,
+        'Your last message of each turn is your report to it, delivered when you stop: the verdict first (done, partly done, failed or blocked), then the evidence (what you ran and saw), then what is left.',
+        `Ask your parent with \`clowdy thread tell ${ parent.id } "<question>"\` only when you are blocked. Write to no other chat unless your assignment says so. You may start threads of your own while the depth limit allows.`,
+        'Follow clowdy:thread as well.',
+    ].join(' ');
+}
 
 const modeLabel = (mode: ChatMode) => (mode === 'semi' ? 'semi-manual' : 'autopilot');
 
@@ -46,16 +77,18 @@ function projectFacts(project: Project, cwd: string): string {
 }
 
 /**
- * The system prompt: where the system skills are, the mode and the facts about the project. Everything else is in the skills. `cwd` is the folder
- * the run works in.
+ * The system prompt: where the system skills are, the mode, the facts about the project and, for a run of a chat, a paragraph on threads; a thread's
+ * run is also told whose thread it is. Everything else is in the skills. `cwd` is the folder the run works in.
  */
-export function systemPrompt(mode: ChatMode, project: Project, cwd = mainFolder(project).path): string {
+export function systemPrompt(mode: ChatMode, project: Project, cwd = mainFolder(project).path, chat?: PromptChat): string {
     return [
         'Clowdy is a desktop app where a person who manages software work chats with an orchestrator and watches tasks, agents and documents while agents do the engineering.',
         INTRO,
+        chat?.parent && threadIntro(chat.parent),
         `Mode: ${ modeLabel(mode) }.`,
         projectFacts(project, cwd),
-    ].join('\n');
+        chat && THREADS,
+    ].filter(Boolean).join('\n');
 }
 
 /**
@@ -72,20 +105,24 @@ function skillBody(skillsDir: string, name: string): string | undefined {
 }
 
 /**
- * The entry skill, in the system prompt, with where the other system skills are. No agent is asked to load a plugin: the skill it starts from is here,
- * and the rest are files it reads when that skill says to follow them.
+ * The entry skill, in the system prompt, with where the other system skills are, and for a thread's run the thread skill after it. No agent is asked to
+ * load a plugin: the skills it starts from are here, and the rest are files it reads when a skill says to follow them.
  */
-export function skillPrompt(skillsDir: string | undefined): string {
+export function skillPrompt(skillsDir: string | undefined, thread = false): string {
     if (!skillsDir) {
         return '';
     }
 
-    const body = skillBody(skillsDir, ENTRY_SKILL);
+    const blocks = (thread ? [ENTRY_SKILL, THREAD_SKILL] : [ENTRY_SKILL]).flatMap((name) => {
+        const body = skillBody(skillsDir, name);
+
+        return body ? [`<skill name="clowdy:${ name }">\n${ body }\n</skill>`] : [];
+    });
 
     return [
-        `System skills are plain files: \`clowdy:<name>\` is ${ join(skillsDir, 'skills', '<name>', 'SKILL.md') }, and a skill's references/ folder is beside its SKILL.md. The skill you start from is below; read any other one with your file tool when a skill tells you to follow it.`,
-        body && `<skill name="clowdy:${ ENTRY_SKILL }">\n${ body }\n</skill>`,
-    ].filter(Boolean).join('\n\n');
+        `System skills are plain files: \`clowdy:<name>\` is ${ join(skillsDir, 'skills', '<name>', 'SKILL.md') }, and a skill's references/ folder is beside its SKILL.md. The ${ thread ? 'skills you start from are' : 'skill you start from is' } below; read any other one with your file tool when a skill tells you to follow it.`,
+        ...blocks,
+    ].join('\n\n');
 }
 
 /** What every first message of a run starts with. */

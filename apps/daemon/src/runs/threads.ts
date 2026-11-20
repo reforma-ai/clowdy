@@ -20,6 +20,7 @@ import type { AgentRegistry } from '../engine/acp/registry';
 import type { Store } from '../store';
 import type { RunDriver } from './driver';
 import type { Delivery } from './messages';
+import type { ThreadNotices } from './notices';
 import type { ChatQueue } from './queue';
 import type { RunService } from './service';
 
@@ -71,10 +72,10 @@ export function clipOutput(text: string): string {
 /**
  * The final answer of the thread's latest turn: the last message its orchestrator said after the last `user` item (the message that turn answers), which
  * is what the engines report as a turn's result. What it said on the way (between its tool calls) is not part of it. `undefined` when it said nothing yet;
- * mid-turn it is the latest message so far.
+ * mid-turn it is the latest message so far. `after` leaves out what came before it too: a turn the agent started by itself answers no `user` item.
  */
-export function lastTurnText(db: Database, runId: string): string | undefined {
-    return listItems(db, runId, lastUserSeq(db, runId))
+export function lastTurnText(db: Database, runId: string, after = 0): string | undefined {
+    return listItems(db, runId, Math.max(lastUserSeq(db, runId), after))
         .flatMap(item => (item.body.kind === 'assistant' && item.body.text.trim() ? [item.body.text.trim()] : []))
         .at(-1);
 }
@@ -86,22 +87,21 @@ export function threadMessage(sender: Chat, text: string): string {
 
 const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
 
-/** Who wrote a `user` item: the person, another thread, or the daemon telling a parent that threads stopped. */
-function writerOf(from: MessageSource | undefined): string {
-    if (!from) {
-        return 'person';
-    }
-
-    return from.kind === 'thread' ? `thread "${ from.title }" (${ from.chatId })` : `notice of ${ from.threads.map(thread => `"${ thread.title }"`).join(', ') }`;
-}
-
 /** A stream item as one short line, for `thread_log`. */
 export function describeItem({ body }: StreamItem): string {
     switch (body.kind) {
         case 'user': {
+            const { from } = body;
+
+            // A notice of threads that stopped has no words of its own: the line says how each thread stopped.
+            if (from?.kind === 'threadNotice') {
+                return `notice: ${ from.threads.map(thread => `"${ thread.title }" ${ thread.outcome }`).join(', ') }`;
+            }
+
+            const writer = from ? `thread "${ from.title }" (${ from.chatId })` : 'person';
             const files = body.attachments?.length ? ` [files: ${ body.attachments.map(file => file.name).join(', ') }]` : '';
 
-            return `${ writerOf(body.from) }: ${ clip(oneLine(body.text), 300) }${ files }`;
+            return `${ writer }: ${ clip(oneLine(body.text), 300) }${ files }`;
         }
         case 'tool':
             return `tool ${ body.name } (${ body.state })${ body.error ? `: ${ clip(oneLine(body.error), 200) }` : '' }`;
@@ -120,7 +120,12 @@ export interface ThreadDeps {
     queue: ChatQueue;
     attachments: AttachmentsService;
     agents: AgentRegistry;
+    notices: ThreadNotices;
 }
+
+/** `thread_wait` waits this long unless asked for another time, and never longer than `MAX_WAIT_SECONDS`. */
+export const WAIT_SECONDS = 90;
+export const MAX_WAIT_SECONDS = 600;
 
 export interface SpawnInput {
     prompt: string;
@@ -186,7 +191,7 @@ export class ThreadService {
             const working = threads.filter(thread => !this.isOver(thread)).length;
 
             if (working >= config.maxActiveThreads) {
-                throw conflict(`This chat has ${ working } threads at work, the most it may have at once. Wait until one stops (you are told when it does), or stop one with thread_stop, then start the next.`);
+                throw conflict(`This chat has ${ working } threads at work, the most it may have at once; a thread whose turn is over counts while its background work runs. Start the next when one is done (you are told each time one stops), or stop one with thread_stop.`);
             }
 
             // The fake engine is for demos and tests: a model that picked it would report work nobody did.
@@ -290,21 +295,49 @@ export class ThreadService {
         });
     }
 
-    /** What a chat of the caller's tree said in its latest turn (clipped), how it stands, what it has open in the background, and why it failed. */
+    /**
+     * What a chat of the caller's tree said in its latest turn (clipped), how it stands, what it has open in the background, and why it failed. The caller
+     * that is the chat's parent has read the answer of the thread's latest stop when the thread rests where that stop left it (`idle`, `failed`,
+     * `interrupted`): the notice of it the parent has not been told yet is dropped (`ThreadNotices.consume`). A thread at work again, asking or stopped
+     * shows other words, so its notice stays, and anyone else's reading leaves the parent's notice alone.
+     */
     output(caller: Run, threadId: string) {
         const target = this.inTree(caller, threadId);
         const run = this.runOf(target);
+        const state = threadState(run);
         const text = run ? lastTurnText(this.deps.store.db, run.id) : undefined;
+
+        if (target.parentChatId !== undefined && target.parentChatId === caller.chatId && (state === 'idle' || state === 'failed' || state === 'interrupted')) {
+            this.deps.notices.consume(target.parentChatId, target.id);
+        }
 
         return {
             threadId: target.id,
             title: target.title,
-            state: threadState(run),
+            state,
             ...(run?.statusReason && { reason: run.statusReason }),
             text: text === undefined ? null : clipOutput(text),
             open: openOf(run),
             ...(run?.status === 'failed' && { error: run.error ?? 'It failed without saying why' }),
         };
+    }
+
+    /**
+     * Waits until a thread below the caller stops working (`threadState` other than `working`: its turn ended, it asks the person, failed, was stopped or
+     * interrupted), at most `timeoutSeconds`, then answers what `output` answers, with `timedOut`. A thread that is not working answers at once. The
+     * caller's turn waits meanwhile and keeps its slot. Its abort signal (the caller was stopped) ends the wait with an error.
+     */
+    async wait(caller: Run, input: { thread: string; timeoutSeconds?: number }, signal: AbortSignal) {
+        const target = this.thread(input.thread);
+
+        if (!isBelow(this.deps.store, this.callerChat(caller).id, target)) {
+            throw invalid(`"${ target.title }" (${ target.id }) is not below you. You can wait only for your own threads and theirs.`);
+        }
+
+        const run = this.runOf(target);
+        const timedOut = run !== undefined && threadState(run) === 'working' && !await this.untilRest(run.id, (input.timeoutSeconds ?? WAIT_SECONDS) * 1000, signal);
+
+        return { ...this.output(caller, target.id), timedOut };
     }
 
     /** The last `limit` lines of a chat of the caller's tree, oldest first, one short line each with its number in the stream. */
@@ -327,6 +360,42 @@ export class ThreadService {
     }
 
     /* --------------------------------- Helpers -------------------------------- */
+
+    /**
+     * Resolves `true` at the first commit that leaves the run not working, `false` when `timeoutMs` passes first; rejects when `signal` aborts. Each commit's
+     * own event is read, not the run as it is afterwards: a run that comes to rest may be given its next queued message within the same moment, and that
+     * stop still counts.
+     */
+    private untilRest(runId: string, timeoutMs: number, signal: AbortSignal): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            const finish = () => {
+                unsubscribe();
+                clearTimeout(timer);
+                signal.removeEventListener('abort', onAbort);
+            };
+            const onAbort = () => {
+                finish();
+                reject(signal.reason);
+            };
+            const unsubscribe = this.deps.store.subscribe((events) => {
+                if (events.some(({ data }) => data.type === 'run.upserted' && data.run.id === runId && threadState(data.run) !== 'working')) {
+                    finish();
+                    resolve(true);
+                }
+            });
+            const timer = setTimeout(() => {
+                finish();
+                resolve(false);
+            }, timeoutMs);
+
+            if (signal.aborted) {
+                onAbort();
+            }
+            else {
+                signal.addEventListener('abort', onAbort, { once: true });
+            }
+        });
+    }
 
     private summary(chat: Chat, depth: number | undefined): ThreadSummary {
         const run = this.runOf(chat);

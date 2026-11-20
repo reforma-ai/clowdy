@@ -8,9 +8,9 @@ import { createChat } from '../src/domain/chats';
 import { clipOutput } from '../src/runs/threads';
 import { clip } from '../src/runs/tool-kit';
 import { toolsFor } from '../src/runs/tools';
-import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, tempDir, untilAborted, waitFor } from './helpers';
+import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, tempDir, untilAborted, waitFor } from './helpers';
 
-import type { Chat, MessageSource, Run, StreamItemBody } from '@clowdy/protocol';
+import type { Chat, MessageSource, Run, StreamItemBody, ThreadNotice } from '@clowdy/protocol';
 import type { Harness, Script } from './helpers';
 
 afterAll(cleanTempDirs);
@@ -46,18 +46,30 @@ function says(...texts: string[]): Script {
     };
 }
 
+/** A turn that waits for `gate` (or the run's stop), then gives `answer` as its final message and ends. */
+function answers(gate: Latch, answer: string): Script {
+    return async function* ({ number, signal }) {
+        yield { type: 'session', sessionId: `s-${ number }` };
+        await gate.wait(signal);
+        yield { type: 'text', delta: answer, done: true };
+        yield { type: 'done', result: answer };
+    };
+}
+
 /**
  * A daemon whose one engine runs a script per message: the turn whose prompt ends with a route's text runs that route (a first message is the entry line
- * and then the text, a thread's message the line naming its sender and then the text), any other turn answers "Done".
+ * and then the text, a thread's message the line naming its sender and then the text), or whose prompt passes a route's test (`onPrompt`); any other turn
+ * answers "Done", the notices of threads that stopped included.
  */
 async function setup(overrides: Parameters<typeof startHarness>[0] = {}) {
-    const routes: [string, Script][] = [];
+    const routes: [(prompt: string) => boolean, Script][] = [];
     const engine = new ScriptEngine(async function* (turn) {
-        const route = routes.find(([ending]) => turn.options.prompt.endsWith(ending));
+        const route = routes.find(([matches]) => matches(turn.options.prompt));
 
         yield* (route ? route[1] : says('Done'))(turn);
     });
-    const h = await startHarness(overrides, { engines: scriptEngines(engine) });
+    // The same scripts stand in for Claude Code, the agent with a compact command, for a thread that names it.
+    const h = await startHarness(overrides, { engines: new Map([['fake', engine], ['claude', engine]]) });
 
     harnesses.push(h);
 
@@ -66,17 +78,20 @@ async function setup(overrides: Parameters<typeof startHarness>[0] = {}) {
     const chatOf = (chatId: string) => getChat(store.db, chatId) as Chat;
     const runOf = (chatId: string) => h.run(chatOf(chatId).orchestratorRunId as string);
     const bodies = (runId: string): StreamItemBody[] => listItems(store.db, runId, 0).map(item => item.body);
-    const on = (ending: string, script: Script) => routes.push([ending, script]);
+    const on = (ending: string, script: Script) => routes.push([prompt => prompt.endsWith(ending), script]);
+    const onPrompt = (matches: (prompt: string) => boolean, script: Script) => routes.push([matches, script]);
     /** Runs a tool of `run` as its agent would: the very definition its turn gets. */
-    const exec = async (run: Run, name: string, input: Record<string, unknown> = {}): Promise<any> => {
+    const exec = async (run: Run, name: string, input: Record<string, unknown> = {}, signal = new AbortController().signal): Promise<any> => {
         const tool = toolsFor({ store, runs, threads }, run, runs.modeOf(run)).find(candidate => candidate.name === name);
 
         if (!tool) {
             throw new Error(`${ run.name } has no ${ name } tool`);
         }
 
-        return tool.execute(input, new AbortController().signal);
+        return tool.execute(input, signal);
     };
+    /** The notices of threads that stopped that reached the chat's orchestrator, oldest first: each is the threads of one message. */
+    const noticesTo = (chatId: string): ThreadNotice[][] => bodies(runOf(chatId).id).flatMap(body => (body.kind === 'user' && body.from?.kind === 'threadNotice' ? [body.from.threads] : []));
     const turnOf = (ending: string) => engine.turns.find(turn => turn.prompt.endsWith(ending));
     /** Waits until the turn of the chat's message that ends with `ending` runs. */
     const running = (chatId: string, ending: string) => waitFor(() => turnOf(ending) && runOf(chatId).status === 'running', `the turn on "${ ending }"`);
@@ -103,7 +118,7 @@ async function setup(overrides: Parameters<typeof startHarness>[0] = {}) {
         return { ...result, run: () => runOf(result.threadId) } as { threadId: string; title: string; state: string; note: string; run: () => Run };
     };
 
-    return { h, engine, project, store, chatOf, runOf, bodies, on, exec, turnOf, running, root, spawn };
+    return { h, engine, project, store, chatOf, runOf, bodies, on, onPrompt, exec, noticesTo, turnOf, running, root, spawn };
 }
 
 const fromChat = (chat: Chat): MessageSource => ({ kind: 'thread', chatId: chat.id, title: chat.title });
@@ -274,7 +289,8 @@ describe('thread_tell', () => {
         // A stopped orchestrator whose session still makes a call starts nothing.
         h.ok('run.cancel', { runId: second.run().id });
         await expect(exec(second.run(), 'thread_tell', { thread: parent.chat.id, message: 'Late' })).rejects.toThrow(/is cancelled and cannot start threads or message them/);
-        expect(chatOf(parent.chat.id).queue).toHaveLength(1);
+        // The short thread's notice may wait there too; of the threads' messages only the first did.
+        expect(chatOf(parent.chat.id).queue?.filter(item => item.from?.kind === 'thread')).toHaveLength(1);
     });
 });
 
@@ -467,7 +483,7 @@ describe('thread limits', () => {
         const first = await spawn(parent.run, 'First job', held(latch()));
 
         createChat(store, { projectId: project.id, title: 'Not started yet', parentChatId: parent.chat.id });
-        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Third job' })).rejects.toThrow('This chat has 2 threads at work, the most it may have at once. Wait until one stops');
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Third job' })).rejects.toThrow('This chat has 2 threads at work, the most it may have at once; a thread whose turn is over counts while its background work runs. Start the next when one is done (you are told each time one stops)');
 
         await exec(parent.run, 'thread_stop', { thread: first.threadId });
         await waitFor(() => first.run().status === 'cancelled', 'the first thread to stop');
@@ -487,10 +503,10 @@ describe('thread limits', () => {
 });
 
 describe('archive and delete', () => {
-    /** A finished chat with a thread A and A's thread A1, both finished. */
+    /** A finished chat with a thread A and A's thread A1, both finished, and the notices of their stops answered up the tree. */
     async function tree() {
         const context = await setup();
-        const { root, spawn } = context;
+        const { root, spawn, chatOf, noticesTo } = context;
         const gate = latch();
         const parent = await root('Plan the release', gate);
         const childGate = latch();
@@ -502,7 +518,10 @@ describe('archive and delete', () => {
 
         gate.release();
         childGate.release();
-        await waitFor(() => [parent.run.id, child.run().id, grandchild.run().id].every(id => context.h.run(id).status === 'succeeded'), 'the tree to finish');
+        // The child answers its thread's notice ("Done"), and the parent hears of that answer last.
+        await waitFor(() => noticesTo(parent.chat.id).at(-1)?.some(notice => notice.chatId === child.threadId && notice.text === 'Done')
+            && [parent.run.id, child.run().id, grandchild.run().id].every(id => context.h.run(id).status === 'succeeded')
+            && !chatOf(parent.chat.id).queue && !chatOf(child.threadId).queue, 'the tree to finish');
 
         return { ...context, parent, child, grandchild };
     }
@@ -636,5 +655,680 @@ describe('a scripted orchestrator', () => {
             ['thread_log', 'done'],
             ['thread_stop', 'done'],
         ]);
+    });
+});
+
+/** The line every notice ends with. */
+const RULE = 'Do not reply to this message just to acknowledge it, and do not message a thread unless you need something from it.';
+
+/** Long enough for the notice window that every test waits through to have passed several times over. */
+const QUIET_MS = 200;
+
+const finished = (chatId: string, title: string, text: string): ThreadNotice => ({ chatId, title, outcome: 'finished', text });
+
+describe('notices to the parent', () => {
+    test('a thread\'s turn that ends tells its parent at rest once, with its final answer, and the parent starts a turn on it', async () => {
+        const { h, engine, chatOf, exec, root, spawn, noticesTo, bodies } = await setup();
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const threadGate = latch();
+        const thread = await spawn(parent.run, 'Check the cache', answers(threadGate, 'The cache is fine'));
+        const content = `[Thread "Check the cache" (${ thread.threadId }) finished]\n\nThe cache is fine\n\n${ RULE }`;
+
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
+        threadGate.release();
+        await waitFor(() => engine.prompts.includes(content) && h.run(parent.run.id).status === 'succeeded', 'the parent\'s turn on the notice');
+
+        // A notice has no words of its own: the stream draws it from `from`, and the agent reads the content.
+        expect(bodies(parent.run.id).filter(body => body.kind === 'user').at(-1)).toEqual({
+            kind: 'user',
+            text: '',
+            from: { kind: 'threadNotice', threads: [finished(thread.threadId, 'Check the cache', 'The cache is fine')] },
+        });
+        expect(engine.turns.find(turn => turn.prompt === content)?.resumeSessionId).toBe('s-1');
+        expect(chatOf(parent.chat.id).queue).toBeUndefined();
+        await Bun.sleep(QUIET_MS);
+        expect(noticesTo(parent.chat.id)).toHaveLength(1);
+        expect(h.run(parent.run.id)).toMatchObject({ status: 'succeeded', result: 'Done' });
+        // The parent's log says how the thread stopped.
+        expect((await exec(thread.run(), 'thread_log', { thread: parent.chat.id })).lines.slice(-2)).toEqual(['#3 notice: "Check the cache" finished', '#4 assistant: Done']);
+    });
+
+    test('two stops of one thread inside the window are one notice with the latest answer', async () => {
+        const { h, engine, root, spawn, on, noticesTo } = await setup({ timings: { ...SHORT_TIMINGS, noticeWindowMs: 500 } });
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const threadGate = latch();
+        const thread = await spawn(parent.run, 'Check the cache', answers(threadGate, 'First answer'));
+
+        on('Look again', says('Second answer'));
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
+        threadGate.release();
+        await waitFor(() => thread.run().status === 'succeeded' && thread.run().result === 'First answer', 'the first answer');
+        h.ok('chat.send', { chatId: thread.threadId, text: 'Look again' });
+        await waitFor(() => thread.run().status === 'succeeded' && thread.run().result === 'Second answer', 'the second answer');
+        await waitFor(() => noticesTo(parent.chat.id).length > 0 && h.run(parent.run.id).status === 'succeeded', 'the notice');
+        await Bun.sleep(600);
+
+        expect(noticesTo(parent.chat.id)).toEqual([[finished(thread.threadId, 'Check the cache', 'Second answer')]]);
+        expect(engine.prompts.filter(prompt => prompt.includes('[Thread "Check the cache"'))).toEqual([`[Thread "Check the cache" (${ thread.threadId }) finished]\n\nSecond answer\n\n${ RULE }`]);
+    });
+
+    test('stops of two threads inside the window are one message with an entry for each', async () => {
+        const { h, engine, root, spawn, noticesTo } = await setup({ timings: { ...SHORT_TIMINGS, noticeWindowMs: 300 } });
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const gateA = latch();
+        const gateB = latch();
+        const a = await spawn(parent.run, 'Job A', answers(gateA, 'A is done'));
+        const b = await spawn(parent.run, 'Job B', answers(gateB, 'B is done'));
+
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
+        gateA.release();
+        gateB.release();
+        await waitFor(() => noticesTo(parent.chat.id).length > 0 && h.run(parent.run.id).status === 'succeeded', 'the notice');
+        await Bun.sleep(400);
+
+        const [notice] = noticesTo(parent.chat.id);
+        const block = (entry: ThreadNotice) => `[Thread "${ entry.title }" (${ entry.chatId }) finished]\n\n${ entry.text }`;
+
+        expect(noticesTo(parent.chat.id)).toHaveLength(1);
+        expect([...notice].sort((x, y) => x.title.localeCompare(y.title))).toEqual([finished(a.threadId, 'Job A', 'A is done'), finished(b.threadId, 'Job B', 'B is done')]);
+        expect(engine.prompts).toContain(`Threads that stopped:\n\n${ block(notice[0]) }\n\n${ block(notice[1]) }\n\n${ RULE }`);
+    });
+
+    test('a thread whose session waits for background work says so with the work\'s titles, and its own report turn tells the parent again', async () => {
+        const { h, engine, root, spawn, noticesTo } = await setup();
+        const gate = latch();
+        const begin = latch();
+        const build = latch();
+        const sessionEnd = latch();
+
+        engine.sendAnswer = () => true;
+
+        const parent = await root('Plan the release', gate);
+        const thread = await spawn(parent.run, 'Start the build', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            await turn.hold(begin);
+            yield { type: 'text', delta: 'Started the build', done: true };
+            yield { type: 'background', items: [{ id: 'bg-1', kind: 'command', title: 'bun run build' }] };
+            yield { type: 'done', result: 'Started the build' };
+
+            if (!await turn.hold(build)) {
+                return;
+            }
+
+            // The agent reports by itself once the build is over, and its session stays a while longer before it ends.
+            yield { type: 'background', items: [] };
+            yield { type: 'text', delta: 'The build passed', done: true };
+            yield { type: 'done', result: 'The build passed' };
+            await turn.hold(sessionEnd);
+        });
+        const waiting = `[Thread "Start the build" (${ thread.threadId }) finished its turn and still has work running in the background: bun run build]\n\nStarted the build\n\nThis is not its final result; it will report again when that work finishes.\n\n${ RULE }`;
+
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
+        begin.release();
+        await waitFor(() => engine.prompts.includes(waiting) && h.run(parent.run.id).status === 'succeeded', 'the first notice');
+        expect(thread.run().status).toBe('waiting_background');
+        expect(noticesTo(parent.chat.id)).toEqual([[{ chatId: thread.threadId, title: 'Start the build', outcome: 'finished', text: 'Started the build', background: ['bun run build'] }]]);
+
+        build.release();
+        await waitFor(() => noticesTo(parent.chat.id).length === 2 && h.run(parent.run.id).status === 'succeeded', 'the second notice');
+        expect(noticesTo(parent.chat.id)[1]).toEqual([finished(thread.threadId, 'Start the build', 'The build passed')]);
+        expect(engine.prompts).toContain(`[Thread "Start the build" (${ thread.threadId }) finished]\n\nThe build passed\n\n${ RULE }`);
+
+        // The session's end after the report is no turn of its own: the parent was told already.
+        sessionEnd.release();
+        await waitFor(() => thread.run().status === 'succeeded', 'the thread\'s session to end');
+        await Bun.sleep(QUIET_MS);
+        expect(noticesTo(parent.chat.id)).toHaveLength(2);
+    });
+
+    test('a session that ends without the report its notice promised tells the parent that the thread finished', async () => {
+        const { h, engine, root, spawn, noticesTo } = await setup();
+        const gate = latch();
+        const begin = latch();
+        const gone = latch();
+
+        engine.sendAnswer = () => true;
+
+        const parent = await root('Plan the release', gate);
+        const thread = await spawn(parent.run, 'Start the build', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            await turn.hold(begin);
+            yield { type: 'text', delta: 'Started the build', done: true };
+            yield { type: 'background', items: [{ id: 'bg-1', kind: 'command', title: 'bun run build' }] };
+            yield { type: 'done', result: 'Started the build' };
+            // The process goes away with the work: no report turn.
+            await turn.hold(gone);
+        });
+
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
+        begin.release();
+        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded', 'the first notice');
+        gone.release();
+        await waitFor(() => noticesTo(parent.chat.id).length === 2, 'the second notice');
+
+        expect(thread.run()).toMatchObject({ status: 'succeeded', result: 'Started the build' });
+        expect(noticesTo(parent.chat.id)[1]).toEqual([finished(thread.threadId, 'Start the build', 'Started the build')]);
+    });
+
+    test('a report turn of the agent\'s own that says nothing tells the parent that the thread finished, without the words of the turn before it', async () => {
+        const { h, engine, root, spawn, noticesTo } = await setup();
+        const gate = latch();
+        const begin = latch();
+        const build = latch();
+        const sessionEnd = latch();
+
+        engine.sendAnswer = () => true;
+
+        const parent = await root('Plan the release', gate);
+        const thread = await spawn(parent.run, 'Start the build', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            await turn.hold(begin);
+            yield { type: 'text', delta: 'Started the build', done: true };
+            yield { type: 'background', items: [{ id: 'bg-1', kind: 'command', title: 'bun run build' }] };
+            yield { type: 'done', result: 'Started the build' };
+
+            if (!await turn.hold(build)) {
+                return;
+            }
+
+            // The agent's own turn after the build looks at it and says nothing, and its `done` carries no result.
+            yield { type: 'background', items: [] };
+            yield { type: 'tool', toolCallId: 'look', name: 'Read', input: { title: 'Read build.log' }, state: 'done', output: 'ok' };
+            yield { type: 'done' };
+            await turn.hold(sessionEnd);
+        });
+
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
+        begin.release();
+        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded', 'the first notice');
+        expect(thread.run().status).toBe('waiting_background');
+
+        build.release();
+        await waitFor(() => noticesTo(parent.chat.id).length === 2 && h.run(parent.run.id).status === 'succeeded', 'the second notice');
+        expect(noticesTo(parent.chat.id)[1]).toEqual([{ chatId: thread.threadId, title: 'Start the build', outcome: 'finished' }]);
+
+        // The session's end after it tells nothing more: the parent knows the thread is done.
+        sessionEnd.release();
+        await waitFor(() => thread.run().status === 'succeeded', 'the thread\'s session to end');
+        await Bun.sleep(QUIET_MS);
+        expect(noticesTo(parent.chat.id)).toHaveLength(2);
+    });
+
+    test('a turn that says nothing and leaves nothing open tells nothing', async () => {
+        const { h, root, spawn, on, noticesTo } = await setup();
+        const gate = latch();
+        const begin = latch();
+        const parent = await root('Plan the release', gate);
+        const thread = await spawn(parent.run, 'Stay quiet', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            await turn.hold(begin);
+            yield { type: 'done' };
+        });
+
+        // An agent whose `done` carries no result: its last message is the turn's text.
+        on('Say something', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'text', delta: 'Now I speak', done: true };
+            yield { type: 'done' };
+        });
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
+        begin.release();
+        await waitFor(() => thread.run().status === 'succeeded', 'the quiet turn to end');
+        await Bun.sleep(QUIET_MS);
+        expect(noticesTo(parent.chat.id)).toEqual([]);
+
+        // The same thread's next turn says something, and that one is told.
+        h.ok('chat.send', { chatId: thread.threadId, text: 'Say something' });
+        await waitFor(() => noticesTo(parent.chat.id).length === 1, 'the notice of the turn that spoke');
+        expect(noticesTo(parent.chat.id)).toEqual([[finished(thread.threadId, 'Stay quiet', 'Now I speak')]]);
+    });
+
+    test('a thread stopped by thread_stop or by the person\'s Stop tells nothing', async () => {
+        const { h, exec, root, spawn, noticesTo } = await setup();
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const byParent = await spawn(parent.run, 'Job A', held(latch()));
+        const byPerson = await spawn(parent.run, 'Job B', held(latch()));
+        const lastGate = latch();
+        const last = await spawn(parent.run, 'Job C', answers(lastGate, 'C is done'));
+
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded' && byParent.run().status === 'running' && byPerson.run().status === 'running', 'the parent to rest while A and B work');
+        expect(await exec(parent.run, 'thread_stop', { thread: byParent.threadId })).toMatchObject({ stopped: true });
+        h.ok('run.cancel', { runId: byPerson.run().id });
+        await waitFor(() => byParent.run().status === 'cancelled' && byPerson.run().status === 'cancelled', 'both to stop');
+        await Bun.sleep(QUIET_MS);
+        expect(noticesTo(parent.chat.id)).toEqual([]);
+
+        lastGate.release();
+        await waitFor(() => noticesTo(parent.chat.id).length === 1, 'the notice of the thread that finished');
+        await Bun.sleep(QUIET_MS);
+        expect(noticesTo(parent.chat.id)).toEqual([[finished(last.threadId, 'Job C', 'C is done')]]);
+    });
+
+    test('a compact turn of a thread tells nothing, though the agent says something about it', async () => {
+        const { h, root, spawn, onPrompt, noticesTo } = await setup();
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const thread = await spawn(parent.run, 'Check the cache', says('The cache is fine'), { engine: 'claude' });
+
+        onPrompt(prompt => prompt === '/compact', says('Compacted the conversation'));
+        gate.release();
+        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded' && thread.run().status === 'succeeded', 'the notice of the first answer');
+
+        h.ok('chat.compact', { chatId: thread.threadId });
+        await waitFor(() => thread.run().status === 'succeeded' && thread.run().result === 'Compacted the conversation', 'the compact turn');
+        await Bun.sleep(QUIET_MS);
+        expect(noticesTo(parent.chat.id)).toEqual([[finished(thread.threadId, 'Check the cache', 'The cache is fine')]]);
+    });
+
+    test('a thread that fails always tells its parent, with the error and how to look at it', async () => {
+        const { h, engine, root, spawn, noticesTo } = await setup();
+        const gate = latch();
+        const begin = latch();
+        const parent = await root('Plan the release', gate);
+        const thread = await spawn(parent.run, 'Fall over', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            await turn.hold(begin);
+            yield { type: 'text', delta: 'Trying', done: true };
+            yield { type: 'error', message: 'The agent fell over' };
+        });
+
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
+        begin.release();
+        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded', 'the notice');
+
+        expect(thread.run().status).toBe('failed');
+        expect(noticesTo(parent.chat.id)).toEqual([[{ chatId: thread.threadId, title: 'Fall over', outcome: 'failed', text: 'The agent fell over' }]]);
+        expect(engine.prompts).toContain(`[Thread "Fall over" (${ thread.threadId }) failed]\n\nThe agent fell over\n\nLook at it with clowdy thread log ${ thread.threadId } before deciding what to do.\n\n${ RULE }`);
+    });
+
+    test('a thread that a restart interrupted tells its parent once, and the next start does not tell it again', async () => {
+        const { h, engine, root, spawn } = await setup();
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const thread = await spawn(parent.run, 'Long job', held(latch()));
+        const notices = (harness: Harness) => listItems(harness.store.db, parent.run.id, 0).filter(item => item.body.kind === 'user' && item.body.from?.kind === 'threadNotice');
+        const content = `[Thread "Long job" (${ thread.threadId }) was interrupted because the daemon restarted]\n\n${ RULE }`;
+
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded' && thread.run().status === 'running', 'the parent to rest while its thread works');
+
+        const threadRunId = thread.run().id;
+
+        await h.stop();
+
+        const second = await restartHarness(h, { engines: scriptEngines(engine) });
+
+        harnesses.push(second);
+        await waitFor(() => engine.prompts.includes(content) && second.run(parent.run.id).status === 'succeeded', 'the parent\'s turn on the notice');
+        expect(second.run(threadRunId).status).toBe('interrupted');
+        expect(notices(second).map(item => item.body)).toEqual([{
+            kind: 'user',
+            text: '',
+            from: { kind: 'threadNotice', threads: [{ chatId: thread.threadId, title: 'Long job', outcome: 'interrupted' }] },
+        }]);
+
+        await second.stop();
+
+        const third = await restartHarness(second, { engines: scriptEngines(engine) });
+
+        harnesses.push(third);
+        await Bun.sleep(QUIET_MS);
+        expect(notices(third)).toHaveLength(1);
+        expect(engine.prompts.filter(prompt => prompt === content)).toHaveLength(1);
+    });
+
+    test('a notice that waits in the queue survives a restart, held with the queue of the parent the restart interrupted', async () => {
+        const { h, engine, chatOf, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+
+        await spawn(parent.run, 'Quick job', says('Quick answer'));
+        await waitFor(() => chatOf(parent.chat.id).queue?.length === 1, 'the notice in the busy parent\'s queue');
+
+        const waiting = chatOf(parent.chat.id).queue;
+
+        await h.stop();
+
+        const second = await restartHarness(h, { engines: scriptEngines(engine) });
+
+        harnesses.push(second);
+        expect(getChat(second.store.db, parent.chat.id)).toMatchObject({ queuePaused: 'failed', queue: waiting });
+        expect(second.run(parent.run.id).status).toBe('interrupted');
+    });
+
+    test('a busy parent gets the notice in its queue, merged with the next of the same thread and with another thread\'s, and takes it as its next turn', async () => {
+        const { h, engine, chatOf, root, spawn, on, noticesTo, bodies } = await setup();
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const gateA = latch();
+        const gateB = latch();
+        const a = await spawn(parent.run, 'Job A', answers(gateA, 'A first'));
+        const b = await spawn(parent.run, 'Job B', answers(gateB, 'B is done'));
+        const queued = () => chatOf(parent.chat.id).queue ?? [];
+        const threadsOf = (index = 0) => {
+            const from = queued()[index]?.from;
+
+            return from?.kind === 'threadNotice' ? from.threads : [];
+        };
+
+        gateA.release();
+        await waitFor(() => queued().length === 1, 'the notice to wait in the parent\'s queue');
+        expect(queued()).toEqual([{
+            id: expect.stringMatching(/^que_/),
+            mode: 'queue',
+            text: 'Thread "Job A" finished',
+            content: `[Thread "Job A" (${ a.threadId }) finished]\n\nA first\n\n${ RULE }`,
+            from: { kind: 'threadNotice', threads: [finished(a.threadId, 'Job A', 'A first')] },
+            createdAt: expect.any(Number),
+        }]);
+
+        const [{ id, createdAt }] = queued();
+
+        // The same thread stops again: its entry is replaced, in the same item.
+        on('Look again', says('A second'));
+        h.ok('chat.send', { chatId: a.threadId, text: 'Look again' });
+        await waitFor(() => threadsOf()[0]?.text === 'A second', 'the second notice of A to replace the first');
+        expect(queued()).toHaveLength(1);
+
+        // Another thread joins it.
+        gateB.release();
+        await waitFor(() => threadsOf().length === 2, 'B to join the notice');
+
+        const content = `Threads that stopped:\n\n[Thread "Job A" (${ a.threadId }) finished]\n\nA second\n\n[Thread "Job B" (${ b.threadId }) finished]\n\nB is done\n\n${ RULE }`;
+
+        expect(queued()).toEqual([{
+            id,
+            mode: 'queue',
+            text: '2 threads stopped',
+            content,
+            from: { kind: 'threadNotice', threads: [finished(a.threadId, 'Job A', 'A second'), finished(b.threadId, 'Job B', 'B is done')] },
+            createdAt,
+        }]);
+        expect(noticesTo(parent.chat.id)).toEqual([]);
+
+        // Nothing steers the running turn: it goes when the parent rests.
+        gate.release();
+        await waitFor(() => engine.prompts.includes(content) && h.run(parent.run.id).status === 'succeeded', 'the parent\'s turn on the notice');
+        expect(chatOf(parent.chat.id).queue).toBeUndefined();
+        expect(engine.steered).toEqual([]);
+        expect(bodies(parent.run.id).filter(body => body.kind === 'user').at(-1)).toEqual({
+            kind: 'user',
+            text: '',
+            from: { kind: 'threadNotice', threads: [finished(a.threadId, 'Job A', 'A second'), finished(b.threadId, 'Job B', 'B is done')] },
+        });
+    });
+
+    test('a queue a Stop holds keeps the notice, and so does the queue of a stopped parent that had nothing waiting, until the person sends it', async () => {
+        const { h, engine, chatOf, root, spawn, noticesTo } = await setup();
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const threadGate = latch();
+        const thread = await spawn(parent.run, 'Check the cache', answers(threadGate, 'The cache is fine'));
+
+        h.ok('chat.send', { chatId: parent.chat.id, text: 'Then do this' });
+        h.ok('run.cancel', { runId: parent.run.id });
+        await waitFor(() => h.run(parent.run.id).status === 'cancelled', 'the parent to stop');
+        threadGate.release();
+        await waitFor(() => (chatOf(parent.chat.id).queue ?? []).length === 2, 'the notice to join the held queue');
+        await Bun.sleep(QUIET_MS);
+        expect(chatOf(parent.chat.id)).toMatchObject({
+            queuePaused: 'stopped',
+            queue: [expect.objectContaining({ text: 'Then do this' }), expect.objectContaining({ text: 'Thread "Check the cache" finished', from: expect.objectContaining({ kind: 'threadNotice' }) })],
+        });
+        expect(h.run(parent.run.id).status).toBe('cancelled');
+        expect(noticesTo(parent.chat.id)).toEqual([]);
+
+        // A parent stopped with nothing in its queue holds the notice all the same.
+        const otherGate = latch();
+        const other = await root('Plan the launch', otherGate);
+        const otherThreadGate = latch();
+        const otherThread = await spawn(other.run, 'Check the docs', answers(otherThreadGate, 'The docs are fine'));
+
+        h.ok('run.cancel', { runId: other.run.id });
+        await waitFor(() => h.run(other.run.id).status === 'cancelled', 'the other parent to stop');
+        otherThreadGate.release();
+        await waitFor(() => chatOf(other.chat.id).queue?.length === 1, 'the notice to wait in the other parent\'s queue');
+        await Bun.sleep(QUIET_MS);
+        expect(chatOf(other.chat.id).queuePaused).toBe('stopped');
+        expect(h.run(other.run.id).status).toBe('cancelled');
+
+        // The person sends it: the parent takes it as a turn.
+        const content = `[Thread "Check the docs" (${ otherThread.threadId }) finished]\n\nThe docs are fine\n\n${ RULE }`;
+
+        h.ok('chat.sendQueued', { chatId: other.chat.id, itemId: (chatOf(other.chat.id).queue ?? [])[0].id });
+        await waitFor(() => engine.prompts.includes(content) && h.run(other.run.id).status === 'succeeded', 'the other parent\'s turn on the notice');
+        expect(noticesTo(other.chat.id)).toEqual([[finished(otherThread.threadId, 'Check the docs', 'The docs are fine')]]);
+        expect(thread.run().status).toBe('succeeded');
+    });
+
+    test('a parent that waits for background work gets the notice in its live session', async () => {
+        const { h, engine, project, on, spawn, noticesTo, runOf } = await setup();
+        const threadGate = latch();
+
+        engine.sendAnswer = () => true;
+        on('Watch the build', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield { type: 'text', delta: 'Started the build', done: true };
+            yield { type: 'background', items: [{ id: 'bg-1', kind: 'command', title: 'bun run build' }] };
+            yield { type: 'done', result: 'Started the build' };
+
+            for (let text = await turn.received(); text !== undefined; text = await turn.received()) {
+                yield { type: 'text', delta: 'Noted', done: true };
+                yield { type: 'done', result: 'Noted' };
+            }
+        });
+
+        const { chat } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
+
+        h.ok('chat.send', { chatId: chat.id, text: 'Watch the build' });
+        await waitFor(() => runOf(chat.id).status === 'waiting_background', 'the parent to wait for its build');
+
+        const sessions = engine.turns.length;
+        const thread = await spawn(runOf(chat.id), 'Check the cache', answers(threadGate, 'The cache is fine'));
+        const content = `[Thread "Check the cache" (${ thread.threadId }) finished]\n\nThe cache is fine\n\n${ RULE }`;
+
+        threadGate.release();
+        await waitFor(() => engine.sent.includes(content) && runOf(chat.id).status === 'waiting_background' && runOf(chat.id).statusReason === 'Waiting for background work' && noticesTo(chat.id).length === 1, 'the notice in the live session');
+        // No new session for the parent: only the thread's turn started.
+        expect(engine.turns).toHaveLength(sessions + 1);
+        expect(engine.sent).toEqual([content]);
+    });
+
+    test('an archived parent is told nothing', async () => {
+        const { h, chatOf, root, spawn, on, noticesTo } = await setup();
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const threadGate = latch();
+        const thread = await spawn(parent.run, 'Check the cache', answers(threadGate, 'The cache is fine'));
+
+        gate.release();
+        threadGate.release();
+        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded' && thread.run().status === 'succeeded', 'the first notice to be answered');
+        h.ok('chat.setArchived', { chatId: parent.chat.id, archived: true });
+
+        // The person writes to the archived thread, which brings only the thread back; its answer tells the archived parent nothing.
+        on('Look again', says('Still fine'));
+        h.ok('chat.send', { chatId: thread.threadId, text: 'Look again' });
+        await waitFor(() => thread.run().status === 'succeeded' && thread.run().result === 'Still fine', 'the thread\'s second answer');
+        await Bun.sleep(QUIET_MS);
+
+        expect(chatOf(parent.chat.id).archivedAt).toBeGreaterThan(0);
+        expect(chatOf(parent.chat.id).queue).toBeUndefined();
+        expect(noticesTo(parent.chat.id)).toHaveLength(1);
+    });
+
+    test('a thread of a thread wakes its parent, whose answer wakes the chat above it', async () => {
+        const { h, root, spawn, onPrompt, noticesTo } = await setup();
+        const gate = latch();
+        const middleGate = latch();
+        const leafGate = latch();
+        const parent = await root('Plan the release', gate);
+        const middle = await spawn(parent.run, 'Middle job', held(middleGate, 'Middle started'));
+
+        await waitFor(() => middle.run().status === 'running', 'the middle thread to run');
+
+        const leaf = await spawn(middle.run(), 'Leaf job', answers(leafGate, 'Leaf result'));
+
+        onPrompt(prompt => prompt.startsWith('[Thread "Leaf job"'), says('Middle relays: Leaf result'));
+        gate.release();
+        middleGate.release();
+        await waitFor(() => noticesTo(parent.chat.id).length === 1 && h.run(parent.run.id).status === 'succeeded' && middle.run().status === 'succeeded', 'the middle thread\'s first notice');
+
+        leafGate.release();
+        await waitFor(() => noticesTo(parent.chat.id).length === 2 && h.run(parent.run.id).status === 'succeeded', 'the middle thread\'s answer to reach the top');
+        expect(noticesTo(middle.threadId)).toEqual([[finished(leaf.threadId, 'Leaf job', 'Leaf result')]]);
+        expect(noticesTo(parent.chat.id)).toEqual([[finished(middle.threadId, 'Middle job', 'Middle started')], [finished(middle.threadId, 'Middle job', 'Middle relays: Leaf result')]]);
+    });
+});
+
+describe('thread_wait', () => {
+    test('answers at once for a thread that is not working, waits for one that is, and gives up at its timeout', async () => {
+        const { exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const quick = await spawn(parent.run, 'Quick job', says('Quick answer'));
+
+        await waitFor(() => quick.run().status === 'succeeded', 'the quick thread to finish');
+
+        let started = Date.now();
+
+        expect(await exec(parent.run, 'thread_wait', { thread: quick.threadId })).toEqual({ threadId: quick.threadId, title: 'Quick job', state: 'idle', text: 'Quick answer', open: [], timedOut: false });
+        expect(Date.now() - started).toBeLessThan(500);
+
+        const lateGate = latch();
+        const late = await spawn(parent.run, 'Late job', answers(lateGate, 'Late answer'));
+        let answered = false;
+        const waiting = exec(parent.run, 'thread_wait', { thread: late.threadId, timeoutSeconds: 10 }).finally(() => {
+            answered = true;
+        });
+
+        await Bun.sleep(150);
+        expect(answered).toBe(false);
+        lateGate.release();
+        expect(await waiting).toMatchObject({ threadId: late.threadId, state: 'idle', text: 'Late answer', timedOut: false });
+
+        const slow = await spawn(parent.run, 'Slow job', held(latch(), 'Still at it'));
+
+        await waitFor(() => slow.run().status === 'running', 'the slow thread to run');
+        started = Date.now();
+        expect(await exec(parent.run, 'thread_wait', { thread: slow.threadId, timeoutSeconds: 1 })).toMatchObject({ state: 'working', text: 'Still at it', timedOut: true });
+        expect(Date.now() - started).toBeGreaterThanOrEqual(950);
+    });
+
+    test('answers at once for a thread that asks the person, ends with the caller\'s stop, and takes only threads below the caller', async () => {
+        const { exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const asking = await spawn(parent.run, 'Ask the person', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield* turn.call('ask_user', { question: 'Which color?', options: [{ id: 'red', label: 'Red' }] });
+            yield { type: 'done', result: 'Asked' };
+        }, { mode: 'semi' });
+
+        await waitFor(() => asking.run().status === 'waiting_user', 'the thread to ask');
+        expect(await exec(parent.run, 'thread_wait', { thread: asking.threadId })).toMatchObject({ state: 'asking', timedOut: false });
+
+        const busy = await spawn(parent.run, 'Busy job', held(latch()));
+        const stop = new AbortController();
+        const waiting = exec(parent.run, 'thread_wait', { thread: busy.threadId }, stop.signal);
+
+        await Bun.sleep(50);
+        stop.abort(new Error('The caller was stopped'));
+        await expect(waiting).rejects.toThrow('The caller was stopped');
+
+        await expect(exec(busy.run(), 'thread_wait', { thread: asking.threadId })).rejects.toThrow(/is not below you/);
+        await expect(exec(busy.run(), 'thread_wait', { thread: parent.chat.id })).rejects.toThrow(/is not below you/);
+        await expect(exec(parent.run, 'thread_wait', { thread: busy.threadId, timeoutSeconds: 0 })).rejects.toThrow(/Invalid input for thread_wait/);
+        await expect(exec(parent.run, 'thread_wait', { thread: busy.threadId, timeoutSeconds: 601 })).rejects.toThrow(/Invalid input for thread_wait/);
+    });
+});
+
+describe('reading a thread instead of its notice', () => {
+    test('a parent that waited for its thread is not told of that stop again, and is not woken for it', async () => {
+        const { h, chatOf, exec, root, spawn, noticesTo } = await setup();
+        const gate = latch();
+        const parent = await root('Plan the release', gate);
+        const threadGate = latch();
+        const thread = await spawn(parent.run, 'Check the cache', answers(threadGate, 'The cache is fine'));
+        const waiting = exec(parent.run, 'thread_wait', { thread: thread.threadId });
+
+        threadGate.release();
+        expect(await waiting).toMatchObject({ state: 'idle', text: 'The cache is fine', timedOut: false });
+        await Bun.sleep(QUIET_MS);
+        expect(chatOf(parent.chat.id).queue).toBeUndefined();
+
+        gate.release();
+        await waitFor(() => h.run(parent.run.id).status === 'succeeded', 'the parent to rest');
+        await Bun.sleep(QUIET_MS);
+        expect(noticesTo(parent.chat.id)).toEqual([]);
+        expect(h.run(parent.run.id).result).toBe('working');
+    });
+
+    test('thread_output of the parent takes its thread out of the queued notice; a sibling\'s reading leaves it', async () => {
+        const { chatOf, exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const gateA = latch();
+        const gateB = latch();
+        const a = await spawn(parent.run, 'Job A', answers(gateA, 'A is done'));
+        const b = await spawn(parent.run, 'Job B', answers(gateB, 'B is done'));
+        const sibling = await spawn(parent.run, 'Job C', held(latch()));
+        const queued = () => chatOf(parent.chat.id).queue ?? [];
+
+        await waitFor(() => sibling.run().status === 'running', 'the sibling to run');
+        gateA.release();
+        gateB.release();
+        await waitFor(() => queued().length === 1 && queued()[0].text === '2 threads stopped', 'both notices in the queue');
+
+        // A sibling reads A: the parent's notice stays whole.
+        expect((await exec(sibling.run(), 'thread_output', { thread: a.threadId })).text).toBe('A is done');
+        expect(queued()[0]).toMatchObject({ text: '2 threads stopped' });
+
+        // The parent reads A: only B is left, with its own line and content.
+        expect((await exec(parent.run, 'thread_output', { thread: a.threadId })).text).toBe('A is done');
+        expect(queued()).toEqual([expect.objectContaining({
+            text: 'Thread "Job B" finished',
+            content: `[Thread "Job B" (${ b.threadId }) finished]\n\nB is done\n\n${ RULE }`,
+            from: { kind: 'threadNotice', threads: [finished(b.threadId, 'Job B', 'B is done')] },
+        })]);
+
+        // And then B: the notice is gone.
+        await exec(parent.run, 'thread_output', { thread: b.threadId });
+        expect(chatOf(parent.chat.id).queue).toBeUndefined();
+    });
+
+    test('a read that finds the thread at work again leaves the notice of its stop, whose answer the read did not have', async () => {
+        const { h, chatOf, exec, root, spawn, on, bodies } = await setup();
+        const parent = await root('Plan the release', latch());
+        const threadGate = latch();
+        const thread = await spawn(parent.run, 'Check the cache', answers(threadGate, 'The cache is fine'));
+        const queued = () => chatOf(parent.chat.id).queue ?? [];
+        const notice: MessageSource = { kind: 'threadNotice', threads: [finished(thread.threadId, 'Check the cache', 'The cache is fine')] };
+
+        // The thread's next message waits in its queue, so the thread is at work again in the moment its turn ends.
+        on('Look again', held(latch(), 'Looking again'));
+        h.ok('chat.send', { chatId: thread.threadId, text: 'Look again' });
+        expect(chatOf(thread.threadId).queue).toHaveLength(1);
+
+        const waiting = exec(parent.run, 'thread_wait', { thread: thread.threadId });
+
+        threadGate.release();
+        expect(await waiting).toMatchObject({ state: 'working', text: null, timedOut: false });
+        await waitFor(() => queued().length === 1, 'the notice in the busy parent\'s queue');
+        expect(queued()[0].from).toEqual(notice);
+
+        // Reading it while it works shows the new turn's words, not the answer: the notice stays too.
+        await waitFor(() => bodies(thread.run().id).some(body => body.kind === 'assistant' && body.text === 'Looking again'), 'the thread\'s next turn to speak');
+        expect(await exec(parent.run, 'thread_output', { thread: thread.threadId })).toMatchObject({ state: 'working', text: 'Looking again' });
+        expect(queued().map(item => item.from)).toEqual([notice]);
     });
 });

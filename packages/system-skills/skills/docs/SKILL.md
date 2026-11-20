@@ -24,7 +24,7 @@ Create files only when there is something to say. No empty placeholders.
 | `research/` | One note per investigated question, with sources | You finish investigating, before you build on it |
 | `checks/` | One report per verification: what ran, result, evidence, limits | After each significant verification (clowdy:orchestrate, Verify) |
 
-You are the orchestrator, so you write the documents. Sub-agents write none: they return findings and proposed changes in their answers.
+You are the orchestrator, so you write the documents. Sub-agents write none: they return findings and proposed changes in their answers. A thread writes the documents its brief asks for and the decision records its mode calls for, never `index.md`: the chat the person started is its one writer.
 
 Other topic documents (a runbook, a glossary) are fine at top level or in a new folder if `index.md` lists them. Templates are in [references/](references/): [index.md](references/index-template.md), [product.md and architecture.md](references/product-and-architecture.md), [research note](references/research-template.md), [decision record](references/decision-template.md), [check report](references/check-template.md).
 

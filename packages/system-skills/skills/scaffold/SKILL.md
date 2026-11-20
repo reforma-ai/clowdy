@@ -5,7 +5,7 @@ description: "Start a new application from nothing for someone who describes a p
 
 # Scaffold a new application
 
-You turn "I want an app that does X" into a working skeleton that all later work builds on. ONE agent builds the skeleton first, so every later piece, yours, a sub-agent's or another chat's, finds the same layout, commands and conventions.
+You turn "I want an app that does X" into a working skeleton that all later work builds on. ONE agent builds the skeleton first, so every later piece, yours, a sub-agent's or a thread's, finds the same layout, commands and conventions.
 
 Use it when the folder is empty (or holds only a README or licence) and the user wants a new application. If an app already exists, do not scaffold: read its documents (clowdy:docs) and plan with clowdy:orchestrate. Never overwrite existing files.
 
@@ -76,13 +76,13 @@ After the skeleton passes its check, so that Owns paths are real. Slice catalog 
 
 - Slice by what can be built and verified on its own: data model, API, UI shell, each feature screen, auth, deployment script, demo data. Not by layer for its own sake.
 - Create tasks with `task_create`, in dependency order, each description in the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, Out of scope).
-- Two tasks are independent when they own different paths and neither needs the other's output. A contract both need is written into `architecture.md` first, so the two can be built against it in any order, or by sub-agents side by side.
+- Two tasks are independent when they own different paths and neither needs the other's output. A contract both need is written into `architecture.md` first, so the two can be built against it in any order, or by threads side by side.
 - Aim for 4 to 8 tasks for the first milestone, each about an hour of agent work. Small parts inside a slice go to engine sub-agents.
 - Verification is not a task: you verify the first milestone on the combined result (step 6). Move the skeleton task to Done only after you saw its check pass.
 
 ### 6. Build the slices
 
-Continue the loop in clowdy:orchestrate at step 4: take the ready tasks in order and build each yourself. Slices with disjoint Owns paths may go to engine sub-agents, each prompt with the task keys, owned paths, contracts, and a pointer to `architecture.md` and the check command. When the slices are Done, run the milestone flow from `product.md` on the combined result yourself (clowdy:orchestrate, Verify). Then move the verified behavior to Implemented in `product.md` and let the check report go to `checks/`.
+Continue the loop in clowdy:orchestrate at step 4. The skeleton fixed the layout and the contracts, so the ready slices with disjoint Owns paths fan out through threads: one thread per slice, all started in one step (`clowdy thread spawn --tasks <key> --prompt-file - <<'EOF'`), each brief with the task key, the mode line, the owned paths, the contracts, a pointer to `architecture.md`, the check command and the report it ends with (clowdy:orchestrate, "Delegating with threads"). Build a slice yourself when it is the one the others wait on. Then end your turn; as each thread reports, check its slice, start the slices that became ready, and replan when a slice reveals a fact. When the slices are Done, run the milestone flow from `product.md` on the combined result yourself or through a fresh checking thread (clowdy:orchestrate, Verify). Then move the verified behavior to Implemented in `product.md` and let the check report go to `checks/`.
 
 ### 7. Tell the user
 
@@ -95,14 +95,14 @@ Semi-manual. Brief: "Build an invoicing app for my consulting business." Empty f
 1. Draft milestone: "I create a client and an invoice with two lines, download it as a PDF, and see it in the list as unpaid."
 2. One round, four cards. Browser or installed (recommend browser). Tax lines on invoices (recommend yes, one rate per invoice). How the client gets it: a PDF you download, or the app emails it (recommend download; email needs a mail account). Who signs in: only you with one password (recommend). Language, framework and database are not asked: decided and recorded.
 3. Answers: browser, yes, "download", "only me". Write `product.md`, the record `2026-11-17-invoicing-scope.md` (`Decided by: user (semi-manual)`) and the stack record. Confirmation card holds the milestone and the four answers. Answer: "go".
-4. Create "Build the skeleton" (CLW-1), build it, check and run proven. Then the slices: invoice data and API (CLW-2), invoice editor screen (CLW-3), PDF export (CLW-4), client list screen (CLW-5, depends on CLW-2), sign-in (CLW-6). Build CLW-2 first, since CLW-5 waits for it; CLW-3, 4 and 6 own other paths and can go to sub-agents. When all are Done, walk the milestone on the combined result yourself.
+4. Create "Build the skeleton" (CLW-1), build it, check and run proven. Then the slices: invoice data and API (CLW-2), invoice editor screen (CLW-3), PDF export (CLW-4), client list screen (CLW-5, depends on CLW-2), sign-in (CLW-6). Build CLW-2 yourself, since CLW-5 waits for it; CLW-3, 4 and 6 own other paths, so three threads start on them in the same step. CLW-5 goes to a thread once CLW-2 is Done. When all are Done, walk the milestone on the combined result yourself.
 5. Report: "Done: you can create clients and invoices, add tax and download a PDF. Decided with you: browser app, tax per invoice, PDF download only, one password (decisions/2026-11-17-invoicing-scope.md). Open: emailing invoices is not built (CLW-9)."
 
 Autopilot differs only in step 2 of the example: no cards, it decides and writes the records at once, and the report says `Decided for you`. A full graph with owned paths and dependencies (a bakery ordering site) is in [task-graph](references/task-graph.md).
 
 ## Avoid
 
-- Starting slices, or sub-agents, before the skeleton passes its own check.
+- Starting slices, threads or sub-agents before the skeleton passes its own check.
 - Adding features the milestone does not need (payments, roles, admin panels) because the template had them. Delete generator output the product does not use.
 - Fashionable or exotic stacks, two languages without a reason, services that need an account before anything runs.
 - Asking the manager technology questions, or asking in autopilot at all.

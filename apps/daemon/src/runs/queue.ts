@@ -8,10 +8,11 @@ import { appendItem } from '../domain/items';
 import { placeQueued, queueOf, settleSteers, userItemOf, withQueue } from '../domain/queue';
 import { conflict, errorMessage, notFound } from '../errors';
 import { newId } from '../ids';
+import { mergeNotices, noticeContent, noticeSummary } from './notices';
 import { STOPPED_TURN_MESSAGE } from './prompts';
 import { STOPPED_TO_SEND_REASON } from './transitions';
 
-import type { Chat, MessageSource, QueuedMessage, QueuedMessageMode, QueuePause, Run } from '@clowdy/protocol';
+import type { Chat, MessageSource, QueuedMessage, QueuedMessageMode, QueuePause, Run, ThreadNotice } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { AttachmentRecord } from '../db/attachments';
 import type { Store } from '../store';
@@ -49,6 +50,24 @@ export function isAtRest(run: Run): boolean {
 const COMPACT_TEXT = 'Compact the conversation';
 
 const isCompact = (item: QueuedMessage) => item.command === 'compact';
+
+/** The threads a queued notice reports; none for any other message. */
+const noticesOf = (item: QueuedMessage): ThreadNotice[] => (item.from?.kind === 'threadNotice' ? item.from.threads : []);
+
+/** A queued notice of `threads`: its one line, what the agent reads, and the entries the stream's card is drawn from. */
+const noticeFields = (threads: ThreadNotice[]) => ({ text: noticeSummary(threads), content: noticeContent(threads), from: { kind: 'threadNotice' as const, threads } });
+
+/**
+ * How the queue of an orchestrator that is over already waits for a notice that arrives now: held as a Stop or a failure would have held it, since
+ * the person decides what comes after those. A run that only rests until the message that stopped it goes (`STOPPED_TO_SEND_REASON`) is not held.
+ */
+function holdFor(run: Run): QueuePause | undefined {
+    if (run.status === 'failed' || run.status === 'interrupted') {
+        return 'failed';
+    }
+
+    return run.status === 'cancelled' && run.statusReason !== STOPPED_TO_SEND_REASON ? 'stopped' : undefined;
+}
 
 /**
  * What the person writes while a chat's orchestrator works waits on the chat (`Chat.queue`), and its bubble reaches the stream only when the agent gets
@@ -97,6 +116,51 @@ export class ChatQueue {
         }
 
         return item;
+    }
+
+    /**
+     * Puts a notice of threads that stopped (`ThreadNotices`) in the queue of an orchestrator that cannot take it now. It joins the notice that waits
+     * there already, the same thread's entry replaced and the others kept in their order, or becomes one at the end of the next turns: one message for
+     * all of them. It goes as the next turn when the orchestrator rests, like any queued message; one that is over already (a Stop, a failure, a
+     * restart) holds it for the person. Call it in a transaction.
+     */
+    enqueueNotice(chat: Chat, run: Run, threads: readonly ThreadNotice[]): void {
+        const { store } = this.deps;
+        const queue = queueOf(chat);
+        // A notice the agent is taking as a steer (the person sent it now) is the agent's already.
+        const waiting = queue.find(item => item.from?.kind === 'threadNotice' && !this.steering.has(item.id));
+        const merged = mergeNotices(waiting ? noticesOf(waiting) : [], threads);
+        const next = waiting
+            ? queue.map(item => (item.id === waiting.id ? { ...item, ...noticeFields(merged) } : item))
+            : placeQueued(queue, { id: newId('que'), mode: 'queue', ...noticeFields(merged), createdAt: Date.now() });
+        const paused = chat.queuePaused ?? holdFor(run);
+
+        saveChat(store, withQueue({ ...chat, updatedAt: Date.now() }, next, paused));
+
+        // An orchestrator at rest whose queue flows (a compact item waits for its background work to end, say) takes it with its next settle, which is now.
+        if (!paused && isAtRest(run)) {
+            store.afterCommit(() => this.settle(run));
+        }
+    }
+
+    /** Takes one thread's entry out of the notice that waits in the queue, and the notice with it when it was the last; the parent read that thread itself. */
+    dropNotice(chatId: string, threadId: string): void {
+        const { store } = this.deps;
+
+        store.tx(() => {
+            const chat = getChat(store.db, chatId);
+            const queue = chat ? queueOf(chat) : [];
+            const item = queue.find(entry => !this.steering.has(entry.id) && noticesOf(entry).some(notice => notice.chatId === threadId));
+
+            if (!chat || !item) {
+                return;
+            }
+
+            const rest = noticesOf(item).filter(notice => notice.chatId !== threadId);
+            const next = rest.length === 0 ? queue.filter(entry => entry.id !== item.id) : queue.map(entry => (entry.id === item.id ? { ...entry, ...noticeFields(rest) } : entry));
+
+            saveChat(store, withQueue(chat, next, chat.queuePaused));
+        });
     }
 
     /**

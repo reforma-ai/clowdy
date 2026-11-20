@@ -374,7 +374,8 @@ describe('materializing the system skills', () => {
         const { dir } = materializeSystemSkills(defaultSystemSkillsSource(), tempDir());
         const skills = readdirSync(join(dir, 'skills')).sort();
 
-        for (const skill of ['autopilot', 'docs', 'orchestrate', 'scaffold', 'semi-manual']) {
+        // `orchestrate` is in every run's system prompt, and `thread` in a thread's too (`skillPrompt`).
+        for (const skill of ['autopilot', 'docs', 'orchestrate', 'scaffold', 'semi-manual', 'thread']) {
             expect(skills).toContain(skill);
         }
 

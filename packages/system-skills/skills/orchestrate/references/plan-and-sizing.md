@@ -14,7 +14,7 @@ Check: <how it will be verified: commands, the user flow, the observable result>
 Out of scope: <what a reader might assume but must not do>
 ```
 
-A task without a Check is not ready to start. A task without Owns cannot be shared with a sub-agent while others edit.
+A task without a Check is not ready to start. A task without Owns cannot be shared with a sub-agent or a thread while others edit.
 
 ## Size
 
@@ -58,11 +58,11 @@ Replan when a result changes the facts: the premise was false, a dependency cann
 
 1. State the new fact in one line.
 2. `task_update({ taskId, description, dependsOn })` the affected tasks (outcome, owns, dependsOn); cancel tasks that no longer make sense, with a reason.
-3. Stop sub-agents working on cancelled or now-wrong pieces.
+3. Stop sub-agents working on cancelled or now-wrong pieces, and `clowdy thread stop` such threads; `clowdy thread tell` the others what changed.
 4. If two parallel pieces collided on a file, serialize them with `dependsOn`; do not let both continue.
 5. Tell the manager what changed and why in one or two lines. Record a decision when it was significant.
 
-If two sub-agents changed the same area, do not pick a winner silently. A mechanical conflict you resolve, keeping both intents. A semantic one (opposite choices) is decided by the contract in the tasks; if none exists, it is a fork for your mode. Changes outside a task's scope in a sub-agent's answer: read what changed and decide whether to keep it. Keeping needs a line in the report; reverting is deliberate, never a blind `git checkout`.
+If two sub-agents or threads changed the same area, do not pick a winner silently. A mechanical conflict you resolve, keeping both intents. A semantic one (opposite choices) is decided by the contract in the tasks; if none exists, it is a fork for your mode. Changes outside a task's scope in a sub-agent's answer or a thread's report: read what changed and decide whether to keep it. Keeping needs a line in the report; reverting is deliberate, never a blind `git checkout`.
 
 ## Example graph
 

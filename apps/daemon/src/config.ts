@@ -58,9 +58,11 @@ export interface Timings {
     retryBaseMs: number;
     /** After a subscription reset an engine resumes at a random moment within this long, so its runs do not all hit the limit together. */
     pauseJitterMs: number;
+    /** A parent is told of its threads that stopped this long after the first of them: those that stop meanwhile join the same message. */
+    noticeWindowMs: number;
 }
 
-export const DEFAULT_TIMINGS: Timings = { killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000 };
+export const DEFAULT_TIMINGS: Timings = { killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000, noticeWindowMs: 2000 };
 
 export class ConfigError extends Error {}
 
@@ -117,7 +119,10 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
         maxThreadDepth: numberFrom(env, 'CLOWDY_MAX_THREAD_DEPTH', 3, isCap, 'a positive integer'),
         maxActiveThreads: numberFrom(env, 'CLOWDY_MAX_ACTIVE_THREADS', 30, isCap, 'a positive integer'),
         maxThreads: numberFrom(env, 'CLOWDY_MAX_THREADS', 300, isCap, 'a positive integer'),
-        timings: { ...DEFAULT_TIMINGS },
+        timings: {
+            ...DEFAULT_TIMINGS,
+            noticeWindowMs: numberFrom(env, 'CLOWDY_THREAD_NOTICE_WINDOW_MS', DEFAULT_TIMINGS.noticeWindowMs, v => Number.isInteger(v) && v >= 0, 'a whole number of milliseconds, 0 or more'),
+        },
         agentPermissions: permissions(env),
         fakeSpeed: numberFrom(env, 'CLOWDY_FAKE_SPEED', 1, v => v >= 0, 'a number of at least 0'),
         systemSkillsSource: env.CLOWDY_SYSTEM_SKILLS_DIR || undefined,
