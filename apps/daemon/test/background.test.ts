@@ -1617,6 +1617,7 @@ function stopping(plan: Stopping): Script {
         }
 
         yield { type: 'text', delta: 'Started them', done: true };
+
         yield { type: 'background', items: [...open.values()] };
 
         if (plan.turn && !await turn.hold(plan.turn)) {
@@ -2201,6 +2202,8 @@ interface Commands {
     turn?: Latch;
     /** Held before the `done` of the answer to a message sent into the session. */
     gate?: Latch;
+    /** Each command also has the tool call that started it (its id is the item's), which ends failed with no text when the command is stopped, as a real adapter reports it. */
+    cards?: boolean;
 }
 
 /**
@@ -2214,9 +2217,15 @@ function commandsScript(plan: Commands): Script {
 
         const open = new Map(plan.items.map(item => [item.id, item]));
         const holds = new Map<string, Promise<boolean>>();
+        // A real adapter names the calls that stand for the listed commands, so the end of the turn leaves them running.
+        const listing = (): EngineEvent => ({ type: 'background', items: [...open.values()], ...(plan.cards && { calls: [...open.keys()] }) });
 
         yield { type: 'text', delta: 'Started them', done: true };
-        yield { type: 'background', items: [...open.values()] };
+
+        for (const item of plan.cards ? plan.items : []) {
+            yield { type: 'tool', toolCallId: item.id, name: 'Bash', input: { command: item.title }, state: 'running' };
+        }
+        yield listing();
 
         if (plan.turn && !await turn.hold(plan.turn)) {
             return;
@@ -2237,7 +2246,12 @@ function commandsScript(plan: Commands): Script {
                 }
 
                 open.delete(next.stopped);
-                yield { type: 'background', items: [...open.values()] };
+
+                if (plan.cards) {
+                    yield { type: 'tool', toolCallId: next.stopped, name: 'Bash', input: {}, state: 'error', error: 'The tool failed' };
+                }
+
+                yield listing();
                 stop = turn.stopRequested();
             }
             else if ('text' in next) {
@@ -2261,7 +2275,7 @@ function commandsScript(plan: Commands): Script {
                 }
 
                 open.delete(next.ended);
-                yield { type: 'background', items: [...open.values()] };
+                yield listing();
 
                 if (open.size === 0 && plan.reports) {
                     yield { type: 'text', delta: 'It finished', done: true };
@@ -2301,6 +2315,21 @@ describe('stopping one background command of the work that waits', () => {
         ends['cmd-2'].release();
         await waitFor(() => status() === 'succeeded', 'the run to end');
         expect(notes()).toEqual(['Background command stopped: sleep 10', 'Background command finished: sleep 20']);
+    });
+
+    test('shows the call of a command the person stopped as stopped, not as a failure, and leaves the other command\'s call running', async () => {
+        const ends = { 'cmd-2': latch() };
+        const { h, runId, waits, bodies } = await setup(commandsScript({ items: [cmd(1), cmd(2)], ends, reports: true, cards: true }), {}, () => true, undefined, stopsAlone);
+        const card = (id: string) => bodies().find(body => body.kind === 'tool' && body.toolCallId === id);
+
+        await waits();
+        expect(h.ok('run.stopBackground', { runId, itemId: 'cmd-1' })).toEqual({ stopped: true });
+        await waitFor(() => (card('cmd-1') as { state?: string } | undefined)?.state === 'error', 'the call to end');
+
+        expect(card('cmd-1')).toMatchObject({ state: 'error', error: STOPPED_TOOL });
+        expect(card('cmd-2')).toMatchObject({ state: 'running' });
+        ends['cmd-2'].release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
     });
 
     test('is not a Stop of the run: the chat is not held, and the answer to the line is a turn of its own', async () => {

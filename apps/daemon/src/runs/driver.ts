@@ -950,7 +950,8 @@ export class RunDriver {
                                 this.settleFinished(run, live, writer, native);
                             }
 
-                            writer.tool(event);
+                            // The call of a command the person stopped ends failed with whatever the agent says about the kill: it was stopped, as a Stop of the run reads.
+                            writer.tool(event.state === 'error' && live.stopped?.has(event.toolCallId) ? { ...event, error: STOPPED_TOOL } : event);
                         }
                         else {
                             native.stream({ ...event, agentId: event.agentId });
