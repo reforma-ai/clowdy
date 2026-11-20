@@ -299,7 +299,7 @@ Confirmed by the owner in chat (2026-11-19):
 - Known and accepted: a press in the first seconds of a Cursor turn waits for the turn (the v1 handshake is not answered yet); a custom ACP agent that says it steers is steered, and one that does not is stopped, by the same rule.
 
 
-## Stage 10 — Codex on ACP v2
+## Stage 10 — Codex on ACP v2, and stopping one background command
 
 **Depends on:** Stage 5, Stage 8, and the stage that stops one sub-agent alone (it adds `stopItem`).
 
@@ -308,7 +308,7 @@ Confirmed by the owner in chat (2026-11-19):
 - [ ] Complete
   - [ ] The v2 layer steers through `_session/steering` when the agent's `initialize` says `_meta.steering.supported`, and keeps the plain prompt for an agent that does not (Claude Code); `canSteer` follows the same fact
   - [ ] Codex's background items on v2 become `background` snapshots (commands, sub-agents) and its sub-agent child sessions (`<parent>:subagent:<id>`, agent messages and no `session_message`) become child runs through `children.ts`
-  - [ ] Stop of one Codex command or sub-agent alone uses `terminal/cancel` and `session/cancel` of the child, through `stopItem`
+  - [ ] Stop of one background COMMAND alone, for Claude Code and for Codex (owner, 2026-11-19: do it for both): `terminal/cancel` through `stopItem` (the item id is the terminal id; the adapter accepts only a terminal its list names and answers `-32602` otherwise, which counts as already gone), a per-item "can stop alone" flag on `BackgroundItem` from the terminal's `capabilities.cancel`, a Stop on the item's row in the strip (the background row today stops the whole run), and one line sent to the live session through `send` ("the user stopped background command X") with a note in the stream, because a stopped command gives the agent no report turn (probed: Claude starts none within 10 s) and `lostBackgroundMessage` already tells lost work the same way; a Workflow or Monitor task (`tool_call/cancel`) is tried in the real check and included only if it works. Stop of one sub-agent alone with `session/cancel` of the child is done in the earlier stage, and for Codex it is checked here
   - [ ] The wake note: when the last background item of an agent that does not start a report turn by itself ends and nothing runs, the runtime sends the note through `send`; the policy is per agent (a catalog field), on for Codex, off for Claude Code; a note is never sent after Stop or while a turn runs
   - [ ] `codex-acp` is pinned to 2.8.0 (not before 2026-11-22: the repository's `minimumReleaseAge` of three days refuses a newer version, so `bun x` fails the run) and Codex is `protocol: 'v2'` in the catalog after the real check passes in a scratch daemon: normal turn, resume, steer, Stop, a command with `yield_time_ms` that outlives its call (list, end, wake note, report turn), a sub-agent, stop one command, stop one sub-agent, `ask_user`, compact
   - [ ] The notes that say Codex has no background work are corrected: `research/index.md`, `research/acp-background-probe.md`, the comment in `catalog.ts`, `apps/daemon/AGENTS.md`, and the Decisions line above
