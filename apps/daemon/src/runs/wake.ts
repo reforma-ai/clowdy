@@ -11,6 +11,9 @@ import type { RunService } from './service';
  *
  * A parent that is running, was cancelled, or has nothing unseen is left alone: a running parent looks at its mailbox
  * when its turn ends, and a cancelled one hears about its children when the user writes to it again.
+ *
+ * A parent whose session outlived its turn (it also waits for background work) is woken the same way, and `RunDriver.launch` hands the results to
+ * that session as a message instead of starting a new one.
  */
 export class Wakeups {
     private timers = new Map<string, ReturnType<typeof setTimeout>>();

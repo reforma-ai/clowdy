@@ -7,7 +7,7 @@ import { Discovery } from './discovery';
 import { buildAgentEnv } from './env';
 
 import type { AgentInfo, AgentSetting } from '@clowdy/protocol';
-import type { AgentOverride, AgentSettingSpec, AgentSpec, CustomAgent, SettingEffect } from './catalog';
+import type { AgentOverride, AgentProtocol, AgentSettingSpec, AgentSpec, CustomAgent, SettingEffect } from './catalog';
 
 /** Detection results are reused this long, so a settings screen can poll without spawning a probe each time. */
 const INFO_TTL_MS = 30_000;
@@ -29,6 +29,10 @@ export interface ResolvedAgent {
     /** Variables it must not inherit. */
     scrub: RegExp[];
     login?: string;
+    /** The ACP version the engine speaks to it: `AgentSpec.protocol`, and `v1` for a custom agent. */
+    protocol: AgentProtocol;
+    /** `AgentSpec.wakesOnBackgroundEnd`: the agent starts no report turn for background work that ended, so the runtime tells it. */
+    wakesOnBackgroundEnd?: boolean;
     /** The `_meta` of `session/new`, for the options its adapter reads. */
     sessionMeta?: Record<string, unknown>;
     /** The `_meta` of the client capabilities in `initialize` (see `AgentSpec.clientMeta`). */
@@ -305,7 +309,7 @@ export class AgentRegistry {
         }
 
         if (entry.custom) {
-            return { ok: true, agent: { id: entry.id, name: entry.name, program, command: program, args: entry.agent.args, env: { ...entry.agent.env, ...override.env }, scrub: [] } };
+            return { ok: true, agent: { id: entry.id, name: entry.name, program, command: program, args: entry.agent.args, env: { ...entry.agent.env, ...override.env }, scrub: [], protocol: 'v1' } };
         }
 
         const { spec } = entry;
@@ -316,7 +320,7 @@ export class AgentRegistry {
         }
 
         const applied = appliedSettings(spec, override);
-        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, sessionMeta: withDisallowedTools(spec.sessionMeta, applied.disallowedTools), ...(spec.clientMeta && { clientMeta: spec.clientMeta }) };
+        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, protocol: spec.protocol ?? 'v1', ...(spec.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), sessionMeta: withDisallowedTools(spec.sessionMeta, applied.disallowedTools), ...(spec.clientMeta && { clientMeta: spec.clientMeta }) };
 
         if (spec.launch.kind === 'binary') {
             return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: withoutRemoved({ ...spec.env, ...apart?.env, ...applied.env, ...codexConfigEnv(applied.codexConfig), ...override.env }) } };

@@ -312,4 +312,25 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 12,
+        up(db) {
+            // What an agent has open in the background while its session outlives a turn, as a JSON array of `BackgroundItem` (see `Run.background`).
+            db.run('ALTER TABLE runs ADD COLUMN background TEXT');
+        },
+    },
+    {
+        version: 13,
+        up(db) {
+            // What a run had open in the background when a restart cut its session off (JSON array of `BackgroundItem`), kept until its next turn tells the agent it is lost.
+            db.run('ALTER TABLE runs ADD COLUMN lost_background TEXT');
+        },
+    },
+    {
+        version: 14,
+        up(db) {
+            // A native sub-agent whose session can end it alone (see `Run.canStopAlone`); NULL for every other run.
+            db.run('ALTER TABLE runs ADD COLUMN can_stop_alone INTEGER');
+        },
+    },
 ];

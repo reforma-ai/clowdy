@@ -41,3 +41,20 @@ export function ComposerBannerStatus({ children, icon, action, onAction, onPress
         </div>
     );
 }
+
+export interface ComposerBannerHeaderProps {
+    children: ReactNode;
+    /** The words of the line's button, such as `Stop all`. No button without it. */
+    action?: string;
+    onAction?: () => void;
+}
+
+/** The line above a group of rows: a label in muted words, and a button at its end for what applies to the whole group. */
+export function ComposerBannerHeader({ children, action, onAction }: ComposerBannerHeaderProps) {
+    return (
+        <div className={ styles.status }>
+            <Text variant="xs" color="secondary" className={ styles.text }>{ children }</Text>
+            { action && <Button size="xs" variant="ghost" color="secondary" className={ styles.action } isDisabled={ !onAction } onPress={ onAction }>{ action }</Button> }
+        </div>
+    );
+}

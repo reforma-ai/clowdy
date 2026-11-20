@@ -26,7 +26,7 @@ describe('ProjectState', () => {
         expect(state.status).toBe('ready');
         expect(state.cursor).toBe(1000);
         expect(state.tasks.get('t-24')?.title).toBe('Update the booking form');
-        expect(state.chats.size).toBe(4);
+        expect(state.chats.size).toBe(5);
     });
 
     it('applies an upsert event once its cursor is past the snapshot cursor, and advances', async () => {
@@ -102,7 +102,7 @@ describe('ProjectState', () => {
         expect(state.tasksOfChat('c-1')).toEqual([]);
         expect(runIds.flatMap(runId => state.linksOfRun(runId))).toEqual([]);
         expect(state.tasks.has('t-24')).toBe(true);
-        expect(state.chats.size).toBe(3);
+        expect(state.chats.size).toBe(4);
     });
 
     it('adds and removes links by event', async () => {
@@ -159,7 +159,7 @@ describe('ProjectState', () => {
     it('builds the run tree from its runs and follows run upserts', async () => {
         const { state } = await loadedProject();
 
-        expect(state.runTree(true).map(node => node.run.id)).toEqual(['r-orch-3', 'r-ex-17', 'r-orch-2', 'r-orch-1'].sort((a, b) => state.runs.get(b)!.createdAt - state.runs.get(a)!.createdAt));
+        expect(state.runTree(true).map(node => node.run.id)).toEqual(['r-orch-3', 'r-ex-17', 'r-orch-2', 'r-orch-1', 'r-orch-5'].sort((a, b) => state.runs.get(b)!.createdAt - state.runs.get(a)!.createdAt));
 
         const orchestrator = state.runTree(false).find(node => node.run.id === 'r-orch-1')!;
 

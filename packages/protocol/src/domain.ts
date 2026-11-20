@@ -251,6 +251,7 @@ export type RunStatus =
     | 'queued'
     | 'running'
     | 'waiting_children'
+    | 'waiting_background'
     | 'waiting_user'
     | 'blocked'
     | 'succeeded'
@@ -258,7 +259,7 @@ export type RunStatus =
     | 'cancelled'
     | 'interrupted';
 
-export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = ['queued', 'running', 'waiting_children', 'waiting_user', 'blocked'];
+export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = ['queued', 'running', 'waiting_children', 'waiting_background', 'waiting_user', 'blocked'];
 export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = ['succeeded', 'failed', 'cancelled', 'interrupted'];
 
 export function isTerminalRunStatus(status: RunStatus): boolean {
@@ -267,10 +268,11 @@ export function isTerminalRunStatus(status: RunStatus): boolean {
 
 /**
  * Whether a chat's orchestrator in this status takes a message only later, so the message waits in the chat's queue (`Chat.queue`): it works, or waits
- * for an answer, a slot or a reset. One that has finished, or only waits for its children, is at rest and takes a message at once.
+ * for an answer, a slot or a reset. One that has finished, or only waits for its children or for background work its session keeps open, is at rest
+ * and takes a message at once.
  */
 export function isBusyRunStatus(status: RunStatus): boolean {
-    return !isTerminalRunStatus(status) && status !== 'waiting_children';
+    return !isTerminalRunStatus(status) && status !== 'waiting_children' && status !== 'waiting_background';
 }
 
 export interface Run {
@@ -293,6 +295,12 @@ export interface Run {
      * drawn for that call finds its child. Absent when the engine did not say, and for every other run.
      */
     parentToolCallId?: string;
+    /**
+     * For a `native` run whose engine session can end it alone: `run.cancel` of this run ends this sub-agent and nothing else, while the parent's
+     * session and its other sub-agents go on. Absent when the session cannot (the engine has no such request, or the agent did not offer it for this
+     * sub-agent): `run.cancel` of such a run is refused, and only its parent's cancel ends it. Set when the run is made and never changed.
+     */
+    canStopAlone?: boolean;
     /** Short label: an agent name such as `Executor 07`, or the orchestrator's. */
     name: string;
     /** One line on the current work. */
@@ -320,6 +328,11 @@ export interface Run {
     usage?: RunUsage;
     /** The context window of the engine's session, as of its latest report (written when it moves by a percent, and when a turn ends). */
     context?: RunContext;
+    /**
+     * What the agent has open in the background while its session outlives a turn (a command, a sub-agent, a workflow): the engine's latest complete
+     * list. Absent when nothing is open, which is how most runs stay.
+     */
+    background?: BackgroundItem[];
     createdAt: number;
     startedAt?: number;
     finishedAt?: number;
@@ -329,6 +342,21 @@ export interface Run {
 export interface RunContext {
     used: number;
     size: number;
+}
+
+/** One thing an agent started in the background, for the person to see that the run is not over. */
+export interface BackgroundItem {
+    /** The engine's own id of it, stable while it is open: what tells one item from another across snapshots. */
+    id: string;
+    kind: 'command' | 'subagent' | 'task';
+    /** What it is, in a few words: the command, the sub-agent's name, the task's. */
+    title: string;
+    /**
+     * The agent lets the client end this item alone (`run.stopBackground`), leaving the session and everything else it has open running. Set by the engine
+     * from what the agent said of the item (an ACP terminal that advertises `terminal/cancel`); absent when it cannot be stopped alone, and for a
+     * sub-agent that has a child run (its row stops it through the child run, `Run.canStopAlone`). An item without it is ended only with the run.
+     */
+    canStopAlone?: boolean;
 }
 
 export interface RunUsage {

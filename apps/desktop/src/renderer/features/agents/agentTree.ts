@@ -129,7 +129,7 @@ export function listedRunId(runs: ReadonlyMap<RunId, Run>, run: Run): RunId | un
 
 /**
  * How many spawned children of each run are still going. Counted over every run, so what is folded away does not change it. Native sub-agents
- * are not counted: they are not rows, and they end with their parent's turn.
+ * are not counted: they are not rows, and they end with their parent's session (a background one, with the work that outlives the turn).
  */
 export function countActiveChildren(runs: Iterable<Run>): Map<RunId, number> {
     const counts = new Map<RunId, number>();
@@ -146,6 +146,12 @@ export function describeRun(run: Run, activeChildCount: number): RowNote | undef
     switch (run.status) {
         case 'waiting_children':
             return { text: activeChildCount > 0 ? `Waiting for sub-agents · ${ activeChildCount } active` : 'Waiting for sub-agents', tone: 'warning' };
+        case 'waiting_background': {
+            const open = run.background?.length ?? 0;
+
+            // Nothing is stuck: the agent's own work goes on, so the note is calm.
+            return { text: open > 0 ? `Waiting for background work · ${ open } open` : 'Waiting for background work', tone: 'neutral' };
+        }
         case 'waiting_user':
             return { text: run.statusReason ?? 'Waiting for your answer', tone: 'warning' };
         case 'blocked':
@@ -166,14 +172,16 @@ export function describeRun(run: Run, activeChildCount: number): RowNote | undef
 }
 
 /**
- * The dot on the icon of a chat's row, from what its orchestrator is doing: green while it works (or waits for its executors),
- * blue when it has asked the person something, red when it failed. A run that is blocked or queued shows its usual tone.
+ * The dot on the icon of a chat's row, from what its orchestrator is doing: green while it works (or waits for its executors or for
+ * its own background work), blue when it has asked the person something, red when it failed. A run that is blocked or queued shows
+ * its usual tone.
  * Nothing for a chat that has not started or whose run is over (done, stopped, interrupted): no news is no dot.
  */
 export function chatDotTone(run: Run | undefined): StatusTone | undefined {
     switch (run?.status) {
         case 'running':
         case 'waiting_children':
+        case 'waiting_background':
             return 'success';
         case 'waiting_user':
             return 'accent';

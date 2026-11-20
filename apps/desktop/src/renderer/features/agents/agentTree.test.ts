@@ -201,6 +201,13 @@ describe('describeRun', () => {
         expect(describeRun(parent, 0)).toEqual({ text: 'Waiting for sub-agents', tone: 'warning' });
     });
 
+    it('says a run waits for its background work, with how many items are open, and calmly', () => {
+        const background = [{ id: 'bg-1', kind: 'command' as const, title: 'bun run test' }, { id: 'bg-2', kind: 'task' as const, title: 'Workflow' }];
+
+        expect(describeRun(run('r', 'waiting_background', { background }), 0)).toEqual({ text: 'Waiting for background work · 2 open', tone: 'neutral' });
+        expect(describeRun(run('r', 'waiting_background'), 0)).toEqual({ text: 'Waiting for background work', tone: 'neutral' });
+    });
+
     it('shows the reason of waiting, blocked, queued and interrupted runs', () => {
         expect(describeRun(run('r', 'waiting_user', { statusReason: 'Asked which mail provider' }), 0)).toEqual({ text: 'Asked which mail provider', tone: 'warning' });
         expect(describeRun(run('r', 'blocked', { statusReason: 'Blocked by CAR-24' }), 0)).toEqual({ text: 'Blocked by CAR-24', tone: 'warning' });
@@ -224,9 +231,10 @@ describe('describeRun', () => {
 });
 
 describe('chatDotTone', () => {
-    it('is green while the orchestrator works or waits for its executors', () => {
+    it('is green while the orchestrator works or waits for its executors or for its background work', () => {
         expect(chatDotTone(run('r', 'running'))).toBe('success');
         expect(chatDotTone(run('r', 'waiting_children'))).toBe('success');
+        expect(chatDotTone(run('r', 'waiting_background'))).toBe('success');
     });
 
     it('is blue once it has asked the person something, and red when it failed', () => {

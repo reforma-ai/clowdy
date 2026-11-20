@@ -345,3 +345,29 @@ describe('a chat whose conversation outgrew the context window', () => {
         expect(alertOf()!.querySelector('button')).toBeNull();
     });
 });
+
+describe('a chat whose orchestrator waits for background work', () => {
+    it('counts what is open above the message box, says what it waits for at the end of the stream, and leaves the message box to use', async () => {
+        await start();
+        await draw('c-5');
+
+        // The first command can be stopped alone and has a row of its own; the other is counted.
+        expect([...container.querySelectorAll('[aria-label="Work in progress"] > div')].map(row => row.textContent)).toEqual(['Command · bun run testStop', 'Background task runningStop']);
+        expect(container.textContent).toContain('Waiting for background work…');
+        expect(notice()).toBeNull();
+        expect(field()).not.toBeNull();
+    });
+
+    it('draws neither once the run has been stopped', async () => {
+        await start();
+        await draw('c-5');
+        await act(async () => {
+            await store.command({ type: 'run.cancel', runId: 'r-orch-5' });
+        });
+        await vi.waitFor(() => expect(store.selectedProject!.runs.get('r-orch-5')?.status).toBe('cancelled'));
+        await draw('c-5');
+
+        expect(container.querySelector('[aria-label="Work in progress"]')).toBeNull();
+        expect(container.textContent).not.toContain('Waiting for background work…');
+    });
+});

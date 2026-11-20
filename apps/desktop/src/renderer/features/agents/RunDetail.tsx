@@ -64,8 +64,8 @@ function RunHeader({ run, parent }: { run: Run; parent: Run | undefined }) {
                     </div>
                     <Text color="secondary" truncate>{ run.summary ? `${ ROLE_LABEL[run.role] } · ${ run.summary }` : ROLE_LABEL[run.role] }</Text>
                 </div>
-                { !isTerminalRunStatus(run.status) && (run.origin === 'native'
-                    // A sub-agent lives inside its parent's session: the daemon refuses to stop it alone.
+                { !isTerminalRunStatus(run.status) && (run.origin === 'native' && !run.canStopAlone
+                    // A sub-agent lives inside its parent's session: when that session cannot end it alone, the daemon refuses to stop it.
                     ? <Text variant="sm" color="secondary">{ `Runs inside ${ parent?.name ?? 'its parent run' }` }</Text>
                     : (
                         <Button variant="bordered" size="sm" isPending={ isStopping } onPress={ () => void stop() }>
@@ -132,7 +132,7 @@ function RunStream({ run }: { run: Run }) {
         <StreamView
             items={ stream.items }
             active={ !isTerminalRunStatus(run.status) }
-            working={ run.status === 'running' || (run.status === 'waiting_children' && 'Waiting for sub-agents…') }
+            working={ run.status === 'running' || (run.status === 'waiting_children' && 'Waiting for sub-agents…') || (run.status === 'waiting_background' && 'Waiting for background work…') }
             onAnswer={ run.status === 'waiting_user' ? answer : undefined }
             emptyState={ <Text color="secondary">This run has not written anything yet.</Text> }
         />

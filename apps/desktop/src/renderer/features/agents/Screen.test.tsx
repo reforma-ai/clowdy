@@ -79,7 +79,7 @@ describe('the list', () => {
         const keys = rowKeys();
 
         expect(keys[0]).toBe('@new-chat');
-        expect(keys.filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-4', 'c-3', 'c-2']);
+        expect(keys.filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-4', 'c-5', 'c-3', 'c-2']);
 
         // The orchestrator is the chat, so it has no row; its runs follow the chat, and a run's own runs follow it.
         const below = keys.slice(keys.indexOf('c-1') + 1, keys.indexOf('c-4'));
@@ -115,7 +115,7 @@ describe('the list', () => {
     it('sorts the chats by last activity until the Filters menu asks for the order they were made in', async () => {
         const chatKeys = () => rowKeys().filter(key => key?.startsWith('c-'));
 
-        expect(chatKeys()).toEqual(['c-1', 'c-4', 'c-3', 'c-2']);
+        expect(chatKeys()).toEqual(['c-1', 'c-4', 'c-5', 'c-3', 'c-2']);
 
         await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
 
@@ -128,13 +128,13 @@ describe('the list', () => {
         await press(menuItem('Created'));
         expect(ui().chatSort).toBe('created');
         await draw();
-        expect(chatKeys()).toEqual(['c-4', 'c-3', 'c-1', 'c-2']);
+        expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-1', 'c-2']);
 
         // A message in a chat does not move it now.
         await draw(() => {
             project().chats.set('c-2', { ...project().chats.get('c-2')!, updatedAt: Date.now() });
         });
-        expect(chatKeys()).toEqual(['c-4', 'c-3', 'c-1', 'c-2']);
+        expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-1', 'c-2']);
     });
 
     it('keeps the row of an open `⋯` menu as if hovered, since the pointer is in the menu and not on the row', async () => {
@@ -183,7 +183,7 @@ describe('the list', () => {
         await draw(() => ui().setShowSubthreads(false));
 
         expect(rowKeys().filter(key => key?.startsWith('r-'))).toEqual([]);
-        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-4', 'c-3', 'c-2']);
+        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-4', 'c-5', 'c-3', 'c-2']);
     });
 });
 
@@ -349,7 +349,7 @@ describe('the archive', () => {
         await archive('c-4', true);
 
         expect(rowKeys()).toEqual(expect.not.arrayContaining(['c-2', 'c-4', 'r-ex-15']));
-        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-3']);
+        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-5', 'c-3']);
 
         await press(buttonNamed('Archive'));
 

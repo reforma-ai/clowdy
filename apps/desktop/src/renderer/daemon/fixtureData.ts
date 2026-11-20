@@ -210,8 +210,8 @@ function fixtureAgents(now: number): AgentInfo[] {
             status: 'ready',
             path: '/opt/homebrew/bin/codex',
             version: '0.166.0',
-            launch: 'bun x --bun @agentclientprotocol/codex-acp@2.6.0',
-            fetches: '@agentclientprotocol/codex-acp@2.6.0',
+            launch: 'bun x --bun @agentclientprotocol/codex-acp@2.8.0',
+            fetches: '@agentclientprotocol/codex-acp@2.8.0',
             login: 'codex login',
             canSignIn: true,
             canCompact: true,
@@ -412,6 +412,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
         { id: 'c-2', projectId, title: 'First version', mode: 'autopilot', orchestratorRunId: 'r-orch-2', createdAt: ago(60 * 24 * 5), updatedAt: ago(60 * 24 * 4) },
         { id: 'c-3', projectId, title: 'Architecture questions', mode: 'semi', orchestratorRunId: 'r-orch-3', createdAt: ago(40), updatedAt: ago(9) },
         { id: 'c-4', projectId, title: 'New chat', mode: 'autopilot', createdAt: ago(2), updatedAt: ago(2) },
+        // Its orchestrator started two commands in the background and waits for them: the strip above the message box counts them.
+        { id: 'c-5', projectId, title: 'Check the booking changes', mode: 'autopilot', orchestratorRunId: 'r-orch-5', createdAt: ago(30), updatedAt: ago(5) },
     ];
 
     const worktree = (slug: string) => ({ path: `/Users/dev/.clowdy/worktrees/car-rental/${ slug }`, branch: `clowdy/${ slug }`, baseCommit: 'a1b2c3d' });
@@ -453,6 +455,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
             parentRunId: 'r-orch-1',
             origin: 'native',
             parentToolCallId: 'tc-agent-2',
+            // Its session can end it alone (Claude Code over ACP v2): the row has a Stop of its own.
+            canStopAlone: true,
             summary: 'Find where the price is computed',
             createdAt: ago(2),
             startedAt: ago(2),
@@ -533,6 +537,19 @@ export function createFixtureData(now = Date.now()): FixtureData {
             statusReason: 'Asked how to store bookings',
             createdAt: ago(40),
             startedAt: ago(40),
+        }),
+        run('r-orch-5', 'Orchestrator 05', 'orchestrator', 'waiting_background', {
+            chatId: 'c-5',
+            summary: 'Check the booking changes',
+            statusReason: 'Waiting for background work',
+            background: [
+                // The first can be stopped alone (a terminal the agent lets the client cancel): its row has a Stop of its own. The second only ends with the run.
+                { id: 'bg-1', kind: 'command', title: 'bun run test', canStopAlone: true },
+                { id: 'bg-2', kind: 'command', title: 'bun run typecheck' },
+            ],
+            createdAt: ago(30),
+            startedAt: ago(30),
+            context: { used: 31000, size: 250000 },
         }),
         run('r-ex-17', 'Executor 17', 'executor', 'succeeded', {
             summary: 'Admin: fleet table',
@@ -684,6 +701,15 @@ export function createFixtureData(now = Date.now()): FixtureData {
                 recommended: 'sqlite',
             },
         ],
+    ]);
+
+    // The turn ended with two commands still running in the background: the session stays open, and their results arrive as a turn of the agent's own.
+    stream('r-orch-5', [
+        [30, { kind: 'user', text: 'Run the tests and the type check, and tell me when both are done.' }],
+        [29, { kind: 'assistant', done: true, text: 'Both take a few minutes, so I will start them in the background.' }],
+        [29, { kind: 'tool', toolCallId: 'tc-o5-1', name: 'Bash', state: 'done', input: { command: 'bun run test', run_in_background: true }, output: 'Command running in background with ID: bg-1' }],
+        [29, { kind: 'tool', toolCallId: 'tc-o5-2', name: 'Bash', state: 'done', input: { command: 'bun run typecheck', run_in_background: true }, output: 'Command running in background with ID: bg-2' }],
+        [28, { kind: 'assistant', done: true, text: 'Both are running. I will report here when they finish.' }],
     ]);
 
     stream('r-orch-2', [
