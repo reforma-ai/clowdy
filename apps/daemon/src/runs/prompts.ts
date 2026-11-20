@@ -160,11 +160,27 @@ export const BACKGROUND_KINDS: Record<BackgroundItem['kind'], string> = {
     task: 'task',
 };
 
+/** The title of a task that the engine holds the session for until a time the agent scheduled in the call (a `Monitor`, a `ScheduleWakeup`, a one-shot cron job): `Monitor · <what>`, `Wakeup · <why>`. */
+const SCHEDULED_TITLE = /^(Monitor|Wakeup) · (.+)$/;
+
 /** The longest title of a background item that goes into a sentence. */
 const MAX_NAMED_TITLE = 80;
 
 /** A background item's title for a sentence: one line, cut at about 80 characters (a command's title may be a whole script). */
 export const namedTitle = (title: string) => clip(title.replace(/\s+/g, ' ').trim(), MAX_NAMED_TITLE);
+
+/**
+ * The line the stream gets when an item has left the list ("Background command finished: bun test"). Of a monitor or a wakeup the runtime knows that its
+ * time has passed, not what came of it (the agent reports that in the turn the event starts), so the line says only that: `Monitor ended: <what>`,
+ * `Wakeup due: <why>`.
+ */
+export function backgroundNote(item: BackgroundItem, stopped: boolean): string {
+    const scheduled = item.kind === 'task' && !stopped ? SCHEDULED_TITLE.exec(item.title) : null;
+
+    return scheduled
+        ? `${ scheduled[1] === 'Monitor' ? 'Monitor ended' : 'Wakeup due' }: ${ namedTitle(scheduled[2]) }`
+        : `Background ${ BACKGROUND_KINDS[item.kind] } ${ stopped ? 'stopped' : 'finished' }: ${ namedTitle(item.title) }`;
+}
 
 /**
  * Told to an agent that starts no turn of its own when its background work ends (`wakesOnBackgroundEnd`, Codex), in a prompt of the runtime's own, once the

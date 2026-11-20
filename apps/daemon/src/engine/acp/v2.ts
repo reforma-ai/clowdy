@@ -34,6 +34,8 @@ type Item =
     | { kind: 'exited' }
     | { kind: 'aborted' }
     | { kind: 'timer'; which: Wake; id: number }
+    /** The time a tool call named has come (`Monitor`, `ScheduleWakeup`: see `timed.ts`): the session is held for it no more. */
+    | { kind: 'deadline'; toolCallId: string }
     /** A message on its way to the agent was taken or refused: what the loop waits for may have changed. */
     | { kind: 'nudge' };
 
@@ -55,6 +57,8 @@ interface Course {
     calls: string[];
     /** The agent's own list behind `items`. */
     listed: BackgroundWork[];
+    /** The calls whose time came while a turn was in flight: they leave `items` once none is (`expire`), so the session is not wound up under a turn. */
+    lapsed: Set<string>;
 }
 
 /** Adds the tokens a turn used to those of the turns before it in the same activity. */
@@ -111,6 +115,10 @@ function isResumeWarningUpdate(update: SessionUpdate): boolean {
  * is idle, the layer waits the handoff guard (`BACKGROUND_HANDOFF_MS`) for such a turn to begin, and then ends. `send` puts another prompt to the live
  * session; `turns.ts` keeps count of the turns that messages sent into the session lead to, so that one `done` ends the whole activity.
  *
+ * Claude Code's own timers (a `Monitor`, a `ScheduleWakeup`, a one-shot `CronCreate`) are not in the agent's list, which would let the session end with
+ * the turn and lose every tick and wakeup. The mapper makes a completed call of one a background item and the layer holds a timer for the time the agent
+ * named in the call (`timed.ts`); the item leaves when it comes, once no turn is in flight (`expire`).
+ *
  * A steer goes into the running turn one of two ways, by what the agent said in `initialize`. An agent that advertises `_meta.steering.supported` (Codex's
  * adapter) is asked with `_session/steering`, which it answers `injected` when the message went into the turn: it holds a plain prompt that comes during a
  * turn until the turn is over, and answers it as a turn of its own. One that does not (Claude Code's) is sent a plain prompt, which it inserts into the turn.
@@ -144,6 +152,8 @@ export class V2Layer implements ProtocolLayer {
     /** The conversation is over: nothing more is taken. */
     private finished = false;
     private timers: Partial<Record<Wake, { id: number; handle: ReturnType<typeof setTimeout> }>> = {};
+    /** The time of each call that holds the session until a time it named, by the call's id (`Monitor`, `ScheduleWakeup`: see `timed.ts`). */
+    private deadlines = new Map<string, ReturnType<typeof setTimeout>>();
     private timerCount = 0;
 
     constructor(private host: LayerHost) {
@@ -364,6 +374,27 @@ export class V2Layer implements ProtocolLayer {
         }
     }
 
+    /** Starts the timer of the call `toolCallId`, which runs `ms`: the end of what the agent scheduled in it. */
+    private setDeadline(toolCallId: string, ms: number): void {
+        if (this.deadlines.has(toolCallId) || this.finished) {
+            return;
+        }
+
+        const handle = setTimeout(() => this.channel.push({ kind: 'deadline', toolCallId }), ms);
+
+        handle.unref();
+        this.deadlines.set(toolCallId, handle);
+    }
+
+    /** Stops every call's timer: the conversation is over, and none of them may outlive it. */
+    private clearDeadlines(): void {
+        for (const handle of this.deadlines.values()) {
+            clearTimeout(handle);
+        }
+
+        this.deadlines.clear();
+    }
+
     /** Whether the timer item `id` is the timer that runs now, and not one that was stopped after it went off. A timer that went off is spent. */
     private fires(which: Wake, id: number): boolean {
         if (this.timers[which]?.id !== id) {
@@ -577,6 +608,7 @@ export class V2Layer implements ProtocolLayer {
             this.finished = true;
             this.disarm('handoff');
             this.disarm('release');
+            this.clearDeadlines();
             this.markEnded();
         }
     }
@@ -586,7 +618,7 @@ export class V2Layer implements ProtocolLayer {
      * cancelled, the process left, or nothing has been open for the length of the handoff guard.
      */
     private async *converse(id: string, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent> {
-        const course: Course = { working: false, held: false, delivered: false, owed: false, items: [], calls: [], listed: [] };
+        const course: Course = { working: false, held: false, delivered: false, owed: false, items: [], calls: [], listed: [], lapsed: new Set() };
 
         for (;;) {
             const item = await this.channel.next();
@@ -599,6 +631,8 @@ export class V2Layer implements ProtocolLayer {
                 return;
             }
 
+            yield* this.expire(course, mapper);
+
             // Nothing is open and no turn runs: the session is wound up, unless the agent starts a turn within the guard.
             if (this.quiet(course)) {
                 this.arm('handoff', this.guard(course));
@@ -609,9 +643,33 @@ export class V2Layer implements ProtocolLayer {
         }
     }
 
+    /** A turn is in flight or on its way: the one that runs, a `done` held for another, a prompt sent into the session that has not been answered. */
+    private busy(course: Course): boolean {
+        return course.working || course.held || this.turns.sending;
+    }
+
+    /**
+     * The calls whose time came leave the list, once no turn is in flight. A turn that runs when a call's time comes is no report of it: the agent's notice of
+     * its end (a monitor's last, a wakeup's turn) begins after that turn, so the session is kept until the turn's `done` is said, and then waits for the
+     * report as for any work that ends between turns (`owed`).
+     */
+    private *expire(course: Course, mapper: UpdateMapperV2): Generator<EngineEvent> {
+        if (course.lapsed.size === 0 || this.busy(course)) {
+            return;
+        }
+
+        const lapsed = [...course.lapsed].filter(id => mapper.lapse(id));
+
+        course.lapsed.clear();
+
+        if (lapsed.length > 0) {
+            yield* this.publish(course, mapper);
+        }
+    }
+
     /** Whether a `done` has been said and nothing is open since: no turn, no held `done`, no background work, no prompt sent into the session. */
     private quiet(course: Course): boolean {
-        return course.delivered && !course.working && !course.held && course.items.length === 0 && !this.turns.sending;
+        return course.delivered && !this.busy(course) && course.items.length === 0;
     }
 
     /** One thing the loop was woken for. Gives back whether the conversation is over. */
@@ -625,6 +683,11 @@ export class V2Layer implements ProtocolLayer {
                 return item.from === undefined ? yield* this.heard(item.update, id, course, mapper) : yield* this.heardOfChild(item.update, item.from, mapper);
             case 'timer':
                 return yield* this.timed(item, id, course, mapper);
+            case 'deadline':
+                this.deadlines.delete(item.toolCallId);
+                course.lapsed.add(item.toolCallId);
+
+                return false;
             case 'nudge':
                 // A prompt that a turn waited for was refused: there may be nothing left to wait for.
                 if (course.held && !course.working && !this.review().blocked) {
@@ -665,8 +728,16 @@ export class V2Layer implements ProtocolLayer {
         if (!SessionUpdate.isStateUpdate(update)) {
             yield* mapper.update(update);
 
+            // A call that schedules something the agent will be woken by (a completed `Monitor`, `ScheduleWakeup` or one-shot `CronCreate`) holds the session
+            // until its time, which is told before the turn's `idle`: the runtime then keeps the session for it.
+            const armed = mapper.armed();
+
+            for (const { id: toolCallId, ms } of armed) {
+                this.setDeadline(toolCallId, ms);
+            }
+
             // What names an item (a terminal's command, a sub-agent's title, a call's title) may come after the list that names the item.
-            if (course.listed.length > 0 && (SessionUpdate.isTerminalUpdate(update) || SessionUpdate.isSubagentUpdate(update) || SessionUpdate.isToolCallUpdate(update))) {
+            if (armed.length > 0 || (course.listed.length > 0 && (SessionUpdate.isTerminalUpdate(update) || SessionUpdate.isSubagentUpdate(update) || SessionUpdate.isToolCallUpdate(update)))) {
                 yield* this.publish(course, mapper);
             }
 

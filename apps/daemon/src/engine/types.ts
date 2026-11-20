@@ -140,8 +140,9 @@ export type EngineEvent =
     | { type: 'context'; used: number; size: number }
     | { type: 'usage'; inputTokens: number; outputTokens: number; costUsd?: number }
     /**
-     * What the agent has open in the background (a command, a sub-agent, a workflow): the complete list, not a change, sent again whenever it changes, so
-     * an item that is missing from the next one has finished and an empty list means nothing is open. An agent that cannot tell never sends one. The
+     * What the agent has open in the background (a command, a sub-agent, a workflow, a timer of its own that the layer holds the session for: a `Monitor`, a
+     * wakeup): the complete list, not a change, sent again whenever it changes, so an item that is missing
+     * from the next one has finished and an empty list means nothing is open. An agent that cannot tell never sends one. The
      * runtime reads the latest list when a turn's `done` arrives, to decide whether the session stays open, so a turn's list comes before its `done`. An
      * item's `id` is the one a sub-agent has as its `agentId` or as the `parentToolCallId` of its `subagent` event: that is how the runtime knows which
      * sub-agent the item is. `calls` are the ids of tool calls that are still running and are the work some of these items stand for: Codex keeps the call of

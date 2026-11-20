@@ -35,6 +35,17 @@ import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError
  *                               zero usage, a `running`, the last message again under a new id (one `agent_message_chunk` with all the text, as the
  *                               adapter says it; `whole`: one `agent_message`), and an `idle` with the real usage
  *   die <ms>                    the agent's process exits that long from now, whatever it is doing
+ *   monitor <timeout_ms> <tick_ms> <description>   a `Monitor` call as Claude Code's adapter says it (the name in the first update, the input
+ *                               growing, `completed` with `Monitor started (task ..., expires in Ns ...)`), which the adapter does NOT list in `background`: every
+ *                               <tick_ms> (0: none) a turn of the agent's own says `tick <n>`, and at <timeout_ms> one more says `Monitor <description> ended`
+ *                               (or the lines of `onwake`). `monitor persistent <description>` is one that runs for the life of the session: no end, no turn
+ *   wakeup <seconds> <reason>   a `ScheduleWakeup` call (`Next wakeup scheduled for 11:15:00 (in <seconds>s)`) whose turn begins <seconds> later and says
+ *                               `woke: <reason>`, or the lines of `onwake`; a turn of it may call `wakeup` again (a loop)
+ *   onwake <directive>          a line of the script of the turn that the next `monitor` (its end) or `wakeup` starts
+ *   ending <how>                how the next `monitor` or `wakeup` call ends: `completed` (default), `failed`, `cancelled`, or `plain` (completed with a
+ *                               result that says nothing of when, so the client falls back on the delay it was asked for); the last three start no timer
+ *   listed                      the next `monitor` is listed in `background` as a `tool_call` until its time, as a newer adapter lists one; the turn at its end
+ *                               is the report turn of that work
  *
  * `session/cancel` of a sub-agent's session, as Claude's adapter takes it, ends that sub-agent and nothing else: its terminal gets an exit status, its call is
  * `cancelled`, the parent mirrors it in `subagent_update` (`idle`, stop reason `cancelled`, no report), the child says the same on its own session, and the
@@ -119,6 +130,14 @@ interface FakeSession {
     flap: boolean;
     /** The next sub-agent is announced without the `cancel` capability (`locked`). */
     locked: boolean;
+    /** The lines of the agent-started turns that have come due and wait for the agent to be free: a monitor's tick or notice, a wakeup. */
+    events: string[][];
+    draining: boolean;
+    /** What `onwake` gave the next scheduled turn. */
+    wakeLines: string[];
+    /** How the next `monitor` or `wakeup` call ends (`ending`), and whether the next monitor is listed (`listed`). */
+    ending: 'completed' | 'failed' | 'cancelled' | 'plain';
+    listing: boolean;
 }
 
 /** One piece of background work. */
@@ -127,7 +146,7 @@ interface Work {
     /** What `background` lists for it. */
     item: Record<string, unknown>;
     done: boolean;
-    kind: 'terminal' | 'subagent' | 'workflow';
+    kind: 'terminal' | 'subagent' | 'workflow' | 'monitor';
     /** The id the work is known by: a terminal's, a child session's, a tool call's. */
     ref: string;
     /** A sub-agent's: what it asked of the child (the id of the call too), how the child ends, and whether it wakes again. */
@@ -160,7 +179,7 @@ function systemText(content: unknown): string | undefined {
 }
 
 function open(id: string, params: { cwd: string; additionalDirectories?: string[]; mcpServers?: McpServer[]; systemPrompt?: { content?: unknown } | null; replayFrom?: unknown; _meta?: unknown }, resumed: boolean): FakeSession {
-    const session: FakeSession = { cwd: params.cwd, directories: params.additionalDirectories, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, replayFrom: params.replayFrom ?? undefined, resumed, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [], queue: [], id, work: [], reports: [], reportLines: [], gap: 40, reporting: false, landed: false, outcome: 'end_turn', flap: false, locked: false };
+    const session: FakeSession = { cwd: params.cwd, directories: params.additionalDirectories, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, replayFrom: params.replayFrom ?? undefined, resumed, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [], queue: [], id, work: [], reports: [], reportLines: [], gap: 40, reporting: false, landed: false, outcome: 'end_turn', flap: false, locked: false, events: [], draining: false, wakeLines: [], ending: 'completed', listing: false };
 
     sessions.set(id, session);
 
@@ -350,7 +369,7 @@ async function foreground(session: FakeSession, client: AgentContext, ms: number
 }
 
 /** Starts a piece of background work that ends `ms` from now. */
-async function startWork(session: FakeSession, client: AgentContext, kind: Work['kind'], ms: number, title: string): Promise<void> {
+async function startWork(session: FakeSession, client: AgentContext, kind: Exclude<Work['kind'], 'monitor'>, ms: number, title: string): Promise<void> {
     // A client that has gone is not an error of the work.
     const send = (update: SessionUpdate, sessionId = session.id) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
     const n = ++works;
@@ -433,7 +452,7 @@ async function endWork(session: FakeSession, work: Work): Promise<void> {
 
         await stopChild(session, send, work.ref, work.title, work.outcome ?? 'end_turn');
     }
-    else {
+    else if (work.kind === 'workflow') {
         await send({ sessionUpdate: 'tool_call_update', toolCallId: work.ref, status: 'completed' });
     }
 
@@ -523,6 +542,115 @@ async function cancelCall(toolCallId: string): Promise<void> {
     }
 
     throw new RequestError(-32602, 'Tool call is not running in the background, so it cannot be cancelled');
+}
+
+/**
+ * An agent-started turn at its time, as Claude Code's own timers start one (a monitor's output line or its notice, a wakeup): it begins when the agent is free,
+ * after the gap, with no marker before its `running`.
+ */
+function wake(session: FakeSession, ms: number, lines: string[]): void {
+    setTimeout(() => {
+        session.events.push(lines);
+        drain(session);
+    }, ms);
+}
+
+/** Begins the next turn that has come due, unless a turn runs by then: its end tries again. */
+function drain(session: FakeSession): void {
+    if (session.draining || session.events.length === 0) {
+        return;
+    }
+
+    session.draining = true;
+    setTimeout(() => {
+        session.draining = false;
+
+        if (session.prompting || session.events.length === 0 || !session.client) {
+            return;
+        }
+
+        session.prompting = true;
+        void turn(session, session.id, (session.events.shift() as string[]).join('\n'), session.client);
+    }, session.gap);
+}
+
+/**
+ * A call of a tool that schedules something inside the agent (`monitor`, `wakeup`), in the shape Claude Code's adapter reports one: the name in the first update
+ * (the input still empty), the input as it is completed, then `completed` with the tool's own words, before the turn's `idle`. The adapter lists none of them
+ * in `background` (0.107.0), so the timers that follow are the agent's alone; `listed` makes a monitor the exception, as a newer adapter lists one.
+ */
+async function scheduled(session: FakeSession, send: Send, tool: 'Monitor' | 'ScheduleWakeup', rest: string[]): Promise<void> {
+    const n = ++works;
+    const toolCallId = `toolu-${ tool === 'Monitor' ? 'monitor' : 'wakeup' }-${ n }`;
+    const { ending, listing } = session;
+    const onwake = session.wakeLines.splice(0);
+    let input: Record<string, unknown>;
+    let output: string;
+    let timers: () => void = () => undefined;
+
+    session.ending = 'completed';
+    session.listing = false;
+
+    if (tool === 'Monitor') {
+        const persistent = rest[0] === 'persistent';
+        const [timeout, tick, ...words] = persistent ? ['0', '0', ...rest.slice(1)] : rest;
+        const description = words.join(' ');
+        const ms = Number(timeout);
+
+        input = persistent
+            ? { command: 'tail -f build.log', description, persistent: true }
+            : { command: 'for i in 1 2 3; do echo "tick $i"; sleep 5; done', description, timeout_ms: ms };
+        output = persistent
+            ? `Monitor started (task mon-${ n }, persistent until you stop it). You will be notified on each event.`
+            : `Monitor started (task mon-${ n }, expires in ${ Math.ceil(ms / 1000) }s unless the source ends first; you get one notice at expiry — re-arm if you still need the watch). You will be notified on each event. Keep working — do not poll or sleep.`;
+        timers = () => {
+            if (persistent) {
+                return;
+            }
+
+            for (let tickAt = Number(tick), count = 1; Number(tick) > 0 && tickAt < ms; tickAt += Number(tick), count++) {
+                wake(session, tickAt, [`say tick ${ count }`]);
+            }
+
+            if (!listing) {
+                wake(session, ms, onwake.length > 0 ? onwake : [`say Monitor ${ description } ended`]);
+
+                return;
+            }
+
+            // A monitor the adapter lists is work like any: the list loses it when it ends, and the agent reports it.
+            const work: Work = { title: description, item: { type: 'tool_call', toolCallId }, done: false, kind: 'monitor', ref: toolCallId };
+
+            session.work.push(work);
+            setTimeout(() => void endWork(session, work), ms);
+        };
+    }
+    else {
+        const [seconds, ...words] = rest;
+        const reason = words.join(' ');
+
+        input = { delaySeconds: Number(seconds), prompt: `wake: ${ reason }`, reason, noop: false };
+        output = ending === 'plain'
+            ? 'Wakeup scheduled.'
+            : `Next wakeup scheduled for 11:15:00 (in ${ seconds }s). If you owe the user a status update this tick, write it now as ordinary response text; then end the turn — the harness re-invokes you when the wakeup fires or a task-notification arrives.`;
+        timers = () => wake(session, Number(seconds) * 1000, onwake.length > 0 ? onwake : [`say woke: ${ reason }`]);
+    }
+
+    const result = ending === 'failed' ? 'The tool failed' : ending === 'cancelled' ? 'The tool was cancelled' : output;
+    const status = ending === 'failed' ? 'failed' : ending === 'cancelled' ? 'cancelled' : 'completed';
+
+    await send({ sessionUpdate: 'tool_call_update', toolCallId, name: tool, rawInput: {}, status: 'pending', title: tool, kind: 'other', content: [] });
+    await send({ sessionUpdate: 'tool_call_update', toolCallId, rawInput: input });
+    await send({ sessionUpdate: 'tool_call_update', toolCallId, status, rawOutput: result, content: [{ type: 'content', content: { type: 'text', text: result } }] });
+
+    if (status === 'completed') {
+        timers();
+
+        // The adapter lists none of these, so no state follows the call; a monitor it lists says so in the state that names it.
+        if (listing) {
+            await send(state(session, { state: 'running' }));
+        }
+    }
 }
 
 /** Begins the report turn of finished work after the gap, unless a turn runs by then: that turn reports it when it ends. */
@@ -700,9 +828,24 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                 case 'background': {
                     const [kind, ms, ...title] = rest;
 
-                    await startWork(session, client, kind as Work['kind'], Number(ms), title.join(' '));
+                    await startWork(session, client, kind as Exclude<Work['kind'], 'monitor'>, Number(ms), title.join(' '));
                     break;
                 }
+                case 'monitor':
+                    await scheduled(session, send, 'Monitor', rest);
+                    break;
+                case 'wakeup':
+                    await scheduled(session, send, 'ScheduleWakeup', rest);
+                    break;
+                case 'onwake':
+                    session.wakeLines.push(argument);
+                    break;
+                case 'ending':
+                    session.ending = argument as FakeSession['ending'];
+                    break;
+                case 'listed':
+                    session.listing = true;
+                    break;
                 case 'retitle': {
                     const [ms, ...title] = rest;
                     const work = session.work.filter(candidate => candidate.kind === 'workflow' && !candidate.done).at(-1);
@@ -856,6 +999,7 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
         // A prompt held for this turn's end (`FAKE_ACP_QUEUE`) runs next; work that ended meanwhile is reported once the agent is free.
         session.queue.shift()?.();
         report(session);
+        drain(session);
 
         // What an agent gives once the turn is over: its first message as the title, then a name of its own a moment later.
         if (session.title === undefined) {
