@@ -206,6 +206,28 @@ describe('UiStore', () => {
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":["c-1",5]}' })).forProject('p1').expandedChats).toEqual(['c-1']);
     });
 
+    it('shows the rows of the running-agents strip until the person folds them, and remembers it per project', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        expect(ui.agentsFolded).toBe(false);
+
+        ui.toggleAgentsFolded();
+        expect(ui.agentsFolded).toBe(true);
+        expect(store.forProject('p2').agentsFolded).toBe(false);
+        expect(new UiStore(storage).forProject('p1').agentsFolded).toBe(true);
+
+        ui.toggleAgentsFolded();
+        expect(new UiStore(storage).forProject('p1').agentsFolded).toBe(false);
+    });
+
+    it('reads the fold of the strip from the page URL, and drops what is damaged in storage', () => {
+        expect(initialUiFromSearch('?agents=folded')).toEqual({ agentsFolded: true });
+        expect(initialUiFromSearch('?agents=open')).toEqual({ agentsFolded: false });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"agentsFolded":"yes"}' })).forProject('p1').agentsFolded).toBe(false);
+    });
+
     it('ignores URL values that name no section or view', () => {
         expect(initialUiFromSearch('?section=nope&view=cards')).toEqual({});
         expect(initialUiFromSearch('')).toEqual({});
