@@ -1,10 +1,10 @@
-import { Box } from '@clowdy/components/Box';
 import { Button } from '@clowdy/components/Button';
-import { ButtonUpload } from '@clowdy/components/ButtonUpload';
 import { Input } from '@clowdy/components/Input';
+import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
+import { Close } from '@clowdy/icons/12';
 import { NO_PROJECT_ICON } from '@clowdy/protocol';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { ProjectIcon } from '../../../shared/ProjectIcon';
 import { useProjectIcon, useRootStore } from '../../../stores';
@@ -37,7 +37,6 @@ export function ProjectDetail({ project, info, infoFailed }: ProjectDetailProps)
                 <SettingsSection title="Project">
                     <SettingsCard>
                         <NameRow project={ project } />
-                        <IconRow project={ project } />
                     </SettingsCard>
                 </SettingsSection>
             ) }
@@ -76,7 +75,7 @@ function NameRow({ project }: { project: Project }) {
             <Input
                 type="text"
                 variant="bordered"
-                className={ styles.nameInput }
+                className={ styles.nameField }
                 aria-label="Project name"
                 value={ draft ?? project.name }
                 onChange={ setDraft }
@@ -85,7 +84,9 @@ function NameRow({ project }: { project: Project }) {
                     if (event.key === 'Enter') event.currentTarget.blur();
                     else if (event.key === 'Escape') setDraft(undefined);
                 } }
-            />
+            >
+                <IconField slot="prefix" project={ project } />
+            </Input>
         </SettingsRow>
     );
 }
@@ -94,20 +95,21 @@ function NameRow({ project }: { project: Project }) {
 const ICON_FILES = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon,.ico,.svg';
 
 /**
- * The picture the project shows in the menu and the list: upload one, remove it for the folder icon, and after a removal take the
- * favicon of the main folder back when it has one.
+ * The project's icon, the whole left side of the name field. A press picks a picture. While a picture shows (uploaded, or the main folder's
+ * favicon), hovering shows a cross: an uploaded picture clears back to the favicon, and the favicon itself hides for the folder icon.
  */
-function IconRow({ project }: { project: Project }) {
+function IconField({ project, slot }: { project: Project; slot?: string }) {
     const root = useRootStore();
+    const file = useRef<HTMLInputElement>(null);
     const shown = useProjectIcon(project);
-    const found = root.projectIcons.foundIcon(project);
+    const custom = project.settings.icon != null && project.settings.icon !== NO_PROJECT_ICON;
     const [uploading, setUploading] = useState(false);
 
-    const upload = async (file: File) => {
+    const upload = async (picked: File) => {
         setUploading(true);
 
         try {
-            await uploadProjectIcon(root, project, file);
+            await uploadProjectIcon(root, project, picked);
         }
         finally {
             setUploading(false);
@@ -115,14 +117,39 @@ function IconRow({ project }: { project: Project }) {
     };
 
     return (
-        <SettingsRow title="Icon" description="Shown in the project menu and the list. Clowdy uses the main folder's favicon until you upload another picture.">
-            <Box direction="row" align="center" gap="sm">
-                <span className={ styles.preview }><ProjectIcon project={ project } size={ 24 } /></span>
-                <ButtonUpload variant="bordered" size="sm" accept={ ICON_FILES } isPending={ uploading } onFileSelect={ file => void upload(file) }>Upload…</ButtonUpload>
-                { shown && <Button variant="bordered" size="sm" onPress={ () => void removeProjectIcon(root, project) }>Remove</Button> }
-                { project.settings.icon === NO_PROJECT_ICON && found && <Button variant="bordered" size="sm" onPress={ () => void restoreFolderIcon(root, project) }>Use favicon</Button> }
-            </Box>
-        </SettingsRow>
+        <span slot={ slot } className={ styles.iconSlot } onClick={ event => event.stopPropagation() }>
+            <input
+                ref={ file }
+                type="file"
+                accept={ ICON_FILES }
+                className={ styles.file }
+                aria-label="Project icon file"
+                onChange={ () => {
+                    const picked = file.current?.files?.[0];
+
+                    if (!picked || !file.current) return;
+
+                    file.current.value = '';
+                    void upload(picked);
+                } }
+            />
+            <button type="button" className={ styles.choose } aria-label="Choose icon" disabled={ uploading } onClick={ () => file.current?.click() }>
+                { uploading ? <Spinner size="xs" /> : <ProjectIcon project={ project } size={ 20 } /> }
+            </button>
+            { shown && !uploading && (
+                <button
+                    type="button"
+                    className={ styles.reset }
+                    aria-label="Reset icon"
+                    onClick={ (event) => {
+                        event.stopPropagation();
+                        void (custom ? restoreFolderIcon(root, project) : removeProjectIcon(root, project));
+                    } }
+                >
+                    <Close width={ 8 } height={ 8 } />
+                </button>
+            ) }
+        </span>
     );
 }
 

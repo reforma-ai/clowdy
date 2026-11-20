@@ -579,10 +579,10 @@ describe('ProjectsPage icon', () => {
     const PNG = 'data:image/png;base64,iVBORw0KGgo=';
     const settingsOf = (projectId: ProjectId) => store.projects.find(project => project.id === projectId)!.settings;
     const iconOf = (projectId: ProjectId) => row(projectId)?.querySelector('img')?.getAttribute('src');
-    /** The picture of the page's Icon row, beside its Upload… button (the list under the page has pictures too). */
+    /** The picture in the name field. The project list under the page has pictures too, so this stays on the field. */
     const preview = () => container.querySelector('input[type="file"]')!.parentElement!.querySelector('img')?.getAttribute('src');
 
-    /** Picks a file in the Upload… dialog. */
+    /** Picks a file for the icon. */
     async function pick(file: File) {
         const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
 
@@ -599,14 +599,14 @@ describe('ProjectsPage icon', () => {
         expect(iconOf(FIXTURE_PERSONAL_PROJECT_ID)).toBeUndefined();
     });
 
-    it('uploads a picture drawn small, removes it for the folder icon, and takes the favicon back', async () => {
+    it('uploads a picture drawn small, and resets it back to the folder favicon', async () => {
         square.mockResolvedValue(PNG);
         await open(FIXTURE_PROJECT_ID);
 
         const favicon = preview();
 
         expect(favicon).toMatch(/^blob:/);
-        expect(named('Use favicon')).toBeUndefined();
+        expect(button('Reset icon')).not.toBeNull();
 
         const file = new File(['png'], 'logo.png', { type: 'image/png' });
 
@@ -615,28 +615,28 @@ describe('ProjectsPage icon', () => {
         expect(settingsOf(FIXTURE_PROJECT_ID).icon).toBe(PNG);
         expect(preview()).toBe(PNG);
 
-        await click(named('Remove'));
-        await flush();
-        expect(settingsOf(FIXTURE_PROJECT_ID).icon).toBe(NO_PROJECT_ICON);
-        expect(preview()).toBeUndefined();
-        expect(named('Remove')).toBeUndefined();
-
-        await click(named('Use favicon'));
+        await click(button('Reset icon'));
         await flush();
         expect(settingsOf(FIXTURE_PROJECT_ID).icon).toBeUndefined();
         expect(preview()).toBe(favicon);
+        expect(button('Reset icon')).not.toBeNull();
     });
 
-    it('offers Remove only while a picture shows, and no favicon to take back where the main folder has none', async () => {
-        const data = createFixtureData();
+    it('hides the favicon from the reset, and offers none where the folder icon already shows', async () => {
+        await open(FIXTURE_PROJECT_ID);
 
-        data.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.settings.icon = NO_PROJECT_ICON;
-        await open(FIXTURE_EMPTY_PROJECT_ID, {}, data);
+        expect(preview()).toMatch(/^blob:/);
+        await click(button('Reset icon'));
+        await flush();
+        expect(settingsOf(FIXTURE_PROJECT_ID).icon).toBe(NO_PROJECT_ICON);
+        expect(preview()).toBeUndefined();
+        expect(button('Reset icon')).toBeNull();
+
+        await open(FIXTURE_EMPTY_PROJECT_ID);
 
         expect(preview()).toBeUndefined();
-        expect(named('Upload…')).toBeDefined();
-        expect(named('Remove')).toBeUndefined();
-        expect(named('Use favicon')).toBeUndefined();
+        expect(button('Choose icon')).not.toBeNull();
+        expect(button('Reset icon')).toBeNull();
     });
 
     it('refuses a picture over 5 MB and a file that is not a picture, as toasts', async () => {

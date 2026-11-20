@@ -32,7 +32,7 @@ export class ProjectIconsStore {
     }
 
     /**
-     * Whether the project needs the icon of its main folder: to show it, and for Settings to offer it back after the person removed the icon.
+     * Whether the project needs the icon of its main folder: to show it, and for Settings to offer a reset when that favicon was hidden.
      * A project with a picture of its own and the personal space do not.
      */
     wantsFound(project: Project): boolean {
