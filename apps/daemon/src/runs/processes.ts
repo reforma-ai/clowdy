@@ -1,3 +1,5 @@
+import { processesBelow, signalBelow } from '../engine/process';
+
 import type { RunProcess } from '../db/runs';
 
 /** The start time an engine reports and the one the OS shows for the same process differ by about a second. */
@@ -80,7 +82,11 @@ export async function killSurvivor(ref: RunProcess, graceMs: number): Promise<bo
         return false;
     }
 
+    // What it started in groups of their own (Claude Code's shell commands) is not in its group, and belongs to nobody once it is gone.
+    const below = processesBelow(ref.pid);
+
     signalProcess(ref, 'SIGTERM');
+    signalBelow(below, ref.pgid ?? ref.pid, 'SIGTERM');
 
     for (const deadline = Date.now() + graceMs; Date.now() < deadline && isAlive(ref.pid);) {
         await Bun.sleep(50);
@@ -89,6 +95,8 @@ export async function killSurvivor(ref: RunProcess, graceMs: number): Promise<bo
     if (isAlive(ref.pid)) {
         signalProcess(ref, 'SIGKILL');
     }
+
+    signalBelow(below, ref.pgid ?? ref.pid, 'SIGKILL');
 
     return true;
 }

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { errorMessage } from '../../errors';
 import { spawnInOwnGroup } from '../process';
 import { buildAgentEnv } from './env';
-import { clientCapabilities } from './session';
+import { clientCapabilities } from './v1';
 
 import type { AgentCapabilities } from '@agentclientprotocol/sdk/unstable';
 import type { ToolBridge } from './bridge';

@@ -29,6 +29,8 @@ export function liveLine(status: RunStatus): boolean | string {
             return 'Waiting for a free slot…';
         case 'waiting_children':
             return 'Waiting for the executors…';
+        case 'waiting_background':
+            return 'Waiting for background work…';
         default:
             return false;
     }

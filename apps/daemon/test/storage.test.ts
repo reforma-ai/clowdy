@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { openDatabase } from '../src/db/connection';
 import { MIGRATIONS } from '../src/db/migrations';
+import { getRun } from '../src/db/runs';
 import { newId } from '../src/ids';
 import { Store } from '../src/store';
 import { cleanTempDirs, tempDir } from './helpers';
@@ -84,6 +85,24 @@ describe('migrations', () => {
         db.query('DELETE FROM projects WHERE id = ?').run('prj_1');
         expect(db.query('SELECT COUNT(*) AS n FROM chats').get()).toEqual({ n: 0 });
         expect(db.query('SELECT COUNT(*) AS n FROM project_folders WHERE project_id = ?').get('prj_1')).toEqual({ n: 0 });
+        db.close();
+    });
+
+    test('version 12 gives the runs of an older database a background column that reads as nothing open, and stores a list', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 12));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', 'succeeded', 'claude', 1);
+        before.close();
+
+        const db = openDatabase(path);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(getRun(db, 'run_1')).toMatchObject({ id: 'run_1', status: 'succeeded' });
+        expect(getRun(db, 'run_1')?.background).toBeUndefined();
+        db.query('UPDATE runs SET background = ? WHERE id = ?').run(JSON.stringify([{ id: 'bg-1', kind: 'command', title: 'sleep 60' }]), 'run_1');
+        expect(getRun(db, 'run_1')?.background).toEqual([{ id: 'bg-1', kind: 'command', title: 'sleep 60' }]);
         db.close();
     });
 

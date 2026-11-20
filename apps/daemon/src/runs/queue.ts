@@ -8,6 +8,8 @@ import { appendItem } from '../domain/items';
 import { placeQueued, queueOf, settleSteers, userItemOf, withQueue } from '../domain/queue';
 import { conflict, errorMessage, notFound } from '../errors';
 import { newId } from '../ids';
+import { STOPPED_TURN_MESSAGE } from './prompts';
+import { STOPPED_TO_SEND_REASON } from './transitions';
 
 import type { Chat, QueuedMessage, QueuedMessageMode, QueuePause, Run } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
@@ -33,7 +35,10 @@ export interface QueueInput {
     content: string;
 }
 
-/** Whether a chat's orchestrator takes a message at once: its work is over, or it only waits for its children (`isBusyRunStatus`). */
+/**
+ * Whether a chat's orchestrator takes a message at once: its work is over, or it only waits for its children or for background work its session keeps open
+ * (`isBusyRunStatus`). A message to one whose session is open goes into that session (`RunDriver.launch`), not into a new one.
+ */
 export function isAtRest(run: Run): boolean {
     return !isBusyRunStatus(run.status);
 }
@@ -160,11 +165,14 @@ export class ChatQueue {
 
     /**
      * Send now. A busy orchestrator gets the message as a steer: it moves to the end of the steers and goes to the running turn when the agent can take it.
-     * One at rest gets it at once as its next turn, and a paused queue flows again. A compact item steers nothing: while the orchestrator is busy it keeps its
-     * place, and at rest it runs when the orchestrator can compact and is refused as `chat.compact` is when it cannot.
+     * When the orchestrator is running and its agent cannot take a steer at all (`RunDriver.cannotSteer`), the message would wait for the turn's end however
+     * long that is, so Send now is stop and send, which the button says: the message moves to the head of the steers, the turn is ended on purpose
+     * (`RunDriver.interrupt`), and the orchestrator's coming to rest gives the message to its next turn. Only the orchestrator's turn ends: the runs it spawned
+     * go on, and the queue is not paused. One at rest gets the message at once as its next turn, and a paused queue flows again. A compact item steers nothing:
+     * while the orchestrator is busy it keeps its place, and at rest it runs when the orchestrator can compact and is refused as `chat.compact` is when it cannot.
      */
     sendNow(chatId: string, itemId: string): { chatId: string; runId: string } {
-        const { store, runs } = this.deps;
+        const { store, runs, driver } = this.deps;
 
         return store.tx(() => {
             const chat = requireChat(store, chatId);
@@ -176,12 +184,19 @@ export class ChatQueue {
                     return { chatId, runId: run.id };
                 }
 
-                // Sending a message from a held queue is what lets it flow again, as at rest.
-                if (item.mode !== 'steer' || chat.queuePaused) {
-                    saveChat(store, withQueue(chat, placeQueued(queueOf(chat), { ...item, mode: 'steer' }), undefined));
+                const stops = run.status === 'running' && driver.cannotSteer(run.id);
+
+                // Sending a message from a held queue is what lets it flow again, as at rest. Stop and send puts it ahead of the steers that waited for the turn's end.
+                if (item.mode !== 'steer' || chat.queuePaused || stops) {
+                    saveChat(store, withQueue(chat, placeQueued(queueOf(chat), { ...item, mode: 'steer' }, stops ? 0 : undefined), undefined));
                 }
 
-                store.afterCommit(() => this.steerAll(chat.id));
+                // A turn that cannot be ended (it ended on its own meanwhile) leaves the message to the steering pass, which settles the queue as the run rests.
+                store.afterCommit(() => {
+                    if (!stops || !driver.interrupt(run.id)) {
+                        this.steerAll(chat.id);
+                    }
+                });
 
                 return { chatId, runId: run.id };
             }
@@ -302,7 +317,10 @@ export class ChatQueue {
             appendItem(store, run.id, userItemOf(item));
         }
 
-        runs.resume(run.id, item.content);
+        // A turn that stop and send ended: the agent is told it did not end it itself.
+        const stopped = run.status === 'cancelled' && run.statusReason === STOPPED_TO_SEND_REASON && !isCompact(item);
+
+        runs.resume(run.id, stopped ? `${ STOPPED_TURN_MESSAGE }\n\n${ item.content }` : item.content);
         driver.launch(run.id);
     }
 

@@ -3,7 +3,7 @@ import { ACTIVE_RUN_STATUSES, isTerminalRunStatus, projectEngine, STOPPED_TOOL }
 import { getChat } from '../db/chats';
 import { findQuestion, listRunningTools } from '../db/items';
 import { getProject } from '../db/projects';
-import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, insertMailbox, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, pendingMailbox, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
+import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, insertMailbox, isDescendant, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, pendingMailbox, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
 import { getTask } from '../db/tasks';
 import { appendItem, updateItem } from '../domain/items';
 import { categoryOf, linkRunTask, moveTask, requireTask } from '../domain/tasks';
@@ -12,9 +12,9 @@ import { newId } from '../ids';
 import { EngineLimits } from './limits';
 import { killSurvivor, signalProcess } from './processes';
 import { QUEUE_REASON, Scheduler } from './scheduler';
-import { canTransition, NEEDS_REASON } from './transitions';
+import { canTransition, NEEDS_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 
-import type { ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunRole, RunStatus, RunUsage, Task } from '@clowdy/protocol';
+import type { BackgroundItem, ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunRole, RunStatus, RunUsage, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunProcess } from '../db/runs';
 import type { EngineRegistry } from '../engine/types';
@@ -68,6 +68,19 @@ export class RunService {
     onChildSettled: (parentRunId: string) => void = () => undefined;
     /** Called after the commit in which a chat's orchestrator changed status, with the run as it is now. */
     onOrchestratorStatus: (run: Run) => void = () => undefined;
+    /**
+     * Prepares the request that asks the live session which owns the native sub-agent `run` to end it alone (the driver sets it), with the reason its run
+     * will show. Answers the function that sends it, or `undefined` when the request cannot be made: the session is not live, cannot end that sub-agent, or
+     * has not got it open. It sends nothing itself: the caller sends once its transaction has committed (`stopAlone`), because the agent hears of it and a
+     * rollback cannot take that back. The sub-agent's run ends later, through the engine's own `subagent` event, not here.
+     */
+    stopNative: (run: Run, reason: string) => (() => void) | undefined = () => undefined;
+    /**
+     * Prepares the request that asks the live session of the run `runId` to end its background command `itemId` alone (the driver sets it). Answers the
+     * function that sends it, or `undefined` when the request cannot be made (the session is not live, cannot end that command, or has not got it open).
+     * It sends nothing itself: the caller sends once its transaction has committed (`stopBackground`), as for a sub-agent.
+     */
+    stopCommand: (runId: string, itemId: string) => (() => void) | undefined = () => undefined;
     private scheduler: Scheduler;
     private controllers = new Map<string, AbortController>();
     private answers = new Map<string, (answer: string) => void>();
@@ -161,9 +174,10 @@ export class RunService {
     /**
      * A sub-agent inside `parent`'s engine session, shown as a child run. It starts `running` without a slot: the
      * parent's process does its work. It ends with the parent's turn at the latest. `parentToolCallId` is the parent's call that started it, when
-     * the engine said, so the parent's stream can draw that call as the child's card.
+     * the engine said, so the parent's stream can draw that call as the child's card. `canStopAlone` says the session can end it alone, which the app
+     * reads to offer a Stop for it (`Run.canStopAlone`).
      */
-    createNative(parent: Run, input: { name: string; summary: string; parentToolCallId?: string }): Run {
+    createNative(parent: Run, input: { name: string; summary: string; parentToolCallId?: string; canStopAlone?: boolean }): Run {
         return this.store.tx(() => {
             const id = newId('run');
             const run: Run = {
@@ -174,6 +188,7 @@ export class RunService {
                 role: 'executor',
                 origin: 'native',
                 ...(input.parentToolCallId && { parentToolCallId: input.parentToolCallId }),
+                ...(input.canStopAlone && { canStopAlone: true }),
                 name: input.name,
                 summary: input.summary,
                 status: 'running',
@@ -234,6 +249,8 @@ export class RunService {
 
             if (isTerminalRunStatus(status)) {
                 next.finishedAt = now;
+                // A run that ended has nothing open: its session is gone, and so is what it had running in the background.
+                delete next.background;
 
                 if (options.result !== undefined) {
                     next.result = options.result;
@@ -294,7 +311,10 @@ export class RunService {
         return pendingMailbox(this.store.db, runId).length > 0;
     }
 
-    /** Task columns follow the work: started runs move tasks to active, a finished run to review, a dead one back to todo. */
+    /**
+     * Task columns follow the work: started runs move tasks to active, a finished run to review, a dead one back to todo. A run that only rests between a
+     * turn stopped to send a message and the turn that sends it (`STOPPED_TO_SEND_REASON`) is not dead: its task stays where it is.
+     */
     private syncTasks(previous: RunStatus, run: Run): void {
         const assigned = linksOfRun(this.store.db, run.id).filter(link => link.relation === 'assigned');
 
@@ -308,7 +328,7 @@ export class RunService {
             else if (run.status === 'succeeded' && category === 'active') {
                 moveTask(this.store, task.id, 'review');
             }
-            else if (['failed', 'cancelled', 'interrupted'].includes(run.status) && category === 'active' && this.activeRunsOfTask(task.id, run.id).length === 0) {
+            else if (['failed', 'cancelled', 'interrupted'].includes(run.status) && category === 'active' && run.statusReason !== STOPPED_TO_SEND_REASON && this.activeRunsOfTask(task.id, run.id).length === 0) {
                 moveTask(this.store, task.id, 'todo');
             }
         }
@@ -441,6 +461,11 @@ export class RunService {
             throw new Error('Another question is waiting for the user. Ask one question at a time and wait for its answer.');
         }
 
+        // A turn the agent starts by itself while the run waits has no way to park the run for an answer (neither wait leads to `waiting_user`).
+        if (['waiting_background', 'waiting_children'].includes(this.require(runId).status)) {
+            throw new Error('Can\'t ask a question while the run waits for background work or child runs');
+        }
+
         const questionId = newId('qst');
 
         this.asking.add(runId);
@@ -521,14 +546,23 @@ export class RunService {
 
     /**
      * Cancels the run and its active descendants, children first. History stays. Returns the cancelled run ids;
-     * a run that is already finished cancels nothing. A sub-agent inside a session cannot be cancelled alone.
+     * a run that is already finished cancels nothing. A sub-agent inside a session is stopped alone when its session can end it (`stopNative`): the
+     * answer is its id (and those of the sub-agents it started, which the agent does not end with it), but the runs end a moment later, through the engine's
+     * own events, and with what the agent says (one may have finished meanwhile); its parent and the other sub-agents go on. When the session cannot, only the parent's cancel ends it, and this is refused.
      */
     cancel(runId: string, reason = CANCEL_REASON): string[] {
         return this.store.tx(() => {
             const run = this.require(runId);
 
             if (run.origin === 'native' && isActive(run.status)) {
-                throw conflict('A sub-agent runs inside its parent run; cancel the parent run instead');
+                if (!this.stopAlone(run, reason)) {
+                    throw conflict('A sub-agent runs inside its parent run; cancel the parent run instead');
+                }
+
+                // Claude's adapter ends that sub-agent and leaves the ones it started working, so each of them is asked too: the Stop is of the whole branch.
+                const below = activeSubtree(this.store.db, runId).filter(id => id !== runId && this.stopAlone(this.require(id), reason));
+
+                return [runId, ...below];
             }
 
             const ids = activeSubtree(this.store.db, runId);
@@ -546,6 +580,83 @@ export class RunService {
 
             return ids;
         });
+    }
+
+    /**
+     * Stops the agents below `runId` and leaves `runId` itself going on, in one step: every run it spawned that is active (working, or waiting for a slot,
+     * a dependency or an answer, so none starts in the place of one that stopped), with what is below it, is cancelled, and every sub-agent inside the
+     * session that can be stopped alone (`Run.canStopAlone`) is asked to stop. A sub-agent that cannot be stopped alone is left (only its parent's cancel
+     * ends it). Returns the ids it cancelled or asked to stop, children first. The run is not cancelled and a chat's queue is not held: the agent
+     * hears what happened and goes on, from what the engine says of its sub-agents (Claude Code tells its parent itself) and from the mailbox for the
+     * spawned runs, whose results the run gets as for any run that ended, `cancelled` among them (`wakeMessage`). Everything is decided in one transaction,
+     * so no run starts or ends between the choice and the cancel.
+     */
+    stopAgents(runId: string, reason = CANCEL_REASON): string[] {
+        return this.store.tx(() => {
+            this.require(runId);
+
+            const below = listActiveRuns(this.store.db).filter(run => run.id !== runId && isDescendant(this.store.db, runId, run.id));
+            const stopped: string[] = [];
+
+            for (const run of below) {
+                // One that an earlier cancel ended with its parent is over by now.
+                if (run.origin === 'spawned' && isActive(this.require(run.id).status)) {
+                    stopped.push(...this.cancel(run.id, reason));
+                }
+            }
+
+            // Each sub-agent is asked once, the ones a sub-agent started first: the agent ends only the one it is asked about, so nothing is stopped twice.
+            const depth = (run: Run): number => (run.origin === 'native' && run.parentRunId !== undefined ? 1 + depth(this.require(run.parentRunId)) : 0);
+
+            for (const run of below.filter(candidate => candidate.origin === 'native').sort((a, b) => depth(b) - depth(a))) {
+                if (this.stopAlone(this.require(run.id), reason)) {
+                    stopped.push(run.id);
+                }
+            }
+
+            return stopped;
+        });
+    }
+
+    /**
+     * Stops one background command of the orchestrator `runId` and nothing else: the run goes on, its other work too, and its chat's queue is not held. The
+     * item is the one the run lists with the agent's permission to end it alone (`BackgroundItem.canStopAlone`) and the run's session is live and has it
+     * open; the request to the agent goes out once the transaction commits, so a rollback asks nothing of it, and the command's end comes back as the
+     * engine's own snapshot without it. Answers whether a request is made or already on its way for that command, so a repeated press is one request and
+     * answers the same; `false` for an item that is gone, cannot be stopped alone, or has no live session.
+     */
+    stopBackground(runId: string, itemId: string): boolean {
+        return this.store.tx(() => {
+            const run = this.require(runId);
+            const item = run.background?.find(candidate => candidate.id === itemId);
+
+            if (!isActive(run.status) || !item?.canStopAlone || item.kind === 'subagent') {
+                return false;
+            }
+
+            const send = this.stopCommand(runId, itemId);
+
+            if (send) {
+                this.store.afterCommit(send);
+            }
+
+            return send !== undefined;
+        });
+    }
+
+    /**
+     * Asks the session to end the native sub-agent `run` alone, and answers whether it will: the run is active and was made stoppable, and its session is
+     * live and has it open. The request goes out once the transaction commits (like the abort of a cancelled run), so a Stop that rolls back asks nothing of
+     * the agent, and each call is one request.
+     */
+    private stopAlone(run: Run, reason: string): boolean {
+        const send = run.canStopAlone && isActive(run.status) ? this.stopNative(run, reason) : undefined;
+
+        if (send) {
+            this.store.afterCommit(send);
+        }
+
+        return send !== undefined;
     }
 
     /**
@@ -587,8 +698,10 @@ export class RunService {
     /**
      * At startup nothing is running any more. Engine processes that outlived the daemon are killed (when their pid still
      * belongs to the process that was recorded), and runs that were mid-turn come back `interrupted`, the calls their turn left running failed as
-     * `TurnWriter.finish` would have done (a crash never got to it). Runs that only wait (queued, blocked, waiting for children) keep waiting; the
-     * driver starts them again.
+     * `TurnWriter.finish` would have done (a crash never got to it). A run that waits for background work (`waiting_background`) has a live session
+     * too, which no restart keeps, so it is interrupted whether or not a process was recorded for it, and the items it had open are kept in its work
+     * record until its next message tells the agent they are lost. Runs that only wait (queued, blocked, waiting
+     * for children) keep waiting; the driver starts them again.
      */
     async recover(): Promise<number> {
         for (const { process: survivor } of listRunsWithProcess(this.store.db)) {
@@ -597,10 +710,12 @@ export class RunService {
 
         return this.store.tx(() => {
             const withProcess = new Set(listRunsWithProcess(this.store.db).map(entry => entry.runId));
-            const dead = listActiveRuns(this.store.db).filter(run => ['running', 'waiting_user'].includes(run.status) || withProcess.has(run.id));
+            const dead = listActiveRuns(this.store.db).filter(run => ['running', 'waiting_user', 'waiting_background'].includes(run.status) || withProcess.has(run.id));
 
             for (const run of dead) {
-                setRunWork(this.store.db, run.id, { process: null });
+                // `setStatus` clears what a run had open in the background, since a run that ended has nothing open; what the restart cost it is kept first,
+                // for the next turn's message (`lostBackgroundMessage`).
+                setRunWork(this.store.db, run.id, { process: null, lostBackground: run.background });
                 this.setStatus(run.id, 'interrupted', { reason: 'Daemon restarted' });
 
                 for (const { seq, body } of listRunningTools(this.store.db, run.id)) {
@@ -682,6 +797,28 @@ export class RunService {
         this.update(runId, run => ({ ...run, context }));
     }
 
+    /**
+     * Keeps what the agent has open in the background, as the engine's latest complete list (a `background` event repeats the whole list whenever it
+     * changes). Nothing is written when the list is the same, and an empty one clears it. A run that ended keeps none: `setStatus` cleared it, and
+     * what its session still reports while it shuts down is not open any more.
+     */
+    setBackground(runId: string, items: BackgroundItem[]): void {
+        // Only the protocol's fields are kept, so whatever else an engine put on an item does not reach the row or the clients. The list and each title
+        // are bounded: a command's title may be a whole script, and the list rides in every `run.upserted` that the event log keeps.
+        const kept = items.slice(0, MAX_BACKGROUND_ITEMS).map(({ id, kind, title, canStopAlone }) => ({ id, kind, title: title.slice(0, MAX_BACKGROUND_TITLE), ...(canStopAlone === true && { canStopAlone: true as const }) }));
+        const run = this.require(runId);
+
+        if (isTerminalRunStatus(run.status) || sameItems(run.background ?? [], kept)) {
+            return;
+        }
+
+        this.update(runId, (run) => {
+            const { background: _background, ...rest } = run;
+
+            return kept.length > 0 ? { ...rest, background: kept } : rest;
+        });
+    }
+
     /** Changes the run's one-line description. */
     describe(runId: string, summary: string): void {
         this.update(runId, run => ({ ...run, summary }));
@@ -710,6 +847,14 @@ export class RunService {
 
         return project;
     }
+}
+
+/** The most background items a run keeps, and the longest title of one. */
+const MAX_BACKGROUND_ITEMS = 50;
+const MAX_BACKGROUND_TITLE = 200;
+
+function sameItems(a: BackgroundItem[], b: BackgroundItem[]): boolean {
+    return a.length === b.length && a.every((item, index) => item.id === b[index].id && item.kind === b[index].kind && item.title === b[index].title && item.canStopAlone === b[index].canStopAlone);
 }
 
 function blockedReason(blockers: Task[]): string {

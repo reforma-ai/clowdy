@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
+import { getChat } from '../src/db/chats';
 import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, waitFor } from './helpers';
 
 import type { EngineEvent } from '../src/engine/types';
@@ -192,6 +193,58 @@ describe('ending the turn after spawning', () => {
 
         expect(prompts).toContain('on REP-1: failed\nReason: The build exploded');
         expect(prompts).toContain('on REP-2: cancelled\nReason: Cancelled by user\nSomeone stopped this run on purpose. Do not restart it silently');
+    });
+
+    test('stopping the agents cancels every executor, the ones waiting for a slot too, and the parent is woken once with all of them cancelled and goes on', async () => {
+        const never = latch();
+        const { h, chat, runId, children, resumed } = await setup({ children: 3, child: reporting(never, 'never') }, { maxRuns: 1 });
+
+        await waitFor(() => h.run(runId).status === 'waiting_children' && children().length === 3, 'the orchestrator to park');
+        await waitFor(() => children().filter(id => h.run(id).status === 'running').length === 1, 'one executor to take the only slot');
+        expect(children().filter(id => h.run(id).status === 'queued')).toHaveLength(2);
+
+        const { stopped } = h.ok('run.stopAgents', { runId });
+
+        expect(new Set(stopped)).toEqual(new Set(children()));
+        // None of the waiting ones starts in place of the one that stopped, and the parent is neither cancelled nor has its queue held.
+        expect(children().map(id => h.run(id).status)).toEqual(['cancelled', 'cancelled', 'cancelled']);
+        expect(h.run(runId).status).not.toBe('cancelled');
+        expect(getChat(h.store.db, chat.id)?.queuePaused).toBeUndefined();
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
+        expect(h.run(runId)).toMatchObject({ status: 'succeeded', result: 'wrapped up' });
+        expect(resumed()).toHaveLength(1);
+        expect(resumed()[0].prompt).toContain('3 child runs have finished.');
+        expect(resumed()[0].prompt).toContain('Someone stopped this run on purpose. Do not restart it silently');
+
+        for (const number of [1, 2, 3]) {
+            expect(resumed()[0].prompt).toContain(`${ number }. Executor 0${ number } (run_`);
+        }
+    });
+
+    test('stopping the agents while the orchestrator\'s turn runs lets the turn end, and the next one is told the executors were stopped', async () => {
+        const never = latch();
+        const turnEnds = latch();
+        const { h, runId, children, resumed } = await setup({
+            children: 2,
+            child: reporting(never, 'never'),
+            afterSpawn: async function* (turn) {
+                yield { type: 'text', delta: 'Waiting on them', done: true };
+                await turnEnds.wait(turn.signal);
+            },
+        });
+
+        await waitFor(() => children().length === 2 && h.run(children()[1]).status === 'running', 'both executors to run');
+        expect(h.run(runId).status).toBe('running');
+        h.ok('run.stopAgents', { runId });
+        expect(children().map(id => h.run(id).status)).toEqual(['cancelled', 'cancelled']);
+        expect(h.run(runId).status).toBe('running');
+        turnEnds.release();
+        // Its turn ends with results it has not seen: it parks for them and is woken with them.
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
+        expect(resumed()).toHaveLength(1);
+        expect(resumed()[0].prompt).toContain('2 child runs have finished.');
+        expect(resumed()[0].prompt).toContain('Do not restart it silently');
     });
 
     test('a cancelled orchestrator is not woken; the next message resumes it and tells it what happened to its children', async () => {

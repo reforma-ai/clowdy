@@ -1,11 +1,13 @@
-import { isTerminalRunStatus } from '@clowdy/protocol';
+import { ACTIVE_RUN_STATUSES, isBusyRunStatus, isTerminalRunStatus } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { getProject } from '../src/db/projects';
-import { canTransition, TRANSITIONS } from '../src/runs/transitions';
+import { listRuns, runningCounts } from '../src/db/runs';
+import { QUEUE_REASON } from '../src/runs/scheduler';
+import { BACKGROUND_REASON, canTransition, NEEDS_REASON, TRANSITIONS } from '../src/runs/transitions';
 import { cleanTempDirs, GateEngine, gateEngines, Harness, restartHarness, startHarness, waitFor } from './helpers';
 
-import type { ClowdyEvent, Run, RunStatus } from '@clowdy/protocol';
+import type { BackgroundItem, ClowdyEvent, Run, RunStatus } from '@clowdy/protocol';
 
 afterAll(cleanTempDirs);
 
@@ -130,6 +132,231 @@ describe('status machine', () => {
         expect(h.send('task.start', { taskId: a.id })).toMatchObject({ ok: false, error: { code: 'already_running' } });
         expect(() => start(a.id, true)).not.toThrow();
         expect(h.send('task.start', { taskId: 'tsk_missing' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    });
+});
+
+describe('waiting for background work', () => {
+    /** A chat-less orchestrator that holds a slot, made by hand: no engine session is behind it, so the test is the one who moves its status. */
+    async function runningRun() {
+        const { h, project } = await setup();
+        const { runs } = h.daemon.services;
+        const create = () => {
+            const run = runs.createRun({ project: getProject(h.store.db, project.id)!, role: 'orchestrator', summary: 'Plan' });
+
+            runs.setStatus(run.id, 'running');
+
+            return run.id;
+        };
+
+        return { h, project, runs, create };
+    }
+
+    test('is entered from running, or from the other wait while the session is open, and leaves by queued or an end, never straight to running', () => {
+        for (const from of Object.keys(TRANSITIONS) as RunStatus[]) {
+            expect(canTransition(from, 'waiting_background')).toBe(from === 'running' || from === 'waiting_background' || from === 'waiting_children');
+        }
+
+        // The two waits trade places as what the run waits for changes (children win), and a session that fails for a moment is retried through `blocked`.
+        expect(TRANSITIONS.waiting_background).toEqual(['waiting_background', 'waiting_children', 'queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']);
+        expect(TRANSITIONS.waiting_children).toEqual(['waiting_children', 'waiting_background', 'queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']);
+        expect(NEEDS_REASON).toContain('waiting_background');
+    });
+
+    test('is active, not terminal and not busy: a message to such a run is delivered, not queued', () => {
+        expect(ACTIVE_RUN_STATUSES).toContain('waiting_background');
+        expect(isTerminalRunStatus('waiting_background')).toBe(false);
+        expect(isBusyRunStatus('waiting_background')).toBe(false);
+
+        // The statuses around it keep their meaning.
+        expect(isBusyRunStatus('running')).toBe(true);
+        expect(isBusyRunStatus('queued')).toBe(true);
+        expect(isBusyRunStatus('waiting_children')).toBe(false);
+        expect(isBusyRunStatus('succeeded')).toBe(false);
+    });
+
+    test('moves running to waiting_background to queued to running again, holding no slot while it waits, and ends from there', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+
+        expect(() => runs.setStatus(runId, 'waiting_background')).toThrow(/needs a status reason/);
+        expect(runningCounts(h.store.db)).toEqual([{ engine: 'fake', projectId: h.run(runId).projectId, count: 1 }]);
+
+        expect(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON })).toMatchObject({ status: 'waiting_background', statusReason: 'Waiting for background work' });
+        expect(runningCounts(h.store.db)).toEqual([]);
+        expect(h.run(runId).finishedAt).toBeUndefined();
+
+        // A repeat refreshes the reason; the same reason again changes nothing.
+        expect(runs.setStatus(runId, 'waiting_background', { reason: 'Waiting for 2 background tasks' })).toMatchObject({ statusReason: 'Waiting for 2 background tasks' });
+
+        const upserts = () => h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).length;
+        const before = upserts();
+
+        runs.setStatus(runId, 'waiting_background', { reason: 'Waiting for 2 background tasks' });
+        expect(upserts()).toBe(before);
+
+        expect(() => runs.setStatus(runId, 'running')).toThrow(/Illegal run transition waiting_background -> running/);
+        expect(runs.setStatus(runId, 'queued')).toMatchObject({ status: 'queued', statusReason: QUEUE_REASON });
+        expect(runs.setStatus(runId, 'running').status).toBe('running');
+        expect(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON }).status).toBe('waiting_background');
+        expect(runs.setStatus(runId, 'succeeded', { result: 'All done' })).toMatchObject({ status: 'succeeded', result: 'All done' });
+        expect(h.run(runId).statusReason).toBeUndefined();
+        expect(h.run(runId).finishedAt).toBeNumber();
+    });
+
+    test('ends as failed, cancelled or interrupted, and refuses every move that is not listed', async () => {
+        const { h, runs, create } = await runningRun();
+
+        for (const to of ['failed', 'cancelled', 'interrupted'] as const) {
+            const runId = create();
+
+            runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
+            expect(runs.setStatus(runId, to, { reason: 'Stopped' }).status).toBe(to);
+        }
+
+        const runId = create();
+
+        runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
+
+        for (const to of ['running', 'waiting_user'] as const) {
+            expect(() => runs.setStatus(runId, to, { reason: 'Nope' })).toThrow(`Illegal run transition waiting_background -> ${ to }`);
+        }
+
+        expect(runs.require(runId).status).toBe('waiting_background');
+
+        // Only a running run waits for background work.
+        const queued = runs.createRun({ project: getProject(h.store.db, runs.require(runId).projectId)!, role: 'orchestrator', summary: 'Queued' });
+
+        expect(() => runs.setStatus(queued.id, 'waiting_background', { reason: BACKGROUND_REASON })).toThrow(/Illegal run transition queued -> waiting_background/);
+    });
+
+    test('refuses a question of a run that waits, in words a person can read, and keeps the run as it was', async () => {
+        const { runs, create } = await runningRun();
+
+        for (const status of ['waiting_background', 'waiting_children'] as const) {
+            const runId = create();
+
+            runs.setStatus(runId, status, { reason: 'Waiting' });
+            await expect(runs.ask(runId, { text: 'Which one?', options: [{ id: 'a', label: 'A' }] }, new AbortController().signal)).rejects.toThrow('Can\'t ask a question while the run waits for background work or child runs');
+            expect(runs.require(runId).status).toBe(status);
+        }
+    });
+
+    describe('the open items', () => {
+        const command: BackgroundItem = { id: 'bg-1', kind: 'command', title: 'sleep 60' };
+        const subagent: BackgroundItem = { id: 'bg-2', kind: 'subagent', title: 'Researcher' };
+
+        test('are stored with the run, read back from the database and published in its run.upserted event', async () => {
+            const { h, project, runs, create } = await runningRun();
+            const runId = create();
+
+            expect(h.run(runId).background).toBeUndefined();
+
+            runs.setBackground(runId, [command, subagent]);
+
+            expect(h.run(runId).background).toEqual([command, subagent]);
+            expect(listRuns(h.store.db, project.id).find(run => run.id === runId)?.background).toEqual([command, subagent]);
+            expect(JSON.parse((h.store.db.query('SELECT background FROM runs WHERE id = ?').get(runId) as { background: string }).background)).toEqual([command, subagent]);
+
+            const published = h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).at(-1)?.data;
+
+            expect(published).toMatchObject({ type: 'run.upserted', run: { id: runId, background: [command, subagent] } });
+        });
+
+        test('are written only when the list changed, and an empty list clears them', async () => {
+            const { h, runs, create } = await runningRun();
+            const runId = create();
+            const upserts = () => h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).length;
+            const start = upserts();
+
+            runs.setBackground(runId, []);
+            expect(upserts()).toBe(start);
+
+            runs.setBackground(runId, [command, subagent]);
+            expect(upserts()).toBe(start + 1);
+
+            runs.setBackground(runId, [{ ...command }, { ...subagent }]);
+            expect(upserts()).toBe(start + 1);
+
+            runs.setBackground(runId, [subagent, command]);
+            expect(h.run(runId).background).toEqual([subagent, command]);
+            expect(upserts()).toBe(start + 2);
+
+            runs.setBackground(runId, [command]);
+            expect(h.run(runId).background).toEqual([command]);
+            expect(upserts()).toBe(start + 3);
+
+            runs.setBackground(runId, []);
+            expect(upserts()).toBe(start + 4);
+            expect('background' in h.run(runId)).toBe(false);
+            expect((h.store.db.query('SELECT background FROM runs WHERE id = ?').get(runId) as { background: string | null }).background).toBeNull();
+
+            runs.setBackground(runId, []);
+            expect(upserts()).toBe(start + 4);
+        });
+
+        test('keep only the fields of the protocol, and a status change that leaves the session alive leaves them as they are', async () => {
+            const { h, runs, create } = await runningRun();
+            const runId = create();
+
+            runs.setBackground(runId, [{ ...command, pid: 4242 } as BackgroundItem]);
+            expect(h.run(runId).background).toEqual([command]);
+
+            runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
+            runs.setStatus(runId, 'queued');
+            expect(h.run(runId).background).toEqual([command]);
+        });
+
+        test('keep whether an item can be stopped alone, and a change of that is a change of the list; only the value true is kept', async () => {
+            const { h, runs, create } = await runningRun();
+            const runId = create();
+            const upserts = () => h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).length;
+
+            runs.setBackground(runId, [command]);
+
+            const start = upserts();
+
+            runs.setBackground(runId, [{ ...command, canStopAlone: true }]);
+            expect(h.run(runId).background).toEqual([{ ...command, canStopAlone: true }]);
+            expect(upserts()).toBe(start + 1);
+            expect(JSON.parse((h.store.db.query('SELECT background FROM runs WHERE id = ?').get(runId) as { background: string }).background)).toEqual([{ ...command, canStopAlone: true }]);
+
+            runs.setBackground(runId, [{ ...command, canStopAlone: true }]);
+            expect(upserts()).toBe(start + 1);
+
+            // The agent took the permission away (the command ended): the item is the same, without it.
+            runs.setBackground(runId, [command]);
+            expect(h.run(runId).background).toEqual([command]);
+            expect(upserts()).toBe(start + 2);
+
+            runs.setBackground(runId, [{ ...command, canStopAlone: false }]);
+            expect(h.run(runId).background).toEqual([command]);
+            expect(upserts()).toBe(start + 2);
+        });
+
+        test('a run that ended has nothing open, whichever terminal status it reached', async () => {
+            const { h, runs, create } = await runningRun();
+            const runId = create();
+
+            runs.setBackground(runId, [command]);
+            runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
+            runs.setStatus(runId, 'cancelled', { reason: 'Stopped' });
+
+            expect(h.run(runId).background).toBeUndefined();
+        });
+
+        test('bound the list and the titles that an engine reports', async () => {
+            const { h, runs, create } = await runningRun();
+            const runId = create();
+            const many = Array.from({ length: 80 }, (_, index) => ({ id: `task-${ index }`, kind: 'command' as const, title: 'x'.repeat(500) }));
+
+            runs.setBackground(runId, many);
+
+            const kept = h.run(runId).background ?? [];
+
+            expect(kept).toHaveLength(50);
+            expect(kept[0].title).toHaveLength(200);
+            expect(kept[0].id).toBe('task-0');
+        });
     });
 });
 
@@ -325,6 +552,24 @@ describe('restart recovery', () => {
             { title: 'Blocked', category: 'todo' },
             { title: 'Queued', category: 'active' },
         ]);
+    });
+
+    test('a run that waited for background work comes back interrupted even with no process recorded, since no restart keeps its session', async () => {
+        const first = await startHarness();
+        const project = first.openRepo();
+        const { runs } = first.daemon.services;
+        const { id } = runs.createRun({ project: getProject(first.store.db, project.id)!, role: 'orchestrator', summary: 'Plan' });
+
+        runs.setStatus(id, 'running');
+        runs.setStatus(id, 'waiting_background', { reason: BACKGROUND_REASON });
+        await first.stop();
+
+        const second = await restartHarness(first);
+
+        harnesses.push(second);
+        expect(second.run(id)).toMatchObject({ status: 'interrupted', statusReason: 'Daemon restarted' });
+        expect(second.run(id).finishedAt).toBeNumber();
+        expect(second.events().find(event => event.data.type === 'notice')?.data).toMatchObject({ level: 'warn', text: expect.stringContaining('1 run was interrupted') });
     });
 });
 

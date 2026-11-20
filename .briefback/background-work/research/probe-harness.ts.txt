@@ -1,0 +1,376 @@
+// Raw JSON-RPC probe of claude-agent-acp 0.107.0 (no SDK, so unknown update kinds are visible).
+// Usage: mkdir -p /tmp/acp-bg-probe && cp probe-harness.ts.txt /tmp/acp-bg-probe/harness.ts && cd /tmp/acp-bg-probe && CLAUDE_BIN=/path/to/claude bun harness.ts <scenario>
+// (saved as .txt so the repo tooling does not lint it). Each scenario is one adapter process and a few small model calls (haiku for Claude, the user's default model for Codex).
+// s1 bg Bash | s2 bg Agent, backgroundSubagents declared | s3 bg Agent, held turn + steer | s4 prompts while a task runs and during an autonomous turn | s5 Workflow
+// s6 ACP v2 | s7/s8 native sub-agent sessions (AIR form / RFD form) | s9 steer while idle and during an autonomous turn | c1/c2 Codex on v1 / v2
+// Sub-agents on v2 (every `session/update` is logged with the session it came on: `[child xxxx]` when it is not the main one; the raw lines go to raw-<scenario>.jsonl):
+// f1 foreground sub-agent with two tool calls | f2 background sub-agent with tool calls | f3 two foreground sub-agents in one message | f4 two background sub-agents
+// f5 Stop (`session/cancel`) while a foreground sub-agent works | f6 Stop while a background sub-agent works | f7 an `Agent` call that fails at once | f8 a message sent to the main agent while a background sub-agent works
+// f9 background sub-agent that starts a background command of its own and ends its turn (the child wakes when the command ends) | f10 foreground sub-agent that does the same
+// c3 Codex v2 with a sub-agent (spawn_agent)
+import { spawn } from 'node:child_process';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+
+const scenario = process.argv[2] ?? 's1';
+const root = process.env.PROBE_DIR ?? '/tmp/acp-bg-probe';
+const work = `${ root }/work-${ scenario }`;
+const logFile = `${ root }/log-${ scenario }.txt`;
+const rawFile = `${ root }/raw-${ scenario }.jsonl`;
+
+mkdirSync(work, { recursive: true });
+writeFileSync(logFile, '');
+writeFileSync(rawFile, '');
+
+const t0 = Date.now();
+const log = (...a: unknown[]) => {
+    const line = `${ ((Date.now() - t0) / 1000).toFixed(1).padStart(5) }s ${ a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ') }`;
+
+    console.log(line);
+    appendFileSync(logFile, `${ line }\n`);
+};
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+const env: Record<string, string> = {};
+
+for (const [k, v] of Object.entries(process.env)) {
+    if (v === undefined || /^(CLOWDY_|ELECTRON_|NODE_OPTIONS|CLAUDECODE|CLAUDE_CODE_|ANTHROPIC_(API_KEY|AUTH_TOKEN))/.test(k)) {
+        continue;
+    }
+
+    env[k] = v;
+}
+
+env.CLAUDE_CODE_EXECUTABLE = process.env.CLAUDE_BIN ?? 'claude';
+env.npm_config_omit = 'optional';
+env.ANTHROPIC_MODEL = 'haiku';
+env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+env.ENABLE_CLAUDEAI_MCP_SERVERS = 'false';
+
+const isCodex = scenario.startsWith('c');
+
+if (isCodex) {
+    env.CODEX_PATH = process.env.CODEX_BIN ?? 'codex';
+    delete env.ANTHROPIC_MODEL;
+}
+
+const child = spawn('bun', ['x', '--bun', isCodex ? '@agentclientprotocol/codex-acp@2.6.0' : '@agentclientprotocol/claude-agent-acp@0.107.0'], { cwd: work, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+let stderr = '';
+
+child.stderr.on('data', (d) => { stderr += d; });
+child.once('exit', (code, sig) => log('PROCESS EXIT', code, sig));
+
+const killGroup = (s: NodeJS.Signals) => {
+    try { process.kill(-child.pid!, s); }
+    catch { /* gone */ }
+};
+
+let nextId = 1;
+const pending = new Map<number, { resolve: (v: any) => void; reject: (e: any) => void }>();
+const write = (o: unknown) => child.stdin.write(`${ JSON.stringify(o) }\n`);
+const request = (method: string, params: unknown) => new Promise<any>((resolve, reject) => {
+    const id = nextId++;
+
+    pending.set(id, { resolve, reject });
+    write({ jsonrpc: '2.0', id, method, params });
+});
+
+let sid = '';
+let onUpdate: (u: any, from: string) => void = () => undefined;
+const SKIP = new Set(['agent_thought_chunk', 'available_commands_update', 'usage_update']);
+
+const brief = (u: any) => {
+    const s = JSON.stringify(u, (key, value) => key === 'rawOutput' || key === 'rawInput' ? (JSON.stringify(value) ?? '').slice(0, 120) : value);
+
+    return s.length > 420 ? `${ s.slice(0, 420) }…` : s;
+};
+
+createInterface({ input: child.stdout }).on('line', (line) => {
+    let m: any;
+
+    try { m = JSON.parse(line); }
+    catch { log('NONJSON', line.slice(0, 200)); return; }
+
+    if (m.method && m.id !== undefined) {
+        if (m.method === 'session/request_permission') {
+            const options: any[] = m.params.options ?? [];
+            const pick = options.find(o => o.kind === 'allow_once') ?? options[0];
+
+            log('PERMISSION ->', pick?.optionId, JSON.stringify(m.params.toolCall?.title ?? '').slice(0, 80));
+            write({ jsonrpc: '2.0', id: m.id, result: { outcome: { outcome: 'selected', optionId: pick?.optionId } } });
+        }
+        else {
+            log('AGENT REQUEST', m.method, JSON.stringify(m.params).slice(0, 200));
+            write({ jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'not supported' } });
+        }
+    }
+    else if (m.method) {
+        if (m.method === 'session/update') {
+            const u = m.params.update;
+            const from: string = m.params.sessionId;
+
+            appendFileSync(rawFile, `${ JSON.stringify({ t: +((Date.now() - t0) / 1000).toFixed(3), method: m.method, params: m.params }) }\n`);
+
+            if (!SKIP.has(u.sessionUpdate)) {
+                log(from === sid ? 'UPD' : `UPD [child ${ from.slice(0, 6) }]`, brief(u));
+            }
+
+            onUpdate(u, from);
+        }
+        else {
+            log('NOTIF', m.method, JSON.stringify(m.params).slice(0, 200));
+        }
+    }
+    else if (m.id !== undefined) {
+        const p = pending.get(m.id);
+
+        pending.delete(m.id);
+        m.error ? p?.reject(m.error) : p?.resolve(m.result);
+    }
+});
+
+const AIR = (caps: string[]) => ({ jetbrains: { air: { version: 1, capabilities: caps } } });
+
+async function boot(opts: { v2?: boolean; air?: string[]; subagentsRfd?: boolean }) {
+    const init = await request('initialize', opts.v2
+        ? { protocolVersion: 2, info: { name: 'bg-probe', version: '0' }, capabilities: {} }
+        : {
+            protocolVersion: 1,
+            clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, ...(opts.subagentsRfd && { subagents: {} }), ...(opts.air && { _meta: AIR(opts.air) }) },
+            clientInfo: { name: 'bg-probe', version: '0' },
+        });
+
+    log('INIT', JSON.stringify(init).slice(0, 500));
+
+    const created = await request('session/new', { cwd: work, mcpServers: [] });
+
+    sid = created.sessionId;
+    log('SESSION', sid);
+}
+
+const prompt = (label: string, text: string) => {
+    log(`PROMPT ${ label } SENT`);
+
+    return request('session/prompt', { sessionId: sid, prompt: [{ type: 'text', text }] }).then(
+        (r) => { log(`PROMPT ${ label } RETURNED`, r); return r; },
+        (e) => { log(`PROMPT ${ label } ERROR`, e); }
+    );
+};
+
+const BG_BASH = (secs: number) => `Use the Bash tool with run_in_background set to true to run exactly: sleep ${ secs }; echo BGDONE. Then end your turn at once with just the word OK. Do not wait for it and do not poll it.`;
+const BG_AGENT = 'Use the Agent tool with run_in_background set to true to start a sub-agent whose task is: run `sleep 10; echo SUBDONE` with the Bash tool and then report the output in one sentence. Then end your turn at once with just the word OK. Do not wait for the sub-agent.';
+const BOTH = ['asyncTasks', 'backgroundSubagents'];
+const FG_AGENT = 'Use the Agent tool to start ONE sub-agent in the foreground (pass run_in_background: false explicitly) whose task is: use the Bash tool to run `echo ONE`, then use the Bash tool again to run `echo TWO`, then report both outputs in one sentence. Wait for it, then answer with its report in one short sentence.';
+const BG_AGENT_TOOLS = 'Use the Agent tool with run_in_background set to true to start a sub-agent whose task is: use the Bash tool to run `echo ONE`, then use the Bash tool to run `sleep 8; echo TWO`, then report both outputs in one sentence. Then end your turn at once with just the word OK. Do not wait for the sub-agent.';
+const TWO_FG = 'In ONE message, call the Agent tool twice in parallel (foreground, pass run_in_background: false explicitly): sub-agent A runs `echo AAA` with the Bash tool and reports it; sub-agent B runs `echo BBB` with the Bash tool and reports it. When both return, answer in one sentence naming both outputs.';
+const TWO_BG = 'In ONE message, call the Agent tool twice in parallel, each with run_in_background set to true: sub-agent A runs `sleep 6; echo AAA` with the Bash tool and reports it; sub-agent B runs `sleep 10; echo BBB` with the Bash tool and reports it. Then end your turn at once with just the word OK. Do not wait for them.';
+const LONG_FG = 'Use the Agent tool to start ONE sub-agent in the foreground (pass run_in_background: false explicitly) whose task is: use the Bash tool to run `python3 -c "import time; time.sleep(40)"` and then report DONE. Wait for it, then answer with its report.';
+const LONG_BG = 'Use the Agent tool with run_in_background set to true to start a sub-agent whose task is: use the Bash tool to run `python3 -c "import time; time.sleep(40)"` and then report DONE. Then end your turn at once with just the word OK. Do not wait for the sub-agent.';
+const BG_AGENT_OWN_BG = 'Use the Agent tool with run_in_background set to true to start a sub-agent whose task is: use the Bash tool with run_in_background set to true to run `sleep 12; echo SUBDONE`, then end your turn at once and, when that command finishes, report its output in one sentence. Then end your own turn at once with just the word OK. Do not wait for the sub-agent.';
+const FG_AGENT_OWN_BG = 'Use the Agent tool to start ONE sub-agent in the foreground (pass run_in_background: false explicitly) whose task is: use the Bash tool with run_in_background set to true to run `sleep 12; echo SUBDONE`, then end your turn at once and, when that command finishes, report its output in one sentence. Wait for the sub-agent, then answer with its report.';
+const cancel = () => write({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: sid } });
+const CODEX_BG = 'Run the shell command `sleep 15; echo CODEXDONE` in the background (as a background terminal / without waiting for it), then end your turn right away with just the word OK. Do not wait for it and do not poll it.';
+
+async function main() {
+    switch (scenario) {
+        case 's1': {
+            await boot({ air: BOTH });
+            void prompt('1', BG_BASH(12));
+            await sleep(50_000);
+            break;
+        }
+        case 's2': {
+            await boot({ air: BOTH });
+            void prompt('1', BG_AGENT);
+            await sleep(75_000);
+            break;
+        }
+        case 's3': {
+            await boot({ air: ['asyncTasks'] });
+            void prompt('1', BG_AGENT);
+            setTimeout(() => {
+                log('STEER sending');
+                request('_session/steering', { sessionId: sid, prompt: [{ type: 'text', text: 'Also: at the very end of your final answer add the word BANANA.' }], _meta: { steering: { idleBehavior: 'promptRequired' } } }).then(
+                    r => log('STEER RESULT', r),
+                    e => log('STEER ERROR', e)
+                );
+            }, 7000);
+            await sleep(80_000);
+            break;
+        }
+        case 's4': {
+            await boot({ air: BOTH });
+
+            let sentThird = false;
+
+            onUpdate = (u) => {
+                if (u.sessionUpdate === 'async_task_spawned' && u.taskType === 'turn' && !sentThird) {
+                    sentThird = true;
+                    void prompt('3-during-autonomous-turn', 'Say hello in exactly one word.');
+                }
+            };
+
+            const first = await prompt('1', `Use the Bash tool with run_in_background set to true to run exactly: sleep 8; echo BGDONE. Then end your turn at once with just the word OK. Do not poll it. When it later finishes, answer with the numbers 1 to 40, one per line, and nothing else.`);
+
+            void first;
+            void prompt('2-while-bg-task-runs', 'What is 2+2? Reply with only the number.');
+            await sleep(60_000);
+            break;
+        }
+        case 's5': {
+            await boot({ air: BOTH });
+            void prompt('1', 'Use the Workflow tool to start a workflow that runs a single agent with the task "say hi". If you have no Workflow tool, reply NO_WORKFLOW_TOOL and stop. Otherwise start it in the background, then end your turn at once with just the word OK and do not wait.');
+            await sleep(70_000);
+            break;
+        }
+        case 's6': {
+            await boot({ v2: true });
+
+            let seenRunning = false;
+
+            onUpdate = (u) => {
+                if (u.sessionUpdate === 'state_update' && u.state === 'running' && !seenRunning) {
+                    seenRunning = true;
+                    setTimeout(() => void prompt('2-during-running', 'Also, at the end of your final answer, add the word BANANA.'), 1500);
+                }
+            };
+            void prompt('1', BG_BASH(14));
+            await sleep(55_000);
+            break;
+        }
+        case 's7': {
+            await boot({ air: [...BOTH, 'nativeSubagentSessions'] });
+            void prompt('1', BG_AGENT);
+            await sleep(60_000);
+            break;
+        }
+        case 's8': {
+            await boot({ air: BOTH, subagentsRfd: true });
+            void prompt('1', BG_AGENT);
+            await sleep(60_000);
+            break;
+        }
+        case 's9': {
+            await boot({ air: BOTH });
+
+            let steeredTurn = false;
+            const steer = (label: string) => request('_session/steering', { sessionId: sid, prompt: [{ type: 'text', text: 'Also add the word BANANA at the very end.' }], _meta: { steering: { idleBehavior: 'promptRequired' } } }).then(
+                r => log(`STEER ${ label } RESULT`, r),
+                e => log(`STEER ${ label } ERROR`, e)
+            );
+
+            onUpdate = (u) => {
+                if (u.sessionUpdate === 'async_task_spawned' && u.taskType === 'turn' && !steeredTurn) {
+                    steeredTurn = true;
+                    setTimeout(() => void steer('during-autonomous-turn'), 800);
+                }
+            };
+            await prompt('1', 'Use the Bash tool with run_in_background set to true to run exactly: sleep 8; echo BGDONE. Then end your turn at once with just the word OK. Do not poll it. When it later finishes, answer with the numbers 1 to 60, one per line, and nothing else.');
+            await steer('idle-with-bg-task');
+            await sleep(40_000);
+            break;
+        }
+        case 'c1': {
+            await boot({ air: ['asyncTasks'] });
+            void prompt('1', CODEX_BG);
+            setTimeout(() => {
+                request('_session/steering', { sessionId: sid, prompt: [{ type: 'text', text: 'Also add the word BANANA at the very end of your answer.' }], _meta: { steering: { idleBehavior: 'promptRequired' } } }).then(
+                    r => log('STEER RESULT', r),
+                    e => log('STEER ERROR', e)
+                );
+            }, 6000);
+            await sleep(90_000);
+            break;
+        }
+        case 'c2': {
+            await boot({ v2: true });
+            void prompt('1', CODEX_BG);
+            setTimeout(() => void prompt('2-during-running', 'Also add the word BANANA at the very end of your answer.'), 6000);
+            await sleep(90_000);
+            break;
+        }
+        case 'f1': {
+            await boot({ v2: true });
+            void prompt('1', FG_AGENT);
+            await sleep(30_000);
+            break;
+        }
+        case 'f2': {
+            await boot({ v2: true });
+            void prompt('1', BG_AGENT_TOOLS);
+            await sleep(45_000);
+            break;
+        }
+        case 'f3': {
+            await boot({ v2: true });
+            void prompt('1', TWO_FG);
+            await sleep(35_000);
+            break;
+        }
+        case 'f4': {
+            await boot({ v2: true });
+            void prompt('1', TWO_BG);
+            await sleep(50_000);
+            break;
+        }
+        case 'f5': {
+            await boot({ v2: true });
+            void prompt('1', LONG_FG);
+            setTimeout(() => { log('CANCEL sent'); cancel(); }, 12_000);
+            await sleep(30_000);
+            break;
+        }
+        case 'f6': {
+            await boot({ v2: true });
+            void prompt('1', LONG_BG);
+            setTimeout(() => { log('CANCEL sent'); cancel(); }, 12_000);
+            await sleep(30_000);
+            break;
+        }
+        case 'f7': {
+            await boot({ v2: true });
+            void prompt('1', 'Use the Agent tool with subagent_type "does-not-exist-xyz" and prompt "hi". Report in one sentence what happened.');
+            await sleep(20_000);
+            break;
+        }
+        case 'f8': {
+            await boot({ v2: true });
+            void prompt('1', BG_AGENT_TOOLS);
+            setTimeout(() => void prompt('2-while-subagent-works', 'What is 2+2? Reply with only the number.'), 9_000);
+            await sleep(50_000);
+            break;
+        }
+        case 'f9': {
+            await boot({ v2: true });
+            void prompt('1', BG_AGENT_OWN_BG);
+            await sleep(60_000);
+            break;
+        }
+        case 'f10': {
+            await boot({ v2: true });
+            void prompt('1', FG_AGENT_OWN_BG);
+            await sleep(60_000);
+            break;
+        }
+        case 'c3': {
+            await boot({ v2: true });
+            void prompt('1', 'Spawn one sub-agent (use your sub-agent / spawn_agent tool; if you have none, reply NO_SUBAGENT_TOOL and stop) whose task is to run `echo HI` and report the output. Wait for it, then answer with its report in one sentence.');
+            await sleep(60_000);
+            break;
+        }
+        default:
+            log('unknown scenario');
+    }
+}
+
+try {
+    await main();
+}
+catch (e) {
+    log('ERROR', e instanceof Error ? e.message : e, '\nstderr tail:', stderr.slice(-500));
+}
+finally {
+    log('STDERR TAIL', stderr.slice(-300).replace(/\n/g, ' | '));
+    killGroup('SIGTERM');
+    setTimeout(() => { killGroup('SIGKILL'); process.exit(0); }, 2000);
+}

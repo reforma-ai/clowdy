@@ -2,7 +2,9 @@ import { mainFolder } from '@clowdy/protocol';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { ChatMode, Project, RunRole, Task } from '@clowdy/protocol';
+import { clip } from './tool-kit';
+
+import type { BackgroundItem, ChatMode, Project, RunRole, Task } from '@clowdy/protocol';
 
 /** The system skill each role starts from. It is named in the first message and its text is in the system prompt, because a skill listing alone is advisory. */
 const ENTRY_SKILL: Record<RunRole, string> = {
@@ -113,3 +115,53 @@ export function taskMessage(task: Task): string {
 
 /** Sent to a run that was cut off by a subscription limit or a passing engine failure, once it can continue. */
 export const CONTINUE_MESSAGE = 'The previous attempt was interrupted by a temporary problem (a usage limit or an overloaded service). Continue where you left off; do not redo finished work.';
+
+/**
+ * Put before the message of a turn that stop and send starts (`ChatQueue.dispatch` after `RunDriver.interrupt`): the agent did not stop its last turn,
+ * the runtime did, to make room for this message, so whatever it was doing may be unfinished. Only the agent reads it; the person's bubble does not have it.
+ */
+export const STOPPED_TURN_MESSAGE = 'Your previous turn was stopped so this message could be sent; what it was doing may be unfinished.';
+
+/** What the person reads of a background item's kind, in a line of the stream ("Background command finished: ...") and in the agent's message. */
+export const BACKGROUND_KINDS: Record<BackgroundItem['kind'], string> = {
+    command: 'command',
+    subagent: 'sub-agent',
+    task: 'task',
+};
+
+/** The longest title of a background item that goes into a sentence. */
+const MAX_NAMED_TITLE = 80;
+
+/** A background item's title for a sentence: one line, cut at about 80 characters (a command's title may be a whole script). */
+export const namedTitle = (title: string) => clip(title.replace(/\s+/g, ' ').trim(), MAX_NAMED_TITLE);
+
+/**
+ * Told to an agent that starts no turn of its own when its background work ends (`wakesOnBackgroundEnd`, Codex), in a prompt of the runtime's own, once the
+ * last item has left the list and nothing runs: one line per item that is over, so that it looks at what came of it and reports. Claude Code starts that
+ * turn itself and is never sent this. `stopped` is an item the person ended with a Stop of its own. Only the agent reads it; the stream has a note per item.
+ */
+export function backgroundEndedMessage(ended: readonly { item: BackgroundItem; stopped: boolean }[]): string {
+    return [
+        ...ended.map(({ item, stopped }) => `Background ${ BACKGROUND_KINDS[item.kind] } ${ stopped ? 'stopped by the user' : 'finished' }: ${ namedTitle(item.title) }`),
+        `Check how ${ ended.length === 1 ? 'it' : 'they' } went and tell the user what came of ${ ended.length === 1 ? 'it' : 'them' }, briefly.`,
+    ].join('\n');
+}
+
+/**
+ * Told to the agent, in a prompt of the runtime's own, when the person stopped one background item alone (a Stop on its row): that item is over, but a
+ * stopped command gives the agent no report of its own (Claude Code starts no turn for it), so nothing would tell it.
+ */
+export function backgroundStoppedMessage(item: BackgroundItem): string {
+    return `The user stopped the background ${ BACKGROUND_KINDS[item.kind] }: ${ namedTitle(item.title) }\nIt did not finish, and no result of it will arrive. Carry on without it, and say in one short sentence what that changes for your work.`;
+}
+
+/**
+ * Told to the agent with the first message after its session was cut off (a Stop, a restart, a failure): what it had running in the background is gone,
+ * whatever its state was, and nobody will report on it. The agent decides whether to start it again.
+ */
+export function lostBackgroundMessage(items: readonly BackgroundItem[]): string {
+    return [
+        'The background work you had running was lost when your session was cut off (stopped, restarted or failed). It did not finish, and no result of it will arrive. Start it again if it is still needed.',
+        ...items.map(item => `- ${ BACKGROUND_KINDS[item.kind] }: ${ namedTitle(item.title) }`),
+    ].join('\n');
+}

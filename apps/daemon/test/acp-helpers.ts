@@ -5,10 +5,15 @@ import { Discovery } from '../src/engine/acp/discovery';
 import { AcpEngine } from '../src/engine/acp/engine';
 import { AgentRegistry } from '../src/engine/acp/registry';
 
+import type { AgentProtocol } from '../src/engine/acp/catalog';
 import type { PermissionPolicy } from '../src/engine/acp/session';
 import type { EngineEvent, EngineSession, EngineStartOptions, ToolDefinition } from '../src/engine/types';
 
 export const FAKE_AGENT = new URL('./fake-acp-agent.ts', import.meta.url).pathname;
+export const FAKE_AGENT_V2 = new URL('./fake-acp-agent-v2.ts', import.meta.url).pathname;
+
+/** The protocols the engine speaks: scenarios both share run once for each. */
+export const PROTOCOLS: AgentProtocol[] = ['v1', 'v2'];
 
 /** A discovery that never starts a login shell: tests must not depend on the machine's own setup. */
 export const quietDiscovery = (env: Record<string, string | undefined> = process.env) => new Discovery({ env, loginPath: async () => undefined });
@@ -23,6 +28,8 @@ export interface Rig {
 }
 
 export interface RigOptions {
+    /** The protocol the agent is set to and the fake agent that speaks it: `v1` (the default) or `v2`. `args` may name another program to set to it. */
+    protocol?: AgentProtocol;
     /** Variables the fake agent starts with (its own knobs). */
     agentEnv?: Record<string, string>;
     /** The daemon's environment, from which the agent's is built. */
@@ -33,6 +40,12 @@ export interface RigOptions {
     initializeTimeoutMs?: number;
     /** How long an agent that has not named its session by the end of the turn keeps running for the name. */
     titleWaitMs?: number;
+    /** How long a session with nothing open waits for the agent to begin a turn before it ends: short here, so a test does not wait the two seconds of a real session. */
+    backgroundHandoffMs?: number;
+    /** The same for the report of work that just ended; the guard above when left out, so a test does not wait the twenty seconds of a real session. */
+    backgroundReportMs?: number;
+    /** The agent starts no turn to report background work that ended (`AgentSpec.wakesOnBackgroundEnd`, Codex). */
+    wakesOnBackgroundEnd?: boolean;
     /** The options an adapter reads, as the built-in catalog gives them to Claude Code. */
     sessionMeta?: Record<string, unknown>;
     /** What the agent is told it can do in `initialize`, as the built-in catalog gives it to Cursor. */
@@ -44,19 +57,19 @@ export function rig(options: RigOptions = {}): Rig {
     const registry = new AgentRegistry({ discovery: quietDiscovery(env) });
     const bridge = new ToolBridge();
 
-    if (options.sessionMeta || options.clientMeta) {
+    if (options.sessionMeta || options.clientMeta || options.protocol || options.wakesOnBackgroundEnd) {
         const resolve = registry.resolve.bind(registry);
 
         registry.resolve = async (id) => {
             const found = await resolve(id);
 
-            return found.ok ? { ok: true, agent: { ...found.agent, ...(options.sessionMeta && { sessionMeta: options.sessionMeta }), ...(options.clientMeta && { clientMeta: options.clientMeta }) } } : found;
+            return found.ok ? { ok: true, agent: { ...found.agent, ...(options.protocol && { protocol: options.protocol }), ...(options.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), ...(options.sessionMeta && { sessionMeta: options.sessionMeta }), ...(options.clientMeta && { clientMeta: options.clientMeta }) } } : found;
         };
     }
 
-    registry.add({ id: 'fake-acp', name: 'Fake ACP', command: options.command ?? process.execPath, args: options.args ?? [FAKE_AGENT], env: options.agentEnv });
+    registry.add({ id: 'fake-acp', name: 'Fake ACP', command: options.command ?? process.execPath, args: options.args ?? [options.protocol === 'v2' ? FAKE_AGENT_V2 : FAKE_AGENT], env: options.agentEnv });
 
-    const engine = new AcpEngine('fake-acp', { registry, bridge, env, permissions: options.permissions, initializeTimeoutMs: options.initializeTimeoutMs, titleWaitMs: options.titleWaitMs });
+    const engine = new AcpEngine('fake-acp', { registry, bridge, env, permissions: options.permissions, initializeTimeoutMs: options.initializeTimeoutMs, titleWaitMs: options.titleWaitMs, backgroundHandoffMs: options.backgroundHandoffMs ?? 400, backgroundReportMs: options.backgroundReportMs });
 
     return {
         engine,

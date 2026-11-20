@@ -29,7 +29,7 @@ describe('FixtureTransport', () => {
         const transport = new FixtureTransport();
         const snapshot = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
 
-        expect(new Set(snapshot.runs.map(run => run.status))).toEqual(new Set(['queued', 'running', 'waiting_user', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']));
+        expect(new Set(snapshot.runs.map(run => run.status))).toEqual(new Set(['queued', 'running', 'waiting_background', 'waiting_user', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted']));
         expect(new Set(snapshot.tasks.map(task => task.statusId))).toEqual(new Set(snapshot.statuses.map(status => status.id)));
         expect(snapshot.tasks.some(task => task.dependsOn.length > 0)).toBe(true);
         expect(snapshot.runs.some(run => run.parentRunId && snapshot.runs.some(parent => parent.id === run.parentRunId && parent.parentRunId))).toBe(true);
@@ -111,6 +111,53 @@ describe('FixtureTransport', () => {
         expect([status('r-ex-07'), status('r-ver-02'), status('r-ex-09'), status('r-orch-1')]).toEqual(['cancelled', 'cancelled', 'succeeded', 'running']);
     });
 
+    it('stops a sub-agent of the session alone when its session can end it, refuses one that cannot, and keeps the orchestrator at work', async () => {
+        const data = createFixtureData();
+
+        data.runs.push({ ...structuredClone(data.runs.find(run => run.id === 'r-na-02')!), id: 'r-na-03', canStopAlone: undefined });
+
+        const { transport } = await connected({ data });
+        const status = async (id: string) => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === id)?.status;
+
+        expect(await transport.command({ type: 'run.cancel', runId: 'r-na-03' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(await transport.command({ type: 'run.cancel', runId: 'r-na-02' })).toMatchObject({ ok: true, data: { cancelled: ['r-na-02'] } });
+        expect([await status('r-na-02'), await status('r-na-03'), await status('r-ex-07'), await status('r-orch-1')]).toEqual(['cancelled', 'running', 'running', 'running']);
+    });
+
+    it('stops the agents of an orchestrator and not the orchestrator: spawned runs with what is below them, sub-agents that can stop alone', async () => {
+        const data = createFixtureData();
+
+        data.runs.push({ ...structuredClone(data.runs.find(run => run.id === 'r-na-02')!), id: 'r-na-03', canStopAlone: undefined });
+
+        const { transport } = await connected({ data });
+        const result = await transport.command({ type: 'run.stopAgents', runId: 'r-orch-1' });
+        const { runs } = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        const status = (id: string) => runs.find(run => run.id === id)?.status;
+
+        expect(result).toMatchObject({ ok: true });
+        expect(result.ok && new Set((result.data as { stopped: string[] }).stopped)).toEqual(new Set(['r-ex-07', 'r-ver-02', 'r-ex-08', 'r-ex-12', 'r-na-02']));
+        expect([status('r-ex-07'), status('r-ver-02'), status('r-ex-08'), status('r-ex-12'), status('r-na-02'), status('r-na-03'), status('r-orch-1'), status('r-ex-09')]).toEqual(['cancelled', 'cancelled', 'cancelled', 'cancelled', 'cancelled', 'running', 'running', 'succeeded']);
+        expect(await transport.command({ type: 'run.stopAgents', runId: 'r-missing' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    });
+
+    it('stops one background command that can be stopped alone: it leaves the list with a note, and the run and the rest of its work go on', async () => {
+        const { transport } = await connected();
+        const orchestrator = async () => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === 'r-orch-5')!;
+
+        // The other one cannot be stopped alone, and an item that is not listed is no stop.
+        expect(await transport.command({ type: 'run.stopBackground', runId: 'r-orch-5', itemId: 'bg-2' })).toMatchObject({ ok: true, data: { stopped: false } });
+        expect(await transport.command({ type: 'run.stopBackground', runId: 'r-orch-5', itemId: 'nobody' })).toMatchObject({ ok: true, data: { stopped: false } });
+        expect((await orchestrator()).background).toHaveLength(2);
+
+        expect(await transport.command({ type: 'run.stopBackground', runId: 'r-orch-5', itemId: 'bg-1' })).toMatchObject({ ok: true, data: { stopped: true } });
+        expect(await orchestrator()).toMatchObject({ status: 'waiting_background', background: [{ id: 'bg-2' }] });
+        expect((await transport.getItems({ runId: 'r-orch-5' })).some(item => item.body.kind === 'note' && item.body.text === 'Background command stopped: bun run test')).toBe(true);
+
+        // Gone now: a repeat stops nothing, and the last one that cannot be stopped alone stays.
+        expect(await transport.command({ type: 'run.stopBackground', runId: 'r-orch-5', itemId: 'bg-1' })).toMatchObject({ ok: true, data: { stopped: false } });
+        expect(await transport.command({ type: 'run.stopBackground', runId: 'r-missing', itemId: 'bg-1' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    });
+
     it('streams a reply to a chat message, starting an orchestrator for a chat that had none', async () => {
         const { transport, events } = await connected();
 
@@ -182,6 +229,48 @@ describe('FixtureTransport', () => {
 
             expect((await chatOf(transport, 'c-1')).queue?.map(item => item.text)).toEqual(['three', 'one']);
             expect(await transport.command({ type: 'chat.removeQueued', chatId: 'c-1', itemId: 'q-missing' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        });
+    });
+
+    describe('a chat whose orchestrator waits for background work', () => {
+        const orchestrator = async (transport: FixtureTransport) => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === 'r-orch-5')!;
+
+        it('is c-5, with two open items and no slot or queue', async () => {
+            const { transport } = await connected();
+            const chat = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(candidate => candidate.id === 'c-5');
+
+            expect(chat?.orchestratorRunId).toBe('r-orch-5');
+            expect(await orchestrator(transport)).toMatchObject({
+                status: 'waiting_background',
+                statusReason: 'Waiting for background work',
+                background: [{ id: 'bg-1', kind: 'command', title: 'bun run test' }, { id: 'bg-2', kind: 'command', title: 'bun run typecheck' }],
+            });
+            expect(chat?.queue).toBeUndefined();
+        });
+
+        it('takes a message at once, answers it, and goes back to waiting while the work is open', async () => {
+            const { transport } = await connected();
+
+            await transport.command({ type: 'chat.send', chatId: 'c-5', text: 'How is it going?', mode: 'steer' });
+
+            expect((await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(candidate => candidate.id === 'c-5')?.queue).toBeUndefined();
+            expect(await orchestrator(transport)).toMatchObject({ status: 'running', background: [{ id: 'bg-1' }, { id: 'bg-2' }] });
+
+            await vi.advanceTimersByTimeAsync(1500);
+
+            expect(await orchestrator(transport)).toMatchObject({ status: 'waiting_background', statusReason: 'Waiting for background work', background: [{ id: 'bg-1' }, { id: 'bg-2' }] });
+            expect((await transport.getItems({ chatId: 'c-5' })).at(-1)?.body).toMatchObject({ kind: 'assistant', done: true });
+        });
+
+        it('ends the work with the run when it is stopped', async () => {
+            const { transport } = await connected();
+
+            await transport.command({ type: 'run.cancel', runId: 'r-orch-5' });
+
+            const run = await orchestrator(transport);
+
+            expect(run.status).toBe('cancelled');
+            expect(run.background).toBeUndefined();
         });
     });
 
