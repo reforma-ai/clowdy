@@ -90,6 +90,14 @@ export interface EngineSession extends AsyncIterable<EngineEvent> {
      * leaves it out, and its session ends at `done`.
      */
     send?(text: string): Promise<boolean>;
+    /**
+     * Ends one sub-agent the session announced (the `agentId` of its `subagent` event) and leaves the session and its other sub-agents running. Resolves
+     * `true` when the request was sent to the agent, not when the sub-agent ended: the end arrives as the usual `subagent` event with state `cancelled`
+     * (and `background` without it), in the order the agent says things, so the runtime has one way for a sub-agent to end. Resolves `false` when it was
+     * not sent: the session is over, the sub-agent is unknown or has ended, or the agent did not offer to end it (`subagent`'s `stoppable`). Asked again
+     * for a sub-agent that is ending, it asks the agent again, which does nothing. An engine that cannot end one sub-agent alone leaves it out.
+     */
+    stopItem?(agentId: string): Promise<boolean>;
     close(): void | Promise<void>;
 }
 
@@ -109,9 +117,12 @@ export type EngineEvent =
     | { type: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string; agentId?: string }
     /**
      * A sub-agent that lives inside the session (an agent's own `Agent` or `Task`, when the engine can tell). The runtime shows it as a child run;
-     * `text` and `tool` events with the same `agentId` belong to its stream.
+     * `text` and `tool` events with the same `agentId` belong to its stream. `stoppable`, on the event that makes the child run (its first), says the
+     * agent lets the client end this sub-agent alone with `EngineSession.stopItem`; the run is told, so the app offers a Stop for it. Absent means it
+     * does not. `parentAgentId` names the sub-agent that started this one (a sub-agent of a sub-agent: its run is made below that one's, and is kept
+     * while that one is); absent when the session's own agent did.
      */
-    | { type: 'subagent'; agentId: string; parentToolCallId?: string; name: string; description?: string; state: SubagentState; summary?: string }
+    | { type: 'subagent'; agentId: string; parentAgentId?: string; parentToolCallId?: string; name: string; description?: string; state: SubagentState; summary?: string; stoppable?: boolean }
     /** A subscription quota signal. `resetsAt` is passed through exactly as the engine reported it. */
     | { type: 'limit'; status: 'warning' | 'rejected'; kind?: string; utilization?: number; resetsAt?: number }
     /** The OS process behind the session, so the runtime can kill its group on cancel and after a daemon crash. */

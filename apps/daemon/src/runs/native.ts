@@ -20,6 +20,8 @@ type StreamEvent = Extract<EngineEvent, { type: 'text' | 'tool' }> & { agentId: 
 
 interface Agent {
     run: Run;
+    /** The sub-agent that started it, when it is one of a sub-agent (its run is below that one's, and lives as long as that one is listed). */
+    parentAgentId?: string;
     writer: TurnWriter;
     /** Its item has been in a snapshot: from then on the item leaving the snapshot is the end of the sub-agent. */
     seen?: boolean;
@@ -28,6 +30,8 @@ interface Agent {
     /** What it said: the message that is open and the last one that was closed, which is its result when it ends without one. */
     open?: string;
     last?: string;
+    /** Someone asked the session to end it alone (`stop`), and why: the reason its run shows if the agent says it was cancelled. */
+    stopReason?: string;
 }
 
 /**
@@ -40,10 +44,13 @@ export class NativeAgents {
     private queue: (() => void)[] = [];
     private timer?: ReturnType<typeof setTimeout>;
     private skipped = new Set<string>();
+    /** Sub-agents that `finish` ended and forgot: what they say after that is dropped, not taken for a new sub-agent. */
+    private gone = new Set<string>();
     /** The ids of the `subagent` items in the latest background snapshot. */
     private listed = new Set<string>();
 
-    constructor(private store: Store, private runs: RunService, private parent: Run) {}
+    /** `canStop` says whether the session can end one sub-agent alone (it has `EngineSession.stopItem`), asked each time a sub-agent is made: the session exists only after this. */
+    constructor(private store: Store, private runs: RunService, private parent: Run, private canStop: () => boolean = () => false) {}
 
     /** A sub-agent started, changed or ended. */
     state(event: SubagentEvent): void {
@@ -66,6 +73,35 @@ export class NativeAgents {
     /** What the snapshots lost stayed away: the sub-agents whose items are gone have ended. */
     settle(): void {
         this.push(() => this.applySettle());
+    }
+
+    /**
+     * The id (`agentId`) of the running sub-agent whose child run is `runId`: the one a session is asked to end alone. `undefined` when this session has
+     * no running sub-agent by that run (it ended, or belongs to another turn).
+     */
+    agentOf(runId: string): string | undefined {
+        this.flush();
+
+        return [...this.agents].find(([, agent]) => agent.run.id === runId && this.isRunning(agent))?.[0];
+    }
+
+    /**
+     * The session was asked to end the sub-agent `agentId` alone. The sub-agent ends as the agent says (usually `cancelled`, through its `subagent` event);
+     * `reason` is what its run shows then, the person's Stop, in place of the engine's wording.
+     */
+    stopped(agentId: string, reason: string): void {
+        const agent = this.agents.get(agentId);
+
+        if (agent) {
+            agent.stopReason = reason;
+        }
+    }
+
+    /** Whether the sub-agent that `item` (a `subagent` item of the background list) names was ended by a Stop of its own, not by finishing. */
+    wasStopped(item: BackgroundItem): boolean {
+        this.flush();
+
+        return [...this.agents].some(([agentId, agent]) => (agentId === item.id || agent.run.parentToolCallId === item.id) && agent.stopReason !== undefined && this.runs.require(agent.run.id).status === 'cancelled');
     }
 
     /** Whether `toolCallId` is the call that started a sub-agent, which the engine draws a card for: a call the sub-agent's state is, not something the agent did. */
@@ -109,6 +145,7 @@ export class NativeAgents {
                 }
 
                 this.agents.delete(agentId);
+                this.gone.add(agentId);
             }
 
             if (this.skipped.size > 0) {
@@ -145,15 +182,21 @@ export class NativeAgents {
         });
     }
 
-    private open(agentId: string, name: string, description?: string, parentToolCallId?: string): Agent | undefined {
+    private open(agentId: string, name: string, description?: string, parentToolCallId?: string, canStopAlone?: boolean, parentAgentId?: string): Agent | undefined {
+        if (this.gone.has(agentId)) {
+            return undefined;
+        }
+
         if (this.agents.size >= MAX_AGENTS) {
             this.skipped.add(agentId);
 
             return undefined;
         }
 
-        const run = this.runs.createNative(this.parent, { name, summary: description ?? name, parentToolCallId });
-        const agent: Agent = { run, writer: new TurnWriter(this.store, run.id, TEXT_THROTTLE_MS) };
+        // A sub-agent of a sub-agent is a child run of that one's run, so the tree shows who started whom; one whose starter is not known (it was cut off by the cap) hangs from the session's run.
+        const starter = parentAgentId === undefined ? undefined : this.agents.get(parentAgentId);
+        const run = this.runs.createNative(starter?.run ?? this.parent, { name, summary: description ?? name, parentToolCallId, canStopAlone });
+        const agent: Agent = { run, writer: new TurnWriter(this.store, run.id, TEXT_THROTTLE_MS), ...(starter && { parentAgentId }) };
 
         // The list may have named it before its first event came.
         agent.seen = this.isListed(agentId, agent);
@@ -188,12 +231,19 @@ export class NativeAgents {
         }
     }
 
+    /** Whether the latest list names the sub-agent, or the one that started it: a sub-agent of a listed sub-agent is part of that open work, which the list does not spell out. */
     private isListed(agentId: string, agent: Agent): boolean {
-        return this.listed.has(agentId) || (agent.run.parentToolCallId !== undefined && this.listed.has(agent.run.parentToolCallId));
+        if (this.listed.has(agentId) || (agent.run.parentToolCallId !== undefined && this.listed.has(agent.run.parentToolCallId))) {
+            return true;
+        }
+
+        const starter = agent.parentAgentId === undefined ? undefined : this.agents.get(agent.parentAgentId);
+
+        return starter !== undefined && this.isListed(agent.parentAgentId as string, starter);
     }
 
     private applyState(event: SubagentEvent): void {
-        const agent = this.agents.get(event.agentId) ?? this.open(event.agentId, event.name, event.description, event.parentToolCallId);
+        const agent = this.agents.get(event.agentId) ?? this.open(event.agentId, event.name, event.description, event.parentToolCallId, event.stoppable && this.canStop(), event.parentAgentId);
 
         if (!agent || !this.isRunning(agent)) {
             return;
@@ -208,7 +258,7 @@ export class NativeAgents {
             return;
         }
 
-        this.close(agent, event.state, event.summary);
+        this.close(agent, event.state, event.state === 'cancelled' ? agent.stopReason ?? event.summary : event.summary);
     }
 
     private applyStream(event: StreamEvent): void {

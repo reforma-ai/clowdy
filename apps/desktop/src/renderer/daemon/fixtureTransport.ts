@@ -817,6 +817,8 @@ export class FixtureTransport implements Transport {
 
             case 'run.cancel':
                 return this.#cancelRun(command.runId);
+            case 'run.stopAgents':
+                return this.#stopAgents(command.runId);
             case 'run.answer':
                 return this.#answerQuestion(command.runId, command.questionId, command.answer);
 
@@ -1232,40 +1234,102 @@ export class FixtureTransport implements Transport {
 
     #cancelRun(runId: RunId): Outcome {
         const data = this.#data;
+        const target = data.runs.find(candidate => candidate.id === runId);
+
+        if (!target) return fail('not_found', 'No such run');
+
+        // Like the daemon: a sub-agent of a session is stopped alone when its session can end it, and refused when it cannot.
+        if (target.origin === 'native' && !isTerminalRunStatus(target.status)) {
+            if (!target.canStopAlone) return fail('conflict', 'A sub-agent runs inside its parent run; cancel the parent run instead');
+
+            this.#endRun(target);
+
+            return ok({ cancelled: [runId] });
+        }
+
+        const cancelled = this.#subtree(runId);
+
+        for (const run of data.runs.filter(candidate => cancelled.has(candidate.id) && !isTerminalRunStatus(candidate.status))) {
+            this.#endRun(run);
+        }
+
+        return ok({ cancelled: [...cancelled] });
+    }
+
+    /**
+     * Like the daemon's `run.stopAgents`: the runs the orchestrator spawned are cancelled with what is below them, and its sub-agents that can stop alone
+     * stop; the orchestrator itself goes on, and so does its queue.
+     */
+    #stopAgents(runId: RunId): Outcome {
+        const data = this.#data;
 
         if (!data.runs.some(candidate => candidate.id === runId)) return fail('not_found', 'No such run');
 
-        const cancelled = new Set([runId]);
+        const below = [...this.#subtree(runId)].filter(id => id !== runId).map(id => data.runs.find(candidate => candidate.id === id)!);
+        const stopped: RunId[] = [];
 
-        // The run and every run below it.
-        for (let size = 0; size !== cancelled.size;) {
-            size = cancelled.size;
-            data.runs.filter(run => run.parentRunId && cancelled.has(run.parentRunId)).forEach(run => cancelled.add(run.id));
-        }
+        for (const run of below.filter(candidate => candidate.origin !== 'native' && !isTerminalRunStatus(candidate.status))) {
+            for (const id of this.#subtree(run.id)) {
+                const descendant = data.runs.find(candidate => candidate.id === id)!;
 
-        for (const run of data.runs.filter(candidate => cancelled.has(candidate.id) && !isTerminalRunStatus(candidate.status))) {
-            run.status = 'cancelled';
-            run.statusReason = undefined;
-            // A run that ended has nothing open in the background: stopping it ends that work too.
-            delete run.background;
-            run.finishedAt = Date.now();
-            this.#saveRun(run);
-
-            // A call it left running ends with it, as the daemon ends them.
-            for (const item of data.items[run.id] ?? []) {
-                if (item.body.kind === 'tool' && item.body.state === 'running') this.#saveItem(run, { ...item, body: { ...item.body, state: 'error', error: STOPPED_TOOL } });
-            }
-
-            // Stop holds the queue of the chat whose orchestrator it stopped.
-            const chat = data.chats.find(candidate => candidate.orchestratorRunId === run.id);
-
-            if (chat?.queue?.length) {
-                chat.queuePaused = 'stopped';
-                this.#settleQueue(chat);
+                if (!isTerminalRunStatus(descendant.status)) {
+                    this.#endRun(descendant);
+                    stopped.push(id);
+                }
             }
         }
 
-        return ok();
+        for (const run of below.filter(candidate => candidate.origin === 'native' && candidate.canStopAlone && !isTerminalRunStatus(candidate.status))) {
+            this.#endRun(run);
+            stopped.push(run.id);
+        }
+
+        return ok({ stopped });
+    }
+
+    /** The run and every run below it. */
+    #subtree(runId: RunId): Set<RunId> {
+        const { runs } = this.#data;
+        const found = new Set([runId]);
+
+        for (let size = 0; size !== found.size;) {
+            size = found.size;
+            runs.filter(run => run.parentRunId && found.has(run.parentRunId)).forEach(run => found.add(run.id));
+        }
+
+        return found;
+    }
+
+    /** A run is cancelled: what it had open in the background ends with it, a call it left running is stopped, and a stopped orchestrator holds its chat's queue. */
+    #endRun(run: Run): void {
+        const data = this.#data;
+
+        run.status = 'cancelled';
+        run.statusReason = undefined;
+        // A run that ended has nothing open in the background: stopping it ends that work too.
+        delete run.background;
+        run.finishedAt = Date.now();
+        this.#saveRun(run);
+
+        // A sub-agent that stopped leaves its parent's list of open work.
+        const parent = run.origin === 'native' ? data.runs.find(candidate => candidate.id === run.parentRunId) : undefined;
+
+        if (parent?.background && run.parentToolCallId) {
+            parent.background = parent.background.filter(item => item.id !== run.parentToolCallId);
+            this.#saveRun(parent);
+        }
+
+        for (const item of data.items[run.id] ?? []) {
+            if (item.body.kind === 'tool' && item.body.state === 'running') this.#saveItem(run, { ...item, body: { ...item.body, state: 'error', error: STOPPED_TOOL } });
+        }
+
+        // Stop holds the queue of the chat whose orchestrator it stopped.
+        const chat = data.chats.find(candidate => candidate.orchestratorRunId === run.id);
+
+        if (chat?.queue?.length) {
+            chat.queuePaused = 'stopped';
+            this.#settleQueue(chat);
+        }
     }
 
     #answerQuestion(runId: RunId, questionId: string, answer: string): Outcome {

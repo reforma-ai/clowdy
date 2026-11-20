@@ -2,11 +2,12 @@ import { STOPPED_TOOL } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 
+import { executeCommand } from '../src/commands';
 import { getChat } from '../src/db/chats';
 import { listItems } from '../src/db/items';
 import { getRunWork, pendingMailbox, runningCounts } from '../src/db/runs';
 import { projectSnapshot } from '../src/domain/snapshots';
-import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
+import { cleanTempDirs, latch, command as makeCommand, restartHarness, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
 
 import type { BackgroundItem, Chat, ChatMode, Run, RunStatus } from '@clowdy/protocol';
 import type { EngineEvent } from '../src/engine/types';
@@ -114,11 +115,15 @@ function lingering(plan: Plan): Script {
     };
 }
 
-async function setup(script: Script, overrides: Parameters<typeof startHarness>[0] = {}, answers: ScriptEngine['sendAnswer'] | false = () => true, mode?: ChatMode) {
+async function setup(script: Script, overrides: Parameters<typeof startHarness>[0] = {}, answers: ScriptEngine['sendAnswer'] | false = () => true, mode?: ChatMode, stops?: ScriptEngine['stopAnswer']) {
     const engine = new ScriptEngine(script);
 
     if (answers) {
         engine.sendAnswer = answers;
+    }
+
+    if (stops) {
+        engine.stopAnswer = stops;
     }
 
     const h = await startHarness(overrides, { engines: scriptEngines(engine) });
@@ -1535,5 +1540,649 @@ describe('sub-agents of the work that waits', () => {
         expect(natives()[0].status).toBe('running');
         h.ok('run.cancel', { runId });
         await waitFor(() => natives()[0].status === 'cancelled', 'the sub-agent to end with the run');
+    });
+
+    test('one that the end of the turn cancelled is not made again by what it says after: its words are dropped, with no second run', async () => {
+        const finished = latch();
+        const { h, runId, waits, status } = await setup(async function* (turn) {
+            yield { type: 'session', sessionId: 's-1' };
+            yield { type: 'subagent', agentId: 'agent-1', name: 'Explore', state: 'running' };
+            // Only a command is open, so the turn's end cancels the sub-agent no item names, and the session goes on waiting.
+            yield { type: 'background', items: [command] };
+            yield { type: 'done', result: 'Started it' };
+            yield { type: 'text', delta: 'Still looking', done: true, agentId: 'agent-1' };
+            yield { type: 'subagent', agentId: 'agent-1', name: 'Explore', state: 'running' };
+            await turn.hold(finished);
+            yield { type: 'background', items: [] };
+            yield { type: 'done', result: 'All finished' };
+        });
+
+        await waits();
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+
+        // What it said after was read (the session's end applies it), and made nothing.
+        expect(projectSnapshot(h.store, h.run(runId).projectId).runs.filter((run: Run) => run.origin === 'native')).toEqual([
+            expect.objectContaining({ name: 'Explore', status: 'cancelled', statusReason: 'The parent run ended its turn' }),
+        ]);
+    });
+});
+
+/** The sub-agents of a chat's orchestrator the script below starts: each has a call that started it, a child run, and an item in the list. */
+const agentCall = (n: number) => ({ id: `call-${ n }`, agentId: `agent-${ n }` });
+const agentItem = (n: number): BackgroundItem => ({ id: agentCall(n).id, kind: 'subagent', title: `Explore ${ n }` });
+
+/** The events that start sub-agent `n`, as the v2 layer tells them: its card, and the child run the card names, which its agent lets the client stop. */
+function* starts(n: number, stoppable = true): Generator<EngineEvent> {
+    const { id, agentId } = agentCall(n);
+
+    yield { type: 'tool', toolCallId: id, name: 'Agent', input: { description: `Explore ${ n }` }, state: 'running' };
+    yield { type: 'subagent', agentId, parentToolCallId: id, name: 'Explore', description: `Explore ${ n }`, state: 'running', ...(stoppable && { stoppable }) };
+}
+
+interface Stopping {
+    /** How many sub-agents the first turn starts. */
+    count: number;
+    /** Released by the test when the rest of the work ends: the session reports and ends. */
+    finished: Latch;
+    /** What a sub-agent that was asked to stop does: the agent says so (the default), or it finishes first (`done`). */
+    outcome?: 'cancelled' | 'done';
+    /** Whether the sub-agents say they may be stopped alone. */
+    stoppable?: boolean;
+    /** The first turn goes on until the test releases this (the orchestrator's turn runs while a sub-agent is stopped). */
+    turn?: Latch;
+}
+
+/**
+ * An orchestrator that starts background sub-agents and keeps its session for them. When the runtime asks it to stop one, it answers as the v2 layer does for
+ * Claude Code: the sub-agent's end (`cancelled`, or `done` when it was finishing anyway), its card ended as stopped, and the list without it. What the agent says
+ * of it follows when the list changed.
+ */
+function stopping(plan: Stopping): Script {
+    return async function* (turn) {
+        yield { type: 'session', sessionId: 's-1' };
+
+        if (turn.number > 1) {
+            yield { type: 'text', delta: 'Back again', done: true };
+            yield { type: 'done', result: 'Back again' };
+
+            return;
+        }
+
+        const open = new Map<number, BackgroundItem>();
+
+        for (let n = 1; n <= plan.count; n++) {
+            yield* starts(n, plan.stoppable);
+            open.set(n, agentItem(n));
+        }
+
+        yield { type: 'text', delta: 'Started them', done: true };
+        yield { type: 'background', items: [...open.values()] };
+
+        if (plan.turn && !await turn.hold(plan.turn)) {
+            return;
+        }
+
+        yield { type: 'done', result: 'Started them' };
+
+        let stop = turn.stopRequested();
+        const finished = turn.hold(plan.finished);
+
+        for (;;) {
+            const next = await Promise.race([stop.then(agentId => ({ agentId })), finished.then(released => ({ released }))]);
+
+            if ('agentId' in next) {
+                if (next.agentId === undefined) {
+                    return;
+                }
+
+                const n = Number(next.agentId.replace('agent-', ''));
+                const { id, agentId } = agentCall(n);
+
+                if (open.delete(n)) {
+                    if ((plan.outcome ?? 'cancelled') === 'cancelled') {
+                        yield { type: 'tool', toolCallId: id, name: 'Agent', input: {}, state: 'error', error: STOPPED_TOOL };
+                        yield { type: 'subagent', agentId, parentToolCallId: id, name: 'Explore', state: 'cancelled' };
+                    }
+                    else {
+                        yield { type: 'tool', toolCallId: id, name: 'Agent', input: {}, state: 'done', output: 'It finished' };
+                        yield { type: 'subagent', agentId, parentToolCallId: id, name: 'Explore', state: 'done', summary: 'It finished' };
+                    }
+
+                    yield { type: 'background', items: [...open.values()] };
+                    yield { type: 'text', delta: `Sub-agent ${ n } is over`, done: true };
+                    yield { type: 'done', result: `Sub-agent ${ n } is over` };
+                }
+
+                stop = turn.stopRequested();
+            }
+            else {
+                if (next.released) {
+                    for (const [n] of open) {
+                        const { id, agentId } = agentCall(n);
+
+                        yield { type: 'tool', toolCallId: id, name: 'Agent', input: {}, state: 'done', output: 'Done' };
+                        yield { type: 'subagent', agentId, parentToolCallId: id, name: 'Explore', state: 'done', summary: 'Done' };
+                    }
+
+                    yield { type: 'background', items: [] };
+                    yield { type: 'text', delta: 'All finished', done: true };
+                    yield { type: 'done', result: 'All finished' };
+                }
+
+                return;
+            }
+        }
+    };
+}
+
+describe('stopping one sub-agent of the work that waits', () => {
+    const natives = (h: Harness, runId: string) => projectSnapshot(h.store, h.run(runId).projectId).runs.filter((run: Run) => run.origin === 'native');
+    const native = (h: Harness, runId: string, n: number) => natives(h, runId).find(run => run.parentToolCallId === agentCall(n).id) as Run;
+    const card = (h: Harness, runId: string, n: number) => listItems(h.store.db, runId, 0).flatMap(item => item.body.kind === 'tool' && item.body.toolCallId === agentCall(n).id ? [item.body] : []);
+    const stopsAlone = () => true;
+
+    test('ends that sub-agent alone: its run is cancelled by the agent\'s own event, its card ends as stopped, and the run, the other sub-agent and the list go on', async () => {
+        const finished = latch();
+        const { h, engine, runId, waits, status, notes, history } = await setup(stopping({ count: 2, finished }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+
+        const [first, second] = [native(h, runId, 1), native(h, runId, 2)];
+
+        expect([first.canStopAlone, second.canStopAlone]).toEqual([true, true]);
+
+        // The answer does not wait for the end: the request goes out, and the run ends through the event the agent gives back.
+        expect(h.ok('run.cancel', { runId: first.id })).toEqual({ cancelled: [first.id] });
+        await waitFor(() => h.run(first.id).status === 'cancelled', 'the sub-agent to be cancelled');
+
+        expect(engine.stopRequests).toEqual(['agent-1']);
+        expect(h.run(first.id)).toMatchObject({ status: 'cancelled', statusReason: 'Cancelled by user' });
+        expect(h.run(second.id).status).toBe('running');
+        expect(card(h, runId, 1)).toEqual([expect.objectContaining({ state: 'error', error: STOPPED_TOOL })]);
+        expect(card(h, runId, 2)).toEqual([expect.objectContaining({ state: 'running' })]);
+
+        // The run waits on, with what is left in its list, and was not cancelled; the agent said what happened and the note names it as stopped.
+        await waitFor(() => notes().length > 0, 'the note');
+        expect(notes()).toEqual(['Background sub-agent stopped: Explore 1']);
+        expect(status()).toBe('waiting_background');
+        expect(h.run(runId).background).toEqual([agentItem(2)]);
+        expect(history()).toEqual(['queued', 'running', 'waiting_background']);
+
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+        expect(h.run(second.id).status).toBe('succeeded');
+        expect(h.run(first.id).status).toBe('cancelled');
+    });
+
+    test('is not a Stop of the run: the chat is not held, and a message sent after it reaches the same session', async () => {
+        const finished = latch();
+        const { h, engine, chat, runId, send, waits, said } = await setup(stopping({ count: 2, finished }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+        h.ok('run.cancel', { runId: native(h, runId, 1).id });
+        await waitFor(() => h.run(native(h, runId, 1).id).status === 'cancelled', 'the sub-agent to be cancelled');
+        await waitFor(() => h.run(runId).status === 'waiting_background', 'the run to wait again');
+
+        expect(getChat(h.store.db, chat.id)?.queuePaused).toBeUndefined();
+        send('Carry on');
+        await waitFor(() => engine.sent.includes('Carry on'), 'the message to reach the live session');
+        expect(said()).toContain('Carry on');
+        expect(engine.turns).toHaveLength(1);
+        finished.release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+    });
+
+    test('works while the orchestrator\'s own turn runs, and the turn goes on to its end', async () => {
+        const finished = latch();
+        const gate = latch();
+        const { h, engine, runId, status } = await setup(stopping({ count: 2, finished, turn: gate }), {}, () => true, undefined, stopsAlone);
+
+        await waitFor(() => natives(h, runId).length === 2, 'both sub-agents');
+        expect(status()).toBe('running');
+
+        h.ok('run.cancel', { runId: native(h, runId, 2).id });
+        // The agent hears the request while its turn runs; it answers when it gets to it, here when the turn has said done.
+        await waitFor(() => engine.stopRequests.length === 1, 'the request to reach the session');
+        expect(status()).toBe('running');
+        gate.release();
+        await waitFor(() => h.run(native(h, runId, 2).id).status === 'cancelled', 'the sub-agent to be cancelled');
+        await waitFor(() => status() === 'waiting_background', 'the run to wait');
+        expect(h.run(native(h, runId, 1).id).status).toBe('running');
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+    });
+
+    test('asks the agent only once the stopping transaction has committed: a Stop that rolls back sends nothing and leaves every sub-agent running', async () => {
+        const finished = latch();
+        const { h, engine, runId, waits } = await setup(stopping({ count: 2, finished }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+
+        const [first, second] = [native(h, runId, 1), native(h, runId, 2)];
+        const { runs } = h.daemon.services;
+        const rollBack = (stop: () => unknown) => h.store.tx(() => {
+            stop();
+            throw new Error('rolled back');
+        });
+
+        expect(() => rollBack(() => runs.cancel(first.id))).toThrow('rolled back');
+        expect(() => rollBack(() => runs.stopAgents(runId))).toThrow('rolled back');
+        await Bun.sleep(50);
+        expect(engine.stopRequests).toEqual([]);
+        expect([h.run(first.id).status, h.run(second.id).status, h.run(runId).status]).toEqual(['running', 'running', 'waiting_background']);
+
+        // Committed, each sub-agent is asked once.
+        h.ok('run.stopAgents', { runId });
+        await waitFor(() => h.run(first.id).status === 'cancelled' && h.run(second.id).status === 'cancelled', 'both sub-agents to be stopped');
+        expect([...engine.stopRequests].sort()).toEqual(['agent-1', 'agent-2']);
+        finished.release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+    });
+
+    test('a Stop all sent again with the same request id is answered from the first one and asks nobody twice', async () => {
+        const finished = latch();
+        const { h, engine, runId, waits } = await setup(stopping({ count: 2, finished }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+
+        const stop = makeCommand('run.stopAgents', { runId });
+        const first = executeCommand(h.daemon.services, stop);
+
+        expect(first).toMatchObject({ ok: true, data: { stopped: expect.any(Array) } });
+        expect(executeCommand(h.daemon.services, stop)).toEqual(first);
+        await waitFor(() => engine.stopRequests.length === 2, 'both requests');
+        await Bun.sleep(50);
+        expect([...engine.stopRequests].sort()).toEqual(['agent-1', 'agent-2']);
+        finished.release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+    });
+
+    test('a sub-agent that finishes by itself while the request is on its way ends as finished, and the Stop changes nothing', async () => {
+        const finished = latch();
+        const { h, engine, runId, waits, status } = await setup(stopping({ count: 2, finished, outcome: 'done' }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+        h.ok('run.cancel', { runId: native(h, runId, 1).id });
+        await waitFor(() => engine.stopRequests.length === 1 && h.run(native(h, runId, 1).id).status !== 'running', 'the sub-agent to end');
+        expect(h.run(native(h, runId, 1).id)).toMatchObject({ status: 'succeeded', result: 'It finished' });
+        // A Stop of a run that is over cancels nothing.
+        expect(h.ok('run.cancel', { runId: native(h, runId, 1).id })).toEqual({ cancelled: [] });
+        expect(status()).toBe('waiting_background');
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+    });
+
+    test('two Stops of one sub-agent in a row end it once', async () => {
+        const finished = latch();
+        const { h, engine, runId, waits, status, history } = await setup(stopping({ count: 2, finished }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+
+        const first = native(h, runId, 1);
+
+        expect(h.ok('run.cancel', { runId: first.id })).toEqual({ cancelled: [first.id] });
+        expect(h.ok('run.cancel', { runId: first.id })).toEqual({ cancelled: [first.id] });
+        await waitFor(() => h.run(first.id).status === 'cancelled', 'the sub-agent to be cancelled');
+        // The second request finds it over: the run is a finished one, and cancels nothing.
+        expect(h.ok('run.cancel', { runId: first.id })).toEqual({ cancelled: [] });
+        expect(engine.stopRequests.slice(0, 2)).toEqual(['agent-1', 'agent-1']);
+        expect(history(first.id)).toEqual(['running', 'cancelled']);
+        expect(status()).toBe('waiting_background');
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+    });
+
+    test('a Stop of the whole run at the same time ends everything, the sub-agent once and the session closed', async () => {
+        const finished = latch();
+        const { h, engine, runId, waits } = await setup(stopping({ count: 2, finished }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+
+        const first = native(h, runId, 1);
+
+        h.ok('run.cancel', { runId: first.id });
+        const { cancelled } = h.ok('run.cancel', { runId });
+
+        expect(new Set(cancelled)).toEqual(new Set([native(h, runId, 2).id, first.id, runId]));
+        expect(h.run(runId).status).toBe('cancelled');
+        await waitFor(() => natives(h, runId).every(run => run.status === 'cancelled') && engine.closed === 1, 'everything to end');
+        // Its sub-agents are over: a Stop of one now cancels nothing, and nothing is asked of the closed session.
+        expect(h.ok('run.cancel', { runId: first.id })).toEqual({ cancelled: [] });
+    });
+
+    test('is refused with the old words when the sub-agent did not say it can be stopped alone, though the engine can', async () => {
+        const finished = latch();
+        const { h, runId, waits, status } = await setup(stopping({ count: 1, finished, stoppable: false }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+        expect(native(h, runId, 1).canStopAlone).toBeUndefined();
+        expect(h.send('run.cancel', { runId: native(h, runId, 1).id })).toMatchObject({ ok: false, error: { code: 'conflict', message: expect.stringContaining('cancel the parent run instead') } });
+        expect(status()).toBe('waiting_background');
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+    });
+
+    test('is refused when the engine cannot end one sub-agent alone, though the sub-agent says it can', async () => {
+        const finished = latch();
+        const { h, runId, waits, status } = await setup(stopping({ count: 1, finished }), {}, () => true);
+
+        await waits();
+        expect(native(h, runId, 1).canStopAlone).toBeUndefined();
+        expect(h.send('run.cancel', { runId: native(h, runId, 1).id })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+    });
+
+    test('after a Stop of the run its sub-agents are cancelled with it, and a Stop of one of them cancels nothing', async () => {
+        const finished = latch();
+        const { h, runId, waits } = await setup(stopping({ count: 1, finished }), {}, () => true, undefined, stopsAlone);
+
+        await waits();
+        h.ok('run.cancel', { runId });
+        await waitFor(() => native(h, runId, 1).status === 'cancelled', 'the sub-agent to end with the run');
+        expect(h.ok('run.cancel', { runId: native(h, runId, 1).id })).toEqual({ cancelled: [] });
+    });
+
+    test('an engine that refuses the request leaves the sub-agent running, and a Stop again asks again', async () => {
+        const finished = latch();
+        let answers = 0;
+        const { h, engine, runId, waits } = await setup(stopping({ count: 1, finished }), {}, () => true, undefined, () => ++answers > 1);
+
+        await waits();
+
+        const first = native(h, runId, 1);
+
+        h.ok('run.cancel', { runId: first.id });
+        await waitFor(() => engine.stopRequests.length === 1, 'the first request');
+        await Bun.sleep(50);
+        expect(h.run(first.id).status).toBe('running');
+        h.ok('run.cancel', { runId: first.id });
+        await waitFor(() => h.run(first.id).status === 'cancelled', 'the second request to end it');
+        expect(engine.stopRequests).toEqual(['agent-1', 'agent-1']);
+        finished.release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+    });
+});
+
+describe('stopping the agents of a run that waits, and nothing else', () => {
+    /** Executors that wait, and a sub-agent that can be stopped alone next to one that cannot: an orchestrator with all of them, whose session stays for the sub-agents. */
+    function mixed(options: { finished: Latch; child: Latch }): Script {
+        const isOrchestrator = (turn: Turn) => turn.options.tools.some(tool => tool.name === 'run_spawn');
+
+        return async function* (turn) {
+            if (!isOrchestrator(turn)) {
+                yield { type: 'session', sessionId: `s-child-${ turn.number }` };
+                await options.child.wait(turn.signal);
+                yield* turn.call('report_result', { status: 'done', summary: 'Result: done' });
+                yield { type: 'done' };
+
+                return;
+            }
+
+            yield { type: 'session', sessionId: 's-1' };
+
+            const { task } = yield* turn.call('task_create', { title: 'Task 1' });
+
+            yield* turn.call('run_spawn', { taskIds: [task.key], prompt: `Goal: ${ task.key }`, idempotencyKey: 'executor-1' });
+            yield* starts(1);
+            yield* starts(2, false);
+            yield { type: 'background', items: [agentItem(1), agentItem(2)] };
+            yield { type: 'done', result: 'Spawned' };
+
+            let stop = turn.stopRequested();
+            let message = turn.received();
+            const finished = turn.hold(options.finished);
+
+            for (;;) {
+                const next = await Promise.race([stop.then(agentId => ({ agentId })), message.then(text => ({ text })), finished.then(released => ({ released }))]);
+
+                if ('agentId' in next) {
+                    if (next.agentId === undefined) {
+                        return;
+                    }
+
+                    yield { type: 'subagent', agentId: next.agentId, parentToolCallId: agentCall(1).id, name: 'Explore', state: 'cancelled' };
+                    yield { type: 'background', items: [agentItem(2)] };
+                    stop = turn.stopRequested();
+                }
+                else if ('text' in next) {
+                    if (next.text === undefined) {
+                        return;
+                    }
+
+                    yield { type: 'text', delta: 'Heard what stopped', done: true };
+                    yield { type: 'done', result: 'Heard what stopped' };
+                    message = turn.received();
+                }
+                else {
+                    return;
+                }
+            }
+        };
+    }
+
+    test('cancels the executors it spawned and asks the sub-agents that can stop alone to stop, leaves the run and the sub-agent that cannot, and tells the run what happened', async () => {
+        const finished = latch();
+        const child = latch();
+        const { h, engine, chat, runId, status, history } = await setup(mixed({ finished, child }), {}, () => true, undefined, () => true);
+        const natives = () => projectSnapshot(h.store, h.run(runId).projectId).runs.filter((run: Run) => run.origin === 'native');
+
+        await waitFor(() => status() === 'waiting_children' && natives().length === 2, 'the orchestrator to wait for its executor and sub-agents');
+
+        const executor = h.store.db.query('SELECT id FROM runs WHERE parent_run_id = ? AND origin = \'spawned\'').get(runId) as { id: string };
+        const [stoppable, fixed] = natives();
+        const { stopped } = h.ok('run.stopAgents', { runId });
+
+        // Everything that can stop is asked once; the run itself is untouched, and so is the sub-agent that cannot stop alone.
+        expect(new Set(stopped)).toEqual(new Set([executor.id, stoppable.id]));
+        expect(h.run(runId).status).not.toBe('cancelled');
+        expect(h.run(executor.id)).toMatchObject({ status: 'cancelled', statusReason: 'Cancelled by user' });
+        await waitFor(() => h.run(stoppable.id).status === 'cancelled', 'the sub-agent to be stopped');
+        expect(engine.stopRequests).toEqual(['agent-1']);
+        expect(h.run(fixed.id).status).toBe('running');
+        expect(getChat(h.store.db, chat.id)?.queuePaused).toBeUndefined();
+
+        // The executor's end is told to the run as any child's is, with the instruction not to restart what someone stopped: its session answers it and waits on.
+        await waitFor(() => engine.sent.some(text => text.includes(': cancelled') && text.includes('Do not restart it silently')), 'the run to be told');
+        await waitFor(() => status() === 'waiting_background', 'the run to wait for what is left');
+        expect(h.run(runId).background).toEqual([agentItem(2)]);
+        expect(history()).not.toContain('cancelled');
+
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+    });
+
+    test('says nothing was stopped for a run with no agent to stop, and for one that is over', async () => {
+        const finished = latch();
+        const { h, runId, waits } = await setup(stopping({ count: 1, finished, stoppable: false }), {}, () => true, undefined, () => true);
+
+        await waits();
+        expect(h.ok('run.stopAgents', { runId })).toEqual({ stopped: [] });
+        expect(h.run(runId).status).toBe('waiting_background');
+        h.ok('run.cancel', { runId });
+        await waitFor(() => h.run(runId).status === 'cancelled', 'the run to stop');
+        expect(h.ok('run.stopAgents', { runId })).toEqual({ stopped: [] });
+        expect(h.send('run.stopAgents', { runId: 'run_nope' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    });
+});
+
+describe('a sub-agent of a sub-agent', () => {
+    const middle: BackgroundItem = { id: 'call-M', kind: 'subagent', title: 'Middle' };
+    const natives = (h: Harness, runId: string) => projectSnapshot(h.store, h.run(runId).projectId).runs.filter((run: Run) => run.origin === 'native');
+    const named = (h: Harness, runId: string, name: string) => natives(h, runId).find(run => run.summary === name) as Run;
+    const stream = (h: Harness, id: string) => listItems(h.store.db, id, 0).map(item => item.body);
+
+    /**
+     * The sub-agent M is started in the first turn and listed. While the session waits it starts G1 and G2 of its own, as Claude's adapter tells it: the
+     * grandchildren are announced by M (`parentAgentId`), their calls are cards in M's stream, and the session's list names M only. An agent-started turn
+     * then ends while they work. A request to stop one is answered with that sub-agent's end alone, as the adapter does (it leaves the sub-agents it started working).
+     * What the agent says of the others follows when the test releases `finished`: G1 and G2 end, then M.
+     */
+    function nesting(options: { finished: Latch }): Script {
+        return async function* (turn) {
+            yield { type: 'session', sessionId: 's-1' };
+
+            if (turn.number > 1) {
+                yield { type: 'text', delta: 'Back again', done: true };
+                yield { type: 'done', result: 'Back again' };
+
+                return;
+            }
+
+            yield { type: 'tool', toolCallId: 'call-M', name: 'Agent', input: { description: 'Middle' }, state: 'running' };
+            yield { type: 'subagent', agentId: 'agent-M', parentToolCallId: 'call-M', name: 'Explore', description: 'Middle', state: 'running', stoppable: true };
+            yield { type: 'background', items: [middle] };
+            yield { type: 'text', delta: 'Started it', done: true };
+            yield { type: 'done', result: 'Started it' };
+
+            const open = new Set(['agent-M', 'agent-G1', 'agent-G2']);
+
+            for (const n of [1, 2]) {
+                yield { type: 'tool', toolCallId: `call-G${ n }`, name: 'Agent', input: { description: `Grand ${ n }` }, state: 'running', agentId: 'agent-M' };
+                yield { type: 'subagent', agentId: `agent-G${ n }`, parentAgentId: 'agent-M', parentToolCallId: `call-G${ n }`, name: 'Explore', description: `Grand ${ n }`, state: 'running', stoppable: true };
+                yield { type: 'text', delta: `Working on ${ n }`, done: true, agentId: `agent-G${ n }` };
+            }
+
+            // A turn the agent starts by itself ends while they work: nothing is cancelled with it.
+            yield { type: 'text', delta: 'Still working', done: true };
+            yield { type: 'done', result: 'Still working' };
+
+            const end = (agentId: string, state: 'cancelled' | 'done') => ({ type: 'subagent', agentId, ...(agentId !== 'agent-M' && { parentAgentId: 'agent-M' }), parentToolCallId: `call-${ agentId.slice(-2) }`, name: 'Explore', state, ...(state === 'done' && { summary: 'Done' }) }) as EngineEvent;
+            let stop = turn.stopRequested();
+            const finished = turn.hold(options.finished);
+
+            for (;;) {
+                const next = await Promise.race([stop.then(agentId => ({ agentId })), finished.then(released => ({ released }))]);
+
+                if ('agentId' in next) {
+                    if (next.agentId === undefined) {
+                        return;
+                    }
+
+                    if (open.delete(next.agentId)) {
+                        yield end(next.agentId, 'cancelled');
+                        yield { type: 'background', items: open.has('agent-M') || open.size > 0 ? [middle] : [] };
+                    }
+
+                    stop = turn.stopRequested();
+                }
+                else {
+                    if (next.released) {
+                        for (const agentId of ['agent-G1', 'agent-G2', 'agent-M']) {
+                            if (open.delete(agentId)) {
+                                yield end(agentId, 'done');
+                            }
+                        }
+
+                        yield { type: 'background', items: [] };
+                        yield { type: 'text', delta: 'All finished', done: true };
+                        yield { type: 'done', result: 'All finished' };
+                    }
+
+                    return;
+                }
+            }
+        };
+    }
+
+    const started = (h: Harness, runId: string) => waitFor(() => natives(h, runId).length === 3 && natives(h, runId).every(run => run.status === 'running') && stream(h, runId).filter(body => body.kind === 'assistant').length >= 2, 'the three sub-agents and the turn that ends while they work');
+
+    test('its run hangs from the run of the sub-agent that started it, with the same root, its card is in that one\'s stream, and it is kept while that one is listed', async () => {
+        const finished = latch();
+        const { h, runId, status, notes } = await setup(nesting({ finished }), {}, () => true, undefined, () => true);
+
+        await started(h, runId);
+
+        const [m, g1, g2] = [named(h, runId, 'Middle'), named(h, runId, 'Grand 1'), named(h, runId, 'Grand 2')];
+
+        expect([m.parentRunId, g1.parentRunId, g2.parentRunId]).toEqual([runId, m.id, m.id]);
+        expect([m.rootRunId, g1.rootRunId, g2.rootRunId]).toEqual([runId, runId, runId]);
+        expect([m.canStopAlone, g1.canStopAlone, g2.canStopAlone]).toEqual([true, true, true]);
+        expect(status()).toBe('waiting_background');
+        expect(h.run(runId).background).toEqual([middle]);
+        // The cards of the grandchildren are in the stream of the sub-agent that started them, and the middle one's in the run's.
+        expect(stream(h, m.id).flatMap(body => (body.kind === 'tool' ? [[body.toolCallId, body.state]] : []))).toEqual([['call-G1', 'running'], ['call-G2', 'running']]);
+        expect(stream(h, runId).flatMap(body => (body.kind === 'tool' ? [[body.toolCallId, body.state]] : []))).toEqual([['call-M', 'running']]);
+        expect(stream(h, g1.id)).toEqual([{ kind: 'assistant', text: 'Working on 1', done: true }]);
+
+        // Nothing is cancelled by the turn that ended meanwhile, and what the grandchildren say later is not a new sub-agent.
+        await Bun.sleep(100);
+        expect(natives(h, runId).map(run => run.status)).toEqual(['running', 'running', 'running']);
+
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+        expect(natives(h, runId)).toHaveLength(3);
+        expect(natives(h, runId).map(run => run.status)).toEqual(['succeeded', 'succeeded', 'succeeded']);
+        expect(notes()).toEqual(['Background sub-agent finished: Middle']);
+    });
+
+    test('a Stop of the one that started them asks for each, the ones below it too, since the agent leaves them working; the run goes on', async () => {
+        const finished = latch();
+        const { h, engine, runId, status } = await setup(nesting({ finished }), {}, () => true, undefined, () => true);
+
+        await started(h, runId);
+
+        const [m, g1, g2] = [named(h, runId, 'Middle'), named(h, runId, 'Grand 1'), named(h, runId, 'Grand 2')];
+        const { cancelled } = h.ok('run.cancel', { runId: m.id });
+
+        expect(cancelled[0]).toBe(m.id);
+        expect(new Set(cancelled)).toEqual(new Set([m.id, g1.id, g2.id]));
+        await waitFor(() => natives(h, runId).every(run => run.status === 'cancelled'), 'the whole branch to end');
+        expect(engine.stopRequests[0]).toBe('agent-M');
+        expect([...engine.stopRequests].sort()).toEqual(['agent-G1', 'agent-G2', 'agent-M']);
+        expect(h.run(runId).background).toBeUndefined();
+        expect(natives(h, runId)).toHaveLength(3);
+        expect(h.run(runId).status).toBe('waiting_background');
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+    });
+
+    test('a Stop of one of them ends it alone: the one that started it and its sibling go on', async () => {
+        const finished = latch();
+        const { h, engine, runId, status } = await setup(nesting({ finished }), {}, () => true, undefined, () => true);
+
+        await started(h, runId);
+
+        const [m, g1, g2] = [named(h, runId, 'Middle'), named(h, runId, 'Grand 1'), named(h, runId, 'Grand 2')];
+
+        expect(h.ok('run.cancel', { runId: g1.id })).toEqual({ cancelled: [g1.id] });
+        await waitFor(() => h.run(g1.id).status === 'cancelled', 'the grandchild to end');
+        expect(engine.stopRequests).toEqual(['agent-G1']);
+        expect([h.run(m.id).status, h.run(g2.id).status, h.run(runId).status]).toEqual(['running', 'running', 'waiting_background']);
+        finished.release();
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+    });
+
+    test('Stop all asks each sub-agent once, the deepest first, and the run goes on', async () => {
+        const finished = latch();
+        const { h, engine, runId } = await setup(nesting({ finished }), {}, () => true, undefined, () => true);
+
+        await started(h, runId);
+
+        const [m, g1, g2] = [named(h, runId, 'Middle'), named(h, runId, 'Grand 1'), named(h, runId, 'Grand 2')];
+        const { stopped } = h.ok('run.stopAgents', { runId });
+
+        expect(new Set(stopped)).toEqual(new Set([m.id, g1.id, g2.id]));
+        expect(stopped.at(-1)).toBe(m.id);
+        await waitFor(() => natives(h, runId).every(run => run.status === 'cancelled'), 'every sub-agent to end');
+        expect([...engine.stopRequests].sort()).toEqual(['agent-G1', 'agent-G2', 'agent-M']);
+        expect(engine.stopRequests.at(-1)).toBe('agent-M');
+        expect(h.run(runId).status).toBe('waiting_background');
+        finished.release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+    });
+
+    test('a Stop of the whole run cancels the three with it', async () => {
+        const finished = latch();
+        const { h, runId } = await setup(nesting({ finished }), {}, () => true, undefined, () => true);
+
+        await started(h, runId);
+
+        const { cancelled } = h.ok('run.cancel', { runId });
+
+        expect(cancelled).toHaveLength(4);
+        await waitFor(() => natives(h, runId).every(run => run.status === 'cancelled'), 'the sub-agents to end with the run');
+        expect(natives(h, runId)).toHaveLength(3);
     });
 });

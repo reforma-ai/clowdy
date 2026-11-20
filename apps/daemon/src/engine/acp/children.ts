@@ -27,6 +27,8 @@ interface Child {
     callId?: string;
     /** The id its background item has had since the first list that named it: the call's, when it was known by then, else the session's. It does not change while the item is open. */
     itemId?: string;
+    /** Its parent said the client may cancel its work (`subagent_update`'s `capabilities.cancel`); without it the protocol permits no request to the child. */
+    cancellable: boolean;
     /** The runtime was told it exists (`subagent` `running`). Held until the call that started it is known, so the child run can name it. */
     announced: boolean;
     /** The child works: it said `running` or `requires_action` since its last stop. */
@@ -35,6 +37,8 @@ interface Child {
     listed: boolean;
     /** Its run is over for good: a foreground sub-agent that stopped, or any that was cancelled or failed. */
     ended: boolean;
+    /** The parent's list lost it after it stopped, so it has finished (its run is closed by the runtime from the snapshot) unless it wakes again. */
+    settled: boolean;
     /** What the card of its call last said (its state, and the whole event), to say nothing twice. */
     card?: { state: 'running' | 'done' | 'error' | 'cancelled'; signature: string };
     /** What it says on its own, and the last message it sent its parent. */
@@ -95,6 +99,13 @@ export class Children {
         return child.itemId;
     }
 
+    /** Whether the client may ask this sub-agent to stop: the parent announced it with the capability, and it is not over (it has not ended, and the list has not lost it after it stopped). */
+    stoppable(sessionId: string): boolean {
+        const child = this.byId.get(sessionId);
+
+        return child !== undefined && child.cancellable && !child.ended && !child.settled;
+    }
+
     /** What the parent calls the sub-agent: its title, else the kind it is. */
     titleOf(sessionId: string): string | undefined {
         const child = this.byId.get(sessionId);
@@ -110,7 +121,7 @@ export class Children {
         let child = this.byId.get(update.sessionId);
 
         if (!child) {
-            child = { sessionId: update.sessionId, ...(parent !== undefined && { parent }), announced: false, working: false, listed: false, ended: false, message: new Message() };
+            child = { sessionId: update.sessionId, ...(parent !== undefined && { parent }), cancellable: false, announced: false, working: false, listed: false, ended: false, settled: false, message: new Message() };
             this.byId.set(update.sessionId, child);
         }
 
@@ -118,6 +129,11 @@ export class Children {
 
         child.title = patched(child.title, update.title);
         child.type = patched(child.type, update.description);
+
+        // What the parent permits the client to do with the child is replaced by what it says now: omitted keeps it, `null` or no `cancel` takes it away.
+        if (update.capabilities !== undefined) {
+            child.cancellable = update.capabilities?.cancel != null;
+        }
 
         const events: EngineEvent[] = child.announced && child.title !== title && !child.ended ? this.describe(child) : [];
 
@@ -195,6 +211,7 @@ export class Children {
             child.listed = now.has(child.sessionId);
 
             if (was && !child.listed && !child.ended && !child.working) {
+                child.settled = true;
                 events.push(...this.draw(child, 'done', child.report ?? child.message.result()));
             }
         }
@@ -212,6 +229,7 @@ export class Children {
             const again = !child.working && child.card !== undefined && child.card.state !== 'running';
 
             child.working = true;
+            child.settled = false;
 
             // A background sub-agent that woke for another turn is at work again.
             return again ? this.draw(child, 'running') : [];
@@ -245,6 +263,7 @@ export class Children {
         events.push({
             type: 'subagent',
             agentId: child.sessionId,
+            ...(child.parent !== undefined && { parentAgentId: child.parent }),
             ...(child.callId !== undefined && { parentToolCallId: child.callId }),
             name: child.type ?? FALLBACK_NAME,
             state,
@@ -270,10 +289,12 @@ export class Children {
         return [{
             type: 'subagent',
             agentId: child.sessionId,
+            ...(child.parent !== undefined && { parentAgentId: child.parent }),
             ...(child.callId !== undefined && { parentToolCallId: child.callId }),
             name: child.type ?? FALLBACK_NAME,
             ...(child.title !== undefined && { description: child.title }),
             state: 'running',
+            ...(child.cancellable && { stoppable: true }),
         }];
     }
 

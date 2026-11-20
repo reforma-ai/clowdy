@@ -136,6 +136,20 @@ export class AcpSession implements EngineSession {
         return layer.send(text);
     }
 
+    /**
+     * Asks the agent to end one sub-agent it announced and leave everything else running. Answers whether the layer sent the request: a session that is
+     * over, a layer whose protocol has no such request (v1), and a sub-agent the layer does not know as open answer `false`.
+     */
+    async stopItem(agentId: string): Promise<boolean> {
+        const { layer } = this;
+
+        if (this.finished || this.signal.aborted || !layer?.stopItem) {
+            return false;
+        }
+
+        return layer.stopItem(agentId);
+    }
+
     /** Whether the agent can take a steer at all: what its handshake said, and until then, or over v2, that it can. */
     get canSteer(): boolean {
         return this.layer?.canSteer ?? true;

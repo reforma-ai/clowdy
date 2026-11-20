@@ -455,6 +455,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
             parentRunId: 'r-orch-1',
             origin: 'native',
             parentToolCallId: 'tc-agent-2',
+            // Its session can end it alone (Claude Code over ACP v2): the row has a Stop of its own.
+            canStopAlone: true,
             summary: 'Find where the price is computed',
             createdAt: ago(2),
             startedAt: ago(2),

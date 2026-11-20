@@ -3,7 +3,7 @@ import { ACTIVE_RUN_STATUSES, isTerminalRunStatus, projectEngine, STOPPED_TOOL }
 import { getChat } from '../db/chats';
 import { findQuestion, listRunningTools } from '../db/items';
 import { getProject } from '../db/projects';
-import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, insertMailbox, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, pendingMailbox, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
+import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, insertMailbox, isDescendant, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, pendingMailbox, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
 import { getTask } from '../db/tasks';
 import { appendItem, updateItem } from '../domain/items';
 import { categoryOf, linkRunTask, moveTask, requireTask } from '../domain/tasks';
@@ -68,6 +68,13 @@ export class RunService {
     onChildSettled: (parentRunId: string) => void = () => undefined;
     /** Called after the commit in which a chat's orchestrator changed status, with the run as it is now. */
     onOrchestratorStatus: (run: Run) => void = () => undefined;
+    /**
+     * Prepares the request that asks the live session which owns the native sub-agent `run` to end it alone (the driver sets it), with the reason its run
+     * will show. Answers the function that sends it, or `undefined` when the request cannot be made: the session is not live, cannot end that sub-agent, or
+     * has not got it open. It sends nothing itself: the caller sends once its transaction has committed (`stopAlone`), because the agent hears of it and a
+     * rollback cannot take that back. The sub-agent's run ends later, through the engine's own `subagent` event, not here.
+     */
+    stopNative: (run: Run, reason: string) => (() => void) | undefined = () => undefined;
     private scheduler: Scheduler;
     private controllers = new Map<string, AbortController>();
     private answers = new Map<string, (answer: string) => void>();
@@ -161,9 +168,10 @@ export class RunService {
     /**
      * A sub-agent inside `parent`'s engine session, shown as a child run. It starts `running` without a slot: the
      * parent's process does its work. It ends with the parent's turn at the latest. `parentToolCallId` is the parent's call that started it, when
-     * the engine said, so the parent's stream can draw that call as the child's card.
+     * the engine said, so the parent's stream can draw that call as the child's card. `canStopAlone` says the session can end it alone, which the app
+     * reads to offer a Stop for it (`Run.canStopAlone`).
      */
-    createNative(parent: Run, input: { name: string; summary: string; parentToolCallId?: string }): Run {
+    createNative(parent: Run, input: { name: string; summary: string; parentToolCallId?: string; canStopAlone?: boolean }): Run {
         return this.store.tx(() => {
             const id = newId('run');
             const run: Run = {
@@ -174,6 +182,7 @@ export class RunService {
                 role: 'executor',
                 origin: 'native',
                 ...(input.parentToolCallId && { parentToolCallId: input.parentToolCallId }),
+                ...(input.canStopAlone && { canStopAlone: true }),
                 name: input.name,
                 summary: input.summary,
                 status: 'running',
@@ -531,14 +540,23 @@ export class RunService {
 
     /**
      * Cancels the run and its active descendants, children first. History stays. Returns the cancelled run ids;
-     * a run that is already finished cancels nothing. A sub-agent inside a session cannot be cancelled alone.
+     * a run that is already finished cancels nothing. A sub-agent inside a session is stopped alone when its session can end it (`stopNative`): the
+     * answer is its id (and those of the sub-agents it started, which the agent does not end with it), but the runs end a moment later, through the engine's
+     * own events, and with what the agent says (one may have finished meanwhile); its parent and the other sub-agents go on. When the session cannot, only the parent's cancel ends it, and this is refused.
      */
     cancel(runId: string, reason = CANCEL_REASON): string[] {
         return this.store.tx(() => {
             const run = this.require(runId);
 
             if (run.origin === 'native' && isActive(run.status)) {
-                throw conflict('A sub-agent runs inside its parent run; cancel the parent run instead');
+                if (!this.stopAlone(run, reason)) {
+                    throw conflict('A sub-agent runs inside its parent run; cancel the parent run instead');
+                }
+
+                // Claude's adapter ends that sub-agent and leaves the ones it started working, so each of them is asked too: the Stop is of the whole branch.
+                const below = activeSubtree(this.store.db, runId).filter(id => id !== runId && this.stopAlone(this.require(id), reason));
+
+                return [runId, ...below];
             }
 
             const ids = activeSubtree(this.store.db, runId);
@@ -556,6 +574,57 @@ export class RunService {
 
             return ids;
         });
+    }
+
+    /**
+     * Stops the agents below `runId` and leaves `runId` itself going on, in one step: every run it spawned that is active (working, or waiting for a slot,
+     * a dependency or an answer, so none starts in the place of one that stopped), with what is below it, is cancelled, and every sub-agent inside the
+     * session that can be stopped alone (`Run.canStopAlone`) is asked to stop. A sub-agent that cannot be stopped alone is left (only its parent's cancel
+     * ends it). Returns the ids it cancelled or asked to stop, children first. The run is not cancelled and a chat's queue is not held: the agent
+     * hears what happened and goes on, from what the engine says of its sub-agents (Claude Code tells its parent itself) and from the mailbox for the
+     * spawned runs, whose results the run gets as for any run that ended, `cancelled` among them (`wakeMessage`). Everything is decided in one transaction,
+     * so no run starts or ends between the choice and the cancel.
+     */
+    stopAgents(runId: string, reason = CANCEL_REASON): string[] {
+        return this.store.tx(() => {
+            this.require(runId);
+
+            const below = listActiveRuns(this.store.db).filter(run => run.id !== runId && isDescendant(this.store.db, runId, run.id));
+            const stopped: string[] = [];
+
+            for (const run of below) {
+                // One that an earlier cancel ended with its parent is over by now.
+                if (run.origin === 'spawned' && isActive(this.require(run.id).status)) {
+                    stopped.push(...this.cancel(run.id, reason));
+                }
+            }
+
+            // Each sub-agent is asked once, the ones a sub-agent started first: the agent ends only the one it is asked about, so nothing is stopped twice.
+            const depth = (run: Run): number => (run.origin === 'native' && run.parentRunId !== undefined ? 1 + depth(this.require(run.parentRunId)) : 0);
+
+            for (const run of below.filter(candidate => candidate.origin === 'native').sort((a, b) => depth(b) - depth(a))) {
+                if (this.stopAlone(this.require(run.id), reason)) {
+                    stopped.push(run.id);
+                }
+            }
+
+            return stopped;
+        });
+    }
+
+    /**
+     * Asks the session to end the native sub-agent `run` alone, and answers whether it will: the run is active and was made stoppable, and its session is
+     * live and has it open. The request goes out once the transaction commits (like the abort of a cancelled run), so a Stop that rolls back asks nothing of
+     * the agent, and each call is one request.
+     */
+    private stopAlone(run: Run, reason: string): boolean {
+        const send = run.canStopAlone && isActive(run.status) ? this.stopNative(run, reason) : undefined;
+
+        if (send) {
+            this.store.afterCommit(send);
+        }
+
+        return send !== undefined;
     }
 
     /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { agentRowLabel, agentRowText, backgroundRowText, openBackground, runningAgents, stopRunOf, unlistedBackground } from './runningAgentRows';
+import { agentRowLabel, agentRowText, backgroundRowText, canStopAlone, offersStopAll, openBackground, runningAgents, unlistedBackground } from './runningAgentRows';
 
 import type { Run, RunStatus } from '@clowdy/protocol';
 
@@ -98,15 +98,31 @@ describe('what the background row counts', () => {
 });
 
 describe('Stop on a row', () => {
-    it('stops a spawned run itself, and a native sub-agent only through the orchestrator while its session waits', () => {
-        const orchestrator = (status: RunStatus) => ({ id: 'orch', status });
+    it('stops a spawned run, and a native sub-agent only when its session can end it alone', () => {
+        expect(canStopAlone({ origin: 'spawned' })).toBe(true);
+        expect(canStopAlone({ origin: undefined })).toBe(true);
+        expect(canStopAlone({ origin: 'native', canStopAlone: true })).toBe(true);
+        expect(canStopAlone({ origin: 'native', canStopAlone: false })).toBe(false);
+        expect(canStopAlone({ origin: 'native' })).toBe(false);
+    });
+});
 
-        expect(stopRunOf({ id: 'ex', origin: 'spawned' }, orchestrator('running'))).toBe('ex');
-        expect(stopRunOf({ id: 'ex', origin: undefined }, undefined)).toBe('ex');
-        expect(stopRunOf({ id: 'na', origin: 'native' }, orchestrator('waiting_background'))).toBe('orch');
-        expect(stopRunOf({ id: 'na', origin: 'native' }, orchestrator('waiting_children'))).toBe('orch');
-        // A turn that runs has its own Stop in the composer, and no sub-agent stops alone.
-        expect(stopRunOf({ id: 'na', origin: 'native' }, orchestrator('running'))).toBeUndefined();
-        expect(stopRunOf({ id: 'na', origin: 'native' }, undefined)).toBeUndefined();
+describe('Stop all', () => {
+    const spawned = { origin: 'spawned' as const };
+    const alone = { origin: 'native' as const, canStopAlone: true };
+    const fixed = { origin: 'native' as const };
+
+    it('is offered from two agents that can stop alone, whatever their kind', () => {
+        expect(offersStopAll([])).toBe(false);
+        expect(offersStopAll([spawned])).toBe(false);
+        expect(offersStopAll([spawned, spawned])).toBe(true);
+        expect(offersStopAll([alone, alone])).toBe(true);
+        expect(offersStopAll([spawned, alone])).toBe(true);
+    });
+
+    it('does not count an agent that cannot stop alone, so it neither makes the button appear nor is stopped by it', () => {
+        expect(offersStopAll([fixed, fixed, fixed])).toBe(false);
+        expect(offersStopAll([spawned, fixed])).toBe(false);
+        expect(offersStopAll([alone, fixed, spawned])).toBe(true);
     });
 });

@@ -39,14 +39,23 @@ export function unlistedBackground(items: readonly BackgroundItem[], agents: rea
 }
 
 /**
- * Whether Stop on a row is offered, and which run it stops. A spawned run stops alone. A native sub-agent cannot: it lives in its parent's session, and
- * while a turn runs the composer's Stop ends that. While the session only waits (for background work or for children) the sub-agent's row offers a Stop
- * of its own, which ends the orchestrator's run: everything that session has open ends with it, as with the background row's Stop.
+ * Whether Stop on a row ends that agent alone, leaving the orchestrator and the other agents at work. A spawned run always can. A native sub-agent
+ * can when its session can end it (`Run.canStopAlone`, which the daemon sets from what the engine and the agent offer); one that cannot has no Stop,
+ * and while a turn runs the composer's own Stop ends everything.
  */
-export function stopRunOf(run: Pick<Run, 'id' | 'origin'>, orchestrator: Pick<Run, 'id' | 'status'> | undefined): RunId | undefined {
-    if (run.origin !== 'native') return run.id;
+export function canStopAlone(run: Pick<Run, 'origin' | 'canStopAlone'>): boolean {
+    return run.origin !== 'native' || run.canStopAlone === true;
+}
 
-    return orchestrator?.status === 'waiting_background' || orchestrator?.status === 'waiting_children' ? orchestrator.id : undefined;
+/** How many agents that can stop alone the strip needs before it offers Stop all: with one, that row's own Stop does it. */
+const STOP_ALL_FROM = 2;
+
+/**
+ * Whether the header over the rows offers Stop all. It stops every agent that can stop alone (`run.stopAgents`), the ones hidden behind
+ * "N more agents at work" too, and none of those that cannot, so only the agents that can stop count, and it takes two of them to be worth a button.
+ */
+export function offersStopAll(agents: readonly Pick<Run, 'origin' | 'canStopAlone'>[]): boolean {
+    return agents.filter(canStopAlone).length >= STOP_ALL_FROM;
 }
 
 /** The words of the background row: `Background task running`, `2 background tasks running`. Items of every kind are tasks to the person. */

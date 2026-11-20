@@ -1,6 +1,6 @@
 import { STOPPED_TOOL } from '@clowdy/protocol';
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -1348,7 +1348,7 @@ describe('an ACP v2 session that outlives its turn', () => {
                 { type: 'tool', toolCallId: CALL, name: 'Agent', input: { subagent_type: 'general-purpose', description: 'Map the docs', prompt: 'Do this: Map the docs' }, state: 'done', output: 'Map the docs finished' },
             ]);
             expect(subagents(events)).toEqual([
-                { type: 'subagent', agentId: 'child-1', parentToolCallId: CALL, name: 'general-purpose', description: 'Map the docs', state: 'running' },
+                { type: 'subagent', agentId: 'child-1', parentToolCallId: CALL, name: 'general-purpose', description: 'Map the docs', state: 'running', stoppable: true },
                 { type: 'subagent', agentId: 'child-1', parentToolCallId: CALL, name: 'general-purpose', state: 'done', summary: 'Map the docs finished' },
             ]);
             // What the child says, calls and reports is its own, in the order it came; the parent's own words are around it.
@@ -1466,6 +1466,128 @@ describe('an ACP v2 session that outlives its turn', () => {
             await ended;
             await session.close();
             expect(own(events).filter(event => event.type === 'tool' && event.state === 'done')).toHaveLength(1);
+        });
+    });
+
+    describe('stopping one sub-agent', () => {
+        const own = (events: EngineEvent[], agentId: string) => events.filter(event => 'agentId' in event && event.agentId === agentId);
+        const card = (events: EngineEvent[], id: string) => events.flatMap(event => event.type === 'tool' && event.toolCallId === id && event.agentId === undefined ? [event] : []);
+        const states = (events: EngineEvent[], agentId: string) => own(events, agentId).flatMap(event => event.type === 'subagent' ? [event.state] : []);
+        const sessionTurns = (events: EngineEvent[]) => turns(events.filter(event => !('agentId' in event)));
+
+        /** A file the fake agent writes the `session/cancel`s it gets to, with what it says. */
+        function cancels() {
+            const dir = mkdtempSync(join(tmpdir(), 'clowdy-stop-'));
+            const log = join(dir, 'cancels');
+
+            return { log, lines: () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []), clean: () => rmSync(dir, { recursive: true, force: true }) };
+        }
+
+        test('asks the agent to cancel that sub-agent\'s session alone: it ends cancelled with its card stopped and its call cancelled, the list loses it, and its sibling and the session go on', async () => {
+            const { log, lines, clean } = cancels();
+            const { session } = use({ backgroundHandoffMs: 300, agentEnv: { FAKE_ACP_LOG: log } }).start('say started\nbackground subagent 5000 First\nbackground subagent 1200 Second\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => backgrounds(events).at(-1)?.length === 2, 'both sub-agents to be listed');
+            await until(() => own(events, 'child-1').some(event => event.type === 'tool'), 'the sub-agent to make its call');
+            expect(await session.stopItem!('child-1')).toBe(true);
+            await until(() => states(events, 'child-1').includes('cancelled'), 'the sub-agent to end');
+
+            // The first is over (it did not wait for its 5 s), the second is not touched.
+            expect(states(events, 'child-1')).toEqual(['running', 'cancelled']);
+            expect(states(events, 'child-2')).toEqual(['running']);
+            expect(card(events, 'toolu-child-1').map(event => event.state === 'error' ? event.error : event.state)).toEqual(['running', STOPPED_TOOL]);
+            expect(own(events, 'child-1').filter(event => event.type === 'tool').at(-1)).toMatchObject({ name: 'Bash', state: 'error', error: STOPPED_TOOL });
+            await until(() => backgrounds(events).at(-1)?.length === 1, 'the list to lose it');
+            expect(backgrounds(events).at(-1)).toEqual([{ id: 'toolu-child-2', kind: 'subagent', title: 'Second' }]);
+            // Only its session was cancelled, not the parent's.
+            expect(lines()).toEqual(['cancel child-1']);
+
+            // The agent owes the report of what stopped like any work that ended; the session lives on for the other, and its own report follows.
+            await untilDone(3);
+            await ended;
+            await session.close();
+
+            expect(sessionTurns(events)).toEqual(['started', 'done:started', 'reported', 'done:reported', 'Second finished', 'done:Second finished']);
+            expect(states(events, 'child-2')).toEqual(['running']);
+            expect(card(events, 'toolu-child-2').map(event => event.state)).toEqual(['running', 'done']);
+            expect(lines()).toEqual(['cancel child-1']);
+            clean();
+        });
+
+        test('answers false for a sub-agent that has ended, and sends nothing a second time', async () => {
+            const { log, lines, clean } = cancels();
+            const { session } = use({ backgroundHandoffMs: 300, agentEnv: { FAKE_ACP_LOG: log } }).start('say started\nbackground subagent 5000 First\nbackground subagent 900 Second\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => backgrounds(events).at(-1)?.length === 2, 'both sub-agents to be listed');
+            expect(await session.stopItem!('child-1')).toBe(true);
+            await until(() => states(events, 'child-1').includes('cancelled'), 'the sub-agent to end');
+            expect(await session.stopItem!('child-1')).toBe(false);
+            expect(lines()).toEqual(['cancel child-1']);
+
+            // One that finished by itself is no more open than one that was stopped: its parent's list lost it.
+            await until(() => card(events, 'toolu-child-2').at(-1)?.state === 'done', 'the sibling to finish');
+            expect(await session.stopItem!('child-2')).toBe(false);
+            expect(lines()).toEqual(['cancel child-1']);
+            await untilDone(3);
+            await ended;
+            await session.close();
+            clean();
+        });
+
+        test('sends nothing for a sub-agent nobody announced, nor for one its parent did not let the client cancel', async () => {
+            const { log, lines, clean } = cancels();
+            const { session } = use({ backgroundHandoffMs: 300, agentEnv: { FAKE_ACP_LOG: log } }).start('say started\nlocked\nbackground subagent 700 Locked\nreport say reported');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await until(() => backgrounds(events).at(-1)?.length === 1, 'the sub-agent to be listed');
+
+            expect(await session.stopItem!('child-1')).toBe(false);
+            expect(await session.stopItem!('fake-1')).toBe(false);
+            expect(await session.stopItem!('nobody')).toBe(false);
+            expect(lines()).toEqual([]);
+            // The runtime was told it cannot be stopped alone: its `running` event does not say it can.
+            expect(own(events, 'child-1').find(event => event.type === 'subagent')).toEqual({ type: 'subagent', agentId: 'child-1', parentToolCallId: 'toolu-child-1', name: 'general-purpose', description: 'Locked', state: 'running' });
+
+            await untilDone(2);
+            await ended;
+            await session.close();
+            expect(states(events, 'child-1')).toEqual(['running']);
+            clean();
+        });
+
+        test('stops a foreground sub-agent alone: the turn it was in goes on and ends with an answer, not a cancel', async () => {
+            const { log, lines, clean } = cancels();
+            const { session } = use({ agentEnv: { FAKE_ACP_LOG: log } }).start('say before\nsubagent 3000 Map the docs\nsay after');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await until(() => states(events, 'child-1').includes('running'), 'the sub-agent to start');
+            expect(await session.stopItem!('child-1')).toBe(true);
+            await untilDone(1);
+            await ended;
+            await session.close();
+
+            expect(states(events, 'child-1')).toEqual(['running', 'cancelled']);
+            expect(card(events, 'toolu-child-1').at(-1)).toMatchObject({ state: 'error', error: STOPPED_TOOL });
+            expect(events.at(-1)).toEqual({ type: 'done', result: 'after' });
+            expect(types(events)).not.toContain('error');
+            expect(lines()).toEqual(['cancel child-1']);
+            clean();
+        });
+
+        test('answers false once the session is over, and for a session that never started its agent', async () => {
+            const { session } = use().start('say plain');
+            const never = use().start('say plain');
+
+            expect(await never.session.stopItem!('child-1')).toBe(false);
+            await collect(session);
+            await session.close();
+            expect(await session.stopItem!('child-1')).toBe(false);
+            await never.session.close();
         });
     });
 
@@ -1915,6 +2037,14 @@ describe('an ACP v1 session', () => {
 
         expect(events.at(-1)).toEqual({ type: 'done', result: 'plain' });
         expect(await session.send!('say again')).toBe(false);
+        await session.close();
+    });
+
+    test('cannot end one sub-agent alone: v1 has no such request', async () => {
+        const { session } = use().start('say plain');
+
+        await collect(session);
+        expect(await session.stopItem!('agent-1')).toBe(false);
         await session.close();
     });
 });

@@ -14,6 +14,7 @@ interface RunRow {
     role: RunRole;
     origin: RunOrigin | null;
     parent_tool_call_id: string | null;
+    can_stop_alone: number | null;
     name: string;
     summary: string;
     status: Run['status'];
@@ -43,6 +44,7 @@ const toRun = (row: RunRow): Run => clean({
     role: row.role,
     origin: row.origin,
     parentToolCallId: row.parent_tool_call_id,
+    canStopAlone: row.can_stop_alone === 1 ? true : null,
     name: row.name,
     summary: row.summary,
     status: row.status,
@@ -77,16 +79,16 @@ export function listRuns(db: Database, projectId: string): Run[] {
 
 export function upsertRun(db: Database, run: Run): void {
     db.query(`
-        INSERT INTO runs (id, project_id, parent_run_id, root_run_id, chat_id, role, origin, parent_tool_call_id, name, summary, status, status_reason, engine,
+        INSERT INTO runs (id, project_id, parent_run_id, root_run_id, chat_id, role, origin, parent_tool_call_id, can_stop_alone, name, summary, status, status_reason, engine,
             model, effort, session_id, worktree, result, error, failure_code, usage, context, background, created_at, started_at, finished_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, status = excluded.status, status_reason = excluded.status_reason,
             model = excluded.model, effort = excluded.effort, session_id = excluded.session_id, worktree = excluded.worktree, result = excluded.result,
             error = excluded.error, failure_code = excluded.failure_code, usage = excluded.usage, context = excluded.context, background = excluded.background,
             started_at = excluded.started_at, finished_at = excluded.finished_at
     `).run(
-        run.id, run.projectId, run.parentRunId ?? null, run.rootRunId, run.chatId ?? null, run.role, run.origin ?? null, run.parentToolCallId ?? null, run.name,
-        run.summary, run.status, run.statusReason ?? null, run.engine, run.model ?? null, run.effort ?? null, run.sessionId ?? null, toJson(run.worktree),
+        run.id, run.projectId, run.parentRunId ?? null, run.rootRunId, run.chatId ?? null, run.role, run.origin ?? null, run.parentToolCallId ?? null, run.canStopAlone ? 1 : null,
+        run.name, run.summary, run.status, run.statusReason ?? null, run.engine, run.model ?? null, run.effort ?? null, run.sessionId ?? null, toJson(run.worktree),
         run.result ?? null, run.error ?? null, run.failureCode ?? null, toJson(run.usage), toJson(run.context), toJson(run.background),
         run.createdAt, run.startedAt ?? null, run.finishedAt ?? null
     );

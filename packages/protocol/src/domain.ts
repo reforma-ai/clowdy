@@ -295,6 +295,12 @@ export interface Run {
      * drawn for that call finds its child. Absent when the engine did not say, and for every other run.
      */
     parentToolCallId?: string;
+    /**
+     * For a `native` run whose engine session can end it alone: `run.cancel` of this run ends this sub-agent and nothing else, while the parent's
+     * session and its other sub-agents go on. Absent when the session cannot (the engine has no such request, or the agent did not offer it for this
+     * sub-agent): `run.cancel` of such a run is refused, and only its parent's cancel ends it. Set when the run is made and never changed.
+     */
+    canStopAlone?: boolean;
     /** Short label: an agent name such as `Executor 07`, or the orchestrator's. */
     name: string;
     /** One line on the current work. */
