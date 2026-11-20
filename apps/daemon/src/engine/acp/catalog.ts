@@ -159,14 +159,15 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         id: 'codex',
         name: 'Codex',
         programs: ['codex'],
-        launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.6.0', pathEnv: 'CODEX_PATH' },
-        // ACP v1 until the pin can be raised (a pin must be three days old, see above: 2.8.0 is usable from 2026-11-22). Codex does have background work: a
-        // command that outlives its call and a sub-agent are tracked, and `codex-acp` 2.8.0 reports them on v2 as `background` (`terminal/cancel` stops a
-        // command, `session/cancel` of the child a sub-agent) and takes `_session/steering` there, which the v2 layer uses when an agent advertises it (a plain
-        // prompt on v2 is held until the turn ends). It never starts a turn to report that the work ended, so with `protocol: 'v2'` it also needs
-        // `wakesOnBackgroundEnd: true`: the runtime then sends it a note. Checked through the daemon on 2.8.0 ("Codex on v2 through the daemon (2.8.0)" in
-        // `acp-background-probe.md`, under `.briefback/background-work/research/`); an older note saying Codex has no background work was wrong, it had only
-        // probed `nohup ... &`, which Codex does not track.
+        launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.8.0', pathEnv: 'CODEX_PATH' },
+        // ACP v2: `codex-acp` 2.8.0 reports a command that outlives its call and a sub-agent as `background` (`terminal/cancel` stops a command, `session/cancel`
+        // of the child a sub-agent) and takes `_session/steering`, which the v2 layer uses when an agent advertises it (a plain prompt on v2 is held until the
+        // turn ends). Codex never starts a turn to report that the work ended, so the runtime sends it a note (`wakesOnBackgroundEnd`). Checked through the
+        // daemon on 2.8.0 ("Codex on v2 through the daemon (2.8.0)" in `acp-background-probe.md`, under `.briefback/background-work/research/`).
+        // Pinned before it was three days old, by the owner's decision of 2026-11-20 (it turns three days old on 2026-11-22): until then a Codex chat that works
+        // inside this repository fails with "blocked by minimum-release-age", because `bun x` reads this repository's `bunfig.toml`. Other folders are unaffected.
+        protocol: 'v2',
+        wakesOnBackgroundEnd: true,
         compact: '/compact',
         settings: [
             {
