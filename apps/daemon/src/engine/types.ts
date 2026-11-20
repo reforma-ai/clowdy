@@ -91,13 +91,22 @@ export interface EngineSession extends AsyncIterable<EngineEvent> {
      */
     send?(text: string): Promise<boolean>;
     /**
-     * Ends one sub-agent the session announced (the `agentId` of its `subagent` event) and leaves the session and its other sub-agents running. Resolves
-     * `true` when the request was sent to the agent, not when the sub-agent ended: the end arrives as the usual `subagent` event with state `cancelled`
-     * (and `background` without it), in the order the agent says things, so the runtime has one way for a sub-agent to end. Resolves `false` when it was
-     * not sent: the session is over, the sub-agent is unknown or has ended, or the agent did not offer to end it (`subagent`'s `stoppable`). Asked again
-     * for a sub-agent that is ending, it asks the agent again, which does nothing. An engine that cannot end one sub-agent alone leaves it out.
+     * Ends one thing the session has open and leaves the session and everything else it has open running: a sub-agent the session announced (the `agentId`
+     * of its `subagent` event) or a background command (the `id` of its `background` item, which says `canStopAlone` when the agent lets the client end it).
+     * Resolves `true` when the agent took the request, not when the thing ended: the end of a sub-agent arrives as the usual `subagent` event with state
+     * `cancelled`, and the end of a command as a `background` snapshot without it, in the order the agent says things, so the runtime has one way for each to
+     * end. Resolves `false` when nothing was asked or the agent did not take it: the session is over, the thing is unknown or has ended already, or the agent
+     * did not offer to end it. Asked again for a sub-agent that is ending, it asks the agent again, which does nothing. A command the agent does not
+     * list any more is gone, and answers `false`. An engine that cannot end one thing alone leaves it out.
      */
-    stopItem?(agentId: string): Promise<boolean>;
+    stopItem?(id: string): Promise<boolean>;
+    /**
+     * `true` when the agent never starts a turn of its own to report background work that ended (Codex: nothing in its app-server wakes a thread when a
+     * command or a sub-agent ends), so the runtime tells it: when the last item has left `background` and the session is idle, it hands the agent a note
+     * through `send` (see `wakesOnBackgroundEnd` in the catalog). Absent or `false` for an agent that reports by itself (Claude Code), whose report turn is
+     * waited for. Known once the session has resolved its agent.
+     */
+    readonly wakesOnBackgroundEnd?: boolean;
     close(): void | Promise<void>;
 }
 
@@ -135,9 +144,10 @@ export type EngineEvent =
      * an item that is missing from the next one has finished and an empty list means nothing is open. An agent that cannot tell never sends one. The
      * runtime reads the latest list when a turn's `done` arrives, to decide whether the session stays open, so a turn's list comes before its `done`. An
      * item's `id` is the one a sub-agent has as its `agentId` or as the `parentToolCallId` of its `subagent` event: that is how the runtime knows which
-     * sub-agent the item is.
+     * sub-agent the item is. `calls` are the ids of tool calls that are still running and are the work some of these items stand for: Codex keeps the call of
+     * a command that outlived its turn running for as long as the command does, so the turn's end must not fail it. Absent when there are none.
      */
-    | { type: 'background'; items: BackgroundItem[] }
+    | { type: 'background'; items: BackgroundItem[]; calls?: string[] }
     | { type: 'done'; result?: string }
     /** A failure that ends the turn. `code` is a stable identifier of the cause (`not_logged_in`, `usage_limit`, ...). */
     | { type: 'error'; message: string; retryable?: boolean; code?: string };

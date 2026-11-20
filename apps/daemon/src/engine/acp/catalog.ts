@@ -73,6 +73,14 @@ export interface AgentSpec {
     compact?: string;
     /** The ACP version the engine speaks to the agent: `v1` unless set. */
     protocol?: AgentProtocol;
+    /**
+     * The agent starts no turn of its own to report background work that ended (a command or a sub-agent): its app-server has nothing that wakes a thread
+     * when one ends, so the model would never learn of it and its run would end with the work unreported. Set, the runtime tells the agent: when the last
+     * item has left the background list and the session is idle, it sends one note through `send` ("Background command finished: ...") and the agent
+     * reports in a turn of that note's own, and the layer does not wait `BACKGROUND_REPORT_MS` for a report that never comes. Unset for an agent that
+     * reports by itself (Claude Code starts a report turn). Only means something for an agent whose protocol reports background work (`v2`).
+     */
+    wakesOnBackgroundEnd?: boolean;
 }
 
 /**
@@ -152,9 +160,13 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         name: 'Codex',
         programs: ['codex'],
         launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.6.0', pathEnv: 'CODEX_PATH' },
-        // ACP v1 for now: its adapter injects a steer into the running turn through `_session/steering`, while a plain prompt on v2 is held until the turn
-        // ends. `codex-acp` 2.8.0 reports background commands and sub-agents on v2 and takes `_session/steering` there too: Stage 10 of the background-work
-        // plan moves Codex to v2 once the layer steers that way and the pin can be raised.
+        // ACP v1 until the pin can be raised (a pin must be three days old, see above: 2.8.0 is usable from 2026-11-22). Codex does have background work: a
+        // command that outlives its call and a sub-agent are tracked, and `codex-acp` 2.8.0 reports them on v2 as `background` (`terminal/cancel` stops a
+        // command, `session/cancel` of the child a sub-agent) and takes `_session/steering` there, which the v2 layer uses when an agent advertises it (a plain
+        // prompt on v2 is held until the turn ends). It never starts a turn to report that the work ended, so with `protocol: 'v2'` it also needs
+        // `wakesOnBackgroundEnd: true`: the runtime then sends it a note. Checked through the daemon on 2.8.0 ("Codex on v2 through the daemon (2.8.0)" in
+        // `acp-background-probe.md`, under `.briefback/background-work/research/`); an older note saying Codex has no background work was wrong, it had only
+        // probed `nohup ... &`, which Codex does not track.
         compact: '/compact',
         settings: [
             {

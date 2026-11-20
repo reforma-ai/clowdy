@@ -44,6 +44,8 @@ export interface RigOptions {
     backgroundHandoffMs?: number;
     /** The same for the report of work that just ended; the guard above when left out, so a test does not wait the twenty seconds of a real session. */
     backgroundReportMs?: number;
+    /** The agent starts no turn to report background work that ended (`AgentSpec.wakesOnBackgroundEnd`, Codex). */
+    wakesOnBackgroundEnd?: boolean;
     /** The options an adapter reads, as the built-in catalog gives them to Claude Code. */
     sessionMeta?: Record<string, unknown>;
     /** What the agent is told it can do in `initialize`, as the built-in catalog gives it to Cursor. */
@@ -55,13 +57,13 @@ export function rig(options: RigOptions = {}): Rig {
     const registry = new AgentRegistry({ discovery: quietDiscovery(env) });
     const bridge = new ToolBridge();
 
-    if (options.sessionMeta || options.clientMeta || options.protocol) {
+    if (options.sessionMeta || options.clientMeta || options.protocol || options.wakesOnBackgroundEnd) {
         const resolve = registry.resolve.bind(registry);
 
         registry.resolve = async (id) => {
             const found = await resolve(id);
 
-            return found.ok ? { ok: true, agent: { ...found.agent, ...(options.protocol && { protocol: options.protocol }), ...(options.sessionMeta && { sessionMeta: options.sessionMeta }), ...(options.clientMeta && { clientMeta: options.clientMeta }) } } : found;
+            return found.ok ? { ok: true, agent: { ...found.agent, ...(options.protocol && { protocol: options.protocol }), ...(options.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), ...(options.sessionMeta && { sessionMeta: options.sessionMeta }), ...(options.clientMeta && { clientMeta: options.clientMeta }) } } : found;
         };
     }
 

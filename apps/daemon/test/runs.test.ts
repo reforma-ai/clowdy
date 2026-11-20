@@ -306,6 +306,33 @@ describe('waiting for background work', () => {
             expect(h.run(runId).background).toEqual([command]);
         });
 
+        test('keep whether an item can be stopped alone, and a change of that is a change of the list; only the value true is kept', async () => {
+            const { h, runs, create } = await runningRun();
+            const runId = create();
+            const upserts = () => h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).length;
+
+            runs.setBackground(runId, [command]);
+
+            const start = upserts();
+
+            runs.setBackground(runId, [{ ...command, canStopAlone: true }]);
+            expect(h.run(runId).background).toEqual([{ ...command, canStopAlone: true }]);
+            expect(upserts()).toBe(start + 1);
+            expect(JSON.parse((h.store.db.query('SELECT background FROM runs WHERE id = ?').get(runId) as { background: string }).background)).toEqual([{ ...command, canStopAlone: true }]);
+
+            runs.setBackground(runId, [{ ...command, canStopAlone: true }]);
+            expect(upserts()).toBe(start + 1);
+
+            // The agent took the permission away (the command ended): the item is the same, without it.
+            runs.setBackground(runId, [command]);
+            expect(h.run(runId).background).toEqual([command]);
+            expect(upserts()).toBe(start + 2);
+
+            runs.setBackground(runId, [{ ...command, canStopAlone: false }]);
+            expect(h.run(runId).background).toEqual([command]);
+            expect(upserts()).toBe(start + 2);
+        });
+
         test('a run that ended has nothing open, whichever terminal status it reached', async () => {
             const { h, runs, create } = await runningRun();
             const runId = create();

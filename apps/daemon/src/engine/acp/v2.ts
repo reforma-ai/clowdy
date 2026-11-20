@@ -3,7 +3,7 @@ import { Readable, Writable } from 'node:stream';
 
 import { errorMessage } from '../../errors';
 import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
-import { applyChoices, isResumeWarning, keepTitle, prefaceOf, stopFailure } from './conversation';
+import { advertisesSteering, applyChoices, isResumeWarning, keepTitle, prefaceOf, STEER_METHOD, steerByExtension, steerRequest, stopFailure } from './conversation';
 import { classifyThrown, failureEvent, processEnded } from './failure';
 import { BACKGROUND_HANDOFF_MS, BACKGROUND_REPORT_MS } from './layer';
 import { UpdateMapperV2 } from './mapper-v2';
@@ -13,7 +13,7 @@ import type { BackgroundWork, ClientCapabilities, ClientConnection, NewSessionRe
 import type { BackgroundItem } from '@clowdy/protocol';
 import type { EngineEvent } from '../types';
 import type { AgentProtocol } from './catalog';
-import type { SelectOption } from './conversation';
+import type { SelectOption, SteerRequest, SteerResponse } from './conversation';
 import type { LayerHost, ProtocolLayer } from './layer';
 import type { Tokens } from './mapper-core';
 import type { ResolvedAgent } from './registry';
@@ -51,6 +51,8 @@ interface Course {
     tokens?: Tokens;
     /** The background work as the runtime was last told. */
     items: BackgroundItem[];
+    /** The running tool calls that stand for some of it, as the runtime was last told. */
+    calls: string[];
     /** The agent's own list behind `items`. */
     listed: BackgroundWork[];
 }
@@ -72,6 +74,9 @@ function selectsOf(options: SessionConfigOption[] | null | undefined): SelectOpt
         ? [{ id: option.configId, category: option.category, currentValue: option.currentValue, choices: option.options.flatMap(choice => 'groupId' in choice ? choice.options : [choice]) }]
         : []);
 }
+
+/** JSON-RPC's "invalid params" code, which `terminal/cancel` answers for a terminal that is unknown, has exited or cannot be cancelled. */
+const INVALID_PARAMS = -32602;
 
 /** ACP's "authentication required" JSON-RPC code: an agent that wants a sign-in has not refused the protocol. */
 const AUTH_REQUIRED = -32000;
@@ -105,6 +110,11 @@ function isResumeWarningUpdate(update: SessionUpdate): boolean {
  * agent started on its own (the report of work that finished), and it ends at its own `idle` with its own `done`. When nothing is open and the session
  * is idle, the layer waits the handoff guard (`BACKGROUND_HANDOFF_MS`) for such a turn to begin, and then ends. `send` puts another prompt to the live
  * session; `turns.ts` keeps count of the turns that messages sent into the session lead to, so that one `done` ends the whole activity.
+ *
+ * A steer goes into the running turn one of two ways, by what the agent said in `initialize`. An agent that advertises `_meta.steering.supported` (Codex's
+ * adapter) is asked with `_session/steering`, which it answers `injected` when the message went into the turn: it holds a plain prompt that comes during a
+ * turn until the turn is over, and answers it as a turn of its own. One that does not (Claude Code's) is sent a plain prompt, which it inserts into the turn.
+ * Either way a v2 agent can be steered.
  */
 export class V2Layer implements ProtocolLayer {
     private connection?: ClientConnection;
@@ -120,6 +130,10 @@ export class V2Layer implements ProtocolLayer {
     private turns = new Turns();
     /** What turns the agent's updates into events and knows which sub-agents are open: made once the session is, for `stopItem`. */
     private mapper?: UpdateMapperV2;
+    /** The agent said in `initialize` that it takes a steer through `_session/steering`; unknown (false) until it has answered. */
+    private steerable = false;
+    /** The background commands and tasks the client asked to cancel: the end of one of them is no work whose report the agent owes. */
+    private stopped = new Set<string>();
     /** A turn is open: its prompt is with the agent and its `idle` has not come, so a steer may still land in it. */
     private open = false;
     /** Settles with `false` once the open turn is over, for a steer whose message has not been echoed by then. */
@@ -156,6 +170,10 @@ export class V2Layer implements ProtocolLayer {
             return false;
         }
 
+        if (this.steerable) {
+            return this.steerThroughExtension(connection, sessionId, text);
+        }
+
         const entry = this.turns.add('steer');
         let landed = false;
 
@@ -182,6 +200,26 @@ export class V2Layer implements ProtocolLayer {
     }
 
     /**
+     * Hands `text` to the turn in flight through `_session/steering`, for an agent that advertises it. `injected` says the message is part of the turn that
+     * runs, which says what it was asked and answers it in the same turn, so there is no other turn to wait for and nothing to count: the answer is the
+     * agent's, not an echo to look for. Any other answer (no turn runs, or the agent took it as a turn of its own) leaves the message to the runtime.
+     */
+    private async steerThroughExtension(connection: ClientConnection, sessionId: string, text: string): Promise<boolean> {
+        const { host } = this;
+
+        try {
+            return await steerByExtension(() => this.request(connection.agent.request<SteerResponse, SteerRequest>(STEER_METHOD, steerRequest(sessionId, text))), { running: () => this.open, aborted: () => host.signal.aborted });
+        }
+        catch (error) {
+            if (!host.signal.aborted && !(error instanceof ProcessEnded)) {
+                host.deps.log?.(`${ host.agent.id } refused a steer: ${ errorMessage(error) }`);
+            }
+
+            return false;
+        }
+    }
+
+    /**
      * Puts `text` to the live session as a prompt of its own. The agent takes it in at once, or after the turn it is in (Claude's adapter answers a prompt
      * that comes during a turn when it begins to run it), and `true` says it did; the turn that answers it follows on the stream of `run`, and with it one
      * `done` for the whole activity: the `done` of a turn the agent had under way is held back until this prompt is answered. It does not wait for the
@@ -194,7 +232,8 @@ export class V2Layer implements ProtocolLayer {
             return false;
         }
 
-        const entry = this.turns.add('send');
+        // Sent while no turn runs, the prompt begins a turn of its own, whenever the agent echoes it.
+        const entry = this.turns.add('send', !this.open);
         let taken = false;
 
         // The wait for the agent's report does not end while the prompt is on its way.
@@ -222,26 +261,52 @@ export class V2Layer implements ProtocolLayer {
     }
 
     /**
-     * Asks the agent to end the sub-agent whose session is `agentId`, and nothing else: it sends the ordinary `session/cancel` notification with the child's
-     * session id, which Claude's adapter takes as a request to stop that child's work (its terminals end, its calls are cancelled, it says `idle` with the
-     * stop reason `cancelled`, and its parent's list loses it), leaving its siblings and the parent alone. Only for a child the agent announced with the
-     * permission to cancel it and that has not ended; the end itself comes as updates on the stream of `run`. Answers whether the notification was written.
+     * Asks the agent to end one thing it has open and nothing else. A sub-agent (`id` is its session id): the ordinary `session/cancel` notification with
+     * the child's session id, which Claude's adapter takes as a request to stop that child's work (its terminals end, its calls are cancelled, it says
+     * `idle` with the stop reason `cancelled`, and its parent's list loses it), leaving its siblings and the parent alone; only for a child the agent announced
+     * with the permission to cancel it and that has not ended. A background command (`id` is its terminal's id): `terminal/cancel`, which both adapters
+     * take for a terminal their `background` list names and that said it can be cancelled, and which stops that process and nothing else (the terminal
+     * gets an `exitStatus` and the list loses it). A background task (`id` is its tool call's id, Claude's `Workflow`): `tool_call/cancel`, for a call that said
+     * it can be cancelled (the call ends `cancelled` and the list loses it). A terminal or call that is unknown, has ended or cannot be cancelled is refused
+     * with `-32602`, which says it is gone. The end itself comes as updates on the stream of `run`. Answers whether the agent took the request.
      */
-    async stopItem(agentId: string): Promise<boolean> {
-        const { host, connection, mapper } = this;
+    async stopItem(id: string): Promise<boolean> {
+        const { host, connection, mapper, sessionId } = this;
 
-        if (!connection || !mapper || this.finished || host.signal.aborted || !mapper.stoppable(agentId)) {
+        if (!connection || !mapper || !sessionId || this.finished || host.signal.aborted) {
+            return false;
+        }
+
+        const subagent = mapper.stoppable(id);
+        const command = !subagent && mapper.stoppableCommand(id);
+        const task = !subagent && !command && mapper.stoppableTask(id);
+
+        if (!subagent && !command && !task) {
             return false;
         }
 
         try {
-            await this.request(connection.agent.notify(methods.agent.session.cancel, { sessionId: agentId }));
+            if (command || task) {
+                // Before the answer: the end of the work follows at once, and it is no work whose report the agent owes.
+                this.stopped.add(id);
+                await this.request(command
+                    ? connection.agent.request(methods.agent.terminal.cancel, { sessionId, terminalId: id })
+                    : connection.agent.request(methods.agent.toolCall.cancel, { sessionId, toolCallId: id }));
+            }
+            else {
+                await this.request(connection.agent.notify(methods.agent.session.cancel, { sessionId: id }));
+            }
 
             return true;
         }
         catch (error) {
-            if (!host.signal.aborted && !(error instanceof ProcessEnded)) {
-                host.deps.log?.(`${ host.agent.id } could not be asked to stop ${ agentId }: ${ errorMessage(error) }`);
+            if (command || task) {
+                this.stopped.delete(id);
+            }
+
+            // `-32602`: the terminal is gone already (it ended on its own), which is not a failure to log.
+            if (!host.signal.aborted && !(error instanceof ProcessEnded) && !(error instanceof RequestError && error.code === INVALID_PARAMS)) {
+                host.deps.log?.(`${ host.agent.id } could not be asked to stop ${ id }: ${ errorMessage(error) }`);
             }
 
             return false;
@@ -402,6 +467,8 @@ export class V2Layer implements ProtocolLayer {
                 return;
             }
 
+            this.steerable = advertisesSteering(init);
+
             const capabilities = init.capabilities?.session;
 
             if (!capabilities) {
@@ -519,7 +586,7 @@ export class V2Layer implements ProtocolLayer {
      * cancelled, the process left, or nothing has been open for the length of the handoff guard.
      */
     private async *converse(id: string, mapper: UpdateMapperV2): AsyncGenerator<EngineEvent> {
-        const course: Course = { working: false, held: false, delivered: false, owed: false, items: [], listed: [] };
+        const course: Course = { working: false, held: false, delivered: false, owed: false, items: [], calls: [], listed: [] };
 
         for (;;) {
             const item = await this.channel.next();
@@ -657,13 +724,16 @@ export class V2Layer implements ProtocolLayer {
         yield* mapper.listed(course.listed);
 
         const items = mapper.background(course.listed);
+        const calls = mapper.openCalls(course.listed);
 
-        if (JSON.stringify(items) !== JSON.stringify(course.items)) {
-            // The last work ended between turns: Claude Code reports it with a turn of its own.
-            course.owed ||= course.items.length > 0 && items.length === 0 && !course.working;
+        if (JSON.stringify(items) !== JSON.stringify(course.items) || JSON.stringify(calls) !== JSON.stringify(course.calls)) {
+            // The last work ended between turns: Claude Code reports it with a turn of its own. Not an agent that starts none (the runtime tells it, once
+            // this snapshot is read: `wakesOnBackgroundEnd`), and not commands or tasks the client stopped, which give the agent no report.
+            course.owed ||= course.items.length > 0 && items.length === 0 && !course.working && !this.host.agent.wakesOnBackgroundEnd && !course.items.every(item => this.stopped.has(item.id));
             course.items = items;
+            course.calls = calls;
 
-            yield { type: 'background', items };
+            yield { type: 'background', items, ...(calls.length > 0 && { calls }) };
         }
     }
 

@@ -1,13 +1,13 @@
 import { Shimmer } from '@clowdy/components/Shimmer';
-import { BackgroundTask, Robot } from '@clowdy/icons/14';
+import { BackgroundTask, Robot, Terminal } from '@clowdy/icons/14';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { useAgentActivity } from '../../stream/useAgentActivity';
 import { perform } from './commands';
 import { ComposerBanner, ComposerBannerHeader, ComposerBannerStatus } from './ComposerBanner';
-import { agentRowLabel, agentRowText, backgroundRowText, canStopAlone, MAX_AGENT_ROWS, offersStopAll, openBackground, runningAgents, unlistedBackground } from './runningAgentRows';
+import { agentRowLabel, agentRowText, backgroundItemText, backgroundRows, backgroundRowText, canStopAlone, MAX_AGENT_ROWS, offersStopAll, openBackground, runningAgents } from './runningAgentRows';
 
-import type { Chat, Run, RunId } from '@clowdy/protocol';
+import type { BackgroundItem, Chat, Run, RunId } from '@clowdy/protocol';
 
 function AgentRow({ run }: { run: Run }) {
     const root = useRootStore();
@@ -50,6 +50,25 @@ function AgentsHeader({ runId, stopAll }: { runId: RunId; stopAll: boolean }) {
 }
 
 /**
+ * One background item the person can stop alone: a command the agent lets be cancelled. Its Stop ends that item and nothing else, the run and its other work
+ * go on (`run.stopBackground`), and the agent is told. Not pressable, since there is no run of its own to open, and not an agent: it does not open the
+ * header over the agents' rows and is not part of its Stop all.
+ */
+function BackgroundItemRow({ runId, item }: { runId: RunId; item: BackgroundItem }) {
+    const root = useRootStore();
+
+    return (
+        <ComposerBannerStatus
+            icon={ <Terminal /> }
+            action="Stop"
+            onAction={ () => void perform(root, { type: 'run.stopBackground', runId, itemId: item.id }) }
+        >
+            <Shimmer duration={ 1 }>{ backgroundItemText(item) }</Shimmer>
+        </ComposerBannerStatus>
+    );
+}
+
+/**
  * What the orchestrator's session keeps open after its turn that no agent row shows (a command, a workflow, a sub-agent that has no run to open): one
  * shimmering line with how many, and Stop, which ends the run and with it all of that. Not pressable, since there is no run of its own to open.
  */
@@ -70,24 +89,26 @@ function BackgroundRow({ runId, count }: { runId: RunId; count: number }) {
 /**
  * The work of the chat that goes on now, one row each above the message box (Reforma's `ChatComposerSubagents`): under a line that says "Agents running"
  * (with Stop all when two or more rows can stop alone), the agents, who it is, what it does, how many tools it called (a row opens the agent's run,
- * and Stop ends that agent alone, spawned or a sub-agent of the session, when its session can end it), then one row for the rest of the background
- * work the orchestrator has open. Each thing is in one row: a sub-agent with a child run is its row, not a count. Nothing while there is none of either.
+ * and Stop ends that agent alone, spawned or a sub-agent of the session, when its session can end it), then a row for each background command the
+ * agent lets the person stop alone (its own Stop ends that command only), then one row that counts the rest of the background work the orchestrator has
+ * open. Each thing is in one row: a sub-agent with a child run is its row, not a count. Nothing while there is none of either.
  */
 export function RunningAgents({ chat }: { chat: Chat }) {
     const project = useProjectState();
     const agents = runningAgents(project.runs.values(), chat.orchestratorRunId);
     const orchestrator = chat.orchestratorRunId === undefined ? undefined : project.runs.get(chat.orchestratorRunId);
-    // A sub-agent with a child run is one of the rows above, and is not counted again here.
-    const background = unlistedBackground(openBackground(orchestrator), agents);
+    // A sub-agent with a child run is one of the rows above, and is not counted again here; a command that can be stopped alone has a row of its own.
+    const { own, counted: background } = backgroundRows(openBackground(orchestrator), agents);
     const hidden = agents.length - MAX_AGENT_ROWS;
 
-    if (agents.length === 0 && background.length === 0) return null;
+    if (agents.length === 0 && own.length === 0 && background.length === 0) return null;
 
     return (
         <ComposerBanner role="group" aria-label="Work in progress">
             { orchestrator && agents.length > 0 && <AgentsHeader runId={ orchestrator.id } stopAll={ offersStopAll(agents) } /> }
             { agents.slice(0, MAX_AGENT_ROWS).map(run => <AgentRow key={ run.id } run={ run } />) }
             { hidden > 0 && <ComposerBannerStatus icon={ <Robot /> }>{ `${ hidden } more ${ hidden === 1 ? 'agent' : 'agents' } at work` }</ComposerBannerStatus> }
+            { orchestrator && own.map(item => <BackgroundItemRow key={ item.id } runId={ orchestrator.id } item={ item } />) }
             { orchestrator && background.length > 0 && <BackgroundRow runId={ orchestrator.id } count={ background.length } /> }
         </ComposerBanner>
     );

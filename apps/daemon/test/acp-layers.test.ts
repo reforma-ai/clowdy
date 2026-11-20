@@ -74,6 +74,40 @@ describe('the protocol of an agent', () => {
         }
     });
 
+    test('a built-in agent resolves with the wake flag its catalog entry names, and without one when it names none', async () => {
+        const reg = registry();
+        const [spec] = KNOWN_AGENTS;
+        const named = spec.wakesOnBackgroundEnd;
+
+        program(spec.programs[0]);
+
+        const flagOf = async () => {
+            const resolved = await reg.resolve(spec.id);
+
+            return resolved.ok && resolved.agent.wakesOnBackgroundEnd;
+        };
+
+        try {
+            delete spec.wakesOnBackgroundEnd;
+            expect(await flagOf()).toBeUndefined();
+
+            spec.wakesOnBackgroundEnd = true;
+            expect(await flagOf()).toBe(true);
+        }
+        finally {
+            if (named) {
+                spec.wakesOnBackgroundEnd = named;
+            }
+            else {
+                delete spec.wakesOnBackgroundEnd;
+            }
+        }
+    });
+
+    test('Claude Code reports finished background work by itself, so the runtime does not tell it', () => {
+        expect(KNOWN_AGENTS.find(spec => spec.id === 'claude')?.wakesOnBackgroundEnd).toBeUndefined();
+    });
+
     test('Claude Code is on v2, and every other built-in agent stays on v1: Codex holds a steer on v2 where v1 injects it', () => {
         expect(KNOWN_AGENTS.filter(spec => spec.protocol === 'v2').map(spec => spec.id)).toEqual(['claude']);
         expect(KNOWN_AGENTS.find(spec => spec.id === 'cursor')?.protocol).toBeUndefined();

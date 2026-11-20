@@ -39,6 +39,24 @@ export function unlistedBackground(items: readonly BackgroundItem[], agents: rea
 }
 
 /**
+ * Splits the background items no agent row shows into the ones that get a row of their own and the ones the single background row counts. An item gets its
+ * own row when its agent lets the person stop it alone (`BackgroundItem.canStopAlone`: a command whose terminal can be cancelled), up to `MAX_AGENT_ROWS`
+ * of them; a stoppable item past that, and every item that cannot be stopped alone, is counted, and the Stop of the counting row ends the run.
+ */
+export function backgroundRows(items: readonly BackgroundItem[], agents: readonly Pick<Run, 'origin' | 'parentToolCallId'>[]): { own: BackgroundItem[]; counted: BackgroundItem[] } {
+    const unlisted = unlistedBackground(items, agents);
+    const stoppable = unlisted.filter(item => item.kind !== 'subagent' && item.canStopAlone === true);
+    const own = stoppable.slice(0, MAX_AGENT_ROWS);
+
+    return { own, counted: unlisted.filter(item => !own.includes(item)) };
+}
+
+/** What a row of its own says of a background item: what kind it is and what it runs, `Command · bun run test`. */
+export function backgroundItemText(item: Pick<BackgroundItem, 'kind' | 'title'>): string {
+    return `${ item.kind === 'task' ? 'Task' : item.kind === 'subagent' ? 'Sub-agent' : 'Command' } · ${ item.title }`;
+}
+
+/**
  * Whether Stop on a row ends that agent alone, leaving the orchestrator and the other agents at work. A spawned run always can. A native sub-agent
  * can when its session can end it (`Run.canStopAlone`, which the daemon sets from what the engine and the agent offer); one that cannot has no Stop,
  * and while a turn runs the composer's own Stop ends everything.

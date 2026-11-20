@@ -819,6 +819,8 @@ export class FixtureTransport implements Transport {
                 return this.#cancelRun(command.runId);
             case 'run.stopAgents':
                 return this.#stopAgents(command.runId);
+            case 'run.stopBackground':
+                return this.#stopBackground(command.runId, command.itemId);
             case 'run.answer':
                 return this.#answerQuestion(command.runId, command.questionId, command.answer);
 
@@ -1285,6 +1287,30 @@ export class FixtureTransport implements Transport {
         }
 
         return ok({ stopped });
+    }
+
+    /**
+     * Like the daemon's `run.stopBackground`: one background command that its agent lets be stopped alone leaves the run's list and the stream says it was
+     * stopped; the run and its other work go on. `stopped: false` for an item that is gone, cannot be stopped alone, or belongs to a run that ended.
+     */
+    #stopBackground(runId: RunId, itemId: string): Outcome {
+        const run = this.#data.runs.find(candidate => candidate.id === runId);
+
+        if (!run) return fail('not_found', 'No such run');
+
+        const item = run.background?.find(candidate => candidate.id === itemId);
+
+        if (!item?.canStopAlone || item.kind === 'subagent' || isTerminalRunStatus(run.status)) return ok({ stopped: false });
+
+        const rest = (run.background ?? []).filter(candidate => candidate.id !== itemId);
+
+        if (rest.length > 0) run.background = rest;
+        else delete run.background;
+
+        this.#saveRun(run);
+        this.#appendItem(run, { kind: 'note', text: `Background command stopped: ${ item.title }` });
+
+        return ok({ stopped: true });
     }
 
     /** The run and every run below it. */

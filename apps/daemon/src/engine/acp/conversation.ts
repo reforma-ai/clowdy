@@ -1,6 +1,7 @@
 import { errorMessage } from '../../errors';
 import { ProcessEnded } from './connection';
 import { classifyFailure, failureEvent } from './failure';
+import { wait } from './layer';
 
 import type { EngineEvent, SessionTitle } from '../types';
 
@@ -149,5 +150,58 @@ export function stopFailure(reason: string | null | undefined, agent: string): E
             return failureEvent(classifyFailure({ agent, text: 'The agent declined the request', kind: 'invalid_request' }));
         default:
             return undefined;
+    }
+}
+
+/**
+ * The extension both pinned adapters (Claude Code's and Codex's) have to hand a message to the turn in flight, over either protocol; the SDK has no types for
+ * it. An agent that can do it says `_meta.steering.supported` in its answer to `initialize`. `promptRequired` as the idle behaviour makes an agent with no
+ * turn running answer so instead of starting a turn of its own that no request of the client owns. Claude Code's adapter does not say it on v2 (it inserts a
+ * plain prompt into the running turn there); Codex's does, and holds a plain prompt until the turn ends, so it is steered with this.
+ */
+export const STEER_METHOD = '_session/steering';
+
+export interface SteerRequest {
+    sessionId: string;
+    prompt: { type: 'text'; text: string }[];
+    _meta: { steering: { idleBehavior: 'promptRequired' } };
+}
+
+export type SteerResponse = { outcome: 'injected' } | { outcome: 'startedNewTurn' } | { outcome: 'promptRequired'; reason?: string };
+
+/** The steer request for `text`. */
+export const steerRequest = (sessionId: string, text: string): SteerRequest => ({ sessionId, prompt: [{ type: 'text', text }], _meta: { steering: { idleBehavior: 'promptRequired' } } });
+
+/** Whether the agent's answer to `initialize` says it can take a steer through the extension. */
+export function advertisesSteering(init: { _meta?: Record<string, unknown> | null }): boolean {
+    const steering = init._meta?.steering as { supported?: unknown } | undefined;
+
+    return steering?.supported === true;
+}
+
+/**
+ * An agent may not have begun the turn of a prompt it has just been sent, and answers a steer then with `promptRequired`. While the prompt is still
+ * running the steer is asked again this often, this many times.
+ */
+const STEER_RETRY_MS = 100;
+const STEER_ATTEMPTS = 20;
+
+/**
+ * Asks the agent to take a steer through the extension (`ask` sends the request), again while it says no turn runs yet and the prompt is still with it.
+ * Resolves whether the message went into the running turn (`injected`); any other answer leaves it to the runtime. A failed request throws.
+ */
+export async function steerByExtension(ask: () => Promise<SteerResponse | undefined>, { running, aborted }: { running(): boolean; aborted(): boolean }): Promise<boolean> {
+    for (let attempt = 1; ; attempt++) {
+        const answer = await ask();
+
+        if (answer?.outcome !== 'promptRequired' || attempt >= STEER_ATTEMPTS) {
+            return answer?.outcome === 'injected';
+        }
+
+        await wait(STEER_RETRY_MS);
+
+        if (!running() || aborted()) {
+            return false;
+        }
     }
 }
