@@ -10,7 +10,7 @@ import { use, useEffect, useRef, useState } from 'react';
 
 import { perform } from '../features/chats/commands';
 import { ProviderIcon } from '../features/settings/providers/ProviderIcon';
-import { accountLine, headlineWindow, isUsableProvider, providerAgents, usageTone, windowPercent } from '../features/settings/providers/providerView';
+import { accountLine, headlineWindow, isUsableProvider, providerAgents, scopedHotWindow, USAGE_DANGER_PERCENT, usageTone, weeklyMark, windowPercent } from '../features/settings/providers/providerView';
 import { RefreshUsageButton, UsageReading } from '../features/settings/providers/UsageRows';
 import { waitForRead } from '../features/settings/providers/useAgentCommands';
 import { useNow } from '../features/settings/providers/useNow';
@@ -28,8 +28,10 @@ import type { RootStore } from '../stores';
 const POLL_MS = 5 * 60_000;
 
 /**
- * The badge is plain until the danger tone, from 90%, and then red: the warning tone (orange, from 80%) is for the bars in the popover,
- * not for the button, which would be orange for a long time before there is anything to do.
+ * The badge is plain until the danger tone of its nearest window, from 90%, and then red. The warning tone (orange, from 80%) is for
+ * the bars in the popover, not for the button, which would be orange for a long time before there is anything to do, and not for the
+ * week line, which stays the primary color until 90%.
+ * A fuller week does not turn the chip red either: the number on it is the nearest window, and a red chip would read as that window.
  */
 const badgeColor = (percent: number | undefined) => (percent !== undefined && usageTone(percent) === 'danger' ? 'danger' : 'secondary');
 
@@ -101,15 +103,27 @@ function useUsageRefresh(root: RootStore) {
     return { isRefreshing, refresh };
 }
 
-/** What a screen reader hears for a badge: the provider, how much is used and when it resets, or why there is no number. */
+/** The week line and the model-limit dot, in the order they are drawn, for the badge's label. */
+function markLabel(agent: AgentInfo): string {
+    const week = weeklyMark(agent);
+    const hot = scopedHotWindow(agent);
+    const parts = [week, hot].flatMap(window => window ? [`${ window.label } ${ windowPercent(window) }%`] : []);
+
+    return parts.join(', ');
+}
+
+/** What a screen reader hears for a badge: the provider, how much is used and when it resets, or why there is no number. The week and a hot model limit are named when their marks are drawn. */
 function badgeLabel(agent: AgentInfo, now: number): string {
     const headline = headlineWindow(agent);
+    const marks = markLabel(agent);
 
     if (headline) {
         const reset = headline.resetsAt === undefined ? '' : `, resets in ${ describeRemaining(headline.resetsAt - now) }`;
 
-        return `${ agent.name } usage ${ windowPercent(headline) }%${ reset }`;
+        return `${ agent.name } usage ${ windowPercent(headline) }%${ reset }${ marks ? `, ${ marks }` : '' }`;
     }
+
+    if (marks) return `${ agent.name } usage: ${ marks }`;
 
     if (agent.signIn?.status === 'signed-out') return `${ agent.name } usage: not signed in`;
 
@@ -117,12 +131,16 @@ function badgeLabel(agent: AgentInfo, now: number): string {
 }
 
 /**
- * One provider: its mark, the percent used of its nearest limit (`headlineWindow`) and the time to its reset. The mark alone, muted, when there is no
- * reading. It has no tooltip: what one would say is already on the badge, and its label is for a screen reader.
+ * One provider: its mark, the percent used of its nearest limit (`headlineWindow`) and the time to its reset. Under that text, a line for the
+ * longer plan window once it is ahead and at least 60% used (`weeklyMark`), terracotta until 90% and red from then; a red dot after the reset when a single model's limit is at
+ * the danger tone and the plan is not (`scopedHotWindow`). The mark alone, muted, when there is no reading. It has no tooltip: what one
+ * would say is already on the badge, and its label is for a screen reader.
  * A press opens the popover of the `PopoverTrigger` it sits in, which also sets its `aria-expanded` and gives it back the focus.
  */
 function UsageBadge({ agent, now }: { agent: AgentInfo; now: number }) {
     const headline = headlineWindow(agent);
+    const week = weeklyMark(agent);
+    const hot = scopedHotWindow(agent);
     const percent = headline ? windowPercent(headline) : undefined;
     const color = badgeColor(percent);
     const label = badgeLabel(agent, now);
@@ -133,17 +151,27 @@ function UsageBadge({ agent, now }: { agent: AgentInfo; now: number }) {
             size="sm"
             color={ color }
             className={ styles.badge }
-            data-muted={ percent === undefined || undefined }
+            data-muted={ (percent === undefined && !hot) || undefined }
             aria-label={ label }
         >
             <ProviderIcon agentId={ agent.id } size={ 16 } />
             <Show when={ headline }>
                 { reading => (
-                    <>
+                    <span className={ styles.figures }>
                         <span>{ `${ windowPercent(reading) }%` }</span>
                         { reading.resetsAt !== undefined && <Text color={ color === 'danger' ? 'inherit' : 'secondary' }>{ formatRemaining(reading.resetsAt - now) }</Text> }
-                    </>
+                        <Show when={ week }>
+                            { longer => {
+                                const used = windowPercent(longer);
+
+                                return <span className={ styles.week } data-week="" data-tone={ used >= USAGE_DANGER_PERCENT ? 'danger' : undefined } style={ { width: `${ used }%` } } />;
+                            } }
+                        </Show>
+                    </span>
                 ) }
+            </Show>
+            <Show when={ hot }>
+                <span className={ styles.hot } data-hot="" />
             </Show>
         </Button>
     );
@@ -253,7 +281,8 @@ function UsageBadges({ providers }: { providers: readonly AgentInfo[] }) {
 
 /**
  * The window header's usage status: a badge for each provider that is switched on and installed, with the percent used of its
- * nearest limit and the time to its reset; a press opens a popover with every window of that provider alone. Nothing at all when
+ * nearest limit and the time to its reset, a line under that text for the week once it is ahead, and a dot when a model's limit
+ * is hot and the plan is not. A press opens a popover with every window of that provider alone. Nothing at all when
  * no provider is usable. It keeps the numbers fresh by reading the agents again every five minutes and when the window gets focus.
  */
 export function UsageStatus() {

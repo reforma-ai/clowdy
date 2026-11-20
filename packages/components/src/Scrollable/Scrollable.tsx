@@ -36,6 +36,10 @@ export type ScrollableProps = {
     overlay?: React.ReactNode;
     onScroll?: (e: Event) => void;
     alwaysShowScrollbar?: boolean;
+    /**
+     * Painted thumb. `false` keeps wheel scrolling and `edgeFade`, and draws no thumb.
+     */
+    scrollbar?: boolean;
     vertical?: boolean;
     horizontal?: boolean;
     gap?: number;
@@ -70,6 +74,7 @@ export function Scrollable({
     overlay,
     onScroll,
     alwaysShowScrollbar,
+    scrollbar = true,
     vertical,
     horizontal,
     gap = 0,
@@ -217,13 +222,15 @@ export function Scrollable({
                     { scrollChildren }
                 </ScrollContainer>
 
-                <ScrollChromeBars
-                    vertical={ isVerticalEnabled }
-                    horizontal={ isHorizontalEnabled }
-                    setScrollbarV={ chrome.setScrollbarV }
-                    setScrollbarH={ chrome.setScrollbarH }
-                    onPointerDown={ chrome.handlePointerDown }
-                />
+                { scrollbar && (
+                    <ScrollChromeBars
+                        vertical={ isVerticalEnabled }
+                        horizontal={ isHorizontalEnabled }
+                        setScrollbarV={ chrome.setScrollbarV }
+                        setScrollbarH={ chrome.setScrollbarH }
+                        onPointerDown={ chrome.handlePointerDown }
+                    />
+                ) }
 
                 { overlayResolved }
             </ScrollChromeRoot>

@@ -13,6 +13,8 @@ export interface SettingEffect {
     env?: Record<string, string | null>;
     /** Tools the agent is not given (Claude's adapter reads them from `_meta.claudeCode.options.disallowedTools`). */
     disallowedTools?: string[];
+    /** Codex config keys (dotted, as in `-c key=value`) for the session. They reach Codex's adapter in `CODEX_CONFIG`, one JSON object that every setting adds its keys to. */
+    codexConfig?: Record<string, boolean | number | string>;
 }
 
 /** A switch of an agent that Clowdy can turn by itself: it changes the environment or the session options the agent starts with, or is read by the daemon alone. */
@@ -110,10 +112,17 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
             },
             {
                 id: 'subagents',
-                label: 'Its own sub-agents',
+                label: 'Enable sub-agents',
                 description: 'Let Claude Code start sub-agents inside a run. Off hides them, so agents delegate through Clowdy only.',
                 default: true,
                 effect: on => on ? {} : { disallowedTools: ['Agent', 'Task', 'ListAgents'] },
+            },
+            {
+                id: 'workflows',
+                label: 'Enable workflow tool',
+                description: 'Let Claude Code run its Workflow tool, which fans one job out to many sub-agents and can use a lot of your plan. Off hides it, so agents delegate through Clowdy only.',
+                default: true,
+                effect: on => on ? {} : { disallowedTools: ['Workflow'] },
             },
             {
                 id: 'longContext',
@@ -121,6 +130,14 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
                 description: 'Use the 1M-token context window where the plan has one',
                 default: true,
                 effect: on => ({ env: { CLAUDE_CODE_DISABLE_1M_CONTEXT: on ? null : '1' } }),
+            },
+            {
+                // Stated both ways: Claude Code reads `0` as off (`artifact_env_off`), and a variable the person's own shell sets does not turn it on in a run that has it off.
+                id: 'artifacts',
+                label: 'Claude Artifacts',
+                description: 'Let Claude Code publish pages such as reports and dashboards to your claude.ai account. They stay private until you share them, and Claude can publish without asking. Needs a claude.ai login on this machine.',
+                default: false,
+                effect: on => ({ env: { CLAUDE_CODE_ARTIFACT: on ? '1' : '0' } }),
             },
             chatTitleSetting('Claude Code'),
         ],
@@ -135,10 +152,29 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         name: 'Codex',
         programs: ['codex'],
         launch: { kind: 'package', package: '@agentclientprotocol/codex-acp@2.6.0', pathEnv: 'CODEX_PATH' },
-        // ACP v1 on purpose: its adapter injects a steer into the running turn through `_session/steering`, while on v2 it holds the prompt until the turn ends,
-        // and it has no background work to report on either version (real check, 2026-11-19).
+        // ACP v1 for now: its adapter injects a steer into the running turn through `_session/steering`, while a plain prompt on v2 is held until the turn
+        // ends. `codex-acp` 2.8.0 reports background commands and sub-agents on v2 and takes `_session/steering` there too: Stage 10 of the background-work
+        // plan moves Codex to v2 once the layer steers that way and the pin can be raised.
         compact: '/compact',
-        settings: [chatTitleSetting('Codex')],
+        settings: [
+            {
+                // Codex's memories are a feature that is off until the person turns it on, so "on" has to turn the feature on too; "off" is also stated, so a feature the person turned on in their own Codex does not reach Clowdy's runs.
+                id: 'memory',
+                label: 'Memory',
+                description: 'Let Codex recall its memories and save new ones from your runs',
+                default: false,
+                effect: on => ({ codexConfig: { 'features.memories': on, 'memories.use_memories': on, 'memories.generate_memories': on } }),
+            },
+            {
+                // The keys of Codex 0.145 and newer (the adapter pins 0.166); an older Codex names them differently.
+                id: 'subagents',
+                label: 'Enable sub-agents',
+                description: 'Let Codex start sub-agents inside a run. Off turns them off, so agents delegate through Clowdy only.',
+                default: true,
+                effect: on => on ? {} : { codexConfig: { 'agents.enabled': false, 'features.multi_agent_v2': false } },
+            },
+            chatTitleSetting('Codex'),
+        ],
         scrub: [/^OPENAI_API_KEY$/, /^CODEX_API_KEY$/],
         login: 'codex login',
     },

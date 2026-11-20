@@ -174,7 +174,7 @@
     - a child that goes idle is not finished (Codex reuses children and keeps them past the root turn), so `NativeAgents` stops closing every child when the parent's turn ends, and a child can go back to running
     - `Run` gains the id of the tool call that started a native child (the event carries `parentToolCallId`; it is not stored today), so the UI can hang the child under its card
     - the Claude adapter's `parentToolUseId` stays as the fallback if the opt-in proves unreliable; an agent that reports nothing (Cursor, OpenCode, Grok, ...) keeps the plain card
-  - [ ] The switches that turn native sub-agents off (Claude `disallowedTools`, Codex config keys that differ by Codex version) stay available for a setting later, unused by default
+  - [x] The switches that turn native sub-agents off (Claude `disallowedTools`, Codex config keys that differ by Codex version) stay available for a setting later, unused by default. Both agents have an `Enable sub-agents` setting, on by default; Codex's keys are the ones of Codex 0.145 and newer (`agents.enabled`, `features.multi_agent_v2`), not run against a live adapter yet
   - [x] Native Claude engine, its SDK dependency, its settings and its tests deleted. `NativeAgents` and `origin: 'native'` stay, for the fake engine and the child-session opt-in below
   - [x] `AGENTS.md`, the catalog and the tests describe the single path
 

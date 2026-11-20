@@ -253,9 +253,9 @@ describe('AgentRegistry', () => {
     });
 
     describe('settings', () => {
-        const settingsOf = async (reg: AgentRegistry) => Object.fromEntries(((await byId(reg, 'claude'))?.settings ?? []).map(setting => [setting.id, setting.value]));
-        const start = async (reg: AgentRegistry) => {
-            const resolved = await reg.resolve('claude');
+        const settingsOf = async (reg: AgentRegistry, id = 'claude') => Object.fromEntries(((await byId(reg, id))?.settings ?? []).map(setting => [setting.id, setting.value]));
+        const start = async (reg: AgentRegistry, id = 'claude') => {
+            const resolved = await reg.resolve(id);
 
             if (!resolved.ok) {
                 throw new Error(resolved.message);
@@ -269,7 +269,7 @@ describe('AgentRegistry', () => {
 
             const reg = registry();
 
-            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: false, subagents: true, longContext: true, chatTitle: true });
+            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: false, subagents: true, workflows: true, longContext: true, artifacts: false, chatTitle: true });
             expect((await byId(reg, 'claude'))?.settings?.[0]).toMatchObject({ id: 'memory', default: false, label: expect.any(String), description: expect.any(String) });
 
             const agent = await start(reg);
@@ -277,6 +277,8 @@ describe('AgentRegistry', () => {
             // The CLAUDE.md of the project's other folders is read in every run, whatever the settings.
             expect(agent.env).toMatchObject({ ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1' });
             expect(agent.env).not.toHaveProperty('CLAUDE_CODE_DISABLE_1M_CONTEXT');
+            expect(agent.env).toMatchObject({ CLAUDE_CODE_ARTIFACT: '0' });
+            expect(agent.env).not.toHaveProperty('CODEX_CONFIG');
             expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
         });
 
@@ -285,21 +287,56 @@ describe('AgentRegistry', () => {
 
             const reg = registry();
 
-            reg.update('claude', { settings: { memory: true, connectors: true, subagents: false, longContext: false } });
+            reg.update('claude', { settings: { memory: true, connectors: true, subagents: false, workflows: false, longContext: false, artifacts: true } });
 
-            expect(await settingsOf(reg)).toEqual({ memory: true, connectors: true, subagents: false, longContext: false, chatTitle: true });
+            expect(await settingsOf(reg)).toEqual({ memory: true, connectors: true, subagents: false, workflows: false, longContext: false, artifacts: true, chatTitle: true });
 
             const agent = await start(reg);
 
             expect(agent.env).not.toHaveProperty('CLAUDE_CODE_DISABLE_AUTO_MEMORY');
             expect(agent.env).not.toHaveProperty('ENABLE_CLAUDEAI_MCP_SERVERS');
-            expect(agent.env).toMatchObject({ CLAUDE_CODE_DISABLE_1M_CONTEXT: '1', CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3' });
-            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task', 'ListAgents'] } } });
+            expect(agent.env).toMatchObject({ CLAUDE_CODE_DISABLE_1M_CONTEXT: '1', CLAUDE_CODE_ARTIFACT: '1', CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3' });
+            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task', 'ListAgents', 'Workflow'] } } });
 
             // A change names only what it changes.
             reg.update('claude', { settings: { memory: false } });
 
-            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: true, subagents: false, longContext: false, chatTitle: true });
+            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: true, subagents: false, workflows: false, longContext: false, artifacts: true, chatTitle: true });
+        });
+
+        test('Claude Artifacts is stated off, so a variable the person\'s own shell sets does not turn it on', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+
+            const { env } = await start(registry());
+
+            expect(buildAgentEnv({ daemonEnv: { CLAUDE_CODE_ARTIFACT: '1' }, path: bin, set: env })).toMatchObject({ CLAUDE_CODE_ARTIFACT: '0' });
+        });
+
+        test('Codex lists memory and sub-agents next to its chat titles, and turns each into config keys in one CODEX_CONFIG', async () => {
+            program('codex', 'codex-cli 0.166.0');
+
+            const reg = registry();
+
+            expect(await settingsOf(reg, 'codex')).toEqual({ memory: false, subagents: true, chatTitle: true });
+
+            // Memory is stated both ways, so a feature the person turned on in their own Codex does not reach a run that has it off.
+            expect(JSON.parse((await start(reg, 'codex')).env.CODEX_CONFIG ?? 'null')).toEqual({ 'features.memories': false, 'memories.use_memories': false, 'memories.generate_memories': false });
+
+            reg.update('codex', { settings: { memory: true, subagents: false } });
+
+            expect(await settingsOf(reg, 'codex')).toEqual({ memory: true, subagents: false, chatTitle: true });
+            expect(JSON.parse((await start(reg, 'codex')).env.CODEX_CONFIG ?? 'null')).toEqual({
+                'features.memories': true,
+                'memories.use_memories': true,
+                'memories.generate_memories': true,
+                'agents.enabled': false,
+                'features.multi_agent_v2': false,
+            });
+
+            // The variables the person set for the agent win over the ones its settings made.
+            reg.update('codex', { env: { CODEX_CONFIG: '{"model":"x"}' } });
+
+            expect((await start(reg, 'codex')).env.CODEX_CONFIG).toBe('{"model":"x"}');
         });
 
         test('the chat titles of Claude Code and Codex are on, are read by the daemon alone, and an agent without them has none to read', async () => {
@@ -312,7 +349,7 @@ describe('AgentRegistry', () => {
             expect(reg.setting('codex', 'chatTitle')).toBe(true);
             expect(reg.setting('cursor', 'chatTitle')).toBeUndefined();
             expect(reg.setting('nobody', 'chatTitle')).toBeUndefined();
-            expect((await byId(reg, 'codex'))?.settings).toEqual([{ id: 'chatTitle', label: 'Chat titles', description: 'Let Codex name a new chat from its first message', value: true, default: true }]);
+            expect((await byId(reg, 'codex'))?.settings?.find(setting => setting.id === 'chatTitle')).toEqual({ id: 'chatTitle', label: 'Chat titles', description: 'Let Codex name a new chat from its first message', value: true, default: true });
 
             const before = await start(reg);
 

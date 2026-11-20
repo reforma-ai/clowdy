@@ -321,7 +321,7 @@ export class AgentRegistry {
         const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, protocol: spec.protocol ?? 'v1', sessionMeta: withDisallowedTools(spec.sessionMeta, applied.disallowedTools), ...(spec.clientMeta && { clientMeta: spec.clientMeta }) };
 
         if (spec.launch.kind === 'binary') {
-            return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: withoutRemoved({ ...spec.env, ...apart?.env, ...applied.env, ...override.env }) } };
+            return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: withoutRemoved({ ...spec.env, ...apart?.env, ...applied.env, ...codexConfigEnv(applied.codexConfig), ...override.env }) } };
         }
 
         const runtime = await this.runtime();
@@ -332,7 +332,7 @@ export class AgentRegistry {
 
         return {
             ok: true,
-            agent: { ...base, program, command: runtime, args: ['x', '--bun', spec.launch.package], env: withoutRemoved({ ...PACKAGE_RUNNER_ENV, ...spec.env, ...apart?.env, ...applied.env, [spec.launch.pathEnv]: program, ...override.env }) },
+            agent: { ...base, program, command: runtime, args: ['x', '--bun', spec.launch.package], env: withoutRemoved({ ...PACKAGE_RUNNER_ENV, ...spec.env, ...apart?.env, ...applied.env, ...codexConfigEnv(applied.codexConfig), [spec.launch.pathEnv]: program, ...override.env }) },
         };
     }
 
@@ -471,16 +471,22 @@ function settingsOf(spec: AgentSpec, override: AgentOverride): AgentSetting[] {
 
 /** What the settings, at their values, do to the environment and the tools of the agent. A later setting wins over an earlier one. */
 function appliedSettings(spec: AgentSpec, override: AgentOverride): Required<SettingEffect> {
-    const applied: Required<SettingEffect> = { env: {}, disallowedTools: [] };
+    const applied: Required<SettingEffect> = { env: {}, disallowedTools: [], codexConfig: {} };
 
     for (const setting of spec.settings ?? []) {
         const effect = setting.effect?.(settingValue(setting, override)) ?? {};
 
         Object.assign(applied.env, effect.env);
+        Object.assign(applied.codexConfig, effect.codexConfig);
         applied.disallowedTools.push(...effect.disallowedTools ?? []);
     }
 
     return applied;
+}
+
+/** The variable Codex's adapter reads its session config from, when a setting gave it keys. */
+function codexConfigEnv(config: Record<string, boolean | number | string>): Record<string, string> {
+    return Object.keys(config).length > 0 ? { CODEX_CONFIG: JSON.stringify(config) } : {};
 }
 
 /** The environment with the variables a setting removed (`null`) taken out. */

@@ -2,7 +2,7 @@ export type ToolIcon = 'file' | 'search' | 'code' | 'terminal' | 'tool';
 
 export interface ToolView {
     icon: ToolIcon;
-    /** What the tool is doing, in the present tense: `Reading file`. Empty for a command, which speaks for itself. */
+    /** What the tool is doing, in the present tense: `Reading file`. For a command, what the agent says it does, and empty when it said nothing: the command speaks for itself. */
     verb: string;
     /** The path, pattern or command it works on, shown as a code chip. */
     target?: string;
@@ -50,6 +50,13 @@ function diffStat(input: unknown, output: unknown): ToolView['diff'] {
 
 const PATH_KEYS = ['file_path', 'path', 'file', 'filePath'];
 
+/** What the agent says a command does, for any tool that takes such a field (Claude Code's `Bash` has `description`): one line, and not the command again. */
+function commandTitle(input: unknown, command?: string): string {
+    const description = firstString(input, ['description'])?.split('\n')[0]?.trim();
+
+    return description && description !== command?.trim() ? description : '';
+}
+
 /**
  * How a tool call reads in the stream. The daemon passes the engine's tool names and inputs through, so this
  * recognises the common shapes (Claude Code's `Read`, `Edit`, `Write`, `Bash`, `Grep`, `Glob`, and close
@@ -72,7 +79,11 @@ export function describeTool(name: string, input: unknown, output?: unknown): To
 
     if (['glob', 'ls', 'list', 'listdir', 'listdirectory'].includes(key)) return { icon: 'search', verb: 'Finding files', target: firstString(input, ['pattern', 'path']) };
 
-    if (['bash', 'shell', 'run', 'runcommand', 'exec', 'terminal', 'command'].includes(key)) return { icon: 'terminal', verb: '', target: firstString(input, ['command', 'cmd']) };
+    if (['bash', 'shell', 'run', 'runcommand', 'exec', 'terminal', 'command'].includes(key)) {
+        const command = firstString(input, ['command', 'cmd']);
+
+        return { icon: 'terminal', verb: commandTitle(input, command), target: command };
+    }
 
     const target = isRecord(input) ? Object.values(input).find((value): value is string => typeof value === 'string' && value !== '' && value.length <= 80) : undefined;
 
