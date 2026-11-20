@@ -302,6 +302,37 @@ Stage 10, 2026-11-19 and 2026-11-20. A scratch daemon from the worktree (own dat
 - A second sub-agent, nested sub-agents, a failing sub-agent, `multi_agent_v2`, images, MCP over ACP, permission requests, other Codex versions than 0.166.0, a daemon stop and a kill while Codex waits (the process-tree reaping is the same as for Claude, checked there).
 - That Codex's command output reaches the model after it was idle: the note's answers quoted the output (the model read it itself, once with an extra `echo`), so it is not known whether a note that did not name it would be enough.
 
+## Monitor and ScheduleWakeup (2026-11-20)
+
+Question: Claude Code's `Monitor` (each output line of a script wakes the agent in a turn of its own, one notice at its end), `ScheduleWakeup` (the session's next turn after a delay) and `CronCreate` work in an ACP v2 session, but they live inside the `claude` process. Clowdy ends the session at the end of the turn when nothing is listed in `state_update.background`, which kills the process group and the tree below it, so did the owner's ticks and wakeups ever arrive? Probed on `claude-agent-acp` 0.107.0, Claude Code 2.1.312, haiku (`claude-haiku-5-5`), raw over ACP v2 (a probe client, cwd with a fresh git repo) and through the shipped daemon of the day (`main` at 0d37a49, scratch data folder, HTTP API).
+
+### What the adapter says
+
+| Fact | Evidence |
+| --- | --- |
+| `state_update.background` is `[]` in every update, before, during and after a `Monitor`, a wakeup or a cron job. The SDK reports a `Monitor` as a `local_bash` task, which 0.107.0 (`v2/tasks.js`, `toolResults()` and `adoptTasks()`) skips; a wakeup and a cron job have no v2 handling at all | raw, three runs |
+| The call is told as any call: the first `tool_call_update` (status `pending`) carries `name` (`Monitor`, `ScheduleWakeup`, `CronCreate`) with an empty `rawInput`, the input grows over the next updates, and `completed` carries the whole input and the result text, **before the turn's `idle`** | Monitor `completed` at 8.0 s, `idle` at 9.48 s; wakeup 4.7 s against 7.8 s (through the daemon 6.8 s against 9.2 s); cron 6.6 s against 7.7 s |
+| `Monitor` input `{ command, description, timeout_ms }` (`timeout_ms` is the tool's own, default 300000, at most 1800000; a `persistent` monitor has none: the tool's own record says 0 for it), result `Monitor started (task b8ryzofob, expires in 40s unless the source ends first; you get one notice at expiry — re-arm if you still need the watch)` | raw `m1` |
+| `ScheduleWakeup` input `{ delaySeconds, prompt, reason, noop }`, result `Next wakeup scheduled for 11:15:00 (in 96s)` for `delaySeconds` 60 (and `(in 91s)` another time): the delay is rounded up to the next whole minute, so it is at least `delaySeconds` and less than `delaySeconds + 60` | raw `w2`, daemon run |
+| `CronCreate` (a deferred tool: it needs a `ToolSearch` call first) input `{ cron, prompt, recurring }`, result `Scheduled one-shot task 1d51d840 (7 11 20 11 *). Next run: Nov 20 11:07am. Session-only (not written to disk, dies when Claude exits)`; no year and no time zone in the text, local time in the cron; it fired at 11:07 into the idle session (the turn ended at 85 s) | raw `c1` |
+| A turn that a tick, a notice or a wakeup starts has no marker before it: `running` comes with the model's first output (`10.76 s` for the first tick, `14.44`, `19.49`, and the notice, `24.32 s`, when the script ended: a notice also comes at the end of the stream, not only at expiry) and each turn ends with its own `idle` | raw `m1` |
+
+### What the shipped daemon did (before this change)
+
+The `Monitor` call completed, the agent said "I'll wait for the monitor notifications", the layer saw nothing open and the guard ended the session 2 s after the `idle` (the run `succeeded` at 10.0 s), the process group and the monitor's shell below `claude` were gone (no process with the marker in its command at the end of the run, nor at the end of a 60 s watch). The next message to the chat started a new session, which found the monitor gone: "No monitor events reached me, and the monitor is no longer running". The wakeup run ended at 9.2 s the same way; nothing woke the agent at 11:13 (the wake lives in the process).
+
+### What was built
+
+Holding the session is the layer's work, with no change of the driver: a completed `Monitor`, `ScheduleWakeup` or one-shot `CronCreate` becomes a synthetic `task` background item (id = the tool call's id, `Monitor · <description>`, `Wakeup · <reason>`), told before the turn's `idle`, so `RunDriver.onDone` keeps the session as for any item, and the item leaves when the time the agent itself named has come (`Monitor`: `timeout_ms`; wakeup: the `(in Ns)` of the result; cron: the end of the minute of its next run, read from the five fields of the result; an unreadable or recurring job, a `persistent` monitor and a failed or cancelled call hold nothing). No timer is a guess from silence: each is a deadline the agent's own call named. See `apps/daemon/AGENTS.md` ("Claude Code's own timers" in the layer row, and the known limits).
+
+**Adapter 0.109.0** (published 2026-11-19, so not usable as the pin before 2026-11-22 under the three-day rule; its sources were read, not run): `v2/tasks.js` has `TASK_TOOLS = new Set(["Monitor", "Workflow"])` and lists such a task as `{ type: 'tool_call', toolCallId }` until Claude Code reports its task ended, with `tool_call/cancel` for it. The layer takes the adapter's entry for the call once its list names it (`UpdateMapperV2.adopted`): the item the mapper held is dropped and does not come back, so the bump needs no change and a monitor then ends precisely, not at its `timeout_ms`.
+
+### Not checked
+
+- A monitor whose source ends before its `timeout_ms` is held until the timeout on 0.107.0 (nothing says it ended); `TaskStop` of a monitor likewise.
+- The real clock behaviour of cron jobs through the daemon (the deadline is derived and unit tested; a real one-shot job needs about two minutes and was not run through the daemon).
+- A persistent monitor through the daemon, a `Monitor` made by a sub-agent, Codex (no such tools).
+
 ## Sources
 
 - The probe runs of 2026-11-19 (this page).

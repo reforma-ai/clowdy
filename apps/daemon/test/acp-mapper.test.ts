@@ -1,5 +1,5 @@
 import { STOPPED_TOOL } from '@clowdy/protocol';
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { UpdateMapper } from '../src/engine/acp/mapper';
@@ -559,6 +559,121 @@ describe('updates of ACP v2', () => {
             expect(mapper.background(work)[0].title).toBe('Background command');
             mapper.update({ sessionUpdate: 'terminal_update', terminalId: 't', command: 'npm test' });
             expect(mapper.background(work)[0].title).toBe('npm test');
+        });
+    });
+
+    describe('calls that hold the session until a time they named', () => {
+        const MONITOR_RESULT = 'Monitor started (task b8ryzofob, expires in 40s unless the source ends first; you get one notice at expiry — re-arm if you still need the watch).';
+        const WAKEUP_RESULT = 'Next wakeup scheduled for 11:15:00 (in 96s). If you owe the user a status update this tick, write it now.';
+        const CRON_RESULT = 'Scheduled one-shot task 1d51d840 (7 11 20 11 *). Next run: Nov 20 11:07am. Session-only (not written to disk, dies when Claude exits).';
+
+        /** A call as Claude's adapter tells it: the name in the first update, the input as it is completed, then the result. */
+        const scheduled = (toolCallId: string, name: string, input: Record<string, unknown>, result: string, status: 'completed' | 'failed' | 'cancelled' = 'completed'): SessionUpdateV2[] => [
+            call({ toolCallId, name, rawInput: {}, status: 'pending', title: name, kind: 'other', content: [] }),
+            call({ toolCallId, rawInput: input }),
+            call({ toolCallId, status, rawOutput: result, content: [{ type: 'content', content: { type: 'text', text: result } }] }),
+        ];
+        const monitor = (id = 'mon-1', input: Record<string, unknown> = { command: 'echo tick', description: 'Tick monitor', timeout_ms: 40_000 }) => scheduled(id, 'Monitor', input, MONITOR_RESULT);
+
+        function mapped(updates: SessionUpdateV2[]) {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            for (const update of updates) {
+                mapper.update(update);
+            }
+
+            return mapper;
+        }
+
+        afterEach(() => setSystemTime());
+
+        test('a completed Monitor is a task item named by its description, told once with how long it holds, and gone when its time lapses', () => {
+            const mapper = mapped(monitor());
+
+            expect(mapper.armed()).toEqual([{ id: 'mon-1', title: 'Monitor · Tick monitor', ms: 40_000 }]);
+            expect(mapper.armed()).toEqual([]);
+            expect(mapper.background([])).toEqual([{ id: 'mon-1', kind: 'task', title: 'Monitor · Tick monitor' }]);
+            expect(mapper.lapse('mon-1')).toBe(true);
+            expect(mapper.background([])).toEqual([]);
+            expect(mapper.lapse('mon-1')).toBe(false);
+        });
+
+        test('a wakeup is a task item named by its reason, due when its result says', () => {
+            const mapper = mapped(scheduled('wake-1', 'ScheduleWakeup', { delaySeconds: 60, prompt: 'p', reason: 'Wake probe\nrequested', noop: false }, WAKEUP_RESULT));
+
+            expect(mapper.armed()).toEqual([{ id: 'wake-1', title: 'Wakeup · Wake probe requested', ms: 96_000 }]);
+            expect(mapper.background([])).toEqual([{ id: 'wake-1', kind: 'task', title: 'Wakeup · Wake probe requested' }]);
+        });
+
+        test('a one-shot cron job is a wakeup due when its cron next comes, and one that repeats is not held', () => {
+            setSystemTime(new Date(2026, 10, 20, 11, 5, 40));
+
+            const once = mapped(scheduled('cron-1', 'CronCreate', { cron: '7 11 20 11 *', prompt: 'cron-probe', recurring: false }, CRON_RESULT));
+            const repeating = mapped(scheduled('cron-2', 'CronCreate', { cron: '*/5 * * * *', prompt: 'cron-probe', recurring: true }, 'Scheduled recurring task 8f2a1c3d (*/5 * * * *). Next run: Nov 20 11:10am.'));
+
+            expect(once.armed()).toEqual([{ id: 'cron-1', title: 'Wakeup · cron-probe', ms: 140_000 }]);
+            expect(repeating.armed()).toEqual([]);
+            expect(repeating.background([])).toEqual([]);
+        });
+
+        test('the item comes after the agent\'s own list, whose entries keep their order', () => {
+            const mapper = mapped([{ sessionUpdate: 'terminal_update', terminalId: 'term-1', command: 'sleep 9' }, ...monitor()]);
+
+            expect(mapper.background([{ type: 'terminal', terminalId: 'term-1' }]).map(item => item.id)).toEqual(['term-1', 'mon-1']);
+        });
+
+        test('nothing is held for a call that has not completed, failed, or was cancelled', () => {
+            expect(mapped(monitor().slice(0, 2)).armed()).toEqual([]);
+            expect(mapped(scheduled('mon-1', 'Monitor', { description: 'x', timeout_ms: 1000 }, 'refused', 'failed')).armed()).toEqual([]);
+            expect(mapped(scheduled('mon-1', 'Monitor', { description: 'x', timeout_ms: 1000 }, 'stopped', 'cancelled')).armed()).toEqual([]);
+            expect(mapped(scheduled('mon-1', 'Monitor', { description: 'x', timeout_ms: 1000 }, 'refused', 'failed')).background([])).toEqual([]);
+        });
+
+        test('nothing is held for a monitor that runs for the life of the session, another tool, or a call a sub-agent made', () => {
+            expect(mapped(monitor('mon-1', { command: 'tail -f log', description: 'log', persistent: true })).armed()).toEqual([]);
+            expect(mapped(scheduled('bash-1', 'Bash', { command: 'sleep 1' }, 'done')).armed()).toEqual([]);
+
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update({ sessionUpdate: 'subagent_update', sessionId: 'child-1', title: 'Child' });
+
+            for (const update of monitor()) {
+                mapper.update(update, 'child-1');
+            }
+
+            expect(mapper.armed()).toEqual([]);
+            expect(mapper.background([])).toEqual([]);
+        });
+
+        test('the completed call is looked at once: a later update of it holds nothing more', () => {
+            const mapper = mapped(monitor());
+
+            mapper.armed();
+            mapper.lapse('mon-1');
+            mapper.update(call({ toolCallId: 'mon-1', title: 'Monitor again' }));
+            expect(mapper.armed()).toEqual([]);
+            expect(mapper.background([])).toEqual([]);
+        });
+
+        test('a call the agent lists itself is its entry\'s: the mapper holds no item of its own for it, whether the list named it before or after the call completed', () => {
+            const work: BackgroundWork[] = [{ type: 'tool_call', toolCallId: 'mon-1' }];
+
+            // Told as ours first, then named by the list: one item, with the name the mapper gave, and the list losing it ends it.
+            const after = mapped(monitor());
+
+            expect(after.armed()).toHaveLength(1);
+            expect(after.background(work)).toEqual([{ id: 'mon-1', kind: 'task', title: 'Monitor · Tick monitor' }]);
+            expect(after.background([])).toEqual([]);
+            expect(after.lapse('mon-1')).toBe(false);
+
+            // Named by the list before the call completed.
+            const before = mapped(monitor().slice(0, 2));
+
+            expect(before.background(work)).toEqual([{ id: 'mon-1', kind: 'task', title: 'Monitor' }]);
+            before.update(monitor()[2]);
+            expect(before.armed()).toEqual([]);
+            expect(before.background(work)).toEqual([{ id: 'mon-1', kind: 'task', title: 'Monitor · Tick monitor' }]);
+            expect(before.background([])).toEqual([]);
         });
     });
 

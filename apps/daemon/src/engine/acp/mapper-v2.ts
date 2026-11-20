@@ -2,6 +2,7 @@ import { BackgroundWork, ContentBlock, SessionUpdate, ToolCallContent } from '@a
 
 import { Children, textOf } from './children';
 import { COMPACT_TOOL, Gauges, isRecord, Message, patched, ToolLedger, usageEvent } from './mapper-core';
+import { TIMED_TOOLS, timingOf } from './timed';
 
 import type { CompactionUpdate, TerminalUpdate, ToolCallUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import type { BackgroundItem } from '@clowdy/protocol';
@@ -20,6 +21,14 @@ const FINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
 
 /** The state of a tool call for each state a compaction is in; one the draft adds later is taken as still going. */
 const COMPACTION_STATES: Record<string, string> = { in_progress: 'in_progress', completed: 'completed', failed: 'failed', cancelled: 'cancelled' };
+
+/** A tool call that holds the session until a time the agent named in it (`timed.ts`): the item the runtime shows for it, and how long the layer holds it. */
+export interface Timed {
+    /** The id of the tool call, which is the id of the item. */
+    id: string;
+    title: string;
+    ms: number;
+}
 
 /** What the updates of one tool call said so far. An update of ACP v2 patches the call, so a field it leaves out is what an earlier one said. */
 interface Call {
@@ -84,6 +93,16 @@ export class UpdateMapperV2 {
     private children = new Children(agentId => this.close(agentId));
     /** The session's cumulative cost at the end of the last turn: what the next turn's cost is measured from. */
     private costBefore?: number;
+    /** The completed calls of the session that hold it until a time they named (`Monitor`, `ScheduleWakeup`, a one-shot `CronCreate`) and have not lapsed, by id. */
+    private timed = new Map<string, Timed>();
+    /** The ones in `timed` that the layer has not been told of yet. */
+    private fresh: Timed[] = [];
+    /** The calls the agent's own list has named: it knows when they end, so the mapper never stands in for one again. */
+    private adopted = new Set<string>();
+    /** The calls of a tool that holds the session that were looked at once they completed. */
+    private seen = new Set<string>();
+    /** What a call that holds the session is called, `Monitor · <description>`: the name it keeps when the agent's own list names it too. */
+    private names = new Map<string, string>();
     /** The turn that follows a steer that landed may say the answer again: a message identical to the one before it is not shown twice. */
     private folding = false;
     /** The start of a message that may be that repeat, held back (Claude's adapter says it as one chunk) until it is clear whether it is. */
@@ -189,10 +208,13 @@ export class UpdateMapperV2 {
 
     /**
      * The items of the session's list of background work, each named from what the mapper heard of it: a terminal by its command, a sub-agent by its title,
-     * a tool call (`Workflow`, `Monitor`) by its title. A kind of work the draft adds later names nothing the runtime could show and is left out.
+     * a tool call (`Workflow`, `Monitor`) by its title. A kind of work the draft adds later names nothing the runtime could show and is left out. After
+     * them come the completed calls that hold the session until a time they named and that the list does not name (see `armed`): a `Monitor` is
+     * `Monitor · <description>`, a wakeup `Wakeup · <reason>`. An adapter that lists such a call itself (a monitor, until it ends) is the one that knows:
+     * its entry stands for the call from then on, and the mapper holds no item of its own for it.
      */
     background(list: readonly BackgroundWork[]): BackgroundItem[] {
-        return list.flatMap((work): BackgroundItem[] => {
+        const items = list.flatMap((work): BackgroundItem[] => {
             if (BackgroundWork.isTerminal(work)) {
                 return [{ id: work.terminalId, kind: 'command', title: titled(this.commands.get(work.terminalId), 'Background command'), ...(this.cancellable.has(work.terminalId) && { canStopAlone: true }) }];
             }
@@ -202,11 +224,26 @@ export class UpdateMapperV2 {
             }
 
             if (BackgroundWork.isToolCall(work)) {
-                return [{ id: work.toolCallId, kind: 'task', title: titled(this.calls.get(work.toolCallId)?.title || this.tools.get(work.toolCallId)?.name, 'Background task'), ...(this.cancellableCalls.has(work.toolCallId) && { canStopAlone: true }) }];
+                this.adopted.add(work.toolCallId);
+                this.timed.delete(work.toolCallId);
+
+                return [{ id: work.toolCallId, kind: 'task', title: titled(this.names.get(work.toolCallId) || this.calls.get(work.toolCallId)?.title || this.tools.get(work.toolCallId)?.name, 'Background task'), ...(this.cancellableCalls.has(work.toolCallId) && { canStopAlone: true }) }];
             }
 
             return [];
         });
+
+        return [...items, ...[...this.timed.values()].map(({ id, title }): BackgroundItem => ({ id, kind: 'task', title }))];
+    }
+
+    /** The calls that began to hold the session since the last time this was asked, each once: the layer starts the timer of each, which is when it lapses. */
+    armed(): Timed[] {
+        return this.fresh.splice(0);
+    }
+
+    /** The time of the call `id` has come: it holds the session no more. Whether it did. */
+    lapse(id: string): boolean {
+        return this.timed.delete(id);
     }
 
     /**
@@ -400,7 +437,41 @@ export class UpdateMapperV2 {
             }
         }
 
-        return [...(known ? [] : this.close(agentId)), ...this.show(id, call, agentId)];
+        const events = [...(known ? [] : this.close(agentId)), ...this.show(id, call, agentId)];
+
+        // The session's own calls only: what a sub-agent started is its own business, and it is not held for.
+        if (agentId === undefined) {
+            this.hold(id);
+        }
+
+        return events;
+    }
+
+    /**
+     * A call of a tool that holds the session (`timed.ts`) has completed: from the time the agent named in it, the session is held. Looked at once, when the
+     * call completes; a call that failed or was cancelled holds nothing, and neither does one the agent's own list already names.
+     */
+    private hold(id: string): void {
+        const tool = this.tools.get(id);
+
+        if (tool?.state !== 'done' || !TIMED_TOOLS.has(tool.name) || this.seen.has(id)) {
+            return;
+        }
+
+        this.seen.add(id);
+
+        const timing = timingOf(tool.name, tool.input, tool.output, new Date());
+
+        if (timing) {
+            const timed = { id, title: timing.what ? titled(`${ timing.label } · ${ timing.what }`, timing.label) : timing.label, ms: timing.ms };
+
+            this.names.set(id, timed.title);
+
+            if (!this.adopted.has(id)) {
+                this.timed.set(id, timed);
+                this.fresh.push(timed);
+            }
+        }
     }
 
     private show(toolCallId: string, call: Call, agentId?: string): EngineEvent[] {

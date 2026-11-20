@@ -332,6 +332,46 @@ describe('the notes of finished background work', () => {
     });
 });
 
+describe('the notes of a monitor and a wakeup whose time came', () => {
+    const monitor: BackgroundItem = { id: 'toolu-monitor-1', kind: 'task', title: 'Monitor · Tick monitor probe' };
+    const wakeup: BackgroundItem = { id: 'toolu-wakeup-2', kind: 'task', title: 'Wakeup · Check the deploy' };
+
+    test('say that its time is over, as nothing tells what came of it, and a task of another sort is a task that finished', async () => {
+        const other: BackgroundItem = { id: 'wf-1', kind: 'task', title: 'Workflow: verify' };
+        const { notes, status } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's-1' };
+            yield { type: 'background', items: [monitor, wakeup, other] };
+            yield { type: 'done', result: 'Armed them' };
+            yield { type: 'background', items: [wakeup, other] };
+            yield { type: 'background', items: [other] };
+            yield { type: 'background', items: [] };
+            yield { type: 'text', delta: 'Heard from them', done: true };
+            yield { type: 'done', result: 'Heard from them' };
+        });
+
+        await waitFor(() => status() === 'succeeded', 'the run to end');
+        expect(notes()).toEqual(['Monitor ended: Tick monitor probe', 'Wakeup due: Check the deploy', 'Background task finished: Workflow: verify']);
+    });
+
+    test('a run waits for one: the item is on the run, and a Stop loses it with the session and tells the agent to start it again', async () => {
+        const finished = latch();
+        const { h, engine, runId, send, waits, status } = await setup(lingering({ finished, items: [monitor] }));
+
+        await waits();
+        expect(h.run(runId)).toMatchObject({ statusReason: 'Waiting for background work', background: [monitor] });
+
+        h.ok('run.cancel', { runId });
+        await waitFor(() => engine.closed === 1 && getRunWork(h.store.db, runId).lostBackground, 'the session to be closed and what it lost to be kept');
+        expect(getRunWork(h.store.db, runId).lostBackground).toEqual([monitor]);
+
+        send('Where were we');
+        await waitFor(() => status() === 'succeeded' && engine.turns.length === 2, 'the message to run in a new session');
+
+        expect(engine.turns[1].prompt).toContain('Start it again if it is still needed');
+        expect(engine.turns[1].prompt).toContain('- task: Monitor · Tick monitor probe');
+    });
+});
+
 describe('a message to a run that waits', () => {
     test('goes into the live session through the queue and a slot, is answered there, and the run waits again', async () => {
         const finished = latch();

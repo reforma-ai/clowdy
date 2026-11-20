@@ -1329,6 +1329,313 @@ describe('an ACP v2 session that outlives its turn', () => {
         });
     });
 
+    describe('timers inside the agent (a Monitor, a wakeup)', () => {
+        const MONITOR = 'toolu-monitor-1';
+        const monitor = (title: string, id = MONITOR): BackgroundItem => ({ id, kind: 'task', title: `Monitor · ${ title }` });
+        const wakeup = (title: string, id = 'toolu-wakeup-1'): BackgroundItem => ({ id, kind: 'task', title: `Wakeup · ${ title }` });
+        const indexOfBackground = (events: EngineEvent[], items: BackgroundItem[]) => events.findIndex(event => event.type === 'background' && JSON.stringify(event.items) === JSON.stringify(items));
+        const gap = 'gap 300';
+
+        /**
+         * Records the timers started with the length `ms`, and whether each was cleared or went off: how a test tells that a deadline does not outlive the session
+         * (its handle is unref'd either way, so only the clear says it was let go).
+         */
+        function watchTimers(ms: number) {
+            const started: ReturnType<typeof setTimeout>[] = [];
+            const cleared = new Set<unknown>();
+            const set = globalThis.setTimeout;
+            const clear = globalThis.clearTimeout;
+            const setSpy = spyOn(globalThis, 'setTimeout').mockImplementation(((handler: () => void, delay?: number, ...rest: unknown[]) => {
+                const handle = (set as (...args: unknown[]) => ReturnType<typeof setTimeout>)(handler, delay, ...rest);
+
+                if (delay === ms) {
+                    started.push(handle);
+                }
+
+                return handle;
+            }) as unknown as typeof setTimeout);
+            const clearSpy = spyOn(globalThis, 'clearTimeout').mockImplementation(((handle: ReturnType<typeof setTimeout>) => {
+                cleared.add(handle);
+                clear(handle);
+            }) as unknown as typeof clearTimeout);
+
+            return { started, cleared, stop: () => {
+                setSpy.mockRestore();
+                clearSpy.mockRestore();
+            } };
+        }
+
+        test('a completed Monitor is a task item before the turn says done, its ticks are turns of the agent, and the item leaves at its time, which owes the notice', async () => {
+            const { session } = use({ backgroundHandoffMs: 200, backgroundReportMs: 3000 }).start(`say watching\n${ gap }\nmonitor 1200 400 watch the build`);
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+
+            const pid = pidOf(events);
+
+            // Told before the `done`, which is what keeps the session open past the turn.
+            expect(indexOfBackground(events, [monitor('watch the build')])).toBeGreaterThan(-1);
+            expect(indexOfBackground(events, [monitor('watch the build')])).toBeLessThan(types(events).indexOf('done'));
+            expect(alive(pid)).toBe(true);
+
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['watching', 'done:watching', 'tick 1', 'done:tick 1', 'tick 2', 'done:tick 2', 'Monitor watch the build ended', 'done:Monitor watch the build ended']);
+            expect(backgrounds(events)).toEqual([[monitor('watch the build')], []]);
+            // The time came before the agent said anything of it, and the notice that follows is read.
+            expect(indexOfBackground(events, [])).toBeLessThan(events.findIndex(event => event.type === 'text' && event.delta.includes('ended')));
+            // Each tick, and the notice, is told by a `done` of its own, in a turn the agent started.
+            expect(events.filter(event => event.type === 'done')).toHaveLength(4);
+            await until(() => !alive(pid), 'the agent to stop');
+        });
+
+        test('the item is told as soon as the call completes, whatever the turn says after it', async () => {
+            const { session, abort } = use({ backgroundHandoffMs: 200 }).start('monitor 30000 0 early\nsay after the call');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+
+            const told = indexOfBackground(events, [monitor('early')]);
+
+            expect(told).toBeGreaterThan(-1);
+            expect(told).toBeLessThan(events.findIndex(event => event.type === 'text' && event.delta.startsWith('after')));
+
+            abort.abort();
+            await ended;
+            await session.close();
+        });
+
+        test('the session is held until the time the call named, not the guard: nothing ends it before, and it ends after the notice', async () => {
+            const { session } = use({ backgroundHandoffMs: 100, backgroundReportMs: 3000 }).start(`say watching\n${ gap }\nmonitor 1500 0 quiet`);
+            const started = Date.now();
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            // Well past the guard, with no tick and nothing open in the agent's own list.
+            await Bun.sleep(600);
+            expect(alive(pidOf(events))).toBe(true);
+            expect(backgrounds(events)).toEqual([[monitor('quiet')]]);
+
+            await ended;
+            await session.close();
+
+            expect(Date.now() - started).toBeGreaterThanOrEqual(1500);
+            expect(turns(events)).toEqual(['watching', 'done:watching', 'Monitor quiet ended', 'done:Monitor quiet ended']);
+        });
+
+        test('a ScheduleWakeup is a task item until the wakeup the call says is due, and the turn it starts is read', async () => {
+            const { session } = use({ backgroundHandoffMs: 200, backgroundReportMs: 3000 }).start(`say armed\n${ gap }\nwakeup 1 check the deploy`);
+            const started = Date.now();
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            expect(indexOfBackground(events, [wakeup('check the deploy')])).toBeLessThan(types(events).indexOf('done'));
+
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['armed', 'done:armed', 'woke: check the deploy', 'done:woke: check the deploy']);
+            expect(backgrounds(events)).toEqual([[wakeup('check the deploy')], []]);
+            expect(Date.now() - started).toBeGreaterThanOrEqual(1000);
+        });
+
+        test('a wakeup whose turn schedules the next one keeps the session open: the new item is told before that turn says idle', async () => {
+            const { session } = use({ backgroundHandoffMs: 200, backgroundReportMs: 3000 }).start(`say armed\n${ gap }\nonwake say woke first\nonwake wakeup 1 second\nwakeup 1 first`);
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(3);
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['armed', 'done:armed', 'woke first', 'done:woke first', 'woke: second', 'done:woke: second']);
+            expect(backgrounds(events)).toEqual([
+                [wakeup('first')],
+                [],
+                [wakeup('second', 'toolu-wakeup-2')],
+                [],
+            ]);
+            // The second is told in the first wake turn, before its `done`.
+            const second = indexOfBackground(events, [wakeup('second', 'toolu-wakeup-2')]);
+
+            expect(second).toBeGreaterThan(events.findIndex(event => event.type === 'text' && event.delta === 'woke first'));
+            expect(second).toBeLessThan(events.findIndex((event, index) => event.type === 'done' && index > second));
+        });
+
+        test('a time that comes while a turn runs waits for the turn: the item stays until its `done`, and the notice that follows is read', async () => {
+            // The monitor ends after 500 ms, in the middle of the turn that started it, which goes on for 800 ms more.
+            const { session } = use({ backgroundHandoffMs: 200, backgroundReportMs: 3000 }).start('monitor 500 0 slow\nsleep 800\nsay still here');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['still here', 'done:still here', 'Monitor slow ended', 'done:Monitor slow ended']);
+            expect(backgrounds(events)).toEqual([[monitor('slow')], []]);
+            // The list lost the item after the turn's `done`, not under it: the runtime saw the item at `done` and kept the session.
+            expect(indexOfBackground(events, [])).toBeGreaterThan(types(events).indexOf('done'));
+        });
+
+        test('a time that comes while the answer to a message is on its way waits for it too', async () => {
+            // The agent takes the message 1.2 s after it is sent; the monitor's time comes 0.4 s after it started, and the notice turn begins after the answer.
+            const { session } = use({ backgroundHandoffMs: 200, backgroundReportMs: 4000, agentEnv: { FAKE_ACP_SLOW: '1200' } }).start('say watching\ngap 2000\nmonitor 400 0 slowed');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            expect(await session.send?.('say answered')).toBe(true);
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['watching', 'done:watching', 'answered', 'done:answered', 'Monitor slowed ended', 'done:Monitor slowed ended']);
+            // The list lost the item after the `done` of that answer, not before it.
+            expect(indexOfBackground(events, [])).toBeGreaterThan(events.findIndex(event => event.type === 'done' && event.result === 'answered'));
+        });
+
+        test('a time that comes while the `done` waits for a steer the agent folded into the turn waits for it too', async () => {
+            // The steer lands in a turn that says no more, so its `done` waits the guard (500 ms) for a second turn that never comes; the monitor's time comes in that wait.
+            const { session } = use({ backgroundHandoffMs: 500, backgroundReportMs: 3000 }).start('gap 400\nmonitor 500 0 folded\nsay first\nsleep 200\nsay last');
+            const { events, ended, until: untilDone } = follow(session);
+
+            await until(() => textOf(events).includes('first'), 'the agent to say first');
+            expect(await session.steer?.('say steered')).toBe(true);
+            await untilDone(1);
+            await ended;
+            await session.close();
+
+            expect(turns(events)).toEqual(['first', 'steered', 'last', 'done:last', 'Monitor folded ended', 'done:Monitor folded ended']);
+            expect(backgrounds(events)).toEqual([[monitor('folded')], []]);
+            // The runtime saw the item at the `done` and kept the session: the list lost it after.
+            expect(indexOfBackground(events, [])).toBeGreaterThan(types(events).indexOf('done'));
+        });
+
+        test('two items hold the session until the last one: the first to lapse leaves the other', async () => {
+            const { session } = use({ backgroundHandoffMs: 200, backgroundReportMs: 3000 }).start(`say armed\n${ gap }\nmonitor 600 0 short\nmonitor 1400 0 long`);
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await ended;
+            await session.close();
+
+            const short = monitor('short');
+            const long = monitor('long', 'toolu-monitor-2');
+
+            expect(backgrounds(events)).toEqual([[short], [short, long], [long], []]);
+            expect(turns(events)).toEqual(['armed', 'done:armed', 'Monitor short ended', 'done:Monitor short ended', 'Monitor long ended', 'done:Monitor long ended']);
+        });
+
+        test('a call that failed, was cancelled or names no end holds nothing: the session ends at its guard', async () => {
+            for (const script of ['ending failed\nmonitor 5000 0 refused', 'ending cancelled\nwakeup 5 refused', 'monitor persistent forever']) {
+                const { session } = use({ backgroundHandoffMs: 200, backgroundReportMs: 3000 }).start(`say asked\n${ script }`);
+                const started = Date.now();
+                const { events, ended } = follow(session);
+
+                await ended;
+                await session.close();
+                current?.stop();
+
+                expect(backgrounds(events)).toEqual([]);
+                expect(turns(events)).toEqual(['asked', 'done:asked']);
+                expect(Date.now() - started).toBeLessThan(3000);
+                await until(() => !alive(pidOf(events)), 'the agent to stop');
+            }
+        });
+
+        test('a wakeup whose result does not say when is held for the delay it asked for and the minute the tool rounds it up by', async () => {
+            const { session, abort } = use({ backgroundHandoffMs: 200 }).start('say asked\nending plain\nwakeup 5 vague');
+            const { events, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            expect(backgrounds(events)).toEqual([[wakeup('vague')]]);
+
+            abort.abort();
+            await session.close();
+        });
+
+        test('the agent listing the call itself is the one that knows: its entry stands for the call, the item the mapper held is gone, and it does not come back', async () => {
+            const { session } = use({ backgroundHandoffMs: 200, backgroundReportMs: 3000 }).start(`say watching\n${ gap }\nlisted\nmonitor 800 0 listed`);
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            await ended;
+            await session.close();
+
+            // One item, the call's own, with the name the mapper gave it, until the agent's list loses it.
+            expect(backgrounds(events)).toEqual([[monitor('listed')], []]);
+            expect(turns(events)).toEqual(['watching', 'done:watching', 'listed finished', 'done:listed finished']);
+        });
+
+        test('cancelling the run, closing the session and the process leaving let every deadline go', async () => {
+            const watch = watchTimers(31_000);
+
+            try {
+                // Cancel.
+                const first = use({ backgroundHandoffMs: 200 }).start('say asked\nmonitor 31000 0 cancelled\nwakeup 31 also');
+                const one = follow(first.session);
+
+                await one.until(1);
+                expect(watch.started).toHaveLength(2);
+                // They never keep the daemon alive: a session whose process was killed with the daemon leaves no timer behind.
+                expect(watch.started.every(handle => !(handle as unknown as { hasRef(): boolean }).hasRef())).toBe(true);
+                first.abort.abort();
+                await one.ended;
+                await first.session.close();
+                expect(watch.started.every(handle => watch.cleared.has(handle))).toBe(true);
+                expect(types(one.events)).not.toContain('error');
+                expect(one.dones()).toHaveLength(1);
+                current?.stop();
+
+                // Close.
+                watch.started.length = 0;
+                watch.cleared.clear();
+
+                const second = use({ backgroundHandoffMs: 200 }).start('say asked\nmonitor 31000 0 closed');
+                const two = follow(second.session);
+
+                await two.until(1);
+                expect(watch.started).toHaveLength(1);
+                await second.session.close();
+                await two.ended;
+                expect(watch.started.every(handle => watch.cleared.has(handle))).toBe(true);
+                current?.stop();
+
+                // The process leaves: a failure, and the deadline goes with it.
+                watch.started.length = 0;
+                watch.cleared.clear();
+
+                const third = use({ backgroundHandoffMs: 200 }).start('say asked\nmonitor 31000 0 dies\ndie 200');
+                const three = follow(third.session);
+
+                await three.ended;
+                await third.session.close();
+                expect(watch.started).toHaveLength(1);
+                expect(watch.started.every(handle => watch.cleared.has(handle))).toBe(true);
+                expect(three.events.at(-1)).toMatchObject({ type: 'error', code: 'process_crashed' });
+                expect(three.dones()).toHaveLength(1);
+            }
+            finally {
+                watch.stop();
+            }
+        });
+
+        test('a message while the session is held is answered, and the item stays', async () => {
+            const { session, abort } = use({ backgroundHandoffMs: 200, backgroundReportMs: 3000 }).start(`say watching\n${ gap }\nmonitor 20000 0 long`);
+            const { events, ended, until: untilDone } = follow(session);
+
+            await untilDone(1);
+            expect(await session.send?.('say answered')).toBe(true);
+            await untilDone(2);
+
+            expect(turns(events)).toEqual(['watching', 'done:watching', 'answered', 'done:answered']);
+            expect(backgrounds(events)).toEqual([[monitor('long')]]);
+            expect(alive(pidOf(events))).toBe(true);
+
+            abort.abort();
+            await ended;
+            await session.close();
+        });
+    });
+
     describe('sub-agents', () => {
         const CALL = 'toolu-child-1';
         const own = (events: EngineEvent[], agentId = 'child-1') => events.filter(event => 'agentId' in event && event.agentId === agentId);

@@ -10,7 +10,7 @@ import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
 import { NativeAgents } from './native';
 import { describeProcess, killSurvivor } from './processes';
-import { BACKGROUND_KINDS, backgroundEndedMessage, backgroundStoppedMessage, CONTINUE_MESSAGE, lostBackgroundMessage, namedTitle, skillPrompt, systemPrompt } from './prompts';
+import { backgroundEndedMessage, backgroundNote, backgroundStoppedMessage, CONTINUE_MESSAGE, lostBackgroundMessage, skillPrompt, systemPrompt } from './prompts';
 import { lastTurnText } from './threads';
 import { sessionTitle } from './titles';
 import { ASK_USER } from './tools';
@@ -973,7 +973,7 @@ export class RunDriver {
                 // An item that the person stopped did not finish.
                 const stopped = live.stopped?.has(item.id) === true || (item.kind === 'subagent' && native.wasStopped(item));
 
-                runs.note(run.id, `Background ${ BACKGROUND_KINDS[item.kind] } ${ stopped ? 'stopped' : 'finished' }: ${ namedTitle(item.title) }`);
+                runs.note(run.id, backgroundNote(item, stopped));
 
                 return { item, stopped };
             });
