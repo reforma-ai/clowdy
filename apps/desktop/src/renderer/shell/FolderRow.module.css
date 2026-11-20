@@ -1,0 +1,49 @@
+/* A row of the one folder card: no border of its own. The card draws the hairline between rows. */
+.row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+    box-sizing: border-box;
+    min-height: var(--folder-row-min);
+    padding: var(--spacing-lg) var(--spacing-xl);
+}
+
+.row:hover {
+    background: var(--color-secondary-muted);
+}
+
+.icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-secondary-muted-text);
+}
+
+.text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    min-width: 0;
+}
+
+.title {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+/* The row is the drag handle. These stay a pointer, or a grab cursor sits on Remove and Open in GitHub. */
+.row .actions :is(button, a) {
+    cursor: pointer;
+}

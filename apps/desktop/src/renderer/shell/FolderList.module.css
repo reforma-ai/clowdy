@@ -1,26 +1,84 @@
-/* Rounder than the rows inside by the room around them, so the corners run alongside each other. */
+/* One surface, the same card Settings uses. Rows bring no border of their own. */
 .card {
-    --clowdy-card-radius: calc(var(--radius-xl) + var(--spacing-md));
+    /* A folder row is two lines (name, path) plus its padding. Add and the empty note use the same height. */
+    --folder-row-min: calc(var(--leading-md) + var(--spacing-xxs) + var(--leading-sm) + var(--spacing-lg) * 2);
+
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: clip;
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+}
+
+.card > * {
+    flex: none;
+}
+
+/* The list's own gap would split the card into stacked plates. Hairlines join the rows instead. */
+.list {
+    --clowdy-sortable-list-gap: 0;
+
+    display: flex;
+    flex-direction: column;
+}
+
+.card > * + *,
+.list > * + * {
+    border-top: 1px solid var(--color-secondary-muted-border);
 }
 
 /* The list has no grip: a row is what the person takes to drag it. */
-.sortable [data-folder-path] {
+.draggable [data-folder-path] {
     cursor: grab;
 }
 
-.rows {
+/* The same height as a folder row, the words centred in it. */
+.empty {
     display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--folder-row-min);
+    padding: var(--spacing-lg) var(--spacing-xl);
+    text-align: center;
+    text-wrap: balance;
 }
 
-/* Two even lines rather than one word alone on the second, where the card is narrower than the line. */
-.empty {
-    padding: var(--spacing-lg) var(--spacing-md);
-    text-wrap: balance;
+/* The last row of the card, as tall as a folder row. It does not grow when the dialog is tall. */
+.add {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--spacing-md);
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--folder-row-min);
+    margin: 0;
+    padding: 0 var(--spacing-xl);
+    border: 0;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    font-weight: 500;
+    text-align: start;
+    cursor: pointer;
+}
+
+.add:hover {
+    background: var(--color-secondary-muted);
+}
+
+.add:focus-visible {
+    outline: 2px solid var(--color-focus-ring, currentcolor);
+    outline-offset: -2px;
 }
 
 .path {
     display: flex;
     gap: var(--spacing-md);
+    padding: var(--spacing-md);
 }

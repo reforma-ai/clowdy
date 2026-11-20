@@ -3,22 +3,82 @@
     overflow-wrap: anywhere;
 }
 
-.nameInput {
-    width: 16rem;
+.nameField {
+    width: 18rem;
     max-width: 100%;
+    /* The reset sits half outside the field, on the icon's corner. */
+    overflow: visible;
 }
 
-/* The icon as the menu shows it, larger, on a tile of its own so a clear background reads as one. */
-.preview {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    width: var(--spacing-32);
-    height: var(--spacing-32);
-    margin-inline-end: var(--spacing-xs);
-    border: 1px solid var(--color-secondary-muted-border);
-    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+/* The whole left side of the name field: one hit target, a hairline before the text. Its own radius follows the field, which no longer clips this corner. */
+.iconSlot {
+    position: relative;
+    align-self: stretch;
+    width: var(--spacing-36);
+    margin-inline-start: calc(var(--spacing-10) * -1);
+    border-inline-end: 1px solid var(--color-secondary-muted-border);
+}
+
+.choose {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: calc(var(--clowdy-input-radius) * var(--squircle-radius-factor) - 1px) 0 0 calc(var(--clowdy-input-radius) * var(--squircle-radius-factor) - 1px);
     corner-shape: superellipse(var(--squircle-value));
+    background: transparent;
     color: var(--color-secondary-muted-text);
+    cursor: pointer;
+}
+
+.choose:hover {
+    background: var(--color-secondary-muted);
+}
+
+.choose:focus-visible {
+    outline: 2px solid var(--color-focus-ring, currentcolor);
+    outline-offset: -2px;
+}
+
+.choose:disabled {
+    cursor: default;
+}
+
+.file {
+    display: none;
+}
+
+/* Half of the circle sits outside the icon button, on its corner, so a press on the picture does not hit it. */
+.reset {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: var(--spacing-14);
+    height: var(--spacing-14);
+    transform: translate(50%, -50%);
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--color-surface-float);
+    color: var(--color-secondary-text);
+    box-shadow: 0 0 0 1px var(--color-secondary-muted-border);
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.iconSlot:hover .reset,
+.iconSlot:focus-within .reset {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.reset:focus-visible {
+    outline: 2px solid var(--color-focus-ring, currentcolor);
+    outline-offset: 1px;
 }

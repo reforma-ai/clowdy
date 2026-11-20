@@ -52,14 +52,14 @@ export async function uploadProjectIcon(root: RootStore, project: Project, file:
     return setProjectDefaults(root, project, { icon });
 }
 
-/** Takes the project's icon away, so it shows the folder icon, even with a favicon in its main folder. */
-export async function removeProjectIcon(root: RootStore, project: Project): Promise<boolean> {
-    return setProjectDefaults(root, project, { icon: NO_PROJECT_ICON });
-}
-
-/** Shows the favicon of the project's main folder again, after the person removed the icon. */
+/** Clears an uploaded picture, so the main folder's favicon shows again, or the folder icon when it has none. */
 export async function restoreFolderIcon(root: RootStore, project: Project): Promise<boolean> {
     return setProjectDefaults(root, project, { icon: null });
+}
+
+/** Hides the main folder's favicon, so the project shows the folder icon. */
+export async function removeProjectIcon(root: RootStore, project: Project): Promise<boolean> {
+    return setProjectDefaults(root, project, { icon: NO_PROJECT_ICON });
 }
 
 /** Saves the order the person dragged the projects to; the list goes back to the daemon's order when it refuses. */
