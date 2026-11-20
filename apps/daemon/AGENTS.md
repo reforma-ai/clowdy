@@ -161,7 +161,7 @@ Project skills are not mirrored: Claude Code reads `<cwd>/.claude/skills` by its
 
 ## Agents
 
-Every agent runs through `src/engine/acp/`, one generic engine over the Agent Client Protocol (`@agentclientprotocol/sdk` 2.7.0, `/unstable` entrypoint for `PromptResponse.usage`; the engine advertises no unstable capability). An agent is data, not a class. Claude Code and Codex run through their adapters, fetched with the daemon's own `bun x --bun <package>@<exact version>`; a pin must be at least three days old, because `bun x` reads the `bunfig.toml` of the folder the run works in and this repository's `minimumReleaseAge` refuses a newer one before the agent starts (the run fails with "No version matching ... blocked by minimum-release-age"). Research and the reasons: `.briefback/acp/research/`; plan: `.briefback/acp/plan.md`.
+Every agent runs through `src/engine/acp/`, one generic engine over the Agent Client Protocol (`@agentclientprotocol/sdk` 2.7.0, `/unstable` entrypoint for `PromptResponse.usage`; the engine advertises no unstable capability). An agent is data, not a class. Claude Code and Codex run through their adapters, fetched with the daemon's own `bun x --bun <package>@<exact version>`; a pin must be at least three days old, because on a machine whose global `~/.bunfig.toml` sets `minimumReleaseAge`, `bun x` refuses a newer one when its cache lacks that exact version, before the agent starts, in any folder (the run fails with "No version matching ... blocked by minimum-release-age"; measured with Bun 1.4.4, where `bun x` does not read the `bunfig.toml` of the folder the run works in; a warm cache works everywhere). Research and the reasons: `.briefback/acp/research/`; plan: `.briefback/acp/plan.md`.
 
 | File | Does |
 | --- | --- |

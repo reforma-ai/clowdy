@@ -86,9 +86,10 @@ export interface AgentSpec {
 /**
  * The agents Clowdy knows how to start. Most run their own program in ACP mode; Claude Code and Codex have no ACP mode of
  * their own and run through the official adapters, pinned here (read the adapter's changelog before bumping it). Pin a
- * version at least three days old: `bun x` reads the `bunfig.toml` of the folder the run works in, and this repository's
- * `minimumReleaseAge` refuses anything newer ("No version matching ... blocked by minimum-release-age"), which ends the
- * run before the agent starts. `npm view <package> time` shows when each version was published.
+ * version at least three days old: on a machine whose global `~/.bunfig.toml` sets `minimumReleaseAge`, `bun x` refuses
+ * anything newer when its cache lacks that exact version ("No version matching ... blocked by minimum-release-age"), which
+ * ends the run before the agent starts, in any folder (measured with Bun 1.4.4: `bun x` does not read the `bunfig.toml` of
+ * the folder the run works in). `npm view <package> time` shows when each version was published.
  */
 export const KNOWN_AGENTS: readonly AgentSpec[] = [
     {
@@ -164,8 +165,9 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         // of the child a sub-agent) and takes `_session/steering`, which the v2 layer uses when an agent advertises it (a plain prompt on v2 is held until the
         // turn ends). Codex never starts a turn to report that the work ended, so the runtime sends it a note (`wakesOnBackgroundEnd`). Checked through the
         // daemon on 2.8.0 ("Codex on v2 through the daemon (2.8.0)" in `acp-background-probe.md`, under `.briefback/background-work/research/`).
-        // Pinned before it was three days old, by the owner's decision of 2026-11-20 (it turns three days old on 2026-11-22): until then a Codex chat that works
-        // inside this repository fails with "blocked by minimum-release-age", because `bun x` reads this repository's `bunfig.toml`. Other folders are unaffected.
+        // Pinned before it was three days old, by the owner's decision of 2026-11-20 (it turns three days old on 2026-11-22): until then a first Codex chat on a
+        // machine whose global `~/.bunfig.toml` sets `minimumReleaseAge` fails with "blocked by minimum-release-age", in any folder, unless the bunx cache already
+        // holds 2.8.0.
         protocol: 'v2',
         wakesOnBackgroundEnd: true,
         compact: '/compact',
