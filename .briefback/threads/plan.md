@@ -68,13 +68,13 @@ Carried to later stages: restore `describeItem` (the old `run_inspect` line form
 
 **This stage:** A thread exists as data and an agent's tool call can use it. `Chat.parentChatId` and migration 16; a `ThreadService` in the daemon that creates a thread chat through the shared send path, tells another chat (stream item `from`, queue item `from`), stops a thread and reads one (`output`, `log`, `list`). Limits and the tree rule are enforced. Tools are `ToolDefinition`s marked for the CLI surface. No notice and no CLI yet; tests call the tools through `ScriptEngine`.
 
-- [ ] Complete
-  - [ ] `Chat.parentChatId`, `MessageSource`, `from` on `user` items and queued messages (protocol), migration 16
-  - [ ] `send` split so a thread spawn and a tell share it (`from`, mode, at rest or queued)
-  - [ ] `thread_spawn` (inherits engine, model, effort, mode; tasks assign the thread's run; limits)
-  - [ ] `thread_tell`, `thread_stop`, `thread_output`, `thread_log`, `thread_list`
-  - [ ] Archive and delete cascade, `chat.delete` guard over threads
-  - [ ] `threads.test.ts`
+- [x] Complete
+  - [x] `Chat.parentChatId`, `MessageSource`, `from` on `user` items and queued messages (protocol), migration 16
+  - [x] `send` split so a thread spawn and a tell share it (`from`, mode, at rest or queued)
+  - [x] `thread_spawn` (inherits engine, model, effort, mode; tasks assign the thread's run; limits)
+  - [x] `thread_tell`, `thread_stop`, `thread_output`, `thread_log`, `thread_list`
+  - [x] Archive and delete cascade, `chat.delete` guard over threads
+  - [x] `threads.test.ts`
 
 **Files**
 
@@ -87,7 +87,9 @@ Carried to later stages: restore `describeItem` (the old `run_inspect` line form
 
 **Done when:** a scripted orchestrator spawns a thread, tells it with steer and queue, reads its output and log, stops it, and every refusal (depth, caps, tree, archived) is a test.
 **Verify:** `cd apps/daemon && bun test && bun run typecheck && bun run lint`; `cd packages/protocol && bun run typecheck`
-**Commits:** None yet.
+**Commits:**
+
+- `14e8859` feat(daemon): add threads as child chats with the thread tools. Review found and fixed: `thread_output` returned the first 4,000 characters of the whole turn instead of the final message, clipping could split an emoji, a pass-through helper, error punctuation. `thread_stop` also stops a thread in `waiting_background` (its session holds work); the tools carry `cli` metadata for Stage 4.
 
 ## Stage 3 — Notices and `thread wait`
 
@@ -144,12 +146,12 @@ Carried to later stages: restore `describeItem` (the old `run_inspect` line form
 
 **This stage:** The app shows threads. Rows nest under the parent chat, collapsed by default; the filter loses "subthreads" and keeps "finished subthreads"; the strip above the composer lists active threads like sub-agents, with Stop; the stream draws `from` as a card (`<thread> finished`, `Message from <thread>`); a thread's chat page has a crumb to its parent; archive and delete confirmations list the cascade. The fixture daemon follows the new rules.
 
-- [ ] Complete
-  - [ ] `agentRows`, folds (collapsed by default), `visibleChats`, filter menu
-  - [ ] `RunningAgents` rows for active threads, Stop, Stop all for threads
-  - [ ] Stream card for `from`, queue row for a queued notice
-  - [ ] Crumb, archive/delete cascade text, fixtures, tests
-  - [ ] `apps/desktop/AGENTS.md`
+- [x] Complete
+  - [x] `agentRows`, folds (collapsed by default), `visibleChats`, filter menu
+  - [x] `RunningAgents` rows for active threads, Stop, Stop all for threads
+  - [x] Stream card for `from`, queue row for a queued notice
+  - [x] Crumb, archive/delete cascade text, fixtures, tests
+  - [x] `apps/desktop/AGENTS.md`
 
 **Files**
 
@@ -158,4 +160,6 @@ Carried to later stages: restore `describeItem` (the old `run_inspect` line form
 
 **Done when:** the fixture app shows a thread tree that folds, rows above the composer with Stop, and the cards, and the desktop tests, lint and typecheck pass.
 **Verify:** `bunx turbo run lint typecheck test --filter=@clowdy/desktop`
-**Commits:** None yet.
+**Commits:**
+
+- `58e6c6e` feat(desktop): show threads as nested chats with their own rows and cards. Review found and fixed: the hand-off transcript wrote a thread's messages as the person's words and dropped notices; long thread messages are clamped; one rule for "threads at work". A queued message from a thread is shown with the sender's title.
