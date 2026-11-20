@@ -16,9 +16,11 @@ import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError
  *                               (the parent's view with `recipientMessageId`, the child's with `senderMessageId`, its id the id of the call, which the
  *                               child's own calls name as their `parentToolUseId`), the child says a message and calls a `Bash` tool on its own session, and
  *                               <ms> after it began it sends its report as a `session_message`, `subagent_update` `idle` and its own `idle`. The parent's
- *                               turn goes on meanwhile and its state never lists the child. A cancel (`session/cancel`) ends it with `stopReason: cancelled`
+ *                               turn goes on meanwhile and its state never lists the child. A cancel (`session/cancel`) of the parent ends it with `stopReason: cancelled`
+ *                               (and the parent's turn too); a cancel of the child's own session ends that child alone (see `session/cancel` below)
  *   stray <text>                says <text> on a session that no `subagent_update` announced, which the client must not read
  *   outcome <reason>            how the next sub-agent ends: `end_turn` (default), `cancelled` or `error`; the last two send no report
+ *   locked                      the next sub-agent is announced without the `cancel` capability: the client may not cancel it
  *   flap                        the next background sub-agent that ends is woken again at once, as one with a background command of its own is: its `idle`
  *                               and the list without it, then `running` and the list with it again a moment later, and the real end 150 ms after that
  *   background <kind> <ms> <title>   starts work that runs on after the turn and ends <ms> later, listed in `background` of every state until then:
@@ -33,6 +35,12 @@ import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError
  *                               zero usage, a `running`, the last message again under a new id (one `agent_message_chunk` with all the text, as the
  *                               adapter says it; `whole`: one `agent_message`), and an `idle` with the real usage
  *   die <ms>                    the agent's process exits that long from now, whatever it is doing
+ *
+ * `session/cancel` of a sub-agent's session, as Claude's adapter takes it, ends that sub-agent and nothing else: its terminal gets an exit status, its call is
+ * `cancelled`, the parent mirrors it in `subagent_update` (`idle`, stop reason `cancelled`, no report), the child says the same on its own session, and the
+ * parent's state lists the work without it (a repeated `idle` snapshot, or `running` while a turn goes on); the parent and the other sub-agents are
+ * untouched, and a work that ended on its own, or a repeat, is not touched again. A background sub-agent that was stopped is reported by the report turn
+ * like any work that ended (`<title> stopped` by default). A `session/cancel` of the parent while only background work runs does nothing.
  *
  * FAKE_ACP_LOG is a file that gets a line for every `session/cancel`, `steer <text>` for every prompt that comes while a turn runs (v2 has no steering
  * method: a prompt is inserted into the turn), and `title <session> <title>` for every `session/set_title`. A prompt during a turn is always taken:
@@ -101,6 +109,8 @@ interface FakeSession {
     /** How the next sub-agent ends (`outcome`), and whether it is woken again at once (`flap`). */
     outcome: 'end_turn' | 'cancelled' | 'error';
     flap: boolean;
+    /** The next sub-agent is announced without the `cancel` capability (`locked`). */
+    locked: boolean;
 }
 
 /** One piece of background work. */
@@ -116,9 +126,15 @@ interface Work {
     callId?: string;
     outcome?: FakeSession['outcome'];
     flap?: boolean;
+    /** A sub-agent's call has begun and has not ended, so a stop cancels it. */
+    calling?: boolean;
+    /** The client stopped the sub-agent: its report says so. */
+    stopped?: boolean;
 }
 
 const sessions = new Map<string, FakeSession>();
+/** The foreground sub-agents that work now, by their session id: a cancel of one ends it alone. */
+const stoppable = new Map<string, AbortController>();
 /** What the client said it can do in `initialize`, for the `capabilities` directive. */
 let clientCapabilities: unknown;
 let counter = 0;
@@ -136,7 +152,7 @@ function systemText(content: unknown): string | undefined {
 }
 
 function open(id: string, params: { cwd: string; additionalDirectories?: string[]; mcpServers?: McpServer[]; systemPrompt?: { content?: unknown } | null; replayFrom?: unknown; _meta?: unknown }, resumed: boolean): FakeSession {
-    const session: FakeSession = { cwd: params.cwd, directories: params.additionalDirectories, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, replayFrom: params.replayFrom ?? undefined, resumed, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [], queue: [], id, work: [], reports: [], reportLines: [], gap: 40, reporting: false, landed: false, outcome: 'end_turn', flap: false };
+    const session: FakeSession = { cwd: params.cwd, directories: params.additionalDirectories, mcpServers: params.mcpServers ?? [], systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta, replayFrom: params.replayFrom ?? undefined, resumed, model: 'fast', effort: 'high', sets: 0, cancel: new AbortController(), count: 0, cost: 0, prompting: false, steers: [], queue: [], id, work: [], reports: [], reportLines: [], gap: 40, reporting: false, landed: false, outcome: 'end_turn', flap: false, locked: false };
 
     sessions.set(id, session);
 
@@ -221,7 +237,10 @@ async function announceChild(session: FakeSession, send: Send, ref: string, titl
     const callId = `toolu-${ ref }`;
     const content = [{ type: 'text' as const, text: `Do this: ${ title }` }];
 
-    await send({ sessionUpdate: 'subagent_update', sessionId: ref, title, description: 'general-purpose', capabilities: { cancel: {} }, state: { state: 'running', background: [] } });
+    const capabilities = session.locked ? {} : { cancel: {} };
+
+    session.locked = false;
+    await send({ sessionUpdate: 'subagent_update', sessionId: ref, title, description: 'general-purpose', capabilities, state: { state: 'running', background: [] } });
     await send({ sessionUpdate: 'state_update', state: 'running', background: [] }, ref);
     await send({ sessionUpdate: 'session_message', messageId: callId, senderSessionId: session.id, recipientSessionId: ref, content, recipientMessageId: callId });
     await send({ sessionUpdate: 'session_message', messageId: callId, senderSessionId: session.id, recipientSessionId: ref, content, senderMessageId: callId }, ref);
@@ -267,45 +286,59 @@ async function stopChild(session: FakeSession, send: Send, ref: string, title: s
     await send({ sessionUpdate: 'state_update', ...idle } as SessionUpdate, ref);
 }
 
-/** A foreground sub-agent: the turn goes on while it works, and its state never lists it. Settles with `false` when a cancel ended it. */
+/**
+ * A foreground sub-agent: the turn goes on while it works, and its state never lists it. Settles with `false` when a cancel of the parent ended it, which
+ * ends the turn too; a cancel of the child's own session ends it alone and the turn goes on (`true`).
+ */
 async function foreground(session: FakeSession, client: AgentContext, ms: number, title: string): Promise<boolean> {
     const send: Send = (update, sessionId = session.id) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
     const ref = `child-${ ++works }`;
     const { signal } = session.cancel;
+    const own = new AbortController();
     const outcome = session.outcome;
+    const cancelled = () => signal.aborted || own.signal.aborted;
     const nap = (wait: number) => new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, wait);
-
-        signal.addEventListener('abort', () => {
+        const stop = () => {
             clearTimeout(timer);
             resolve();
-        }, { once: true });
+        };
+
+        signal.addEventListener('abort', stop, { once: true });
+        own.signal.addEventListener('abort', stop, { once: true });
     });
 
     session.outcome = 'end_turn';
-    await announceChild(session, send, ref, title);
-    await childCall(send, ref, title, 'start');
-    await nap(ms / 2);
+    stoppable.set(ref, own);
 
-    if (signal.aborted) {
-        await childCall(send, ref, title, 'cancel');
-        await stopChild(session, send, ref, title, 'cancelled');
+    try {
+        await announceChild(session, send, ref, title);
+        await childCall(send, ref, title, 'start');
+        await nap(ms / 2);
 
-        return false;
+        if (cancelled()) {
+            await childCall(send, ref, title, 'cancel');
+            await stopChild(session, send, ref, title, 'cancelled');
+
+            return !signal.aborted;
+        }
+
+        await childCall(send, ref, title, 'end');
+        await nap(ms / 2);
+
+        if (cancelled()) {
+            await stopChild(session, send, ref, title, 'cancelled');
+
+            return !signal.aborted;
+        }
+
+        await stopChild(session, send, ref, title, outcome);
+
+        return true;
     }
-
-    await childCall(send, ref, title, 'end');
-    await nap(ms / 2);
-
-    if (signal.aborted) {
-        await stopChild(session, send, ref, title, 'cancelled');
-
-        return false;
+    finally {
+        stoppable.delete(ref);
     }
-
-    await stopChild(session, send, ref, title, outcome);
-
-    return true;
 }
 
 /** Starts a piece of background work that ends `ms` from now. */
@@ -327,10 +360,6 @@ async function startWork(session: FakeSession, client: AgentContext, kind: Work[
         ref = `child-${ n }`;
         item = { type: 'subagent', sessionId: ref };
         await announceChild(session, send, ref, title);
-
-        // The child's call starts soon after, and ends while it works: its traffic is on its own session, after the parent's turn is over.
-        setTimeout(() => void childCall(send, ref, title, 'start'), Math.min(30, ms / 4));
-        setTimeout(() => void childCall(send, ref, title, 'end'), ms / 2);
     }
     else {
         ref = `wf-${ n }`;
@@ -343,6 +372,21 @@ async function startWork(session: FakeSession, client: AgentContext, kind: Work[
     if (kind === 'subagent') {
         session.outcome = 'end_turn';
         session.flap = false;
+
+        // The child's call starts soon after, and ends while it works: its traffic is on its own session, after the parent's turn is over. A child that was
+        // stopped (or ended) before then makes no call.
+        setTimeout(() => {
+            if (!work.done) {
+                work.calling = true;
+                void childCall(send, ref, title, 'start');
+            }
+        }, Math.min(30, ms / 4));
+        setTimeout(() => {
+            if (!work.done && work.calling) {
+                work.calling = false;
+                void childCall(send, ref, title, 'end');
+            }
+        }, ms / 2);
     }
 
     session.work.push(work);
@@ -361,6 +405,7 @@ async function endWork(session: FakeSession, work: Work): Promise<void> {
     const send = (update: SessionUpdate, sessionId = session.id) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
 
     work.done = true;
+    work.calling = false;
 
     if (work.kind === 'terminal') {
         await send({ sessionUpdate: 'terminal_update', terminalId: work.ref, exitStatus: { exitCode: 0 } });
@@ -393,6 +438,36 @@ async function endWork(session: FakeSession, work: Work): Promise<void> {
     }
 }
 
+/**
+ * The client asked a background sub-agent to stop (`session/cancel` on its session): its call is cancelled, it and its parent say it stopped, the list loses it,
+ * and the agent owes a report of it. Nothing else is touched. A sub-agent that has ended already, and a repeat, are not touched again.
+ */
+async function stopWork(session: FakeSession, work: Work): Promise<void> {
+    const { client } = session;
+
+    if (!client || work.done) {
+        return;
+    }
+
+    const send = (update: SessionUpdate, sessionId = session.id) => client.notify(methods.client.session.update, { sessionId, update }).catch(() => undefined);
+
+    work.done = true;
+    work.stopped = true;
+
+    if (work.calling) {
+        work.calling = false;
+        await childCall(send, work.ref, work.title, 'cancel');
+    }
+
+    await stopChild(session, send, work.ref, work.title, 'cancelled');
+    await send(state(session, { state: session.prompting ? 'running' : 'idle' }));
+
+    if (session.reportLines !== false) {
+        session.reports.push(work);
+        report(session);
+    }
+}
+
 /** Begins the report turn of finished work after the gap, unless a turn runs by then: that turn reports it when it ends. */
 function report(session: FakeSession): void {
     if (session.reporting || session.reports.length === 0) {
@@ -408,7 +483,8 @@ function report(session: FakeSession): void {
         }
 
         const finished = session.reports.splice(0);
-        const lines = session.reportLines.length > 0 ? session.reportLines : [`say ${ finished.map(work => work.title).join(', ') } finished`];
+        const said = finished.some(work => work.stopped) ? finished.map(work => `${ work.title } ${ work.stopped ? 'stopped' : 'finished' }`).join(', ') : `${ finished.map(work => work.title).join(', ') } finished`;
+        const lines = session.reportLines.length > 0 ? session.reportLines : [`say ${ said }`];
 
         session.reportLines = [];
         session.prompting = true;
@@ -560,6 +636,9 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     break;
                 case 'flap':
                     session.flap = true;
+                    break;
+                case 'locked':
+                    session.locked = true;
                     break;
                 case 'background': {
                     const [kind, ms, ...title] = rest;
@@ -812,7 +891,25 @@ const app = agent({ name: 'fake-acp-agent-v2' })
     })
     .onNotification(methods.agent.session.cancel, ({ params }) => {
         log(`cancel ${ params.sessionId }`);
-        sessions.get(params.sessionId)?.cancel.abort();
+
+        const session = sessions.get(params.sessionId);
+
+        if (session) {
+            session.cancel.abort();
+
+            return;
+        }
+
+        // A sub-agent's own session: it alone is cancelled, whether it works in the foreground or the background.
+        stoppable.get(params.sessionId)?.abort();
+
+        for (const parent of sessions.values()) {
+            const work = parent.work.find(candidate => candidate.kind === 'subagent' && candidate.ref === params.sessionId);
+
+            if (work) {
+                void stopWork(parent, work);
+            }
+        }
     })
     .onRequest(methods.agent.session.prompt, async ({ params, client }) => {
         const session = sessions.get(params.sessionId);

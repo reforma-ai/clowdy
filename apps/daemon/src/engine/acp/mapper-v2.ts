@@ -214,6 +214,11 @@ export class UpdateMapperV2 {
         return this.children.has(sessionId);
     }
 
+    /** Whether the client may ask the sub-agent `sessionId` to stop: announced with the permission to, and not ended. */
+    stoppable(sessionId: string): boolean {
+        return this.children.stoppable(sessionId);
+    }
+
     /** One update of a sub-agent's session. Its first sign of life tells the runtime it exists, with the call that started it when its calls name one. */
     private fromChild(agentId: string, update: SessionUpdate): EngineEvent[] {
         if (!this.children.has(agentId)) {

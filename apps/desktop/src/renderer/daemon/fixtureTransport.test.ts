@@ -111,6 +111,35 @@ describe('FixtureTransport', () => {
         expect([status('r-ex-07'), status('r-ver-02'), status('r-ex-09'), status('r-orch-1')]).toEqual(['cancelled', 'cancelled', 'succeeded', 'running']);
     });
 
+    it('stops a sub-agent of the session alone when its session can end it, refuses one that cannot, and keeps the orchestrator at work', async () => {
+        const data = createFixtureData();
+
+        data.runs.push({ ...structuredClone(data.runs.find(run => run.id === 'r-na-02')!), id: 'r-na-03', canStopAlone: undefined });
+
+        const { transport } = await connected({ data });
+        const status = async (id: string) => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === id)?.status;
+
+        expect(await transport.command({ type: 'run.cancel', runId: 'r-na-03' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(await transport.command({ type: 'run.cancel', runId: 'r-na-02' })).toMatchObject({ ok: true, data: { cancelled: ['r-na-02'] } });
+        expect([await status('r-na-02'), await status('r-na-03'), await status('r-ex-07'), await status('r-orch-1')]).toEqual(['cancelled', 'running', 'running', 'running']);
+    });
+
+    it('stops the agents of an orchestrator and not the orchestrator: spawned runs with what is below them, sub-agents that can stop alone', async () => {
+        const data = createFixtureData();
+
+        data.runs.push({ ...structuredClone(data.runs.find(run => run.id === 'r-na-02')!), id: 'r-na-03', canStopAlone: undefined });
+
+        const { transport } = await connected({ data });
+        const result = await transport.command({ type: 'run.stopAgents', runId: 'r-orch-1' });
+        const { runs } = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        const status = (id: string) => runs.find(run => run.id === id)?.status;
+
+        expect(result).toMatchObject({ ok: true });
+        expect(result.ok && new Set((result.data as { stopped: string[] }).stopped)).toEqual(new Set(['r-ex-07', 'r-ver-02', 'r-ex-08', 'r-ex-12', 'r-na-02']));
+        expect([status('r-ex-07'), status('r-ver-02'), status('r-ex-08'), status('r-ex-12'), status('r-na-02'), status('r-na-03'), status('r-orch-1'), status('r-ex-09')]).toEqual(['cancelled', 'cancelled', 'cancelled', 'cancelled', 'cancelled', 'running', 'running', 'succeeded']);
+        expect(await transport.command({ type: 'run.stopAgents', runId: 'r-missing' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    });
+
     it('streams a reply to a chat message, starting an orchestrator for a chat that had none', async () => {
         const { transport, events } = await connected();
 

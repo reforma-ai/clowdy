@@ -256,6 +256,12 @@ export interface Turn {
      */
     received(): Promise<string | undefined>;
     /**
+     * For a session that can end one sub-agent alone (see `stopAnswer`): resolves with the `agentId` the runtime asked to stop next, oldest first, and
+     * `undefined` once the session is over. The script answers it as an agent does, with the events that end that sub-agent (`subagent` with state
+     * `cancelled`, and the snapshot without it).
+     */
+    stopRequested(): Promise<string | undefined>;
+    /**
      * Waits for `latch` or for the end of the session, whichever comes first: `true` when the test released the latch (the background work finished, say),
      * `false` when the session ended first, and the script returns. A script that waited on the latch with `latch.wait(turn.signal)` would throw then.
      */
@@ -271,7 +277,8 @@ export type Script = (turn: Turn) => AsyncGenerator<EngineEvent>;
  * A script may go on after it yields `done`, as the session of an agent with background work does: it yields `background` snapshots, waits for
  * the test with `turn.hold`, yields the events of a turn the agent starts on its own (no prompt behind it) and ends it with `done` again, answers
  * what `send` handed over (`turn.received`), and ends the iterator by returning. The runtime closes the session meanwhile, or aborts it, and the
- * script's wait then ends (`hold` and `received` answer `false` and `undefined`).
+ * script's wait then ends (`hold` and `received` answer `false` and `undefined`). With a `stopAnswer` its sessions can end one sub-agent alone
+ * (`stopItem`), and the script hears the request with `turn.stopRequested()`.
  */
 export class ScriptEngine implements AgentEngine {
     readonly id: EngineId = 'fake';
@@ -288,6 +295,13 @@ export class ScriptEngine implements AgentEngine {
      * over refuses whatever this says. It decides when a session starts whether that session has `send`, and when `send` is called what it answers.
      */
     sendAnswer?: (text: string, turn: Turn) => boolean | Promise<boolean>;
+    /** The sub-agents the runtime asked a session to stop alone (`stopItem`), in order, whatever the answer. */
+    readonly stopRequests: string[] = [];
+    /**
+     * Answers a `stopItem`: `true` takes the request (the script reads it with `turn.stopRequested()` and ends the sub-agent), `false` refuses it. Without
+     * it the sessions have no `stopItem` at all, as those of an engine that cannot end one sub-agent alone. A session that is over refuses whatever this says.
+     */
+    stopAnswer?: (agentId: string, turn: Turn) => boolean | Promise<boolean>;
     closed = 0;
     /** When each session started and finished closing (epoch ms), by session number minus one. */
     readonly startedAt: number[] = [];
@@ -306,6 +320,7 @@ export class ScriptEngine implements AgentEngine {
         const engine = this;
         const closing = new AbortController();
         const inbox: string[] = [];
+        const stops: string[] = [];
         const waiting: (() => void)[] = [];
         let over = false;
 
@@ -320,6 +335,13 @@ export class ScriptEngine implements AgentEngine {
                 }
 
                 return over || turn.signal.aborted ? undefined : inbox.shift();
+            },
+            async stopRequested() {
+                while (!over && !turn.signal.aborted && stops.length === 0) {
+                    await new Promise<void>(resolve => waiting.push(resolve));
+                }
+
+                return over || turn.signal.aborted ? undefined : stops.shift();
             },
             async hold(latch) {
                 try {
@@ -377,6 +399,20 @@ export class ScriptEngine implements AgentEngine {
                     }
 
                     inbox.push(text);
+                    wake();
+
+                    return true;
+                },
+            }),
+            ...(engine.stopAnswer && {
+                stopItem: async (agentId: string) => {
+                    engine.stopRequests.push(agentId);
+
+                    if (over || turn.signal.aborted || !await engine.stopAnswer?.(agentId, turn)) {
+                        return false;
+                    }
+
+                    stops.push(agentId);
                     wake();
 
                     return true;

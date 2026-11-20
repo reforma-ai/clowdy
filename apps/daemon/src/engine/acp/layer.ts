@@ -83,6 +83,12 @@ export interface ProtocolLayer {
      * `done` for the whole activity, and `false` when the session is over or the agent refused it. It never waits for the events to be read.
      */
     send?(text: string): Promise<boolean>;
+    /**
+     * Asks the agent to end the sub-agent `agentId` (the id its `subagent` event had) and nothing else: the session and the other sub-agents go on. Resolves
+     * `true` when the request was written, `false` when the layer did not send it (the conversation is over, the sub-agent is unknown or has ended, or the agent
+     * did not say it can be ended). The end itself comes on the stream of `run`. A layer whose protocol has no such request leaves it out.
+     */
+    stopItem?(agentId: string): Promise<boolean>;
     /** Tells the agent to stop the turn. Settles once it is written, so the session may close the agent's input after it. */
     cancel(): Promise<void>;
     /** Closes the connection, after the process is gone. */

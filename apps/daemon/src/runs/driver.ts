@@ -146,7 +146,9 @@ export class RunDriver {
     /** Aborted when the daemon stops. A session may run on after its turn (`EngineStartOptions.title`), when its run's own signal is gone. */
     private stopping = new AbortController();
 
-    constructor(private deps: DriverDeps) {}
+    constructor(private deps: DriverDeps) {
+        deps.runs.stopNative = (child, reason) => this.stopSubagent(child, reason);
+    }
 
     /* --------------------------------- Starting -------------------------------- */
 
@@ -337,6 +339,45 @@ export class RunDriver {
     }
 
     /**
+     * Prepares the request that asks the live session of the run that owns the native sub-agent `child` to end it, and only it: the session, the run and
+     * the other sub-agents go on (the queue is not paused either). Answers the function that sends it, which the caller runs once its transaction has
+     * committed (`RunService.stopAlone`), or `undefined` when the request cannot be made: the owner's session is live and not ending, it can end a
+     * sub-agent alone (`EngineSession.stopItem`), and it has this one running. The request is sent and not waited for. The sub-agent's run ends the way
+     * every sub-agent's does, through the engine's `subagent` event (`cancelled`, with `reason` as what its run shows), so a sub-agent that finishes on
+     * its own meanwhile ends as finished. The agent ends that sub-agent and nothing below it (Claude's adapter leaves the sub-agents of a stopped
+     * sub-agent working), so a Stop of one that has sub-agents of its own asks for each of them (`RunService.cancel`).
+     */
+    stopSubagent(child: Run, reason: string): (() => void) | undefined {
+        // The run whose session holds the sub-agent: a sub-agent of a sub-agent hangs from the one that started it, and that one from the session's run.
+        let owner: Run | undefined = child;
+
+        while (owner?.origin === 'native' && owner.parentRunId !== undefined) {
+            owner = getRun(this.deps.store.db, owner.parentRunId);
+        }
+
+        const live = owner && owner !== child ? this.live.get(owner.id) : undefined;
+        const { session, native } = live ?? {};
+        const stopItem = session?.stopItem?.bind(session);
+        const agentId = native?.agentOf(child.id);
+
+        if (!live || !native || !stopItem || agentId === undefined || live.ended?.aborted) {
+            return undefined;
+        }
+
+        return () => {
+            native.stopped(agentId, reason);
+            stopItem(agentId).then(
+                (sent) => {
+                    if (!sent) {
+                        console.warn(`[clowdy] the session that holds sub-agent ${ child.id } did not ask its agent to stop it: the sub-agent or the session has ended, or cannot be stopped alone`);
+                    }
+                },
+                error => console.warn(`[clowdy] stopping sub-agent ${ child.id } failed: ${ errorMessage(error) }`)
+            );
+        };
+    }
+
+    /**
      * Whether the run's turn, the one that waits to start or the one in flight, is the agent's compact command (`chat.compact`): asking for another would
      * only compact what is being compacted.
      */
@@ -479,7 +520,7 @@ export class RunDriver {
         const turnAbort = new AbortController();
         const ended = AbortSignal.any([signal, turnAbort.signal, this.stopping.signal]);
         const writer = new TurnWriter(store, runId);
-        const native = new NativeAgents(store, runs, run);
+        const native = new NativeAgents(store, runs, run, () => typeof live.session?.stopItem === 'function');
 
         live.engine = run.engine;
         live.writer = writer;
@@ -930,7 +971,8 @@ export class RunDriver {
             writer.end();
 
             for (const item of finished) {
-                runs.note(run.id, `Background ${ BACKGROUND_KINDS[item.kind] } finished: ${ namedTitle(item.title) }`);
+                // A sub-agent that the person stopped did not finish.
+                runs.note(run.id, `Background ${ BACKGROUND_KINDS[item.kind] } ${ item.kind === 'subagent' && native.wasStopped(item) ? 'stopped' : 'finished' }: ${ namedTitle(item.title) }`);
             }
         });
     }

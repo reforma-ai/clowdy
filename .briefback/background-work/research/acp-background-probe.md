@@ -223,6 +223,32 @@ Defects the real runs found in the first version of this work, fixed with tests:
 - The child's usage: the real adapter reports none for a child (`state_update idle` of a child has no `usage`), so none is mapped.
 - Codex and Cursor: Codex's sub-agents are on the wire only (above); neither is on v2 in the integration branch.
 
+## Stopping one sub-agent (2026-11-19)
+
+Claude Code 2.1.312 through `claude-agent-acp` 0.107.0 on ACP v2, haiku, raw wire (a scratch harness, then a scratch daemon on its own data folder). Evidence: the client sends the ordinary notification `{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"<the child's session id>"}}` (no id, no answer; the SDK's `methods.agent.session.cancel`), with the id from the child's `subagent_update`. The adapter offers it per child: `subagent_update.capabilities.cancel` is `{}` on every child it announced, and the draft says a child with no such capability permits no client request.
+
+| Case | Result |
+| --- | --- |
+| Cancel one of two background sub-agents (each running a `python3 -c "import time; time.sleep(61)"`) | Its terminal gets `exitStatus`, its call goes `cancelled`, the parent's `subagent_update` and the child's own `state_update` say `idle` with `stopReason: cancelled`, the parent's `state_update.background` loses it in the same tick; its processes (shell and python) are gone within about a second (0.58 s in the daemon check); the other child, the parent session and the parent's list are untouched |
+| The same while the parent runs a foreground tool | Same; the foreground call is not touched and finishes |
+| A second cancel of a child that already stopped, and a cancel of one that finished | Nothing happens (no error, no update) |
+| `session/cancel` of the parent while only background work runs | Nothing happens: Claude Code spares background work (the Stop of a whole run is the daemon killing the process group) |
+| `session/close` of a child, `tool_call/cancel` and `terminal/cancel` of a foreground command | Refused ("not running in the background"); `terminal/cancel` of a background command works but gives its parent no report turn |
+
+The parent hears of a stopped sub-agent from Claude Code itself: a task notification ("stopped by user"), and about 1.1 to 1.5 s later the parent starts a report turn of its own (`running` with no prompt behind it, the answer, `idle end_turn`), so the 20 s report wait covers it and a report turn follows. In the daemon check the orchestrator said "Sub-agent A (the 73-second sleep) was stopped before it reported ... The notification says the user stopped it".
+
+### Sub-agents of a sub-agent
+
+Claude nests sub-agents (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=3`, set by the catalog). Raw wire of a middle sub-agent M that starts two of its own, G1 and G2 (`test/fixtures/subagent-wire-v2.jsonl`, scenarios `nested-foreground` and `nested-background`):
+
+- The grandchild's `subagent_update` comes on **M's session**, not the main one's (the first update for an unknown child comes on its immediate parent), with `capabilities.cancel` and `state: running`. M's prompt to it is a `session_message` on both views (`recipientMessageId` on M's, `senderMessageId` on G's), and G's calls carry `_meta.claudeCode.parentToolUseId` = the id of that message, as a top-level child's do.
+- The main session's `state_update.background` names **M only**, in both variants; M stays in it while any of its own work is open, also after its own `idle`. M's own `state_update.background`, and the mirror of M's state in the main session's `subagent_update`, name G1 and G2. A foreground tree lists nothing anywhere.
+- G ends with the report (`session_message` to M), `subagent_update` on M's session and its own `state_update` `idle end_turn`; M ends after both, then the main list empties.
+- `session/cancel` of **M** while G1 and G2 work: M goes `idle` with `cancelled` (mirrored on the main session), and G1 and G2 **keep running** (their processes stayed alive for the whole observation, 10 s, until the harness killed them), still listed by M and by the main session. The adapter's stop does not cascade.
+- `session/cancel` of **G1** alone: same as a first-level child (its process goes in under 1.5 s), M goes on with G2 in its list and ends when G2 does.
+
+Clowdy before the fix, found by the first real run: every grandchild's run was a sibling of M's, a turn that ended while they worked cancelled them as "The parent run ended its turn" (the main list does not name them), and their later words created two runs named "Sub-agent". After it: runs below their starter, kept while the starter is listed, late words dropped; the daemon asks for each sub-agent of a stopped one, since the agent does not.
+
 ## Sources
 
 - The probe runs of 2026-11-19 (this page).

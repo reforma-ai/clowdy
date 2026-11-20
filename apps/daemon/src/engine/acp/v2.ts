@@ -118,6 +118,8 @@ export class V2Layer implements ProtocolLayer {
     /** Races a request against the end of the process or the run, once the connection is up: a message sent while the session waits cannot hang after a cancel. */
     private request: <T>(call: Promise<T>) => Promise<T> = call => call;
     private turns = new Turns();
+    /** What turns the agent's updates into events and knows which sub-agents are open: made once the session is, for `stopItem`. */
+    private mapper?: UpdateMapperV2;
     /** A turn is open: its prompt is with the agent and its `idle` has not come, so a steer may still land in it. */
     private open = false;
     /** Settles with `false` once the open turn is over, for a steer whose message has not been echoed by then. */
@@ -217,6 +219,33 @@ export class V2Layer implements ProtocolLayer {
         this.nudge();
 
         return taken;
+    }
+
+    /**
+     * Asks the agent to end the sub-agent whose session is `agentId`, and nothing else: it sends the ordinary `session/cancel` notification with the child's
+     * session id, which Claude's adapter takes as a request to stop that child's work (its terminals end, its calls are cancelled, it says `idle` with the
+     * stop reason `cancelled`, and its parent's list loses it), leaving its siblings and the parent alone. Only for a child the agent announced with the
+     * permission to cancel it and that has not ended; the end itself comes as updates on the stream of `run`. Answers whether the notification was written.
+     */
+    async stopItem(agentId: string): Promise<boolean> {
+        const { host, connection, mapper } = this;
+
+        if (!connection || !mapper || this.finished || host.signal.aborted || !mapper.stoppable(agentId)) {
+            return false;
+        }
+
+        try {
+            await this.request(connection.agent.notify(methods.agent.session.cancel, { sessionId: agentId }));
+
+            return true;
+        }
+        catch (error) {
+            if (!host.signal.aborted && !(error instanceof ProcessEnded)) {
+                host.deps.log?.(`${ host.agent.id } could not be asked to stop ${ agentId }: ${ errorMessage(error) }`);
+            }
+
+            return false;
+        }
     }
 
     /** Settles with `true` once the agent has echoed the message `id` back, which `run` sees in the order the agent said things. */
@@ -450,6 +479,8 @@ export class V2Layer implements ProtocolLayer {
             const record = options.resumeSessionId && !resumed ? host.record() : undefined;
             const preface = prefaceOf({ systemPrompt: options.systemPrompt, supportsSystemPrompt, resumed, record });
             const mapper = new UpdateMapperV2({ toolNames: options.tools.map(tool => tool.name), costBefore: deps.costs.get(id), log: deps.log });
+
+            this.mapper = mapper;
 
             // The answer says the message was inserted, not that the turn is over; only a refusal of it ends the turn here.
             listening = true;

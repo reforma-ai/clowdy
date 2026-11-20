@@ -326,4 +326,11 @@ export const MIGRATIONS: Migration[] = [
             db.run('ALTER TABLE runs ADD COLUMN lost_background TEXT');
         },
     },
+    {
+        version: 14,
+        up(db) {
+            // A native sub-agent whose session can end it alone (see `Run.canStopAlone`); NULL for every other run.
+            db.run('ALTER TABLE runs ADD COLUMN can_stop_alone INTEGER');
+        },
+    },
 ];

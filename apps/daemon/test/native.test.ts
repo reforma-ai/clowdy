@@ -14,8 +14,11 @@ afterEach(async () => {
     await Promise.all(harnesses.splice(0).map(h => h.stop().catch(() => undefined)));
 });
 
-async function setup(script: Script, overrides: Parameters<typeof startHarness>[0] = {}) {
+async function setup(script: Script, overrides: Parameters<typeof startHarness>[0] = {}, stops?: ScriptEngine['stopAnswer']) {
     const engine = new ScriptEngine(script);
+
+    engine.stopAnswer = stops;
+
     const h = await startHarness(overrides, { engines: scriptEngines(engine) });
 
     harnesses.push(h);
@@ -161,5 +164,53 @@ describe('native sub-agents as child runs', () => {
         await Bun.sleep(100);
         expect(h.run(native.id)).toMatchObject({ status: 'cancelled', statusReason: 'Cancelled by user' });
         expect(h.run(runId).status).toBe('cancelled');
+    });
+    test('through the HTTP API, a sub-agent its engine can end alone is cancelled alone; one it cannot, and one that did not say it can be stopped, are refused as before', async () => {
+        const gate = latch();
+        const script: Script = async function* (turn) {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'subagent', agentId: 'a1', parentToolCallId: 't1', name: 'Explore', state: 'running', stoppable: true };
+            yield { type: 'subagent', agentId: 'a2', parentToolCallId: 't2', name: 'Review', state: 'running', stoppable: true };
+            yield { type: 'subagent', agentId: 'a3', parentToolCallId: 't3', name: 'Plan', state: 'running' };
+
+            // The engine ends the one it was asked to end, as the agent does, with its own event; the turn goes on.
+            const agentId = await turn.stopRequested();
+
+            if (agentId === undefined) {
+                return;
+            }
+
+            yield { type: 'subagent', agentId, name: 'Explore', state: 'cancelled' };
+
+            try {
+                await gate.wait(turn.signal);
+            }
+            catch {
+                return;
+            }
+
+            yield { type: 'done', result: 'ok' };
+        };
+        const { h, engine, runId, natives } = await setup(script, {}, () => true);
+        const post = async (id: string) => (await h.fetch('/v1/commands', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ requestId: `r-${ id }-${ Math.random() }`, type: 'run.cancel', runId: id }) })).json() as Promise<{ ok: boolean; data?: { cancelled: string[] }; error?: { code: string; message: string } }>;
+
+        await waitFor(() => natives().length === 3, 'three sub-agents');
+
+        const [explore, review, plan] = natives();
+
+        expect([explore.canStopAlone, review.canStopAlone, plan.canStopAlone]).toEqual([true, true, undefined]);
+        expect(await post(plan.id)).toMatchObject({ ok: false, error: { code: 'conflict', message: expect.stringContaining('cancel the parent run instead') } });
+        expect(engine.stopRequests).toEqual([]);
+
+        expect(await post(explore.id)).toMatchObject({ ok: true, data: { cancelled: [explore.id] } });
+        await waitFor(() => h.run(explore.id).status === 'cancelled', 'the sub-agent to end');
+        expect(engine.stopRequests).toEqual(['a1']);
+        // Only that one: its parent and the others go on, and the stop did not cancel the run.
+        expect([h.run(review.id).status, h.run(plan.id).status, h.run(runId).status]).toEqual(['running', 'running', 'running']);
+        // What is over cancels nothing.
+        expect(await post(explore.id)).toMatchObject({ ok: true, data: { cancelled: [] } });
+
+        gate.release();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
     });
 });

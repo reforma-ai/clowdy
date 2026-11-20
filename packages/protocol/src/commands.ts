@@ -119,6 +119,12 @@ export const commandSchema = z.discriminatedUnion('type', [
 
     /* Runs */
     z.object({ ...base, type: z.literal('run.cancel'), runId: z.string() }),
+    /**
+     * Stops the agents of the run `runId` (a chat's orchestrator) and lets the run go on, knowing they were stopped: every run it spawned that is active is
+     * cancelled, and every sub-agent in its session that can be stopped alone (`Run.canStopAlone`) is asked to stop; the run is not cancelled and its chat's
+     * queue is not held. Answers `{ stopped: RunId[] }`, what it cancelled or asked to stop.
+     */
+    z.object({ ...base, type: z.literal('run.stopAgents'), runId: z.string() }),
     /** Answers a `question` stream item of a run in `waiting_user`. */
     z.object({ ...base, type: z.literal('run.answer'), runId: z.string(), questionId: z.string(), answer: z.string() }),
 

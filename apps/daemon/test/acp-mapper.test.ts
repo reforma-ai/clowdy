@@ -749,7 +749,7 @@ describe('sub-agents of ACP v2', () => {
             { type: 'tool', toolCallId: call, name: 'Agent', input, state: 'done', output: 'Ran `echo ONE` and `echo TWO` with the Bash tool; the outputs were ONE and TWO.' },
         ]);
         expect(subagents(events)).toEqual([
-            { type: 'subagent', agentId: id, parentToolCallId: call, name: 'general-purpose', description: 'Run echo ONE and TWO', state: 'running' },
+            { type: 'subagent', agentId: id, parentToolCallId: call, name: 'general-purpose', description: 'Run echo ONE and TWO', state: 'running', stoppable: true },
             { type: 'subagent', agentId: id, parentToolCallId: call, name: 'general-purpose', state: 'done', summary: 'Ran `echo ONE` and `echo TWO` with the Bash tool; the outputs were ONE and TWO.' },
         ]);
         // Two `Bash` calls, each running and done, with the terminal's output; the report is the child's last message; the session's own words are none of it.
@@ -812,6 +812,57 @@ describe('sub-agents of ACP v2', () => {
 
         expect(subagents(events)).toHaveLength(1);
         expect(events.filter(event => event.type === 'text' && event.agentId === undefined).map(event => event.type === 'text' && event.delta)).toContain('4');
+    });
+
+    /**
+     * Sub-agents of a sub-agent, as the real adapter told them (Claude Code 2.1.312, claude-agent-acp 0.107.0; `nested-foreground`, `nested-background`): the
+     * middle sub-agent M starts two of its own, G1 and G2. Their `subagent_update` comes on M's session, not the main one's, with the `session_message`s on both
+     * sessions' views and their calls stamped with their prompt's message; the main session's list names only M, which stays in it while any of its own work is open.
+     */
+    describe('a sub-agent of a sub-agent', () => {
+        const starter = (events: EngineEvent[], agentId: string) => events.find(event => event.type === 'subagent' && event.agentId === agentId && event.state === 'running');
+
+        test('foreground: the grandchildren are announced by the middle sub-agent, so their runs are named below it, their cards are in its stream, and each ends with its own report', () => {
+            const { events } = replay('nested-foreground');
+            const [middle, first, second] = subagents(events).filter(event => event.type === 'subagent' && event.state === 'running');
+
+            expect(middle).toMatchObject({ type: 'subagent', name: 'general-purpose', description: 'Run nested sleep sub-agents', stoppable: true });
+            expect(middle).not.toHaveProperty('parentAgentId');
+            expect([first, second].map(event => event.type === 'subagent' && event.parentAgentId)).toEqual([middle.type === 'subagent' && middle.agentId, middle.type === 'subagent' && middle.agentId]);
+            expect([first, second].map(event => event.type === 'subagent' && event.stoppable)).toEqual([true, true]);
+
+            // The card of a grandchild's call is in the middle sub-agent's stream (it carries its id), the middle's own is in the session's.
+            const middleId = middle.type === 'subagent' ? middle.agentId : '';
+            const cards = events.filter(event => event.type === 'tool' && event.name === 'Agent');
+
+            expect(cards.filter(event => event.type === 'tool' && event.agentId === middleId)).toHaveLength(4);
+            expect(cards.filter(event => event.type === 'tool' && event.agentId === undefined)).toHaveLength(2);
+
+            // Each ends done with its own report, the grandchildren before the one that started them.
+            const ends = subagents(events).flatMap(event => event.type === 'subagent' && event.state !== 'running' ? [[event.agentId === middleId ? 'middle' : 'grandchild', event.state, event.summary]] : []);
+
+            expect(ends.map(([who, state]) => [who, state])).toEqual([['grandchild', 'done'], ['grandchild', 'done'], ['middle', 'done']]);
+            expect(ends.slice(0, 2).map(([, , summary]) => summary).sort()).toEqual(['DONE-G1', 'DONE-G2']);
+        });
+
+        test('background: the main list names the middle sub-agent only, and each grandchild ends by itself when it stops, not by the list', () => {
+            const { events, lists } = replay('nested-background');
+            const running = subagents(events).filter(event => event.type === 'subagent' && event.state === 'running');
+            const [middle, ...grand] = running;
+            const middleId = middle.type === 'subagent' ? middle.agentId : '';
+
+            expect(grand).toHaveLength(2);
+            expect(grand.map(event => event.type === 'subagent' && event.parentAgentId)).toEqual([middleId, middleId]);
+            expect(starter(events, middleId)).toBe(middle);
+
+            // The only item the main session's list ever has is the middle sub-agent, by the call that started it.
+            const items = new Set(lists.flat().map(item => `${ item.kind }:${ item.id }`));
+
+            expect([...items]).toEqual([`subagent:${ middle.type === 'subagent' && middle.parentToolCallId }`]);
+
+            // The grandchildren end `done` with their reports at their own `idle`; the middle one is left to the list, which loses it when its own work is over.
+            expect(subagents(events).flatMap(event => event.type === 'subagent' && event.state !== 'running' ? [[event.agentId === middleId ? 'middle' : 'grandchild', event.state]] : [])).toEqual([['grandchild', 'done'], ['grandchild', 'done']]);
+        });
     });
 
     describe('what the layer cannot know', () => {
@@ -894,8 +945,35 @@ describe('sub-agents of ACP v2', () => {
 
             expect(events).toEqual([
                 { type: 'tool', toolCallId: 'call-2', name: 'Agent', input: { subagent_type: 'Explore', description: 'Deeper', prompt: 'dig' }, state: 'running', agentId: 'child-1' },
-                { type: 'subagent', agentId: 'grandchild', parentToolCallId: 'call-2', name: 'Explore', description: 'Deeper', state: 'running' },
+                { type: 'subagent', agentId: 'grandchild', parentAgentId: 'child-1', parentToolCallId: 'call-2', name: 'Explore', description: 'Deeper', state: 'running' },
             ]);
+        });
+
+        test('a sub-agent its parent lets the client cancel is stoppable, and said so, until it ends; one announced without that permission never is', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+            const hear = (sessionId: string) => mapper.update({ sessionUpdate: 'agent_message_chunk', messageId: `m-${ sessionId }`, content: { type: 'text', text: 'hi' } }, sessionId);
+
+            mapper.update(announce({ capabilities: { cancel: {} } }));
+            mapper.update(announce({ sessionId: 'child-2' }));
+            mapper.update(announce({ sessionId: 'child-3', capabilities: { cancel: null } }));
+
+            expect([mapper.stoppable('child-1'), mapper.stoppable('child-2'), mapper.stoppable('child-3'), mapper.stoppable('stranger')]).toEqual([true, false, false, false]);
+            expect(hear('child-1')[0]).toMatchObject({ type: 'subagent', agentId: 'child-1', state: 'running', stoppable: true });
+            expect(hear('child-2')[0]).toEqual({ type: 'subagent', agentId: 'child-2', name: 'Explore', description: 'Look around', state: 'running' });
+
+            // What the parent permits is replaced by what it says last: `null` takes the permission away, and a later word that omits it keeps it.
+            mapper.update({ sessionUpdate: 'subagent_update', sessionId: 'child-1', title: 'Renamed' });
+            expect(mapper.stoppable('child-1')).toBe(true);
+            mapper.update({ sessionUpdate: 'subagent_update', sessionId: 'child-1', capabilities: null });
+            expect(mapper.stoppable('child-1')).toBe(false);
+            mapper.update({ sessionUpdate: 'subagent_update', sessionId: 'child-1', capabilities: { cancel: {} } });
+            expect(mapper.stoppable('child-1')).toBe(true);
+
+            // Stopped, it is over: nothing more is asked of it.
+            const ended = mapper.update({ sessionUpdate: 'state_update', state: 'idle', stopReason: 'cancelled' }, 'child-1');
+
+            expect(ended.at(-1)).toEqual({ type: 'subagent', agentId: 'child-1', name: 'Explore', state: 'cancelled' });
+            expect(mapper.stoppable('child-1')).toBe(false);
         });
 
         test('the same message seen from both sessions is told once', () => {
