@@ -28,7 +28,7 @@ export function ProjectsPage() {
     return (
         <SettingsPage
             title="Projects"
-            description="The folders Clowdy can work in. Your personal space is always first. Drag a project to change the order of the project menu."
+            description="A project can hold several folders: keep the repos that belong together, such as an app and its API, in one project, so agents can work across all of them. Your personal space is always first. Drag a project to change the order of the project menu."
             layers={ selected
                 ? [{
                     id: selected.id,
