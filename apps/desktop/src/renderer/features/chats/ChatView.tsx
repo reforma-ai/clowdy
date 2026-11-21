@@ -20,6 +20,7 @@ import { ProgressCard } from './ProgressCard';
 import { ReadOnlyNotice } from './ReadOnlyNotice';
 import { RunningAgents } from './RunningAgents';
 import { useCompact } from './useCompact';
+import { useEditMessage } from './useEditMessage';
 import { useFork } from './useFork';
 
 import type { Attachment, Chat } from '@clowdy/protocol';
@@ -53,6 +54,7 @@ export function ChatView({ chat }: { chat: Chat }) {
     const writability = chatWritability(chat, run, agents, agentsStatus);
     const progress = chatProgress(project.tasksOfChat(chat.id), project.statuses);
     const items = stream?.items ?? [];
+    const edit = useEditMessage({ chat, items, ready: stream?.status === 'ready', writable: writability.writable, attachmentBlob: links.attachmentBlob });
     // The card follows the orchestrator's latest message, where the person is looking.
     const cardAfter = items.findLast(item => item.body.kind === 'assistant')?.id;
     // The conversation outgrew the model's window: the failure offers Compact, when the chat can still be written to and its agent can compact.
@@ -87,8 +89,18 @@ export function ChatView({ chat }: { chat: Chat }) {
                     active={ isRunActive(run) }
                     working={ isRunActive(run) && liveLine(run.status) }
                     links={ links }
-                    // Reply quotes into the message box, and a fork is a conversation to go on in: a chat that is read only has neither.
-                    messageActions={ writability.writable ? { onReply: text => composer.current?.quote(text), onFork: fork, forkingId: forking } : {} }
+                    // Reply quotes into the message box, a fork is a conversation to go on in, and an edit sends the message again: a chat that is read only has none of them.
+                    // The chat is rewritten from a message only at rest, so while the agent works Edit is drawn off.
+                    messageActions={ writability.writable
+                        ? { onReply: text => composer.current?.quote(text), onFork: fork, forkingId: forking, onEdit: edit.begin, editBusy: isRunActive(run) }
+                        : {} }
+                    editing={ edit.session && writability.writable
+                        ? {
+                            itemId: edit.session.itemId,
+                            onCancel: edit.cancel,
+                            editor: <Composer chat={ chat } run={ run } editMode={ { draftKey: edit.session.draftKey, onSubmit: edit.submit, onCancel: edit.cancel, isPending: edit.pending } } />,
+                        }
+                        : undefined }
                     forkedFrom={ origin }
                     emptyState={ <EmptyChat /> }
                     decorate={ item => (progress && item.id === cardAfter ? <ProgressCard progress={ progress } /> : null) }

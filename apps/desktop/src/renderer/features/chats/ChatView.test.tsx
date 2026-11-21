@@ -9,8 +9,12 @@ import { createFixtureData, FIXTURE_FORK_CHAT_ID, FIXTURE_PROJECT_ID, withFixtur
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { ChatView } from './ChatView';
-import { saveDraft } from './composerDrafts';
+import { draftOf, editDraftKey, messageOf, saveDraft } from './composerDrafts';
+import { filesOf } from './composerFiles';
 
+import type { Attachment, CommandResult, StreamItem, StreamItemBody } from '@clowdy/protocol';
+import type { Editor } from '@tiptap/core';
+import type { CommandInput } from '../../daemon/transport';
 import type { KeyValueStorage } from '../../stores/storage';
 
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
@@ -815,6 +819,662 @@ describe('Fork in a chat', () => {
             expect(divider()?.previousElementSibling?.textContent).toContain(ANSWER);
             // Nothing of its own yet: the divider is the end of the list.
             expect(divider()?.nextElementSibling).toBeNull();
+        });
+    });
+});
+
+describe('Edit in a chat', () => {
+    const FIRST = 'Build the first version: fleet list, booking page, price calculation.';
+    const SECOND = 'Now add the weekend surcharge to the price.';
+    const STEER = 'And keep it on one line';
+    const SURCHARGE = 'The surcharge is in `src/booking/price.ts`.';
+    const ANSWER = 'The booking page, the fleet list and the price calculation are in.';
+    const notes: Attachment = { id: 'a-notes', name: 'notes.txt', mediaType: 'text/plain', size: 40 };
+    const build: Attachment = { id: 'a-build', name: 'build.log', mediaType: 'text/plain', size: 90 };
+    const accepted: CommandResult = { ok: true, requestId: 'x', data: { chatId: 'c-2', runId: 'r-orch-2' } };
+    const refusal = (message: string): CommandResult => ({ ok: false, requestId: 'x', error: { code: 'conflict', message } });
+
+    /**
+     * First version with a second turn, whose message starts it and can be edited, and an answer to it; then a message the person wrote while it ran, a
+     * steer, which cannot. The first message of the chat can be edited from the seed.
+     */
+    const withTurns = (files: Attachment[] = []) => (fixtures: FixtureData) => {
+        const items = fixtures.items['r-orch-2'];
+        const now = Date.now();
+        const next = (offset: number, body: StreamItemBody, flags: Pick<StreamItem, 'canEdit' | 'canFork'> = {}): StreamItem => ({ id: `r-orch-2-${ items.length + 1 }`, runId: 'r-orch-2', seq: items.length + 1, at: now - offset * 60_000, body, ...flags });
+
+        items.push(next(500, { kind: 'user', text: SECOND, ...(files.length > 0 && { attachments: files }) }, { canEdit: true }));
+        items.push(next(498, { kind: 'assistant', done: true, text: SURCHARGE }, { canFork: true }));
+        items.push(next(30, { kind: 'user', text: STEER }));
+    };
+
+    const editButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Edit message"]')];
+    const frame = () => container.querySelector<HTMLElement>('[role="group"][aria-label="Editing message"]');
+    const editField = () => frame()?.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]');
+    const bottomField = () => [...container.querySelectorAll<HTMLElement & { editor: Editor }>('[contenteditable="true"]')].find(candidate => !frame()?.contains(candidate));
+    const submitButton = () => frame()?.querySelector<HTMLButtonElement>('button[aria-label="Submit edit"]');
+    const tilesIn = (scope: Element | null | undefined) => [...scope?.querySelectorAll('[data-slot="attachments"] > *') ?? []];
+    const itemsOf = () => data.items['r-orch-2'];
+    const editsSent = (spy: { mock: { calls: Array<[CommandInput]> } }) => spy.mock.calls.filter(([input]) => input.type === 'chat.edit');
+
+    /** Presses Edit under the message with these words, and lets the editor take the focus, which it does on a frame of its own. */
+    async function openEdit(words: string) {
+        const row = [...container.querySelectorAll<HTMLElement>('[data-message]')].find(message => message.textContent?.includes(words))!;
+
+        await act(async () => row.querySelector<HTMLButtonElement>('button[aria-label="Edit message"]')!.click());
+        await act(async () => new Promise(requestAnimationFrame));
+    }
+
+    const typeIn = (target: HTMLElement & { editor: Editor }, words: string) => act(async () => {
+        target.editor.chain().focus('end').insertContent(words).run();
+    });
+    const press = (target: Element, key: string, mods: { metaKey?: boolean } = {}) => act(async () => {
+        target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods }));
+    });
+
+    /** Answers `chat.edit` as `answer` says, after the real command when `real`, and lets every other command through. */
+    function stubEdit(answer: (run: () => Promise<CommandResult>) => Promise<CommandResult> | CommandResult) {
+        const command = store.command.bind(store);
+
+        return vi.spyOn(store, 'command').mockImplementation(async input => (input.type === 'chat.edit' ? answer(() => command(input)) : command(input)));
+    }
+
+    beforeEach(() => {
+        vi.mocked(toast.error).mockClear();
+        vi.mocked(toast.warning).mockClear();
+        saveDraft('c-2', emptyComposerDoc());
+    });
+
+    describe('the button', () => {
+        it('is drawn under the person\'s messages the daemon marked, between Copy and Reply, and under no other', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+
+            expect(editButtons()).toHaveLength(2);
+
+            const row = editButtons()[0].closest('[data-message]')!;
+
+            expect(row.textContent).toContain(FIRST);
+            expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Copy message', 'Edit message', 'Reply']);
+            // The steer has a row and no flag.
+            expect([...container.querySelectorAll('[data-message]')].find(message => message.textContent?.includes(STEER))?.querySelector('button[aria-label="Edit message"]')).toBeNull();
+        });
+
+        it('is drawn in no chat whose messages carry no flag', async () => {
+            await start();
+            await draw('c-6');
+
+            expect(container.querySelectorAll('[data-message]').length).toBeGreaterThan(0);
+            expect(editButtons()).toHaveLength(0);
+        });
+
+        it('is drawn in no chat that is read only, where the message cannot be sent again', async () => {
+            await start(claudeOff, withTurns());
+            await draw('c-2');
+
+            expect(container.querySelector('button[aria-label="Copy message"]')).not.toBeNull();
+            expect(editButtons()).toHaveLength(0);
+        });
+
+        it('is off while the agent works, and says why on the stand-in that stands for it', async () => {
+            await start();
+            await draw('c-1');
+
+            expect(editButtons()).toHaveLength(1);
+            expect(editButtons()[0].disabled).toBe(true);
+
+            await act(async () => editButtons()[0].click());
+
+            expect(frame()).toBeNull();
+
+            const standIn = container.querySelector<HTMLElement>('[role="button"][aria-disabled][aria-label="Edit message"]')!;
+
+            await act(async () => {
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+                standIn.focus();
+            });
+            await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+
+            expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Stop the agent to edit');
+        });
+    });
+
+    describe('opening it', () => {
+        it('puts the frame where the bubble stood, with the message\'s words in a box that has the focus, and keeps the rest of the stream', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+            await openEdit(SECOND);
+
+            const second = itemsOf()[7];
+
+            expect(frame()).not.toBeNull();
+            expect(frame()?.dataset.turn).toBe(second.id);
+            expect(frame()?.textContent).toContain('Editing message');
+            expect(editField()?.editor.getText()).toBe(SECOND);
+            expect(document.activeElement).toBe(editField());
+            // The caret is at the end of the words.
+            expect(editField()?.editor.state.selection.$from.parentOffset).toBe(SECOND.length);
+            // The bubble is gone from its place: the words are in the box alone. What came before and after is still drawn.
+            expect([...container.querySelectorAll('[data-message]')].some(message => message.textContent?.includes(SECOND))).toBe(false);
+            expect(container.textContent).toContain(ANSWER);
+            expect(container.textContent).toContain(SURCHARGE);
+            expect(container.textContent).toContain(STEER);
+            // It stands between the first turn, which ends with the compaction line, and the answer to the second.
+            expect(frame()?.previousElementSibling?.textContent).toContain('Context compacted');
+            expect(frame()?.nextElementSibling?.textContent).toContain(SURCHARGE);
+        });
+
+        it('is the message box without what belongs to the chat: no queue, running agents, mode or model, and a placeholder of its own', async () => {
+            await start(undefined, (fixtures) => {
+                withTurns()(fixtures);
+                fixtures.chats.find(chat => chat.id === 'c-2')!.queue = [{ id: 'q-1', mode: 'queue', text: 'Then the footer', content: 'Then the footer', createdAt: 0 }];
+            });
+            await draw('c-2');
+
+            expect(container.textContent).toContain('Then the footer');
+
+            await openEdit(SECOND);
+
+            // The queue is drawn once: in the box at the bottom, not in the frame.
+            expect(frame()?.textContent).not.toContain('Then the footer');
+            expect(container.textContent?.split('Then the footer')).toHaveLength(2);
+            expect(frame()?.textContent).not.toContain('Hands-off');
+            expect(frame()?.querySelector('[aria-label="Attach files"]')).not.toBeNull();
+            expect(submitButton()).toBeDefined();
+            expect(editField()?.getAttribute('aria-label')).toBe('Edit message');
+        });
+
+        it('takes the Edit of every other message away while it is open, and gives it back when it is closed', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+            await openEdit(SECOND);
+
+            expect(editButtons()).toHaveLength(0);
+
+            await act(async () => frame()!.querySelector<HTMLButtonElement>('button[aria-label="Stop editing"]')!.click());
+
+            expect(frame()).toBeNull();
+            expect(editButtons()).toHaveLength(2);
+        });
+
+        it('leaves the box at the bottom where it is, with its own words, and it goes on working', async () => {
+            saveDraft('c-2', { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'what I was typing' }] }] });
+            await start(undefined, withTurns());
+            await draw('c-2');
+            await openEdit(SECOND);
+
+            expect(bottomField()?.editor.getText()).toBe('what I was typing');
+            expect(editField()?.editor.getText()).toBe(SECOND);
+
+            // The edit's words stay out of the chat's draft, and the chat's out of the edit's.
+            await typeIn(editField()!, ' in blue');
+            await typeIn(bottomField()!, ' below');
+
+            expect(messageOf(draftOf('c-2'))).toBe('what I was typing below');
+            expect(messageOf(draftOf(editDraftKey('c-2', itemsOf()[7].id)))).toBe(`${ SECOND } in blue`);
+
+            // A message from the box at the bottom is sent as always, and the frame is still open.
+            const command = vi.spyOn(store, 'command');
+
+            await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')!.click());
+
+            expect(command).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat.send', chatId: 'c-2', text: 'what I was typing below' }));
+            expect(editsSent(command)).toHaveLength(0);
+            expect(frame()).not.toBeNull();
+            expect(editField()?.editor.getText()).toBe(`${ SECOND } in blue`);
+        });
+    });
+
+    describe('closing it without sending', () => {
+        it('is what Escape does, with no command sent, and the chat\'s own draft is as it was', async () => {
+            saveDraft('c-2', { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'what I was typing' }] }] });
+            await start(undefined, withTurns());
+            await draw('c-2');
+
+            const command = vi.spyOn(store, 'command');
+
+            await openEdit(SECOND);
+            await typeIn(editField()!, ' in blue');
+            await press(editField()!, 'Escape');
+
+            expect(frame()).toBeNull();
+            expect(editButtons()).toHaveLength(2);
+            expect(command).not.toHaveBeenCalled();
+            expect(container.textContent).toContain(SECOND);
+            expect(bottomField()?.editor.getText()).toBe('what I was typing');
+            expect(messageOf(draftOf('c-2'))).toBe('what I was typing');
+        });
+
+        it('is what the X of the frame does too, and what was typed does not come back when the message is edited again', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+            await openEdit(SECOND);
+
+            const key = editDraftKey('c-2', itemsOf()[7].id);
+
+            await typeIn(editField()!, ' in blue');
+            await act(async () => frame()!.querySelector<HTMLButtonElement>('button[aria-label="Stop editing"]')!.click());
+
+            expect(frame()).toBeNull();
+            // The session's draft and files are released.
+            expect(messageOf(draftOf(key))).toBe('');
+            expect(filesOf(key)).toEqual([]);
+
+            await openEdit(SECOND);
+
+            expect(editField()?.editor.getText()).toBe(SECOND);
+        });
+
+        it('is what leaving the chat does: nothing of the session is left behind', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+            await openEdit(SECOND);
+
+            const key = editDraftKey('c-2', itemsOf()[7].id);
+
+            await typeIn(editField()!, ' in blue');
+            await render('c-3');
+
+            expect(messageOf(draftOf(key))).toBe('');
+            expect(filesOf(key)).toEqual([]);
+        });
+    });
+
+    describe('sending it', () => {
+        it('sends chat.edit with the chat, the message and the words, closes the frame, and takes the later messages out when the daemon cuts the stream', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+
+            const command = vi.spyOn(store, 'command');
+            const first = itemsOf()[0].id;
+
+            await openEdit(FIRST);
+            await typeIn(editField()!, ' (the short one)');
+            await press(editField()!, 'Enter');
+
+            expect(editsSent(command).map(([input]) => input)).toEqual([{ type: 'chat.edit', chatId: 'c-2', itemId: first, text: `${ FIRST } (the short one)` }]);
+
+            await vi.waitFor(() => expect(frame()).toBeNull());
+            await render('c-2');
+
+            // The cut: the answer, the second turn and the steer are gone; the edited message stands where the first one did, as a new one.
+            expect(container.textContent).not.toContain(ANSWER);
+            expect(container.textContent).not.toContain(SECOND);
+            expect(container.textContent).not.toContain(SURCHARGE);
+            expect(container.textContent).not.toContain(STEER);
+            expect(container.textContent).toContain(`${ FIRST } (the short one)`);
+            expect(toast.error).not.toHaveBeenCalled();
+            // Nothing says the message was lost: the edit itself removed it.
+            expect(toast.warning).not.toHaveBeenCalled();
+            // The agent works on the new turn, so the new message offers Edit off.
+            expect(editButtons().map(button => button.disabled)).toEqual([true]);
+            // The session is released.
+            expect(messageOf(draftOf(editDraftKey('c-2', first)))).toBe('');
+        });
+
+        it('sends on Cmd+Enter and from the send button the same way', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+
+            const command = stubEdit(async () => accepted);
+
+            await openEdit(SECOND);
+            await press(editField()!, 'Enter', { metaKey: true });
+
+            expect(editsSent(command)).toHaveLength(1);
+            expect(frame()).toBeNull();
+
+            await openEdit(FIRST);
+            await act(async () => submitButton()!.click());
+
+            expect(editsSent(command)).toHaveLength(2);
+        });
+
+        it('sends the files of the message that are left in the box, by their ids', async () => {
+            await start(undefined, withTurns([notes, build]));
+            await draw('c-2');
+
+            const command = stubEdit(async () => accepted);
+
+            await openEdit(SECOND);
+
+            expect(tilesIn(frame())).toHaveLength(2);
+            expect(frame()?.textContent).toContain('notes.txt');
+            expect(frame()?.textContent).toContain('build.log');
+
+            // One is taken off the message.
+            await act(async () => frame()!.querySelector<HTMLButtonElement>('[data-slot="attachments"] button')!.click());
+            await press(editField()!, 'Enter');
+
+            expect(editsSent(command).map(([input]) => input)).toEqual([{ type: 'chat.edit', chatId: 'c-2', itemId: itemsOf()[7].id, text: SECOND, attachmentIds: ['a-build'] }]);
+        });
+
+        it('holds the editor open with its words and files when the daemon refuses, and says why', async () => {
+            await start(undefined, withTurns([notes]));
+            await draw('c-2');
+            stubEdit(async () => refusal('Stop the agent to edit this message'));
+            await openEdit(SECOND);
+            await typeIn(editField()!, ' in blue');
+            await press(editField()!, 'Enter');
+
+            expect(toast.error).toHaveBeenCalledExactlyOnceWith({ message: 'Stop the agent to edit this message' });
+            expect(frame()).not.toBeNull();
+            expect(editField()?.editor.getText()).toBe(`${ SECOND } in blue`);
+            expect(tilesIn(frame())).toHaveLength(1);
+            expect(submitButton()?.hasAttribute('data-pending')).toBe(false);
+            // The stream is as it was: nothing was cut.
+            expect(container.textContent).toContain(SURCHARGE);
+        });
+
+        it('says it could not edit when the refusal has no words, and a second try can go through', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+
+            let attempt = 0;
+            const command = stubEdit(async () => (++attempt === 1 ? refusal('') : accepted));
+
+            await openEdit(SECOND);
+            await press(editField()!, 'Enter');
+
+            expect(toast.error).toHaveBeenCalledExactlyOnceWith({ message: 'Couldn\'t edit the message' });
+            expect(frame()).not.toBeNull();
+
+            await press(editField()!, 'Enter');
+
+            expect(editsSent(command)).toHaveLength(2);
+            expect(frame()).toBeNull();
+        });
+
+        it('spins while the command is on its way, and cannot be closed meanwhile', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+
+            let release!: () => void;
+            const gate = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+
+            stubEdit(async () => {
+                await gate;
+
+                return refusal('The agent is busy');
+            });
+            await openEdit(SECOND);
+            await press(editField()!, 'Enter');
+
+            expect(submitButton()?.hasAttribute('data-pending')).toBe(true);
+
+            await press(editField()!, 'Escape');
+            await act(async () => frame()!.querySelector<HTMLButtonElement>('button[aria-label="Stop editing"]')!.click());
+
+            expect(frame()).not.toBeNull();
+
+            await act(async () => release());
+
+            expect(submitButton()?.hasAttribute('data-pending')).toBe(false);
+            expect(frame()).not.toBeNull();
+        });
+
+        it('sends one command for two submits made before the button has drawn its spinner', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+
+            let release!: () => void;
+            const gate = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            const command = stubEdit(async () => {
+                await gate;
+
+                return refusal('The agent is busy');
+            });
+
+            await openEdit(SECOND);
+            // Both land in one batch of updates, so the second sees a box that does not yet know an edit has started.
+            await act(async () => {
+                editField()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+                editField()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            });
+
+            expect(editsSent(command)).toHaveLength(1);
+
+            await act(async () => release());
+        });
+
+        it('cannot send an empty message', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+
+            const command = vi.spyOn(store, 'command');
+
+            await openEdit(SECOND);
+            await act(async () => editField()!.editor.commands.clearContent());
+
+            expect(submitButton()?.disabled).toBe(true);
+
+            await press(editField()!, 'Enter');
+
+            expect(editsSent(command)).toHaveLength(0);
+            expect(frame()).not.toBeNull();
+        });
+    });
+
+    describe('the files of the message when the editor is closed', () => {
+        it('are not deleted from the daemon, and the message keeps them, whether or not one was taken off in the editor', async () => {
+            await start(undefined, withTurns([notes, build]));
+            await draw('c-2');
+
+            const deleted = vi.spyOn(transport, 'deleteAttachment');
+
+            await openEdit(SECOND);
+            await act(async () => frame()!.querySelector<HTMLButtonElement>('[data-slot="attachments"] button')!.click());
+            await press(editField()!, 'Escape');
+
+            expect(deleted).not.toHaveBeenCalled();
+            expect(frame()).toBeNull();
+            // The message still shows both, since nothing was sent.
+            const message = [...container.querySelectorAll('[data-message]')].find(candidate => candidate.textContent?.includes(SECOND));
+
+            expect(tilesIn(message)).toHaveLength(2);
+        });
+
+        it('are all there when the editor is opened again after an earlier one was closed with one taken off', async () => {
+            await start(undefined, withTurns([notes, build]));
+            await draw('c-2');
+            await openEdit(SECOND);
+            await act(async () => frame()!.querySelector<HTMLButtonElement>('[data-slot="attachments"] button')!.click());
+            await press(editField()!, 'Escape');
+            await openEdit(SECOND);
+
+            expect(tilesIn(frame())).toHaveLength(2);
+        });
+
+        /** Picks a file in the open editor of the second message, which already has `notes`, and waits for it to be uploaded: the id the daemon gave it. */
+        async function uploadExtra() {
+            const input = frame()!.querySelector<HTMLInputElement>('input[type="file"]')!;
+
+            Object.defineProperty(input, 'files', { value: [new File(['x'], 'extra.txt', { type: 'text/plain' })], configurable: true });
+            await act(async () => {
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            await vi.waitFor(() => expect(filesOf(editDraftKey('c-2', itemsOf()[7].id)).map(file => file.status)).toEqual(['ready', 'ready']));
+
+            return filesOf(editDraftKey('c-2', itemsOf()[7].id)).find(file => file.name === 'extra.txt')!.attachment!.id;
+        }
+
+        it('are told from what the editor uploaded and nobody sent, which goes when the editor is closed', async () => {
+            await start(undefined, withTurns([notes]));
+            await draw('c-2');
+
+            const deleted = vi.spyOn(transport, 'deleteAttachment');
+
+            await openEdit(SECOND);
+
+            const uploaded = await uploadExtra();
+
+            await press(editField()!, 'Escape');
+
+            expect(deleted).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, uploaded);
+        });
+
+        it('are told the same when the person leaves the chat, and what the message had is left alone', async () => {
+            await start(undefined, withTurns([notes]));
+            await draw('c-2');
+
+            const deleted = vi.spyOn(transport, 'deleteAttachment');
+
+            await openEdit(SECOND);
+
+            const uploaded = await uploadExtra();
+
+            await render('c-3');
+
+            expect(deleted).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, uploaded);
+        });
+
+        it('are all kept when the person leaves the chat while the edit that uses them is on its way: the daemon would refuse an edit whose file was deleted', async () => {
+            await start(undefined, withTurns([notes]));
+            await draw('c-2');
+
+            let release!: () => void;
+            const gate = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            const deleted = vi.spyOn(transport, 'deleteAttachment');
+            const command = stubEdit(async () => {
+                await gate;
+
+                return accepted;
+            });
+
+            await openEdit(SECOND);
+            await uploadExtra();
+            await press(editField()!, 'Enter');
+            await render('c-3');
+
+            expect(editsSent(command)).toHaveLength(1);
+            expect(deleted).not.toHaveBeenCalled();
+
+            await act(async () => release());
+
+            expect(deleted).not.toHaveBeenCalled();
+            expect(toast.error).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('a message that goes while the editor is open', () => {
+        it('closes the editor with a toast when the stream cuts it, someone else\'s edit or a fork', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+            await openEdit(SECOND);
+
+            const second = itemsOf()[7];
+
+            await act(async () => store.streams.applyTruncation('r-orch-2', second.seq));
+            await render('c-2');
+
+            expect(frame()).toBeNull();
+            expect(toast.warning).toHaveBeenCalledExactlyOnceWith({ message: 'The message is no longer available' });
+            expect(messageOf(draftOf(editDraftKey('c-2', second.id)))).toBe('');
+            expect(editButtons()).toHaveLength(1);
+        });
+
+        it('closes it too when the message can no longer be edited', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+            await openEdit(SECOND);
+
+            const { canEdit: _canEdit, ...second } = itemsOf()[7];
+
+            await act(async () => store.streams.applyItem(second));
+            await render('c-2');
+
+            expect(frame()).toBeNull();
+            expect(toast.warning).toHaveBeenCalledExactlyOnceWith({ message: 'The message is no longer available' });
+        });
+
+        it('says nothing while the edit that removes it is on its way, even when the cut comes before the answer to the command', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+
+            let release!: () => void;
+            const gate = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+
+            // The daemon cuts the stream and tells the app, and the answer to the command comes later.
+            stubEdit(async (run) => {
+                const result = await run();
+
+                await gate;
+
+                return result;
+            });
+            await openEdit(FIRST);
+            await press(editField()!, 'Enter');
+            await render('c-2');
+
+            expect(container.textContent).not.toContain(SECOND);
+            expect(toast.warning).not.toHaveBeenCalled();
+
+            await act(async () => release());
+            await render('c-2');
+
+            expect(frame()).toBeNull();
+            expect(toast.warning).not.toHaveBeenCalled();
+            expect(toast.error).not.toHaveBeenCalled();
+        });
+
+        it('closes the editor, with no word about the message, when the chat turns read only', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+            await openEdit(SECOND);
+
+            const key = editDraftKey('c-2', itemsOf()[7].id);
+            const claude = store.agents.find(agent => agent.id === 'claude')!;
+
+            await act(async () => {
+                claude.enabled = false;
+                claude.status = 'disabled';
+            });
+            await render('c-2');
+
+            expect(frame()).toBeNull();
+            expect(toast.warning).not.toHaveBeenCalled();
+            expect(messageOf(draftOf(key))).toBe('');
+        });
+    });
+
+    describe('an agent that starts working while the editor is open', () => {
+        it('holds Submit until it stops, since the daemon would refuse the edit, and keeps the words in the box meanwhile', async () => {
+            await start(undefined, withTurns());
+            await draw('c-2');
+
+            const command = vi.spyOn(store, 'command');
+            const run = store.selectedProject!.runs.get('r-orch-2')!;
+
+            await openEdit(SECOND);
+            await typeIn(editField()!, ' in blue');
+            await act(async () => {
+                run.status = 'running';
+            });
+            await render('c-2');
+
+            expect(frame()).not.toBeNull();
+            expect(submitButton()?.disabled).toBe(true);
+
+            await press(editField()!, 'Enter');
+
+            expect(editsSent(command)).toHaveLength(0);
+            expect(toast.error).not.toHaveBeenCalled();
+
+            await act(async () => {
+                run.status = 'succeeded';
+            });
+            await render('c-2');
+
+            expect(submitButton()?.disabled).toBe(false);
+            expect(editField()?.editor.getText()).toBe(`${ SECOND } in blue`);
         });
     });
 });

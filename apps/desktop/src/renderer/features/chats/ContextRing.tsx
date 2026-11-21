@@ -5,12 +5,12 @@ import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
 import { use } from 'react';
 
+import { Unavailable } from '../../shared/Unavailable';
 import { useAgents } from '../../stores';
 import { canCompactChat } from './chatProvider';
 import { isRunActive } from './chatRun';
 import styles from './ContextRing.module.css';
 import { contextFill, type ContextFill } from './contextUsage';
-import { Unavailable } from './Unavailable';
 import { useCompact } from './useCompact';
 
 import type { Chat, Run } from '@clowdy/protocol';

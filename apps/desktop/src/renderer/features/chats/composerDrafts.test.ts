@@ -1,7 +1,7 @@
 import { docToPlainText, emptyComposerDoc, plainTextToDoc, type ComposerDoc } from '@clowdy/components/RichInput';
 import { describe, expect, it } from 'vitest';
 
-import { messageOf, withQuoteLast } from './composerDrafts';
+import { docOfMessage, draftOf, dropDraft, editDraftKey, messageOf, newChatDraftKey, saveDraft, withQuoteLast } from './composerDrafts';
 
 /** What the doc writes, with the line break a hard break writes (a Markdown line break) shown as the newline it is. */
 const written = (doc: ComposerDoc) => docToPlainText(doc).replaceAll('  \n', '\n');
@@ -121,5 +121,68 @@ describe('withQuoteLast', () => {
 
         expect(messageOf(typed(quoted, 'reply'))).toBe('> quote\n\nreply');
         expect(messageOf(typed(withQuoteLast(quoted, 'second'), 'reply'))).toBe('> quote\n\n> second\n\nreply');
+    });
+});
+
+describe('docOfMessage', () => {
+    it('makes a paragraph of each run of text between blank lines, as the message box writes what is typed, and a line break of a single newline', () => {
+        const doc = docOfMessage('first line\nsecond line\n\nsecond paragraph');
+
+        expect(doc.content).toHaveLength(2);
+        expect(doc.content![0].content!.map(node => node.type)).toEqual(['text', 'hardBreak', 'text']);
+        expect(doc.content![1].content).toEqual([{ type: 'text', text: 'second paragraph' }]);
+    });
+
+    it('gives back the words that were sent: a message that was not changed is sent as it was', () => {
+        for (const sentText of ['Make the title bigger', 'one\n\ntwo\n\nthree', '> quote  \n> more\n\nreply']) {
+            expect(messageOf(docOfMessage(sentText))).toBe(sentText);
+        }
+    });
+
+    it('writes the lines of a list or a fence as lines of one paragraph, which the message box writes with a Markdown line break at the end of each', () => {
+        expect(messageOf(docOfMessage('- one\n- two\n\nthen this'))).toBe('- one  \n- two\n\nthen this');
+        expect(messageOf(docOfMessage('```ts\nconst a = 1;\n```'))).toBe('```ts  \nconst a = 1;  \n```');
+    });
+
+    it('does not add to the words each time a message is edited: the two spaces of a line break are written once', () => {
+        const once = messageOf(docOfMessage('> a  \n> b'));
+
+        expect(messageOf(docOfMessage(once))).toBe(once);
+        expect(once).toBe('> a  \n> b');
+    });
+
+    it('reads blank lines that hold spaces, Windows line ends and extra blank lines as one break between paragraphs', () => {
+        expect(messageOf(docOfMessage('one\r\n  \r\n\r\n\r\ntwo'))).toBe('one\n\ntwo');
+    });
+
+    it('is an empty draft for empty words', () => {
+        expect(messageOf(docOfMessage(''))).toBe('');
+        expect(messageOf(docOfMessage('  \n\n  '))).toBe('');
+        expect(docOfMessage('').content).toEqual([{ type: 'paragraph' }]);
+    });
+});
+
+describe('the key of an edit session', () => {
+    it('is not the chat\'s id, and not the key of the new-chat page, so a draft under it is not the chat\'s', () => {
+        const key = editDraftKey('c-1', 'i-4');
+
+        expect(key).not.toBe('c-1');
+        expect(key).not.toBe(newChatDraftKey('p-1'));
+        // One per message, and one per chat for the same item id.
+        expect(editDraftKey('c-1', 'i-5')).not.toBe(key);
+        expect(editDraftKey('c-2', 'i-4')).not.toBe(key);
+    });
+
+    it('keeps a draft apart from the chat\'s, which dropDraft forgets alone', () => {
+        const key = editDraftKey('c-drop', 'i-1');
+
+        saveDraft('c-drop', plainTextToDoc('chat words'));
+        saveDraft(key, plainTextToDoc('edit words'));
+        dropDraft(key);
+
+        expect(messageOf(draftOf(key))).toBe('');
+        expect(messageOf(draftOf('c-drop'))).toBe('chat words');
+
+        dropDraft('c-drop');
     });
 });

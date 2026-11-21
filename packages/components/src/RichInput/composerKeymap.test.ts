@@ -179,3 +179,49 @@ describe('handleComposerKeyDown submit', () => {
         });
     });
 });
+
+describe('handleComposerKeyDown escape', () => {
+    const escape = () => new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+
+    it('should close an open suggestion menu and leave onEscape alone, so a menu goes before whatever Escape would stop', () => {
+        withDom(() => {
+            const editor = createEditor({ type: 'doc', content: [{ type: 'paragraph' }] });
+            const onEscape = vi.fn();
+            const closeMenu = vi.fn();
+
+            const handled = handleComposerKeyDown(editor.view, escape(), {
+                submitOnEnter: true,
+                hasMenuItems: true,
+                onEscape,
+                closeMenu,
+            });
+
+            expect(handled).toBe(true);
+            expect(closeMenu).toHaveBeenCalledOnce();
+            expect(onEscape).not.toHaveBeenCalled();
+
+            editor.destroy();
+        });
+    });
+
+    it('should call onEscape when no menu is open, and not claim the key, so the other handlers of the page still see it', () => {
+        withDom(() => {
+            const editor = createEditor({ type: 'doc', content: [{ type: 'paragraph' }] });
+            const onEscape = vi.fn();
+            const closeMenu = vi.fn();
+
+            const handled = handleComposerKeyDown(editor.view, escape(), {
+                submitOnEnter: true,
+                hasMenuItems: false,
+                onEscape,
+                closeMenu,
+            });
+
+            expect(handled).toBe(false);
+            expect(onEscape).toHaveBeenCalledOnce();
+            expect(closeMenu).not.toHaveBeenCalled();
+
+            editor.destroy();
+        });
+    });
+});

@@ -14,10 +14,14 @@ const WAITS: Record<QueuedMessageMode, string> = {
 };
 
 export interface ComposerSendProps {
+    /** What the button is called, for a screen reader and its tooltip: `Send` unless the message box is an edit frame's. */
+    label?: string;
     /** There is a message to send. */
     canSend: boolean;
     /** It cannot go yet (a file is still uploading, or failed): Send stays off. The caller says why. */
     blocked?: boolean;
+    /** The message is on its way: the button spins and takes no press. */
+    isPending?: boolean;
     /** The orchestrator is working: an empty field offers Stop where Send would be. */
     running: boolean;
     /** How a message waits for the busy orchestrator when it is sent the way Enter sends it; absent while the orchestrator takes it at once. */
@@ -28,7 +32,7 @@ export interface ComposerSendProps {
 }
 
 /** The round button at the end of the composer: Send, or Stop while the orchestrator works and nothing is typed. */
-export function ComposerSend({ canSend, blocked = false, running, waits, isStopping, onSend, onStop }: ComposerSendProps) {
+export function ComposerSend({ label = 'Send', canSend, blocked = false, isPending = false, running, waits, isStopping, onSend, onStop }: ComposerSendProps) {
     if (running && !canSend) {
         return (
             <Button
@@ -54,8 +58,9 @@ export function ComposerSend({ canSend, blocked = false, running, waits, isStopp
             iconOnly
             rounded
             isDisabled={ !canSend || blocked }
-            aria-label="Send"
-            tooltip={ tooltipWithHotkey(waits ? WAITS[waits] : 'Send', 'enter') }
+            isPending={ isPending }
+            aria-label={ label }
+            tooltip={ tooltipWithHotkey(waits ? WAITS[waits] : label, 'enter') }
             onPress={ onSend }
         >
             <SendBold />

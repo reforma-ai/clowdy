@@ -159,7 +159,7 @@ describe('StreamView', () => {
         const twoTurns = [...items, item(4, { kind: 'user', text: 'Now the table' }), item(5, { kind: 'assistant', text: 'The table is done.', done: true })];
         const rows = () => [...container.querySelectorAll<HTMLElement>('time')].map(time => time.parentElement as HTMLElement);
         const rowAfter = (text: string) => [...container.querySelectorAll<HTMLElement>('time')].find(time => time.parentElement?.parentElement?.textContent?.includes(text))?.parentElement;
-        const drawWith = (list: StreamItem[], props: { active?: boolean; messageActions?: StreamViewProps['messageActions'] } = { messageActions: {} }) => act(async () => root.render(<StreamView items={ list } { ...props } />));
+        const drawWith = (list: StreamItem[], props: { active?: boolean; messageActions?: StreamViewProps['messageActions']; editing?: StreamViewProps['editing'] } = { messageActions: {} }) => act(async () => root.render(<StreamView items={ list } { ...props } />));
 
         it('draws a row under each message of the person and the answer of each turn, and none under the rest', async () => {
             await drawWith(twoTurns, { active: false, messageActions: {} });
@@ -368,6 +368,197 @@ describe('StreamView', () => {
                 await act(async () => forkButtons().forEach(button => button.click()));
 
                 expect(onFork).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('Edit', () => {
+            const editButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Edit message"]')];
+            const frame = () => container.querySelector<HTMLElement>('[role="group"][aria-label="Editing message"]');
+            const toolbar = () => document.body.querySelector('[role="toolbar"]');
+            // Both messages of the person's start a turn and can be rewritten from; the third is a steer inside the second turn, which cannot.
+            const editable = [
+                { ...twoTurns[0], canEdit: true },
+                twoTurns[1],
+                twoTurns[2],
+                twoTurns[3],
+                { ...twoTurns[4], canEdit: true },
+                twoTurns[5],
+                item(6, { kind: 'user', text: 'And keep it on one line' }),
+            ];
+            const editing = (itemId: string, onCancel = vi.fn()) => ({ itemId, onCancel, editor: <div contentEditable suppressContentEditableWarning data-testid="editor">Fix the form</div> });
+
+            it('draws an Edit under each message of the person\'s that the daemon marked, and hands over its item', async () => {
+                const onEdit = vi.fn();
+
+                await drawWith(editable, { active: false, messageActions: { onEdit } });
+
+                // Not under the steer, which has a row and no flag; not under an answer.
+                expect(editButtons()).toHaveLength(2);
+
+                await act(async () => editButtons()[1].click());
+
+                expect(onEdit).toHaveBeenCalledExactlyOnceWith('i-4');
+            });
+
+            it('draws none where no handler is given, for a flag on a message that is no message of the person\'s, or on a page that only reads', async () => {
+                await drawWith(editable, { active: false, messageActions: {} });
+
+                expect(editButtons()).toHaveLength(0);
+
+                await drawWith([...editable, { ...thread(7), canEdit: true }, { ...twoTurns[5], canEdit: true }], { active: false, messageActions: { onEdit: vi.fn() } });
+
+                expect(editButtons()).toHaveLength(2);
+
+                await drawWith(editable, { active: false });
+
+                expect(editButtons()).toHaveLength(0);
+            });
+
+            it('is off, and says so, on every row while the agent works', async () => {
+                const onEdit = vi.fn();
+
+                await drawWith(editable, { active: true, messageActions: { onEdit, editBusy: true } });
+
+                expect(editButtons().map(button => button.disabled)).toEqual([true, true]);
+                expect(container.querySelectorAll('[role="button"][aria-disabled][aria-label="Edit message"]')).toHaveLength(2);
+
+                await act(async () => editButtons().forEach(button => button.click()));
+
+                expect(onEdit).not.toHaveBeenCalled();
+            });
+
+            it('puts the frame where the bubble stood, with the turn rail\'s mark, and keeps everything around it', async () => {
+                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() }, editing: editing('i-4') });
+
+                const group = frame()!;
+
+                expect(group.dataset.turn).toBe('i-4');
+                expect(group.textContent).toContain('Editing message');
+                expect(group.querySelector('[data-testid="editor"]')).not.toBeNull();
+                // The bubble is gone, and the turns before and after are as they were.
+                expect(container.querySelectorAll('[data-turn="i-4"]')).toHaveLength(1);
+                expect(container.querySelector('[data-message][data-turn="i-4"]')).toBeNull();
+                expect(container.textContent).not.toContain('Now the table');
+                expect(container.querySelector('[data-turn="i-0"]')?.textContent).toContain('Fix the form');
+                expect(container.textContent).toContain('The table is done.');
+                expect(container.textContent).toContain('And keep it on one line');
+                // The frame stands between the two turns.
+                expect(group.previousElementSibling?.textContent).toContain('The form is fixed.');
+                expect(group.nextElementSibling?.textContent).toContain('The table is done.');
+            });
+
+            it('takes the Edit of every other message away while one is being edited, and brings it back afterwards', async () => {
+                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() }, editing: editing('i-4') });
+
+                expect(editButtons()).toHaveLength(0);
+
+                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() } });
+
+                expect(editButtons()).toHaveLength(2);
+                expect(frame()).toBeNull();
+            });
+
+            it('hands the focus to its message\'s Edit button when the frame closes with the focus in it, and leaves a focus that is elsewhere alone', async () => {
+                const withField = { ...editing('i-4'), editor: <input data-testid="editor-input" /> };
+                const outside = document.createElement('input');
+                const bubbleEdit = () => container.querySelector('[data-message][data-turn="i-4"] button[aria-label="Edit message"]');
+
+                document.body.append(outside);
+
+                try {
+                    await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() }, editing: withField });
+                    container.querySelector<HTMLInputElement>('[data-testid="editor-input"]')!.focus();
+                    await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() } });
+
+                    expect(bubbleEdit()).not.toBeNull();
+                    expect(document.activeElement).toBe(bubbleEdit());
+
+                    // The focus went to the box at the bottom while the frame was open: closing the frame does not take it back.
+                    await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() }, editing: withField });
+                    outside.focus();
+                    await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() } });
+
+                    expect(document.activeElement).toBe(outside);
+                }
+                finally {
+                    outside.remove();
+                }
+            });
+
+            it('does not make the bubble rise into place a second time when the frame goes, for a message that came after the stream was shown', async () => {
+                const bubble = () => container.querySelector('[data-message][data-turn="i-4"]');
+
+                // The first draw has the first turn alone, so the second message is news.
+                await drawWith(editable.slice(0, 4), { active: false, messageActions: { onEdit: vi.fn() } });
+                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() } });
+
+                expect(bubble()?.hasAttribute('data-animate')).toBe(true);
+
+                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() }, editing: editing('i-4') });
+                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() } });
+
+                expect(bubble()).not.toBeNull();
+                expect(bubble()?.hasAttribute('data-animate')).toBe(false);
+            });
+
+            it('stops editing from the X of the frame', async () => {
+                const onCancel = vi.fn();
+
+                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() }, editing: editing('i-4', onCancel) });
+
+                const close = container.querySelector<HTMLButtonElement>('button[aria-label="Stop editing"]')!;
+
+                expect(frame()?.contains(close)).toBe(true);
+
+                await act(async () => close.click());
+
+                expect(onCancel).toHaveBeenCalledOnce();
+            });
+
+            it('draws nothing for an edit of a message the stream does not have, and keeps the rest', async () => {
+                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() }, editing: editing('i-99') });
+
+                expect(frame()).toBeNull();
+                expect(container.textContent).toContain('Now the table');
+                // The edit is still open as far as the stream is told, so no message offers Edit.
+                expect(editButtons()).toHaveLength(0);
+            });
+
+            it('offers no Reply on a selection inside the frame, while one inside a message still gets it', async () => {
+                const frames: FrameRequestCallback[] = [];
+
+                vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
+                vi.spyOn(Range.prototype, 'getClientRects').mockImplementation(() => [{ left: 10, right: 90, top: 100, bottom: 120, width: 80, height: 20 }] as unknown as DOMRectList);
+                vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(() => ({ left: 10, right: 90, top: 100, bottom: 120, width: 80, height: 20 }) as DOMRect);
+
+                const selectIn = async (selector: string) => {
+                    const walker = document.createTreeWalker(container.querySelector(selector)!, NodeFilter.SHOW_TEXT);
+                    const node = walker.nextNode()!;
+                    const range = document.createRange();
+
+                    range.setStart(node, 0);
+                    range.setEnd(node, 5);
+                    window.getSelection()!.removeAllRanges();
+                    window.getSelection()!.addRange(range);
+                    document.dispatchEvent(new Event('selectionchange'));
+                    await act(async () => frames.splice(0).forEach(callback => callback(0)));
+                };
+
+                try {
+                    await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn(), onReply: vi.fn() }, editing: editing('i-4') });
+                    await selectIn('[data-testid="editor"]');
+
+                    expect(toolbar()).toBeNull();
+
+                    await selectIn('[data-turn="i-0"]');
+
+                    expect(toolbar()?.textContent).toBe('Reply');
+                }
+                finally {
+                    window.getSelection()!.removeAllRanges();
+                    vi.unstubAllGlobals();
+                    vi.restoreAllMocks();
+                }
             });
         });
     });
