@@ -65,7 +65,7 @@ export function DraftFolderSelect({ folders, selectedId, missing, onPick }: Draf
 }
 
 /**
- * The pill that opens a menu for a folder, under the message box: the folder's name and a chevron, with the plate staying while the menu is open. The select
+ * The pill that opens a menu for a folder, under the message box: the folder's name and a chevron, with the plate staying and the chevron turned over while the menu is open. The select
  * of a new chat uses it to pick the folder, and `ChatFolder` to open the folder of a chat that is made in another program, in the warning colour when the folder
  * is gone from the disk. It goes inside a `MenuTrigger`.
  */
@@ -87,7 +87,7 @@ export function FolderTrigger({ name, tooltip, missing = false }: { name: string
         >
             <Folder aria-hidden="true" />
             <Text truncate>{ name }</Text>
-            <ChevronDown aria-hidden="true" />
+            <ChevronDown aria-hidden="true" className={ styles.chevron } />
         </Button>
     );
 }

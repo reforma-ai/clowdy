@@ -1,4 +1,4 @@
-/* The pill of a select under the message box: the plate of a pressed button stays while its list is open, and the label goes muted, as the mode pill does. */
+/* The pill of a select under the message box: the plate of a pressed button stays while its list is open, the label goes muted, as the mode pill does, and the chevron turns over, as a select's does. */
 /* The pill gives way when the row fills with other controls, and stops at a length of its own for a long name. */
 .trigger {
     flex-shrink: 1;
@@ -13,6 +13,14 @@
     border-color: var(--clowdy-button-border--hover);
     background-color: var(--clowdy-button-bg--hover);
     opacity: var(--clowdy-button-opacity--hover);
+}
+
+.chevron {
+    transition: transform var(--transition-duration-fast) var(--ease-in-out);
+}
+
+.trigger[data-open] .chevron {
+    transform: rotate(180deg);
 }
 
 .triggerContent {

@@ -74,9 +74,13 @@ describe('the folder of a chat', () => {
         expect(pill()?.textContent).toBe('web');
         expect(pill()?.hasAttribute('data-missing')).toBe(false);
 
+        expect(pill()?.hasAttribute('data-open')).toBe(false);
+
         await press(pill()!);
 
         expect(items().map(row => row.textContent)).toEqual(['Open in Finder', 'Open in Cursor']);
+        // The mark the style turns the chevron over by, and keeps the plate under, while the menu is open.
+        expect(pill()?.hasAttribute('data-open')).toBe(true);
     });
 
     it('opens the folder in the one that is pressed', async () => {
