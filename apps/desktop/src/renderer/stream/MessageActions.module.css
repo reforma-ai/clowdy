@@ -40,22 +40,13 @@
     }
 }
 
-/* The buttons are side by side in one group, in the order they are tabbed in. */
+/*
+ * The buttons are side by side in one group, in the order they are tabbed in. The group is flush with the message: the square of the button on the
+ * outside lines up with the edge of the text or the bubble, so its plate on hover stays inside the column (the 14px icon sits a little in from the edge).
+ */
 .buttons {
     display: flex;
     align-items: center;
-}
-
-/*
- * The icon is 14px in a 24px square: the group steps out so the icon of the button on the outside, not the square, lines up with the edge of the
- * message: the first button on an agent's side, the last on the person's, whichever they are.
- */
-.row[data-align='start'] .buttons {
-    margin-inline-start: calc((var(--spacing-24) - var(--spacing-14)) / -2);
-}
-
-.row[data-align='end'] .buttons {
-    margin-inline-end: calc((var(--spacing-24) - var(--spacing-14)) / -2);
 }
 
 .time {
