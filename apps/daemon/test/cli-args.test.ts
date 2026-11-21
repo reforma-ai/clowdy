@@ -32,6 +32,14 @@ const tell: CliTool = {
     description: 'Sends a message to a thread.',
     inputSchema: { properties: { thread: { type: 'string', description: 'The thread' }, message: { type: 'string' }, mode: { type: 'string', enum: ['steer', 'queue'] } }, required: ['thread', 'message'] },
     positional: ['thread', 'message'],
+    stdin: 'message',
+};
+
+const get: CliTool = {
+    name: 'task_get',
+    description: 'Reads one task.',
+    inputSchema: { properties: { taskId: { type: 'string', description: 'A task key' } }, required: ['taskId'] },
+    positional: ['taskId'],
 };
 
 const list: CliTool = { name: 'thread_list', description: 'Lists your threads.', inputSchema: { properties: { all: { type: 'boolean' } } } };
@@ -59,6 +67,8 @@ describe('parseCommand', () => {
         expect(parseCommand(tell, ['thr_1', '--message-file', 'note.md'])).toMatchObject({ arguments: { thread: 'thr_1' }, files: { message: 'note.md' } });
         // A `-` in the place of a word that is not the last is just a value.
         expect(parseCommand(tell, ['-', 'hello'])).toMatchObject({ arguments: { thread: '-', message: 'hello' }, files: {} });
+        // Only the field the tool names for stdin reads it: the id of a task that is last is still a value.
+        expect(parseCommand(get, ['-'])).toMatchObject({ arguments: { taskId: '-' }, files: {} });
     });
 
     test('everything after -- is bare, so a message may start with dashes', () => {
@@ -114,6 +124,7 @@ describe('commandOf, flagsOf, summaryOf, commandText and helpOf', () => {
         expect(help).toContain('<thread>');
         expect(help).toContain('(- reads it from stdin)');
         expect(help.match(/reads it from stdin/g)).toHaveLength(1);
+        expect(helpOf(get)).not.toContain('stdin');
         expect(help).toContain('--mode <steer|queue>');
         expect(help).toContain('--json');
 

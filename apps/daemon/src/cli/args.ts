@@ -19,6 +19,8 @@ export interface CliTool {
     inputSchema: { properties?: Record<string, Property>; required?: string[] };
     /** The fields a bare word fills, in order; the last one, when it is text, takes every word that is left. */
     positional?: string[];
+    /** The positional field whose bare `-` reads the text from stdin (a message): the help says so for it alone, not for an id or a title. */
+    stdin?: string;
 }
 
 /** A command line that cannot be understood: the message says what to fix, and the program exits with 2. */
@@ -217,8 +219,8 @@ export function parseCommand(tool: CliTool, words: readonly string[]): ParsedCom
         const property = properties[name] ?? {};
         const text = property.type === 'string' ? rest.join(' ') : rest[0];
 
-        // Only the text that takes the rest of the words, a message, comes from stdin; a `-` anywhere else is a value like any other.
-        if (text === STDIN && property.type === 'string' && position === order.length - 1) {
+        // Only the field the tool names for stdin, a message, reads it from there; a `-` anywhere else is a value like any other.
+        if (text === STDIN && property.type === 'string' && name === tool.stdin) {
             fromSource(name, STDIN);
         }
         else {
@@ -287,7 +289,7 @@ export function helpOf(tool: CliTool, tools: readonly CliTool[] = [tool], exampl
     const order = tool.positional ?? [];
     const text = (value: string | undefined) => commandText(value ?? '', tools);
     const usage = [`clowdy ${ group } ${ command }`, ...order.map(name => (required.has(name) ? `<${ kebab(name) }>` : `[${ kebab(name) }]`)), '[options]'].join(' ');
-    const positional = order.map((name, position) => row(`<${ kebab(name) }>`, [text(properties[name]?.description), position === order.length - 1 && properties[name]?.type === 'string' && '(- reads it from stdin)'].filter(Boolean).join(' ')));
+    const positional = order.map((name, position) => row(`<${ kebab(name) }>`, [text(properties[name]?.description), name === tool.stdin && properties[name]?.type === 'string' && '(- reads it from stdin)'].filter(Boolean).join(' ')));
     const options = Object.entries(properties).filter(([name]) => !order.includes(name)).flatMap(([name, property]) => {
         const flag = property.type === 'boolean' ? `--${ kebab(name) }` : `--${ kebab(name) } <${ placeholder(property) }>`;
         const note = [text(property.description), property.type === 'array' && '(comma-separated, or the option repeated)', required.has(name) && '(required)'].filter(Boolean).join(' ');

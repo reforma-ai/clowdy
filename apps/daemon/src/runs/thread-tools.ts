@@ -42,7 +42,7 @@ export function threadTools({ threads }: ToolDeps, run: Run): ToolDefinition[] {
             thread,
             message: z.string().min(1).describe('What to tell it'),
             mode: z.enum(['steer', 'queue']).optional().describe('steer (default) joins a running turn when the agent can; queue waits for the next turn'),
-        }), input => threads.tell(run, input), { cli: { positional: ['thread', 'message'] } }),
+        }), input => threads.tell(run, input), { cli: { positional: ['thread', 'message'], stdin: 'message' } }),
 
         defineTool('thread_stop', 'Stops a thread below you as the person\'s Stop does: its running turn and the work it has open in the background end, and messages waiting for it are held. Threads below it are not stopped; stop each one you want stopped. Use it when the work is no longer needed or went wrong. The thread is not restarted by itself; a thread_tell starts it again. Returns stopped: false, with its state, when its work was over already.', z.object({
             thread,
