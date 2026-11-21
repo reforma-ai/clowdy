@@ -1,6 +1,6 @@
 # Real agents on `clowdy task`: Claude Code, Cursor, Codex
 
-Date: 2026-11-21. Method: a scratch daemon from `next` at `c30798c` (own data folder, own port, `CLOWDY_AGENT_PERMISSIONS=allow` as by default), started by a driver script that is not kept in the repository. The driver adds a project of one git folder, seeds 100 `To do` and 500 `Done` tasks through `task.create`, opens an autopilot chat on the agent with its cheapest model, and sends one message: list the tasks and report the counts, create a task with a two-line description that depends on the first task, append a note, set it to Review, list what can start now, answer `done`. Afterwards the daemon's own snapshot is read to check the task. Models: Claude Code `haiku`, Cursor `composer-2.5`, Codex `gpt-6-luna` through `codex-acp` 2.6.0 (see "Not checked").
+Date: 2026-11-21. Method: a scratch daemon from `next` at `c30798c` (own data folder, own port, `CLOWDY_AGENT_PERMISSIONS=allow` as by default), started by a driver script that is not kept in the repository. The driver adds a project of one git folder, seeds 100 `To do` and 500 `Done` tasks through `task.create`, opens an autopilot chat on the agent with its cheapest model, and sends one message: list the tasks and report the counts, create a task with a two-line description that depends on the first task, append a note, set it to Review, list what can start now, answer `done`. Afterwards the daemon's own snapshot is read to check the task. Models: Claude Code `haiku`, Cursor `composer-2.5`, Codex `gpt-6-luna` through `codex-acp`: 2.6.0 in the first four Codex runs, then the pinned 2.8.0 (see "Codex on the pinned adapter").
 
 | Agent | Door | Result | Time | Tool calls (failed) | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -17,8 +17,11 @@ What the answers looked like: the first `task list` of Claude Code was 3.7 KB (2
 
 No built-in agent needs the MCP door, so `AgentSpec.taskTools` stays unset for all of them (the shell door). Codex's shell route costs one failed call per session and, in these runs, no more time than its MCP route (130 s and 64 s against 68 s and 72 s: the spread of one door is wider than the gap between doors). The MCP door still pays for its own mistake the other way round: with one prompt for both doors, an agent on it tries the shell command first and loses a call. If Codex's shell route ever needs a person's approval per call (a stricter `CLOWDY_AGENT_PERMISSIONS`), set `taskTools: 'mcp'` on its spec.
 
+## Codex on the pinned adapter
+
+The catalog pins `@agentclientprotocol/codex-acp@2.8.0`. The first attempt failed in 2 s with `adapter_unavailable`: `~/.bunfig.toml` has `minimumReleaseAge = 259200` and `bun x` refused a version that new. The Codex rows above therefore ran 2.6.0, which a preload in the scratch daemon set. With the owner's approval `@agentclientprotocol/codex-acp` was added to `minimumReleaseAgeExcludes` in `~/.bunfig.toml`, and the check was repeated on 2.8.0 with no preload: shell door, run succeeded in 74 s, 15 tool items (1 failed: the first `clowdy` call with `EPERM`, then the escalated calls all worked), task created, appended, in Review and depending on the first task. The same result as 2.6.0.
+
 ## Not checked
 
-- **Codex adapter 2.8.0.** The catalog pins `@agentclientprotocol/codex-acp@2.8.0`. On this machine `~/.bunfig.toml` has `minimumReleaseAge`, and `bun x` refused that version ("could not be installed, because Bun's minimum release age blocks a version that new": run failed in 2 s with `adapter_unavailable`). The Codex runs above used 2.6.0, set by the scratch daemon's preload. They show the route, not the pinned adapter; run the Codex row again once 2.8.0 has aged past the setting.
 - A Codex that declines the escalation, Windows, and the app's own rendering of `Bash` calls for `clowdy task` (they show as `Bash` like `clowdy thread` does).
 - A cheaper summary of the first call: the agents ran `clowdy task --help` or `<command> --help` first in most runs; that is 2–3 KB each, not measured separately.
