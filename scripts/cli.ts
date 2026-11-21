@@ -21,7 +21,7 @@ Commands:
   dev [electron args]   Run the desktop app; the renderer is rebuilt and the window reloads as you edit, main and preload restart the app
   build [mac|win]       Build the unpacked desktop app into apps/desktop/release (default: this OS; mac needs a Mac)
   sync icons [pack ...]  Pull icon packs from Figma into packages/icons (--list, --json, auth, --help)
-  worktree add <slug>   New checkout at ../clowdy-<slug> on <nickname>/<slug> from the current commit
+  worktree add <slug> [--from <ref>]  New checkout at ../clowdy-<slug> on <nickname>/<slug> from the local branch next (or <ref>; origin/... is fetched first)
   worktree remove <slug>  Remove that checkout. Refuses uncommitted work
   help                  Show this help
 

@@ -1,24 +1,29 @@
 /**
  * Extra checkouts for work that should not share the working branch (GITFLOW.md, Worktrees).
- * `add` starts from the current commit of the checkout it runs in, so from the main checkout that is `next`.
+ * `add` starts from the local branch `next` by name, whatever the checkout it runs in has checked out, or from
+ * `--from <ref>`; a ref of `origin` is fetched first.
  *
- *   ./clowdy worktree add <slug>
+ *   ./clowdy worktree add <slug> [--from <ref>]
  *   ./clowdy worktree remove <slug>
  */
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const USAGE = 'Usage: ./clowdy worktree add <kebab-case-slug> [--from <ref>] | remove <kebab-case-slug>';
+
+/** The branch all local work is committed on, and so what an isolated branch starts from and returns to. */
+const WORKING_BRANCH = 'next';
 
 export async function worktreeCommand(repoRoot: string, args: string[]): Promise<void> {
     const [sub, slug, ...rest] = args;
 
-    if ((sub !== 'add' && sub !== 'remove') || rest.length > 0 || !slug || !SLUG.test(slug)) {
-        die('Usage: ./clowdy worktree <add|remove> <kebab-case-slug>');
+    if ((sub !== 'add' && sub !== 'remove') || !slug || !SLUG.test(slug)) {
+        die(USAGE);
     }
 
     if (sub === 'add') {
-        const created = await addWorktree(repoRoot, slug);
+        const created = await addWorktree(repoRoot, slug, parseFrom(rest));
         const install = Bun.spawn(['bun', 'install', '--frozen-lockfile'], {
             cwd: created.path,
             stdio: ['inherit', 'inherit', 'inherit'],
@@ -30,12 +35,30 @@ export async function worktreeCommand(repoRoot: string, args: string[]): Promise
         }
 
         console.log(`Branch: ${ created.branch }`);
+        console.log(`From:   ${ created.from } (${ created.base })`);
         console.log(`Path:   ${ created.path }`);
         return;
     }
 
+    if (rest.length > 0) {
+        die(USAGE);
+    }
+
     const removed = await removeWorktree(repoRoot, slug);
     console.log(`Removed ${ removed }`);
+}
+
+/** The ref after `--from`, or nothing for the working branch. */
+function parseFrom(rest: string[]): string | undefined {
+    if (rest.length === 0) {
+        return undefined;
+    }
+
+    if (rest.length === 2 && rest[0] === '--from' && rest[1]) {
+        return rest[1];
+    }
+
+    return die(USAGE);
 }
 
 /** `git config user.name` as one kebab-case branch segment. */
@@ -49,10 +72,26 @@ export function nicknameFromGitName(name: string): string {
     return nick;
 }
 
-export async function addWorktree(repoRoot: string, slug: string): Promise<{ branch: string, path: string }> {
+export async function addWorktree(
+    repoRoot: string,
+    slug: string,
+    from = WORKING_BRANCH
+): Promise<{ branch: string, path: string, from: string, base: string }> {
     const nick = nicknameFromGitName(await gitName(repoRoot));
     const branch = `${ nick }/${ slug }`;
     const destination = worktreePath(repoRoot, slug);
+
+    // A ref of origin is only as new as the last fetch, so the one who asked for it gets it fresh. The default is local
+    // and needs no network: a fetch asks for the owner's SSH key, which an agent session does not hold.
+    if (from.startsWith('origin/')) {
+        await git(repoRoot, ['fetch', 'origin', '--prune']);
+    }
+
+    const base = await gitResult(repoRoot, ['rev-parse', '--verify', '--quiet', '--short', `${ from }^{commit}`]);
+
+    if (base.code !== 0) {
+        die(`There is no ${ from } to start from. Name another ref: ./clowdy worktree add ${ slug } --from <ref>`);
+    }
 
     if (await gitOk(repoRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${ branch }`])) {
         die(`Branch ${ branch } already exists.`);
@@ -66,11 +105,10 @@ export async function addWorktree(repoRoot: string, slug: string): Promise<{ bra
         die(`Path already exists: ${ destination }`);
     }
 
-    // From HEAD, so the branch carries what the working branch holds, committed and not yet pushed. No fetch: it would
-    // need the owner's SSH key, and the branch is merged back locally. --no-track keeps the new branch off any upstream.
-    await git(repoRoot, ['worktree', 'add', '--no-track', '-b', branch, destination, 'HEAD']);
+    // --no-track keeps the new branch off any upstream, which a start point of origin/... would set.
+    await git(repoRoot, ['worktree', 'add', '--no-track', '-b', branch, destination, from]);
 
-    return { branch, path: destination };
+    return { branch, path: destination, from, base: base.stdout.trim() };
 }
 
 export async function removeWorktree(repoRoot: string, slug: string): Promise<string> {

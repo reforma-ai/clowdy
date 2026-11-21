@@ -116,11 +116,11 @@ A worktree is for work that cannot share the tree. The agent decides to open one
 A small edit, a fix, or one more change on the day's work stays in the shared tree.
 
 ```
-./clowdy worktree add <slug>
+./clowdy worktree add <slug> [--from <ref>]
 ./clowdy worktree remove <slug>
 ```
 
-`<slug>` is kebab-case. `add` creates a sibling directory `../clowdy-<slug>` on a new branch `<nickname>/<slug>` from the current commit of the checkout it runs in (from the main checkout, that is `next`), then runs `bun install --frozen-lockfile` there. `<nickname>` is `git config user.name`, lowercased, with spaces turned into hyphens.
+`<slug>` is kebab-case. `add` creates a sibling directory `../clowdy-<slug>` on a new branch `<nickname>/<slug>`, then runs `bun install --frozen-lockfile` there. The branch starts from the local branch `next`, by name, whatever the checkout it runs in has checked out, so it carries the day's commits, pushed or not. `--from <ref>` starts it from another ref: `--from origin/main` for a clean start from what is released, fetched first. Without a local `next` the command stops and asks for `--from`. `<nickname>` is `git config user.name`, lowercased, with spaces turned into hyphens.
 
 When the work is done it comes back to `next`, not through a pull request: from the main checkout run `git merge <branch>` (a merge commit keeps the branch's own commits and their signatures), then `./clowdy worktree remove <slug>` and `git branch -d <branch>`. Run the checks of Pull Requests first for what the branch changed. When the merge would touch files that are dirty in the shared tree, wait until their owners have committed; do not stash them.
 
