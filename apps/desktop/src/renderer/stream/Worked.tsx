@@ -23,12 +23,12 @@ function WorkedTrigger({ label, shimmer }: { label: string; shimmer?: boolean })
 }
 
 /** The closed panel stays out of the page, so a long fold costs nothing until it is opened. */
-function WorkedPanel({ children }: { children: ReactNode }) {
+function WorkedPanel({ children, ruled }: { children: ReactNode; ruled?: boolean }) {
     const { state } = useCollapsible();
 
     return (
         <Show when={ state.isExpanded }>
-            <CollapsibleContent className={ styles.panel }>{ children }</CollapsibleContent>
+            <CollapsibleContent className={ cn(styles.panel, ruled && styles.ruled) }>{ children }</CollapsibleContent>
         </Show>
     );
 }
@@ -43,14 +43,16 @@ export interface WorkedProps {
     onOpenChange?: (open: boolean) => void;
     /** The label shimmers: what it tells is still going on. */
     shimmer?: boolean;
+    /** What is inside is set in under a thin rule, as the input and output of an opened call are (`ToolGroup`): it is a part of the work above, not a turn of its own. */
+    ruled?: boolean;
 }
 
 /** The work of a finished turn behind one line; the answer it led to stays outside. A run of tool calls is folded the same way (`ToolGroup`). */
-export function Worked({ label, children, open, onOpenChange, shimmer }: WorkedProps) {
+export function Worked({ label, children, open, onOpenChange, shimmer, ruled }: WorkedProps) {
     return (
         <Collapsible className={ styles.worked } defaultOpen={ false } open={ open } onOpenChange={ onOpenChange }>
             <WorkedTrigger label={ label } shimmer={ shimmer } />
-            <WorkedPanel>{ children }</WorkedPanel>
+            <WorkedPanel ruled={ ruled }>{ children }</WorkedPanel>
         </Collapsible>
     );
 }

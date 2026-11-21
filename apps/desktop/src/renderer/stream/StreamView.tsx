@@ -14,6 +14,7 @@ import { ErrorLine } from './ErrorLine';
 import { ForkDivider, type ForkOrigin } from './ForkDivider';
 import { NoteLine } from './NoteLine';
 import { QuestionCard } from './QuestionCard';
+import { ReasoningLine } from './ReasoningLine';
 import { SelectionReply } from './SelectionReply';
 import { NO_LINKS, StreamLinksContext, type StreamLinks } from './StreamLinks';
 import styles from './StreamView.module.css';
@@ -115,8 +116,8 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
     const lastWithActions = messageActions ? blocks.findLast(hasMessageActions)?.item.id : undefined;
     const forkPoint = forkedFrom && forkPointId(items, forkedFrom.atSeq);
     const last = items.at(-1)?.body;
-    // A message that is still arriving carries its own marker, and so does a compaction that runs (Reforma hides its pending line the same way).
-    const live = (last?.kind === 'assistant' && !last.done) || (last?.kind === 'tool' && last.name === COMPACT_TOOL && last.state === 'running');
+    // A message or a thought that is still arriving carries its own marker, and so does a compaction that runs (Reforma hides its pending line the same way).
+    const live = ((last?.kind === 'assistant' || last?.kind === 'reasoning') && !last.done) || (last?.kind === 'tool' && last.name === COMPACT_TOOL && last.state === 'running');
     const showWorking = Boolean(working) && !live;
 
     // The frame of an edit stands in for a bubble that is drawn again when the frame goes. That bubble is no news, so it must not rise into place a second time,
@@ -191,6 +192,8 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
                 return <UserBubble turn={ item.id } text={ body.text } attachments={ body.attachments } at={ item.at } actions={ actions } animate={ !shown.has(item.id) } />;
             case 'assistant':
                 return <AssistantMessage text={ body.text } streaming={ !body.done } at={ item.at } actions={ actions } />;
+            case 'reasoning':
+                return <ReasoningLine body={ body } />;
             case 'tool':
                 // A call that started a sub-agent is that agent's card, a compaction is a quiet line of its own; every other call is a tool line.
                 if (body.name === COMPACT_TOOL) return <CompactionLine call={ body } active={ active } />;

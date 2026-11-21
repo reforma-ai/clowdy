@@ -1,0 +1,6 @@
+/* The row's frame is a tool call's (`ToolCard.module.css`): the same icon, label, chevron and rule, so a thought and a call read as steps of one list. */
+
+/* What the agent thought, quieter than a message: it is the work behind the answer. The rule beside it is the one an opened call has. */
+.text {
+    color: var(--color-secondary-muted-text);
+}

@@ -35,6 +35,72 @@ const items = [
 const draw = (props: { active?: boolean; working?: boolean }) => act(async () => root.render(<StreamView items={ items } { ...props } />));
 const worked = () => [...container.querySelectorAll('button')].find(button => button.textContent?.startsWith('Worked for'));
 
+describe('the agent\'s reasoning', () => {
+    const thought = (n: number, text: string, done = true, durationMs?: number) => item(n, { kind: 'reasoning', text, done, ...(durationMs !== undefined && { durationMs }) });
+    const said = (n: number, text: string, done = true) => item(n, { kind: 'assistant', text, done });
+    const bash = (n: number, command: string, state: 'done' | 'running' = 'done') => item(n, { kind: 'tool', toolCallId: `b${ n }`, name: 'Bash', input: { command }, state });
+    const asked = item(0, { kind: 'user', text: 'Check the box' });
+    const line = (label: string) => [...container.querySelectorAll('button')].find(button => button.textContent === label);
+
+    it('is a line that says how long it took, closed, and a press opens the words', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'The box is the one named in the task.', true, 3200), said(2, 'It is the right one.', false)] } active working />));
+
+        expect(line('Thought 3s')).toBeDefined();
+        expect(line('Thought 3s')!.getAttribute('aria-expanded')).toBe('false');
+        expect(container.textContent).not.toContain('named in the task');
+
+        await act(async () => line('Thought 3s')!.click());
+
+        expect(line('Thought 3s')!.getAttribute('aria-expanded')).toBe('true');
+        expect(container.textContent).toContain('The box is the one named in the task.');
+    });
+
+    it('says Thinking while it goes on, shimmering, without the Working line under it', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'Let me see', false)] } active working />));
+
+        expect(line('Thinking…')).toBeDefined();
+        expect(line('Thinking…')!.querySelector('[style*="shimmer"]')).not.toBeNull();
+        expect(container.textContent).not.toContain('Working…');
+
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'Let me see', true, 800)] } active working />));
+
+        // Done, and the agent has not gone on yet: the working line is back.
+        expect(line('Thought')).toBeDefined();
+        expect(container.textContent).toContain('Working…');
+    });
+
+    it('stands in the fold of a finished turn with the rest of the work, and the answer stays out', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'First I will check.', true, 2000), said(2, 'Checking.'), bash(3, 'pwd'), bash(4, 'whoami'), said(5, 'All fine.')] } />));
+        await act(async () => worked()!.click());
+
+        expect(line('Thought 2s')).toBeDefined();
+        expect(container.textContent).toContain('Checking.');
+        expect(container.textContent).toContain('All fine.');
+    });
+
+    it('goes in the group of the calls it is between, which counts only the calls', async () => {
+        const stream = [asked, bash(1, 'pwd'), thought(2, 'Now the user.', true, 1500), bash(3, 'whoami'), said(4, 'Fine.', false)];
+
+        await act(async () => root.render(<StreamView items={ stream } active working />));
+
+        expect(line('Ran 2 commands')).toBeDefined();
+        expect(container.textContent).not.toContain('Thought');
+
+        await act(async () => line('Ran 2 commands')!.click());
+
+        expect(line('Thought 2s')).toBeDefined();
+        expect(container.textContent).toContain('pwd');
+        expect(container.textContent).toContain('whoami');
+    });
+
+    it('is open in the live group while the agent thinks after its calls', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami'), thought(3, 'What next?', false)] } active working />));
+
+        expect(line('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('true');
+        expect(line('Thinking…')).toBeDefined();
+    });
+});
+
 describe('runs of tool calls', () => {
     const bash = (n: number, command: string, state: 'done' | 'running' = 'done') => item(n, { kind: 'tool', toolCallId: `b${ n }`, name: 'Bash', input: { command }, state });
     const said = (n: number, text: string, done = true) => item(n, { kind: 'assistant', text, done });

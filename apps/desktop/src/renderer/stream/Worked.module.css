@@ -23,3 +23,26 @@
     width: 100%;
     min-width: 0;
 }
+
+/*
+ * The panel of a run of calls is set in under the same thin rule as the opened input and output of a call (`ToolCard.module.css` `.content`): the rule
+ * stands under the icon column of the rows above it, and the rows start one step after it.
+ */
+.ruled {
+    position: relative;
+    align-self: stretch;
+    width: auto;
+    margin-inline: var(--spacing-sm) 0;
+    padding-inline-start: var(--spacing-14);
+}
+
+.ruled::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 1px;
+    background: var(--color-secondary-border);
+    pointer-events: none;
+}

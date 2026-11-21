@@ -9,6 +9,7 @@ const item = (body: StreamItemBody, at: number): StreamItem => ({ id: `i-${ ++se
 const user = (at: number, text = 'Do it') => item({ kind: 'user', text }, at);
 const said = (at: number, text = 'Done.') => item({ kind: 'assistant', text, done: true }, at);
 const tool = (at: number) => item({ kind: 'tool', toolCallId: `t-${ at }`, name: 'Read', input: {}, state: 'done' }, at);
+const thought = (at: number, done = true) => item({ kind: 'reasoning', text: 'Hm.', done, ...(done && { durationMs: 2000 }) }, at);
 const note = (at: number) => item({ kind: 'note', text: 'started' }, at);
 const failure = (at: number) => item({ kind: 'error', text: 'It failed' }, at);
 const asking = (at: number) => item({ kind: 'question', questionId: `q-${ at }`, text: 'Which one?', options: [] }, at);
@@ -199,6 +200,20 @@ describe('groupToolRuns', () => {
         const items = [user(0), tool(1000), tool(2000), said(3000, 'Now the build.'), tool(4000), tool(5000), said(6000, 'Green.'), tool(7000), tool(8000)];
 
         expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tools(2)', 'assistant', 'tools(2)', 'assistant', 'tools(2)']);
+    });
+
+    it('keeps the thoughts between the calls of a run in it, and the one that ends it', () => {
+        const items = [user(0), thought(500), tool(1000), thought(1500), tool(2000), thought(2500, false)];
+        const blocks = groupToolRuns(foldFinishedWork(items, true));
+
+        expect(shape(blocks)).toEqual(['user', 'tools(5)']);
+        expect(blocks[1]).toMatchObject({ kind: 'tools', items: items.slice(1) });
+    });
+
+    it('leaves a thought alone as it is, and with a single call: a group is for two calls or more', () => {
+        expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), said(1000, 'Looking.'), thought(1500), tool(2000), tool(3000)], true)))).toEqual(['user', 'reasoning', 'assistant', 'tools(3)']);
+        expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), tool(1000), said(2000, 'Looked.'), tool(3000), thought(3500)], true)))).toEqual(['user', 'reasoning', 'tool', 'assistant', 'tool', 'reasoning']);
+        expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), thought(1000)], true)))).toEqual(['user', 'reasoning', 'reasoning']);
     });
 
     it('ends a run at anything that is not a call: a note, an error, a question', () => {

@@ -6,7 +6,7 @@ import type { StreamItem } from '@clowdy/protocol';
 /** An item as it is. */
 export type ItemBlock = Extract<StreamBlock, { kind: 'item' }>;
 
-/** Tool calls that follow one another, drawn under one line that tells what they did (`ToolGroup`). */
+/** Tool calls that follow one another, and the thoughts between them, drawn under one line that tells what the calls did (`ToolGroup`). */
 export interface ToolRun {
     kind: 'tools';
     key: string;
@@ -117,12 +117,13 @@ export function foldFinishedWork(items: readonly StreamItem[], active: boolean):
     });
 }
 
-/** A call that a group may hold: not a sub-agent's card or a compaction, which are lines of their own. */
-const isPlainTool = (item: StreamItem) => item.body.kind === 'tool' && item.body.name !== COMPACT_TOOL && !isSubagentTool(item.body.name);
+/** What a group may hold: a call that is not a sub-agent's card or a compaction (lines of their own), and what the agent thought. */
+const isRunItem = (item: StreamItem) => item.body.kind === 'reasoning' || (item.body.kind === 'tool' && item.body.name !== COMPACT_TOOL && !isSubagentTool(item.body.name));
 
 /**
- * Puts tool calls that follow one another under one line: two or more in a row become one `tools` block; a call alone stays as it is, since a line
- * with nothing more to say than the call is no gain. Anything else (a message, a note, a card of a sub-agent) ends the run.
+ * Puts tool calls that follow one another under one block, with the thoughts of the agent between them: a run of two or more calls becomes one `tools`
+ * block; a call alone stays as it is, since a line with nothing more to say than the call is no gain, and so do thoughts with no call of two beside them.
+ * Anything else (a message, a note, a card of a sub-agent) ends the run.
  */
 export function groupToolRuns(blocks: readonly ItemBlock[]): (ItemBlock | ToolRun)[];
 export function groupToolRuns(blocks: readonly StreamBlock[]): StreamBlock[];
@@ -131,14 +132,14 @@ export function groupToolRuns(blocks: readonly StreamBlock[]): StreamBlock[] {
     let run: ItemBlock[] = [];
 
     const flush = () => {
-        if (run.length >= 2) grouped.push({ kind: 'tools', key: `tools-${ run[0].item.id }`, items: run.map(block => block.item) });
+        if (run.filter(block => block.item.body.kind === 'tool').length >= 2) grouped.push({ kind: 'tools', key: `tools-${ run[0].item.id }`, items: run.map(block => block.item) });
         else grouped.push(...run);
 
         run = [];
     };
 
     for (const block of blocks) {
-        if (block.kind === 'item' && !block.answer && isPlainTool(block.item)) {
+        if (block.kind === 'item' && !block.answer && isRunItem(block.item)) {
             run.push(block);
 
             continue;
