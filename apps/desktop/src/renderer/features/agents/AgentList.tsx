@@ -24,6 +24,7 @@ import styles from './AgentList.module.css';
 import { agentGroups, agentRows, ancestorChats, draftTarget, groupFolderOf, isActiveThread, orchestratorOf, type AgentGroup, type AgentRow, type AgentSelection } from './agentTree';
 import { ArchiveButton } from './ArchiveButton';
 import { ChatIcon } from './ChatIcon';
+import { chatListPreferences } from './chatListPreferences';
 
 import type { Chat, ChatId, FolderId } from '@clowdy/protocol';
 
@@ -109,7 +110,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
         threadsOf: chatId => project.threadsOf(chatId),
         runs: project.runs,
         expanded: new Set(ui.expandedChats),
-        showFinished: ui.showFinishedThreads,
+        showFinished: chatListPreferences.showFinishedThreads,
         openChatId,
     });
     const entries: ListEntry[] = grouped
@@ -336,13 +337,14 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
 
 /**
  * The header's `⋯`: what the list shows (a checked entry is on), whether its chats stand in a group for each folder of the project (offered only
- * when the project has several folders), and the order the chats come in (the checked one).
+ * when the project has several folders), and the order the chats come in (the checked one). Settings > Chat has the order and the finished threads too.
  */
 function FilterMenu() {
     const ui = useProjectUi();
     const project = useProjectState();
+    const { sort, showFinishedThreads } = chatListPreferences;
     const [isOpen, setIsOpen] = useState(false);
-    const shown = ui.showFinishedThreads ? ['finished'] : [];
+    const shown = showFinishedThreads ? ['finished'] : [];
 
     return (
         <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
@@ -355,10 +357,10 @@ function FilterMenu() {
                         <MenuSection
                             selectionMode="multiple"
                             selectedKeys={ shown }
-                            onSelectionChange={ keys => ui.setShowFinishedThreads(keys === 'all' || keys.has('finished')) }
+                            onSelectionChange={ keys => chatListPreferences.setShowFinishedThreads(keys === 'all' || keys.has('finished')) }
                         >
                             <MenuHeader>Show</MenuHeader>
-                            <MenuItem id="finished" textValue="Finished threads" endAffix={ ui.showFinishedThreads ? <Check /> : undefined }>Finished threads</MenuItem>
+                            <MenuItem id="finished" textValue="Finished threads" endAffix={ showFinishedThreads ? <Check /> : undefined }>Finished threads</MenuItem>
                         </MenuSection>
                         <MenuSeparator />
                         { project.project.folders.length > 1 && (
@@ -377,16 +379,16 @@ function FilterMenu() {
                         <MenuSection
                             selectionMode="single"
                             disallowEmptySelection
-                            selectedKeys={ [ui.chatSort] }
+                            selectedKeys={ [sort] }
                             onSelectionChange={ (keys) => {
-                                const [sort] = keys === 'all' ? [] : keys;
+                                const [next] = keys === 'all' ? [] : keys;
 
-                                if (sort === 'activity' || sort === 'created') ui.setChatSort(sort);
+                                if (next === 'activity' || next === 'created') chatListPreferences.setSort(next);
                             } }
                         >
                             <MenuHeader>Sort by</MenuHeader>
-                            <MenuItem id="activity" textValue="Last activity" endAffix={ ui.chatSort === 'activity' ? <Check /> : undefined }>Last activity</MenuItem>
-                            <MenuItem id="created" textValue="Created" endAffix={ ui.chatSort === 'created' ? <Check /> : undefined }>Created</MenuItem>
+                            <MenuItem id="activity" textValue="Last activity" endAffix={ sort === 'activity' ? <Check /> : undefined }>Last activity</MenuItem>
+                            <MenuItem id="created" textValue="Created" endAffix={ sort === 'created' ? <Check /> : undefined }>Created</MenuItem>
                         </MenuSection>
                     </Menu>
                 </PopoverScroll>

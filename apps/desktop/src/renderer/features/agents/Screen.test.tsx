@@ -7,6 +7,7 @@ import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID, type F
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys, installDispatcher } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 
 import type { Editor } from '@tiptap/core';
@@ -62,6 +63,8 @@ const press = async (target: HTMLElement) => act(async () => {
 const menuItem = (name: string) => [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent?.includes(name))!;
 
 beforeEach(async () => {
+    chatListPreferences.setSort('activity');
+    chatListPreferences.setShowFinishedThreads(true);
     container = document.createElement('div');
     document.body.append(container);
     reactRoot = createRoot(container);
@@ -74,6 +77,8 @@ afterEach(() => {
     act(() => reactRoot.unmount());
     container.remove();
     store.dispose();
+    chatListPreferences.setSort('activity');
+    chatListPreferences.setShowFinishedThreads(true);
 });
 
 describe('the list', () => {
@@ -114,7 +119,7 @@ describe('the list', () => {
         expect(menuItem('Created').getAttribute('aria-checked')).toBe('false');
 
         await press(menuItem('Created'));
-        expect(ui().chatSort).toBe('created');
+        expect(chatListPreferences.sort).toBe('created');
         await draw();
         expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
 
@@ -720,7 +725,7 @@ describe('threads', () => {
     it('sorts only the chats the person made: threads keep the order they were made in, whatever the sort', async () => {
         await draw(() => {
             ui().toggleChatExpanded('c-6');
-            ui().setChatSort('created');
+            chatListPreferences.setSort('created');
             project().chats.set('c-6e', { ...project().chats.get('c-6e')!, updatedAt: Date.now() });
         });
 
@@ -736,7 +741,7 @@ describe('threads', () => {
         expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual(['Finished threads', 'Last activity', 'Created']);
 
         await press(menuItem('Finished threads'));
-        expect(ui().showFinishedThreads).toBe(false);
+        expect(chatListPreferences.showFinishedThreads).toBe(false);
         await draw();
 
         // The working thread and the one waiting for its background work stay; c-6a's own thread is done, so c-6a has nothing to fold.
@@ -746,7 +751,7 @@ describe('threads', () => {
 
     it('keeps a finished thread listed while it is the open chat', async () => {
         await draw(() => {
-            ui().setShowFinishedThreads(false);
+            chatListPreferences.setShowFinishedThreads(false);
             ui().openChat('c-6b');
         });
         // The screen opened the fold above it: drawn again, as the observer would.

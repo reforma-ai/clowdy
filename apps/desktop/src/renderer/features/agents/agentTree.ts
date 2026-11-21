@@ -3,7 +3,7 @@ import { folderNames, isTerminalRunStatus, mainFolder, type Chat, type ChatId, t
 import { isRunActive } from '../chats/chatRun';
 
 import type { StatusTone } from '../../shared';
-import type { ChatSort } from '../../stores';
+import type { ChatSort } from './chatListPreferences';
 
 /** One line of the Agents list: a chat, at the depth of the thread tree it sits in (0 for a chat the person made). */
 export interface AgentRow {
