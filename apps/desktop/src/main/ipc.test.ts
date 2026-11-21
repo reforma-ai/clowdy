@@ -24,7 +24,7 @@ function register(actions: Partial<Parameters<typeof registerIpc>[2]> = {}) {
             on: (channel: string, listener: Listener) => void listeners.set(channel, listener),
         } as never,
         TRUSTED,
-        { setThemeSource: vi.fn(), getDaemon: async () => undefined, ready: async () => undefined, restartToUpdate: vi.fn(), ...actions }
+        { setThemeSource: vi.fn(), getDaemon: async () => undefined, ready: async () => undefined, restartToUpdate: vi.fn(), listOpenApps: async () => ({ editors: [], fileManagers: [] }), openFolder: async () => undefined, ...actions }
     );
 
     return { listeners, handlers };
@@ -218,5 +218,33 @@ describe('OTA updates', () => {
         expect(() => handlers.get(IPC_CHANNELS.restartToUpdate)!(event)).toThrow('Untrusted sender');
         expect(ready).not.toHaveBeenCalled();
         expect(restartToUpdate).not.toHaveBeenCalled();
+    });
+});
+
+describe('opening a folder in a program', () => {
+    test('the app\'s own page can ask what the computer has and open a folder, and what it sends is handed on as it is', async () => {
+        const apps = { editors: [{ id: 'cursor', name: 'Cursor' }], fileManagers: [{ id: 'finder', name: 'Finder' }] };
+        const listOpenApps = vi.fn(async () => apps);
+        const openFolder = vi.fn(async () => undefined);
+        const { handlers } = register({ listOpenApps, openFolder });
+        const event = callFrom({ url: `${ TRUSTED }/` });
+
+        expect(await handlers.get(IPC_CHANNELS.openApps)!(event)).toEqual(apps);
+
+        await handlers.get(IPC_CHANNELS.openFolder)!(event, '/Users/dev/web', { kind: 'editor', id: 'cursor' });
+
+        expect(openFolder).toHaveBeenCalledWith('/Users/dev/web', { kind: 'editor', id: 'cursor' });
+    });
+
+    test('another page can do neither', async () => {
+        const listOpenApps = vi.fn(async () => ({ editors: [], fileManagers: [] }));
+        const openFolder = vi.fn(async () => undefined);
+        const { handlers } = register({ listOpenApps, openFolder });
+        const event = callFrom({ url: 'https://example.com/' });
+
+        expect(() => handlers.get(IPC_CHANNELS.openApps)!(event)).toThrow('Untrusted sender');
+        expect(() => handlers.get(IPC_CHANNELS.openFolder)!(event, '/Users/dev/web', { kind: 'editor', id: 'cursor' })).toThrow('Untrusted sender');
+        expect(listOpenApps).not.toHaveBeenCalled();
+        expect(openFolder).not.toHaveBeenCalled();
     });
 });

@@ -1,7 +1,7 @@
 import { THEMES, type Theme } from '@clowdy/constants';
 import { BrowserWindow, dialog } from 'electron';
 
-import { IPC_CHANNELS, type DesktopBridge, type FindOptions, type FindRect, type FindResult } from '../shared/bridge';
+import { IPC_CHANNELS, type DesktopBridge, type FindOptions, type FindRect, type FindResult, type OpenApps } from '../shared/bridge';
 import { isTrustedUrl } from './security';
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
@@ -27,12 +27,16 @@ export interface IpcActions {
     ready: () => Promise<void>;
     /** Restarts into the OTA bundle installed during this run; without one, nothing happens. */
     restartToUpdate: () => void;
+    /** The editors and file managers this computer has. */
+    listOpenApps: () => Promise<OpenApps>;
+    /** Opens a folder in one of them; it checks what the page sent. */
+    openFolder: (folder: unknown, app: unknown) => Promise<void>;
 }
 
 export function registerIpc(
     ipcMain: Pick<IpcMain, 'handle' | 'on'>,
     trustedOrigin: string,
-    { setThemeSource, getDaemon, ready, restartToUpdate }: IpcActions
+    { setThemeSource, getDaemon, ready, restartToUpdate, listOpenApps, openFolder }: IpcActions
 ): void {
     // The preload asks while the page loads and cannot wait for a promise, so this one is synchronous for it.
     // The reply may come later: the renderer blocks until `returnValue` is set. Anyone else gets `null`.
@@ -77,6 +81,18 @@ export function registerIpc(
         const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
 
         return result.canceled ? [] : result.filePaths;
+    });
+
+    ipcMain.handle(IPC_CHANNELS.openApps, (event) => {
+        assertTrustedSender(event, trustedOrigin);
+
+        return listOpenApps();
+    });
+
+    ipcMain.handle(IPC_CHANNELS.openFolder, (event, folder: unknown, app: unknown) => {
+        assertTrustedSender(event, trustedOrigin);
+
+        return openFolder(folder, app);
     });
 
     ipcMain.handle(IPC_CHANNELS.findInPage, (event, text: unknown, options: unknown) => {

@@ -48,6 +48,8 @@ describe('theme', () => {
             onUpdateReady: () => () => undefined,
             restartToUpdate: async () => undefined,
             findInPage: async () => ({ matches: 0, activeMatchOrdinal: 0 }),
+            getOpenApps: async () => ({ editors: [], fileManagers: [] }),
+            openFolder: async () => undefined,
             stopFind: async () => undefined,
             onFindCommand: () => () => undefined,
         };

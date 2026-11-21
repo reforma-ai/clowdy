@@ -9,7 +9,7 @@ export const SECTIONS = ['agents', 'tasks', 'docs'] as const;
 export type Section = typeof SECTIONS[number];
 
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
-export const SETTINGS_PAGES = ['appearance', 'chat', 'projects', 'providers', 'skills'] as const;
+export const SETTINGS_PAGES = ['appearance', 'chat', 'files', 'projects', 'providers', 'skills'] as const;
 
 export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';

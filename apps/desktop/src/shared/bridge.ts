@@ -20,7 +20,29 @@ export const IPC_CHANNELS = {
     stopFind: 'desktop:stop-find',
     /** Main to renderer: the Edit menu's Find, Find Next or Find Previous. */
     findCommand: 'desktop:find-command',
+    /** Renderer to main: which editors and file managers this computer has. */
+    openApps: 'desktop:open-apps',
+    /** Renderer to main: open a folder in one of them. */
+    openFolder: 'desktop:open-folder',
 } as const;
+
+/** A program that can open a folder: an editor or a file manager, found on this computer. `id` is the catalog's, `name` is what the person reads. */
+export interface OpenApp {
+    id: string;
+    name: string;
+}
+
+/** What this computer has, in the order the choices go in: the first editor is the one that opens a folder until another is picked, and the system's file manager is the first of its list. */
+export interface OpenApps {
+    editors: OpenApp[];
+    fileManagers: OpenApp[];
+}
+
+/** Which program opens a folder. */
+export interface OpenFolderApp {
+    kind: 'editor' | 'fileManager';
+    id: string;
+}
 
 /** What the Edit menu asked the page to do. */
 export type FindCommand = 'open' | 'next' | 'previous';
@@ -75,4 +97,8 @@ export interface DesktopBridge {
     stopFind: () => Promise<void>;
     /** The Edit menu's Find commands. Returns a function that stops listening. */
     onFindCommand: (listener: (command: FindCommand) => void) => () => void;
+    /** The editors and file managers this computer has, read each time it is asked: a program may be installed while the app runs. */
+    getOpenApps: () => Promise<OpenApps>;
+    /** Opens a folder in one of them. Rejects when the folder is gone or the program cannot be started. */
+    openFolder: (folder: string, app: OpenFolderApp) => Promise<void>;
 }

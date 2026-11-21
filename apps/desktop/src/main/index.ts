@@ -15,6 +15,7 @@ import { daemonHoldsLock } from './daemonFiles';
 import { daemonBundle, fromOlderBundle, keepDaemonFresh, newestSourceTime, sourcesChangedSince, type DaemonKeeper, type KeeperOptions } from './daemonKeeper';
 import { registerIpc } from './ipc';
 import { createAppMenu } from './menu';
+import { createOpenWith, systemOpenWithDeps } from './openWith';
 import { createOta, type Ota, type RunningBundle } from './ota';
 import { createProtocolHandler } from './protocol';
 import { releaseConfig, type ReleaseConfig } from './releaseConfig';
@@ -33,6 +34,10 @@ const ownRendererRoot = app.isPackaged
     ? path.join(app.getAppPath(), 'renderer')
     : process.env.CLOWDY_RENDERER_DIR ?? path.join(app.getAppPath(), 'dist/renderer');
 const trustedOrigin = APP_ORIGIN;
+
+/** The editors and file managers a folder can be opened in: the page asks which this computer has, and which one to use. */
+const openWith = createOpenWith(systemOpenWithDeps(folder => shell.openPath(folder)));
+
 /** The OTA bundle installed during this run, which every page that loads is told about. */
 let updateReady: number | undefined;
 
@@ -168,6 +173,8 @@ function start(): void {
             },
             ready: () => ota.ready(),
             restartToUpdate: () => ota.restart(),
+            listOpenApps: openWith.listApps,
+            openFolder: openWith.openFolder,
         });
 
         /**
