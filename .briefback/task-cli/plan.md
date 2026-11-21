@@ -116,4 +116,6 @@
 
 **Done when:** each of the three agents completed the flow, and the note shows why each agent has the channel it has.
 **Verify:** the note's own runs; `cd apps/daemon && bun test test/acp-registry.test.ts`
-**Commits:** with this plan update.
+**Commits:**
+
+- `54b673f` docs(briefback): record the real-agent check of the task commands
