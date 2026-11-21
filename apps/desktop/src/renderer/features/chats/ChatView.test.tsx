@@ -347,13 +347,13 @@ describe('a chat whose conversation outgrew the context window', () => {
 });
 
 describe('a chat whose orchestrator waits for background work', () => {
-    it('counts what is open above the message box, says what it waits for at the end of the stream, and leaves the message box to use', async () => {
+    it('counts what is open above the message box, shows no live line at the end of the stream, and leaves the message box to use', async () => {
         await start();
         await draw('c-5');
 
         // The first command can be stopped alone and has a row of its own; the other is counted.
         expect([...container.querySelectorAll('[aria-label="Work in progress"] > div')].map(row => row.textContent)).toEqual(['Command · bun run testStop', 'Background task runningStop']);
-        expect(container.textContent).toContain('Waiting for background work…');
+        expect(container.textContent).not.toContain('Waiting for background work…');
         expect(notice()).toBeNull();
         expect(field()).not.toBeNull();
     });
