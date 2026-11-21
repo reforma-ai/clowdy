@@ -49,14 +49,13 @@ describe('isRunBusy', () => {
 });
 
 describe('liveLine', () => {
-    it('shows the default line while working and names what a waiting or queued run waits for', () => {
+    it('shows the default line while working and names what a queued run waits for', () => {
         expect(liveLine('running')).toBe(true);
         expect(liveLine('queued')).toMatch(/free slot/);
-        expect(liveLine('waiting_background')).toBe('Waiting for background work…');
     });
 
-    it('shows no line when the run waits for the person (its question is in the stream), is blocked, or has ended', () => {
-        for (const status of ['waiting_user', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
+    it('shows no line when the run waits for the person (its question is in the stream), waits for background work, is blocked, or has ended', () => {
+        for (const status of ['waiting_user', 'waiting_background', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
             expect(liveLine(status), status).toBe(false);
         }
     });

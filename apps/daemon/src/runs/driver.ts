@@ -17,7 +17,7 @@ import { ASK_USER } from './tools';
 import { BACKGROUND_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 import { TurnWriter, UNFINISHED_TOOL } from './writer';
 
-import type { BackgroundItem, ChatMode, EngineId, Project, Run, RunContext } from '@clowdy/protocol';
+import type { BackgroundItem, Chat, ChatMode, EngineId, Project, Run, RunContext } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunWork } from '../db/runs';
 import type { EngineRegistry, EngineSession, ToolDefinition } from '../engine/types';
@@ -115,10 +115,22 @@ function additionalFolders(project: Project, cwd: string): string[] {
     return project.folders.flatMap(folder => folder.path !== cwd && isFolder(folder.path) ? [folder.path] : []);
 }
 
-/** What the system prompt says about a run's chat: none for a run without one, the parent's id and title for a thread (`Chat.parentChatId`). */
-function promptChat(store: Store, run: Run): PromptChat | undefined {
-    const chat = run.chatId ? getChat(store.db, run.chatId) : undefined;
+/**
+ * The folder a turn works in: the one the run names (a thread's own `cwd`), else the folder of the project its chat works in (`Chat.folderId`), else the
+ * main folder. A chat whose folder the project no longer has was handed back to the main folder when the folder left, so a stale id reads as none.
+ */
+function workingFolder(project: Project, chat: Chat | undefined, own: string | undefined): string {
+    if (own) {
+        return own;
+    }
 
+    const folder = chat?.folderId === undefined ? undefined : project.folders.find(candidate => candidate.id === chat.folderId);
+
+    return (folder ?? mainFolder(project)).path;
+}
+
+/** What the system prompt says about a run's chat: none for a run without one, the parent's id and title for a thread (`Chat.parentChatId`). */
+function promptChat(store: Store, chat: Chat | undefined): PromptChat | undefined {
     if (!chat) {
         return undefined;
     }
@@ -474,14 +486,20 @@ export class RunDriver {
     }
 
     /**
-     * What a session of a chat's orchestrator is opened with, a turn's or a fork's: the folder it works in (the run's own, else the project's main one), the
-     * project's other folders, the system prompt (`chat` says what the run's chat adds to it) and the tools of the run.
+     * What a session of a chat's orchestrator is opened with, a turn's or a fork's: the folder it works in (`workingFolder`: the run's own, else the folder of
+     * its chat, else the project's main one), the project's other folders, the system prompt (`chat` says what the run's chat adds to it) and the tools of the
+     * run. `ownChat` is the run's chat, which names the folder. Throws an `EngineFailure` when the folder is gone.
      */
-    private surroundings(run: Run, work: RunWork, chat: PromptChat | undefined) {
+    private surroundings(run: Run, work: RunWork, ownChat: Chat | undefined, chat: PromptChat | undefined) {
         const { runs, config } = this.deps;
         const project = runs.projectOf(run);
         const mode = runs.modeOf(run);
-        const cwd = work.cwd ?? mainFolder(project).path;
+        const cwd = workingFolder(project, ownChat, work.cwd);
+
+        // An engine told to start in a folder that is gone fails with the spawn's own error, which blames the program; say what is wrong.
+        if (!isFolder(cwd)) {
+            throw new EngineFailure(`The folder ${ cwd } no longer exists`);
+        }
 
         return {
             cwd,
@@ -511,8 +529,9 @@ export class RunDriver {
             throw new EngineFailure(`The ${ run.engine } engine cannot fork a conversation`);
         }
 
+        const ownChat = run.chatId ? getChat(store.db, run.chatId) : undefined;
         const { sessionId } = await engine.fork({
-            ...this.surroundings(run, getRunWork(store.db, runId), {}),
+            ...this.surroundings(run, getRunWork(store.db, runId), ownChat, {}),
             sessionId: run.sessionId,
             ref,
             signal: this.stopping.signal,
@@ -549,6 +568,8 @@ export class RunDriver {
         // The stream as it is before this turn adds its own lines: what the agent was told so far.
         const told = nextSeq(store.db, runId) - 1;
         const work = getRunWork(store.db, runId);
+        const ownChat = run.chatId ? getChat(store.db, run.chatId) : undefined;
+        const surroundings = this.surroundings(run, work, ownChat, promptChat(store, ownChat));
         const { prompt, lost } = this.compose(work, run.engine);
 
         const turnAbort = new AbortController();
@@ -577,7 +598,7 @@ export class RunDriver {
         // The message this turn sends is in the stream already; the record leaves it out, as the agent gets it in the prompt.
         const incoming = [prompt];
         const session = engine.start({
-            ...this.surroundings(run, work, promptChat(store, run)),
+            ...surroundings,
             prompt,
             resumeSessionId: run.sessionId,
             ...(run.sessionId && { history: () => conversationRecord(listItems(store.db, runId, 0).filter(item => item.seq <= told), incoming) }),

@@ -94,13 +94,12 @@ describe('UiStore', () => {
 
         first.forProject('p1').openTask('t7');
         first.forProject('p1').setTasksView('list');
-        first.forProject('p1').setChatSort('created');
         first.forProject('p2').openChat('c3');
 
         const second = new UiStore(storage);
 
-        expect(second.forProject('p1')).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list', chatSort: 'created' });
-        expect(second.forProject('p2')).toMatchObject({ section: 'agents', chatId: 'c3', tasksView: 'board', chatSort: 'activity' });
+        expect(second.forProject('p1')).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list' });
+        expect(second.forProject('p2')).toMatchObject({ section: 'agents', chatId: 'c3', tasksView: 'board' });
         expect(second.forProject('p3').section).toBe('agents');
     });
 
@@ -155,10 +154,10 @@ describe('UiStore', () => {
     });
 
     it('starts from what the page URL preselects, ahead of the stored state', () => {
-        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&sort=created&chat=c-1&run=r-1&doc=a.md&docFolder=fld-2');
+        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&chat=c-1&run=r-1&doc=a.md&docFolder=fld-2');
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","tasksView":"board"}' }), initial).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', chatSort: 'created', chatId: 'c-1', runId: 'r-1', docPath: 'a.md', docFolderId: 'fld-2' });
+        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', chatId: 'c-1', runId: 'r-1', docPath: 'a.md', docFolderId: 'fld-2' });
     });
 
     it('folds every chat until its threads are opened, and keeps what the person opened per project across a restart', () => {
@@ -190,19 +189,9 @@ describe('UiStore', () => {
         expect(ui.expandedChats).toBe(before);
     });
 
-    it('lists finished threads until the person hides them, and remembers it', () => {
-        const storage = memoryStorage();
-        const ui = new UiStore(storage).forProject('p1');
-
-        expect(ui.showFinishedThreads).toBe(true);
-
-        ui.setShowFinishedThreads(false);
-        expect(new UiStore(storage).forProject('p1').showFinishedThreads).toBe(false);
-    });
-
-    it('reads the folds and the filter of threads from the page URL, and drops what is damaged in storage', () => {
-        expect(initialUiFromSearch('?finished=0&expand=c-6,c-6a')).toEqual({ showFinishedThreads: false, expandedChats: ['c-6', 'c-6a'] });
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":"c-1","showFinishedThreads":"no"}' })).forProject('p1')).toMatchObject({ expandedChats: [], showFinishedThreads: true });
+    it('reads the folds of threads from the page URL, and drops what is damaged in storage', () => {
+        expect(initialUiFromSearch('?expand=c-6,c-6a')).toEqual({ expandedChats: ['c-6', 'c-6a'] });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":"c-1"}' })).forProject('p1')).toMatchObject({ expandedChats: [] });
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":["c-1",5]}' })).forProject('p1').expandedChats).toEqual(['c-1']);
     });
 
@@ -226,6 +215,66 @@ describe('UiStore', () => {
         expect(initialUiFromSearch('?agents=folded')).toEqual({ agentsFolded: true });
         expect(initialUiFromSearch('?agents=open')).toEqual({ agentsFolded: false });
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"agentsFolded":"yes"}' })).forProject('p1').agentsFolded).toBe(false);
+    });
+
+    it('groups the list by folder only when asked, folds a group on its own, and keeps both per project across a restart', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        expect([ui.groupByFolder, ui.collapsedFolders]).toEqual([false, []]);
+
+        ui.setGroupByFolder(true);
+        ui.toggleFolderCollapsed('fld-api');
+        ui.toggleFolderCollapsed('fld-notes');
+        ui.toggleFolderCollapsed('fld-api');
+        expect(ui.collapsedFolders).toEqual(['fld-notes']);
+        expect(store.forProject('p2')).toMatchObject({ groupByFolder: false, collapsedFolders: [] });
+        expect(new UiStore(storage).forProject('p1')).toMatchObject({ groupByFolder: true, collapsedFolders: ['fld-notes'] });
+    });
+
+    it('opens the folded group of a chat opened from elsewhere, and changes nothing when it is open', () => {
+        const ui = new UiStore().forProject('p1');
+
+        ui.toggleFolderCollapsed('fld-api');
+        ui.expandFolder('fld-web');
+        expect(ui.collapsedFolders).toEqual(['fld-api']);
+
+        const before = ui.collapsedFolders;
+
+        ui.expandFolder('fld-web');
+        expect(ui.collapsedFolders).toBe(before);
+
+        ui.expandFolder('fld-api');
+        expect(ui.collapsedFolders).toEqual([]);
+    });
+
+    it('reads the grouping and the folded groups from the page URL, and drops what is damaged in storage', () => {
+        expect(initialUiFromSearch('?group=1&collapsed=fld-api,fld-notes')).toEqual({ groupByFolder: true, collapsedFolders: ['fld-api', 'fld-notes'] });
+        expect(initialUiFromSearch('?group=0')).toEqual({ groupByFolder: false });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"groupByFolder":"yes","collapsedFolders":"fld-api"}' })).forProject('p1')).toMatchObject({ groupByFolder: false, collapsedFolders: [] });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"collapsedFolders":["fld-api",5]}' })).forProject('p1').collapsedFolders).toEqual(['fld-api']);
+    });
+
+    it('makes the new-chat row for a folder, and forgets the folder once another page opens; back and forward bring it again', () => {
+        const ui = new UiStore().forProject('p1');
+
+        ui.openDraft();
+        expect(ui.draftFolderId).toBeNull();
+
+        ui.openDraft([], 'fld-api');
+        expect([ui.draft, ui.draftFolderId]).toEqual([true, 'fld-api']);
+
+        const view = ui.view;
+
+        ui.openChat('c1');
+        expect([ui.draft, ui.draftFolderId]).toEqual([false, null]);
+
+        ui.show(view);
+        expect([ui.draft, ui.draftFolderId]).toEqual([true, 'fld-api']);
+
+        ui.openRun('r1');
+        expect(ui.draftFolderId).toBeNull();
     });
 
     it('ignores URL values that name no section or view', () => {

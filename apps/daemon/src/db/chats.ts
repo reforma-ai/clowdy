@@ -14,6 +14,7 @@ interface ChatRow {
     effort: string | null;
     orchestrator_run_id: string | null;
     parent_chat_id: string | null;
+    folder_id: string | null;
     source_chat_id: string | null;
     forked_at_seq: number | null;
     archived_at: number | null;
@@ -33,6 +34,7 @@ const toChat = (row: ChatRow): Chat => clean({
     effort: row.effort,
     orchestratorRunId: row.orchestrator_run_id,
     parentChatId: row.parent_chat_id,
+    folderId: row.folder_id,
     forkedFrom: row.source_chat_id !== null && row.forked_at_seq !== null ? { chatId: row.source_chat_id, atSeq: row.forked_at_seq } : null,
     archivedAt: row.archived_at,
     queue: parseJson<QueuedMessage[]>(row.queue),
@@ -51,24 +53,46 @@ export function listChats(db: Database, projectId: string): Chat[] {
     return (db.query('SELECT * FROM chats WHERE project_id = ? ORDER BY created_at, id').all(projectId) as ChatRow[]).map(toChat);
 }
 
-/** A chat's parent and the fork it comes from are set when the chat is made and never change, so an update leaves them alone (`setForkPoint` moves where a fork's history ends). */
+/**
+ * A chat's parent, folder and the fork it comes from are set when the chat is made and never change, so an update leaves them alone: a stale copy of a chat
+ * cannot bring back a folder `clearChatFolders` took away (`setForkPoint` moves where a fork's history ends).
+ */
 export function upsertChat(db: Database, chat: Chat): void {
     db.query(`
-        INSERT INTO chats (id, project_id, title, mode, engine, model, effort, orchestrator_run_id, parent_chat_id, source_chat_id, forked_at_seq, archived_at, queue, queue_paused, created_at,
-            updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO chats (id, project_id, title, mode, engine, model, effort, orchestrator_run_id, parent_chat_id, folder_id, source_chat_id, forked_at_seq, archived_at, queue, queue_paused,
+            created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET title = excluded.title, mode = excluded.mode, engine = excluded.engine, model = excluded.model, effort = excluded.effort,
             orchestrator_run_id = excluded.orchestrator_run_id, archived_at = excluded.archived_at, queue = excluded.queue, queue_paused = excluded.queue_paused,
             updated_at = excluded.updated_at
     `).run(
         chat.id, chat.projectId, chat.title, chat.mode, chat.engine ?? null, chat.model ?? null, chat.effort ?? null, chat.orchestratorRunId ?? null,
-        chat.parentChatId ?? null, chat.forkedFrom?.chatId ?? null, chat.forkedFrom?.atSeq ?? null, chat.archivedAt ?? null, chat.queue?.length ? toJson(chat.queue) : null, chat.queuePaused ?? null, chat.createdAt, chat.updatedAt
+        chat.parentChatId ?? null, chat.folderId ?? null, chat.forkedFrom?.chatId ?? null, chat.forkedFrom?.atSeq ?? null, chat.archivedAt ?? null,
+        chat.queue?.length ? toJson(chat.queue) : null, chat.queuePaused ?? null, chat.createdAt, chat.updatedAt
     );
 }
 
 /** Moves where a fork's inherited history ends (`forkedFrom.atSeq`), for an edit that cut into it: an update leaves the relation alone, so this is its one writer. */
 export function setForkPoint(db: Database, chatId: string, atSeq: number): void {
     db.query('UPDATE chats SET forked_at_seq = ? WHERE id = ? AND source_chat_id IS NOT NULL').run(atSeq, chatId);
+}
+
+/** Takes the folder off every chat of the project that chose one outside `folderIds` (a folder the project no longer has), and returns those chats as they are now. */
+export function clearChatFolders(db: Database, projectId: string, folderIds: readonly string[]): Chat[] {
+    const rows = db.query(`
+        UPDATE chats SET folder_id = NULL
+        WHERE project_id = ? AND folder_id IS NOT NULL AND folder_id NOT IN (SELECT value FROM json_each(?))
+        RETURNING *
+    `).all(projectId, JSON.stringify(folderIds)) as ChatRow[];
+
+    return rows.map(toChat);
+}
+
+/** How many chats work in each folder by choice, by folder id (an id belongs to one project); a folder none chose is not there. */
+export function chatCountsByFolder(db: Database): Map<string, number> {
+    const rows = db.query('SELECT folder_id AS folderId, COUNT(*) AS chats FROM chats WHERE folder_id IS NOT NULL GROUP BY folder_id').all() as { folderId: string; chats: number }[];
+
+    return new Map(rows.map(row => [row.folderId, row.chats]));
 }
 
 /** The threads a chat started, oldest first: its direct children, not theirs. */

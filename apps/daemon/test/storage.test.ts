@@ -3,7 +3,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { getChat, upsertChat } from '../src/db/chats';
+import { clearChatFolders, getChat, upsertChat } from '../src/db/chats';
 import { openDatabase } from '../src/db/connection';
 import { getItem, itemRef, setItemRef } from '../src/db/items';
 import { MIGRATIONS } from '../src/db/migrations';
@@ -217,9 +217,44 @@ describe('migrations', () => {
         db.close();
     });
 
-    test('version 17 gives the items of an older database a rewind point that reads as none, and keeps the point it is given', () => {
+    test('version 17 gives the chats of an older database a folder column that reads as none, and only clearChatFolders takes a folder off', () => {
         const path = join(tempDir(), 'clowdy.db');
         const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 17));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('cht_1', 'prj_1', 'Hello', 'autopilot', 1, 1);
+        before.close();
+
+        const db = openDatabase(path);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(getChat(db, 'cht_1')).toEqual({ id: 'cht_1', projectId: 'prj_1', title: 'Hello', mode: 'autopilot', createdAt: 1, updatedAt: 1 });
+
+        const notes = { id: 'cht_2', projectId: 'prj_1', title: 'There', mode: 'autopilot', folderId: 'fld_notes', createdAt: 2, updatedAt: 2 } as const;
+        const api = { ...notes, id: 'cht_3', folderId: 'fld_api' };
+
+        upsertChat(db, notes);
+        upsertChat(db, api);
+        expect(getChat(db, 'cht_2')?.folderId).toBe('fld_notes');
+
+        // The folder is set with the chat: an update that leaves it out does not take it off.
+        upsertChat(db, { ...notes, folderId: undefined, title: 'Renamed', updatedAt: 3 });
+        expect(getChat(db, 'cht_2')).toMatchObject({ title: 'Renamed', folderId: 'fld_notes' });
+
+        // A folder that left the project is taken off its chats alone, and a stale copy of one cannot bring it back.
+        expect(clearChatFolders(db, 'prj_1', ['fld_api']).map(chat => chat.id)).toEqual(['cht_2']);
+        expect(clearChatFolders(db, 'prj_other', [])).toEqual([]);
+        expect(getChat(db, 'cht_2')).not.toHaveProperty('folderId');
+        expect(getChat(db, 'cht_3')?.folderId).toBe('fld_api');
+        upsertChat(db, { ...notes, updatedAt: 4 });
+        expect(getChat(db, 'cht_2')).toMatchObject({ updatedAt: 4 });
+        expect(getChat(db, 'cht_2')).not.toHaveProperty('folderId');
+        db.close();
+    });
+
+    test('version 18 gives the items of an older database a rewind point that reads as none, and keeps the point it is given', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 18));
 
         before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
         before.query('INSERT INTO runs (id, project_id, root_run_id, role, name, summary, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', '', 'succeeded', 'claude', 1);

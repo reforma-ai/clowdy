@@ -3,6 +3,7 @@ import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/Tog
 import { LAST_USED, type QueuedMessageMode } from '@clowdy/protocol';
 
 import { hotkeys } from '../../hotkeys/registry';
+import { chatListPreferences, type ChatSort } from '../agents/chatListPreferences';
 import { busyEnter } from '../chats/busyEnter';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
@@ -23,7 +24,18 @@ const CHOICES: ReadonlyArray<{ id: QueuedMessageMode; label: string; tip: string
     { id: 'queue', label: 'Queue', tip: 'Waits until the agent finishes its current turn' },
 ];
 
-/** Settings > Chat: how the message box sends, whether a swipe over a message replies to it, and what a new chat starts with where its project follows the app, on this computer. */
+const SORTS: ReadonlyArray<{ id: ChatSort; label: string; tip: string }> = [
+    { id: 'activity', label: 'Last activity', tip: 'A chat that gets a message goes to the top' },
+    { id: 'created', label: 'Created', tip: 'Newest chats first, whatever happens in them' },
+];
+
+const SORT_LABEL = 'Sort chats by';
+const FINISHED_LABEL = 'Finished threads';
+
+/**
+ * Settings > Chat: how the message box sends, whether a swipe over a message replies to it, what a new chat starts with where its project follows the app,
+ * and how the Agents list looks, on this computer.
+ */
 export function ChatPage() {
     return (
         <SettingsPage title="Chat" description="Choose how chats look and behave">
@@ -60,6 +72,38 @@ export function ChatPage() {
                 onEngineChange={ next => newChatDefaults.setEngine(next === LAST_USED ? undefined : next) }
                 onModeChange={ next => newChatDefaults.setMode(modeOf(next)) }
             />
+
+            <SettingsSection title="Agents list">
+                <SettingsCard divided>
+                    <SettingsRow title={ SORT_LABEL } description="The order of the chats in the Agents list, in every project">
+                        <ToggleButtonGroup
+                            aria-label={ SORT_LABEL }
+                            size="sm"
+                            selectedKeys={ [chatListPreferences.sort] }
+                            onSelectionChange={ (keys) => {
+                                const next = SORTS.find(choice => keys.has(choice.id));
+
+                                if (next) chatListPreferences.setSort(next.id);
+                            } }
+                        >
+                            { SORTS.map(choice => (
+                                <ToggleButtonGroupItem key={ choice.id } value={ choice.id } tooltip={ choice.tip }>
+                                    { choice.label }
+                                </ToggleButtonGroupItem>
+                            )) }
+                        </ToggleButtonGroup>
+                    </SettingsRow>
+
+                    <SettingsRow title={ FINISHED_LABEL } description="List the threads whose run is over, below the chat that started them">
+                        <Switch
+                            size="sm"
+                            aria-label={ FINISHED_LABEL }
+                            isSelected={ chatListPreferences.showFinishedThreads }
+                            onChange={ show => chatListPreferences.setShowFinishedThreads(show) }
+                        />
+                    </SettingsRow>
+                </SettingsCard>
+            </SettingsSection>
         </SettingsPage>
     );
 }

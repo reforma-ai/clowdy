@@ -91,6 +91,8 @@ export interface ProjectFolderInfo {
     exists: boolean;
     /** The `origin` remote as git prints it (`git@github.com:acme/app.git`); absent without a remote, or when the folder is not a repository. */
     remoteUrl?: string;
+    /** How many chats work in this folder by choice (`Chat.folderId`): they go back to the main folder when the folder leaves the project. */
+    chats: number;
 }
 
 export interface ProjectSettings {
@@ -160,6 +162,12 @@ export interface Chat {
      * Absent on a chat the person made.
      */
     parentChatId?: ChatId;
+    /**
+     * The folder of the project the chat works in, set when the chat was made from a folder other than the main one and never changed after. Absent
+     * for a chat that follows the main folder, whichever it is. A folder that leaves the project hands its chats back to the main folder: the daemon
+     * clears the field, and the chat's next turn starts a new conversation. A thread has its parent's.
+     */
+    folderId?: FolderId;
     /**
      * Set on a chat made by `chat.fork`: where its conversation was taken from. `atSeq` is the `seq` of the last item the new chat's stream has from the
      * source (the answer the fork was made at), so what comes after it is the fork's own; the copied items keep the `seq` they had in the source. A fork is no

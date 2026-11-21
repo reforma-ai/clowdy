@@ -183,7 +183,7 @@ export class FixtureTransport implements Transport {
 
         return structuredClone(this.#listed().map(project => ({
             projectId: project.id,
-            folders: project.folders.map(folder => ({ folderId: folder.id, exists: true, ...git[folder.path] })),
+            folders: project.folders.map(folder => ({ folderId: folder.id, exists: true, ...git[folder.path], chats: chats.filter(chat => chat.projectId === project.id && chat.folderId === folder.id).length })),
             chats: chats.filter(chat => chat.projectId === project.id).length,
             tasks: tasks.filter(task => task.projectId === project.id).length,
             activeRuns: this.#activeRuns(project.id),
@@ -600,8 +600,18 @@ export class FixtureTransport implements Transport {
                 Object.assign(project, { name: command.name ?? project.name, folders: nextFolders, settings });
                 this.#emit(project.id, { type: 'project.upserted', project, statuses: data.statuses[project.id] ?? DEFAULT_STATUSES });
 
-                // Like the daemon: the project's skills come from its folders.
-                if (refoldered) this.#emit(project.id, { type: 'skills.changed' });
+                if (refoldered) {
+                    // Like the daemon: a chat that worked in a folder that left goes back to the main folder.
+                    for (const chat of data.chats) {
+                        if (chat.projectId === project.id && chat.folderId !== undefined && !nextFolders.some(folder => folder.id === chat.folderId)) {
+                            delete chat.folderId;
+                            this.#emit(project.id, { type: 'chat.upserted', chat: structuredClone(chat) });
+                        }
+                    }
+
+                    // Like the daemon: the project's skills come from its folders.
+                    this.#emit(project.id, { type: 'skills.changed' });
+                }
 
                 // Like the daemon: `{ project }`.
                 return ok({ project: structuredClone(project) });
@@ -655,6 +665,11 @@ export class FixtureTransport implements Transport {
 
                 if (refused) return refused;
 
+                // Like the daemon: a folder the project does not have is refused.
+                if (command.folderId && !data.projects.find(candidate => candidate.id === command.projectId)?.folders.some(folder => folder.id === command.folderId)) {
+                    return fail('invalid', `Folder ${ command.folderId } does not belong to project ${ command.projectId }`);
+                }
+
                 const now = Date.now();
                 const chat: Chat = {
                     id: this.#id('c'),
@@ -664,6 +679,7 @@ export class FixtureTransport implements Transport {
                     ...(command.engine && { engine: command.engine }),
                     ...(command.model && { model: command.model }),
                     ...(command.effort && { effort: command.effort }),
+                    ...(command.folderId && { folderId: command.folderId }),
                     createdAt: now,
                     updatedAt: now,
                 };

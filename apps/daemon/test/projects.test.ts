@@ -680,10 +680,10 @@ describe('GET /v1/projects/info', () => {
         const [goneFolder] = folderIds(gone.id);
 
         expect(projects.map(entry => entry.projectId)).toEqual(rootSnapshot(h.store).projects.map(project => project.id));
-        expect(projects[0]).toEqual({ projectId: h.personal.id, folders: [{ folderId: personalFolder, exists: true }], chats: 0, tasks: 0, activeRuns: 0 });
-        expect(projects[1]).toEqual({ projectId: repo.id, folders: [{ folderId: repoFolder, exists: true, remoteUrl: 'git@github.com:acme/app.git' }], chats: 2, tasks: 1, activeRuns: 0 });
-        expect(projects[2]).toEqual({ projectId: bare.id, folders: [{ folderId: bareMain, exists: true }, { folderId: bareNotes, exists: true }], chats: 0, tasks: 0, activeRuns: 0 });
-        expect(projects[3]).toEqual({ projectId: gone.id, folders: [{ folderId: goneFolder, exists: false }], chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects[0]).toEqual({ projectId: h.personal.id, folders: [{ folderId: personalFolder, exists: true, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects[1]).toEqual({ projectId: repo.id, folders: [{ folderId: repoFolder, exists: true, remoteUrl: 'git@github.com:acme/app.git', chats: 0 }], chats: 2, tasks: 1, activeRuns: 0 });
+        expect(projects[2]).toEqual({ projectId: bare.id, folders: [{ folderId: bareMain, exists: true, chats: 0 }, { folderId: bareNotes, exists: true, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects[3]).toEqual({ projectId: gone.id, folders: [{ folderId: goneFolder, exists: false, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 });
     });
 
     test('a path that is a file and not a folder does not count as one', async () => {
@@ -693,7 +693,7 @@ describe('GET /v1/projects/info', () => {
         rmSync(project.path, { recursive: true, force: true });
         writeFileSync(project.path, 'not a folder');
 
-        expect((await info(h)).find(entry => entry.projectId === project.id)?.folders).toEqual([{ folderId: projectOf(h, project.id).folders[0].id, exists: false }]);
+        expect((await info(h)).find(entry => entry.projectId === project.id)?.folders).toEqual([{ folderId: projectOf(h, project.id).folders[0].id, exists: false, chats: 0 }]);
     });
 
     test.skipIf(process.platform === 'win32')('reads the folders without stopping the daemon while git is slow', async () => {

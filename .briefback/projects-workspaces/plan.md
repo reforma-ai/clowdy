@@ -53,7 +53,7 @@
 
 ## Out of scope
 
-- A working directory of its own for one chat (a chat choosing which folder of the workspace it runs in).
+- A working directory of its own for one chat (a chat choosing which folder of the workspace it runs in). Delivered later: `.briefback/chat-folders/plan.md`.
 - The current worktree and branch (`TODO.md`, Projects).
 - Opening a folder in Finder or an IDE.
 - Folders in the personal space.

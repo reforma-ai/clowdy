@@ -328,6 +328,29 @@ describe('FixtureTransport', () => {
         expect(events.map(event => event.data)).toEqual([{ type: 'docs.changed', folderId: notes, path: 'plan.md', change: 'created' }]);
     });
 
+    it('keeps the folder a chat is made in, refuses one the project does not have, and hands the chats of a removed folder back to the main folder', async () => {
+        const { transport, events } = await connected();
+
+        await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/car-rental-api' }] });
+
+        const [, api] = (await transport.getDocsTree(FIXTURE_PROJECT_ID)).map(folder => folder.folderId);
+        const made = await transport.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, folderId: api });
+        const chat = (made as { data: { chat: { id: string; folderId?: string } } }).data.chat;
+
+        expect(chat.folderId).toBe(api);
+        expect(await transport.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_nobody' })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect((await transport.getProjectsInfo()).find(entry => entry.projectId === FIXTURE_PROJECT_ID)?.folders.map(folder => folder.chats)).toEqual([0, 1]);
+
+        events.length = 0;
+        await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }] });
+        await vi.advanceTimersByTimeAsync(0);
+
+        const after = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(candidate => candidate.id === chat.id);
+
+        expect(after).not.toHaveProperty('folderId');
+        expect(events.map(event => event.data.type)).toEqual(['project.upserted', 'chat.upserted', 'skills.changed']);
+    });
+
     it('shares the documents of a folder two projects have, and tells both of a change', async () => {
         const { transport, events } = await connected();
         const added = await transport.command({ type: 'project.add', folders: ['/Users/dev/web', '/Users/dev/car-rental'] });

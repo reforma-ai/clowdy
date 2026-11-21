@@ -85,9 +85,9 @@ describe('folderViews', () => {
     it('names each folder, marks the first as main, and reads what the daemon knows of each by its id', () => {
         const views = folderViews(project, {
             folders: [
-                { folderId: 'fld_c', exists: false },
-                { folderId: 'fld_a', exists: true, remoteUrl: 'git@github.com:acme/app.git' },
-                { folderId: 'fld_b', exists: true, remoteUrl: '/srv/git/app.git' },
+                { folderId: 'fld_c', exists: false, chats: 0 },
+                { folderId: 'fld_a', exists: true, remoteUrl: 'git@github.com:acme/app.git', chats: 0 },
+                { folderId: 'fld_b', exists: true, remoteUrl: '/srv/git/app.git', chats: 0 },
             ],
         });
 

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, spyOn, test } from 'bun:test';
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { executeCommandAsync } from '../src/commands';
@@ -9,9 +9,9 @@ import { getRunWork, setRunWork } from '../src/db/runs';
 import { appendItem } from '../src/domain/items';
 import { EngineFailure } from '../src/errors';
 import { forkTitle } from '../src/runs/fork';
-import { cleanTempDirs, command, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
+import { cleanTempDirs, command, latch, restartHarness, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
 
-import type { Attachment, Chat, CommandResult, StreamItem } from '@clowdy/protocol';
+import type { Attachment, Chat, CommandResult, Project, StreamItem } from '@clowdy/protocol';
 import type { AgentEngine, EngineEvent } from '../src/engine/types';
 import type { Harness, Script } from './helpers';
 
@@ -33,9 +33,9 @@ const answering: Script = async function* ({ number, options }) {
     yield { type: 'done', result: `answer ${ number }` };
 };
 
-/** A chat of the harness's, with what a test does to it: send, read the stream as a client does, and run a whole turn. */
-function chatOf(h: Harness, engine: ScriptEngine, projectId: string, agent: string) {
-    const { chat } = h.ok('chat.create', { projectId, engine: agent }) as { chat: Chat };
+/** A chat of the harness's (`create` adds to what it is made with), with what a test does to it: send, read the stream as a client does, and run a whole turn. */
+function chatOf(h: Harness, engine: ScriptEngine, projectId: string, agent: string, create: Record<string, unknown> = {}) {
+    const { chat } = h.ok('chat.create', { projectId, engine: agent, ...create }) as { chat: Chat };
     const send = (text: string, extra: Record<string, unknown> = {}) => h.ok('chat.send', { chatId: chat.id, text, ...extra }) as { runId: string };
     const read = async (chatId = chat.id) => await (await h.fetch(`/v1/chats/${ chatId }/items`)).json() as StreamItem[];
     const turn = async (text: string, extra: Record<string, unknown> = {}) => {
@@ -360,6 +360,40 @@ describe('chat.fork', () => {
 
         expect(engine.forked[0].cwd).toBe(elsewhere.path);
         expect(getRunWork(h.store.db, made.orchestratorRunId as string).cwd).toBe(elsewhere.path);
+    });
+
+    test('a chat that works in a folder of its project forks into a chat of that folder: the agent copies the session there and the next turn resumes it there', async () => {
+        const engine = new ScriptEngine(answering);
+
+        engine.canFork = true;
+
+        const h = await startHarness({}, { engines: scriptEngines(engine).set('fake', engine) });
+
+        harnesses.push(h);
+
+        const parent = tempDir();
+        const [web, api] = ['web', 'api'].map((name) => {
+            mkdirSync(join(parent, name));
+
+            return join(parent, name);
+        });
+        const { project } = h.ok('project.add', { name: 'Shop', folders: [web, api] }) as { project: Project };
+        // The project keeps the folders by their real paths, which differ from the temp folder's own on macOS.
+        const apiPath = project.folders[1].path;
+        const { chat, turn, read } = chatOf(h, engine, project.id, 'fake', { folderId: project.folders[1].id });
+
+        await turn('foo');
+
+        const made = await forked(h, chat.id, (await read())[1].id);
+
+        expect(made.folderId).toBe(project.folders[1].id);
+        expect(engine.forked[0].cwd).toBe(apiPath);
+
+        const turns = engine.turns.length;
+
+        h.ok('chat.send', { chatId: made.id, text: 'next' });
+        await waitFor(() => engine.turns.length === turns + 1, 'the turn of the fork to start');
+        expect(engine.turns[turns]).toMatchObject({ cwd: apiPath, resumeSessionId: 's1-fork-1' });
     });
 
     test('a thread can be forked, and its fork is a chat of the person\'s own', async () => {

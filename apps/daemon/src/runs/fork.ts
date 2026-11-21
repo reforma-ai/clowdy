@@ -75,7 +75,7 @@ export const reasonOf = (error: EngineFailure) => error.message.trim().replace(/
  * orchestrator run holding the copy's session, and the history are made. When the agent cannot fork nothing is created. Returns the part that changes
  * Clowdy, to run in the transaction that also stores the command's result (see `executeCommandAsync`).
  *
- * The new chat has the same project, agent, model, level and mode, is no thread, has an empty queue and no usage, is titled `forkTitle(source)`, and says where it
+ * The new chat has the same project, folder, agent, model, level and mode, is no thread, has an empty queue and no usage, is titled `forkTitle(source)`, and says where it
  * comes from in `Chat.forkedFrom`. Its run is `succeeded` like any run whose turn ended, with the copy's session id, the folder the source works in, and the
  * answer as its result, so the next message resumes the copy through the normal path (`sendMessage`: no first-message prefix, the history already has it).
  *
@@ -140,6 +140,8 @@ export async function prepareFork(services: Services, chatId: string, itemId: st
             mode: source.mode,
             ...choiceOf(run),
             orchestratorRunId: runId,
+            // The copy's session lives in the folder the source works in, and a later turn resumes it there.
+            ...(source.folderId && { folderId: source.folderId }),
             forkedFrom: { chatId: source.id, atSeq: answer.seq },
             createdAt: now,
             updatedAt: now,

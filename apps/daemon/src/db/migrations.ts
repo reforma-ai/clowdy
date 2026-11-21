@@ -393,13 +393,22 @@ export const MIGRATIONS: Migration[] = [
     {
         version: 17,
         up(db) {
+            // The folder of the project a chat works in (see `Chat.folderId`); NULL for a chat that follows the main folder, which is every chat of an older
+            // database. No foreign key: `upsertProject` writes the folder rows anew, which would clear the column of every chat. A project update clears the
+            // chats of a folder that left.
+            db.run('ALTER TABLE chats ADD COLUMN folder_id TEXT');
+        },
+    },
+    {
+        version: 18,
+        up(db) {
             // A rewind point: the agent's own id of the message an `assistant` item holds, kept on the item that ends a turn so the agent's session can be cut
             // there (see `StreamItem.canFork`). NULL on every other item, and on every item an older database has. Never sent to clients.
             db.run('ALTER TABLE stream_items ADD COLUMN provider_ref TEXT');
         },
     },
     {
-        version: 18,
+        version: 19,
         up(db) {
             // A fork: a chat made from an answer of another chat (see `Chat.forkedFrom`). NULL for every other chat, and for every chat of an older database.
             // `source_chat_id` is deliberately no foreign key and has no index: the fork lives on when its source is deleted, and nothing looks forks up by it.
