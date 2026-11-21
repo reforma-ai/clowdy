@@ -6,7 +6,7 @@ import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/
 import { Show } from '@clowdy/components/Show';
 import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Plus } from '@clowdy/icons/14';
 import { ChevronDown as FoldDown, ChevronRight as FoldRight } from '@clowdy/icons/8';
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type SyntheticEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, type SyntheticEvent } from 'react';
 
 import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
 import { SidebarHeading } from '../../shared';
@@ -260,18 +260,17 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
 
     const renderRow = (row: AgentRow) => {
         const { chat } = row;
-        // Only a row with threads below it has a chevron, and it takes no room: the icons stay where the list puts them.
-        const fold = row.childCount > 0 ? <Fold row={ row } onToggle={ () => ui.toggleChatExpanded(chat.id) } /> : undefined;
         // The same threads the strip above its message box lists.
         const threadsWorking = threadsAtWork(project.threadsOf(chat.id), project.runs).length > 0;
+        const icon = <ChatIcon chat={ chat } run={ runOf(chat) } threadsWorking={ threadsWorking } />;
 
         return (
             <GridListItem
                 key={ chat.id }
                 id={ chat.id }
                 text={ chat.title }
-                startAffix={ fold }
-                icon={ <ChatIcon chat={ chat } run={ runOf(chat) } threadsWorking={ threadsWorking } /> }
+                // Only a row with threads below it has a chevron: on hover it takes the place of the icon, so the row needs no room for it.
+                icon={ row.childCount > 0 ? <Fold row={ row } icon={ icon } onToggle={ () => ui.toggleChatExpanded(chat.id) } /> : icon }
                 endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } isOpen={ menuOpenId === chat.id } onOpenChange={ open => setMenuOpenId(open ? chat.id : null) } /> }
                 className={ row.depth > 0 ? styles.nested : undefined }
                 style={ { '--depth': row.depth } as CSSProperties }
@@ -405,21 +404,24 @@ function FilterMenu() {
     );
 }
 
-/** The chevron of a row that has threads below it, drawn in the row's left padding. */
-function Fold({ row, onToggle }: { row: AgentRow; onToggle: () => void }) {
+/** The icon of a row that has threads below it: on hover the chevron that folds them takes its place, in the same room. */
+function Fold({ row, icon, onToggle }: { row: AgentRow; icon: ReactNode; onToggle: () => void }) {
     return (
-        // The button is a React child of the row, so its clicks and keys would reach the row through the tree.
-        <span className={ styles.fold } { ...ownEvents }>
-            <button
-                type="button"
-                tabIndex={ -1 }
-                className={ styles.chevron }
-                aria-label={ row.isExpanded ? `Collapse ${ row.chat.title } threads` : `Expand ${ row.chat.title } threads` }
-                aria-expanded={ row.isExpanded }
-                onClick={ onToggle }
-            >
-                { row.isExpanded ? <FoldDown aria-hidden /> : <FoldRight aria-hidden /> }
-            </button>
+        <span className={ styles.foldIcon }>
+            <span className={ styles.restIcon } data-show={ listBoxItemDataShow.itemRest }>{ icon }</span>
+            {/* The button is a React child of the row, so its clicks and keys would reach the row through the tree. */}
+            <span className={ styles.fold } data-show={ listBoxItemDataShow.itemHover } { ...ownEvents }>
+                <button
+                    type="button"
+                    tabIndex={ -1 }
+                    className={ styles.chevron }
+                    aria-label={ row.isExpanded ? `Collapse ${ row.chat.title } threads` : `Expand ${ row.chat.title } threads` }
+                    aria-expanded={ row.isExpanded }
+                    onClick={ onToggle }
+                >
+                    { row.isExpanded ? <FoldDown aria-hidden /> : <FoldRight aria-hidden /> }
+                </button>
+            </span>
         </span>
     );
 }

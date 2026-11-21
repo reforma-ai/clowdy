@@ -33,19 +33,29 @@
 }
 
 /*
- * The chevron sits in the row's own left padding, so it takes no room from the row: the icon of every row stays where the
- * list puts it. A thread's padding grows by one level (`--depth`), and the chevron moves with it.
+ * A row with threads below it: the chevron is drawn over the icon and takes its place while the row is hovered, so the row keeps the one
+ * room for both and the icon of every row stays where the list puts it. The icon goes out (`item-rest`) as the chevron comes in (`item-hover`).
  */
+.foldIcon {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.restIcon {
+    display: inline-flex;
+}
+
 .fold {
     position: absolute;
     top: 50%;
-    inset-inline-start: calc(var(--depth, 0) * var(--spacing-20));
+    left: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: var(--spacing-12);
+    width: var(--spacing-16);
     height: var(--spacing-16);
-    transform: translateY(-50%);
+    transform: translate(-50%, -50%);
 }
 
 .chevron {
