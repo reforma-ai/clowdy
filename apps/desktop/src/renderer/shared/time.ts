@@ -5,6 +5,29 @@ export function formatTime(at: number): string {
     return clock.format(at);
 }
 
+const stamp = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' } as const;
+const sameYearStamp = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', ...stamp });
+const otherYearStamp = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', ...stamp });
+const fullStamp = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', ...stamp });
+
+/**
+ * When a message was written, in the fewest words: the time alone for today (`22:54`), the day too for an earlier day of
+ * this year (`19 Nov, 22:54`), and the year as well for another year (`19 Nov 2025, 22:54`). `now` is for tests.
+ */
+export function formatMessageTime(at: number, now = Date.now()): string {
+    const written = new Date(at);
+    const today = new Date(now);
+
+    if (written.toDateString() === today.toDateString()) return formatTime(at);
+
+    return (written.getFullYear() === today.getFullYear() ? sameYearStamp : otherYearStamp).format(written);
+}
+
+/** The whole date and time of a moment, for a tooltip: `Wednesday, 19 November 2025 at 22:54`. */
+export function formatFullTime(at: number): string {
+    return fullStamp.format(at);
+}
+
 /** How long something took: `45s`, `2m 14s`, `1h 05m`. */
 export function formatDuration(milliseconds: number): string {
     const seconds = Math.max(0, Math.round(milliseconds / 1000));

@@ -152,4 +152,92 @@ describe('StreamView', () => {
         expect(card?.textContent).toContain('Ask 4');
         expect(card?.textContent).not.toContain('Ask 1');
     });
+
+    describe('message actions', () => {
+        const thread = (n: number): StreamItem => item(n, { kind: 'user', text: 'Done', from: { kind: 'thread', chatId: 'c-2', title: 'Fix login' } });
+        const notice = (n: number): StreamItem => item(n, { kind: 'user', text: '', from: { kind: 'threadNotice', threads: [{ chatId: 'c-3', title: 'Write tests', outcome: 'finished', text: 'Passing.' }] } });
+        const twoTurns = [...items, item(4, { kind: 'user', text: 'Now the table' }), item(5, { kind: 'assistant', text: 'The table is done.', done: true })];
+        const rows = () => [...container.querySelectorAll<HTMLElement>('time')].map(time => time.parentElement as HTMLElement);
+        const rowAfter = (text: string) => [...container.querySelectorAll<HTMLElement>('time')].find(time => time.parentElement?.parentElement?.textContent?.includes(text))?.parentElement;
+        const drawWith = (list: StreamItem[], props: { active?: boolean; messageActions?: boolean } = { messageActions: true }) => act(async () => root.render(<StreamView items={ list } { ...props } />));
+
+        it('draws a row under each message of the person and the answer of each turn, and none under the rest', async () => {
+            await drawWith(twoTurns, { active: false, messageActions: true });
+
+            expect(rows()).toHaveLength(4);
+            expect(rowAfter('Fix the form')?.dataset.align).toBe('end');
+            expect(rowAfter('The form is fixed.')?.dataset.align).toBe('start');
+            // The words on the way are folded and have none, and a sentence of work is no answer.
+            expect(rowAfter('Looking at it.')).toBeUndefined();
+        });
+
+        it('draws nothing unless the caller asks, as on the page of a run that only reads', async () => {
+            await drawWith(items, { active: false });
+
+            expect(container.querySelector('time')).toBeNull();
+            expect(container.querySelector('[aria-label="Copy message"]')).toBeNull();
+        });
+
+        it('keeps the turn rail\'s mark on the root of the person\'s message, with the row inside it', async () => {
+            await drawWith(items, { active: false, messageActions: true });
+
+            const bubble = container.querySelector<HTMLElement>('[data-turn="i-0"]');
+
+            expect(bubble?.lastElementChild?.querySelector('time')).not.toBeNull();
+        });
+
+        it('gives no row to what another thread wrote or to the notice of threads that stopped', async () => {
+            await drawWith([thread(0), item(1, { kind: 'assistant', text: 'Noted.', done: true }), notice(2)], { active: false, messageActions: true });
+
+            // Only the answer to the thread's message has a row.
+            expect(rows()).toHaveLength(1);
+            expect(rows()[0].dataset.align).toBe('start');
+        });
+
+        it('gives the answer of a live turn no row until it is done, and the person\'s message its row', async () => {
+            await drawWith(items, { active: true, messageActions: true });
+
+            expect(rows()).toHaveLength(1);
+            expect(rows()[0].dataset.align).toBe('end');
+
+            const writing = [...items.slice(0, 3), item(3, { kind: 'assistant', text: 'The form', done: false })];
+
+            await drawWith(writing, { active: false, messageActions: true });
+
+            expect(rowAfter('The form')).toBeUndefined();
+        });
+
+        it('draws no row inside the fold when it is opened', async () => {
+            await drawWith(items, { active: false, messageActions: true });
+            await act(async () => worked()!.click());
+
+            expect(container.textContent).toContain('Looking at it.');
+            expect(rows()).toHaveLength(2);
+        });
+
+        it('shows the row of the last message that has one, and leaves the others to the pointer', async () => {
+            await drawWith(twoTurns, { active: false, messageActions: true });
+
+            expect(rows().map(row => row.dataset.show)).toEqual(['hover', 'hover', 'hover', 'always']);
+            expect(rowAfter('The table is done.')?.dataset.show).toBe('always');
+        });
+
+        it('moves the last row to the person\'s message while the agent answers, and to the answer when it is done', async () => {
+            await drawWith([...twoTurns.slice(0, 5), item(6, { kind: 'tool', toolCallId: 't2', name: 'Read', input: {}, state: 'running' })], { active: true, messageActions: true });
+
+            expect(rowAfter('Now the table')?.dataset.show).toBe('always');
+            expect(rowAfter('The form is fixed.')?.dataset.show).toBe('hover');
+
+            await drawWith(twoTurns, { active: false, messageActions: true });
+
+            expect(rowAfter('Now the table')?.dataset.show).toBe('hover');
+            expect(rowAfter('The table is done.')?.dataset.show).toBe('always');
+        });
+
+        it('does not take the last row for a message that has none', async () => {
+            await drawWith([...twoTurns, notice(6)], { active: false, messageActions: true });
+
+            expect(rowAfter('The table is done.')?.dataset.show).toBe('always');
+        });
+    });
 });

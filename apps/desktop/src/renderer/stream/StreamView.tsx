@@ -19,13 +19,14 @@ import { ThreadMessageCard, ThreadNoticeCards } from './ThreadCards';
 import { ToolCard } from './ToolCard';
 import { turnMarks } from './turnMarks';
 import { TurnRail } from './TurnRail';
-import { foldFinishedWork } from './turns';
+import { foldFinishedWork, hasMessageActions, type StreamBlock } from './turns';
 import { UserBubble } from './UserBubble';
 import { Worked } from './Worked';
 import { WorkingLine } from './WorkingLine';
 
 import type { StreamItem } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
+import type { MessageActionsShow } from './MessageActions';
 
 export interface StreamViewProps {
     items: StreamItem[];
@@ -43,6 +44,11 @@ export interface StreamViewProps {
     links?: StreamLinks;
     /** A button at the end of an error, for what fixes it: a chat whose context overflowed offers Compact on its failure. */
     errorAction?: (item: StreamItem) => ReactNode;
+    /**
+     * Draws a row of actions and the time under the person's own messages and under the answer of each turn that is over, shown on the pointer
+     * or the focus and always under the last one. Off for a page that only reads a run.
+     */
+    messageActions?: boolean;
 }
 
 /**
@@ -51,7 +57,7 @@ export interface StreamViewProps {
  * while it is there. A turn that is over shows what was asked and the answer, and the work between them under one
  * "Worked for" line.
  */
-export function StreamView({ items, active = false, working, onAnswer, emptyState, decorate, links = NO_LINKS, errorAction }: StreamViewProps) {
+export function StreamView({ items, active = false, working, onAnswer, emptyState, decorate, links = NO_LINKS, errorAction, messageActions = false }: StreamViewProps) {
     const scroller = useRef<HTMLDivElement>(null);
     const { scrollRef: stickScrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
     const scrollRef = useMemo(
@@ -62,12 +68,20 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
     // What was there when the stream first showed is not news: only a message that comes later rises into place.
     const [shown] = useState(() => new Set(items.map(item => item.id)));
     const blocks = useMemo(() => foldFinishedWork(items, active), [items, active]);
+    const lastWithActions = messageActions ? blocks.findLast(hasMessageActions)?.item.id : undefined;
     const last = items.at(-1)?.body;
     // A message that is still arriving carries its own marker, and so does a compaction that runs (Reforma hides its pending line the same way).
     const live = (last?.kind === 'assistant' && !last.done) || (last?.kind === 'tool' && last.name === COMPACT_TOOL && last.state === 'running');
     const showWorking = Boolean(working) && !live;
 
-    const renderItem = (item: StreamItem): ReactNode => {
+    /** The row a block gets: none unless the caller asked for rows and the block is a message that has one; the last of them always shows. */
+    const actionsOf = (block: StreamBlock): MessageActionsShow | undefined => {
+        if (!messageActions || !hasMessageActions(block)) return undefined;
+
+        return block.item.id === lastWithActions ? 'always' : 'hover';
+    };
+
+    const renderItem = (item: StreamItem, actions?: MessageActionsShow): ReactNode => {
         const { body } = item;
 
         switch (body.kind) {
@@ -77,9 +91,9 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
 
                 if (body.from?.kind === 'threadNotice') return <ThreadNoticeCards turn={ item.id } threads={ body.from.threads } />;
 
-                return <UserBubble turn={ item.id } text={ body.text } attachments={ body.attachments } at={ item.at } animate={ !shown.has(item.id) } />;
+                return <UserBubble turn={ item.id } text={ body.text } attachments={ body.attachments } at={ item.at } actions={ actions } animate={ !shown.has(item.id) } />;
             case 'assistant':
-                return <AssistantMessage text={ body.text } streaming={ !body.done } />;
+                return <AssistantMessage text={ body.text } streaming={ !body.done } at={ item.at } actions={ actions } />;
             case 'tool':
                 // A call that started a sub-agent is that agent's card, a compaction is a quiet line of its own; every other call is a tool line.
                 if (body.name === COMPACT_TOOL) return <CompactionLine call={ body } active={ active } />;
@@ -108,7 +122,7 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
                             )
                             : (
                                 <Fragment key={ block.item.id }>
-                                    { renderItem(block.item) }
+                                    { renderItem(block.item, actionsOf(block)) }
                                     { decorate?.(block.item) }
                                 </Fragment>
                             ))) }

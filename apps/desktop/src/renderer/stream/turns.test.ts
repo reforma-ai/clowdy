@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { foldFinishedWork, workedForLabel, type StreamBlock } from './turns';
+import { foldFinishedWork, hasMessageActions, workedForLabel, type StreamBlock } from './turns';
 
 import type { StreamItem, StreamItemBody } from '@clowdy/protocol';
 
@@ -27,7 +27,7 @@ describe('foldFinishedWork', () => {
         const blocks = foldFinishedWork(items, false);
 
         expect(blocks[0]).toEqual({ kind: 'item', item: items[0] });
-        expect(blocks[2]).toEqual({ kind: 'item', item: items[2] });
+        expect(blocks[2]).toEqual({ kind: 'item', item: items[2], answer: true });
         expect(blocks[1]).toMatchObject({ kind: 'worked', items: [items[1]] });
     });
 
@@ -85,6 +85,63 @@ describe('foldFinishedWork', () => {
         const writing = item({ kind: 'assistant', text: 'Half', done: false }, 3000);
 
         expect(shape(foldFinishedWork([user(0), tool(1000), writing], false))).toEqual(['user', 'tool', 'assistant']);
+    });
+});
+
+/** The ids of the blocks marked as an answer. */
+const answers = (blocks: StreamBlock[]) => blocks.flatMap(block => (block.kind === 'item' && block.answer ? [block.item.id] : []));
+
+describe('foldFinishedWork answers', () => {
+    it('marks the last written message of a finished turn, whether or not its work folds', () => {
+        const folded = [user(0), tool(1000), said(2000, 'Looking.'), tool(3000), said(4000, 'All done.')];
+        const bare = [user(5000), said(6000, 'Hello.')];
+
+        expect(answers(foldFinishedWork([...folded, ...bare], false))).toEqual([folded[4].id, bare[1].id]);
+    });
+
+    it('marks the answer of every turn that is over, and none of the live one', () => {
+        const items = [user(0), tool(1000), said(2000, 'First.'), user(3000), tool(4000), said(5000, 'Half way.')];
+
+        expect(answers(foldFinishedWork(items, true))).toEqual([items[2].id]);
+        expect(answers(foldFinishedWork(items, false))).toEqual([items[2].id, items[5].id]);
+    });
+
+    it('marks no answer for a turn that stopped without one, or while its message is still arriving', () => {
+        const writing = item({ kind: 'assistant', text: 'Half', done: false }, 3000);
+
+        expect(answers(foldFinishedWork([user(0), tool(1000), tool(2000)], false))).toEqual([]);
+        expect(answers(foldFinishedWork([user(0), tool(1000), writing], false))).toEqual([]);
+        expect(answers(foldFinishedWork([user(0), said(1000, '  ')], false))).toEqual([]);
+    });
+
+    it('marks the answer that precedes a trailing note, and never an item inside the fold', () => {
+        const items = [user(0), said(1000, 'Looking.'), tool(2000), said(3000, 'Done.'), note(4000)];
+        const blocks = foldFinishedWork(items, false);
+
+        expect(answers(blocks)).toEqual([items[3].id]);
+        expect(blocks.find(block => block.kind === 'worked')).toMatchObject({ items: [items[1], items[2]] });
+    });
+});
+
+describe('hasMessageActions', () => {
+    const block = (entry: StreamItem, answer?: true): StreamBlock => ({ kind: 'item', item: entry, ...(answer && { answer }) });
+
+    it('is true for what the person wrote and for an answer', () => {
+        expect(hasMessageActions(block(user(0)))).toBe(true);
+        expect(hasMessageActions(block(said(1000), true))).toBe(true);
+    });
+
+    it('is false for what an agent or a thread wrote, and for the rest of a stream', () => {
+        const fromThread = item({ kind: 'user', text: 'Done', from: { kind: 'thread', chatId: 'c-2', title: 'Fix login' } }, 0);
+        const notice = item({ kind: 'user', text: 'Stopped', from: { kind: 'threadNotice', threads: [] } }, 0);
+
+        expect(hasMessageActions(block(fromThread))).toBe(false);
+        expect(hasMessageActions(block(notice))).toBe(false);
+        expect(hasMessageActions(block(said(1000)))).toBe(false);
+        expect(hasMessageActions(block(tool(1000)))).toBe(false);
+        expect(hasMessageActions(block(note(1000)))).toBe(false);
+        expect(hasMessageActions(block(failure(1000)))).toBe(false);
+        expect(hasMessageActions({ kind: 'worked', key: 'w', label: 'Worked', items: [user(0)] })).toBe(false);
     });
 });
 

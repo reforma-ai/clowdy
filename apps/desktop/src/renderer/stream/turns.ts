@@ -1,8 +1,11 @@
 import type { StreamItem } from '@clowdy/protocol';
 
-/** What a stream draws, in order: an item as it is, or the work of a finished turn folded under one line. */
+/**
+ * What a stream draws, in order: an item as it is, or the work of a finished turn folded under one line. `answer` marks
+ * the final answer of a finished turn (a turn still running has none yet).
+ */
 export type StreamBlock =
-    | { kind: 'item'; item: StreamItem }
+    | { kind: 'item'; item: StreamItem; answer?: true }
     | { kind: 'worked'; key: string; label: string; items: StreamItem[] };
 
 /** "Worked for 25s", "Worked for 2m 5s", "Worked for 1h 10m". */
@@ -28,8 +31,8 @@ const isAnswer = (item: StreamItem) => item.body.kind === 'assistant' && item.bo
 /** What the person must see even in a turn that is over: a failure, and a question put to them. */
 const needsAttention = (item: StreamItem) => item.body.kind === 'error' || item.body.kind === 'question';
 
-function plain(turn: StreamItem[]): StreamBlock[] {
-    return turn.map(item => ({ kind: 'item', item }));
+function plain(turn: StreamItem[], answer?: StreamItem): StreamBlock[] {
+    return turn.map(item => (item === answer ? { kind: 'item', item, answer: true } : { kind: 'item', item }));
 }
 
 /**
@@ -39,6 +42,7 @@ function plain(turn: StreamItem[]): StreamBlock[] {
 function foldTurn(turn: StreamItem[], answered: boolean): StreamBlock[] {
     const head = turn[0].body.kind === 'user' ? 1 : 0;
     const answerAt = turn.findLastIndex(isAnswer);
+    const answer = turn[answerAt];
 
     // The latest turn without an answer (stopped, failed) stays open; a turn the person has since written past folds all.
     if (answerAt < 0 && !answered) return plain(turn);
@@ -47,16 +51,25 @@ function foldTurn(turn: StreamItem[], answered: boolean): StreamBlock[] {
     const between = turn.slice(head, end);
     const work = between.filter(item => !needsAttention(item));
 
-    if (work.length === 0) return plain(turn);
+    if (work.length === 0) return plain(turn, answer);
 
-    const label = workedForLabel(turn[0].at, (turn[answerAt] ?? turn.at(-1)!).at);
+    const label = workedForLabel(turn[0].at, (answer ?? turn.at(-1)!).at);
 
     return [
         ...plain(turn.slice(0, head)),
         { kind: 'worked', key: `worked-${ work[0].id }`, label, items: work },
         ...plain(between.filter(needsAttention)),
-        ...plain(turn.slice(end)),
+        ...plain(turn.slice(end), answer),
     ];
+}
+
+/** The blocks that carry a row of message actions: what the person wrote (not an agent's or a thread's words) and the final answer of a finished turn. */
+export function hasMessageActions(block: StreamBlock): block is Extract<StreamBlock, { kind: 'item' }> {
+    if (block.kind !== 'item') return false;
+
+    const { body } = block.item;
+
+    return block.answer === true || (body.kind === 'user' && !body.from);
 }
 
 /**

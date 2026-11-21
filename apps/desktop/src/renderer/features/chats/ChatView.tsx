@@ -82,6 +82,7 @@ export function ChatView({ chat }: { chat: Chat }) {
                     active={ isRunActive(run) }
                     working={ isRunActive(run) && liveLine(run.status) }
                     links={ links }
+                    messageActions
                     emptyState={ <EmptyChat /> }
                     decorate={ item => (progress && item.id === cardAfter ? <ProgressCard progress={ progress } /> : null) }
                     errorAction={ item => (item.id === overflowAt ? <CompactAction chatId={ chat.id } /> : null) }

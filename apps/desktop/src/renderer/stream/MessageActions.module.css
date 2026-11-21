@@ -1,0 +1,60 @@
+@reference '@clowdy/styles/rulesets';
+
+/*
+ * The row is always laid out, so its height is reserved; only its opacity changes. It is tied to the element that
+ * holds it (the message's root): the pointer on any part of that element shows it, and so does the keyboard's focus
+ * (`:focus-visible`, so a press with the pointer on Copy or on a link in the message does not pin the row open
+ * after the pointer has left). Out of sight it takes no presses, so the pointer has to be on the message first, and
+ * it is no part of a selection that crosses the message.
+ */
+.row {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-xs);
+    height: var(--spacing-24);
+    opacity: 0;
+    pointer-events: none;
+    user-select: none;
+    transition: opacity var(--transition-duration-fast) ease;
+}
+
+/* The person's messages sit on the right, with the time on the outside: the buttons keep their place in the tab order. */
+.row[data-align='end'] {
+    flex-direction: row-reverse;
+}
+
+:is(:hover, :has(:focus-visible)) > .row,
+.row[data-show='always'] {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+@media (hover: none) {
+    .row {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .row {
+        transition: none;
+    }
+}
+
+/* The icon is 14px in a 24px square: the square steps out so the icon, not the square, lines up with the edge of the message. */
+.row[data-align='start'] .copy {
+    margin-inline-start: calc((var(--spacing-24) - var(--spacing-14)) / -2);
+}
+
+.row[data-align='end'] .copy {
+    margin-inline-end: calc((var(--spacing-24) - var(--spacing-14)) / -2);
+}
+
+.time {
+    @ruleset typography-text-xs;
+
+    color: var(--color-secondary-muted-text);
+    white-space: nowrap;
+}

@@ -1,12 +1,44 @@
 import { describe, expect, it } from 'vitest';
 
-import { describeRemaining, formatDuration, formatElapsed, formatRemaining, formatTime } from './time';
+import { describeRemaining, formatDuration, formatElapsed, formatFullTime, formatMessageTime, formatRemaining, formatTime } from './time';
 
 describe('formatTime', () => {
     it('shows a 24-hour clock with a leading zero', () => {
         expect(formatTime(new Date(2026, 10, 17, 14, 21).getTime())).toBe('14:21');
         expect(formatTime(new Date(2026, 10, 17, 9, 5).getTime())).toBe('09:05');
         expect(formatTime(new Date(2026, 10, 17, 0, 0).getTime())).toBe('00:00');
+    });
+});
+
+describe('formatMessageTime', () => {
+    const now = new Date(2026, 10, 20, 12, 0).getTime();
+    const at = (year: number, month: number, day: number, hours: number, minutes: number) => new Date(year, month, day, hours, minutes).getTime();
+
+    it('shows the time alone for today', () => {
+        expect(formatMessageTime(at(2026, 10, 20, 22, 54), now)).toBe('22:54');
+        expect(formatMessageTime(at(2026, 10, 20, 0, 5), now)).toBe('00:05');
+    });
+
+    it('adds the day for another day of this year', () => {
+        expect(formatMessageTime(at(2026, 10, 19, 22, 54), now)).toBe('19 Nov, 22:54');
+        expect(formatMessageTime(at(2026, 0, 3, 9, 5), now)).toBe('3 Jan, 09:05');
+    });
+
+    it('adds the year for another year', () => {
+        expect(formatMessageTime(at(2025, 10, 19, 22, 54), now)).toBe('19 Nov 2025, 22:54');
+        expect(formatMessageTime(at(2025, 11, 31, 23, 59), now)).toBe('31 Dec 2025, 23:59');
+    });
+
+    it('takes the calendar day, not the last 24 hours', () => {
+        const justAfterMidnight = at(2026, 10, 20, 0, 1);
+
+        expect(formatMessageTime(at(2026, 10, 19, 23, 59), justAfterMidnight)).toBe('19 Nov, 23:59');
+    });
+});
+
+describe('formatFullTime', () => {
+    it('names the weekday, the date with the month in full, and the time', () => {
+        expect(formatFullTime(new Date(2025, 10, 19, 22, 54).getTime())).toMatch(/^Wednesday,? 19 November 2025,? (at )?22:54$/);
     });
 });
 

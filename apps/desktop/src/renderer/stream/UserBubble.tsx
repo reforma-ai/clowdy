@@ -2,9 +2,9 @@ import { Attachments, PreviewableAttachment } from '@clowdy/components/Attachmen
 import { Show } from '@clowdy/components/Show';
 import { use } from 'react';
 
-import { formatTime } from '../shared/time';
 import { Clamp } from './Clamp';
 import { Markdown } from './Markdown';
+import { MessageActions, type MessageActionsShow } from './MessageActions';
 import { personMarkdown } from './personMarkdown';
 import { StreamLinksContext } from './StreamLinks';
 import { useAttachmentPreviews } from './useAttachmentPreviews';
@@ -22,15 +22,18 @@ export interface UserBubbleProps {
     text: string;
     /** Files the message carries, shown above the text. */
     attachments?: readonly Attachment[];
+    /** When it was written, for the time of its row of actions. */
     at: number;
+    /** Draws the row of actions under the message (copy, and the time it was written); without it the message has none. */
+    actions?: MessageActionsShow;
     /** The message came in while the stream was on screen: it rises into place. */
     animate?: boolean;
     /** The stream item this message is, so the turn rail can scroll to it. */
     turn?: string;
 }
 
-/** What the person wrote: a tinted bubble on the right, the time under it. The text is Markdown, as the message box writes it; files and tasks it mentions are chips. */
-export function UserBubble({ text, attachments, at, animate, turn }: UserBubbleProps) {
+/** What the person wrote: a tinted bubble on the right, with a row of actions and the time under it when it is given one. The text is Markdown, as the message box writes it; files and tasks it mentions are chips. */
+export function UserBubble({ text, attachments, at, actions, animate, turn }: UserBubbleProps) {
     const { taskOfKey } = use(StreamLinksContext);
     const previews = useAttachmentPreviews(attachments);
     const body = <Markdown text={ personMarkdown(text, taskOfKey) } fromPerson />;
@@ -54,7 +57,9 @@ export function UserBubble({ text, attachments, at, animate, turn }: UserBubbleP
                     </Show>
                 </div>
             </Show>
-            <time className={ styles.time } dateTime={ new Date(at).toISOString() }>{ formatTime(at) }</time>
+            <Show when={ actions }>
+                { show => <MessageActions text={ text } at={ at } align="end" show={ show } /> }
+            </Show>
         </div>
     );
 }

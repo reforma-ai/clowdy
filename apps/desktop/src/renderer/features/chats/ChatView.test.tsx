@@ -419,3 +419,41 @@ describe('a thread', () => {
         expect(container.querySelector('[aria-label="Work in progress"]')?.textContent).toContain('Fix the price rounding');
     });
 });
+
+describe('the messages of a chat', () => {
+    // The row under a message: the time it was written beside Copy.
+    const rows = () => [...container.querySelectorAll<HTMLElement>('time')].map(time => time.parentElement as HTMLElement);
+    const rowOf = (words: string) => rows().find(row => row.parentElement?.textContent?.includes(words));
+
+    it('have a row under what the person wrote and under the answer of a finished turn, the last one always showing', async () => {
+        await start();
+        await draw('c-2');
+
+        const asked = rowOf('Build the first version');
+        const answered = rowOf('The booking page, the fleet list and the price calculation are in.');
+
+        expect(asked?.dataset.align).toBe('end');
+        expect(answered?.dataset.align).toBe('start');
+        expect(rows()).toHaveLength(2);
+        expect(asked?.dataset.show).toBe('hover');
+        expect(answered?.dataset.show).toBe('always');
+        // Days old: the day is in the time, not the clock alone (the year too in the first days of January, `Sept` in September).
+        expect(answered?.querySelector('time')?.textContent).toMatch(/^\d{1,2} \p{L}{3,4}( \d{4})?, \d{2}:\d{2}$/u);
+        // Copy is on the row.
+        expect(asked?.querySelector('[aria-label="Copy message"]')).not.toBeNull();
+    });
+
+    it('have no row under what a thread wrote to the chat or under the notice of threads that stopped', async () => {
+        await start();
+        await draw('c-6');
+
+        // The chat's own message has its row, and the answer that ends each of the three turns has one: the thread's words and the notice have none.
+        expect(rowOf('Ship the new checkout')?.dataset.align).toBe('end');
+        expect(rowOf('The rounding helper is shared with the invoices')).toBeUndefined();
+        expect(rowOf('Write the refund tests')).toBeUndefined();
+        expect(rowOf('Four threads are working.')?.dataset.align).toBe('start');
+        expect(rowOf('The refund tests are in.')?.dataset.align).toBe('start');
+        expect(rowOf('I told the rounding thread')?.dataset.show).toBe('always');
+        expect(rows()).toHaveLength(4);
+    });
+});

@@ -69,3 +69,14 @@ describe('RunDetail, Stop', () => {
         expect(container.querySelector('header')?.textContent).toContain('Runs inside Orchestrator');
     });
 });
+
+describe('RunDetail, messages', () => {
+    it('reads a finished sub-agent run without a row of actions under its answer', async () => {
+        await draw(runOf('r-na-01'));
+        await draw(runOf('r-na-01'));
+
+        expect(container.textContent).toContain('Three step components in');
+        expect(container.querySelector('time')).toBeNull();
+        expect(container.querySelector('[aria-label="Copy message"]')).toBeNull();
+    });
+});

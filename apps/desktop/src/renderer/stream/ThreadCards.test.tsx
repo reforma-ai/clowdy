@@ -60,7 +60,7 @@ describe('a message from another thread', () => {
 
         expect(card.textContent).toContain('Message from Ship the checkout');
         expect(card.querySelector('[data-streamdown="strong"]')?.textContent).toBe('staging');
-        // No time under it, which a bubble of the person's has.
+        // No time under it: it is not the person's message, so it has no row of actions.
         expect(container.querySelector('time')).toBeNull();
         expect(card.getAttribute('data-turn')).toBe('i-0');
     });

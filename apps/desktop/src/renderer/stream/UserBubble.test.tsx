@@ -47,5 +47,17 @@ describe('UserBubble', () => {
         expect(alone).toContain('shot.png');
         expect(alone).not.toContain('data-streamdown');
     });
-});
 
+    it('has no time of its own: it shows one only in the row of actions it is given', () => {
+        const bare = renderToStaticMarkup(<UserBubble text="Hello" at={ 0 } turn="i-1" />);
+        const withRow = renderToStaticMarkup(<UserBubble text="Hello" at={ 0 } turn="i-1" actions="hover" />);
+
+        expect(bare).not.toContain('<time');
+        expect(bare).not.toContain('Copy message');
+        expect(withRow).toContain('<time');
+        expect(withRow).toContain('Copy message');
+        // The turn rail finds the message by this mark on the root, whatever the row below it.
+        expect(withRow).toMatch(/^<div[^>]* data-turn="i-1"/);
+        expect(withRow.indexOf('Hello')).toBeLessThan(withRow.indexOf('<time'));
+    });
+});

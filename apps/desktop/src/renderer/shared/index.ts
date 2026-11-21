@@ -6,4 +6,4 @@ export { SidebarHeading, type SidebarHeadingProps } from './SidebarHeading';
 export { SidebarLayout, type SidebarLayoutProps } from './SidebarLayout';
 export { StatusDot, type StatusDotProps } from './StatusDot';
 export { TaskChip, type TaskChipProps } from './TaskChip';
-export { describeRemaining, formatDuration, formatElapsed, formatRemaining, formatTime } from './time';
+export { describeRemaining, formatDuration, formatElapsed, formatFullTime, formatMessageTime, formatRemaining, formatTime } from './time';
