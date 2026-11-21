@@ -6,7 +6,7 @@ import type { StreamItem } from '@clowdy/protocol';
 /** An item as it is. */
 export type ItemBlock = Extract<StreamBlock, { kind: 'item' }>;
 
-/** Tool calls that follow one another, and the thoughts between them, drawn under one line that tells what the calls did (`ToolGroup`). */
+/** Tool calls that follow one another, and the thoughts before, between and after them, drawn under one line that tells what the calls did (`ToolGroup`). */
 export interface ToolRun {
     kind: 'tools';
     key: string;
@@ -121,9 +121,9 @@ export function foldFinishedWork(items: readonly StreamItem[], active: boolean):
 const isRunItem = (item: StreamItem) => item.body.kind === 'reasoning' || (item.body.kind === 'tool' && item.body.name !== COMPACT_TOOL && !isSubagentTool(item.body.name));
 
 /**
- * Puts tool calls that follow one another under one block, with the thoughts of the agent between them: a run of two or more calls becomes one `tools`
- * block; a call alone stays as it is, since a line with nothing more to say than the call is no gain, and so do thoughts with no call of two beside them.
- * Anything else (a message, a note, a card of a sub-agent) ends the run.
+ * Puts tool calls that follow one another under one block, with the thoughts of the agent before, between and after them: a run of two or more calls
+ * becomes one `tools` block; a call alone stays as it is, since a line with nothing more to say than the call is no gain, and so do thoughts that have
+ * fewer than two calls in their run. Anything else (a message, a note, a card of a sub-agent) ends the run.
  */
 export function groupToolRuns(blocks: readonly ItemBlock[]): (ItemBlock | ToolRun)[];
 export function groupToolRuns(blocks: readonly StreamBlock[]): StreamBlock[];

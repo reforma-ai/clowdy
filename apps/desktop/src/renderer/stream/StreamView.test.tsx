@@ -71,6 +71,10 @@ describe('the agent\'s reasoning', () => {
 
     it('stands in the fold of a finished turn with the rest of the work, and the answer stays out', async () => {
         await act(async () => root.render(<StreamView items={ [asked, thought(1, 'First I will check.', true, 2000), said(2, 'Checking.'), bash(3, 'pwd'), bash(4, 'whoami'), said(5, 'All fine.')] } />));
+
+        // Under the fold, so out of sight until it is opened.
+        expect(line('Thought 2s')).toBeUndefined();
+
         await act(async () => worked()!.click());
 
         expect(line('Thought 2s')).toBeDefined();
@@ -98,6 +102,54 @@ describe('the agent\'s reasoning', () => {
 
         expect(line('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('true');
         expect(line('Thinking…')).toBeDefined();
+    });
+
+    it('keeps the line of a group the person closed shimmering while the agent thinks in it, since no Working line stands in for it then', async () => {
+        const stream = [asked, bash(1, 'pwd'), bash(2, 'whoami')];
+
+        await act(async () => root.render(<StreamView items={ [...stream, thought(3, 'What next?', false)] } active working />));
+        await act(async () => line('Ran 2 commands')!.click());
+
+        expect(line('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('false');
+        expect(container.textContent).not.toContain('Working…');
+        expect(line('Ran 2 commands')!.querySelector('[style*="shimmer"]')).not.toBeNull();
+
+        // The thought ends: the line rests and the Working line is back.
+        await act(async () => root.render(<StreamView items={ [...stream, thought(3, 'What next?', true, 2000)] } active working />));
+
+        expect(line('Ran 2 commands')!.querySelector('[style*="shimmer"]')).toBeNull();
+        expect(container.textContent).toContain('Working…');
+    });
+
+    it('leaves a thought and a single call as two rows of the fold, with no group around them', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'One call only.', true, 2000), bash(2, 'pwd'), said(3, 'Done.')] } />));
+
+        expect(line('Thought 2s')).toBeUndefined();
+
+        await act(async () => worked()!.click());
+
+        expect(line('Thought 2s')).toBeDefined();
+        expect(container.textContent).toContain('pwd');
+        expect([...container.querySelectorAll('button')].some(button => button.textContent?.startsWith('Ran'))).toBe(false);
+    });
+
+    it('leaves a thought that trails the answer under the answer, outside the fold', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami'), said(3, 'All fine.'), thought(4, 'Anything else?', true, 1000)] } />));
+
+        const text = container.textContent ?? '';
+
+        expect(worked()).toBeDefined();
+        expect(line('Thought 1s')).toBeDefined();
+        expect(text.indexOf('All fine.')).toBeLessThan(text.indexOf('Thought 1s'));
+        expect(text.indexOf('Worked for')).toBeLessThan(text.indexOf('All fine.'));
+    });
+
+    it('folds a turn whose only work is a thought, and puts the divider of a fork after the answer that a thought precedes', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'Easy one.', true, 4000), said(2, 'Yes.')] } forkedFrom={ { atSeq: 2, title: 'Check the box' } } />));
+
+        expect(worked()).toBeDefined();
+        expect(line('Thought 4s')).toBeUndefined();
+        expect(container.querySelector<HTMLElement>('[data-slot="fork-divider"]')?.previousElementSibling?.textContent).toContain('Yes.');
     });
 });
 

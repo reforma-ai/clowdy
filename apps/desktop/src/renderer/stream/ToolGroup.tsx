@@ -21,9 +21,12 @@ export interface ToolGroupProps {
 export function ToolGroup({ items, live = false }: ToolGroupProps) {
     const [chosen, setChosen] = useState<boolean>();
     const calls = items.flatMap(item => (item.body.kind === 'tool' ? [item.body] : []));
+    const last = items.at(-1)?.body;
+    // A thought that goes on at the live end is what the agent does now, and the stream's Working line is not drawn under it: a group the person closed shows it by its line.
+    const thinking = live && last?.kind === 'reasoning' && !last.done;
 
     return (
-        <Worked label={ summarizeTools(calls) } open={ chosen ?? live } onOpenChange={ setChosen } shimmer={ calls.some(call => call.state === 'running') } ruled>
+        <Worked label={ summarizeTools(calls) } open={ chosen ?? live } onOpenChange={ setChosen } shimmer={ thinking || calls.some(call => call.state === 'running') } ruled>
             { items.map((item) => {
                 if (item.body.kind === 'tool') return <ToolCard key={ item.id } call={ item.body } />;
 

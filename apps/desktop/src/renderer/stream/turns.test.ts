@@ -27,6 +27,13 @@ describe('foldFinishedWork', () => {
         expect(shape(foldFinishedWork(items, false))).toEqual(['user', 'worked(4): Worked for 2m 5s', 'assistant']);
     });
 
+    it('folds a thought as work, and leaves one that trails the answer where it came', () => {
+        expect(shape(foldFinishedWork([user(0), thought(500), said(1000)], false))).toEqual(['user', 'worked(1): Worked for 1s', 'assistant']);
+        expect(shape(foldFinishedWork([user(0), thought(500), said(1000), thought(1500)], false))).toEqual(['user', 'worked(1): Worked for 1s', 'assistant', 'reasoning']);
+        // A turn that went on past the person's next message is folded whole, even when it is only a thought.
+        expect(shape(foldFinishedWork([user(0), thought(500), user(2000), said(3000)], true))).toEqual(['user', 'worked(1): Worked for 1s', 'user', 'assistant']);
+    });
+
     it('keeps the answer and the message out of the fold', () => {
         const items = [user(0), tool(1000), said(5000, 'All done.')];
         const blocks = foldFinishedWork(items, false);
@@ -202,7 +209,7 @@ describe('groupToolRuns', () => {
         expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tools(2)', 'assistant', 'tools(2)', 'assistant', 'tools(2)']);
     });
 
-    it('keeps the thoughts between the calls of a run in it, and the one that ends it', () => {
+    it('keeps the thoughts of a run in it: the one that starts it, those between the calls and the one that ends it', () => {
         const items = [user(0), thought(500), tool(1000), thought(1500), tool(2000), thought(2500, false)];
         const blocks = groupToolRuns(foldFinishedWork(items, true));
 
@@ -214,6 +221,12 @@ describe('groupToolRuns', () => {
         expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), said(1000, 'Looking.'), thought(1500), tool(2000), tool(3000)], true)))).toEqual(['user', 'reasoning', 'assistant', 'tools(3)']);
         expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), tool(1000), said(2000, 'Looked.'), tool(3000), thought(3500)], true)))).toEqual(['user', 'reasoning', 'tool', 'assistant', 'tool', 'reasoning']);
         expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), thought(1000)], true)))).toEqual(['user', 'reasoning', 'reasoning']);
+    });
+
+    it('ends a run that holds a thought at a sub-agent\'s card or a compaction, the thought staying with the calls it follows or precedes', () => {
+        const items = [user(0), tool(1000), tool(2000), thought(2500), named('Agent', 3000), thought(3500), tool(4000), tool(5000), thought(5500), named('compact', 6000)];
+
+        expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tools(3)', 'tool', 'tools(4)', 'tool']);
     });
 
     it('ends a run at anything that is not a call: a note, an error, a question', () => {
