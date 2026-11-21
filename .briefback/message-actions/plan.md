@@ -228,11 +228,11 @@
 
 **This stage:** The row gets Edit. On a user message with `canEdit` the bubble is swapped for the in-place `Editing message` frame with a composer of its own (own draft key, no queue or running agents above it); Esc or X cancels, Enter sends `chat.edit`. While the run is busy Edit is disabled with the hint `Stop the agent to edit`. The later messages stay on screen until the daemon's truncation event arrives.
 
-- [ ] Complete
-  - [ ] `Composer` takes a draft key and an edit mode (no queue, no `ComposerBanner`, Esc and Enter semantics, own placeholder `Edit message`), seeded with the message text and its attachments as ready files
-  - [ ] Edit frame in the list replacing the bubble, one edit at a time, other Edit buttons hidden while it is open; the hint while the run is busy
-  - [ ] Failure keeps the editor open with its text and shows a toast; a message that disappears closes the editor
-  - [ ] Fixture-based tests for the flow; a screenshot check; `apps/desktop/AGENTS.md` updated
+- [x] Complete
+  - [x] `Composer` takes a draft key and an edit mode (no queue, no `ComposerBanner`, Esc and Enter semantics, own placeholder `Edit message`), seeded with the message text and its attachments as ready files
+  - [x] Edit frame in the list replacing the bubble, one edit at a time, other Edit buttons hidden while it is open; the hint while the run is busy
+  - [x] Failure keeps the editor open with its text and shows a toast; a message that disappears closes the editor
+  - [x] Fixture-based tests for the flow; a screenshot check; `apps/desktop/AGENTS.md` updated
 
 **Files**
 
@@ -245,7 +245,10 @@
 
 **Done when:** in the fixture app a flagged message can be edited in place and resent, and the later messages disappear when the edit commits.
 **Verify:** `cd apps/desktop && bun run test && bun run lint && bun run typecheck`, then `bun scripts/screenshot.ts`
-**Commits:** None yet.
+**Commits:**
+
+- `8dd8f39` feat(desktop): edit a sent message in place and resend it. Beyond the plan: the edit composer hides the mode picker, the model picker and the context ring (`chat.edit` takes none of them; BB shows them read-only: a small change in `Composer.tsx` if wanted); while the agent works both the Edit button and Send are held with the hint `Stop the agent to edit`; leaving the chat mid-edit keeps uploaded files while the command is in flight; focus returns to the message's Edit button on cancel; `Unavailable` moved from `features/chats` to `shared/` so `stream/` can use it. Known limits: an unchanged message with a list or code fence gains two trailing spaces per line on resend (hard-break serialization); after a successful edit focus lands on the page body.
+
 
 ## Stage 8 — Reply card, swipe to reply, setting
 
