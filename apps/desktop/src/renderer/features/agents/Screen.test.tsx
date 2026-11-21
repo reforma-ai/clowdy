@@ -331,16 +331,24 @@ describe('grouped by folder', () => {
         expect(rowOf(`@empty:${ API.id }`).textContent).toBe('No chats');
     });
 
-    it('folds a group by a press on its heading and by the arrows, and remembers it', async () => {
+    it('folds a group by the chevron after its name and by the arrows, not by a press on the heading, and remembers it', async () => {
         await restart();
+        // The heading is a label: a press on its name folds nothing.
         await press(rowOf(head(API.id)));
+
+        expect(ui().collapsedFolders).toEqual([]);
+        expect(buttonNamed('Collapse car-rental-api').getAttribute('aria-expanded')).toBe('true');
+
+        await press(buttonNamed('Collapse car-rental-api'));
 
         expect(ui().collapsedFolders).toEqual([API.id]);
         await draw();
         expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', head(API.id)]);
         expect(rowOf(head(API.id)).hasAttribute('data-collapsed')).toBe(true);
+        expect(rowOf(head(API.id)).hasAttribute('data-plateless')).toBe(true);
+        expect(buttonNamed('Expand car-rental-api').getAttribute('aria-expanded')).toBe('false');
 
-        await press(rowOf(head(API.id)));
+        await press(buttonNamed('Expand car-rental-api'));
         await draw();
         expect(rowKeys()).toContain('c-2');
 
