@@ -3,10 +3,11 @@ import { projectChatMode } from '@clowdy/protocol';
 import { createChat, deleteChat, renameChat, requireChat, setChatArchived, setChatMode, setChatModel } from '../domain/chats';
 import { requireProject } from '../domain/projects';
 import { invalid } from '../errors';
+import { prepareFork } from '../runs/fork';
 import { requireEnabled, sendMessage } from '../runs/messages';
 import { isAtRest } from '../runs/queue';
 
-import type { Handlers } from './context';
+import type { AsyncHandlers, Handlers } from './context';
 
 type ChatCommand = 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.setModel' | 'chat.compact' | 'chat.setArchived' | 'chat.delete' | 'chat.send'
     | 'chat.removeQueued' | 'chat.moveQueued' | 'chat.sendQueued';
@@ -99,4 +100,9 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
 
         return queue.sendNow(command.chatId, command.itemId);
     },
+};
+
+/** `chat.fork` asks the agent to copy its session first, so it is the one chat command that waits: see `prepareFork`. */
+export const chatAsyncHandlers: Pick<AsyncHandlers, 'chat.fork'> = {
+    'chat.fork': (services, command) => prepareFork(services, command.chatId, command.itemId),
 };

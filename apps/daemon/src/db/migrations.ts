@@ -398,4 +398,15 @@ export const MIGRATIONS: Migration[] = [
             db.run('ALTER TABLE stream_items ADD COLUMN provider_ref TEXT');
         },
     },
+    {
+        version: 18,
+        up(db) {
+            // A fork: a chat made from an answer of another chat (see `Chat.forkedFrom`). NULL for every other chat, and for every chat of an older database.
+            // `source_chat_id` is deliberately no foreign key and has no index: the fork lives on when its source is deleted, and nothing looks forks up by it.
+            db.run(`
+                ALTER TABLE chats ADD COLUMN source_chat_id TEXT;
+                ALTER TABLE chats ADD COLUMN forked_at_seq INTEGER;
+            `);
+        },
+    },
 ];

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { executeCommand } from '../src/commands';
+import { executeCommand, executeCommandAsync } from '../src/commands';
 import { startDaemon } from '../src/daemon';
 import { getPersonalProject, listStatuses } from '../src/db/projects';
 import { Discovery } from '../src/engine/acp/discovery';
@@ -117,6 +117,22 @@ export class Harness {
     /** Executes a command and returns its `data`, failing the test when it did not succeed. */
     ok(type: Command['type'], fields: Record<string, unknown> = {}): any {
         const result = this.send(type, fields);
+
+        if (!result.ok) {
+            throw new Error(`${ type } failed: ${ result.error.code } ${ result.error.message }`);
+        }
+
+        return result.data;
+    }
+
+    /** Executes any command, one that waits for an agent (`chat.fork`) included, and returns its result. */
+    sendAsync(type: Command['type'], fields: Record<string, unknown> = {}): Promise<CommandResult> {
+        return executeCommandAsync(this.daemon.services, command(type, fields));
+    }
+
+    /** Executes any command and returns its `data`, failing the test when it did not succeed. */
+    async okAsync(type: Command['type'], fields: Record<string, unknown> = {}): Promise<any> {
+        const result = await this.sendAsync(type, fields);
 
         if (!result.ok) {
             throw new Error(`${ type } failed: ${ result.error.code } ${ result.error.message }`);

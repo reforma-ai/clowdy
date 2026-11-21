@@ -13,6 +13,8 @@ interface ChatRow {
     effort: string | null;
     orchestrator_run_id: string | null;
     parent_chat_id: string | null;
+    source_chat_id: string | null;
+    forked_at_seq: number | null;
     archived_at: number | null;
     queue: string | null;
     queue_paused: Chat['queuePaused'] | null;
@@ -30,6 +32,7 @@ const toChat = (row: ChatRow): Chat => clean({
     effort: row.effort,
     orchestratorRunId: row.orchestrator_run_id,
     parentChatId: row.parent_chat_id,
+    forkedFrom: row.source_chat_id !== null && row.forked_at_seq !== null ? { chatId: row.source_chat_id, atSeq: row.forked_at_seq } : null,
     archivedAt: row.archived_at,
     queue: parseJson<QueuedMessage[]>(row.queue),
     queuePaused: row.queue_paused,
@@ -47,17 +50,18 @@ export function listChats(db: Database, projectId: string): Chat[] {
     return (db.query('SELECT * FROM chats WHERE project_id = ? ORDER BY created_at, id').all(projectId) as ChatRow[]).map(toChat);
 }
 
-/** A chat's parent is set when the chat is made and never changes, so an update leaves it alone. */
+/** A chat's parent and the fork it comes from are set when the chat is made and never change, so an update leaves them alone. */
 export function upsertChat(db: Database, chat: Chat): void {
     db.query(`
-        INSERT INTO chats (id, project_id, title, mode, engine, model, effort, orchestrator_run_id, parent_chat_id, archived_at, queue, queue_paused, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO chats (id, project_id, title, mode, engine, model, effort, orchestrator_run_id, parent_chat_id, source_chat_id, forked_at_seq, archived_at, queue, queue_paused, created_at,
+            updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET title = excluded.title, mode = excluded.mode, engine = excluded.engine, model = excluded.model, effort = excluded.effort,
             orchestrator_run_id = excluded.orchestrator_run_id, archived_at = excluded.archived_at, queue = excluded.queue, queue_paused = excluded.queue_paused,
             updated_at = excluded.updated_at
     `).run(
         chat.id, chat.projectId, chat.title, chat.mode, chat.engine ?? null, chat.model ?? null, chat.effort ?? null, chat.orchestratorRunId ?? null,
-        chat.parentChatId ?? null, chat.archivedAt ?? null, chat.queue?.length ? toJson(chat.queue) : null, chat.queuePaused ?? null, chat.createdAt, chat.updatedAt
+        chat.parentChatId ?? null, chat.forkedFrom?.chatId ?? null, chat.forkedFrom?.atSeq ?? null, chat.archivedAt ?? null, chat.queue?.length ? toJson(chat.queue) : null, chat.queuePaused ?? null, chat.createdAt, chat.updatedAt
     );
 }
 

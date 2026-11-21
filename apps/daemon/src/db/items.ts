@@ -74,9 +74,24 @@ export function listRunningTools(db: Database, runId: string): StreamItem[] {
         .all(runId) as ItemRow[]).map(row => toItem(row, false));
 }
 
-export function insertItem(db: Database, item: StreamItem): void {
-    db.query('INSERT INTO stream_items (id, run_id, seq, at, body) VALUES (?, ?, ?, ?, ?)')
-        .run(item.id, item.runId, item.seq, item.at, JSON.stringify(item.body));
+/** `ref` is the item's rewind point, for a copy of an item that holds one (`copyItems`); every other item gets its point later, if it is the end of a turn. */
+export function insertItem(db: Database, item: StreamItem, ref?: string): void {
+    db.query('INSERT INTO stream_items (id, run_id, seq, at, body, provider_ref) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(item.id, item.runId, item.seq, item.at, JSON.stringify(item.body), ref ?? null);
+}
+
+/** The number of an item of a run's stream by its id; `undefined` when the run has no such item. */
+export function itemSeqOf(db: Database, runId: string, itemId: string): number | undefined {
+    const row = db.query('SELECT seq FROM stream_items WHERE run_id = ? AND id = ?').get(runId, itemId) as { seq: number } | null;
+
+    return row?.seq;
+}
+
+/** The items of a run's stream from the first through `seq`, as they are stored, each with its rewind point when it holds one. */
+export function listItemsWithRefs(db: Database, runId: string, throughSeq: number): { item: StreamItem; ref?: string }[] {
+    const rows = db.query('SELECT *, provider_ref AS ref FROM stream_items s WHERE s.run_id = ? AND s.seq <= ? ORDER BY s.seq').all(runId, throughSeq) as (ItemRow & { ref: string | null })[];
+
+    return rows.map(row => ({ item: toItem(row, false), ...(row.ref !== null && { ref: row.ref }) }));
 }
 
 /** The rewind point an item holds: the agent's own id of the message it says, or `undefined` for an item that holds none. */

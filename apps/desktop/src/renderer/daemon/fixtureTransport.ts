@@ -127,6 +127,17 @@ function withoutEmpty(overrides: AgentOverrides): AgentOverrides | undefined {
 
 type Outcome = { ok: true; data: unknown } | { ok: false; error: { code: ErrorCode; message: string; details?: unknown } };
 
+/** The title of a fork: `foo` becomes `(1) foo` and `(1) foo` becomes `(2) foo`, as the daemon numbers it; a chat with no title of its own keeps none. */
+function forkTitle(title: string): string {
+    const text = title.trim();
+
+    if (!text || text === 'New chat') return 'New chat';
+
+    const numbered = /^\((\d{1,6})\) (\S.*)$/s.exec(text);
+
+    return numbered ? `(${ Number(numbered[1]) + 1 }) ${ numbered[2] }` : `(1) ${ text }`;
+}
+
 /** What a field becomes when a command may name it: the value it names, nothing for `null`, and `kept` when the command leaves it out. */
 const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefined => (change === undefined ? kept : change ?? undefined);
 
@@ -795,6 +806,8 @@ export class FixtureTransport implements Transport {
                 return this.#changeQueued(command.chatId, command.itemId, (chat, item) => placeQueued(chat.queue ?? [], item, command.index));
             case 'chat.sendQueued':
                 return this.#sendQueued(command.chatId, command.itemId);
+            case 'chat.fork':
+                return this.#forkChat(command.chatId, command.itemId);
 
             case 'task.create': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
@@ -1087,6 +1100,96 @@ export class FixtureTransport implements Transport {
         this.#startTurn(chat, run, { kind: 'user', text, ...(attachments.length > 0 && { attachments }) });
 
         return ok({ chatId: chat.id, runId: run.id });
+    }
+
+    /**
+     * `chat.fork` as the daemon does it, the agent's own part left out: the new chat has the history through the answer (new ids, the same numbers, time and
+     * flags, a file of its own for each file a message carries, a call that still ran shown as stopped), the source's agent, model, level and mode, no queue,
+     * no thread, a run at rest, and `forkedFrom`. Native sub-agents' runs are not copied. The source may be working.
+     */
+    #forkChat(chatId: string, itemId: string): Outcome {
+        const data = this.#data;
+        const chat = data.chats.find(candidate => candidate.id === chatId);
+
+        if (!chat) return fail('not_found', 'No such chat');
+
+        const source = data.runs.find(candidate => candidate.id === chat.orchestratorRunId);
+
+        if (!source) return fail('invalid', 'This chat has no conversation to fork yet');
+
+        const answer = (data.items[source.id] ?? []).find(item => item.id === itemId);
+
+        if (!answer) return fail('not_found', `Message ${ itemId } does not exist`);
+
+        if (!answer.canFork) return fail('invalid', 'This message cannot be forked');
+
+        const now = Date.now();
+        const id = this.#id('c');
+        const runId = this.#id('r-orch');
+        const number = data.runs.filter(candidate => candidate.role === 'orchestrator' && candidate.origin !== 'native').length + 1;
+        const title = forkTitle(chat.title);
+        const run: Run = {
+            id: runId,
+            projectId: chat.projectId,
+            rootRunId: runId,
+            chatId: id,
+            role: 'orchestrator',
+            name: `Orchestrator ${ String(number).padStart(2, '0') }`,
+            summary: title,
+            status: 'succeeded',
+            engine: source.engine,
+            ...(source.model && { model: source.model }),
+            ...(source.effort && { effort: source.effort }),
+            sessionId: this.#id('fork-session'),
+            ...(answer.body.kind === 'assistant' && { result: answer.body.text }),
+            createdAt: now,
+            startedAt: now,
+            finishedAt: now,
+        };
+        const copied = (data.items[source.id] ?? []).filter(item => item.seq <= answer.seq).map((item): StreamItem => {
+            const copy = structuredClone(item);
+            const body = copy.body;
+
+            if (body.kind === 'user' && body.attachments) {
+                body.attachments = body.attachments.map((file) => {
+                    const stored = this.#files.get(file.id);
+
+                    if (!stored) return file;
+
+                    const own: Attachment = { ...file, id: this.#id('a') };
+
+                    this.#files.set(own.id, { ...stored, attachment: own, sent: true });
+
+                    return own;
+                });
+            }
+            else if (body.kind === 'tool' && body.state === 'running') {
+                Object.assign(body, { state: 'error', error: STOPPED_TOOL });
+            }
+
+            return { ...copy, id: `${ runId }-${ item.seq }`, runId };
+        });
+        const made: Chat = {
+            id,
+            projectId: chat.projectId,
+            title,
+            mode: chat.mode,
+            ...(source.engine && { engine: source.engine }),
+            ...(source.model && { model: source.model }),
+            ...(source.effort && { effort: source.effort }),
+            orchestratorRunId: runId,
+            forkedFrom: { chatId: chat.id, atSeq: answer.seq },
+            createdAt: now,
+            updatedAt: now,
+        };
+
+        data.runs.push(run);
+        data.items[runId] = copied;
+        data.chats.push(made);
+        this.#saveRun(run);
+        this.#emit(made.projectId, { type: 'chat.upserted', chat: made });
+
+        return ok({ chat: structuredClone(made) });
     }
 
     /** A turn of a chat's orchestrator: the message that starts it, a canned reply, and the end of the turn, after which the queue gives the next one. */

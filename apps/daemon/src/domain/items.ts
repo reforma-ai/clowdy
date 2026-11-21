@@ -1,4 +1,4 @@
-import { getItem, insertItem, lastStorySeq, listItems, nextSeq, setItemRef, updateItemBody } from '../db/items';
+import { getItem, insertItem, itemSeqOf, lastStorySeq, listItems, nextSeq, setItemRef, updateItemBody } from '../db/items';
 import { getRun } from '../db/runs';
 import { notFound } from '../errors';
 import { newId } from '../ids';
@@ -19,6 +19,23 @@ export function streamItems(store: Store, runId: string, after: number): StreamI
     const run = getRun(store.db, runId);
 
     return listItems(store.db, runId, after, run !== undefined && offersRewind(store, run));
+}
+
+/** One item of a run's stream by its id, as a client reads it (with its flags); `undefined` when the run has no such item. */
+export function streamItem(store: Store, run: Run, itemId: string): StreamItem | undefined {
+    const seq = itemSeqOf(store.db, run.id, itemId);
+
+    return seq === undefined ? undefined : getItem(store.db, run.id, seq, offersRewind(store, run));
+}
+
+/**
+ * Copies stored items (`listItemsWithRefs`) into another run's stream as new rows: new ids, the same `seq`, time and rewind point, and `rewrite` says what
+ * each body becomes. The copies are not published: the run is new, and a client reads its stream when it opens it. Call it inside a transaction.
+ */
+export function copyItems(store: Store, items: readonly { item: StreamItem; ref?: string }[], toRunId: string, rewrite: (body: StreamItemBody) => StreamItemBody): void {
+    for (const { item, ref } of items) {
+        insertItem(store.db, { ...item, id: newId('itm'), runId: toRunId, body: rewrite(item.body) }, ref);
+    }
 }
 
 /** Appends an item to a run's stream and publishes it. */

@@ -46,11 +46,18 @@ export class AcpEngine implements AgentEngine {
         return new AcpSession(options, this.sessionDeps());
     }
 
-    /** The session that does the job is no turn: it has no prompt of its own and runs no tool, and only the tools the new session is opened with reach it. */
-    fork({ sessionId, ref, cwd, additionalDirectories, systemPrompt, tools, signal }: EngineForkOptions): Promise<EngineFork> {
+    /**
+     * The session that does the job is no turn: it has no prompt of its own and runs no tool, and only the tools the new session is opened with reach it.
+     * The copy is a session the agent counts the cost of from zero (checked on Claude Code: the first prompt of a fork reports its own cost as the session's
+     * total, the source's cost is not carried over), so its baseline is seeded as `session/new` seeds one, and the first turn of a fork reports its cost.
+     */
+    async fork({ sessionId, ref, cwd, additionalDirectories, systemPrompt, tools, signal }: EngineForkOptions): Promise<EngineFork> {
         const session = new AcpSession({ cwd, additionalDirectories, prompt: '', systemPrompt, resumeSessionId: sessionId, tools: tools ?? [], signal: signal ?? new AbortController().signal }, this.sessionDeps());
+        const forked = await session.fork(sessionId, ref);
 
-        return session.fork(sessionId, ref);
+        this.costs.set(forked.sessionId, 0);
+
+        return forked;
     }
 
     private sessionDeps(): SessionDeps {

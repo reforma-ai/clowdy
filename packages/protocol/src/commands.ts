@@ -91,6 +91,14 @@ export const commandSchema = z.discriminatedUnion('type', [
      * orchestrator works it stays where it is, and at rest it is refused like `chat.compact` until the orchestrator can compact.
      */
     z.object({ ...base, type: z.literal('chat.sendQueued'), chatId: z.string(), itemId: z.string() }),
+    /**
+     * Forks a chat at a final answer: a new chat of the same project, agent, model, level and mode that holds the conversation through that answer (`itemId`, a
+     * stream item with `canFork` in the chat's own stream) and goes on from there on its own, with the answer's session copied by the agent. The new chat is
+     * titled `(n) <title>`, is no thread, has no queue and no usage, and says where it came from in `Chat.forkedFrom`. The source need not be at rest: only the
+     * turn the answer ends has to be finished. The agent is asked first, and when it cannot fork nothing is created. Answers `{ chat }`. Refused (`invalid`) for
+     * an item that cannot be forked or a chat that has no conversation yet, `unavailable` while the agent is switched off or when the agent's fork failed.
+     */
+    z.object({ ...base, type: z.literal('chat.fork'), chatId: z.string(), itemId: z.string() }),
 
     /* Tasks */
     z.object({

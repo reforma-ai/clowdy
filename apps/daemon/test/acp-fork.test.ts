@@ -99,6 +99,30 @@ describe('a fork of an ACP session over v2', () => {
         expect(copy).not.toContain('beta');
     });
 
+    test('the first prompt of a fork reports its cost, since the agent counts the copy\'s from zero, where a session this daemon never measured reports none', async () => {
+        const r = forking();
+        const first = await turn(r, 'say alpha\nusage 100 10 0.5');
+        const forked = await r.engine.fork({ sessionId: first.sessionId, ref: first.messageIds[0], cwd: process.cwd() });
+        const usageOf = (events: { type: string }[]) => events.flatMap(event => event.type === 'usage' ? [event as { type: 'usage'; costUsd?: number }] : []);
+
+        // The copy's own prompt costs 0.25: the agent's running total for the copy is that, and the report is that.
+        const copy = await turn(r, 'say beta\nusage 40 4 0.25', forked.sessionId);
+
+        expect(usageOf(copy.events).map(event => event.costUsd)).toEqual([0.25]);
+
+        // The same agent on a session this engine has not measured (another daemon's, or one made before this process started): tokens, and no cost.
+        const unmeasured = rig({ protocol: 'v2', agentEnv: { FAKE_ACP_FORK: '1', FAKE_ACP_STORE: store() } });
+
+        try {
+            const resumed = await turn(unmeasured, 'say gamma\nusage 40 4 0.25', first.sessionId);
+
+            expect(usageOf(resumed.events).map(event => event.costUsd)).toEqual([undefined]);
+        }
+        finally {
+            unmeasured.stop();
+        }
+    });
+
     test('sends the fork point in the vendor extension, with the agent\'s own options, and closes the new session', async () => {
         const r = forking({ FAKE_ACP_DIRECTORIES: '1' }, { sessionMeta: { claudeCode: { options: { disallowedTools: ['AskUserQuestion'] } } } });
         const first = await turn(r, 'say alpha');

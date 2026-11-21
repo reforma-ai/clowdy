@@ -1,7 +1,7 @@
 import { commandSchema, mainFolder, MAX_ATTACHMENT_BYTES, PROTOCOL_VERSION } from '@clowdy/protocol';
 
 import { contentDisposition, servedMediaType } from '../attachments/names';
-import { executeCommand } from '../commands';
+import { executeCommandAsync, waitsForAgent } from '../commands';
 import { getRun } from '../db/runs';
 import { requireChat } from '../domain/chats';
 import { streamItems } from '../domain/items';
@@ -125,7 +125,12 @@ export function createRoutes(context: RouteContext): Route[] {
                     return failure('invalid', 'The command is not valid', parsed.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })), requestId);
                 }
 
-                return commandResponse(executeCommand(services, parsed.data));
+                // A fork waits for the agent's process, which may outlast the idle timeout of a connection that sends nothing meanwhile.
+                if (waitsForAgent(parsed.data)) {
+                    context.keepOpen(request);
+                }
+
+                return commandResponse(await executeCommandAsync(services, parsed.data));
             },
         },
         {

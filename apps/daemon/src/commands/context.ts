@@ -34,8 +34,18 @@ export interface Services {
 
 export type CommandOf<T extends CommandType> = Extract<Command, { type: T }>;
 
+/** The commands that wait for an agent before they change anything (a fork): they have an `AsyncHandlers` entry and no `Handlers` one. */
+export type AsyncCommandType = 'chat.fork';
+
 /**
  * One handler per command type, run inside the transaction that also stores the command's result. Handlers are
  * synchronous and publish their events through the domain functions; the returned value is the result's `data`.
  */
-export type Handlers = { [T in CommandType]: (services: Services, command: CommandOf<T>) => unknown };
+export type Handlers = { [T in Exclude<CommandType, AsyncCommandType>]: (services: Services, command: CommandOf<T>) => unknown };
+
+/**
+ * The handlers of the commands that wait for an agent. One does its waiting first, outside any transaction, and refuses with a `CommandError` when it must;
+ * what it gives back is the part that changes the store, synchronous like any handler and run in the transaction that also stores the result
+ * (`executeCommandAsync`), so everything that waited has happened before anything is written.
+ */
+export type AsyncHandlers = { [T in AsyncCommandType]: (services: Services, command: CommandOf<T>) => Promise<() => unknown> };

@@ -474,6 +474,54 @@ export class RunDriver {
     }
 
     /**
+     * What a session of a chat's orchestrator is opened with, a turn's or a fork's: the folder it works in (the run's own, else the project's main one), the
+     * project's other folders, the system prompt (`chat` says what the run's chat adds to it) and the tools of the run.
+     */
+    private surroundings(run: Run, work: RunWork, chat: PromptChat | undefined) {
+        const { runs, config } = this.deps;
+        const project = runs.projectOf(run);
+        const mode = runs.modeOf(run);
+        const cwd = work.cwd ?? mainFolder(project).path;
+
+        return {
+            cwd,
+            additionalDirectories: additionalFolders(project, cwd),
+            systemPrompt: [systemPrompt(mode, project, cwd, chat), skillPrompt(config.systemSkillsDir, chat?.parent !== undefined)].filter(Boolean).join('\n\n'),
+            tools: this.deps.tools(run, mode),
+        };
+    }
+
+    /**
+     * Asks the agent of a chat's orchestrator to copy its session through the rewind point `ref` (`AgentEngine.fork`) and gives the copy's session id. The copy
+     * is opened as a turn of that run opens its session (the same folder, other folders, tools, and a system prompt as for a chat that is no thread, which is
+     * what the fork's chat will be), because an agent keeps its sessions by folder and a later turn of the copy resumes it there. The run's own session is not
+     * touched, so the run may be working. It takes no slot and writes nothing: the caller makes the fork's chat once this answers. Rejects with an
+     * `EngineFailure` when the agent cannot fork or the fork fails; the daemon's stop cancels it.
+     */
+    async forkSession(runId: string, ref: string): Promise<string> {
+        const { store, runs, engines } = this.deps;
+        const run = runs.require(runId);
+        const engine = engines.get(run.engine);
+
+        if (!run.sessionId) {
+            throw new EngineFailure('This chat has no conversation to fork yet');
+        }
+
+        if (!engine?.fork) {
+            throw new EngineFailure(`The ${ run.engine } engine cannot fork a conversation`);
+        }
+
+        const { sessionId } = await engine.fork({
+            ...this.surroundings(run, getRunWork(store.db, runId), {}),
+            sessionId: run.sessionId,
+            ref,
+            signal: this.stopping.signal,
+        });
+
+        return sessionId;
+    }
+
+    /**
      * One engine session, from its start until it ends: the turn, and for an orchestrator whose agent still has background work open, the wait after it
      * (`consume`). Returns what to wait for when the turn has to be repeated.
      */
@@ -492,8 +540,6 @@ export class RunDriver {
         }
 
         const run = runs.require(runId);
-        const project = runs.projectOf(run);
-        const mode = runs.modeOf(run);
         const engine = engines.get(run.engine);
 
         if (!engine) {
@@ -530,19 +576,14 @@ export class RunDriver {
 
         // The message this turn sends is in the stream already; the record leaves it out, as the agent gets it in the prompt.
         const incoming = [prompt];
-        const cwd = work.cwd ?? mainFolder(project).path;
-        const chat = promptChat(store, run);
         const session = engine.start({
-            cwd,
-            additionalDirectories: additionalFolders(project, cwd),
+            ...this.surroundings(run, work, promptChat(store, run)),
             prompt,
-            systemPrompt: [systemPrompt(mode, project, cwd, chat), skillPrompt(config.systemSkillsDir, chat?.parent !== undefined)].filter(Boolean).join('\n\n'),
             resumeSessionId: run.sessionId,
             ...(run.sessionId && { history: () => conversationRecord(listItems(store.db, runId, 0).filter(item => item.seq <= told), incoming) }),
             model: run.model,
             effort: run.effort,
             title: sessionTitle(store, run, this.deps.namesChats(run.engine), prompt),
-            tools: this.deps.tools(run, mode),
             signal: ended,
         });
         let closing: Promise<void> | undefined;

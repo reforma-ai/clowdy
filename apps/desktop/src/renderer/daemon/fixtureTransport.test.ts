@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, docHash, FIXTURE_LIVE_RUN_ID, FIXTURE_LIVE_TEXT_ID, FIXTURE_LIVE_TOOL_ID, FIXTURE_PROJECT_ID } from './fixtureData';
+import { createFixtureData, docHash, FIXTURE_FORK_CHAT_ID, FIXTURE_LIVE_RUN_ID, FIXTURE_LIVE_TEXT_ID, FIXTURE_LIVE_TOOL_ID, FIXTURE_PROJECT_ID, withFixtureFork } from './fixtureData';
 import { FixtureTransport } from './fixtureTransport';
 
 import type { ClowdyEvent } from '@clowdy/protocol';
@@ -720,5 +720,113 @@ describe('FixtureTransport threads', () => {
 
         expect(queue).toHaveLength(1);
         expect(queue[0].from?.kind === 'threadNotice' && queue[0].from.threads.map(entry => entry.text)).toEqual(['Every currency in the table has two decimals except JPY, which has none.']);
+    });
+});
+
+describe('FixtureTransport forks', () => {
+    const snapshot = (transport: FixtureTransport) => transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+    const flags = (items: { seq: number; canFork?: boolean; canEdit?: boolean }[]) => items.flatMap(item => (item.canFork || item.canEdit ? [[item.seq, item.canEdit ? 'edit' : 'fork']] : []));
+
+    it('seeds the items an agent can fork and edit: Edit on the message that starts a turn, Fork on the answer that ends it, and nowhere else', async () => {
+        const transport = new FixtureTransport();
+
+        expect(flags(await transport.getItems({ chatId: 'c-2' }))).toEqual([[1, 'edit'], [6, 'fork']]);
+        expect(flags(await transport.getItems({ chatId: 'c-1' }))).toEqual([[1, 'edit']]);
+        expect(flags(await transport.getItems({ chatId: 'c-3' }))).toEqual([]);
+        // The seed has no fork: a chat more in the car project would move what other screens count.
+        expect((await snapshot(transport)).chats.some(chat => chat.forkedFrom !== undefined)).toBe(false);
+    });
+
+    it('adds, on request, a chat that is a fork of First version: its history through the answer with the same words and times, then a turn of its own', async () => {
+        const transport = new FixtureTransport({ data: withFixtureFork(createFixtureData()) });
+        const { chats, runs } = await snapshot(transport);
+        const fork = chats.find(chat => chat.id === FIXTURE_FORK_CHAT_ID);
+        const copied = await transport.getItems({ chatId: FIXTURE_FORK_CHAT_ID });
+        const original = await transport.getItems({ chatId: 'c-2' });
+
+        expect(fork).toMatchObject({ title: '(1) First version', engine: 'claude', forkedFrom: { chatId: 'c-2', atSeq: 6 }, orchestratorRunId: 'r-orch-7' });
+        expect(fork?.parentChatId).toBeUndefined();
+        expect(runs.find(run => run.id === 'r-orch-7')).toMatchObject({ role: 'orchestrator', status: 'succeeded', chatId: FIXTURE_FORK_CHAT_ID });
+        expect(copied.slice(0, 6).map(item => [item.seq, item.at, item.body])).toEqual(original.slice(0, 6).map(item => [item.seq, item.at, item.body]));
+        expect(copied.map(item => item.body.kind)).toEqual([...original.slice(0, 6).map(item => item.body.kind), 'user', 'assistant']);
+        expect(flags(copied)).toEqual([[1, 'edit'], [6, 'fork'], [7, 'edit'], [8, 'fork']]);
+        // It forks like any chat of the daemon: the second answer of the fork is another fork's source.
+        expect(await transport.command({ type: 'chat.fork', chatId: FIXTURE_FORK_CHAT_ID, itemId: copied[7].id })).toMatchObject({ ok: true, data: { chat: { title: '(2) First version', forkedFrom: { chatId: FIXTURE_FORK_CHAT_ID, atSeq: 8 } } } });
+    });
+
+    it('forks a chat at a final answer: a chat with the history through it, the source untouched, and the new chat and its run announced', async () => {
+        const { transport, events } = await connected();
+        const before = await transport.getItems({ chatId: 'c-2' });
+        const answer = before[5];
+        const result = await transport.command({ type: 'chat.fork', chatId: 'c-2', itemId: answer.id });
+
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(result).toMatchObject({ ok: true, data: { chat: { title: '(1) First version', mode: 'autopilot', engine: 'claude', forkedFrom: { chatId: 'c-2', atSeq: 6 } } } });
+
+        const made = (result as { ok: true; data: { chat: { id: string; orchestratorRunId: string; parentChatId?: string; queue?: unknown } } }).data.chat;
+
+        expect(made.parentChatId).toBeUndefined();
+        expect(made.queue).toBeUndefined();
+
+        const items = await transport.getItems({ chatId: made.id });
+
+        expect(items.map(item => [item.seq, item.body.kind])).toEqual(before.slice(0, 6).map(item => [item.seq, item.body.kind]));
+        expect(items.every(item => item.runId === made.orchestratorRunId && !before.some(other => other.id === item.id))).toBe(true);
+        expect(flags(items)).toEqual([[1, 'edit'], [6, 'fork']]);
+        expect(await transport.getItems({ chatId: 'c-2' })).toEqual(before);
+        expect((await snapshot(transport)).runs.find(run => run.id === made.orchestratorRunId)).toMatchObject({ status: 'succeeded', chatId: made.id, engine: 'claude' });
+        expect(events.map(event => event.data.type)).toEqual(['run.upserted', 'chat.upserted']);
+    });
+
+    it('numbers the title of a fork of a fork, and every fork of one chat starts from that chat\'s own title', async () => {
+        const { transport } = await connected();
+        const forkedAt = async (chatId: string, seq: number) => {
+            const item = (await transport.getItems({ chatId })).find(candidate => candidate.seq === seq);
+            const result = await transport.command({ type: 'chat.fork', chatId, itemId: item?.id ?? '' });
+
+            return (result as { ok: true; data: { chat: { id: string; title: string } } }).data.chat;
+        };
+        const one = await forkedAt('c-2', 6);
+
+        expect(one.title).toBe('(1) First version');
+        expect((await forkedAt(one.id, 6)).title).toBe('(2) First version');
+        expect((await forkedAt('c-2', 6)).title).toBe('(1) First version');
+    });
+
+    it('refuses what the daemon refuses: no chat, no conversation, no such item, an item that cannot be forked', async () => {
+        const { transport } = await connected();
+        const code = async (chatId: string, itemId: string) => (await transport.command({ type: 'chat.fork', chatId, itemId }) as { ok: false; error: { code: string } }).error.code;
+        const items = await transport.getItems({ chatId: 'c-2' });
+
+        expect(await code('c-nope', 'x')).toBe('not_found');
+        expect(await code('c-4', 'x')).toBe('invalid');
+        expect(await code('c-2', 'r-orch-2-99')).toBe('not_found');
+        // The person's own message, an answer in the middle of a turn, a tool call.
+        expect([await code('c-2', items[0].id), await code('c-2', items[1].id), await code('c-2', items[2].id)]).toEqual(['invalid', 'invalid', 'invalid']);
+        expect((await snapshot(transport)).chats.filter(chat => chat.forkedFrom !== undefined)).toHaveLength(0);
+    });
+
+    it('gives a fork a file of its own for each file a copied message carries, and shows a call that still ran in the source as stopped', async () => {
+        // Simplify booking works, which does not stop it being forked at an answer it gave: its first message carries files, and a call is still running at that answer.
+        const data = createFixtureData();
+
+        data.items['r-orch-1'][11].canFork = true;
+
+        const transport = new FixtureTransport({ data });
+        const source = await transport.getItems({ chatId: 'c-1' });
+        const result = await transport.command({ type: 'chat.fork', chatId: 'c-1', itemId: source[11].id });
+        const { chat } = (result as { ok: true; data: { chat: { id: string } } }).data;
+        const copied = await transport.getItems({ chatId: chat.id });
+        const [original, own] = [source[0].body, copied[0].body].map(body => (body.kind === 'user' ? body.attachments ?? [] : []));
+
+        expect(copied).toHaveLength(12);
+        expect(own).toHaveLength(original.length);
+        expect(own.map(file => file.id).some(id => original.some(file => file.id === id))).toBe(false);
+        expect(own.map(({ name, size, mediaType }) => [name, size, mediaType])).toEqual(original.map(({ name, size, mediaType }) => [name, size, mediaType]));
+        expect(await (await transport.getAttachment(FIXTURE_PROJECT_ID, own[0].id)).text()).toBe(await (await transport.getAttachment(FIXTURE_PROJECT_ID, original[0].id)).text());
+        // The call that ran at the answer has no process in the fork; the source's own is still running.
+        expect(copied[10].body).toMatchObject({ kind: 'tool', state: 'error', error: 'Stopped before it finished' });
+        expect(source[10].body).toMatchObject({ kind: 'tool', state: 'running' });
     });
 });
