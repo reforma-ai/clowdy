@@ -2,7 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { Check, ChevronDown, Folder, Home, Plus, Sliders } from '@clowdy/icons/14';
+import { AddFolder, Check, ChevronDown, Folder, Home, Sliders } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
 import { PathText } from '../shared/PathText';
@@ -71,7 +71,7 @@ export function ProjectSelect() {
                         />
                     )) }
                     { root.projects.length > 0 && <MenuSeparator /> }
-                    <MenuItem id={ ADD } text="Add project…" icon={ <Plus /> } />
+                    <MenuItem id={ ADD } text="Add project…" icon={ <AddFolder /> } />
                     <MenuItem id={ MANAGE } text="Manage projects…" icon={ <Sliders /> } />
                 </Menu>
             </Popover>
