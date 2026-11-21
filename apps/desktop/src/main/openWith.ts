@@ -20,15 +20,21 @@ export interface OpenWithDeps {
     openPath: (path: string) => Promise<string>;
     /** Starts a program and does not wait for it. Rejects when it cannot be started. */
     launch: (command: string, args: readonly string[]) => Promise<void>;
+    /** The icon of a program as a `data:` image, or nothing when it cannot be read. */
+    icon: (path: string) => Promise<string | undefined>;
 }
 
 /** A program found on this machine: where it is (the app bundle, or the executable), or empty for the system's own file manager. */
-interface Found extends OpenApp {
+interface Found {
+    id: string;
+    name: string;
     path: string;
+    /** Where the icon is read from: the program itself, or for the system's file manager a place of its own; empty when there is none. */
+    iconPath: string;
 }
 
 export interface OpenWith {
-    /** The editors and file managers this machine has, in the order of the catalog; the system's file manager is first. */
+    /** The editors and file managers this machine has, with their icons, in the order of the catalog; the system's file manager is first. */
     listApps: () => Promise<OpenApps>;
     /** Opens `folder` in the app. Rejects when the folder is not there or the app cannot be started. */
     openFolder: (folder: unknown, app: unknown) => Promise<void>;
@@ -38,6 +44,8 @@ const escapeRegExp = (text: string) => text.replace(/[.+?^${}()|[\]\\]/g, '\\$&'
 
 export function createOpenWith(deps: OpenWithDeps): OpenWith {
     const { platform, home, env, list, exists } = deps;
+    /** The icons read so far: a program keeps its icon for as long as the app runs, and one that could not be read is tried again. */
+    const icons = new Map<string, string>();
 
     /** The apps in the folders macOS keeps them in, the same name in two folders counted once, the first folder winning. */
     async function macApps(): Promise<Array<{ name: string; path: string }>> {
@@ -115,14 +123,14 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
             for (const spec of EDITORS) {
                 const app = apps.find(candidate => spec.mac.test(candidate.name));
 
-                if (app) found.push({ id: spec.id, name: spec.name, path: app.path });
+                if (app) found.push({ id: spec.id, name: spec.name, path: app.path, iconPath: app.path });
             }
         }
         else if (platform === 'win32') {
             for (const spec of EDITORS) {
                 const path = await windowsProgram(spec.win);
 
-                if (path) found.push({ id: spec.id, name: spec.name, path });
+                if (path) found.push({ id: spec.id, name: spec.name, path, iconPath: path });
             }
         }
 
@@ -136,26 +144,48 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
 
         for (const spec of specs) {
             if (spec.system) {
-                found.push({ id: spec.id, name: spec.name, path: '' });
+                found.push({ id: spec.id, name: spec.name, path: '', iconPath: (spec.icon && fill(spec.icon)) || '' });
                 continue;
             }
 
             const app = spec.mac && apps.find(candidate => spec.mac!.test(candidate.name));
 
-            if (app) found.push({ id: spec.id, name: spec.name, path: app.path });
+            if (app) found.push({ id: spec.id, name: spec.name, path: app.path, iconPath: app.path });
         }
 
         return found;
     }
 
+    async function iconOf(path: string): Promise<string | undefined> {
+        if (path === '') return undefined;
+
+        const known = icons.get(path);
+
+        if (known) return known;
+
+        const icon = await deps.icon(path);
+
+        if (icon) icons.set(path, icon);
+
+        return icon;
+    }
+
+    /** What the page is told about a program: no path (the page never says where to start anything), and the icon when there is one. */
+    async function describe({ id, name, iconPath }: Found): Promise<OpenApp> {
+        const icon = await iconOf(iconPath);
+
+        return icon ? { id, name, icon } : { id, name };
+    }
+
     const isAbsolute = platform === 'win32' ? win32.isAbsolute : posix.isAbsolute;
-    const publicApp = ({ id, name }: Found): OpenApp => ({ id, name });
 
     return {
         async listApps() {
             const [editorList, managerList] = await Promise.all([editors(), fileManagers()]);
 
-            return { editors: editorList.map(publicApp), fileManagers: managerList.map(publicApp) };
+            const [editorApps, managerApps] = await Promise.all([Promise.all(editorList.map(describe)), Promise.all(managerList.map(describe))]);
+
+            return { editors: editorApps, fileManagers: managerApps };
         },
 
         async openFolder(folder, app) {
@@ -189,8 +219,8 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
     };
 }
 
-/** The real machine: its files, its environment, and `openPath` of Electron's `shell`. */
-export function systemOpenWithDeps(openPath: OpenWithDeps['openPath']): OpenWithDeps {
+/** The real machine: its files, its environment, `openPath` of Electron's `shell`, and the way Electron reads an icon. */
+export function systemOpenWithDeps(openPath: OpenWithDeps['openPath'], icon: OpenWithDeps['icon']): OpenWithDeps {
     return {
         platform: process.platform,
         home: homedir(),
@@ -199,6 +229,7 @@ export function systemOpenWithDeps(openPath: OpenWithDeps['openPath']): OpenWith
         exists: path => access(path).then(() => true, () => false),
         isFolder: path => stat(path).then(info => info.isDirectory(), () => false),
         openPath,
+        icon,
         launch: (command, args) => new Promise<void>((resolve, reject) => {
             const child = spawn(command, [...args], { detached: true, stdio: 'ignore' });
 

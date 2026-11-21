@@ -6,15 +6,18 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createOpenWith, systemOpenWithDeps, type OpenWithDeps } from './openWith';
 
 /** A machine of folders and files named by plain strings; `launch` and `openPath` only record what they were asked. */
-function machine({ platform, folders = {}, files = [], env = {}, home = '/Users/dev' }: {
+function machine({ platform, folders = {}, files = [], env = {}, home = '/Users/dev', icons = {} }: {
     platform: NodeJS.Platform;
     folders?: Record<string, string[]>;
     files?: string[];
     env?: Record<string, string>;
     home?: string;
+    /** The icon each place has, by path; a program at another place has none. */
+    icons?: Record<string, string>;
 }) {
     const launch = vi.fn<OpenWithDeps['launch']>(async () => undefined);
     const openPath = vi.fn<OpenWithDeps['openPath']>(async () => '');
+    const icon = vi.fn<OpenWithDeps['icon']>(async path => icons[path]);
     const deps: OpenWithDeps = {
         platform,
         home,
@@ -24,9 +27,10 @@ function machine({ platform, folders = {}, files = [], env = {}, home = '/Users/
         isFolder: async path => path === '/Users/dev/web' || path === 'C:\\Users\\dev\\web',
         openPath,
         launch,
+        icon,
     };
 
-    return { open: createOpenWith(deps), launch, openPath };
+    return { open: createOpenWith(deps), launch, openPath, icon };
 }
 
 const MAC: Parameters<typeof machine>[0] = {
@@ -163,6 +167,68 @@ describe('what a Windows machine has', () => {
     });
 });
 
+describe('the icons of the programs', () => {
+    test('tells each program\'s icon, read from its app, and the system\'s file manager\'s from its own place', async () => {
+        const { open } = machine({
+            ...MAC,
+            icons: {
+                '/Applications/Cursor.app': 'data:image/png;base64,cursor',
+                '/Applications/Path Finder.app': 'data:image/png;base64,path-finder',
+                '/System/Library/CoreServices/Finder.app': 'data:image/png;base64,finder',
+            },
+        });
+
+        const { editors, fileManagers } = await open.listApps();
+
+        expect(editors.find(app => app.id === 'cursor')).toEqual({ id: 'cursor', name: 'Cursor', icon: 'data:image/png;base64,cursor' });
+        expect(fileManagers).toEqual([
+            { id: 'finder', name: 'Finder', icon: 'data:image/png;base64,finder' },
+            { id: 'path-finder', name: 'Path Finder', icon: 'data:image/png;base64,path-finder' },
+        ]);
+    });
+
+    test('lists a program whose icon cannot be read, with no icon, and tells the page no path', async () => {
+        const { open } = machine({ ...MAC, icons: { '/Applications/Cursor.app': 'data:image/png;base64,cursor' } });
+        const { editors, fileManagers } = await open.listApps();
+        const apps = [...editors, ...fileManagers];
+
+        expect(apps.map(app => Object.keys(app).sort().join())).toEqual(apps.map(app => app.id === 'cursor' ? 'icon,id,name' : 'id,name'));
+    });
+
+    test('reads an icon once while it is read, and tries again one that could not be read', async () => {
+        const { open, icon } = machine({ platform: 'darwin', folders: { '/Applications': ['Cursor.app', 'Zed.app'] }, icons: { '/Applications/Cursor.app': 'data:image/png;base64,cursor' } });
+
+        await open.listApps();
+        await open.listApps();
+
+        const reads = icon.mock.calls.map(([path]) => path);
+
+        expect(reads.filter(path => path === '/Applications/Cursor.app')).toHaveLength(1);
+        expect(reads.filter(path => path === '/Applications/Zed.app')).toHaveLength(2);
+    });
+
+    test('reads the icon of File Explorer and of an executable on Windows, and skips a place that needs a variable the machine does not have', async () => {
+        const executable = 'C:\\Users\\dev\\AppData\\Local\\Programs\\cursor\\Cursor.exe';
+        const { open, icon } = machine({
+            platform: 'win32',
+            env: { LOCALAPPDATA: 'C:\\Users\\dev\\AppData\\Local', SystemRoot: 'C:\\Windows' },
+            files: [executable],
+            icons: { [executable]: 'data:image/png;base64,cursor', 'C:\\Windows\\explorer.exe': 'data:image/png;base64,explorer' },
+        });
+
+        expect(await open.listApps()).toEqual({
+            editors: [{ id: 'cursor', name: 'Cursor', icon: 'data:image/png;base64,cursor' }],
+            fileManagers: [{ id: 'explorer', name: 'File Explorer', icon: 'data:image/png;base64,explorer' }],
+        });
+
+        const bare = machine({ platform: 'win32', env: {} });
+
+        expect(await bare.open.listApps()).toEqual({ editors: [], fileManagers: [{ id: 'explorer', name: 'File Explorer' }] });
+        expect(bare.icon).not.toHaveBeenCalled();
+        expect(icon).toHaveBeenCalledTimes(2);
+    });
+});
+
 test('has no program on a system the app does not run on', async () => {
     const { open } = machine({ platform: 'linux', folders: { '/Applications': ['Cursor.app'] } });
 
@@ -185,7 +251,7 @@ describe('the real machine', () => {
     });
 
     test('tells a folder from a file and from nothing, and lists a folder it cannot read as empty', async () => {
-        const deps = systemOpenWithDeps(async () => '');
+        const deps = systemOpenWithDeps(async () => '', async () => undefined);
         const root = await scratch();
 
         await mkdir(join(root, 'web'));
@@ -201,7 +267,7 @@ describe('the real machine', () => {
     });
 
     test('starts a program with each argument as it is, and no shell reads them', async () => {
-        const deps = systemOpenWithDeps(async () => '');
+        const deps = systemOpenWithDeps(async () => '', async () => undefined);
         const root = await scratch();
         const out = join(root, 'argv.json');
         const folder = 'my web; $(touch pwned) "q" \'s\' -x';
@@ -212,14 +278,14 @@ describe('the real machine', () => {
     });
 
     test.runIf(process.platform === 'darwin')('rejects when `open` cannot start the app it is told to', async () => {
-        const deps = systemOpenWithDeps(async () => '');
+        const deps = systemOpenWithDeps(async () => '', async () => undefined);
         const root = await scratch();
 
         await expect(deps.launch('open', ['-a', join(root, 'Missing.app'), root])).rejects.toThrow('open failed');
     });
 
     test('rejects when the program cannot be started', async () => {
-        const deps = systemOpenWithDeps(async () => '');
+        const deps = systemOpenWithDeps(async () => '', async () => undefined);
         const root = await scratch();
 
         await expect(deps.launch(join(root, 'no-such-program'), [root])).rejects.toThrow();

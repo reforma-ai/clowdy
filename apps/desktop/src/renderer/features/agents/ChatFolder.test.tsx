@@ -131,6 +131,19 @@ describe('the folder of a chat', () => {
         expect(openFolder).not.toHaveBeenCalled();
     });
 
+    it('draws each program with its own icon, and a plain one of its kind for a program that has none', async () => {
+        const icon = 'data:image/png;base64,Y3Vyc29y';
+
+        await draw({ bridge: { getOpenApps: async () => ({ editors: [{ id: 'cursor', name: 'Cursor', icon }], fileManagers: [{ id: 'finder', name: 'Finder' }] }), openFolder: vi.fn(async () => undefined) } });
+        await press(pill()!);
+
+        const picture = (text: string) => item(text).querySelector<HTMLImageElement>('img');
+
+        expect(picture('Open in Cursor')?.getAttribute('src')).toBe(icon);
+        expect(picture('Open in Finder')).toBeNull();
+        expect(item('Open in Finder').querySelector('svg')).not.toBeNull();
+    });
+
     it('tells it in a toast when the program cannot open the folder', async () => {
         await draw({ bridge: { getOpenApps: async () => APPS, openFolder: vi.fn(async () => Promise.reject(new Error('gone'))) } });
         await press(pill()!);

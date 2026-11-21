@@ -1,5 +1,5 @@
 import { PROTOCOL_VERSION } from '@clowdy/protocol';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, session, shell, autoUpdater as squirrel, type MessageBoxOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, session, shell, autoUpdater as squirrel, type MessageBoxOptions } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { watch } from 'node:fs';
 import { release } from 'node:os';
@@ -7,6 +7,7 @@ import path from 'node:path';
 
 import { IPC_CHANNELS } from '../shared/bridge';
 import { DEV_BUILD_MARKER } from '../shared/dev';
+import { createAppIcon } from './appIcon';
 import { showBootWindow, type BootWindow } from './bootWindow';
 import { bundleRuntime, installBun, installOwnBundle, pruneBunCopies, readBundleInfo, updatesDir, type BundleInfo } from './bundle';
 import { attachDaemon, currentContext, daemonAddress, ensureDaemon, environmentRuntime, findRunning, type DaemonContext, type DaemonRuntime } from './daemon';
@@ -36,7 +37,14 @@ const ownRendererRoot = app.isPackaged
 const trustedOrigin = APP_ORIGIN;
 
 /** The editors and file managers a folder can be opened in: the page asks which this computer has, and which one to use. */
-const openWith = createOpenWith(systemOpenWithDeps(folder => shell.openPath(folder)));
+const openWith = createOpenWith(systemOpenWithDeps(
+    folder => shell.openPath(folder),
+    createAppIcon({
+        platform: process.platform,
+        thumbnail: (file, size) => nativeImage.createThumbnailFromPath(file, { width: size, height: size }),
+        fileIcon: file => app.getFileIcon(file, { size: 'normal' }),
+    })
+));
 
 /** The OTA bundle installed during this run, which every page that loads is told about. */
 let updateReady: number | undefined;

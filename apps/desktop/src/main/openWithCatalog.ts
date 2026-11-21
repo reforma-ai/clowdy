@@ -20,6 +20,8 @@ export interface FileManagerSpec {
     name: string;
     /** The one the system has: `shell.openPath` opens it, and it is always there. Only one has it, and it is first. */
     system?: boolean;
+    /** Where the icon of the system's own file manager is read from, since it is not found as an app; a place may name `%NAME%` as `win` does. */
+    icon?: string;
     mac?: RegExp;
 }
 
@@ -71,12 +73,12 @@ export const EDITORS: readonly EditorSpec[] = [
 /** The system's file manager is first, so it is the default and is never missing; on macOS the others are found by their app. */
 export const FILE_MANAGERS = {
     darwin: [
-        { id: 'finder', name: 'Finder', system: true },
+        { id: 'finder', name: 'Finder', system: true, icon: '/System/Library/CoreServices/Finder.app' },
         { id: 'path-finder', name: 'Path Finder', mac: /^Path Finder$/ },
         { id: 'forklift', name: 'ForkLift', mac: /^ForkLift/ },
     ],
     win32: [
-        { id: 'explorer', name: 'File Explorer', system: true },
+        { id: 'explorer', name: 'File Explorer', system: true, icon: '%SystemRoot%\\explorer.exe' },
     ],
 } as const satisfies Record<string, readonly FileManagerSpec[]>;
 

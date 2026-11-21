@@ -70,6 +70,29 @@ describe('FilesPage', () => {
         expect(triggers().map(button => button.textContent)).toEqual(['Cursor', 'Finder']);
     });
 
+    it('draws the icon of a program in the select and in its list, and a plain one for a program with none', async () => {
+        const cursor = 'data:image/png;base64,Y3Vyc29y';
+        const zed = 'data:image/png;base64,emVk';
+
+        await draw({ getOpenApps: async () => ({ editors: [{ id: 'cursor', name: 'Cursor', icon: cursor }, { id: 'zed', name: 'Zed', icon: zed }], fileManagers: [{ id: 'finder', name: 'Finder' }] }) });
+
+        const source = (target: ParentNode) => target.querySelector('img')?.getAttribute('src');
+
+        expect(source(triggers()[0]!)).toBe(cursor);
+        expect(triggers()[1]!.querySelector('img')).toBeNull();
+        expect(triggers()[1]!.querySelector('svg[width="14"]')).not.toBeNull();
+
+        await press(triggers()[0]!);
+
+        const options = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')];
+
+        expect(options.map(option => [option.textContent, source(option)])).toEqual([['Cursor', cursor], ['Zed', zed]]);
+
+        await press(options[1]!);
+
+        expect(source(triggers()[0]!)).toBe(zed);
+    });
+
     it('shows the program that was picked, and keeps a pick', async () => {
         await draw({ getOpenApps: async () => APPS });
         await press(triggers()[0]!);

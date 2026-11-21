@@ -26,10 +26,11 @@ export const IPC_CHANNELS = {
     openFolder: 'desktop:open-folder',
 } as const;
 
-/** A program that can open a folder: an editor or a file manager, found on this computer. `id` is the catalog's, `name` is what the person reads. */
+/** A program that can open a folder: an editor or a file manager, found on this computer. `id` is the catalog's, `name` is what the person reads, and `icon` is its own icon as a `data:` image, none when it could not be read. */
 export interface OpenApp {
     id: string;
     name: string;
+    icon?: string;
 }
 
 /** What this computer has, in the order the choices go in: the first editor is the one that opens a folder until another is picked, and the system's file manager is the first of its list. */
