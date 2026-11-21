@@ -217,20 +217,20 @@ describe('UiStore', () => {
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"agentsFolded":"yes"}' })).forProject('p1').agentsFolded).toBe(false);
     });
 
-    it('groups the list by folder only when asked, folds a group on its own, and keeps both per project across a restart', () => {
+    it('groups the list by folder until it is turned off, folds a group on its own, and keeps both per project across a restart', () => {
         const storage = memoryStorage();
         const store = new UiStore(storage);
         const ui = store.forProject('p1');
 
-        expect([ui.groupByFolder, ui.collapsedFolders]).toEqual([false, []]);
+        expect([ui.groupByFolder, ui.collapsedFolders]).toEqual([true, []]);
 
-        ui.setGroupByFolder(true);
+        ui.setGroupByFolder(false);
         ui.toggleFolderCollapsed('fld-api');
         ui.toggleFolderCollapsed('fld-notes');
         ui.toggleFolderCollapsed('fld-api');
         expect(ui.collapsedFolders).toEqual(['fld-notes']);
-        expect(store.forProject('p2')).toMatchObject({ groupByFolder: false, collapsedFolders: [] });
-        expect(new UiStore(storage).forProject('p1')).toMatchObject({ groupByFolder: true, collapsedFolders: ['fld-notes'] });
+        expect(store.forProject('p2')).toMatchObject({ groupByFolder: true, collapsedFolders: [] });
+        expect(new UiStore(storage).forProject('p1')).toMatchObject({ groupByFolder: false, collapsedFolders: ['fld-notes'] });
     });
 
     it('opens the folded group of a chat opened from elsewhere, and changes nothing when it is open', () => {
@@ -252,7 +252,9 @@ describe('UiStore', () => {
     it('reads the grouping and the folded groups from the page URL, and drops what is damaged in storage', () => {
         expect(initialUiFromSearch('?group=1&collapsed=fld-api,fld-notes')).toEqual({ groupByFolder: true, collapsedFolders: ['fld-api', 'fld-notes'] });
         expect(initialUiFromSearch('?group=0')).toEqual({ groupByFolder: false });
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"groupByFolder":"yes","collapsedFolders":"fld-api"}' })).forProject('p1')).toMatchObject({ groupByFolder: false, collapsedFolders: [] });
+        // A choice that was kept stays, and what is not a choice reads as the default, grouped.
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"groupByFolder":false}' })).forProject('p1').groupByFolder).toBe(false);
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"groupByFolder":"yes","collapsedFolders":"fld-api"}' })).forProject('p1')).toMatchObject({ groupByFolder: true, collapsedFolders: [] });
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"collapsedFolders":["fld-api",5]}' })).forProject('p1').collapsedFolders).toEqual(['fld-api']);
     });
 

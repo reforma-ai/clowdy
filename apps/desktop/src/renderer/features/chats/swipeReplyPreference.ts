@@ -5,7 +5,7 @@ import { browserStorage, readStored, writeStored, type KeyValueStorage } from '.
 const STORAGE_KEY = 'clowdy:swipe-to-reply';
 
 /**
- * Whether a sideways swipe over a message replies to it, a preference of this computer (Settings > Chat). On unless the person turned it off: a stored
+ * Whether a long swipe to the left over a message replies to it, a preference of this computer (Settings > Chat). On unless the person turned it off: a stored
  * value that is anything but `false` is the default.
  */
 export class SwipeReplyPreference {

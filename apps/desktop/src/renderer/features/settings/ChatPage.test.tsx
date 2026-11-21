@@ -75,8 +75,8 @@ describe('ChatPage', () => {
 
     it('offers to swipe a message to reply, on by default, with a line that says what it does and no period after it', () => {
         expect(container.textContent).toContain(SWIPE);
-        expect(container.textContent).toContain('Scroll sideways over a message to reply to it');
-        expect(container.textContent).not.toContain('Scroll sideways over a message to reply to it.');
+        expect(container.textContent).toContain('Swipe left over a message and let go to reply to it');
+        expect(container.textContent).not.toContain('Swipe left over a message and let go to reply to it.');
         expect(swipeSwitch().checked).toBe(true);
         expect(swipeToReply.enabled).toBe(true);
     });

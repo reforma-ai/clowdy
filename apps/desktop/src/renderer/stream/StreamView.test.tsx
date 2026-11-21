@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StreamView, type StreamViewProps } from './StreamView';
+import { SWIPE } from './swipeReply';
 
 import type { StreamItem, StreamItemBody } from '@clowdy/protocol';
 
@@ -283,15 +284,20 @@ describe('StreamView', () => {
                 const onReply = vi.fn();
                 const messages = () => [...container.querySelectorAll<HTMLElement>('[data-message]')];
                 const swipe = (target: HTMLElement) => Array.from({ length: 30 }, () => target.dispatchEvent(new WheelEvent('wheel', { deltaX: 10, deltaY: 0, bubbles: true, cancelable: true })));
+                // A swipe replies when it is over, once the wheel has been quiet for a while.
+                const quiet = () => new Promise(resolve => setTimeout(resolve, SWIPE.idleMs + 50));
 
                 await drawWith(twoTurns, { active: false, messageActions: { onReply } });
 
                 expect(swipe(messages()[0]).every(untouched => untouched)).toBe(true);
+                await quiet();
                 expect(onReply).not.toHaveBeenCalled();
 
                 await drawWith(twoTurns, { active: false, messageActions: { onReply, swipeToReply: true } });
                 swipe(messages()[0]);
+                await quiet();
                 swipe(messages().find(node => node.textContent?.includes('The table is done.'))!);
+                await quiet();
 
                 expect(onReply.mock.calls).toEqual([[{ role: 'user', text: 'Fix the form' }], [{ role: 'assistant', text: 'The table is done.' }]]);
             });
