@@ -390,4 +390,12 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 17,
+        up(db) {
+            // A rewind point: the agent's own id of the message an `assistant` item holds, kept on the item that ends a turn so the agent's session can be cut
+            // there (see `StreamItem.canFork`). NULL on every other item, and on every item an older database has. Never sent to clients.
+            db.run('ALTER TABLE stream_items ADD COLUMN provider_ref TEXT');
+        },
+    },
 ];

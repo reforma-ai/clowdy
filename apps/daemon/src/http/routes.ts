@@ -2,9 +2,9 @@ import { commandSchema, mainFolder, MAX_ATTACHMENT_BYTES, PROTOCOL_VERSION } fro
 
 import { contentDisposition, servedMediaType } from '../attachments/names';
 import { executeCommand } from '../commands';
-import { listItems } from '../db/items';
 import { getRun } from '../db/runs';
 import { requireChat } from '../domain/chats';
+import { streamItems } from '../domain/items';
 import { findProjectIcon } from '../domain/projectIcon';
 import { projectsInfo, requireProject } from '../domain/projects';
 import { projectSnapshot, rootSnapshot, taskDetail } from '../domain/snapshots';
@@ -136,7 +136,7 @@ export function createRoutes(context: RouteContext): Route[] {
                     throw notFound('Run', id);
                 }
 
-                return json(listItems(store.db, id, integerParam(url.searchParams.get('after'), 'after', 0)));
+                return json(streamItems(store, id, integerParam(url.searchParams.get('after'), 'after', 0)));
             },
         },
         {
@@ -145,7 +145,7 @@ export function createRoutes(context: RouteContext): Route[] {
             handle: (_request, url, [id]) => {
                 const runId = requireChat(store, id).orchestratorRunId;
 
-                return json(runId ? listItems(store.db, runId, integerParam(url.searchParams.get('after'), 'after', 0)) : []);
+                return json(runId ? streamItems(store, runId, integerParam(url.searchParams.get('after'), 'after', 0)) : []);
             },
         },
         { method: 'GET', pattern: /^\/v1\/tasks\/([^/]+)\/detail$/, handle: (_request, _url, [id]) => json(taskDetail(store, id)) },

@@ -179,3 +179,28 @@ describe('ScriptEngine, a session that outlives its done', () => {
         expect(aborted.failure).toBeUndefined();
     });
 });
+
+describe('ScriptEngine, a fork', () => {
+    test('is recorded, and gives a session of its own unless the test answers it; the flag is off until the test turns it on', async () => {
+        const engine = new ScriptEngine(async function* () {
+            yield { type: 'done' } as const;
+        });
+
+        expect(engine.canFork).toBe(false);
+
+        const options = { sessionId: 's1', ref: 'm1', cwd: '/tmp' };
+
+        expect(await engine.fork(options)).toEqual({ sessionId: 's1-fork-1' });
+        expect(await engine.fork({ ...options, ref: 'm2' })).toEqual({ sessionId: 's1-fork-2' });
+        expect(engine.forked.map(fork => fork.ref)).toEqual(['m1', 'm2']);
+
+        engine.forkAnswer = () => ({ sessionId: 'answered' });
+        expect(await engine.fork(options)).toEqual({ sessionId: 'answered' });
+
+        engine.forkAnswer = () => {
+            throw new Error('The adapter fell over');
+        };
+        await expect(engine.fork(options)).rejects.toThrow('The adapter fell over');
+        expect(engine.forked).toHaveLength(4);
+    });
+});

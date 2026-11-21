@@ -81,6 +81,14 @@ export interface AgentSpec {
      * reports by itself (Claude Code starts a report turn). Only means something for an agent whose protocol reports background work (`v2`).
      */
     wakesOnBackgroundEnd?: boolean;
+    /**
+     * The app may offer Fork and Edit for chats of this agent: its adapter copies a session at a message through `session/fork` with the fork point in
+     * `_meta.jetbrains.air.fork` (`{ version: 1, messageId }`, a vendor extension of both pinned adapters, read from any client; `session/fork` itself is an
+     * unstable method of the draft protocol), and it tells the message ids a point is made of (ACP v2). Set only after a real check against the pinned
+     * adapter (`.briefback/message-actions/research/real-checks.md`), and rerun it on every bump of the pin: a bump can break the extension, and the flag
+     * goes off when it does. Unset for every agent that has no such fork, which has neither action.
+     */
+    fork?: boolean;
 }
 
 /**
@@ -100,6 +108,9 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         // ACP v2: background commands, sub-agents and workflows are told as `state_update`s, and the agent's own turns come on the same session.
         protocol: 'v2',
         compact: '/compact',
+        // `claude-agent-acp@0.107.0` forks at an exact assistant message (the SDK's `forkSession` with `upToMessageId`), inclusive. Checked through the daemon
+        // on 2026-11-20 against the pin: `.briefback/message-actions/research/real-checks.md`.
+        fork: true,
         // Sub-agents are a feature, this only caps hidden fan-out. The rest of what a run does not do by default (claude.ai
         // connectors, the agent's own memory) is a setting below, off until the person turns it on. Without the last variable
         // Claude Code reads no CLAUDE.md in the project's other folders, which reach it as additional directories.

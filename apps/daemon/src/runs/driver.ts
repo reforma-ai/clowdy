@@ -4,7 +4,7 @@ import { statSync } from 'node:fs';
 import { getChat } from '../db/chats';
 import { listItems, nextSeq } from '../db/items';
 import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } from '../db/runs';
-import { appendItem } from '../domain/items';
+import { appendItem, markRewindPoint } from '../domain/items';
 import { EngineFailure, errorMessage } from '../errors';
 import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
@@ -802,7 +802,7 @@ export class RunDriver {
                                 this.settleFinished(run, live, writer, native);
                             }
 
-                            writer.text(event.delta, event.done);
+                            writer.text(event.delta, event.done, event.messageId);
                         }
                         else {
                             native.stream({ ...event, agentId: event.agentId });
@@ -988,6 +988,7 @@ export class RunDriver {
      */
     private async onDone(run: Run, live: LiveRun, session: EngineSession, writer: TurnWriter, native: NativeAgents, result: string | undefined): Promise<boolean> {
         writer.end();
+        this.markPoint(run, live, writer);
 
         if (live.lingering && !live.sent) {
             writer.finish(undefined, this.openTasks(live));
@@ -1034,6 +1035,20 @@ export class RunDriver {
         writer.finish(undefined, this.openTasks(live));
 
         return true;
+    }
+
+    /**
+     * A turn ended at a `done`: its final message, when it ended the turn and the agent gave an id for it, becomes the turn's rewind point (`markRewindPoint`),
+     * which is what the session can be cut at. Every turn end gets its own, a turn the agent started by itself included; a failed or stopped turn never reaches
+     * here, so it has none. The agent's compact command is no turn of the conversation: what it says is a report, and the session after it is not the one
+     * the point was said in.
+     */
+    private markPoint(run: Run, live: LiveRun, writer: TurnWriter): void {
+        const point = writer.takePoint();
+
+        if (point && !this.isCompactCommand(run.engine, live.prompt)) {
+            markRewindPoint(this.deps.store, run.id, point.seq, point.ref);
+        }
     }
 
     /**

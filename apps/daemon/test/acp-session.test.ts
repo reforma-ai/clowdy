@@ -52,7 +52,8 @@ eachProtocol('a turn on an ACP agent', (protocol) => {
         expect(types(events)).toEqual(['process', 'session', 'text', 'text', 'text', 'done']);
         expect(events[1]).toMatchObject({ type: 'session', sessionId: 'fake-1' });
         expect(textOf(events)).toBe('hello world');
-        expect(events.at(-2)).toEqual({ type: 'text', delta: '', done: true });
+        // Over v2 the message that ends the turn says the agent's id of it, which is where the session can be cut; v1 agents name none.
+        expect(events.at(-2)).toEqual({ type: 'text', delta: '', done: true, ...(protocol === 'v2' && { messageId: expect.any(String) }) });
         expect(events.at(-1)).toEqual({ type: 'done', result: 'hello world' });
         expect(events[0]).toMatchObject({ type: 'process', pid: expect.any(Number), pgid: expect.any(Number) });
     });

@@ -78,7 +78,7 @@ function titled(text: string | null | undefined, fallback: string): string {
  * mapper heard of each (a terminal's command, a sub-agent's title, a tool call's title).
  */
 export class UpdateMapperV2 {
-    private message = new Message();
+    private message = new Message(true);
     private tools: ToolLedger;
     private gauges: Gauges;
     private calls = new Map<string, Call>();

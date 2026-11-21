@@ -1,10 +1,10 @@
 import { AcpSession } from './session';
 
 import type { Shim } from '../../cli/shim';
-import type { AgentEngine, EngineSession, EngineStartOptions } from '../types';
+import type { AgentEngine, EngineFork, EngineForkOptions, EngineSession, EngineStartOptions } from '../types';
 import type { ToolBridge } from './bridge';
 import type { AgentRegistry } from './registry';
-import type { PermissionPolicy } from './session';
+import type { PermissionPolicy, SessionDeps } from './session';
 
 export interface AcpEngineDeps {
     registry: AgentRegistry;
@@ -17,6 +17,8 @@ export interface AcpEngineDeps {
     clientVersion?: string;
     /** How long to wait for an agent's answer to `initialize`; see `SessionDeps`. */
     initializeTimeoutMs?: number;
+    /** How long a fork may take once the agent has answered `initialize`; see `SessionDeps`. */
+    forkTimeoutMs?: number;
     /** How long an agent that has not named its session by the end of the turn keeps running for the name; see `SessionDeps`. */
     titleWaitMs?: number;
     /** How long a session with nothing open waits for the agent to begin a turn before it ends; see `SessionDeps`. */
@@ -35,10 +37,26 @@ export class AcpEngine implements AgentEngine {
 
     constructor(readonly id: string, private deps: AcpEngineDeps) {}
 
+    /** The agent's catalog flag (`AgentSpec.fork`): read each time, since the registry is what knows an agent, and a custom one has none. */
+    get canFork(): boolean {
+        return this.deps.registry.canFork(this.id);
+    }
+
     start(options: EngineStartOptions): EngineSession {
+        return new AcpSession(options, this.sessionDeps());
+    }
+
+    /** The session that does the job is no turn: it has no prompt of its own and runs no tool, and only the tools the new session is opened with reach it. */
+    fork({ sessionId, ref, cwd, additionalDirectories, systemPrompt, tools, signal }: EngineForkOptions): Promise<EngineFork> {
+        const session = new AcpSession({ cwd, additionalDirectories, prompt: '', systemPrompt, resumeSessionId: sessionId, tools: tools ?? [], signal: signal ?? new AbortController().signal }, this.sessionDeps());
+
+        return session.fork(sessionId, ref);
+    }
+
+    private sessionDeps(): SessionDeps {
         const { deps } = this;
 
-        return new AcpSession(options, {
+        return {
             agentId: this.id,
             registry: deps.registry,
             bridge: deps.bridge,
@@ -49,10 +67,11 @@ export class AcpEngine implements AgentEngine {
             downgraded: this.downgraded,
             clientVersion: deps.clientVersion ?? '0.0.0',
             initializeTimeoutMs: deps.initializeTimeoutMs,
+            forkTimeoutMs: deps.forkTimeoutMs,
             titleWaitMs: deps.titleWaitMs,
             backgroundHandoffMs: deps.backgroundHandoffMs,
             backgroundReportMs: deps.backgroundReportMs,
             log: deps.debug ? line => console.debug(`[clowdy] ${ this.id }: ${ line }`) : undefined,
-        });
+        };
     }
 }

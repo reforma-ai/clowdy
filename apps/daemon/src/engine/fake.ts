@@ -1,6 +1,6 @@
 import { errorMessage } from '../errors';
 
-import type { AgentEngine, EngineEvent, EngineSession, EngineStartOptions } from './types';
+import type { AgentEngine, EngineEvent, EngineFork, EngineForkOptions, EngineSession, EngineStartOptions } from './types';
 
 const WORD_MS = 35;
 const TOOL_MS = 700;
@@ -21,7 +21,17 @@ export class FakeEngine implements AgentEngine {
     /** Turns started per session id, so a conversation's reading grows from one turn to the next. */
     private turns = new Map<string, number>();
 
-    constructor(private speed: number) {}
+    /** `canFork`: the app may offer Fork and Edit for its chats (the fake agent names its messages and forks a session at one, like a real one). */
+    constructor(private speed: number, readonly canFork = true) {}
+
+    /** A copy of a session is a new id that goes on from the same turn; the fake agent keeps nothing else of a conversation, so there is nothing to cut. */
+    async fork({ sessionId }: EngineForkOptions): Promise<EngineFork> {
+        const forked = `fake-${ crypto.randomUUID() }`;
+
+        this.turns.set(forked, this.turns.get(sessionId) ?? 0);
+
+        return { sessionId: forked };
+    }
 
     start(options: EngineStartOptions): EngineSession {
         const sessionId = options.resumeSessionId ?? `fake-${ crypto.randomUUID() }`;
@@ -89,6 +99,7 @@ class FakeSession implements EngineSession {
     private closing = new AbortController();
     private signal: AbortSignal;
     private calls = 0;
+    private messages = 0;
     private words = 0;
     /** Tool call ids stay unique across the turns of one run, as real engines make them. */
     private tag = crypto.randomUUID().slice(0, 8);
@@ -272,7 +283,8 @@ class FakeSession implements EngineSession {
             await this.pause(WORD_MS);
         }
 
-        yield { type: 'text', delta: '', done: true, agentId };
+        // The session's own messages come with the agent's id of them, as a real agent's do; a sub-agent's do not.
+        yield { type: 'text', delta: '', done: true, agentId, ...(agentId === undefined && { messageId: `fake-msg-${ this.tag }-${ ++this.messages }` }) };
     }
 
     /** A tool item that runs, then ends done or error. Returns what `work` returned. */

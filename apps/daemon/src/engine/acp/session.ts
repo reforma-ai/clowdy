@@ -1,14 +1,14 @@
-import { errorMessage } from '../../errors';
+import { EngineFailure, errorMessage } from '../../errors';
 import { spawnInOwnGroup } from '../process';
 import { buildAgentEnv, withCli } from './env';
 import { classifyThrown, failureEvent } from './failure';
 import { wait } from './layer';
-import { V1Layer } from './v1';
+import { noFork, V1Layer } from './v1';
 import { V2Layer } from './v2';
 
 import type { Shim } from '../../cli/shim';
 import type { AgentProcess } from '../process';
-import type { EngineEvent, EngineSession, EngineStartOptions } from '../types';
+import type { EngineEvent, EngineFork, EngineSession, EngineStartOptions } from '../types';
 import type { BridgeAccess, ToolBridge } from './bridge';
 import type { AgentProtocol } from './catalog';
 import type { LayerHost, PromptState, ProtocolLayer } from './layer';
@@ -53,6 +53,8 @@ export interface SessionDeps {
     downgraded: Set<string>;
     /** How long to wait for the agent's answer to `initialize`; two minutes by default. */
     initializeTimeoutMs?: number;
+    /** How long a fork may take once the agent has answered `initialize`; two minutes by default. */
+    forkTimeoutMs?: number;
     /** How long an agent that has not named its session by the end of the turn keeps running for the name; ten seconds by default. */
     titleWaitMs?: number;
     /** How long a session with nothing open waits for the agent to begin a turn before it ends (`BACKGROUND_HANDOFF_MS`, two seconds by default). */
@@ -157,6 +159,69 @@ export class AcpSession implements EngineSession {
         }
 
         return layer.stopItem(id);
+    }
+
+    /**
+     * Copies the agent's stored session `sessionId` up to the message `ref` into a new session, in place of a turn (`AgentEngine.fork`): the agent's process is
+     * started the way a turn starts it (the pinned adapter, the same environment, the runtime's tools as a resume has them), shakes hands, forks, and is stopped
+     * again. An agent spoken to over v1 is refused before any process starts. Rejects with an `EngineFailure`.
+     */
+    async fork(sessionId: string, ref: string): Promise<EngineFork> {
+        const { registry, agentId } = this.deps;
+        const resolution = await registry.resolve(agentId);
+
+        if (!resolution.ok) {
+            throw new EngineFailure(resolution.message, false, 'engine_missing');
+        }
+
+        const { agent } = resolution;
+        const protocol: AgentProtocol = agent.protocol === 'v2' && !this.deps.downgraded.has(launchKey(agent)) ? 'v2' : 'v1';
+
+        if (protocol === 'v1') {
+            throw noFork(agent.name);
+        }
+
+        this.agent = agent;
+
+        let proc: AgentProcess | undefined;
+
+        try {
+            proc = await this.launch(agent);
+        }
+        catch (error) {
+            this.access?.dispose();
+
+            const { message, retryable, code } = classifyThrown(error, { agent: agent.name, login: agent.login });
+
+            throw new EngineFailure(message, retryable, code);
+        }
+
+        if (!proc) {
+            throw new EngineFailure('The fork was cancelled', false, 'cancelled');
+        }
+
+        const started = proc;
+        const layer = this.startLayer(agent, started, protocol);
+        const stop = () => started.stop();
+
+        this.exited = started.exited;
+        this.signal.addEventListener('abort', stop, { once: true });
+
+        if (this.signal.aborted) {
+            stop();
+        }
+
+        try {
+            return await layer.fork(sessionId, ref);
+        }
+        finally {
+            this.signal.removeEventListener('abort', stop);
+            this.access?.dispose();
+            started.stop();
+            // Nothing of the fork stays running: the call ends when the process is gone.
+            await Promise.race([started.exited, wait(CLOSE_WAIT_MS)]);
+            layer.disconnect();
+        }
     }
 
     /** Whether the agent leaves it to the runtime to tell it that background work ended (`AgentSpec.wakesOnBackgroundEnd`). */
@@ -312,30 +377,42 @@ export class AcpSession implements EngineSession {
         }
     }
 
+    /**
+     * Starts the agent's process for this session: looks for the program, registers the runtime's tools with the bridge (the credential of this access goes
+     * into the agent's shell), and spawns it in a group of its own. Gives back `undefined` when the session was cancelled while the program was looked for,
+     * which can take a while the first time. Each start has an access of its own, so the process of a start that is over keeps none.
+     */
+    private async launch(agent: ResolvedAgent): Promise<AgentProcess | undefined> {
+        const path = await this.deps.registry.path();
+
+        if (this.signal.aborted) {
+            return undefined;
+        }
+
+        this.access?.dispose();
+        this.access = this.options.tools.length > 0 ? this.deps.bridge.register(this.options.tools, this.signal) : undefined;
+
+        return spawnInOwnGroup({
+            command: agent.command,
+            args: agent.args,
+            cwd: this.options.cwd,
+            env: withCli(buildAgentEnv({ daemonEnv: this.deps.env, path, scrub: agent.scrub, set: agent.env }), this.access?.cli, this.deps.shim),
+        });
+    }
+
     /** One start of the agent's process and its conversation. Gives back the protocol to start the agent on again, when the handshake showed it speaks another. */
     private async *attempt(agent: ResolvedAgent, protocol: AgentProtocol): AsyncGenerator<EngineEvent, AgentProtocol | undefined> {
-        const { registry } = this.deps;
         let proc: AgentProcess;
 
         try {
-            const path = await registry.path();
+            const started = await this.launch(agent);
 
             // Looking for the program can take a while (the first time it asks the login shell); a run cancelled meanwhile starts nothing.
-            if (this.signal.aborted) {
+            if (!started) {
                 return;
             }
 
-            // Before the process: its shell gets the credential of this access for the `clowdy` command. Each start has an access of its own, so the
-            // process of an attempt that is over keeps none.
-            this.access?.dispose();
-            this.access = this.options.tools.length > 0 ? this.deps.bridge.register(this.options.tools, this.signal) : undefined;
-
-            proc = await spawnInOwnGroup({
-                command: agent.command,
-                args: agent.args,
-                cwd: this.options.cwd,
-                env: withCli(buildAgentEnv({ daemonEnv: this.deps.env, path, scrub: agent.scrub, set: agent.env }), this.access?.cli, this.deps.shim),
-            });
+            proc = started;
         }
         catch (error) {
             this.access?.dispose();

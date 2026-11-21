@@ -422,6 +422,18 @@ export interface StreamItem {
     seq: number;
     at: number;
     body: StreamItemBody;
+    /**
+     * Set (`true`) only on the final answer of a finished turn that the chat's agent can fork the conversation at: the daemon holds the agent's own id of
+     * the message as a rewind point, and the agent can cut its session there. Never written as `false`; absent everywhere else, so a client draws Fork
+     * where it is set and nowhere it is not.
+     */
+    canFork?: boolean;
+    /**
+     * Set (`true`) only on a message of the person's own (a `user` item without `from`) that starts a turn (the first item of the chat, or the first one
+     * after a turn that ended at a rewind point) in a chat whose agent can cut its session there: the message may be edited and sent again. A steer
+     * inside a running turn, a message another chat wrote and a message that follows a turn from before rewind points were kept are not. Never written as `false`.
+     */
+    canEdit?: boolean;
 }
 
 /** A file the person attached to a message. The daemon keeps the bytes; the agent is told where they are. */

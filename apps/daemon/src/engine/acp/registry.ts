@@ -117,6 +117,11 @@ export class AgentRegistry {
         return this.spec(id)?.compact;
     }
 
+    /** Whether Fork and Edit may be offered for chats of the agent (`AgentSpec.fork`); a custom agent has neither. */
+    canFork(id: string): boolean {
+        return this.spec(id)?.fork === true;
+    }
+
     nameOf(id: string): string {
         return this.spec(id)?.name ?? this.stored.agents.find(agent => agent.id === id)?.name ?? id;
     }

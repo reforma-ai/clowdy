@@ -17,7 +17,9 @@ type ToolBody = Extract<StreamItemBody, { kind: 'tool' }>;
  * throttled; a tool call is one item that changes state. Anything that is not text ends the open message.
  */
 export class TurnWriter {
-    private message?: { seq?: number; text: string };
+    private message?: { seq?: number; text: string; messageId?: string };
+    /** The last message that was written out whole, if it said something and came with the agent's own id of it: what `takePoint` hands over. */
+    private answer?: { seq: number; ref: string };
     private flushedAt = 0;
     private timer?: ReturnType<typeof setTimeout>;
     /** Each call's item and what it holds now. */
@@ -25,9 +27,14 @@ export class TurnWriter {
 
     constructor(private store: Store, private runId: string, private throttleMs = TEXT_THROTTLE_MS) {}
 
-    text(delta: string, done: boolean): void {
+    /** `messageId`: the agent's id of the message, which comes with the event that ends it. */
+    text(delta: string, done: boolean, messageId?: string): void {
         this.message ??= { text: '' };
         this.message.text += delta;
+
+        if (messageId !== undefined) {
+            this.message.messageId = messageId;
+        }
 
         if (done) {
             this.end();
@@ -106,6 +113,19 @@ export class TurnWriter {
         }
     }
 
+    /**
+     * The point the turn that is ending can be cut at: the item of its last message and the agent's id of it, when that message was written out whole,
+     * said something, and came with an id. Handed over once. It is a candidate: anything written after it (a tool call, a steer) makes the item no end of
+     * the turn, which `markRewindPoint` checks against the stream.
+     */
+    takePoint(): { seq: number; ref: string } | undefined {
+        const { answer } = this;
+
+        this.answer = undefined;
+
+        return answer;
+    }
+
     private flush(done: boolean): void {
         const message = this.message;
 
@@ -120,6 +140,10 @@ export class TurnWriter {
         }
         else {
             updateItem(this.store, this.runId, message.seq, body);
+        }
+
+        if (done) {
+            this.answer = message.messageId !== undefined && message.text.trim() !== '' ? { seq: message.seq, ref: message.messageId } : undefined;
         }
 
         this.flushedAt = Date.now();

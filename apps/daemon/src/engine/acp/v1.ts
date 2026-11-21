@@ -1,14 +1,14 @@
 import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
 import { Readable, Writable } from 'node:stream';
 
-import { errorMessage } from '../../errors';
+import { EngineFailure, errorMessage } from '../../errors';
 import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
 import { advertisesSteering, applyChoices, isResumeWarning, keepTitle, prefaceOf, STEER_METHOD, steerByExtension, steerRequest, stopFailure } from './conversation';
 import { classifyThrown, failureEvent, processEnded } from './failure';
 import { UpdateMapper } from './mapper';
 
 import type { ClientCapabilities, ClientConnection, ContentBlock, NewSessionRequest, PromptResponse, SessionConfigOption, SessionUpdate } from '@agentclientprotocol/sdk/unstable';
-import type { EngineEvent } from '../types';
+import type { EngineEvent, EngineFork } from '../types';
 import type { SelectOption, SteerRequest, SteerResponse } from './conversation';
 import type { LayerHost, ProtocolLayer } from './layer';
 import type { ResolvedAgent } from './registry';
@@ -22,6 +22,12 @@ type Item =
     | { kind: 'failed'; error: unknown }
     | { kind: 'exited' }
     | { kind: 'aborted' };
+
+/**
+ * Why an agent spoken to over ACP v1 cannot be forked: v1 has no fork that cuts a session at a message, and none of the agents that speak v1 is known to
+ * have one of its own. Fork is a v2 feature of the adapters that offer it.
+ */
+export const noFork = (agent: string) => new EngineFailure(`${ agent } cannot fork a conversation: it is spoken to over ACP v1, which has no fork`, false, 'invalid_request');
 
 /** The select options among an agent's, each with its choices (the members of its groups included) in one list. */
 function selectsOf(options: SessionConfigOption[] | null | undefined): SelectOption[] {
@@ -72,6 +78,11 @@ export class V1Layer implements ProtocolLayer {
 
             return false;
         }
+    }
+
+    /** The session does not start a process for a fork of a v1 agent (`noFork`); a layer asked all the same refuses the same way. */
+    fork(): Promise<EngineFork> {
+        return Promise.reject(noFork(this.host.agent.name));
     }
 
     cancel(): Promise<void> {

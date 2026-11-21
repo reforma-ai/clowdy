@@ -1,7 +1,7 @@
 import { client, ContentBlock, IdleStateUpdate, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, SessionConfigOption, SessionUpdate, StateUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import { Readable, Writable } from 'node:stream';
 
-import { errorMessage } from '../../errors';
+import { EngineFailure, errorMessage } from '../../errors';
 import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
 import { advertisesSteering, applyChoices, isResumeWarning, keepTitle, prefaceOf, STEER_METHOD, steerByExtension, steerRequest, stopFailure } from './conversation';
 import { classifyThrown, failureEvent, processEnded } from './failure';
@@ -9,9 +9,9 @@ import { BACKGROUND_HANDOFF_MS, BACKGROUND_REPORT_MS } from './layer';
 import { UpdateMapperV2 } from './mapper-v2';
 import { Turns } from './turns';
 
-import type { BackgroundWork, ClientCapabilities, ClientConnection, NewSessionRequest } from '@agentclientprotocol/sdk/experimental/v2/unstable';
+import type { BackgroundWork, ClientCapabilities, ClientConnection, NewSessionRequest, SessionCapabilities } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import type { BackgroundItem } from '@clowdy/protocol';
-import type { EngineEvent } from '../types';
+import type { EngineEvent, EngineFork } from '../types';
 import type { AgentProtocol } from './catalog';
 import type { SelectOption, SteerRequest, SteerResponse } from './conversation';
 import type { LayerHost, ProtocolLayer } from './layer';
@@ -23,6 +23,27 @@ import type { ResolvedAgent } from './registry';
  * are its own, and the runtime's reach it through an MCP server).
  */
 const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCapabilities => ({ ...(agent.clientMeta && { _meta: agent.clientMeta }) });
+
+/**
+ * What a session of this run is opened with, as the agent's capabilities allow: the working folder, the MCP server of the runtime's tools, the project's other
+ * folders, the options its adapter reads, and the system prompt. A resume and a fork send the same.
+ */
+function sessionRequest({ agent, options, openBridge }: Pick<LayerHost, 'agent' | 'options' | 'openBridge'>, capabilities: SessionCapabilities): NewSessionRequest {
+    const access = openBridge();
+    // Only an agent that advertises the field gets it, as in v1; the list may differ on a resume while `cwd` stays.
+    const directories = capabilities.additionalDirectories ? options.additionalDirectories ?? [] : [];
+
+    return {
+        cwd: options.cwd,
+        mcpServers: access?.server ? [{ type: 'stdio', ...access.server }] : [],
+        ...(directories.length > 0 && { additionalDirectories: directories }),
+        ...(agent.sessionMeta && { _meta: agent.sessionMeta }),
+        ...(capabilities.systemPrompt && options.systemPrompt && { systemPrompt: { mode: 'append', content: [{ type: 'text', text: options.systemPrompt }] } }),
+    };
+}
+
+/** How long a fork may take before it is given up: the adapter copies a transcript, which a long conversation makes slow. */
+const FORK_TIMEOUT_MS = 120_000;
 
 /** The timers of a session that lives on: the handoff guard before it ends, and the wait for the turn that a message which landed in a turn may have to come. */
 type Wake = 'handoff' | 'release';
@@ -406,6 +427,96 @@ export class V2Layer implements ProtocolLayer {
         return true;
     }
 
+    /** The handshake: what the client is and can do, and what the agent offers. Rejects when the agent refuses it, does not answer in time, or the process or the run ends. */
+    private initialize(connection: ClientConnection, request: <T>(call: Promise<T>) => Promise<T>) {
+        const { host } = this;
+
+        return answeredInTime(request(connection.agent.request(methods.agent.initialize, {
+            protocolVersion: PROTOCOL_VERSION,
+            info: { name: 'clowdy', title: 'Clowdy', version: host.deps.clientVersion },
+            capabilities: clientCapabilities(host.agent),
+        })), host);
+    }
+
+    /**
+     * The handshake, then `session/fork` of `sessionId` with the fork point in `_meta.jetbrains.air.fork` (`{ version: 1, messageId }`: a vendor extension that
+     * both pinned adapters read, which makes the copy end with that message, inclusive), then `session/close` of the new session. The fork is made as a resume
+     * is opened (the folder, the project's other folders, the system prompt and the tools' MCP server, the agent's own options), and the agent starts the new
+     * session, so it could be prompted at once; here it only ends, and the next turn resumes it. What the agent says on the way is nobody's news. The agent
+     * saying it does not fork, a point or a session it cannot find, and a process that fails reject with an `EngineFailure`.
+     */
+    async fork(sessionId: string, ref: string): Promise<EngineFork> {
+        const { host } = this;
+        const { agent, proc, signal } = host;
+        const context = { agent: agent.name, login: agent.login };
+        const app = client({ name: 'clowdy' }).onNotification(methods.client.session.update, () => undefined);
+        const connection = app.connect(ndJsonStream(Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>, Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>));
+
+        this.connection = connection;
+
+        const request = watchEnd(proc, signal, () => undefined);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+
+        try {
+            let init;
+
+            try {
+                init = await this.initialize(connection, request);
+            }
+            catch (error) {
+                if (signal.aborted || !answeredNo(error)) {
+                    throw error;
+                }
+
+                throw new EngineFailure(`${ agent.name } does not speak ACP v2, which a fork needs`, false, 'invalid_request');
+            }
+
+            const capabilities = init.capabilities?.session;
+
+            if (!capabilities?.fork) {
+                throw new EngineFailure(`${ agent.name } cannot fork a conversation: its adapter offers no session/fork`, false, 'invalid_request');
+            }
+
+            // The handshake has its own limit (`initializeTimeoutMs`, and a program that is slow to start is slow there); this one is for the copy itself.
+            const timeoutMs = host.deps.forkTimeoutMs ?? FORK_TIMEOUT_MS;
+            const slow = new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new EngineFailure(`${ agent.name } did not finish the fork in ${ Math.max(1, Math.round(timeoutMs / 1000)) } s`, true, 'unknown')), timeoutMs);
+            });
+
+            slow.catch(() => undefined);
+
+            const shared = sessionRequest(host, capabilities);
+            const forked = await Promise.race([
+                request(connection.agent.request(methods.agent.session.fork, { sessionId, ...shared, _meta: { ...shared._meta, jetbrains: { air: { fork: { version: 1, messageId: ref } } } } })),
+                slow,
+            ]);
+
+            // The copy is on disk and the new session open in the adapter; closing it lets the agent settle what it keeps before its process is stopped. A close
+            // that fails loses nothing: the next turn resumes the session from the copy.
+            await Promise.race([request(connection.agent.request(methods.agent.session.close, { sessionId: forked.sessionId })).catch(() => undefined), slow.catch(() => undefined)]);
+
+            return { sessionId: forked.sessionId };
+        }
+        catch (error) {
+            if (error instanceof EngineFailure) {
+                throw error;
+            }
+
+            if (signal.aborted) {
+                throw new EngineFailure('The fork was cancelled', false, 'cancelled');
+            }
+
+            const { message, retryable, code } = error instanceof ProcessEnded
+                ? processEnded(context, `exit code ${ proc.child.exitCode ?? 'unknown' }`, proc.stderr())
+                : classifyThrown(error, context, proc.stderr());
+
+            throw new EngineFailure(message, retryable, code);
+        }
+        finally {
+            clearTimeout(timer);
+        }
+    }
+
     cancel(): Promise<void> {
         const { connection, sessionId } = this;
 
@@ -479,11 +590,7 @@ export class V2Layer implements ProtocolLayer {
             let init;
 
             try {
-                init = await answeredInTime(request(connection.agent.request(methods.agent.initialize, {
-                    protocolVersion: PROTOCOL_VERSION,
-                    info: { name: 'clowdy', title: 'Clowdy', version: deps.clientVersion },
-                    capabilities: clientCapabilities(agent),
-                })), host);
+                init = await this.initialize(connection, request);
             }
             catch (error) {
                 if (signal.aborted || !answeredNo(error)) {
@@ -508,17 +615,8 @@ export class V2Layer implements ProtocolLayer {
                 return;
             }
 
-            const access = host.openBridge();
             const supportsSystemPrompt = Boolean(capabilities.systemPrompt);
-            // Only an agent that advertises the field gets it, as in v1; the list may differ on a resume while `cwd` stays.
-            const directories = capabilities.additionalDirectories ? options.additionalDirectories ?? [] : [];
-            const shared: NewSessionRequest = {
-                cwd: options.cwd,
-                mcpServers: access?.server ? [{ type: 'stdio', ...access.server }] : [],
-                ...(directories.length > 0 && { additionalDirectories: directories }),
-                ...(agent.sessionMeta && { _meta: agent.sessionMeta }),
-                ...(supportsSystemPrompt && options.systemPrompt && { systemPrompt: { mode: 'append', content: [{ type: 'text', text: options.systemPrompt }] } }),
-            };
+            const shared = sessionRequest(host, capabilities);
 
             let configOptions: SessionConfigOption[] | undefined;
             let resumed = false;

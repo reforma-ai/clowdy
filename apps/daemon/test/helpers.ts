@@ -11,7 +11,7 @@ import { AgentRegistry } from '../src/engine/acp/registry';
 import type { ClowdyEvent, Command, CommandResult, EngineId, Project, Run, TaskStatus } from '@clowdy/protocol';
 import type { Config } from '../src/config';
 import type { Daemon, DaemonOptions } from '../src/daemon';
-import type { AgentEngine, EngineEvent, EngineSession, EngineStartOptions } from '../src/engine/types';
+import type { AgentEngine, EngineEvent, EngineFork, EngineForkOptions, EngineSession, EngineStartOptions } from '../src/engine/types';
 
 const roots: string[] = [];
 
@@ -305,6 +305,14 @@ export class ScriptEngine implements AgentEngine {
     stopAnswer?: (agentId: string, turn: Turn) => boolean | Promise<boolean>;
     /** The agent starts no turn of its own to report background work that ended (`EngineSession.wakesOnBackgroundEnd`): its sessions say so. */
     wakes = false;
+    /** The app may offer Fork and Edit for chats of this engine (`AgentEngine.canFork`). Off by default, as for every agent the catalog does not flag. */
+    canFork = false;
+    /** The forks the runtime asked of the engine, in order, whatever the answer. */
+    readonly forked: EngineForkOptions[] = [];
+    /**
+     * Answers a `fork`: the new session, or a throw that fails it. Without it a fork of session `s` is `s-fork-<n>`, n counting the forks so far.
+     */
+    forkAnswer?: (options: EngineForkOptions) => EngineFork | Promise<EngineFork>;
     closed = 0;
     /** When each session started and finished closing (epoch ms), by session number minus one. */
     readonly startedAt: number[] = [];
@@ -313,6 +321,12 @@ export class ScriptEngine implements AgentEngine {
 
     /** `closeMs` makes `close()` slow, like an engine that takes a moment to shut its process down. */
     constructor(private script: Script, private closeMs = 0) {}
+
+    async fork(options: EngineForkOptions): Promise<EngineFork> {
+        this.forked.push(options);
+
+        return await this.forkAnswer?.(options) ?? { sessionId: `${ options.sessionId }-fork-${ this.forked.length }` };
+    }
 
     start(options: EngineStartOptions): EngineSession {
         this.turns.push(options);

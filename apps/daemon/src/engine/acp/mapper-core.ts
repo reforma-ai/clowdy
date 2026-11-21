@@ -210,6 +210,9 @@ export class Message {
     /** The ids of the messages that were closed, so a whole message that comes again is not shown twice. */
     private closed = new Set<string>();
 
+    /** `ids`: the event that closes a message says the agent's id of it (`EngineEvent` `text`, `messageId`), for a session whose agent can be cut at one. */
+    constructor(private ids = false) {}
+
     /** The text of the last message so far: what `done` reports. */
     result(): string | undefined {
         return (this.open ? this.text : this.last).trim() || undefined;
@@ -282,17 +285,19 @@ export class Message {
             return [];
         }
 
+        const messageId = this.openId;
+
         this.open = false;
 
-        if (this.openId !== undefined) {
-            this.closed.add(this.openId);
+        if (messageId !== undefined) {
+            this.closed.add(messageId);
         }
 
         this.openId = undefined;
         this.last = this.text;
         this.text = '';
 
-        return [{ type: 'text', delta: '', done: true, ...(agentId !== undefined && { agentId }) }];
+        return [{ type: 'text', delta: '', done: true, ...(agentId !== undefined && { agentId }), ...(this.ids && messageId !== undefined && { messageId }) }];
     }
 }
 
