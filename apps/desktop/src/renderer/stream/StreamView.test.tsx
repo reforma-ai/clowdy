@@ -84,13 +84,13 @@ describe('runs of tool calls', () => {
     it('keeps what the person chose when the run goes on', async () => {
         const stream = (extra: StreamItem[] = []) => [asked, bash(1, 'pwd'), bash(2, 'whoami', 'running'), ...extra];
 
-        await act(async () => root.render(<StreamView items={ stream() } active />));
+        await act(async () => root.render(<StreamView items={ stream() } active working />));
         await act(async () => group('Running 2 commands')!.click());
 
         expect(container.textContent).not.toContain('whoami');
 
         // A third call joins the group: it stays closed, for the person closed it.
-        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami'), bash(3, 'date', 'running')] } active />));
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami'), bash(3, 'date', 'running')] } active working />));
 
         expect(group('Running 3 commands')).toBeDefined();
         expect(container.textContent).not.toContain('date');
@@ -114,7 +114,7 @@ describe('runs of tool calls', () => {
     it('closes the run when the agent stops to ask the person, though the stream is still going', async () => {
         const question = item(3, { kind: 'question', questionId: 'q1', text: 'Which one?', options: [] });
 
-        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami')] } active />));
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami')] } active working />));
 
         expect(container.textContent).toContain('whoami');
 
@@ -125,8 +125,49 @@ describe('runs of tool calls', () => {
         expect(container.textContent).not.toContain('whoami');
     });
 
+    it('closes the run while the stream waits for something other than the agent: background work, a free slot, the person', async () => {
+        const stream = [asked, bash(1, 'pwd'), bash(2, 'bun test', 'running')];
+
+        await act(async () => root.render(<StreamView items={ stream } active working />));
+
+        expect(container.textContent).toContain('bun test');
+
+        // Waiting on background work (what `RunDetail` says), a free slot, or a run that is going on without working.
+        await act(async () => root.render(<StreamView items={ stream } active working="Waiting for background work…" />));
+
+        expect(container.textContent).not.toContain('bun test');
+        expect(group('Running 2 commands')!.getAttribute('aria-expanded')).toBe('false');
+
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'bun test')] } active />));
+
+        expect(container.textContent).not.toContain('bun test');
+        expect(group('Ran 2 commands')).toBeDefined();
+    });
+
+    it('draws two phases with the commentary between them, and only the one at the end open while the agent works', async () => {
+        const stream = [asked, bash(1, 'pwd'), bash(2, 'whoami'), said(3, 'That is the right box. Now the build.'), bash(4, 'bun run build'), bash(5, 'bun test', 'running')];
+
+        await act(async () => root.render(<StreamView items={ stream } active working />));
+
+        const text = container.textContent ?? '';
+
+        expect(group('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('false');
+        expect(group('Running 2 commands')!.getAttribute('aria-expanded')).toBe('true');
+        expect(text.indexOf('Ran 2 commands')).toBeLessThan(text.indexOf('That is the right box'));
+        expect(text.indexOf('That is the right box')).toBeLessThan(text.indexOf('Running 2 commands'));
+        expect(text).not.toContain('whoami');
+        expect(text).toContain('bun run build');
+
+        // The agent writes more: the second phase closes too, and a third begins.
+        await act(async () => root.render(<StreamView items={ [...stream.slice(0, 5), bash(5, 'bun test'), said(6, 'Green. One last check.'), bash(7, 'git status'), bash(8, 'git diff', 'running')] } active working />));
+
+        expect(container.querySelectorAll('button[aria-expanded]').length).toBeGreaterThanOrEqual(3);
+        expect(container.textContent).not.toContain('bun run build');
+        expect(container.textContent).toContain('git status');
+    });
+
     it('says on the line whether the calls show, and shimmers it only while a call runs', async () => {
-        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'bun test', 'running')] } active />));
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'bun test', 'running')] } active working />));
 
         const running = group('Running 2 commands')!;
 
@@ -148,7 +189,7 @@ describe('runs of tool calls', () => {
 
         await act(async () => root.render(<StreamView items={ [...going, said(3, 'Next.', false)] } active />));
         await act(async () => group('Ran 2 commands')!.click());
-        await act(async () => root.render(<StreamView items={ [...going, said(3, 'Next.'), bash(4, 'date'), bash(5, 'uptime', 'running')] } active />));
+        await act(async () => root.render(<StreamView items={ [...going, said(3, 'Next.'), bash(4, 'date'), bash(5, 'uptime', 'running')] } active working />));
 
         expect(container.textContent).toContain('whoami');
         expect(group('Running 2 commands')).toBeDefined();

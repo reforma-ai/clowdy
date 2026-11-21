@@ -195,6 +195,12 @@ describe('groupToolRuns', () => {
         expect(blocks[1]).toEqual({ kind: 'tools', key: `tools-${ items[1].id }`, items: [items[1], items[2], items[3]] });
     });
 
+    it('makes a phase of each run of calls, with the commentary of the agent between them', () => {
+        const items = [user(0), tool(1000), tool(2000), said(3000, 'Now the build.'), tool(4000), tool(5000), said(6000, 'Green.'), tool(7000), tool(8000)];
+
+        expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tools(2)', 'assistant', 'tools(2)', 'assistant', 'tools(2)']);
+    });
+
     it('ends a run at anything that is not a call: a note, an error, a question', () => {
         const items = [user(0), tool(1000), tool(2000), note(3000), tool(4000), tool(5000), failure(6000), tool(7000), tool(8000), asking(9000)];
 

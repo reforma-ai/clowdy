@@ -64,9 +64,12 @@ export interface StreamEditing {
 
 export interface StreamViewProps {
     items: StreamItem[];
-    /** The run is going, or waits for the person: its latest turn stays open, and so does the run of tool calls at its end. Once it is over, that turn folds its work too. */
+    /** The run is going, or waits for the person: its latest turn stays open. Once it is over, that turn folds its work too. */
     active?: boolean;
-    /** The run is going: ends the stream with a live line. A string replaces the default "Working…". */
+    /**
+     * The run is going: ends the stream with a live line. A string replaces the default "Working…", and says the run waits for something else (a free slot, background
+     * work) instead of working. `true` is the agent at work: the run of tool calls at the end of the stream stays open to be watched, and any other value closes it.
+     */
     working?: boolean | string;
     /** The person answered a `question` item. */
     onAnswer?: (questionId: string, answer: string) => void | Promise<void>;
@@ -222,10 +225,10 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
                                         </Fragment>
                                     );
                                 case 'tools':
-                                    // The run at the end of a stream that is going is what the agent is doing now: it stays open, and closes when the agent goes on.
+                                    // The run at the end, while the agent is at work, is what it is doing now: it stays open, and closes when the agent goes on or waits for something else.
                                     return (
                                         <Fragment key={ block.key }>
-                                            <ToolGroup items={ block.items } live={ active && index === blocks.length - 1 } />
+                                            <ToolGroup items={ block.items } live={ working === true && index === blocks.length - 1 } />
                                             { endsHistory(block) && divider }
                                         </Fragment>
                                     );
