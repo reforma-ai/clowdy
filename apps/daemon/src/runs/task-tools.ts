@@ -1,87 +1,133 @@
 import { z } from 'zod';
 
+import { taskIdsOfChat } from '../db/chats';
 import { listStatuses } from '../db/projects';
-import { getTask, listTasks } from '../db/tasks';
+import { dependentsOf, getTask, listTasks } from '../db/tasks';
+import { DEFAULT_LIMIT, isoTime, MAX_LIMIT, parseSince, queryTasks } from '../domain/taskQuery';
 import { categoryOf, createTask, linkRunTask, resolveTask, updateTask } from '../domain/tasks';
-import { clip, defineTool, taskRef } from './tool-kit';
+import { invalid } from '../errors';
+import { defineTool, taskRef } from './tool-kit';
 
-import type { Run, Task, TaskStatus } from '@clowdy/protocol';
+import type { Actor, Run, Task, TaskStatus } from '@clowdy/protocol';
 import type { ToolDefinition } from '../engine/types';
 import type { Store } from '../store';
 import type { ToolDeps } from './tool-kit';
 
-/** `task_list` shows this much of each description; `task_get` has all of it. */
-const LIST_DESCRIPTION_CHARS = 400;
+const CATEGORIES = 'backlog, todo, active, review, done, canceled';
 
-const statusField = {
-    statusId: z.string().optional().describe('The id of a status from task_list. A status name ("In progress") or category ("review") is accepted too.'),
-    status: z.string().optional().describe('Same as statusId, written as a status name or category'),
-};
+const statusField = z.string().optional().describe(`A status: its id, its name ("In progress") or its category (${ CATEGORIES }). task_list shows the project's statuses`);
 
 /** Looks a status up by id, then by name, then by category (case-insensitive); the error lists what exists. */
 export function resolveStatus(store: Store, projectId: string, value: string): TaskStatus {
     const statuses = listStatuses(store.db, projectId);
     const wanted = value.trim().toLowerCase();
-    const found = statuses.find(status => status.id === value)
-        ?? statuses.find(status => status.name.toLowerCase() === wanted)
-        ?? statuses.find(status => status.category === wanted);
+    const found = statuses.find(candidate => candidate.id === value)
+        ?? statuses.find(candidate => candidate.name.toLowerCase() === wanted)
+        ?? statuses.find(candidate => candidate.category === wanted);
 
     if (!found) {
-        throw new Error(`Unknown status "${ value }". Use the id of one of: ${ statuses.map(status => `${ status.id } (${ status.name }, ${ status.category })`).join('; ') }`);
+        throw new Error(`Unknown status "${ value }". Use the id of one of: ${ statuses.map(candidate => `${ candidate.id } (${ candidate.name }, ${ candidate.category })`).join('; ') }`);
     }
 
     return found;
 }
 
-/** The status a call asks for, if any. */
-function requestedStatus(store: Store, projectId: string, input: { statusId?: string; status?: string }): TaskStatus | undefined {
-    const value = input.statusId ?? input.status;
+/** The statuses a filter value names: one by its id or name, every status of the category when it names a category. */
+function statusesNamed(store: Store, projectId: string, value: string): TaskStatus[] {
+    const found = resolveStatus(store, projectId, value);
+    const exact = found.id === value || found.name.toLowerCase() === value.trim().toLowerCase();
 
-    return value === undefined ? undefined : resolveStatus(store, projectId, value);
+    return exact ? [found] : listStatuses(store.db, projectId).filter(candidate => candidate.category === found.category);
 }
 
-/** A task as the models read it: keys everywhere, the status spelled out, and who is working on it. */
-export function describeTask({ store, runs }: ToolDeps, task: Task, descriptionChars?: number) {
-    const status = listStatuses(store.db, task.projectId).find(candidate => candidate.id === task.statusId);
+const authorOf = (actor: Actor) => (actor.kind === 'user' ? 'user' : actor.kind === 'run' ? 'agent' : actor.provider);
+
+/**
+ * A task as the models read it: keys everywhere, the status spelled out, what it waits for and what waits for it (each as key, title and status), and who
+ * is working on it. The description is whole; a listing leaves it out (`TaskRow`).
+ */
+export function describeTask({ store, runs }: ToolDeps, task: Task) {
+    const statuses = listStatuses(store.db, task.projectId);
+    const statusName = (of: Task) => statuses.find(candidate => candidate.id === of.statusId)?.name;
+    const summaries = (ids: string[]) => ids.flatMap(id => getTask(store.db, id) ?? []).map(related => ({ key: related.key, title: related.title, status: statusName(related) }));
 
     return {
         id: task.id,
         key: task.key,
         title: task.title,
-        description: descriptionChars === undefined ? task.description : clip(task.description, descriptionChars),
-        statusId: task.statusId,
-        status: status?.name,
+        description: task.description,
+        status: statusName(task),
         category: categoryOf(store, task),
-        dependsOn: task.dependsOn.map(id => getTask(store.db, id)?.key ?? id),
+        dependsOn: summaries(task.dependsOn),
+        blocks: summaries(dependentsOf(store.db, task.id)),
         activeRuns: runs.activeRunsOfTask(task.id).map(run => ({ runId: run.id, name: run.name, role: run.role, status: run.status })),
+        createdBy: authorOf(task.createdBy),
+        createdAt: isoTime(task.createdAt),
+        updatedAt: isoTime(task.updatedAt),
     };
 }
 
 /** The tools that read tasks. */
 function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
-    const { store } = deps;
+    const { store, runs } = deps;
 
     return [
-        defineTool('task_get', 'Reads one task: key, title, full description, status, the tasks it depends on and the runs working on it now.', z.object({ taskId: taskRef }), input => ({
+        defineTool('task_get', 'Reads one task: key, title, full description, status, the tasks it depends on and the tasks waiting for it (key, title, status), the runs working on it now, who created it and when it last changed.', z.strictObject({ taskId: taskRef }), input => ({
             task: describeTask(deps, resolveTask(store, run.projectId, input.taskId)),
         })),
 
-        defineTool('task_list', 'Lists the project\'s tasks (descriptions are cut short; task_get has the rest) and its statuses with their ids. Use `query` to find tasks about one thing before you create duplicates.', z.object({
-            query: z.string().optional().describe('Only tasks whose key, title or description contain this text'),
-            status: z.string().optional().describe('Only tasks in this status (an id, a name or a category)'),
+        defineTool('task_list', `Lists the project's tasks, one short row each (key, title, status, dependencies, what blocks it, whether a run works on it); task_get has the description. By default it shows the work in flight (todo, active and review), not the backlog and not closed (done, canceled) work: the counts of every category come with the answer, so ask for the rest when you need it. A text query searches every task, closed ones too: use it to find tasks about one thing before you create duplicates. Pages hold ${ DEFAULT_LIMIT } rows unless limit says otherwise (at most ${ MAX_LIMIT }); the answer carries nextCursor while more are left. Newest change first. The first page also lists the project's statuses with their ids.`, z.strictObject({
+            query: z.string().optional().describe('Only tasks whose key, title or description contain this text; searches closed tasks too'),
+            status: z.array(z.string()).optional().describe(`Only tasks in these statuses; each is an id, a status name or a category (${ CATEGORIES })`),
+            all: z.boolean().optional().describe('Every task: backlog and closed ones as well (a status filter wins over it)'),
+            ready: z.boolean().optional().describe('Only tasks that can start now: not closed, every dependency done'),
+            blocked: z.boolean().optional().describe('Only tasks that wait for another: not closed, a dependency not done'),
+            running: z.boolean().optional().describe('Only tasks a run is working on now'),
+            mine: z.boolean().optional().describe('Only tasks linked to this chat: the ones it created and the one it was started from'),
+            updatedSince: z.string().optional().describe('Only tasks changed since an ISO date or time (2026-11-01) or a duration back from now (90m, 12h, 7d, 2w)'),
+            sort: z.enum(['updated', 'created', 'number']).optional().describe('updated (default) and created put the newest first; number goes up from the first task'),
+            reverse: z.boolean().optional().describe('Turn the order round'),
+            limit: z.number().int().min(1).max(MAX_LIMIT).optional().describe(`How many rows, 1 to ${ MAX_LIMIT }; default ${ DEFAULT_LIMIT }`),
+            cursor: z.string().optional().describe('The nextCursor of the previous page, to get the next one'),
         }), (input) => {
             const statuses = listStatuses(store.db, run.projectId);
-            const wanted = input.status === undefined ? undefined : resolveStatus(store, run.projectId, input.status);
-            const query = input.query?.trim().toLowerCase();
-            const tasks = listTasks(store.db, run.projectId).filter(task => (
-                (!wanted || task.statusId === wanted.id)
-                && (!query || [task.key, task.title, task.description].some(text => text.toLowerCase().includes(query)))
-            ));
+            const mine = new Set(run.chatId ? taskIdsOfChat(store.db, run.chatId) : []);
+            const page = queryTasks({
+                tasks: listTasks(store.db, run.projectId),
+                statuses,
+                isRunning: taskId => runs.activeRunsOfTask(taskId).length > 0,
+                linkedToChat: taskId => mine.has(taskId),
+            }, {
+                ...input,
+                statusIds: input.status?.length ? new Set(input.status.flatMap(value => statusesNamed(store, run.projectId, value).map(status => status.id))) : undefined,
+                updatedSince: input.updatedSince === undefined ? undefined : parseSince(input.updatedSince),
+            });
 
-            return { statuses, tasks: tasks.map(task => describeTask(deps, task, LIST_DESCRIPTION_CHARS)) };
+            return { ...page, ...(input.cursor === undefined && { statuses }) };
         }),
     ];
 }
+
+/** The ids of the tasks `references` name, in the project of `run`. */
+const idsOf = (store: Store, run: Run, references: string[] | undefined) => (references ?? []).map(reference => resolveTask(store, run.projectId, reference).id);
+
+/** The dependency list a `task_update` asks for: the whole new one, or the old one with some taken off and some put on; `undefined` when the call leaves it alone. */
+function dependenciesAfter(store: Store, run: Run, task: Task, input: { dependsOn?: string[]; addDependsOn?: string[]; removeDependsOn?: string[] }): string[] | undefined {
+    if (input.dependsOn !== undefined) {
+        return idsOf(store, run, input.dependsOn);
+    }
+
+    if (input.addDependsOn === undefined && input.removeDependsOn === undefined) {
+        return undefined;
+    }
+
+    const removed = new Set(idsOf(store, run, input.removeDependsOn));
+
+    return [...task.dependsOn.filter(id => !removed.has(id)), ...idsOf(store, run, input.addDependsOn)];
+}
+
+/** `note` after a blank line at the end of `description`; a description with nothing in it is replaced by the note. */
+const appended = (description: string, note: string) => (description.trim() ? `${ description.trimEnd() }\n\n${ note }` : note);
 
 /** What an orchestrator may do with tasks: create them, change anything about them. */
 export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
@@ -90,40 +136,58 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
     return [
         ...readTaskTools(deps, run),
 
-        defineTool('task_create', 'Creates a task in the project, linked to this chat. Create dependencies first and pass their keys in dependsOn. Without a status the task starts in To do.', z.object({
+        defineTool('task_create', 'Creates a task in the project, linked to this chat. Create dependencies first and name them in dependsOn; blocks names existing tasks that will wait for the new one. Without a status the task starts in To do.', z.strictObject({
             title: z.string().min(1).describe('The outcome in a few words'),
             description: z.string().optional().describe('Outcome, Owns, Needs, Check, Out of scope'),
             dependsOn: z.array(taskRef).optional().describe('Tasks that must be Done before this one can start'),
-            ...statusField,
+            blocks: z.array(taskRef).optional().describe('Existing tasks that depend on the new one: each one waits until it is Done'),
+            status: statusField,
         }), input => store.tx(() => {
             const task = createTask(store, {
                 projectId: run.projectId,
                 title: input.title,
                 description: input.description,
-                statusId: requestedStatus(store, run.projectId, input)?.id,
-                dependsOn: (input.dependsOn ?? []).map(reference => resolveTask(store, run.projectId, reference).id),
+                statusId: input.status === undefined ? undefined : resolveStatus(store, run.projectId, input.status).id,
+                dependsOn: idsOf(store, run, input.dependsOn),
                 createdBy: { kind: 'run', runId: run.id },
                 chatId: run.chatId,
             });
 
             linkRunTask(store, run.projectId, { runId: run.id, taskId: task.id, relation: 'created' });
 
+            for (const reference of input.blocks ?? []) {
+                const waiting = resolveTask(store, run.projectId, reference);
+
+                updateTask(store, waiting.id, { dependsOn: [...waiting.dependsOn, task.id] });
+            }
+
             return { task: describeTask(deps, task) };
         })),
 
-        defineTool('task_update', 'Changes a task: title, description (send the whole text; read it first to keep what is there), dependencies, or status. Set Done only after the work is verified; a run waiting for this task starts by itself once it is Done.', z.object({
+        defineTool('task_update', 'Changes a task: title, description (description replaces the text; append adds to its end), dependencies (dependsOn replaces the list; addDependsOn and removeDependsOn change it by tasks) or status. Set Done only after the work is verified; a run waiting for this task starts by itself once it is Done.', z.strictObject({
             taskId: taskRef,
             title: z.string().min(1).optional(),
-            description: z.string().optional(),
+            description: z.string().optional().describe('The whole new text; read the task first to keep what is there, or use append'),
+            append: z.string().trim().min(1).optional().describe('Text added at the end of the description after a blank line: for notes, a check report, an assumption'),
             dependsOn: z.array(taskRef).optional().describe('The complete list of tasks this one depends on'),
-            ...statusField,
+            addDependsOn: z.array(taskRef).optional().describe('Tasks to add to the ones this task depends on'),
+            removeDependsOn: z.array(taskRef).optional().describe('Tasks to take off the ones this task depends on'),
+            status: statusField,
         }), input => store.tx(() => {
+            if (input.description !== undefined && input.append !== undefined) {
+                throw invalid('description replaces the text and append adds to it: give one of them');
+            }
+
+            if (input.dependsOn !== undefined && (input.addDependsOn !== undefined || input.removeDependsOn !== undefined)) {
+                throw invalid('dependsOn is the whole list; do not combine it with addDependsOn or removeDependsOn');
+            }
+
             const task = resolveTask(store, run.projectId, input.taskId);
             const updated = updateTask(store, task.id, {
                 title: input.title,
-                description: input.description,
-                statusId: requestedStatus(store, run.projectId, input)?.id,
-                dependsOn: input.dependsOn?.map(reference => resolveTask(store, run.projectId, reference).id),
+                description: input.append === undefined ? input.description : appended(task.description, input.append),
+                statusId: input.status === undefined ? undefined : resolveStatus(store, run.projectId, input.status).id,
+                dependsOn: dependenciesAfter(store, run, task, input),
             });
 
             return { task: describeTask(deps, updated) };

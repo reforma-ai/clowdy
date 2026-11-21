@@ -124,6 +124,11 @@ export function listChatTaskLinks(db: Database, projectId: string): ChatTaskLink
     `).all(projectId) as ChatTaskLink[];
 }
 
+/** The tasks linked to a chat: the ones it created and the one it was started from. */
+export function taskIdsOfChat(db: Database, chatId: string): string[] {
+    return (db.query('SELECT task_id FROM chat_task_links WHERE chat_id = ? ORDER BY rowid').all(chatId) as { task_id: string }[]).map(row => row.task_id);
+}
+
 export function chatIdsOfTask(db: Database, taskId: string): string[] {
     return (db.query('SELECT chat_id FROM chat_task_links WHERE task_id = ? ORDER BY rowid').all(taskId) as { chat_id: string }[]).map(row => row.chat_id);
 }

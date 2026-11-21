@@ -73,11 +73,11 @@ describe('the tool vocabulary', () => {
         }
     });
 
-    test('tasks come back with key, status name and category, dependency keys and active runs; task_list adds the statuses', async () => {
+    test('tasks come back with key, status name and category, dependencies and dependents as key, title and status, and active runs; task_list adds the statuses', async () => {
         const { exec, orchestrator, task, h, project } = await setup();
         const first = await task('Groundwork', { description: 'Outcome: x' });
         const second = await task('Build', { dependsOn: [first.key] });
-        const { statuses, tasks } = await exec(orchestrator, 'task_list');
+        const { statuses, tasks } = await exec(orchestrator, 'task_list', { sort: 'number' });
 
         expect(statuses.map((status: { name: string; category: string }) => [status.name, status.category])).toEqual([['To do', 'todo'], ['In progress', 'active'], ['Review', 'review'], ['Done', 'done'], ['Canceled', 'canceled']]);
         expect(statuses.every((status: { id: string }) => status.id.startsWith('sts_'))).toBe(true);
@@ -90,13 +90,16 @@ describe('the tool vocabulary', () => {
             key: 'REP-2',
             title: 'Build',
             description: '',
-            statusId: statuses[0].id,
             status: 'To do',
             category: 'todo',
-            dependsOn: ['REP-1'],
+            dependsOn: [{ key: 'REP-1', title: 'Groundwork', status: 'To do' }],
+            blocks: [],
             activeRuns: [],
+            createdBy: 'agent',
+            createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/),
+            updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/),
         });
-        expect((await exec(orchestrator, 'task_get', { taskId: first.id })).task.description).toBe('Outcome: x');
+        expect((await exec(orchestrator, 'task_get', { taskId: first.id })).task).toMatchObject({ description: 'Outcome: x', blocks: [{ key: 'REP-2', title: 'Build', status: 'To do' }] });
 
         // The run of a chat started from the task shows up under activeRuns, and its start moves the task to In progress.
         const started = h.ok('task.start', { taskId: first.id });
@@ -106,35 +109,75 @@ describe('the tool vocabulary', () => {
 
         // Filters
         expect((await exec(orchestrator, 'task_list', { query: 'BUILD' })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-2']);
-        expect((await exec(orchestrator, 'task_list', { status: 'In progress' })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-1']);
+        expect((await exec(orchestrator, 'task_list', { status: ['In progress'] })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-1']);
+        expect((await exec(orchestrator, 'task_list', { running: true })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-1']);
+        expect((await exec(orchestrator, 'task_list', { ready: true })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-1']);
+        expect((await exec(orchestrator, 'task_list', { blocked: true })).tasks).toMatchObject([{ key: 'REP-2', blockedBy: ['REP-1'] }]);
         expect(project.id).toBeTruthy();
         expect(h.store.headCursor()).toBeGreaterThan(0);
     });
 
-    test('task_list cuts long descriptions; task_get has them whole', async () => {
+    test('task_list shows the work in flight and counts the rest; a page has a cursor, and only the first one lists the statuses', async () => {
+        const { exec, orchestrator, task } = await setup();
+
+        const { statuses } = await exec(orchestrator, 'task_list');
+        const closed = statuses.find((status: { category: string }) => status.category === 'done').id;
+
+        for (let index = 0; index < 30; index++) {
+            await task(`Finished ${ index }`, { status: closed });
+        }
+
+        const open = await task('Open one');
+        const first = await exec(orchestrator, 'task_list');
+
+        expect(first.tasks.map((item: { key: string }) => item.key)).toEqual([open.key]);
+        expect(first).toMatchObject({ total: 1, shown: 1, counts: { todo: 1, done: 30 } });
+        expect(first.nextCursor).toBeUndefined();
+
+        const everything = await exec(orchestrator, 'task_list', { all: true, limit: 20 });
+
+        expect(everything).toMatchObject({ total: 31, shown: 20 });
+        expect(everything.statuses).toHaveLength(5);
+
+        const rest = await exec(orchestrator, 'task_list', { all: true, limit: 20, cursor: everything.nextCursor });
+
+        expect(rest).toMatchObject({ total: 31, shown: 11 });
+        expect(rest.statuses).toBeUndefined();
+        expect(rest.nextCursor).toBeUndefined();
+        expect((await exec(orchestrator, 'task_list', { status: ['done'], sort: 'number', limit: 2 })).tasks.map((item: { key: string }) => item.key)).toEqual(['REP-1', 'REP-2']);
+        expect((await exec(orchestrator, 'task_list', { all: true, status: ['Done', 'todo'] })).total).toBe(31);
+        expect((await exec(orchestrator, 'task_list', { all: true, status: ['review'] })).total).toBe(0);
+        expect((await exec(orchestrator, 'task_list', { query: 'finished 7' })).tasks.map((item: { title: string }) => item.title)).toEqual(['Finished 7']);
+        expect((await exec(orchestrator, 'task_list', { mine: true, all: true, limit: 1 })).total).toBe(31);
+        await expect(exec(orchestrator, 'task_list', { updatedSince: 'last week' })).rejects.toThrow(/is not a time/);
+        await expect(exec(orchestrator, 'task_list', { limit: 500 })).rejects.toThrow(/Invalid input for task_list/);
+    });
+
+    test('task_list rows leave the description out; task_get has it whole', async () => {
         const { exec, orchestrator, task } = await setup();
         const long = 'x'.repeat(1000);
         const created = await task('Long', { description: long });
 
-        expect((await exec(orchestrator, 'task_list')).tasks[0].description).toHaveLength(400);
+        expect((await exec(orchestrator, 'task_list')).tasks[0]).not.toHaveProperty('description');
         expect((await exec(orchestrator, 'task_get', { taskId: created.key })).task.description).toBe(long);
     });
 
-    test('a status may be given as an id, a name or a category, in any case; a wrong one lists what exists', async () => {
+    test('a status may be given as an id, a name or a category, in any case; a wrong one lists what exists; the old statusId is refused', async () => {
         const { exec, orchestrator, task } = await setup();
         const { statuses } = await exec(orchestrator, 'task_list');
         const byCategory = (category: string) => statuses.find((status: { category: string }) => status.category === category);
-        const first = await task('A', { statusId: byCategory('active').id });
+        const first = await task('A', { status: byCategory('active').id });
 
         expect(first.category).toBe('active');
-        expect((await task('B', { statusId: 'in PROGRESS' })).category).toBe('active');
+        expect((await task('B', { status: 'in PROGRESS' })).category).toBe('active');
         expect((await task('C', { status: 'Review' })).status).toBe('Review');
-        expect((await task('D', { statusId: 'DONE' })).category).toBe('done');
+        expect((await task('D', { status: 'DONE' })).category).toBe('done');
 
         const moved = await exec(orchestrator, 'task_update', { taskId: first.key, status: 'canceled' });
 
         expect(moved.task.category).toBe('canceled');
-        await expect(exec(orchestrator, 'task_update', { taskId: first.key, statusId: 'sts_nope' })).rejects.toThrow(/Unknown status "sts_nope"\. Use the id of one of: sts_\w+ \(To do, todo\); .*\(Canceled, canceled\)/);
+        await expect(exec(orchestrator, 'task_update', { taskId: first.key, status: 'sts_nope' })).rejects.toThrow(/Unknown status "sts_nope"\. Use the id of one of: sts_\w+ \(To do, todo\); .*\(Canceled, canceled\)/);
+        await expect(exec(orchestrator, 'task_update', { taskId: first.key, statusId: byCategory('done').id })).rejects.toThrow(/Invalid input for task_update.*statusId/s);
         await expect(task('E', { dependsOn: ['REP-99'] })).rejects.toThrow(/does not exist/);
         await expect(exec(orchestrator, 'task_get', {})).rejects.toThrow(/Invalid input for task_get/);
     });
@@ -147,6 +190,50 @@ describe('the tool vocabulary', () => {
 
         expect(updated).toMatchObject({ title: 'A2', description: 'new text', dependsOn: [] });
         await expect(exec(orchestrator, 'task_update', { taskId: a.key, dependsOn: [b.key] })).rejects.toThrow(/Circular dependency/);
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, addDependsOn: [b.key] })).rejects.toThrow(/Circular dependency/);
+    });
+
+    test('append adds to the end of the description after a blank line, and starts it when there is none', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const a = await task('A', { description: 'Outcome: x\n' });
+        const b = await task('B');
+
+        expect((await exec(orchestrator, 'task_update', { taskId: a.key, append: 'Verification: passed' })).task.description).toBe('Outcome: x\n\nVerification: passed');
+        expect((await exec(orchestrator, 'task_update', { taskId: a.key, append: 'Second note' })).task.description).toBe('Outcome: x\n\nVerification: passed\n\nSecond note');
+        expect((await exec(orchestrator, 'task_update', { taskId: b.key, append: 'First note\n' })).task.description).toBe('First note');
+        expect((await exec(orchestrator, 'task_update', { taskId: b.key, append: '\n\n  Heredoc note\n' })).task.description).toBe('First note\n\nHeredoc note');
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, append: '  \n' })).rejects.toThrow(/Invalid input for task_update/);
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, description: 'x', append: 'y' })).rejects.toThrow(/give one of them/);
+    });
+
+    test('addDependsOn and removeDependsOn change the list by tasks; dependsOn replaces it and cannot be combined with them', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const [a, b, c] = [await task('A'), await task('B'), await task('C')];
+        const target = await task('Target', { dependsOn: [a.key] });
+        const keysOf = (result: { task: { dependsOn: { key: string }[] } }) => result.task.dependsOn.map(item => item.key);
+
+        expect(keysOf(await exec(orchestrator, 'task_update', { taskId: target.key, addDependsOn: [b.key, a.key] }))).toEqual(['REP-1', 'REP-2']);
+        expect(keysOf(await exec(orchestrator, 'task_update', { taskId: target.key, removeDependsOn: [a.key, c.key] }))).toEqual(['REP-2']);
+        expect(keysOf(await exec(orchestrator, 'task_update', { taskId: target.key, addDependsOn: [c.key], removeDependsOn: [b.key] }))).toEqual(['REP-3']);
+        expect(keysOf(await exec(orchestrator, 'task_update', { taskId: target.key, dependsOn: [a.key] }))).toEqual(['REP-1']);
+        await expect(exec(orchestrator, 'task_update', { taskId: target.key, dependsOn: [a.key], addDependsOn: [b.key] })).rejects.toThrow(/do not combine it/);
+    });
+
+    test('blocks makes existing tasks wait for the new one, and a task that already feeds the new one is refused', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const waiting = await task('Waiting');
+        const base = await task('Base');
+        const prerequisite = await task('Prerequisite', { blocks: [waiting.key] });
+
+        expect((await exec(orchestrator, 'task_get', { taskId: waiting.key })).task.dependsOn).toEqual([{ key: prerequisite.key, title: 'Prerequisite', status: 'To do' }]);
+        expect(prerequisite.blocks).toEqual([{ key: waiting.key, title: 'Waiting', status: 'To do' }]);
+        expect((await exec(orchestrator, 'task_get', { taskId: prerequisite.key })).task.blocks).toEqual([{ key: waiting.key, title: 'Waiting', status: 'To do' }]);
+        // The refusal comes on the second entry: the first one's new dependency and the task itself are rolled back with it.
+        const other = await task('Other');
+
+        await expect(task('Loop', { dependsOn: [base.key], blocks: [other.key, base.key] })).rejects.toThrow(/Circular dependency/);
+        expect((await exec(orchestrator, 'task_list', { query: 'Loop', all: true })).total).toBe(0);
+        expect((await exec(orchestrator, 'task_get', { taskId: other.key })).task.dependsOn).toEqual([]);
     });
 
     test('a task created by an orchestrator is linked to its chat and to the run that created it', async () => {

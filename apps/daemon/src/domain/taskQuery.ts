@@ -1,0 +1,216 @@
+import { invalid } from '../errors';
+
+import type { Task, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
+
+/** The categories of work in flight: what `task_list` shows when it is asked for nothing else. Backlog is parked, `done` and `canceled` are closed. */
+export const OPEN_CATEGORIES: readonly TaskStatusCategory[] = ['todo', 'active', 'review'];
+
+const CLOSED_CATEGORIES: readonly TaskStatusCategory[] = ['done', 'canceled'];
+const CATEGORIES: readonly TaskStatusCategory[] = ['backlog', 'todo', 'active', 'review', 'done', 'canceled'];
+
+export const DEFAULT_LIMIT = 25;
+export const MAX_LIMIT = 100;
+
+export type TaskSort = 'updated' | 'created' | 'number';
+
+/** What a person or an agent asked a task listing for; every field narrows the scope the rules of `scopeOf` pick. */
+export interface TaskQuery {
+    /** Text found in the key, title or description, in any case. */
+    query?: string;
+    /** The ids of the statuses to show, already resolved from the ids, names and categories the caller was given. */
+    statusIds?: ReadonlySet<string>;
+    /** Every task, closed and parked ones included. */
+    all?: boolean;
+    /** Not closed, and every dependency done. */
+    ready?: boolean;
+    /** Not closed, and some dependency not done. */
+    blocked?: boolean;
+    /** A run works on it now. */
+    running?: boolean;
+    /** Linked to the chat that asks. */
+    mine?: boolean;
+    /** Changed at or after this time (epoch milliseconds). */
+    updatedSince?: number;
+    sort?: TaskSort;
+    reverse?: boolean;
+    limit?: number;
+    cursor?: string;
+}
+
+/** What a listing reads besides the tasks: the project's statuses and the two facts that live outside a task row. */
+export interface TaskQueryContext {
+    /** Every task of the project. */
+    tasks: readonly Task[];
+    statuses: readonly TaskStatus[];
+    isRunning(taskId: string): boolean;
+    linkedToChat(taskId: string): boolean;
+}
+
+/** A task as a listing shows it: nothing that makes a row long, so a page of them stays small. */
+export interface TaskRow {
+    key: string;
+    title: string;
+    status: string;
+    category: TaskStatusCategory;
+    dependsOn: string[];
+    /** The dependencies that are not done yet; absent when there are none. */
+    blockedBy?: string[];
+    /** Present (true) when a run works on the task now. */
+    running?: true;
+    updatedAt: string;
+}
+
+export interface TaskPage {
+    tasks: TaskRow[];
+    /** How many tasks matched, whatever the page holds. */
+    total: number;
+    shown: number;
+    /** Passed as `cursor` it gives the next page; absent on the last one. */
+    nextCursor?: string;
+    /** Every task of the project by category: what a listing that hid closed or parked work did not show. */
+    counts: Record<TaskStatusCategory, number>;
+}
+
+/** The ISO text of a time, to the second: a row's date is for reading. */
+export const isoTime = (milliseconds: number) => new Date(milliseconds).toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+const DURATION = /^(\d+)\s*([mhdw])$/i;
+const UNIT_MS = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 } as const;
+
+/** The time `since` names: a duration back from `now` (`90m`, `12h`, `7d`, `2w`), or an ISO date or time. */
+export function parseSince(since: string, now = Date.now()): number {
+    const text = since.trim();
+    const duration = DURATION.exec(text);
+
+    if (duration) {
+        return now - Number(duration[1]) * UNIT_MS[duration[2].toLowerCase() as keyof typeof UNIT_MS];
+    }
+
+    const time = /^\d{4}-\d{2}-\d{2}/.test(text) ? Date.parse(text) : Number.NaN;
+
+    if (Number.isNaN(time)) {
+        throw invalid(`"${ since }" is not a time: write an ISO date or time (2026-11-01, 2026-11-01T09:30:00Z) or a duration back from now (90m, 12h, 7d, 2w)`);
+    }
+
+    return time;
+}
+
+/** The categories a listing counts and the order it names them in. */
+export const emptyCounts = (): Record<TaskStatusCategory, number> => Object.fromEntries(CATEGORIES.map(category => [category, 0])) as Record<TaskStatusCategory, number>;
+
+/** Where a task stands in a sort: the value it is ordered by, and its number, which settles a tie. */
+interface Position {
+    value: number;
+    number: number;
+}
+
+const valueOf = (task: Task, sort: TaskSort) => (sort === 'updated' ? task.updatedAt : sort === 'created' ? task.createdAt : task.number);
+
+/** Negative when `left` comes before `right`: `updated` and `created` go newest first, `number` goes up, and `reverse` turns that round. */
+function compare(left: Position, right: Position, sort: TaskSort, reverse: boolean): number {
+    const byValue = sort === 'number' ? left.value - right.value : right.value - left.value;
+    const order = byValue === 0 ? left.number - right.number : byValue;
+
+    return reverse ? -order : order;
+}
+
+/** A cursor names the last task of a page by its place in the sort, so tasks that change between pages neither repeat nor shift the rest. */
+const encodeCursor = (position: Position) => `${ position.value }.${ position.number }`;
+
+function decodeCursor(cursor: string): Position {
+    const match = /^(\d+)\.(\d+)$/.exec(cursor);
+
+    if (!match) {
+        throw invalid(`"${ cursor }" is not a cursor: pass the nextCursor of the previous page unchanged`);
+    }
+
+    return { value: Number(match[1]), number: Number(match[2]) };
+}
+
+/**
+ * The scope a listing starts from, which the other filters narrow: a status filter is those statuses, the most specific ask; `all` is every task; a text
+ * query is every task, so a check for duplicates finds closed work; with none of them it is the work in flight (`OPEN_CATEGORIES`), which hides the parked
+ * and the closed.
+ */
+function scopeOf(query: TaskQuery): (category: TaskStatusCategory, statusId: string) => boolean {
+    const { statusIds } = query;
+
+    if (statusIds) {
+        return (_category, statusId) => statusIds.has(statusId);
+    }
+
+    if (query.all) {
+        return () => true;
+    }
+
+    if (query.query?.trim()) {
+        return () => true;
+    }
+
+    return category => OPEN_CATEGORIES.includes(category);
+}
+
+/** The tasks a listing shows, sorted, with the page `cursor` and `limit` ask for, and the counts of the whole project. */
+export function queryTasks(context: TaskQueryContext, query: TaskQuery): TaskPage {
+    const sort = query.sort ?? 'updated';
+    const reverse = query.reverse ?? false;
+    const limit = Math.min(query.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+
+    if (query.ready && query.blocked) {
+        throw invalid('ready and blocked exclude each other: a task is one or the other');
+    }
+
+    const { tasks, statuses } = context;
+    const byId = new Map(tasks.map(task => [task.id, task]));
+    const statusById = new Map(statuses.map(status => [status.id, status]));
+    const categoryOf = (task: Task): TaskStatusCategory => statusById.get(task.statusId)?.category ?? 'todo';
+    const unfinished = (task: Task) => task.dependsOn.filter(id => byId.has(id) && categoryOf(byId.get(id) as Task) !== 'done');
+    const inScope = scopeOf(query);
+    const text = query.query?.trim().toLowerCase();
+    const counts = emptyCounts();
+
+    for (const task of tasks) {
+        counts[categoryOf(task)]++;
+    }
+
+    const matching = tasks.filter((task) => {
+        const category = categoryOf(task);
+        const open = !CLOSED_CATEGORIES.includes(category);
+
+        return inScope(category, task.statusId)
+            && (!text || [task.key, task.title, task.description].some(field => field.toLowerCase().includes(text)))
+            && (query.updatedSince === undefined || task.updatedAt >= query.updatedSince)
+            && (!query.ready || (open && unfinished(task).length === 0))
+            && (!query.blocked || (open && unfinished(task).length > 0))
+            && (!query.mine || context.linkedToChat(task.id))
+            && (!query.running || context.isRunning(task.id));
+    });
+    const position = (task: Task): Position => ({ value: valueOf(task, sort), number: task.number });
+    const ordered = matching.toSorted((left, right) => compare(position(left), position(right), sort, reverse));
+    const after = query.cursor === undefined ? undefined : decodeCursor(query.cursor);
+    const rest = after ? ordered.filter(task => compare(position(task), after, sort, reverse) > 0) : ordered;
+    const page = rest.slice(0, limit);
+    const last = page.at(-1);
+
+    return {
+        tasks: page.map((task): TaskRow => {
+            const blockedBy = unfinished(task).map(id => (byId.get(id) as Task).key);
+            const category = categoryOf(task);
+
+            return {
+                key: task.key,
+                title: task.title,
+                status: statusById.get(task.statusId)?.name ?? category,
+                category,
+                dependsOn: task.dependsOn.flatMap(id => byId.get(id)?.key ?? []),
+                ...(blockedBy.length > 0 && { blockedBy }),
+                ...(context.isRunning(task.id) && { running: true as const }),
+                updatedAt: isoTime(task.updatedAt),
+            };
+        }),
+        total: matching.length,
+        shown: page.length,
+        ...(last && rest.length > page.length && { nextCursor: encodeCursor(position(last)) }),
+        counts,
+    };
+}

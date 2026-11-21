@@ -187,7 +187,7 @@ class FakeSession implements EngineSession {
             yield* this.work(task.key, task.title);
         }
 
-        const { tasks } = yield* this.call<TaskList>('task_list', {});
+        const { tasks } = yield* this.call<TaskList>('task_list', { all: true, sort: 'number' });
         const open = tasks.filter(task => task.category !== 'done');
         const summary = open.length > 0 ? `${ joinKeys(open.map(task => task.key)) } ${ open.length > 1 ? 'are' : 'is' } still open.` : `Done: ${ joinKeys(tasks.map(task => task.key)) } are complete and checked.`;
 

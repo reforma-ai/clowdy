@@ -40,7 +40,7 @@ A task is ready only when everything it depends on is Done, and Done means verif
 
 ## Status flow
 
-Statuses are the project's columns; the default is To do, In progress, Review, Done, Canceled. Use only the `statusId` values the task tools return; never invent an id. There is no Blocked column: a blocker goes in the task description.
+Statuses are the project's columns; the default is To do, In progress, Review, Done, Canceled. Name a status the way the task tools return it (its name, its category or its id); never invent one. There is no Blocked column: a blocker goes in the task description.
 
 | Move | When |
 | --- | --- |
