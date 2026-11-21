@@ -4,7 +4,7 @@ import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Archive, Check, Message, More, Plus } from '@clowdy/icons/14';
+import { Archive, Check, Message, More, NewChat, Plus } from '@clowdy/icons/14';
 import { ChevronDown, ChevronRight } from '@clowdy/icons/8';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type SyntheticEvent } from 'react';
 
@@ -66,7 +66,7 @@ interface ChatActions {
 /**
  * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the heading's `⋯` asks for), each with the
  * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
- * in the heading, beside the filters), and take their threads with them. With the menu's Group by folder on, in a project of several folders, the
+ * in the heading, beside the filters), and take their threads with them. With the menu's Group chats by folder on (it is, until the person turns it off), in a project of several folders, the
  * chats stand in a group for the folder they work in, under a heading that folds the group and has a button for a chat in that folder.
  */
 export function AgentList({ selection, chats }: { selection: AgentSelection; chats: readonly Chat[] }) {
@@ -215,7 +215,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                             // The main folder's chat has no folder of its own: it follows the main folder, as every chat did before groups.
                             onPress={ () => ui.openDraft([], group.isMain ? null : group.folder.id) }
                         >
-                            <Plus />
+                            <NewChat />
                         </Button>
                     </span>
                 ) }
@@ -355,23 +355,23 @@ function FilterMenu() {
                 <PopoverScroll>
                     <Menu aria-label="Filters" size="sm">
                         <MenuSection
+                            aria-label="Show"
                             selectionMode="multiple"
                             selectedKeys={ shown }
                             onSelectionChange={ keys => chatListPreferences.setShowFinishedThreads(keys === 'all' || keys.has('finished')) }
                         >
-                            <MenuHeader>Show</MenuHeader>
-                            <MenuItem id="finished" textValue="Finished threads" endAffix={ showFinishedThreads ? <Check /> : undefined }>Finished threads</MenuItem>
+                            <MenuItem id="finished" textValue="Show finished sub-threads" endAffix={ showFinishedThreads ? <Check /> : undefined }>Show finished sub-threads</MenuItem>
                         </MenuSection>
                         <MenuSeparator />
                         { project.project.folders.length > 1 && (
                             <>
                                 <MenuSection
+                                    aria-label="Group"
                                     selectionMode="multiple"
                                     selectedKeys={ ui.groupByFolder ? ['folders'] : [] }
                                     onSelectionChange={ keys => ui.setGroupByFolder(keys === 'all' || keys.has('folders')) }
                                 >
-                                    <MenuHeader>Group</MenuHeader>
-                                    <MenuItem id="folders" textValue="Group by folder" endAffix={ ui.groupByFolder ? <Check /> : undefined }>Group by folder</MenuItem>
+                                    <MenuItem id="folders" textValue="Group chats by folder" endAffix={ ui.groupByFolder ? <Check /> : undefined }>Group chats by folder</MenuItem>
                                 </MenuSection>
                                 <MenuSeparator />
                             </>

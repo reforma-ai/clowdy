@@ -103,10 +103,11 @@ export class ProjectUi {
     /** Agents: the chats whose threads the person opened in the list. A chat that is not here is folded, which is how every chat starts. */
     expandedChats: readonly ChatId[] = [];
     /**
-     * Agents: the list has a group for each folder of the project, each with a new-chat button that starts a chat in that folder. Off, the list is flat and
-     * a new chat starts in the main folder. Only a project with several folders groups, whatever is kept here.
+     * Agents: the list has a group for each folder of the project, each with a new-chat button that starts a chat in that folder. On until the person turns
+     * it off (a project that kept no choice groups); off, the list is flat and a new chat starts in the main folder. Only a project with several folders
+     * groups, whatever is kept here.
      */
-    groupByFolder = false;
+    groupByFolder = true;
     /** Agents: the folders whose group is folded in the list. A folder that is not here is open, which is how every group starts. */
     collapsedFolders: readonly FolderId[] = [];
     /** Chats: the strip of running agents over the message box shows its line only, with the rows folded away. Kept for every chat of the project. */
@@ -127,7 +128,7 @@ export class ProjectUi {
             this.docPath = idOrNull(stored.docPath);
             this.docFolderId = idOrNull(stored.docFolderId);
             this.expandedChats = Array.isArray(stored.expandedChats) ? stored.expandedChats.filter(id => typeof id === 'string') : [];
-            this.groupByFolder = stored.groupByFolder === true;
+            this.groupByFolder = stored.groupByFolder !== false;
             this.collapsedFolders = Array.isArray(stored.collapsedFolders) ? stored.collapsedFolders.filter(id => typeof id === 'string') : [];
             this.agentsFolded = stored.agentsFolded === true;
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';

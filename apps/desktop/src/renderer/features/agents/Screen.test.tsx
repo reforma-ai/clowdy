@@ -107,27 +107,31 @@ describe('the list', () => {
         expect(providerOf('c-1')).toBeUndefined();
     });
 
-    it('sorts the chats by last activity until the Filters menu asks for the order they were made in', async () => {
+    it('sorts the chats by when they were made, as a list starts, until the Filters menu asks for the last activity', async () => {
         const chatKeys = () => rowKeys().filter(key => key?.startsWith('c-'));
 
-        expect(chatKeys()).toEqual(['c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
+        // The list starts in the order they were made (the default of the preference); the rest of this file starts on the last activity.
+        await draw(() => chatListPreferences.setSort('created'));
+
+        expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
 
         await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
 
         expect(document.body.textContent).toContain('Sort by');
-        expect(menuItem('Last activity').getAttribute('aria-checked')).toBe('true');
-        expect(menuItem('Created').getAttribute('aria-checked')).toBe('false');
+        expect(menuItem('Created').getAttribute('aria-checked')).toBe('true');
+        expect(menuItem('Last activity').getAttribute('aria-checked')).toBe('false');
 
-        await press(menuItem('Created'));
-        expect(chatListPreferences.sort).toBe('created');
-        await draw();
-        expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
-
-        // A message in a chat does not move it now.
+        // A message in a chat does not move it while the list is in the order they were made in.
         await draw(() => {
             project().chats.set('c-2', { ...project().chats.get('c-2')!, updatedAt: Date.now() });
         });
         expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
+
+        await press(menuItem('Last activity'));
+        expect(chatListPreferences.sort).toBe('activity');
+        await draw();
+        // The chat that just got a message is at the top now.
+        expect(chatKeys()).toEqual(['c-2', 'c-1', 'c-4', 'c-6', 'c-5', 'c-3']);
     });
 
     it('keeps the row of an open `⋯` menu as if hovered, since the pointer is in the menu and not on the row', async () => {
@@ -264,14 +268,16 @@ describe('grouped by folder', () => {
         return [...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent);
     };
 
-    /** The fixture project with a second folder, `car-rental-api`, where c-2 works; the switch is on unless `grouping` says otherwise. */
-    async function restart({ grouping = true, transport = new FixtureTransport({ data: twoFolders() }) }: { grouping?: boolean; transport?: FixtureTransport } = {}) {
+    /** The fixture project with a second folder, `car-rental-api`, where c-2 works; the switch is on unless `grouping` says otherwise, and `null` keeps no choice. */
+    async function restart({ grouping = true, transport = new FixtureTransport({ data: twoFolders() }) }: { grouping?: boolean | null; transport?: FixtureTransport } = {}) {
         act(() => reactRoot.unmount());
         store.dispose();
         reactRoot = createRoot(container);
         store = new RootStore(transport, { storage: memoryStorage() });
         await store.load();
-        await draw(() => ui().setGroupByFolder(grouping));
+        await draw(() => {
+            if (grouping !== null) ui().setGroupByFolder(grouping);
+        });
     }
 
     function twoFolders(change?: (data: FixtureData) => void): FixtureData {
@@ -284,21 +290,22 @@ describe('grouped by folder', () => {
         return data;
     }
 
-    it('offers the switch only to a project of several folders, off until it is pressed', async () => {
+    it('offers the switch only to a project of several folders, on until it is turned off', async () => {
         // The fixture project has one folder.
-        expect(await filtersMenu()).toEqual(['Finished threads', 'Last activity', 'Created']);
+        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Last activity', 'Created']);
 
-        await restart({ grouping: false });
+        // A project that kept no choice groups.
+        await restart({ grouping: null });
 
-        expect(await filtersMenu()).toEqual(['Finished threads', 'Group by folder', 'Last activity', 'Created']);
-        expect(menuItem('Group by folder').getAttribute('aria-checked')).toBe('false');
-        expect(rowKeys()).not.toContain(head(MAIN));
+        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Group chats by folder', 'Last activity', 'Created']);
+        expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
+        expect(rowKeys()).toContain(head(MAIN));
 
-        await press(menuItem('Group by folder'));
-        expect(ui().groupByFolder).toBe(true);
+        await press(menuItem('Group chats by folder'));
+        expect(ui().groupByFolder).toBe(false);
         await draw();
 
-        expect(rowKeys()).toContain(head(MAIN));
+        expect(rowKeys()).not.toContain(head(MAIN));
     });
 
     it('keeps the list flat in a project of one folder, whatever was kept for it', async () => {
@@ -732,15 +739,16 @@ describe('threads', () => {
         expect(rowKeys().filter(key => key?.startsWith('c-6'))).toEqual(['c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e']);
     });
 
-    it('has a Show group in the Filters menu with one check, Finished threads, that hides the threads whose run is over', async () => {
+    it('has a check in the Filters menu, Show finished sub-threads, that hides the threads whose run is over', async () => {
         await draw(() => ['c-6', 'c-6a'].forEach(id => ui().toggleChatExpanded(id)));
         await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
 
-        expect(document.body.textContent).toContain('Show');
-        expect(menuItem('Finished threads').getAttribute('aria-checked')).toBe('true');
-        expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual(['Finished threads', 'Last activity', 'Created']);
+        expect(menuItem('Show finished sub-threads').getAttribute('aria-checked')).toBe('true');
+        expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual(['Show finished sub-threads', 'Last activity', 'Created']);
+        // A section that holds one check has no header; only the order does.
+        expect([...document.body.querySelectorAll('[role="menu"] header')].map(header => header.textContent)).toEqual(['Sort by']);
 
-        await press(menuItem('Finished threads'));
+        await press(menuItem('Show finished sub-threads'));
         expect(chatListPreferences.showFinishedThreads).toBe(false);
         await draw();
 

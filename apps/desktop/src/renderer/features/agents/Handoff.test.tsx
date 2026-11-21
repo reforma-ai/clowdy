@@ -9,6 +9,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { newChatDraftKey, saveDraft } from '../chats/composerDrafts';
 import { filesOf, setFiles } from '../chats/composerFiles';
+import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 
 import type { Editor } from '@tiptap/core';
@@ -67,6 +68,8 @@ async function handOff() {
 
 beforeEach(async () => {
     strict = false;
+    // The screen opens on the first chat of the list: c-1 is that by last activity, and the list starts in the order the chats were made in.
+    chatListPreferences.setSort('activity');
     saveDraft(DRAFT_KEY, emptyComposerDoc());
     setFiles(DRAFT_KEY, []);
     setFiles(OTHER_DRAFT_KEY, []);

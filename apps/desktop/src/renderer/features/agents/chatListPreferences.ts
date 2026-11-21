@@ -10,8 +10,8 @@ export type ChatSort = 'activity' | 'created';
 
 /**
  * How the Agents list looks, a preference of this computer for every project (the heading's `⋯` menu and Settings > Chat edit the same values).
- * The order of the chats is last activity, which is where a chat that just got a message goes up to the top, until the person picks the order they
- * were made in. Finished threads are listed until the person hides them: off, a thread whose run is over is hidden unless something below it still
+ * The order of the chats is the one they were made in, newest first, which keeps the list still while the agents work, until the person picks last
+ * activity, where a chat that just got a message goes up to the top. Finished threads are listed until the person hides them: off, a thread whose run is over is hidden unless something below it still
  * works or it is the open chat.
  */
 export class ChatListPreferences {
@@ -21,7 +21,7 @@ export class ChatListPreferences {
 
     constructor(storage: KeyValueStorage | undefined) {
         this.#storage = storage;
-        this.sort = readStored(storage, SORT_KEY) === 'created' ? 'created' : 'activity';
+        this.sort = readStored(storage, SORT_KEY) === 'activity' ? 'activity' : 'created';
         this.showFinishedThreads = readStored(storage, FINISHED_KEY) !== false;
         makeAutoObservable(this);
     }

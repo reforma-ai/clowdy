@@ -9,29 +9,29 @@ const memory = () => {
 };
 
 describe('the Agents list preferences', () => {
-    it('sorts by last activity and lists finished threads by default', () => {
+    it('sorts by when the chats were made and lists finished threads by default', () => {
         const preferences = new ChatListPreferences(memory());
 
-        expect([preferences.sort, preferences.showFinishedThreads]).toEqual(['activity', true]);
+        expect([preferences.sort, preferences.showFinishedThreads]).toEqual(['created', true]);
     });
 
     it('remembers the order and the filter on this computer', () => {
         const storage = memory();
         const preferences = new ChatListPreferences(storage);
 
-        preferences.setSort('created');
+        preferences.setSort('activity');
         preferences.setShowFinishedThreads(false);
 
         const later = new ChatListPreferences(storage);
 
-        expect([later.sort, later.showFinishedThreads]).toEqual(['created', false]);
+        expect([later.sort, later.showFinishedThreads]).toEqual(['activity', false]);
 
-        later.setSort('activity');
+        later.setSort('created');
         later.setShowFinishedThreads(true);
 
         const last = new ChatListPreferences(storage);
 
-        expect([last.sort, last.showFinishedThreads]).toEqual(['activity', true]);
+        expect([last.sort, last.showFinishedThreads]).toEqual(['created', true]);
     });
 
     it('reads anything it did not write as the default', () => {
@@ -42,14 +42,14 @@ describe('the Agents list preferences', () => {
 
         const preferences = new ChatListPreferences(storage);
 
-        expect([preferences.sort, preferences.showFinishedThreads]).toEqual(['activity', true]);
+        expect([preferences.sort, preferences.showFinishedThreads]).toEqual(['created', true]);
     });
 
     it('works without storage', () => {
         const preferences = new ChatListPreferences(undefined);
 
-        preferences.setSort('created');
+        preferences.setSort('activity');
 
-        expect(preferences.sort).toBe('created');
+        expect(preferences.sort).toBe('activity');
     });
 });
