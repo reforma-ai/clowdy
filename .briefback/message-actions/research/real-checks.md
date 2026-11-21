@@ -260,3 +260,309 @@ finally {
     writeFileSync(join(root, 'log.txt'), out.join('\n'));
 }
 ```
+
+
+---
+
+# Stage 4: `chat.fork` on Claude Code
+
+Stage 4 of `.briefback/message-actions/plan.md`. The question: does `chat.fork` (provider fork first, then the chat, the run holding the copy's session and the copied history) work end to end on the real Claude Code adapter, and do the copy's later turns, a fork of a fork, and a fork made while the source works behave? Date: 2026-11-21 (local). `claude-agent-acp@0.107.0`, the user's `claude` 2.1.312, model `haiku`. Codex was not run (its flag is off). Like Stage 3 it spends the owner's subscription, so it is run by hand.
+
+## Verdict
+
+**Pass.** Everything below worked on the first run, and the one thing the stage had to measure (the first prompt's cost in a fork) came out as expected.
+
+| Check | Observed |
+| --- | --- |
+| `chat.fork` at turn 1's answer | `ok` in 566 ms (573 ms in a second run). New chat `(1) <source title>`, `forkedFrom { chatId, atSeq: 2 }`, no `parentChatId`, no queue, a run `succeeded` holding the copy's session id (`085b0305-...`, the source's is `66675423-...`) |
+| The fork's stream before any message | Turn 1 only: `#1 user canEdit`, `#2 assistant canFork ref=msg_011ChFNqWhqHrLSziur4Mh3N`, the same id the source's item holds (the copy keeps `provider_ref`) |
+| The first message of the fork | `Which word and which number did I ask you to remember? Answer as "<word>, <number>", with "none" for anything I did not ask you to remember.` Answer: `PINEAPPLE, none`. The number said only in turn 2 of the source is not in the copy. The message went through the ordinary resume path, 2 s (the daemon sends the bare text: the first-message prefix is made only for a chat that has no orchestrator, which a fork never lacks; not observed on the wire, covered by `test/fork.test.ts`) |
+| Title | The source's title was the agent's own name for it (`Clowdy orchestrate autopilot session`), so the fork is `(1) Clowdy orchestrate autopilot session`. After the fork's own turns (two prompts) the title was unchanged |
+| Fork of the fork, at an **inherited** answer | `chat.fork` on the fork at its copied answer (`#2`, `msg_011ChFNqWhqHrLSziur4Mh3N`): `ok`, `(2) <title>`, `forkedFrom { chatId: <fork 1>, atSeq: 2 }`; asked the same question, it answered `PINEAPPLE, none`. So a rewind point copied with the items is still a message id of the copied session |
+| Fork at an answer the fork wrote **itself** | `chat.fork` on fork 1 at its own `#6` (`msg_011ChFNrN7vwAhxARu7cABjm`, minted by the forked session): `ok`, `forkedFrom { atSeq: 6 }`; the question was answered `PINEAPPLE, none` |
+| Fork of the source while a source turn runs | The source turn 3 was `Run \`sleep 20\` in the shell, then reply with the word DONE.`; with the `Bash` call `running` and the run `running`, `chat.fork` at turn 1's answer: `ok` in 617 ms, the source run still `running` after it. The fork's stream held turn 1 only. The source turn then ended `succeeded` with `DONE` and its stream (`#6` user, `#7` Bash done, `#8` assistant `msg_011ChFNthGfcT3Jkaf9NRvZx` canFork) is intact. The fork made meanwhile answered its first message `PINEAPPLE, none` afterwards |
+| Cost baseline | See below: the first prompt of a fork reports its own cost as the session's cumulative cost, so the baseline is seeded with 0 where `AcpEngine.fork` returns |
+
+## Setup and commands
+
+Same scratch daemon as Stage 3 (the daemon's own modules in one Bun process, the real `AgentRegistry` and engines): data dir, projects dir and personal dir are folders under the session scratchpad, port `47312` (not the default random one), token `scratch-token`, user skills pointed at an empty folder, `CLOWDY_PROFILE=scratch`. The script (appendix) runs every command through `executeCommandAsync`, as the HTTP route does. The project folder is an empty scratch folder; Claude Code keeps its session files under `~/.claude/projects/<scratch folder>/` (a handful of small files per run; they stay).
+
+```
+cd <a scratch folder that holds only the script>
+bun fork-chat-check.ts <scratch dir>            # the whole check
+QUICK=1 bun fork-chat-check.ts <scratch dir>    # source turns 1 and 2, one fork, one prompt in it: the cost line only
+```
+
+Prompts (tiny, as in Stage 3): turn 1 `Remember the word PINEAPPLE. Reply OK.`; turn 2 `Run \`echo MANGO\` in the shell, then reply with the word it printed. Also remember the number 417.`; in the forks the question above, then `Say OK.`; in the busy case `Run \`sleep 20\` in the shell, then reply with the word DONE.`
+
+## The cost of a fork's first prompt
+
+Measured through the engine's own map (`AcpEngine.costs`, the cumulative cost per session id the daemon keeps), on the run before the seed existed (the first prompt of a fork then reported tokens and no `costUsd`):
+
+| Session and prompt | Cumulative cost the adapter reported |
+| --- | --- |
+| Source, after turn 1 (27.4k input tokens) | 0.0034170 |
+| Source, after turn 2 | 0.0041484 (turn 2 own: 0.00073) |
+| **Fork 1, first prompt** (27.9k input tokens) | **0.00038672** |
+| Fork 1, second prompt (`Say OK.`) | 0.00073694, its own: 0.00035022 |
+| Fork 2 (fork of the fork), first prompt | 0.00028602 |
+| Fork 3, first prompt | 0.00035923 |
+
+The first prompt of a fork reports about what a second prompt of the same size costs on its own (0.00039 against 0.00035), and nothing like the source's 0.0034 plus its own: the agent counts a copy's cost from zero. So the baseline is 0 for a fork's session id, which is what `session/new` seeds, and `AcpEngine.fork` now sets it where it returns. Rerun with the seed (`QUICK=1`): the first prompt of the fork reported `usage {"inputTokens":27911,"outputTokens":12,"costUsd":0.00037972}`, equal to the cumulative cost measured (0.00037972). `test/acp-fork.test.ts` covers it with the fake agent, and fails without the seed.
+
+### Something this check showed that is not Stage 4's
+
+The adapter's cumulative cost does not reliably survive a resume in a new process. In the first run turn 2 of the source reported a cumulative cost above turn 1's (0.00342, then 0.00415), so the daemon counted turn 2's 0.00073. In the `QUICK` run the same two turns went 0.00339 and then 0.00072: the counter had started again, below the baseline the daemon holds (`costBefore`), and `max(0, cost - costBefore)` dropped that turn's cost to 0 (the run's total stayed at 0.00339246 after turn 2). The cause was not investigated (a guess: Claude Code saves a session's cost when its process exits, and the daemon stops that process, so a resume restores it only when the save won the race), so the cost of a resumed turn is sometimes lost. This is existing behavior for every Claude Code session and is not changed here; it is worth a line to the owner, and a fix would have to compare per process (a baseline of 0 for each new process, or the adapter's per-turn figure) rather than per session id.
+
+## What was not tried
+
+- A fork of a long chat (a few turns of a few tokens each were enough for the question; the speed with a large transcript is as unknown as after Stage 3, `forkTimeoutMs` bounds it).
+- A fork at a message whose turn used a sub-agent (the unit tests cover the copy, not the adapter's cut through one).
+- Codex.
+
+## Appendix: the script (`fork-chat-check.ts`, throwaway, kept in the session scratchpad)
+
+```ts
+/**
+ * Real check of Stage 4 (message-actions): `chat.fork` against the real Claude Code adapter, through the daemon's own modules, on a scratch data
+ * directory and a non-default port. Usage: `bun fork-chat-check.ts <scratch dir>`.
+ *
+ *  1. A daemon (own data dir, projects dir, personal dir, port 47312, token) with the real engine registry.
+ *  2. A 2-turn Claude Code chat: turn 1 remembers a word, turn 2 runs a shell echo and remembers a number.
+ *  3. `chat.fork` at turn 1's answer; the fork's stream holds turn 1 only; a question in the fork (word yes, number no); a second tiny prompt in
+ *     the fork, and the cumulative cost the daemon measured for the fork's session after each prompt (the cost baseline question).
+ *  4. A fork of the fork at the inherited answer, asked the same question; a fork at the fork's own answer.
+ *  5. A fork of the source at turn 1's answer while a turn of the source (a `sleep 20` shell call) is running.
+ */
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const DAEMON = '/Users/bionic/WORK/My/@kachurun/clowdy-message-actions/apps/daemon/src';
+const { startDaemon } = await import(`${ DAEMON }/daemon`);
+const { loadConfig } = await import(`${ DAEMON }/config`);
+const { AgentRegistry } = await import(`${ DAEMON }/engine/acp/registry`);
+const { createEngines } = await import(`${ DAEMON }/engine`);
+const { installShimOrWarn } = await import(`${ DAEMON }/cli/shim`);
+const { executeCommandAsync, executeCommand } = await import(`${ DAEMON }/commands`);
+const { streamItems } = await import(`${ DAEMON }/domain/items`);
+const { itemRef } = await import(`${ DAEMON }/db/items`);
+
+const scratch = process.argv[2] as string;
+const root = mkdtempSync(join(scratch, 'real-fork-'));
+const dataDir = join(root, 'data');
+const work = join(root, 'work');
+
+mkdirSync(dataDir, { recursive: true });
+mkdirSync(work, { recursive: true });
+mkdirSync(join(root, 'skills'), { recursive: true });
+
+const out: string[] = [];
+const say = (line: string) => {
+    out.push(line);
+    console.log(line);
+};
+
+const config = loadConfig({
+    ...process.env,
+    CLOWDY_DATA_DIR: dataDir,
+    CLOWDY_PROJECTS_DIR: join(root, 'projects'),
+    CLOWDY_PERSONAL_DIR: join(root, 'personal'),
+    CLOWDY_PORT: '47312',
+    CLOWDY_TOKEN: 'scratch-token',
+    CLOWDY_ENGINE: 'claude',
+    CLOWDY_USER_SKILLS_DIRS: join(root, 'skills'),
+    CLOWDY_PROFILE: 'scratch',
+});
+
+say(`root ${ root }`);
+say(`dataDir ${ config.dataDir }, port ${ config.port }`);
+
+const agents = new AgentRegistry({ dataDir: config.dataDir });
+const shim = installShimOrWarn(config.dataDir);
+const engines = createEngines(config, agents, process.env, shim);
+const daemon = await startDaemon(config, { engines, agents });
+const { services } = daemon;
+const { store } = services;
+const engine = engines.get('claude') as any;
+let n = 0;
+const run = async (type: string, fields: Record<string, unknown> = {}, expectOk = true) => {
+    const result = await executeCommandAsync(services, { requestId: `real-${ ++n }-${ Date.now() }`, type, ...fields } as any);
+
+    if (expectOk && !result.ok) {
+        throw new Error(`${ type } failed: ${ result.error.code } ${ result.error.message }`);
+    }
+
+    return result as any;
+};
+const waitFor = async (check: () => boolean, what: string, ms = 240_000) => {
+    const deadline = Date.now() + ms;
+
+    while (!check()) {
+        if (Date.now() > deadline) {
+            throw new Error(`timed out: ${ what }`);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 250));
+    }
+};
+const chatRow = (id: string) => store.db.query('SELECT * FROM chats WHERE id = ?').get(id) as any;
+const runOfChat = (chatId: string) => services.runs.require(chatRow(chatId).orchestrator_run_id);
+const itemsOfChat = (chatId: string) => streamItems(store, chatRow(chatId).orchestrator_run_id, 0);
+const describe = (chatId: string) => itemsOfChat(chatId).map((item) => {
+    const body = item.body as any;
+
+    return `#${ item.seq } ${ body.kind }${ item.canFork ? ' canFork' : '' }${ item.canEdit ? ' canEdit' : '' } ref=${ itemRef(store.db, item.runId, item.seq) ?? '-' } ${ body.kind === 'user' || body.kind === 'assistant' ? JSON.stringify(body.text.slice(0, 70)) : body.kind === 'tool' ? `${ body.name } ${ body.state }` : '' }`;
+});
+const lastAnswer = (chatId: string) => (itemsOfChat(chatId).filter(item => item.body.kind === 'assistant').at(-1)?.body as any)?.text as string | undefined;
+const costOf = (sessionId: string | undefined) => (sessionId ? engine.costs.get(sessionId) : undefined) as number | undefined;
+
+async function turn(chatId: string, text: string, label: string) {
+    const started = Date.now();
+    const { data } = await run('chat.send', { chatId, text });
+
+    await waitFor(() => ['succeeded', 'failed'].includes(services.runs.require(data.runId).status), label);
+
+    const r = services.runs.require(data.runId);
+
+    say(`${ label } (${ Math.round((Date.now() - started) / 1000) } s): run ${ r.status }${ r.error ? ` error=${ r.error }` : '' } session=${ r.sessionId } answer=${ JSON.stringify(lastAnswer(chatId)) } usage=${ JSON.stringify(r.usage) } cumulativeCost(session)=${ costOf(r.sessionId) }`);
+
+    if (r.status !== 'succeeded') {
+        throw new Error(`${ label } failed`);
+    }
+
+    return r;
+}
+
+try {
+    say(`engine claude: canFork=${ engine.canFork }, store.forkable=${ store.forkable('claude') }`);
+
+    const { data: added } = await run('project.add', { folders: [work] });
+    const project = added.project;
+    const { data: created } = await run('chat.create', { projectId: project.id, engine: 'claude', model: 'haiku' });
+    const source = created.chat.id as string;
+
+    const r1 = await turn(source, 'Remember the word PINEAPPLE. Reply OK.', 'source turn 1');
+    const costAfter1 = costOf(r1.sessionId);
+    const r2 = await turn(source, 'Run `echo MANGO` in the shell, then reply with the word it printed. Also remember the number 417.', 'source turn 2');
+    const costAfter2 = costOf(r2.sessionId);
+
+    say(`source cumulative cost: after turn 1 ${ costAfter1 }, after turn 2 ${ costAfter2 } (turn 2 own ${ (costAfter2 ?? 0) - (costAfter1 ?? 0) })`);
+    say('--- source stream');
+    describe(source).forEach(say);
+
+    const answer1 = itemsOfChat(source).find(item => item.canFork);
+
+    if (!answer1) {
+        throw new Error('no forkable answer');
+    }
+
+    // ---- fork at turn 1's answer
+    say(`--- chat.fork at turn 1's answer (#${ answer1.seq })`);
+
+    const started = Date.now();
+    const forkResult = await run('chat.fork', { chatId: source, itemId: answer1.id }, false);
+
+    say(`chat.fork -> ${ forkResult.ok ? `ok in ${ Date.now() - started } ms` : `FAILED ${ JSON.stringify(forkResult.error) }` }`);
+
+    if (!forkResult.ok) {
+        throw new Error('fork failed');
+    }
+
+    const fork1 = forkResult.data.chat;
+
+    say(`new chat: ${ JSON.stringify({ id: fork1.id, title: fork1.title, mode: fork1.mode, engine: fork1.engine, model: fork1.model, forkedFrom: fork1.forkedFrom, parentChatId: fork1.parentChatId, queue: fork1.queue }) }`);
+
+    const forkRun = services.runs.require(fork1.orchestratorRunId);
+
+    say(`fork run: ${ JSON.stringify({ status: forkRun.status, sessionId: forkRun.sessionId, usage: forkRun.usage, rootRunId: forkRun.rootRunId === forkRun.id }) }; source session ${ r1.sessionId }`);
+    say('--- fork stream before any message (turn 1 only)');
+    describe(fork1.id).forEach(say);
+
+    const QUESTION = 'Which word and which number did I ask you to remember? Answer as "<word>, <number>", with "none" for anything I did not ask you to remember.';
+    const f1 = await turn(fork1.id, QUESTION, 'fork 1 prompt 1 (first prompt in a fork)');
+    const costF1 = costOf(f1.sessionId);
+    const usageF1 = f1.usage;
+
+    if (process.env.QUICK) {
+        say(`QUICK: the first prompt of the fork reported usage ${ JSON.stringify(usageF1) } (cumulative cost measured ${ costF1 })`);
+
+        throw new Error('quick check done');
+    }
+
+    await turn(fork1.id, 'Say OK.', 'fork 1 prompt 2 (tiny)');
+
+    const costF2 = costOf(f1.sessionId);
+    const usageF2 = services.runs.require(fork1.orchestratorRunId).usage;
+
+    say(`fork cost: cumulative after prompt 1 = ${ costF1 }, after prompt 2 = ${ costF2 }, prompt 2 own = ${ (costF2 ?? 0) - (costF1 ?? 0) }; run usage after prompt 1 = ${ JSON.stringify(usageF1) }, after prompt 2 = ${ JSON.stringify(usageF2) }`);
+    say('--- fork 1 stream');
+    describe(fork1.id).forEach(say);
+    say(`title after the fork's messages: ${ JSON.stringify(chatRow(fork1.id).title) } (was ${ JSON.stringify(fork1.title) })`);
+
+    // ---- fork of the fork at the inherited answer
+    const inherited = itemsOfChat(fork1.id).find(item => item.canFork && item.seq === answer1.seq);
+
+    say(`--- fork of the fork at the INHERITED answer (#${ inherited?.seq }, ref ${ inherited ? itemRef(store.db, inherited.runId, inherited.seq) : '-' })`);
+
+    const f2Result = await run('chat.fork', { chatId: fork1.id, itemId: inherited?.id }, false);
+
+    say(`chat.fork of the fork -> ${ f2Result.ok ? 'ok' : `FAILED ${ JSON.stringify(f2Result.error) }` }`);
+
+    if (f2Result.ok) {
+        const fork2 = f2Result.data.chat;
+
+        say(`fork 2: ${ JSON.stringify({ title: fork2.title, forkedFrom: fork2.forkedFrom }) }`);
+        await turn(fork2.id, QUESTION, 'fork 2 (fork of the fork) prompt');
+
+        // ---- fork at the fork's own answer (a message that the forked session wrote itself)
+        const own = itemsOfChat(fork1.id).filter(item => item.canFork).at(-1);
+
+        say(`--- fork of fork 1 at ITS OWN answer (#${ own?.seq }, ref ${ own ? itemRef(store.db, own.runId, own.seq) : '-' })`);
+
+        const f3Result = await run('chat.fork', { chatId: fork1.id, itemId: own?.id }, false);
+
+        say(`chat.fork at an answer the fork wrote itself -> ${ f3Result.ok ? 'ok' : `FAILED ${ JSON.stringify(f3Result.error) }` }`);
+
+        if (f3Result.ok) {
+            say(`fork 3: ${ JSON.stringify({ title: f3Result.data.chat.title, forkedFrom: f3Result.data.chat.forkedFrom }) }`);
+            await turn(f3Result.data.chat.id, QUESTION, 'fork 3 prompt');
+        }
+    }
+
+    // ---- fork while a turn of the source is running
+    say('--- fork of the source at turn 1 while a source turn runs');
+
+    const { data: busy } = await run('chat.send', { chatId: source, text: 'Run `sleep 20` in the shell, then reply with the word DONE.' });
+
+    await waitFor(() => itemsOfChat(source).some(item => item.body.kind === 'tool' && (item.body as any).state === 'running'), 'the sleep call to start');
+
+    const sourceRun = services.runs.require(busy.runId);
+
+    say(`source run while forking: ${ sourceRun.status }`);
+
+    const startedBusy = Date.now();
+    const busyFork = await run('chat.fork', { chatId: source, itemId: answer1.id }, false);
+
+    say(`chat.fork while the source runs -> ${ busyFork.ok ? `ok in ${ Date.now() - startedBusy } ms` : `FAILED ${ JSON.stringify(busyFork.error) }` }; source run now ${ services.runs.require(busy.runId).status }`);
+
+    if (busyFork.ok) {
+        say('--- the fork made while the source ran');
+        describe(busyFork.data.chat.id).forEach(say);
+    }
+
+    await waitFor(() => ['succeeded', 'failed'].includes(services.runs.require(busy.runId).status), 'the source turn 3', 120_000);
+    say(`source turn 3 ended: ${ services.runs.require(busy.runId).status }, answer ${ JSON.stringify(lastAnswer(source)) }`);
+    say('--- source stream at the end');
+    describe(source).forEach(say);
+
+    if (busyFork.ok) {
+        await turn(busyFork.data.chat.id, QUESTION, 'fork made while the source ran: prompt');
+    }
+}
+finally {
+    await daemon.stop();
+    engines.stop();
+    writeFileSync(join(root, 'log.txt'), out.join('\n'));
+    say(`log: ${ join(root, 'log.txt') }`);
+}
+```

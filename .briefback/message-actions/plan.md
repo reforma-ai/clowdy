@@ -141,15 +141,15 @@
 
 **This stage:** `chat.fork` creates the new chat from an answer's rewind point: provider fork first, then chat row, orchestrator run with the forked session, copied history and the relation. The fixture daemon implements the same command so the renderer can be built and tested against it.
 
-- [ ] Complete
-  - [ ] Migration 18: `chats.source_chat_id`, `chats.forked_at_seq`; `Chat.forkedFrom` in the protocol, upsert and event
-  - [ ] `chat.fork { chatId, itemId }` → `{ chat }`; refusals for an item without `canFork`, a missing chat, an unflagged agent, a failed provider fork (nothing created)
-  - [ ] New chat: same project, engine, model, effort and mode, title `(n) <title>`, not a thread, zero usage, at-rest orchestrator run holding the forked session id
-  - [ ] Stream items through the turn end copied with new ids; attachments of copied items usable in the new chat; the first message of the fork carries no first-message prefix
-  - [ ] Fixture daemon implements `chat.fork`
-  - [ ] Daemon tests with `ScriptEngine` for the copy, title numbering, refusals and the first message of a fork
-  - [ ] Cost baseline of a forked session: the first prompt in a fork reports tokens but no `costUsd` (no baseline for the new session id); log the first-prompt cumulative cost in the real check, and if it equals that prompt's own cost seed 0 where `AcpEngine.fork` returns, otherwise leave it
-  - [ ] Real check: fork a Claude Code chat on a scratch daemon, send a message in the fork, the answer knows the copied history
+- [x] Complete
+  - [x] Migration 18: `chats.source_chat_id`, `chats.forked_at_seq`; `Chat.forkedFrom` in the protocol, upsert and event
+  - [x] `chat.fork { chatId, itemId }` → `{ chat }`; refusals for an item without `canFork`, a missing chat, an unflagged agent, a failed provider fork (nothing created)
+  - [x] New chat: same project, engine, model, effort and mode, title `(n) <title>`, not a thread, zero usage, at-rest orchestrator run holding the forked session id
+  - [x] Stream items through the turn end copied with new ids; attachments of copied items usable in the new chat; the first message of the fork carries no first-message prefix
+  - [x] Fixture daemon implements `chat.fork`
+  - [x] Daemon tests with `ScriptEngine` for the copy, title numbering, refusals and the first message of a fork
+  - [x] Cost baseline of a forked session: the first prompt in a fork reports tokens but no `costUsd` (no baseline for the new session id); log the first-prompt cumulative cost in the real check, and if it equals that prompt's own cost seed 0 where `AcpEngine.fork` returns, otherwise leave it
+  - [x] Real check: fork a Claude Code chat on a scratch daemon, send a message in the fork, the answer knows the copied history
 
 **Files**
 
@@ -162,7 +162,10 @@
 
 **Done when:** `chat.fork` on a flagged answer returns a chat whose stream holds the copied history and whose next message resumes the forked session.
 **Verify:** `cd apps/daemon && bun test && bun run lint && bun run typecheck`; `bunx turbo run typecheck --filter=@clowdy/desktop`; the real check
-**Commits:** None yet.
+**Commits:**
+
+- `144fd22` feat(daemon): fork a chat at an answer into a new chat. Beyond the plan: commands can be asynchronous (`AsyncHandlers`, `executeCommandAsync`, `keepOpen` on the route; a repeated `requestId` joins the flight in progress); seq numbers are kept in the copy, so `forkedFrom.atSeq` is the answer's seq in both streams and copied items keep `provider_ref` (fork of a fork works, checked with real Claude); attachments are copied to the new chat's own files; running tools in the copied range become stopped; child runs of sub-agents are not copied; the fork's cost baseline is seeded to 0. The fixture daemon implements `chat.fork`; the fork fixture chat `c-7` is opt-in (`withFixtureFork`) because the default seed is used by unrelated tests. Real check passed on Claude Code, including a fork while the source turn runs. Follow-up outside this feature: Claude's cumulative cost can restart at 0 after a resume in a new process, and `usageEvent` in `engine/acp/mapper-core.ts` then clamps the turn's cost to 0 (smallest fix: count `cost` itself when `cost < costBefore`).
+
 
 ## Stage 5 — Edit a sent message (daemon)
 
