@@ -2717,6 +2717,12 @@
                     "fingerprint": "532f09f37c37c03797ce90db907873469f3e0c4df434e10cbaff460816988aae",
                     "name": "reply",
                     "sourceHash": "10a84c0c1efba4b10796da23a0ecfe9c6608910bf218a8b96639ffa561cf1fdf"
+                },
+                "16506:129122": {
+                    "file": "add-folder.svg",
+                    "fingerprint": "986de09bbb460f69dcfd9b39e43754f90396e08139b432e97593a14c77c47619",
+                    "name": "add-folder",
+                    "sourceHash": "359be41615cf058d034169492cbd0c78f91a50079c2d00735897ec378f90f8ce"
                 }
             },
             "nodeId": "12522:118247"
