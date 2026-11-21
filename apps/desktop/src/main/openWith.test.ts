@@ -6,9 +6,11 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createOpenWith, systemOpenWithDeps, type OpenWithDeps } from './openWith';
 
 /** A machine of folders and files named by plain strings; `launch` and `openPath` only record what they were asked. */
-function machine({ platform, folders = {}, files = [], env = {}, home = '/Users/dev', icons = {} }: {
+function machine({ platform, folders = {}, directories = [], files = [], env = {}, home = '/Users/dev', icons = {} }: {
     platform: NodeJS.Platform;
     folders?: Record<string, string[]>;
+    /** Folders there are besides `web` in the home folder, which every machine has. */
+    directories?: string[];
     files?: string[];
     env?: Record<string, string>;
     home?: string;
@@ -24,7 +26,7 @@ function machine({ platform, folders = {}, files = [], env = {}, home = '/Users/
         env,
         list: async folder => folders[folder] ?? [],
         exists: async path => files.includes(path),
-        isFolder: async path => path === '/Users/dev/web' || path === 'C:\\Users\\dev\\web',
+        isFolder: async path => path === '/Users/dev/web' || path === 'C:\\Users\\dev\\web' || directories.includes(path),
         openPath,
         launch,
         icon,
@@ -36,7 +38,8 @@ function machine({ platform, folders = {}, files = [], env = {}, home = '/Users/
 const MAC: Parameters<typeof machine>[0] = {
     platform: 'darwin',
     folders: {
-        '/Applications': ['Safari.app', 'Visual Studio Code.app', 'Cursor.app', 'IntelliJ IDEA CE.app', 'Path Finder.app', 'notes.txt'],
+        '/Applications': ['Safari.app', 'Visual Studio Code.app', 'Cursor.app', 'IntelliJ IDEA CE.app', 'Path Finder.app', 'Ghostty.app', 'notes.txt'],
+        '/System/Applications/Utilities': ['Terminal.app', 'Activity Monitor.app'],
         '/Users/dev/Applications': ['WebStorm.app', 'Cursor.app'],
         '/Users/dev/Applications/JetBrains Toolbox': ['PyCharm.app'],
     },
@@ -54,6 +57,7 @@ describe('what a Mac has', () => {
                 { id: 'webstorm', name: 'WebStorm' },
                 { id: 'pycharm', name: 'PyCharm' },
             ],
+            terminals: [{ id: 'ghostty', name: 'Ghostty' }, { id: 'terminal', name: 'Terminal' }],
             fileManagers: [{ id: 'finder', name: 'Finder' }, { id: 'path-finder', name: 'Path Finder' }],
         });
     });
@@ -67,7 +71,7 @@ describe('what a Mac has', () => {
     test('has only the system\'s file manager when nothing else is installed', async () => {
         const { open } = machine({ platform: 'darwin' });
 
-        expect(await open.listApps()).toEqual({ editors: [], fileManagers: [{ id: 'finder', name: 'Finder' }] });
+        expect(await open.listApps()).toEqual({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] });
     });
 });
 
@@ -118,6 +122,61 @@ describe('opening a folder on a Mac', () => {
     });
 });
 
+describe('opening a folder in a terminal', () => {
+    const machineWith = (applications: string[]) => machine({ platform: 'darwin', folders: { '/Applications': applications, '/System/Applications/Utilities': ['Terminal.app'] } });
+
+    test('puts a person\'s own terminal before the system\'s, so installing one is enough to make it the default', async () => {
+        const { open } = machineWith(['kitty.app', 'iTerm.app', 'Warp.app']);
+
+        expect((await open.listApps()).terminals.map(app => app.id)).toEqual(['iterm', 'warp', 'kitty', 'terminal']);
+    });
+
+    test('hands the folder to a terminal that opens a window in it, with `open -a`', async () => {
+        const { open, launch } = machineWith(['Ghostty.app']);
+
+        await open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'ghostty' });
+        await open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'terminal' });
+
+        expect(launch).toHaveBeenNthCalledWith(1, 'open', ['-a', '/Applications/Ghostty.app', '/Users/dev/web']);
+        expect(launch).toHaveBeenNthCalledWith(2, 'open', ['-a', '/System/Applications/Utilities/Terminal.app', '/Users/dev/web']);
+    });
+
+    test('starts a terminal that has to be told where to open as a new instance, with the folder as one argument of its own', async () => {
+        const { open, launch } = machineWith(['Alacritty.app', 'WezTerm.app', 'kitty.app']);
+
+        await open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'alacritty' });
+        await open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'wezterm' });
+        await open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'kitty' });
+
+        expect(launch.mock.calls).toEqual([
+            ['open', ['-n', '-a', '/Applications/Alacritty.app', '--args', '--working-directory', '/Users/dev/web']],
+            ['open', ['-n', '-a', '/Applications/WezTerm.app', '--args', 'start', '--cwd', '/Users/dev/web']],
+            ['open', ['-n', '-a', '/Applications/kitty.app', '--args', '--directory', '/Users/dev/web']],
+        ]);
+    });
+
+    test('hands a folder whose name has spaces, quotes or shell characters over as one argument', async () => {
+        const folder = '/Users/dev/my "web" --x; $(id) `id`';
+        const { open, launch } = machine({ platform: 'darwin', directories: [folder], folders: { '/Applications': ['Ghostty.app', 'Alacritty.app'] } });
+
+        await open.openFolder(folder, { kind: 'terminal', id: 'ghostty' });
+        await open.openFolder(folder, { kind: 'terminal', id: 'alacritty' });
+
+        expect(launch.mock.calls).toEqual([
+            ['open', ['-a', '/Applications/Ghostty.app', folder]],
+            ['open', ['-n', '-a', '/Applications/Alacritty.app', '--args', '--working-directory', folder]],
+        ]);
+    });
+
+    test('is a kind of its own: an editor is not asked for as a terminal, nor a terminal as an editor', async () => {
+        const { open, launch } = machineWith(['Ghostty.app', 'Cursor.app']);
+
+        await expect(open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'cursor' })).rejects.toThrow('That app is not installed');
+        await expect(open.openFolder('/Users/dev/web', { kind: 'editor', id: 'ghostty' })).rejects.toThrow('That app is not installed');
+        expect(launch).not.toHaveBeenCalled();
+    });
+});
+
 describe('what a Windows machine has', () => {
     const env = { LOCALAPPDATA: 'C:\\Users\\dev\\AppData\\Local', ProgramFiles: 'C:\\Program Files' };
 
@@ -135,6 +194,7 @@ describe('what a Windows machine has', () => {
 
         expect(await open.listApps()).toEqual({
             editors: [{ id: 'cursor', name: 'Cursor' }, { id: 'webstorm', name: 'WebStorm' }],
+            terminals: [],
             fileManagers: [{ id: 'explorer', name: 'File Explorer' }],
         });
     });
@@ -158,6 +218,41 @@ describe('what a Windows machine has', () => {
         const { open } = machine({ platform: 'win32', env: { ProgramFiles: 'C:\\Program Files' }, files: ['C:\\Users\\dev\\AppData\\Local\\Programs\\cursor\\Cursor.exe'] });
 
         expect((await open.listApps()).editors).toEqual([]);
+    });
+
+    test('finds Windows Terminal and Git Bash, and starts each with the folder in its own arguments', async () => {
+        const wt = 'C:\\Users\\dev\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe';
+        const bash = 'C:\\Program Files\\Git\\git-bash.exe';
+        const { open, launch } = machine({ platform: 'win32', env, files: [wt, bash] });
+
+        expect((await open.listApps()).terminals).toEqual([{ id: 'windows-terminal', name: 'Windows Terminal' }, { id: 'git-bash', name: 'Git Bash' }]);
+
+        await open.openFolder('C:\\Users\\dev\\web', { kind: 'terminal', id: 'windows-terminal' });
+        await open.openFolder('C:\\Users\\dev\\web', { kind: 'terminal', id: 'git-bash' });
+
+        expect(launch.mock.calls).toEqual([
+            [wt, ['-d', 'C:\\Users\\dev\\web']],
+            [bash, ['--cd=C:\\Users\\dev\\web']],
+        ]);
+    });
+
+    test('hands a folder with spaces or quotes to Windows Terminal and Git Bash as one argument, and refuses Windows Terminal one with a semicolon', async () => {
+        const wt = 'C:\\Users\\dev\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe';
+        const bash = 'C:\\Program Files\\Git\\git-bash.exe';
+        const folder = 'C:\\Users\\dev\\my web & \'x\'';
+        const odd = 'C:\\Users\\dev\\web;powershell -c calc';
+        const { open, launch } = machine({ platform: 'win32', env, files: [wt, bash], directories: [folder, odd] });
+
+        await open.openFolder(folder, { kind: 'terminal', id: 'windows-terminal' });
+        await open.openFolder(folder, { kind: 'terminal', id: 'git-bash' });
+        await open.openFolder(odd, { kind: 'terminal', id: 'git-bash' });
+        await expect(open.openFolder(odd, { kind: 'terminal', id: 'windows-terminal' })).rejects.toThrow('semicolon');
+
+        expect(launch.mock.calls).toEqual([
+            [wt, ['-d', folder]],
+            [bash, [`--cd=${ folder }`]],
+            [bash, [`--cd=${ odd }`]],
+        ]);
     });
 
     test('refuses a path that is not absolute', async () => {
@@ -218,12 +313,13 @@ describe('the icons of the programs', () => {
 
         expect(await open.listApps()).toEqual({
             editors: [{ id: 'cursor', name: 'Cursor', icon: 'data:image/png;base64,cursor' }],
+            terminals: [],
             fileManagers: [{ id: 'explorer', name: 'File Explorer', icon: 'data:image/png;base64,explorer' }],
         });
 
         const bare = machine({ platform: 'win32', env: {} });
 
-        expect(await bare.open.listApps()).toEqual({ editors: [], fileManagers: [{ id: 'explorer', name: 'File Explorer' }] });
+        expect(await bare.open.listApps()).toEqual({ editors: [], terminals: [], fileManagers: [{ id: 'explorer', name: 'File Explorer' }] });
         expect(bare.icon).not.toHaveBeenCalled();
         expect(icon).toHaveBeenCalledTimes(2);
     });
@@ -232,7 +328,7 @@ describe('the icons of the programs', () => {
 test('has no program on a system the app does not run on', async () => {
     const { open } = machine({ platform: 'linux', folders: { '/Applications': ['Cursor.app'] } });
 
-    expect(await open.listApps()).toEqual({ editors: [], fileManagers: [] });
+    expect(await open.listApps()).toEqual({ editors: [], terminals: [], fileManagers: [] });
     await expect(open.openFolder('/Users/dev/web', { kind: 'editor', id: 'cursor' })).rejects.toThrow('That app is not installed');
 });
 

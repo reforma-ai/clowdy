@@ -1,9 +1,9 @@
 import { toast } from '@clowdy/components/Toast';
 import { useEffect, useState } from 'react';
 
-import type { OpenApp, OpenApps } from '../../../shared/bridge';
+import type { OpenApp, OpenApps, OpenFolderApp } from '../../../shared/bridge';
 
-const NONE: OpenApps = { editors: [], fileManagers: [] };
+const NONE: OpenApps = { editors: [], terminals: [], fileManagers: [] };
 
 /** The program a preference names, or the first one the computer has when the choice is not made, or its program is gone. */
 export function chosenApp(apps: readonly OpenApp[], id: string | undefined): OpenApp | undefined {
@@ -14,7 +14,7 @@ export function chosenApp(apps: readonly OpenApp[], id: string | undefined): Ope
 export const canOpenFolders = () => window.desktop?.openFolder !== undefined;
 
 /**
- * The editors and file managers this computer has, read from the desktop app each time the component that asks is drawn first (a program may
+ * The editors, terminals and file managers this computer has, read from the desktop app each time the component that asks is drawn first (a program may
  * have been installed since). Nothing until the answer comes, and nothing at all in a page that is not the desktop app.
  */
 export function useOpenApps(): OpenApps {
@@ -41,7 +41,7 @@ export function useOpenApps(): OpenApps {
 }
 
 /** Opens a folder in a program of the computer. What goes wrong (the folder is gone, the program will not start) is a toast. */
-export async function openFolderIn(folder: string, kind: 'editor' | 'fileManager', app: OpenApp): Promise<void> {
+export async function openFolderIn(folder: string, kind: OpenFolderApp['kind'], app: OpenApp): Promise<void> {
     try {
         await window.desktop?.openFolder(folder, { kind, id: app.id });
     }

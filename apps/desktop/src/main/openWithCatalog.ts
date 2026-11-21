@@ -1,6 +1,7 @@
 /**
- * The programs that can open a folder, which `openWith.ts` looks for on this computer. The order is the order of the choices, and the first editor found
- * is the one that opens a folder until the person picks another, so the most used come first. Adding one is adding a line.
+ * The programs that can open a folder (editors, terminals, file managers), which `openWith.ts` looks for on this computer. The order is the order of the
+ * choices, and the first program of a kind found is the one that opens a folder until the person picks another, so the most used come first. Adding one is
+ * adding a line.
  *
  * macOS finds an app by the name of its bundle in the Applications folders (`mac`, matched against the name without `.app`, so a channel or an
  * edition in the name still counts). Windows has no such list: each program has the places its installer puts it (`win`), where `%NAME%` is an
@@ -13,6 +14,18 @@ export interface EditorSpec {
     name: string;
     mac: RegExp;
     win: readonly string[];
+}
+
+export interface TerminalSpec {
+    id: string;
+    name: string;
+    mac?: RegExp;
+    win: readonly string[];
+    /**
+     * The arguments that open a window in the folder. Without them macOS hands the folder to the app (`open -a`, which Terminal, iTerm2, Ghostty and
+     * Warp take as "a window here"); with them it starts a new instance of the app (`open -n -a`, so the arguments reach it even when it runs).
+     */
+    args?: (folder: string) => readonly string[];
 }
 
 export interface FileManagerSpec {
@@ -70,6 +83,30 @@ export const EDITORS: readonly EditorSpec[] = [
     { id: 'pulsar', name: 'Pulsar', mac: /^Pulsar/, win: [`${ LOCAL }\\Pulsar\\Pulsar.exe`, '%LOCALAPPDATA%\\Pulsar\\Pulsar.exe'] },
 ];
 
+/** `wt` splits every argument at a `;` and runs what follows as another command of its own, so a folder with one in its name cannot be handed to it. */
+function windowsTerminalArgs(folder: string): readonly string[] {
+    if (folder.includes(';')) throw new Error('Windows Terminal cannot open a folder with a semicolon in its name');
+
+    return ['-d', folder];
+}
+
+/**
+ * The terminals, a person's own before the system's, since the first one found is the default until another is picked and anyone who installed one wants
+ * it over Terminal. A console program (PowerShell, `cmd`) is not here for Windows: started without a console of its own it ends at once, and Windows
+ * Terminal runs them. No terminal here was started by this code on either system: the arguments are the ones each program documents.
+ */
+export const TERMINALS: readonly TerminalSpec[] = [
+    { id: 'iterm', name: 'iTerm2', mac: /^iTerm/, win: [] },
+    { id: 'ghostty', name: 'Ghostty', mac: /^Ghostty$/, win: [] },
+    { id: 'warp', name: 'Warp', mac: /^Warp/, win: [] },
+    { id: 'wezterm', name: 'WezTerm', mac: /^WezTerm$/, win: [`${ FILES }\\WezTerm\\wezterm-gui.exe`], args: folder => ['start', '--cwd', folder] },
+    { id: 'alacritty', name: 'Alacritty', mac: /^Alacritty$/, win: [`${ FILES }\\Alacritty\\alacritty.exe`, `${ LOCAL }\\Alacritty\\alacritty.exe`], args: folder => ['--working-directory', folder] },
+    { id: 'kitty', name: 'kitty', mac: /^kitty$/, win: [], args: folder => ['--directory', folder] },
+    { id: 'windows-terminal', name: 'Windows Terminal', win: ['%LOCALAPPDATA%\\Microsoft\\WindowsApps\\wt.exe'], args: windowsTerminalArgs },
+    { id: 'git-bash', name: 'Git Bash', win: [`${ FILES }\\Git\\git-bash.exe`, `${ LOCAL }\\Git\\git-bash.exe`], args: folder => [`--cd=${ folder }`] },
+    { id: 'terminal', name: 'Terminal', mac: /^Terminal$/, win: [] },
+];
+
 /** The system's file manager is first, so it is the default and is never missing; on macOS the others are found by their app. */
 export const FILE_MANAGERS = {
     darwin: [
@@ -82,5 +119,5 @@ export const FILE_MANAGERS = {
     ],
 } as const satisfies Record<string, readonly FileManagerSpec[]>;
 
-/** The folders where macOS apps are looked for: the system's, the user's, and where the JetBrains Toolbox puts the IDEs it installs. */
-export const MAC_APP_FOLDERS = ['/Applications', '~/Applications', '~/Applications/JetBrains Toolbox'] as const;
+/** The folders where macOS apps are looked for: the system's, the user's, where the JetBrains Toolbox puts the IDEs it installs, and where macOS keeps Terminal. */
+export const MAC_APP_FOLDERS = ['/Applications', '~/Applications', '~/Applications/JetBrains Toolbox', '/System/Applications/Utilities'] as const;

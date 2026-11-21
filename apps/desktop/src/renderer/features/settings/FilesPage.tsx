@@ -8,12 +8,13 @@ import { SettingsPage } from './ui/SettingsPage';
 import { SettingsRow } from './ui/SettingsRow';
 import { SettingsSection } from './ui/SettingsSection';
 
-import type { OpenApp } from '../../../shared/bridge';
+import type { OpenApp, OpenFolderApp } from '../../../shared/bridge';
 
 const EDITOR_LABEL = 'Default IDE';
+const TERMINAL_LABEL = 'Default terminal';
 const FILE_MANAGER_LABEL = 'Default file manager';
 
-function AppSelect({ label, kind, apps, selectedId, onSelect }: { label: string; kind: 'editor' | 'fileManager'; apps: readonly OpenApp[]; selectedId: string | undefined; onSelect: (id: string) => void }) {
+function AppSelect({ label, kind, apps, selectedId, onSelect }: { label: string; kind: OpenFolderApp['kind']; apps: readonly OpenApp[]; selectedId: string | undefined; onSelect: (id: string) => void }) {
     const selected = chosenApp(apps, selectedId);
 
     return (
@@ -49,6 +50,9 @@ export function FilesPage() {
                     </SettingsRow>
                     <SettingsRow title={ FILE_MANAGER_LABEL } description="The program that shows a folder with the rest of your files">
                         <AppSelect label={ FILE_MANAGER_LABEL } kind="fileManager" apps={ apps.fileManagers } selectedId={ openWithPreferences.fileManager } onSelect={ id => openWithPreferences.setFileManager(id) } />
+                    </SettingsRow>
+                    <SettingsRow title={ TERMINAL_LABEL } description="The terminal that opens a shell in a folder">
+                        <AppSelect label={ TERMINAL_LABEL } kind="terminal" apps={ apps.terminals } selectedId={ openWithPreferences.terminal } onSelect={ id => openWithPreferences.setTerminal(id) } />
                     </SettingsRow>
                 </SettingsCard>
             </SettingsSection>

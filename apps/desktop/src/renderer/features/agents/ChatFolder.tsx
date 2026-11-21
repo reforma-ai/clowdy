@@ -18,9 +18,9 @@ export interface ChatFolderProps {
 
 /**
  * The folder a chat works in, in the place the new-chat page's select (`DraftFolderSelect`) had it, and the same size and name. In the desktop app it is the
- * same pill, and a press opens a menu to open the folder in the file manager and in the editor (the ones Settings > Files names, else the first the computer
- * has; no editor, no item), each with the program's own icon, and the pill tells the path on hover, or that the folder is gone from the disk, when both
- * items are off. Anywhere else, a page in a browser, it is read only: no plate and no chevron, since the folder of a chat never changes and there is
+ * same pill, and a press opens a menu to open the folder in the file manager, the editor and the terminal (the ones Settings > Files names, else the first
+ * the computer has; no editor or terminal, no item), each with the program's own icon, and the pill tells the path on hover, or that the folder is gone from
+ * the disk, when the items are off. Anywhere else, a page in a browser, it is read only: no plate and no chevron, since the folder of a chat never changes and there is
  * nothing to open it in.
  */
 export function ChatFolder({ name, path, missing }: ChatFolderProps) {
@@ -42,6 +42,7 @@ function FolderMenu({ name, path, missing, title }: ChatFolderProps & { title: s
     const apps = useOpenApps();
     const fileManager = chosenApp(apps.fileManagers, openWithPreferences.fileManager);
     const editor = chosenApp(apps.editors, openWithPreferences.editor);
+    const terminal = chosenApp(apps.terminals, openWithPreferences.terminal);
 
     return (
         <MenuTrigger>
@@ -54,12 +55,14 @@ function FolderMenu({ name, path, missing, title }: ChatFolderProps & { title: s
                         onAction={ (key) => {
                             if (key === 'fileManager' && fileManager) void openFolderIn(path, 'fileManager', fileManager);
                             else if (key === 'editor' && editor) void openFolderIn(path, 'editor', editor);
+                            else if (key === 'terminal' && terminal) void openFolderIn(path, 'terminal', terminal);
                         } }
                     >
                         <MenuSection aria-label="Open in">
                             { missing && <MenuHeader>This folder no longer exists</MenuHeader> }
                             { fileManager && <MenuItem id="fileManager" icon={ <AppIcon app={ fileManager } kind="fileManager" /> } textValue={ `Open in ${ fileManager.name }` } isDisabled={ missing }>{ `Open in ${ fileManager.name }` }</MenuItem> }
                             { editor && <MenuItem id="editor" icon={ <AppIcon app={ editor } kind="editor" /> } textValue={ `Open in ${ editor.name }` } isDisabled={ missing }>{ `Open in ${ editor.name }` }</MenuItem> }
+                            { terminal && <MenuItem id="terminal" icon={ <AppIcon app={ terminal } kind="terminal" /> } textValue={ `Open in ${ terminal.name }` } isDisabled={ missing }>{ `Open in ${ terminal.name }` }</MenuItem> }
                         </MenuSection>
                     </Menu>
                 </PopoverScroll>

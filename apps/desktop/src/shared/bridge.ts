@@ -33,15 +33,16 @@ export interface OpenApp {
     icon?: string;
 }
 
-/** What this computer has, in the order the choices go in: the first editor is the one that opens a folder until another is picked, and the system's file manager is the first of its list. */
+/** What this computer has, in the order the choices go in: the first program of a kind is the one that opens a folder until another is picked, and the system's file manager is the first of its list. */
 export interface OpenApps {
     editors: OpenApp[];
+    terminals: OpenApp[];
     fileManagers: OpenApp[];
 }
 
 /** Which program opens a folder. */
 export interface OpenFolderApp {
-    kind: 'editor' | 'fileManager';
+    kind: 'editor' | 'terminal' | 'fileManager';
     id: string;
 }
 

@@ -16,6 +16,7 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
 
 const APPS: OpenApps = {
     editors: [{ id: 'cursor', name: 'Cursor' }, { id: 'zed', name: 'Zed' }],
+    terminals: [{ id: 'ghostty', name: 'Ghostty' }, { id: 'terminal', name: 'Terminal' }],
     fileManagers: [{ id: 'finder', name: 'Finder' }, { id: 'path-finder', name: 'Path Finder' }],
 };
 
@@ -47,6 +48,7 @@ beforeEach(() => {
     document.body.append(container);
     root = createRoot(container);
     openWithPreferences.editor = undefined;
+    openWithPreferences.terminal = undefined;
     openWithPreferences.fileManager = undefined;
     toasts.error.mockClear();
 });
@@ -78,7 +80,7 @@ describe('the folder of a chat', () => {
 
         await press(pill()!);
 
-        expect(items().map(row => row.textContent)).toEqual(['Open in Finder', 'Open in Cursor']);
+        expect(items().map(row => row.textContent)).toEqual(['Open in Finder', 'Open in Cursor', 'Open in Ghostty']);
         // The mark the style turns the chevron over by, and keeps the plate under, while the menu is open.
         expect(pill()?.hasAttribute('data-open')).toBe(true);
     });
@@ -102,19 +104,25 @@ describe('the folder of a chat', () => {
         const openFolder = vi.fn(async () => undefined);
 
         openWithPreferences.setEditor('zed');
+        openWithPreferences.setTerminal('terminal');
         openWithPreferences.setFileManager('path-finder');
         await draw({ bridge: { getOpenApps: async () => APPS, openFolder } });
         await press(pill()!);
 
-        expect(items().map(row => row.textContent)).toEqual(['Open in Path Finder', 'Open in Zed']);
+        expect(items().map(row => row.textContent)).toEqual(['Open in Path Finder', 'Open in Zed', 'Open in Terminal']);
 
         await press(item('Open in Zed'));
 
         expect(openFolder).toHaveBeenCalledWith('/Users/dev/web', { kind: 'editor', id: 'zed' });
+
+        await press(pill()!);
+        await press(item('Open in Terminal'));
+
+        expect(openFolder).toHaveBeenLastCalledWith('/Users/dev/web', { kind: 'terminal', id: 'terminal' });
     });
 
-    it('has no item for an editor when the computer has none', async () => {
-        await draw({ bridge: { getOpenApps: async () => ({ editors: [], fileManagers: APPS.fileManagers }), openFolder: vi.fn(async () => undefined) } });
+    it('has no item for an editor or a terminal when the computer has none', async () => {
+        await draw({ bridge: { getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: APPS.fileManagers }), openFolder: vi.fn(async () => undefined) } });
         await press(pill()!);
 
         expect(items().map(row => row.textContent)).toEqual(['Open in Finder']);
@@ -128,7 +136,7 @@ describe('the folder of a chat', () => {
 
         expect(pill()?.hasAttribute('data-missing')).toBe(true);
         expect(document.body.textContent).toContain('This folder no longer exists');
-        expect(items().map(row => row.getAttribute('aria-disabled'))).toEqual(['true', 'true']);
+        expect(items().map(row => row.getAttribute('aria-disabled'))).toEqual(['true', 'true', 'true']);
 
         await press(item('Open in Finder'));
 
@@ -138,14 +146,16 @@ describe('the folder of a chat', () => {
     it('draws each program with its own icon, and a plain one of its kind for a program that has none', async () => {
         const icon = 'data:image/png;base64,Y3Vyc29y';
 
-        await draw({ bridge: { getOpenApps: async () => ({ editors: [{ id: 'cursor', name: 'Cursor', icon }], fileManagers: [{ id: 'finder', name: 'Finder' }] }), openFolder: vi.fn(async () => undefined) } });
+        await draw({ bridge: { getOpenApps: async () => ({ editors: [{ id: 'cursor', name: 'Cursor', icon }], terminals: [{ id: 'terminal', name: 'Terminal' }], fileManagers: [{ id: 'finder', name: 'Finder' }] }), openFolder: vi.fn(async () => undefined) } });
         await press(pill()!);
 
         const picture = (text: string) => item(text).querySelector<HTMLImageElement>('img');
 
         expect(picture('Open in Cursor')?.getAttribute('src')).toBe(icon);
         expect(picture('Open in Finder')).toBeNull();
+        expect(picture('Open in Terminal')).toBeNull();
         expect(item('Open in Finder').querySelector('svg')).not.toBeNull();
+        expect(item('Open in Terminal').querySelector('svg')).not.toBeNull();
     });
 
     it('tells it in a toast when the program cannot open the folder', async () => {

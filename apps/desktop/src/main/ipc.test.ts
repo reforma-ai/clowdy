@@ -24,7 +24,7 @@ function register(actions: Partial<Parameters<typeof registerIpc>[2]> = {}) {
             on: (channel: string, listener: Listener) => void listeners.set(channel, listener),
         } as never,
         TRUSTED,
-        { setThemeSource: vi.fn(), getDaemon: async () => undefined, ready: async () => undefined, restartToUpdate: vi.fn(), listOpenApps: async () => ({ editors: [], fileManagers: [] }), openFolder: async () => undefined, ...actions }
+        { setThemeSource: vi.fn(), getDaemon: async () => undefined, ready: async () => undefined, restartToUpdate: vi.fn(), listOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }), openFolder: async () => undefined, ...actions }
     );
 
     return { listeners, handlers };
@@ -223,7 +223,7 @@ describe('OTA updates', () => {
 
 describe('opening a folder in a program', () => {
     test('the app\'s own page can ask what the computer has and open a folder, and what it sends is handed on as it is', async () => {
-        const apps = { editors: [{ id: 'cursor', name: 'Cursor' }], fileManagers: [{ id: 'finder', name: 'Finder' }] };
+        const apps = { editors: [{ id: 'cursor', name: 'Cursor' }], terminals: [{ id: 'terminal', name: 'Terminal' }], fileManagers: [{ id: 'finder', name: 'Finder' }] };
         const listOpenApps = vi.fn(async () => apps);
         const openFolder = vi.fn(async () => undefined);
         const { handlers } = register({ listOpenApps, openFolder });
@@ -237,7 +237,7 @@ describe('opening a folder in a program', () => {
     });
 
     test('another page can do neither', async () => {
-        const listOpenApps = vi.fn(async () => ({ editors: [], fileManagers: [] }));
+        const listOpenApps = vi.fn(async () => ({ editors: [], terminals: [], fileManagers: [] }));
         const openFolder = vi.fn(async () => undefined);
         const { handlers } = register({ listOpenApps, openFolder });
         const event = callFrom({ url: 'https://example.com/' });

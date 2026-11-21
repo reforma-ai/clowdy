@@ -48,7 +48,7 @@ describe('theme', () => {
             onUpdateReady: () => () => undefined,
             restartToUpdate: async () => undefined,
             findInPage: async () => ({ matches: 0, activeMatchOrdinal: 0 }),
-            getOpenApps: async () => ({ editors: [], fileManagers: [] }),
+            getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
             openFolder: async () => undefined,
             stopFind: async () => undefined,
             onFindCommand: () => () => undefined,

@@ -18,6 +18,7 @@ const Page = observer(FilesPage);
 
 const APPS: OpenApps = {
     editors: [{ id: 'cursor', name: 'Cursor' }, { id: 'zed', name: 'Zed' }],
+    terminals: [{ id: 'ghostty', name: 'Ghostty' }, { id: 'terminal', name: 'Terminal' }],
     fileManagers: [{ id: 'finder', name: 'Finder' }, { id: 'path-finder', name: 'Path Finder' }],
 };
 
@@ -35,7 +36,7 @@ const press = async (target: HTMLElement) => act(async () => {
     target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
     target.click();
 });
-/** The buttons that open the two selects, in the order of the rows. */
+/** The buttons that open the selects, in the order of the rows: the editor, the file manager, the terminal. */
 const triggers = () => [...container.querySelectorAll<HTMLButtonElement>('button')];
 
 async function draw(bridge: Partial<NonNullable<Window['desktop']>> | undefined) {
@@ -51,6 +52,7 @@ beforeEach(async () => {
     document.body.append(container);
     root = createRoot(container);
     openWithPreferences.editor = undefined;
+    openWithPreferences.terminal = undefined;
     openWithPreferences.fileManager = undefined;
 });
 
@@ -67,20 +69,23 @@ describe('FilesPage', () => {
 
         expect(container.textContent).toContain('Default IDE');
         expect(container.textContent).toContain('Default file manager');
-        expect(triggers().map(button => button.textContent)).toEqual(['Cursor', 'Finder']);
+        expect(container.textContent).toContain('Default terminal');
+        expect(triggers().map(button => button.textContent)).toEqual(['Cursor', 'Finder', 'Ghostty']);
     });
 
     it('draws the icon of a program in the select and in its list, and a plain one for a program with none', async () => {
         const cursor = 'data:image/png;base64,Y3Vyc29y';
         const zed = 'data:image/png;base64,emVk';
 
-        await draw({ getOpenApps: async () => ({ editors: [{ id: 'cursor', name: 'Cursor', icon: cursor }, { id: 'zed', name: 'Zed', icon: zed }], fileManagers: [{ id: 'finder', name: 'Finder' }] }) });
+        await draw({ getOpenApps: async () => ({ editors: [{ id: 'cursor', name: 'Cursor', icon: cursor }, { id: 'zed', name: 'Zed', icon: zed }], terminals: [{ id: 'terminal', name: 'Terminal' }], fileManagers: [{ id: 'finder', name: 'Finder' }] }) });
 
         const source = (target: ParentNode) => target.querySelector('img')?.getAttribute('src');
 
         expect(source(triggers()[0]!)).toBe(cursor);
         expect(triggers()[1]!.querySelector('img')).toBeNull();
         expect(triggers()[1]!.querySelector('svg[width="14"]')).not.toBeNull();
+        expect(triggers()[2]!.querySelector('img')).toBeNull();
+        expect(triggers()[2]!.querySelector('svg[width="14"]')).not.toBeNull();
 
         await press(triggers()[0]!);
 
@@ -106,6 +111,19 @@ describe('FilesPage', () => {
         expect(openWithPreferences.fileManager).toBeUndefined();
     });
 
+    it('keeps the terminal that was picked, apart from the other choices', async () => {
+        await draw({ getOpenApps: async () => APPS });
+        await press(triggers()[2]!);
+
+        const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(row => row.textContent === 'Terminal')!;
+
+        await press(option);
+
+        expect(openWithPreferences.terminal).toBe('terminal');
+        expect(triggers()[2]!.textContent).toBe('Terminal');
+        expect([openWithPreferences.editor, openWithPreferences.fileManager]).toEqual([undefined, undefined]);
+    });
+
     it('falls back to the first program when the one that was picked is not installed any more, and keeps the pick', async () => {
         openWithPreferences.setEditor('webstorm');
         await draw({ getOpenApps: async () => APPS });
@@ -115,15 +133,15 @@ describe('FilesPage', () => {
     });
 
     it('is off, and says none were found, for a list that is empty: a computer with no editor', async () => {
-        await draw({ getOpenApps: async () => ({ editors: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }) });
+        await draw({ getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }) });
 
-        expect(triggers().map(button => [button.textContent, button.disabled])).toEqual([['None found', true], ['Finder', false]]);
+        expect(triggers().map(button => [button.textContent, button.disabled])).toEqual([['None found', true], ['Finder', false], ['None found', true]]);
     });
 
     it('finds no program in a page that is not the desktop app', async () => {
         await draw(undefined);
 
-        expect(triggers().map(button => [button.textContent, button.disabled])).toEqual([['None found', true], ['None found', true]]);
+        expect(triggers().map(button => [button.textContent, button.disabled])).toEqual([['None found', true], ['None found', true], ['None found', true]]);
     });
 
     it('reads the computer once when it is opened', async () => {

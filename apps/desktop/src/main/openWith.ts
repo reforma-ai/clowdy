@@ -3,7 +3,7 @@ import { access, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { posix, win32 } from 'node:path';
 
-import { EDITORS, FILE_MANAGERS, MAC_APP_FOLDERS, type FileManagerSpec } from './openWithCatalog';
+import { EDITORS, FILE_MANAGERS, MAC_APP_FOLDERS, TERMINALS, type FileManagerSpec, type TerminalSpec } from './openWithCatalog';
 
 import type { OpenApp, OpenApps, OpenFolderApp } from '../shared/bridge';
 
@@ -29,12 +29,14 @@ interface Found {
     id: string;
     name: string;
     path: string;
+    /** The arguments that start it in a folder, when it takes more than the folder (a terminal that has to be told where to open). */
+    args?: TerminalSpec['args'];
     /** Where the icon is read from: the program itself, or for the system's file manager a place of its own; empty when there is none. */
     iconPath: string;
 }
 
 export interface OpenWith {
-    /** The editors and file managers this machine has, with their icons, in the order of the catalog; the system's file manager is first. */
+    /** The editors, terminals and file managers this machine has, with their icons, in the order of the catalog; the system's file manager is first. */
     listApps: () => Promise<OpenApps>;
     /** Opens `folder` in the app. Rejects when the folder is not there or the app cannot be started. */
     openFolder: (folder: unknown, app: unknown) => Promise<void>;
@@ -114,28 +116,32 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
         return undefined;
     }
 
-    async function editors(): Promise<Found[]> {
+    /** The programs of a catalog this machine has, in the catalog's order (an editor's spec fits: it has no `args`). */
+    async function programs(specs: readonly TerminalSpec[]): Promise<Found[]> {
         const found: Found[] = [];
 
         if (platform === 'darwin') {
             const apps = await macApps();
 
-            for (const spec of EDITORS) {
-                const app = apps.find(candidate => spec.mac.test(candidate.name));
+            for (const spec of specs) {
+                const app = spec.mac && apps.find(candidate => spec.mac!.test(candidate.name));
 
-                if (app) found.push({ id: spec.id, name: spec.name, path: app.path, iconPath: app.path });
+                if (app) found.push({ id: spec.id, name: spec.name, path: app.path, iconPath: app.path, args: spec.args });
             }
         }
         else if (platform === 'win32') {
-            for (const spec of EDITORS) {
+            for (const spec of specs) {
                 const path = await windowsProgram(spec.win);
 
-                if (path) found.push({ id: spec.id, name: spec.name, path, iconPath: path });
+                if (path) found.push({ id: spec.id, name: spec.name, path, iconPath: path, args: spec.args });
             }
         }
 
         return found;
     }
+
+    const editors = () => programs(EDITORS);
+    const terminals = () => programs(TERMINALS);
 
     async function fileManagers(): Promise<Found[]> {
         const specs: readonly FileManagerSpec[] = platform === 'darwin' || platform === 'win32' ? FILE_MANAGERS[platform] : [];
@@ -181,11 +187,10 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
 
     return {
         async listApps() {
-            const [editorList, managerList] = await Promise.all([editors(), fileManagers()]);
+            const describeAll = async (found: Promise<Found[]>) => Promise.all((await found).map(describe));
+            const [editorApps, terminalApps, managerApps] = await Promise.all([describeAll(editors()), describeAll(terminals()), describeAll(fileManagers())]);
 
-            const [editorApps, managerApps] = await Promise.all([Promise.all(editorList.map(describe)), Promise.all(managerList.map(describe))]);
-
-            return { editors: editorApps, fileManagers: managerApps };
+            return { editors: editorApps, terminals: terminalApps, fileManagers: managerApps };
         },
 
         async openFolder(folder, app) {
@@ -196,11 +201,12 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
 
             const { kind, id } = app as Partial<OpenFolderApp>;
 
-            if ((kind !== 'editor' && kind !== 'fileManager') || typeof id !== 'string') throw new Error('Unknown app');
+            if ((kind !== 'editor' && kind !== 'terminal' && kind !== 'fileManager') || typeof id !== 'string') throw new Error('Unknown app');
 
             if (!await deps.isFolder(folder)) throw new Error('The folder no longer exists');
 
-            const found = (kind === 'editor' ? await editors() : await fileManagers()).find(candidate => candidate.id === id);
+            const candidates = kind === 'editor' ? await editors() : kind === 'terminal' ? await terminals() : await fileManagers();
+            const found = candidates.find(candidate => candidate.id === id);
 
             if (!found) throw new Error('That app is not installed');
 
@@ -213,8 +219,11 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
                 return;
             }
 
-            if (platform === 'darwin') await deps.launch('open', ['-a', found.path, folder]);
-            else await deps.launch(found.path, [folder]);
+            // A program that is told where to open by its arguments is started as a new instance on macOS, since a running one would not read them.
+            const args = found.args?.(folder);
+
+            if (platform === 'darwin') await deps.launch('open', args ? ['-n', '-a', found.path, '--args', ...args] : ['-a', found.path, folder]);
+            else await deps.launch(found.path, args ?? [folder]);
         },
     };
 }
