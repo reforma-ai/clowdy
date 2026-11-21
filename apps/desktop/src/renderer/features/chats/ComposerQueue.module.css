@@ -1,10 +1,10 @@
 @reference '@clowdy/styles/rulesets';
 
-/* The queue sits at the top of the composer card, above the files and the text, and scrolls once it is taller than a few rows. */
+/* The queue sits at the top of the composer card, above the files and the text, at the card's inset like the other plates, and scrolls once it is taller than a few rows. */
 .queue {
     min-width: 0;
     max-height: 200px;
-    margin: var(--spacing-sm) var(--spacing-sm) 0;
+    margin-bottom: var(--spacing-sm);
 }
 
 .paused {

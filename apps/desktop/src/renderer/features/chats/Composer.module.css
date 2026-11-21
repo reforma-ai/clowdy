@@ -12,7 +12,11 @@
     }
 }
 
-/* The card: a plate with a slow soft-colored ring running around it, and a glow once the text has focus. */
+/*
+ * The card: a plate with a slow soft-colored ring running around it, and a glow once the text has focus. Its padding is the inset of the plates inside it (the
+ * queue, the quoted message, the files): 6px, which is where their rounded corners run level with the card's own. The text and the buttons sit one more step in,
+ * by the margins of `.field` and `.row`.
+ */
 .surface {
     @ruleset typography-text-md;
     position: relative;
@@ -62,12 +66,12 @@
     mask-composite: exclude;
 }
 
+/* Takes the press that is meant for the field. No padding of its own: the plates in it stand at the card's inset, and the field and the row keep their own distance. */
 .main {
     position: relative;
     display: flex;
     flex-direction: column;
     min-width: 0;
-    padding: var(--spacing-sm);
     cursor: text;
 }
 
@@ -75,6 +79,15 @@
 .files {
     margin-bottom: var(--spacing-lg);
     cursor: default;
+}
+
+/* The text stands one step further in than the plates (the card's inset and this margin), and one step down from the card's edge when nothing is above it. */
+.field {
+    margin-inline: var(--spacing-sm);
+}
+
+.field:first-child {
+    margin-top: var(--spacing-sm);
 }
 
 /* The text grows with what is typed, up to a share of the window, then scrolls. */
@@ -88,7 +101,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-xs);
-    margin-top: var(--spacing-sm);
+    margin: var(--spacing-sm);
     cursor: default;
 }
 
