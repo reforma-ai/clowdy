@@ -154,6 +154,15 @@ export function groupFolderOf(chats: ReadonlyMap<ChatId, Chat>, folders: readonl
     return folderById(folders, (ancestorChats(chats, chatId).at(-1) ?? chat).folderId).id;
 }
 
+/** The folder a chat works in, with its short name: the one whose group lists it (`groupFolderOf`), so a thread works where the chat it is below does. */
+export function chatFolder(chats: ReadonlyMap<ChatId, Chat>, folders: readonly ProjectFolder[], chatId: ChatId): Pick<AgentGroup, 'folder' | 'name'> | undefined {
+    const id = groupFolderOf(chats, folders, chatId);
+    const index = folders.findIndex(folder => folder.id === id);
+    const folder = folders[index];
+
+    return folder && { folder, name: folderNames(folders)[index] ?? folder.path };
+}
+
 /**
  * The chats the archive lists, the one put away last first. A thread put away with its parent is part of the parent's cascade and has no entry of
  * its own; one put away alone, while its parent is in use, has one.

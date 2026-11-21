@@ -23,8 +23,8 @@ export interface DraftFolderSelectProps {
 
 /**
  * The select of the new-chat page that says which folder of the project the chat will work in, and changes it: a pill under the message box with the folder's
- * name, and a list of the project's folders by name, the chosen one ticked. It is only for a chat that is not made yet: the page that
- * draws it is gone once the first message is sent. More controls of the start (a branch, where it runs) join it in the same row.
+ * name, and a list of the project's folders by name, the chosen one ticked. It is only for a chat that is not made yet: once the first message is sent the page
+ * is gone, and the chat draws the folder in the same place read only (`ChatFolder`). More controls of the start (a branch, where it runs) join it in the same row.
  */
 export function DraftFolderSelect({ folders, selectedId, missing, onPick }: DraftFolderSelectProps) {
     const names = folderNames(folders);

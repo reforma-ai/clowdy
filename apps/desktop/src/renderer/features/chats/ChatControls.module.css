@@ -1,0 +1,8 @@
+/* Level with the message box's text and its attach button (the card's inset and one step in). */
+.controls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
+    padding: var(--spacing-md) var(--spacing-lg) 0;
+}

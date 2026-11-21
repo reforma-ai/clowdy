@@ -3,7 +3,8 @@ import { useProjectState, useProjectUi } from '../../stores';
 import { ChatView } from '../chats/ChatView';
 import { useProjectsInfo } from '../settings/projects/useProjectsInfo';
 import { AgentList } from './AgentList';
-import { resolveSelection, visibleChats } from './agentTree';
+import { chatFolder, resolveSelection, visibleChats } from './agentTree';
+import { ChatFolder } from './ChatFolder';
 import { chatListPreferences } from './chatListPreferences';
 import { DraftChat } from './DraftChat';
 import { RunDetail } from './RunDetail';
@@ -26,13 +27,16 @@ export function Screen() {
     const { info } = useProjectsInfo({ enabled: grouped, poll: false });
     const missing = new Set(info.get(project.id)?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
 
+    // The line under a chat's message box holds its folder, read only, where the new-chat page had the select; like the select it is there only while grouped.
+    const where = grouped && chat ? chatFolder(project.chats, project.project.folders, chat.id) : undefined;
+
     return (
         <SidebarLayout screen="agents" defaultWidth={ 270 } sidebar={ <AgentList selection={ selection } chats={ chats } missing={ missing } /> }>
             <section className={ styles.main } aria-label={ run ? 'Sub-agent' : 'Chat' }>
                 { run
                     ? <RunDetail key={ run.id } run={ run } />
                     : chat
-                        ? <ChatView key={ chat.id } chat={ chat } />
+                        ? <ChatView key={ chat.id } chat={ chat } controls={ where && <ChatFolder name={ where.name } path={ where.folder.path } missing={ missing.has(where.folder.id) } /> } />
                         : <DraftChat missing={ missing } /> }
             </section>
         </SidebarLayout>

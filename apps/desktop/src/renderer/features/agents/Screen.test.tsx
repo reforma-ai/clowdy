@@ -11,13 +11,21 @@ import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 
 import type { Editor } from '@tiptap/core';
+import type { ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
 
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
 vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
 
-// The pages beside the list are drawn by their own tests; here they only say which one was asked for.
-vi.mock('../chats/ChatView', () => ({ ChatView: ({ chat }: { chat: { id: string; title: string } }) => <div data-testid="chat" data-chat-id={ chat.id }>{ chat.title }</div> }));
+// The pages beside the list are drawn by their own tests; here they only say which one was asked for. A chat's `controls` stand beside it, as the line under its message box.
+vi.mock('../chats/ChatView', () => ({
+    ChatView: ({ chat, controls }: { chat: { id: string; title: string }; controls?: ReactNode }) => (
+        <>
+            <div data-testid="chat" data-chat-id={ chat.id }>{ chat.title }</div>
+            { controls }
+        </>
+    ),
+}));
 vi.mock('./RunDetail', () => ({ RunDetail: ({ run }: { run: { id: string; name: string } }) => <div data-testid="run" data-run-id={ run.id }>{ run.name }</div> }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -264,6 +272,8 @@ describe('grouped by folder', () => {
     const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
     /** The select under the new-chat page's message box, and the rows of its list. */
     const folderSelect = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
+    /** The read only line of a chat that is made, in the place the select had. */
+    const folderLine = () => container.querySelector<HTMLElement>('[role="group"][aria-label="Folder"]');
     const folderItem = (name: string) => [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === name)!;
     const filtersMenu = async () => {
         await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
@@ -604,6 +614,84 @@ describe('grouped by folder', () => {
             await press(gone);
 
             expect(ui().draftFolderId).toBeNull();
+        });
+    });
+
+    describe('the folder of a chat that is made', () => {
+        it('stays under the message box with no select: the name, and the path on hover', async () => {
+            await restart();
+            await draw(() => ui().openChat('c-2'));
+
+            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api');
+            // Read only: nothing in it opens a list or takes a press.
+            expect(folderSelect()).toBeNull();
+            expect(folderLine()?.querySelector('button, [tabindex]')).toBeNull();
+
+            // A chat with no folder works in the main one.
+            await draw(() => ui().openChat('c-1'));
+
+            expect(folderLine()?.textContent).toBe('car-rental');
+        });
+
+        it('is under the message box of the chat the page made, in the folder picked there', async () => {
+            const before = new Set(project().chats.keys());
+
+            await restart();
+            await press(rowOf('@new-chat'));
+            await draw();
+            await press(folderSelect()!);
+            await press(folderItem('car-rental-api'));
+            await draw();
+            editor().commands.insertContent('Fix the endpoint');
+            await act(async () => {
+                field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            });
+            await draw();
+
+            expect([...project().chats.keys()].some(id => !before.has(id))).toBe(true);
+            expect(folderSelect()).toBeNull();
+            expect(folderLine()?.textContent).toBe('car-rental-api');
+        });
+
+        it('says when the folder is gone from the disk', async () => {
+            const transport = new FixtureTransport({ data: twoFolders() });
+            const info = await transport.getProjectsInfo();
+
+            vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(info.map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })) } : entry)));
+            await restart({ transport });
+            await draw(() => ui().openChat('c-2'));
+
+            expect(folderLine()?.hasAttribute('data-missing')).toBe(true);
+            expect(folderLine()?.getAttribute('title')).toBe('This folder no longer exists');
+
+            await draw(() => ui().openChat('c-1'));
+
+            expect(folderLine()?.hasAttribute('data-missing')).toBe(false);
+        });
+
+        it('is there only where the new-chat page has its select: while grouped, in a project of several folders', async () => {
+            await restart({ grouping: false });
+            await draw(() => ui().openChat('c-2'));
+
+            expect(folderLine()).toBeNull();
+
+            await draw(() => ui().setGroupByFolder(true));
+
+            expect(folderLine()?.textContent).toBe('car-rental-api');
+
+            // The fixture project has one folder.
+            act(() => reactRoot.unmount());
+            store.dispose();
+            reactRoot = createRoot(container);
+            store = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
+            await store.load();
+            await draw(() => {
+                ui().setGroupByFolder(true);
+                ui().openChat('c-1');
+            });
+
+            expect(folderLine()).toBeNull();
         });
     });
 

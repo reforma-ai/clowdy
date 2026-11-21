@@ -4,6 +4,7 @@ import { mainFolder } from '@clowdy/protocol';
 import { useEffect, useRef } from 'react';
 
 import { useProjectState, useProjectUi } from '../../stores';
+import { ChatControls } from '../chats/ChatControls';
 import { ChatDropZone } from '../chats/ChatDropZone';
 import { Composer, type ComposerHandle } from '../chats/Composer';
 import { newChatDefaults, startingChoice } from '../chats/newChatDefaults';
@@ -18,7 +19,7 @@ import type { FolderId } from '@clowdy/protocol';
  * makes it when the first message is sent, and then this page gives way to the chat. A hand-off from another chat arrives
  * with its words already in the box's draft and its conversation as a file in `ui.pendingFiles`. While the list is grouped by folder a select under the box
  * says which folder the chat is for (`ui.draftFolderId`, the main folder's when none) and changes it: the chat then works there. `missing` are the folders
- * gone from the disk, which the select lists and does not let be picked.
+ * gone from the disk, which the select lists and does not let be picked. The chat this page makes keeps the line, with the folder read only (`ChatFolder`).
  */
 export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     const project = useProjectState();
@@ -53,7 +54,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                         <Composer ref={ composer } chat={ undefined } run={ undefined } minLines={ 3 } start={ { projectId: project.id, folderId, onStarted: chatId => ui.openChat(chatId), defaults } } />
 
                         { target && (
-                            <div className={ styles.controls }>
+                            <ChatControls>
                                 <DraftFolderSelect
                                     folders={ folders }
                                     selectedId={ target.folder.id }
@@ -61,7 +62,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                                     // The main folder is the one a chat that names none works in.
                                     onPick={ folder => ui.setDraftFolder(folder.id === mainFolder(project.project).id ? null : folder.id) }
                                 />
-                            </div>
+                            </ChatControls>
                         ) }
                     </ContentColumn>
                 </div>

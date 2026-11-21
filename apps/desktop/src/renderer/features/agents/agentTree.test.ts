@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { agentGroups, agentRows, ancestorChats, archivedChats, chatDotTone, chatOfRun, draftTarget, folderById, groupFolderOf, isActiveThread, isFinishedThread, resolveSelection, visibleChats, type AgentRowsInput } from './agentTree';
+import { agentGroups, agentRows, ancestorChats, archivedChats, chatDotTone, chatFolder, chatOfRun, draftTarget, folderById, groupFolderOf, isActiveThread, isFinishedThread, resolveSelection, visibleChats, type AgentRowsInput } from './agentTree';
 
 import type { Chat, ProjectFolder, Run, RunStatus } from '@clowdy/protocol';
 
@@ -95,6 +95,22 @@ describe('the groups of the list by folder', () => {
         expect(groupFolderOf(family, folders, 'deep')).toBe('f-api');
         expect(groupFolderOf(family, folders, 'plain')).toBe('f-web');
         expect(groupFolderOf(family, folders, 'ghost')).toBeUndefined();
+    });
+
+    it('tells the folder a chat works in, by its name: the group\'s folder, the main one for a chat with none', () => {
+        const family = new Map([inFolder('root', 'f-api'), inFolder('thread', undefined, { parentChatId: 'root' }), inFolder('plain'), inFolder('gone', 'f-gone')].map(candidate => [candidate.id, candidate]));
+        const where = (id: string) => {
+            const found = chatFolder(family, folders, id);
+
+            return found && [found.folder.id, found.name];
+        };
+
+        expect(where('root')).toEqual(['f-api', 'api']);
+        expect(where('thread')).toEqual(['f-api', 'api']);
+        expect(where('plain')).toEqual(['f-web', 'web']);
+        // A folder the project no longer has handed its chats back to the main one.
+        expect(where('gone')).toEqual(['f-web', 'web']);
+        expect(where('ghost')).toBeUndefined();
     });
 });
 
