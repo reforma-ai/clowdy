@@ -2112,6 +2112,12 @@
                     "name": "message",
                     "sourceHash": "0d095917b630123749f2b620282bd55b00230a0a5c84da1c211f7e0fa07b768d"
                 },
+                "16496:129104": {
+                    "file": "new-chat.svg",
+                    "fingerprint": "13db2b9c440fe8205041b513c588c554df418bba8e025585443cac444df88200",
+                    "name": "new-chat",
+                    "sourceHash": "dff931c8ae19fc230a1e6f493e6c9865e6878d8c98c9cfb9e0c5d0d9ce0bd1c4"
+                },
                 "5209:96522": {
                     "file": "follow.svg",
                     "fingerprint": "d05190e6034d15cc558cc4b89469f5d9c6ce9701a96ed4e9679191a8a3ef6ac6",
@@ -2705,6 +2711,12 @@
                     "fingerprint": "8e37ec2ac3117e67023342151e7c2f898dc07658e32bae864ed3ad32fbc9aa27",
                     "name": "archive",
                     "sourceHash": "07ce6c9f9ed033185044c13d712c867f86c3fe0b366e13d786ce9d89c426ce1f"
+                },
+                "16496:129100": {
+                    "file": "reply.svg",
+                    "fingerprint": "532f09f37c37c03797ce90db907873469f3e0c4df434e10cbaff460816988aae",
+                    "name": "reply",
+                    "sourceHash": "10a84c0c1efba4b10796da23a0ecfe9c6608910bf218a8b96639ffa561cf1fdf"
                 }
             },
             "nodeId": "12522:118247"
