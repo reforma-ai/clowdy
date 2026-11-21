@@ -118,6 +118,23 @@ describe('NavHistory recording', () => {
         expect(place()).toBe('p-car/agents:c-1');
     });
 
+    it('records the new-chat row of each folder as a place of its own, and brings its folder back', () => {
+        ui().openDraft();
+        ui().openDraft([], 'fld_other');
+
+        expect(ui().draftFolderId).toBe('fld_other');
+
+        ui().openChat('c-1');
+        root.history.back();
+        expect([ui().draft, ui().draftFolderId]).toEqual([true, 'fld_other']);
+
+        root.history.back();
+        expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
+
+        root.history.forward();
+        expect(ui().draftFolderId).toBe('fld_other');
+    });
+
     it('records Settings and its pages', () => {
         root.ui.openSettings('providers');
         root.ui.showSettingsPage('skills');

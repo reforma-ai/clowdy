@@ -58,10 +58,17 @@ export function choiceOf(run: Run): ChatChoice {
     return { engine: run.engine, ...(run.model && { model: run.model }), ...(run.effort && { effort: run.effort }) };
 }
 
-/** A new chat; `parentChatId` makes it a thread of that chat (an agent of it started this one), which the caller has checked. */
-export function createChat(store: Store, input: { projectId: string; title?: string; mode?: ChatMode; parentChatId?: string } & ChatChoice): Chat {
+/**
+ * A new chat; `parentChatId` makes it a thread of that chat (an agent of it started this one), which the caller has checked. `folderId` is the folder of
+ * the project the chat works in, and must be one of its folders; without it the chat follows the main folder.
+ */
+export function createChat(store: Store, input: { projectId: string; title?: string; mode?: ChatMode; parentChatId?: string; folderId?: string } & ChatChoice): Chat {
     return store.tx(() => {
-        requireProject(store, input.projectId);
+        const project = requireProject(store, input.projectId);
+
+        if (input.folderId !== undefined && !project.folders.some(folder => folder.id === input.folderId)) {
+            throw invalid(`Folder ${ input.folderId } does not belong to project ${ project.id }`);
+        }
 
         const now = Date.now();
 
@@ -74,6 +81,7 @@ export function createChat(store: Store, input: { projectId: string; title?: str
             ...(input.model && { model: input.model }),
             ...(input.effort && { effort: input.effort }),
             ...(input.parentChatId && { parentChatId: input.parentChatId }),
+            ...(input.folderId && { folderId: input.folderId }),
             createdAt: now,
             updatedAt: now,
         });

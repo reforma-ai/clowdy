@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { getChat } from '../src/db/chats';
@@ -158,6 +159,40 @@ describe('thread_spawn', () => {
         expect(named.run()).toMatchObject({ model: 'small' });
         expect(named.run().effort).toBeUndefined();
         expect(h.run(parent.run.id).status).toBe('running');
+    });
+
+    test('works in the folder of its parent\'s chat, and the run\'s own cwd still wins', async () => {
+        const { h, engine, chatOf, on, turnOf, spawn } = await setup();
+        const parentDir = tempDir('clowdy-thread-folders');
+
+        for (const name of ['web', 'api']) {
+            mkdirSync(join(parentDir, name));
+        }
+
+        const { project } = h.ok('project.add', { name: 'Shop', folders: ['web', 'api'].map(name => join(parentDir, name)) });
+        const [web, api] = project.folders as { id: string; path: string }[];
+        const inApi = h.ok('chat.create', { projectId: project.id, folderId: api.id }).chat as Chat;
+        const inMain = h.ok('chat.create', { projectId: project.id }).chat as Chat;
+        const runOfChat = (chatId: string) => h.run(chatOf(chatId).orchestratorRunId as string);
+
+        for (const [chat, text] of [[inApi, 'Plan in the api'], [inMain, 'Plan in the web']] as const) {
+            on(text, held(latch()));
+            h.ok('chat.send', { chatId: chat.id, text });
+            await waitFor(() => turnOf(text), `the turn on "${ text }" to start`);
+        }
+
+        const threadOfApi = await spawn(runOfChat(inApi.id), 'Look into the api');
+        const threadOfMain = await spawn(runOfChat(inMain.id), 'Look into the web');
+        const elsewhere = tempDir('clowdy-thread-own');
+        const own = await spawn(runOfChat(inApi.id), 'Look elsewhere', held(latch()), { cwd: elsewhere });
+
+        expect(chatOf(threadOfApi.threadId).folderId).toBe(api.id);
+        expect(chatOf(threadOfMain.threadId)).not.toHaveProperty('folderId');
+        expect(chatOf(own.threadId).folderId).toBe(api.id);
+        expect(turnOf('Look into the api')?.cwd).toBe(api.path);
+        expect(turnOf('Look into the web')?.cwd).toBe(web.path);
+        expect(turnOf('Look elsewhere')?.cwd).toBe(elsewhere);
+        expect(engine.turns).toHaveLength(5);
     });
 
     test('works in the folder it names, and refuses a folder that is not an absolute existing one, the fake engine and an unknown one, leaving nothing behind', async () => {

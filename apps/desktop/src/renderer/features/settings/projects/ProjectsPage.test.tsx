@@ -467,6 +467,33 @@ describe('ProjectsPage project', () => {
         expect(marked()).toEqual(['/Users/dev/car-rental-api']);
     });
 
+    it('asks before removing a folder that chats work in, saying how many go back to the main folder', async () => {
+        const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: true, chats: 0 }, { folderId: 'fld_added_1', exists: true, chats: 2 }], chats: 2, tasks: 0, activeRuns: 0 };
+
+        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+        await click(button('Remove car-rental-api'));
+
+        expect(lastConfirm()).toMatchObject({ title: 'Remove car-rental-api?', confirmLabel: 'Remove folder' });
+        expect(lastConfirm().message).toContain('2 chats work in car-rental-api. They move to clowdy, the main folder');
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toHaveLength(2);
+
+        await act(async () => lastConfirm().onConfirm());
+        await flush();
+
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy']);
+    });
+
+    it('keeps the folder when the person cancels the removal of one that chats work in', async () => {
+        const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: true, chats: 0 }, { folderId: 'fld_added_1', exists: true, chats: 1 }], chats: 1, tasks: 0, activeRuns: 0 };
+
+        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+        await click(button('Remove car-rental-api'));
+        await closeConfirm();
+
+        expect(lastConfirm().message).toContain('1 chat works in car-rental-api. It moves to clowdy');
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toHaveLength(2);
+    });
+
     it('removes another folder at once, and moves the focus to the folder that takes its place', async () => {
         (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => [] };
         await open(FIXTURE_EMPTY_PROJECT_ID, {}, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
@@ -564,7 +591,7 @@ describe('ProjectsPage project', () => {
     });
 
     it('warns about each folder that is gone: the main one stops the agents, another is left out', async () => {
-        const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: false }, { folderId: 'fld_added_1', exists: false }, { folderId: 'fld_added_2', exists: true, remoteUrl: 'git@github.com:acme/notes.git' }], chats: 0, tasks: 0, activeRuns: 0 };
+        const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: false, chats: 0 }, { folderId: 'fld_added_1', exists: false, chats: 0 }, { folderId: 'fld_added_2', exists: true, remoteUrl: 'git@github.com:acme/notes.git', chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 };
 
         await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
 
