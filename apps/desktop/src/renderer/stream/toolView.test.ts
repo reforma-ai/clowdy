@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { describeTool } from './toolView';
+import { classifyTool, describeTool } from './toolView';
 
 describe('describeTool', () => {
     it('reads a file by its path', () => {
@@ -50,5 +50,25 @@ describe('describeTool', () => {
 
     it('does not show a very long argument as a chip', () => {
         expect(describeTool('note', { text: 'x'.repeat(200) }).target).toBeUndefined();
+    });
+});
+
+describe('classifyTool', () => {
+    it('tells reading, editing, searching, listing and commands apart, with the file or folder they work on', () => {
+        expect(classifyTool('Read', { file_path: 'a.ts' })).toEqual({ activity: 'read', target: 'a.ts' });
+        expect(classifyTool('Edit', { file_path: 'a.ts' })).toEqual({ activity: 'edit', target: 'a.ts' });
+        expect(classifyTool('Write', { path: 'b.ts' })).toEqual({ activity: 'edit', target: 'b.ts' });
+        expect(classifyTool('Delete', { path: 'c.ts' })).toEqual({ activity: 'edit', target: 'c.ts' });
+        expect(classifyTool('Grep', { pattern: 'x' })).toEqual({ activity: 'search' });
+        expect(classifyTool('Glob', { pattern: '*.ts' })).toEqual({ activity: 'search' });
+        expect(classifyTool('WebFetch', { url: 'https://example.com' })).toEqual({ activity: 'search' });
+        expect(classifyTool('Bash', { command: 'ls' })).toEqual({ activity: 'command' });
+        expect(classifyTool('ls', { path: 'src' })).toEqual({ activity: 'list', target: 'src' });
+    });
+
+    it('takes a listing with no folder named for the working folder, and any other tool as other', () => {
+        expect(classifyTool('list_dir', {})).toEqual({ activity: 'list', target: '.' });
+        expect(classifyTool('create_task', { title: 'x' })).toEqual({ activity: 'other' });
+        expect(classifyTool('Think', undefined)).toEqual({ activity: 'other' });
     });
 });

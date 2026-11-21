@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { foldFinishedWork, forkPointId, hasMessageActions, workedForLabel, type StreamBlock } from './turns';
+import { foldFinishedWork, forkPointId, groupToolRuns, hasMessageActions, workedForLabel, type ItemBlock, type StreamBlock } from './turns';
 
 import type { StreamItem, StreamItemBody } from '@clowdy/protocol';
 
@@ -13,7 +13,11 @@ const note = (at: number) => item({ kind: 'note', text: 'started' }, at);
 const failure = (at: number) => item({ kind: 'error', text: 'It failed' }, at);
 const asking = (at: number) => item({ kind: 'question', questionId: `q-${ at }`, text: 'Which one?', options: [] }, at);
 
-const shape = (blocks: StreamBlock[]) => blocks.map(block => (block.kind === 'worked' ? `worked(${ block.items.length }): ${ block.label }` : block.item.body.kind));
+const shape = (blocks: StreamBlock[]) => blocks.map((block) => {
+    if (block.kind === 'worked') return `worked(${ block.items.length }): ${ block.label }`;
+
+    return block.kind === 'tools' ? `tools(${ block.items.length })` : block.item.body.kind;
+});
 
 describe('foldFinishedWork', () => {
     it('folds the work between the person\'s message and the answer of a finished turn', () => {
@@ -177,5 +181,50 @@ describe('workedForLabel', () => {
     it('says only "Worked" when the times do not make a duration', () => {
         expect(workedForLabel(5, 1)).toBe('Worked');
         expect(workedForLabel(Number.NaN, 1)).toBe('Worked');
+    });
+});
+
+describe('groupToolRuns', () => {
+    const named = (name: string, at: number) => item({ kind: 'tool', toolCallId: `t-${ at }`, name, input: {}, state: 'done' }, at);
+
+    it('puts two or more calls in a row under one block, in order, and leaves a call alone as it is', () => {
+        const items = [user(0), tool(1000), tool(2000), tool(3000), said(4000, 'Half way.'), tool(5000), said(6000, 'More.')];
+        const blocks = groupToolRuns(foldFinishedWork(items, true));
+
+        expect(shape(blocks)).toEqual(['user', 'tools(3)', 'assistant', 'tool', 'assistant']);
+        expect(blocks[1]).toEqual({ kind: 'tools', key: `tools-${ items[1].id }`, items: [items[1], items[2], items[3]] });
+    });
+
+    it('ends a run at anything that is not a call: a note, an error, a question', () => {
+        const items = [user(0), tool(1000), tool(2000), note(3000), tool(4000), tool(5000), failure(6000), tool(7000), tool(8000), asking(9000)];
+
+        expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tools(2)', 'note', 'tools(2)', 'error', 'tools(2)', 'question']);
+    });
+
+    it('keeps a sub-agent\'s card and a compaction out of a run: each is a line of its own', () => {
+        const items = [user(0), tool(1000), named('Agent', 2000), tool(3000), tool(4000), named('compact', 5000), tool(6000)];
+
+        expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tool', 'tool', 'tools(2)', 'tool', 'tool']);
+    });
+
+    it('leaves the calls of a fold in it, for the view to group when the fold opens, and groups the same calls outside one', () => {
+        const items = [user(0), tool(1000), tool(2000), said(3000, 'Done.')];
+        const [, worked] = groupToolRuns(foldFinishedWork(items, false));
+
+        expect(worked).toMatchObject({ kind: 'worked', items: [items[1], items[2]] });
+        expect(shape(groupToolRuns(foldFinishedWork(items.slice(0, 3), true)))).toEqual(['user', 'tools(2)']);
+    });
+
+    it('groups the items of a fold when it is given them as blocks, as the view does', () => {
+        const items = [tool(1000), tool(2000), said(3000, 'Half way.'), tool(4000)];
+        const blocks = groupToolRuns(items.map((entry): ItemBlock => ({ kind: 'item', item: entry })));
+
+        expect(shape(blocks)).toEqual(['tools(2)', 'assistant', 'tool']);
+    });
+
+    it('does not take the final answer of a turn, which is an item with no tool in it', () => {
+        const items = [user(0), tool(1000), tool(2000), said(3000, 'Done.')];
+
+        expect(shape(groupToolRuns(foldFinishedWork(items, false)))).toEqual(['user', 'worked(2): Worked for 3s', 'assistant']);
     });
 });

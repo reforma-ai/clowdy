@@ -21,9 +21,10 @@ import { SubagentCard } from './SubagentCard';
 import { isSubagentTool } from './subagents';
 import { ThreadMessageCard, ThreadNoticeCards } from './ThreadCards';
 import { ToolCard } from './ToolCard';
+import { ToolGroup } from './ToolGroup';
 import { turnMarks } from './turnMarks';
 import { TurnRail } from './TurnRail';
-import { foldFinishedWork, forkPointId, hasMessageActions, type StreamBlock } from './turns';
+import { foldFinishedWork, forkPointId, groupToolRuns, hasMessageActions, type ItemBlock, type StreamBlock } from './turns';
 import { UserBubble } from './UserBubble';
 import { Worked } from './Worked';
 import { WorkingLine } from './WorkingLine';
@@ -63,7 +64,7 @@ export interface StreamEditing {
 
 export interface StreamViewProps {
     items: StreamItem[];
-    /** The run is going, or waits for the person: its latest turn stays open. Once it is over, that turn folds its work too. */
+    /** The run is going, or waits for the person: its latest turn stays open, and so does the run of tool calls at its end. Once it is over, that turn folds its work too. */
     active?: boolean;
     /** The run is going: ends the stream with a live line. A string replaces the default "Working…". */
     working?: boolean | string;
@@ -107,7 +108,7 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
     const marks = useMemo(() => turnMarks(items), [items]);
     // What was there when the stream first showed is not news: only a message that comes later rises into place.
     const [shown] = useState(() => new Set(items.map(item => item.id)));
-    const blocks = useMemo(() => foldFinishedWork(items, active), [items, active]);
+    const blocks = useMemo(() => groupToolRuns(foldFinishedWork(items, active)), [items, active]);
     const lastWithActions = messageActions ? blocks.findLast(hasMessageActions)?.item.id : undefined;
     const forkPoint = forkedFrom && forkPointId(items, forkedFrom.atSeq);
     const last = items.at(-1)?.body;
@@ -170,7 +171,7 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
     const divider = forkedFrom && <ForkDivider title={ forkedFrom.title } onOpen={ forkedFrom.onOpen } />;
 
     /** The divider of a fork goes after the block that holds its fork point: the answer itself, or the fold the point is inside. */
-    const endsHistory = (block: StreamBlock) => forkPoint !== undefined && (block.kind === 'worked' ? block.items.some(item => item.id === forkPoint) : block.item.id === forkPoint);
+    const endsHistory = (block: StreamBlock) => forkPoint !== undefined && (block.kind === 'item' ? block.item.id === forkPoint : block.items.some(item => item.id === forkPoint));
 
     const renderItem = (item: StreamItem, actions?: MessageActionsConfig): ReactNode => {
         const { body } = item;
@@ -207,22 +208,37 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
                 <div ref={ scrollRef } className={ styles.scroll }>
                     <ContentColumn ref={ contentRef } className={ styles.content }>
                         { items.length === 0 && emptyState }
-                        { blocks.map(block => (block.kind === 'worked'
-                            ? (
-                                <Fragment key={ block.key }>
-                                    <Worked label={ block.label }>
-                                        { block.items.map(item => <Fragment key={ item.id }>{ renderItem(item) }</Fragment>) }
-                                    </Worked>
-                                    { endsHistory(block) && divider }
-                                </Fragment>
-                            )
-                            : (
-                                <Fragment key={ block.item.id }>
-                                    { renderItem(block.item, actionsOf(block)) }
-                                    { endsHistory(block) && divider }
-                                    { decorate?.(block.item) }
-                                </Fragment>
-                            ))) }
+                        { blocks.map((block, index) => {
+                            switch (block.kind) {
+                                case 'worked':
+                                    return (
+                                        <Fragment key={ block.key }>
+                                            <Worked label={ block.label }>
+                                                { groupToolRuns(block.items.map((item): ItemBlock => ({ kind: 'item', item }))).map(part => (part.kind === 'tools'
+                                                    ? <ToolGroup key={ part.key } items={ part.items } />
+                                                    : <Fragment key={ part.item.id }>{ renderItem(part.item) }</Fragment>)) }
+                                            </Worked>
+                                            { endsHistory(block) && divider }
+                                        </Fragment>
+                                    );
+                                case 'tools':
+                                    // The run at the end of a stream that is going is what the agent is doing now: it stays open, and closes when the agent goes on.
+                                    return (
+                                        <Fragment key={ block.key }>
+                                            <ToolGroup items={ block.items } live={ active && index === blocks.length - 1 } />
+                                            { endsHistory(block) && divider }
+                                        </Fragment>
+                                    );
+                                case 'item':
+                                    return (
+                                        <Fragment key={ block.item.id }>
+                                            { renderItem(block.item, actionsOf(block)) }
+                                            { endsHistory(block) && divider }
+                                            { decorate?.(block.item) }
+                                        </Fragment>
+                                    );
+                            }
+                        }) }
                         { showWorking && <WorkingLine text={ typeof working === 'string' ? working : undefined } /> }
                     </ContentColumn>
                 </div>

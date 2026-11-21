@@ -1,12 +1,26 @@
+import { COMPACT_TOOL } from './compaction';
+import { isSubagentTool } from './subagents';
+
 import type { StreamItem } from '@clowdy/protocol';
 
+/** An item as it is. */
+export type ItemBlock = Extract<StreamBlock, { kind: 'item' }>;
+
+/** Tool calls that follow one another, drawn under one line that tells what they did (`ToolGroup`). */
+export interface ToolRun {
+    kind: 'tools';
+    key: string;
+    items: StreamItem[];
+}
+
 /**
- * What a stream draws, in order: an item as it is, or the work of a finished turn folded under one line. `answer` marks
- * the final answer of a finished turn (a turn still running has none yet).
+ * What a stream draws, in order: an item as it is, the work of a finished turn folded under one line, or a run of tool calls under one line. `answer` marks
+ * the final answer of a finished turn (a turn still running has none yet). `foldFinishedWork` makes the first two; `groupToolRuns` adds the third.
  */
 export type StreamBlock =
     | { kind: 'item'; item: StreamItem; answer?: true }
-    | { kind: 'worked'; key: string; label: string; items: StreamItem[] };
+    | { kind: 'worked'; key: string; label: string; items: StreamItem[] }
+    | ToolRun;
 
 /** "Worked for 25s", "Worked for 2m 5s", "Worked for 1h 10m". */
 export function workedForLabel(startedAt: number, endedAt: number): string {
@@ -101,4 +115,40 @@ export function foldFinishedWork(items: readonly StreamItem[], active: boolean):
 
         return latest && active ? plain(turn) : foldTurn(turn, !latest);
     });
+}
+
+/** A call that a group may hold: not a sub-agent's card or a compaction, which are lines of their own. */
+const isPlainTool = (item: StreamItem) => item.body.kind === 'tool' && item.body.name !== COMPACT_TOOL && !isSubagentTool(item.body.name);
+
+/**
+ * Puts tool calls that follow one another under one line: two or more in a row become one `tools` block; a call alone stays as it is, since a line
+ * with nothing more to say than the call is no gain. Anything else (a message, a note, a card of a sub-agent) ends the run.
+ */
+export function groupToolRuns(blocks: readonly ItemBlock[]): (ItemBlock | ToolRun)[];
+export function groupToolRuns(blocks: readonly StreamBlock[]): StreamBlock[];
+export function groupToolRuns(blocks: readonly StreamBlock[]): StreamBlock[] {
+    const grouped: StreamBlock[] = [];
+    let run: ItemBlock[] = [];
+
+    const flush = () => {
+        if (run.length >= 2) grouped.push({ kind: 'tools', key: `tools-${ run[0].item.id }`, items: run.map(block => block.item) });
+        else grouped.push(...run);
+
+        run = [];
+    };
+
+    for (const block of blocks) {
+        if (block.kind === 'item' && !block.answer && isPlainTool(block.item)) {
+            run.push(block);
+
+            continue;
+        }
+
+        flush();
+        grouped.push(block);
+    }
+
+    flush();
+
+    return grouped;
 }
