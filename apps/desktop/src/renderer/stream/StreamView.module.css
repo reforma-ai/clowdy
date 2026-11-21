@@ -18,6 +18,8 @@
     flex-direction: column;
     gap: var(--spacing-lg);
     padding: var(--spacing-xxl);
+    /* Air under the last message, so it can be scrolled up away from the message box: what the agent is writing is read at eye level, not at the bottom edge. */
+    padding-block-end: var(--spacing-192);
 }
 
 /* Scroll to the latest message: there while the stream is not at its end. */

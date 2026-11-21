@@ -260,6 +260,33 @@ describe('StreamView', () => {
         expect(scrolled).toHaveBeenCalledWith({ top: 224, behavior: 'auto' });
     });
 
+    it('makes the last tick current once the stream is scrolled to its end, though the last message has not reached the top', async () => {
+        const many = Array.from({ length: 7 }, (_, n) => item(n, { kind: 'user', text: `Ask ${ n }` }));
+
+        await act(async () => root.render(<StreamView items={ many } />));
+
+        const rail = container.querySelector('[aria-label="Messages"]');
+        const scroll = container.querySelector<HTMLElement>('[data-turn="i-4"]')?.parentElement?.parentElement as HTMLElement;
+        const box = (top: number): DOMRect => ({ top, bottom: top + 40, left: 0, right: 0, width: 0, height: 40, x: 0, y: top, toJSON: () => ({}) });
+        const current = () => rail?.querySelector('[aria-current]')?.getAttribute('data-tick');
+        const scrollTo = async (top: number) => {
+            Object.defineProperty(scroll, 'scrollTop', { configurable: true, value: top });
+            await act(async () => void scroll.dispatchEvent(new Event('scroll')));
+        };
+
+        // Every message sits below the top of the stream, as the last ones do when the answers are short.
+        scroll.getBoundingClientRect = () => box(0);
+        container.querySelectorAll<HTMLElement>('[data-turn]').forEach((message, n) => void (message.getBoundingClientRect = () => box(300 + n * 100)));
+        Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 2000 });
+        Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 700 });
+
+        await scrollTo(0);
+        expect(current()).toBe('i-0');
+
+        await scrollTo(1299);
+        expect(current()).toBe('i-6');
+    });
+
     it('keeps one card and swaps its text as the pointer moves across ticks', async () => {
         const many = Array.from({ length: 7 }, (_, n) => item(n, { kind: 'user', text: `Ask ${ n }` }));
 
