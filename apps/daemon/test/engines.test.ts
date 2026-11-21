@@ -38,14 +38,15 @@ describe('the engines of a daemon', () => {
         engines.stop();
     });
 
-    test('the engines say whether their chats may fork: the fake one and Claude Code do, Codex and the other agents do not', () => {
+    test('the engines say whether their chats may fork: the fake one, Claude Code and Codex do, the other agents do not', () => {
         const registry = new AgentRegistry({ discovery: quietDiscovery() });
         const engines = createEngines(testConfig(), registry, {});
 
         expect(engines.get('fake')?.canFork).toBe(true);
         expect(engines.get('claude')?.canFork).toBe(true);
+        expect(engines.get('codex')?.canFork).toBe(true);
 
-        for (const id of ['codex', 'cursor', 'opencode', 'gemini', 'copilot', 'grok', 'omp', 'hermes']) {
+        for (const id of ['cursor', 'opencode', 'gemini', 'copilot', 'grok', 'omp', 'hermes']) {
             expect(engines.get(id)?.canFork).toBe(false);
         }
 

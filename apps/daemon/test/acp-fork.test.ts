@@ -274,8 +274,8 @@ describe('a fork of an ACP session over v1', () => {
 });
 
 describe('the fork flag of an agent', () => {
-    test('Claude Code is flagged, and so is no agent that was not checked: Codex stays off until its pin forks for real, and every v1 agent is off', () => {
-        expect(KNOWN_AGENTS.filter(spec => spec.fork).map(spec => spec.id)).toEqual(['claude']);
+    test('Claude Code and Codex are flagged, and so is no other agent: every v1 agent is off', () => {
+        expect(KNOWN_AGENTS.filter(spec => spec.fork).map(spec => spec.id)).toEqual(['claude', 'codex']);
     });
 
     test('the registry says it for a built-in agent, and never for a custom one or one it does not know', () => {
@@ -284,7 +284,7 @@ describe('the fork flag of an agent', () => {
         registry.add({ id: 'mine', name: 'Mine', command: 'my-agent', args: [] });
 
         expect(registry.canFork('claude')).toBe(true);
-        expect(registry.canFork('codex')).toBe(false);
+        expect(registry.canFork('codex')).toBe(true);
         expect(registry.canFork('cursor')).toBe(false);
         expect(registry.canFork('mine')).toBe(false);
         expect(registry.canFork('nobody')).toBe(false);

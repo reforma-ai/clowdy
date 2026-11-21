@@ -182,6 +182,12 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         protocol: 'v2',
         wakesOnBackgroundEnd: true,
         compact: '/compact',
+        // `codex-acp@2.8.0` reads the same fork point (`SessionFork.ts`: the message id is looked up among the thread's items and `thread/fork` runs through the
+        // turn that holds it, which is a turn end, where Clowdy only ever forks). ON BY THE OWNER'S DECISION OF 2026-11-21, NOT CHECKED against the real adapter
+        // (the pin could not be launched on the check's machine before 2026-11-22): the owner tests it. A turn whose message the adapter gives no id for shows no
+        // Fork or Edit, and a fork the adapter refuses fails with a message and creates nothing. Run the check in `real-checks.md` for Codex and turn the flag
+        // off if it fails.
+        fork: true,
         settings: [
             {
                 // Codex's memories are a feature that is off until the person turns it on, so "on" has to turn the feature on too; "off" is also stated, so a feature the person turned on in their own Codex does not reach Clowdy's runs.
