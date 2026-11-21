@@ -133,15 +133,29 @@ describe('the agent\'s reasoning', () => {
         expect([...container.querySelectorAll('button')].some(button => button.textContent?.startsWith('Ran'))).toBe(false);
     });
 
-    it('leaves a thought that trails the answer under the answer, outside the fold', async () => {
+    it('takes a thought that trails the answer into the fold: no loose line under the answer', async () => {
         await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami'), said(3, 'All fine.'), thought(4, 'Anything else?', true, 1000)] } />));
 
-        const text = container.textContent ?? '';
+        expect(line('Thought 1s')).toBeUndefined();
 
-        expect(worked()).toBeDefined();
-        expect(line('Thought 1s')).toBeDefined();
-        expect(text.indexOf('All fine.')).toBeLessThan(text.indexOf('Thought 1s'));
-        expect(text.indexOf('Worked for')).toBeLessThan(text.indexOf('All fine.'));
+        await act(async () => worked()!.click());
+
+        // The group of the two calls holds the thought, since it ends their run.
+        expect(line('Ran 2 commands')).toBeDefined();
+        expect(container.textContent).not.toContain('Anything else?');
+        expect((container.textContent ?? '').indexOf('Worked for')).toBeLessThan((container.textContent ?? '').indexOf('All fine.'));
+    });
+
+    it('is one row for thoughts that follow one another: the words together, the time added', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'Reading the form first.', true, 2000), thought(2, 'Then the price helper.', true, 1500), said(3, 'On it.', false)] } active working />));
+
+        expect(container.querySelectorAll('button[aria-expanded]')).toHaveLength(1);
+        expect(line('Thought 4s')).toBeDefined();
+
+        await act(async () => line('Thought 4s')!.click());
+
+        expect(container.textContent).toContain('Reading the form first.');
+        expect(container.textContent).toContain('Then the price helper.');
     });
 
     it('folds a turn whose only work is a thought, and puts the divider of a fork after the answer that a thought precedes', async () => {

@@ -19,6 +19,7 @@ function shownOf(content: ToolCallContent[] | null | undefined): string | undefi
 interface Child {
     name: string;
     message: Message;
+    thought: Thought;
     /** The call that started it ended, and so did it: whatever it still reports is dropped. */
     ended: boolean;
 }
@@ -123,9 +124,11 @@ export class UpdateMapper {
         return [...this.close(), ...usageEvent(response.usage, this.gauges.cost, this.options.costBefore)];
     }
 
-    /** Ends the open assistant message (and the open thought) of the session, or the open message of the sub-agent `agentId`, if there is one. */
+    /** Ends the open assistant message and the open thought of the session, or of the sub-agent `agentId`, if there is one. */
     close(agentId?: string): EngineEvent[] {
-        return agentId === undefined ? [...this.thought.close(), ...this.messageOf(agentId).close(agentId)] : this.messageOf(agentId).close(agentId);
+        const thought = agentId === undefined ? this.thought : this.children.get(agentId)?.thought;
+
+        return [...thought?.close(agentId) ?? [], ...this.messageOf(agentId).close(agentId)];
     }
 
     /**
@@ -159,7 +162,7 @@ export class UpdateMapper {
 
             const { name, description } = identityOf(call?.input);
 
-            child = { name, message: new Message(), ended: false };
+            child = { name, message: new Message(), thought: new Thought(), ended: false };
             this.children.set(agentId, child);
             events.push({ type: 'subagent', agentId, parentToolCallId: agentId, name, ...(description !== undefined && { description }), state: 'running' });
         }
@@ -171,7 +174,13 @@ export class UpdateMapper {
         switch (update.sessionUpdate) {
             case 'agent_message_chunk':
                 if (update.content.type === 'text') {
-                    events.push(...child.message.append(update.content.text, update.messageId ?? undefined, agentId));
+                    events.push(...child.thought.close(agentId), ...child.message.append(update.content.text, update.messageId ?? undefined, agentId));
+                }
+
+                break;
+            case 'agent_thought_chunk':
+                if (update.content.type === 'text') {
+                    events.push(...child.thought.append(update.content.text, update.messageId ?? undefined, agentId));
                 }
 
                 break;
@@ -182,7 +191,7 @@ export class UpdateMapper {
                 events.push(...this.tool(update, agentId));
                 break;
             default:
-                // Its thoughts and plans are not shown; the window and the cost are the session's.
+                // Its plans are not shown; the window and the cost are the session's.
                 break;
         }
 

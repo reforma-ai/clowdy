@@ -42,6 +42,8 @@ export function workedForLabel(startedAt: number, endedAt: number): string {
 /** The answer of a turn: its last message with text in it, written out. */
 const isAnswer = (item: StreamItem) => item.body.kind === 'assistant' && item.body.done && item.body.text.trim() !== '';
 
+const isThought = (item: StreamItem) => item.body.kind === 'reasoning';
+
 /** What the person must see even in a turn that is over: a failure, and a question put to them. */
 const needsAttention = (item: StreamItem) => item.body.kind === 'error' || item.body.kind === 'question';
 
@@ -51,7 +53,8 @@ function plain(turn: StreamItem[], answer?: StreamItem): StreamBlock[] {
 
 /**
  * A turn that is over keeps what the person said and the answer, and folds the work between them (tool calls,
- * notes and messages on the way) under one "Worked for" line. Errors and questions stay out of the fold.
+ * notes and messages on the way) under one "Worked for" line. Errors and questions stay out of the fold. A thought that comes after the answer was
+ * thought before it, as far as the person can tell, so it joins the work in the fold and is no loose line under the answer.
  */
 function foldTurn(turn: StreamItem[], answered: boolean): StreamBlock[] {
     const head = turn[0].body.kind === 'user' ? 1 : 0;
@@ -63,7 +66,8 @@ function foldTurn(turn: StreamItem[], answered: boolean): StreamBlock[] {
 
     const end = answerAt < 0 ? turn.length : answerAt;
     const between = turn.slice(head, end);
-    const work = between.filter(item => !needsAttention(item));
+    const after = turn.slice(end);
+    const work = [...between.filter(item => !needsAttention(item)), ...after.filter(isThought)];
 
     if (work.length === 0) return plain(turn, answer);
 
@@ -73,7 +77,7 @@ function foldTurn(turn: StreamItem[], answered: boolean): StreamBlock[] {
         ...plain(turn.slice(0, head)),
         { kind: 'worked', key: `worked-${ work[0].id }`, label, items: work },
         ...plain(between.filter(needsAttention)),
-        ...plain(turn.slice(end), answer),
+        ...plain(after.filter(item => !isThought(item)), answer),
     ];
 }
 
@@ -121,7 +125,8 @@ export function foldFinishedWork(items: readonly StreamItem[], active: boolean):
 const isRunItem = (item: StreamItem) => item.body.kind === 'reasoning' || (item.body.kind === 'tool' && item.body.name !== COMPACT_TOOL && !isSubagentTool(item.body.name));
 
 /**
- * Puts tool calls that follow one another under one block, with the thoughts of the agent before, between and after them: a run of two or more calls
+ * Puts tool calls that follow one another under one block, with the thoughts of the agent before, between and after them (thoughts that follow one another
+ * are one thought first: `mergeThoughts`): a run of two or more calls
  * becomes one `tools` block; a call alone stays as it is, since a line with nothing more to say than the call is no gain, and so do thoughts that have
  * fewer than two calls in their run. Anything else (a message, a note, a card of a sub-agent) ends the run.
  */
@@ -138,7 +143,7 @@ export function groupToolRuns(blocks: readonly StreamBlock[]): StreamBlock[] {
         run = [];
     };
 
-    for (const block of blocks) {
+    for (const block of mergeThoughts(blocks)) {
         if (block.kind === 'item' && !block.answer && isRunItem(block.item)) {
             run.push(block);
 
@@ -152,4 +157,50 @@ export function groupToolRuns(blocks: readonly StreamBlock[]): StreamBlock[] {
     flush();
 
     return grouped;
+}
+
+/**
+ * Thoughts that follow one another read as one thought, as Reforma's reasoning part does: the agent thinks in several short pieces (one a step, a heading
+ * a piece), and a row for each would be a list of lines with a word or two in them. The words join with a blank line between, the time is the sum, and the
+ * thought is still going while its last piece is. The merged item has the first one's id, which keeps its place and its state as pieces come.
+ */
+export function mergeThoughts(blocks: readonly StreamBlock[]): StreamBlock[] {
+    const merged: StreamBlock[] = [];
+    let pieces: ItemBlock[] = [];
+
+    const flush = () => {
+        if (pieces.length > 0) merged.push(pieces.length === 1 ? pieces[0] : { kind: 'item', item: { ...pieces[0].item, body: joined(pieces.map(piece => piece.item.body)) } });
+
+        pieces = [];
+    };
+
+    for (const block of blocks) {
+        if (block.kind === 'item' && !block.answer && block.item.body.kind === 'reasoning') {
+            pieces.push(block);
+
+            continue;
+        }
+
+        flush();
+        merged.push(block);
+    }
+
+    flush();
+
+    return merged;
+}
+
+type ReasoningBody = Extract<StreamItem['body'], { kind: 'reasoning' }>;
+
+function joined(bodies: readonly StreamItem['body'][]): ReasoningBody {
+    const thoughts = bodies.filter((body): body is ReasoningBody => body.kind === 'reasoning');
+    const done = thoughts.every(thought => thought.done);
+    const timed = thoughts.filter(thought => thought.durationMs !== undefined);
+
+    return {
+        kind: 'reasoning',
+        text: thoughts.map(thought => thought.text.trim()).filter(Boolean).join('\n\n'),
+        done,
+        ...(done && timed.length > 0 && { durationMs: timed.reduce((total, thought) => total + (thought.durationMs ?? 0), 0) }),
+    };
 }

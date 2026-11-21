@@ -73,8 +73,6 @@ export function activityOf(body: StreamItemBody | undefined): string | undefined
             return toolActivity(body.name, body.input);
         case 'assistant':
             return body.done ? 'Thinking…' : 'Finishing reply';
-        case 'reasoning':
-            return 'Thinking…';
         case 'question':
             return body.answer === undefined ? 'Waiting for you' : undefined;
         default:
@@ -82,12 +80,12 @@ export function activityOf(body: StreamItemBody | undefined): string | undefined
     }
 }
 
-/** The latest item of a stream that says what its agent is doing: notes and errors are about it, not by it. */
+/** The latest item of a stream that says what its agent is doing: notes and errors are about it, not by it, and its thoughts are left out (the card says the operation, not the musing). */
 export function latestActivity(items: readonly StreamItem[]): string | undefined {
     for (let index = items.length - 1; index >= 0; index--) {
         const { body } = items[index];
 
-        if (body.kind === 'tool' || body.kind === 'assistant' || body.kind === 'reasoning' || body.kind === 'question' || body.kind === 'user') return activityOf(body);
+        if (body.kind === 'tool' || body.kind === 'assistant' || body.kind === 'question' || body.kind === 'user') return activityOf(body);
     }
 
     return undefined;

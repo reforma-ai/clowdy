@@ -337,13 +337,22 @@ export class UpdateMapperV2 {
         const stamp = (update as { _meta?: Json | null })._meta?.claudeCode;
         const parentToolUseId = isRecord(stamp) && typeof stamp.parentToolUseId === 'string' ? stamp.parentToolUseId : undefined;
         const message = this.children.messageOf(agentId) as Message;
+        const thought = this.children.thoughtOf(agentId) as Thought;
 
         if (SessionUpdate.isAgentMessageChunk(update)) {
-            return ContentBlock.isText(update.content) ? [...this.children.heard(agentId, parentToolUseId), ...message.append(update.content.text, update.messageId, agentId)] : [];
+            return ContentBlock.isText(update.content) ? [...this.children.heard(agentId, parentToolUseId), ...thought.close(agentId), ...message.append(update.content.text, update.messageId, agentId)] : [];
         }
 
         if (SessionUpdate.isAgentMessage(update)) {
-            return update.content ? [...this.children.heard(agentId, parentToolUseId), ...message.upsert(update.messageId, textOf(update.content), agentId)] : [];
+            return update.content ? [...this.children.heard(agentId, parentToolUseId), ...thought.close(agentId), ...message.upsert(update.messageId, textOf(update.content), agentId)] : [];
+        }
+
+        if (SessionUpdate.isAgentThoughtChunk(update)) {
+            return ContentBlock.isText(update.content) ? [...this.children.heard(agentId, parentToolUseId), ...thought.append(update.content.text, update.messageId, agentId)] : [];
+        }
+
+        if (SessionUpdate.isAgentThought(update)) {
+            return update.content ? [...this.children.heard(agentId, parentToolUseId), ...thought.upsert(update.messageId, textOf(update.content), agentId)] : [];
         }
 
         if (SessionUpdate.isToolCallUpdate(update)) {
@@ -366,14 +375,14 @@ export class UpdateMapperV2 {
             this.print(update.terminalId, update.data, 'append');
         }
 
-        // Its thoughts, plans, options and numbers: nothing the runtime shows (the window and the cost are the session's).
+        // Its plans, options and numbers: nothing the runtime shows (the window and the cost are the session's).
         return [];
     }
 
-    /** Ends the open assistant message of the session, or of the sub-agent `agentId`, if there is one. */
+    /** Ends the open assistant message and the open thought of the session, or of the sub-agent `agentId`, if there is one. */
     close(agentId?: string): EngineEvent[] {
         if (agentId !== undefined) {
-            return this.children.messageOf(agentId)?.close(agentId) ?? [];
+            return [...this.children.thoughtOf(agentId)?.close(agentId) ?? [], ...this.children.messageOf(agentId)?.close(agentId) ?? []];
         }
 
         return [...this.thought.close(), ...this.settle(), ...this.message.close()];

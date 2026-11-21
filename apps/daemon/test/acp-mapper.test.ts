@@ -403,14 +403,22 @@ describe('thoughts', () => {
         expect(mapper.result()).toBe('Done.');
     });
 
-    test('a sub-agent\'s thoughts are not shown', () => {
+    test('a sub-agent\'s thoughts go to its own stream under its agentId, apart from the session\'s own', () => {
         const claude = { claudeCode: { parentToolUseId: 'agent-1' } };
         const { events } = run([
+            think('Session thinks.'),
             { sessionUpdate: 'tool_call', toolCallId: 'agent-1', title: 'Agent', rawInput: { subagent_type: 'Explore', description: 'Look' } },
             { ...think('Child thinks.'), _meta: claude } as SessionUpdate,
+            { ...chunk('Child says.'), _meta: claude } as SessionUpdate,
         ]);
 
-        expect(events.filter(event => event.type === 'thought')).toEqual([]);
+        expect(events.filter(event => event.type === 'thought' || event.type === 'text').map(event => (event.type === 'thought' ? ['thought', event.delta, event.done, event.agentId] : ['text', event.delta, event.done, event.agentId]))).toEqual([
+            ['thought', 'Session thinks.', false, undefined],
+            ['thought', '', true, undefined],
+            ['thought', 'Child thinks.', false, 'agent-1'],
+            ['thought', '', true, 'agent-1'],
+            ['text', 'Child says.', false, 'agent-1'],
+        ]);
     });
 });
 
@@ -1180,6 +1188,48 @@ describe('sub-agents of ACP v2', () => {
 
             // The grandchildren end `done` with their reports at their own `idle`; the middle one is left to the list, which loses it when its own work is over.
             expect(subagents(events).flatMap(event => event.type === 'subagent' && event.state !== 'running' ? [[event.agentId === middleId ? 'middle' : 'grandchild', event.state]] : [])).toEqual([['grandchild', 'done'], ['grandchild', 'done']]);
+        });
+    });
+
+    describe('a sub-agent\'s thoughts', () => {
+        const announce = (): SessionUpdateV2 => ({ sessionUpdate: 'subagent_update', sessionId: 'child-1', title: 'Look around', description: 'Explore' });
+        const kinds = (events: EngineEvent[]) => events.filter(event => event.type === 'thought' || event.type === 'text').map(event => (event.type === 'thought' ? ['thought', event.delta, event.done, event.agentId] : ['text', event.delta, event.done, event.agentId]));
+
+        test('go to its own stream under its session id: a message ends the open one, a whole thought shows what the stream lacks', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(announce());
+
+            const events = [
+                ...mapper.update({ sessionUpdate: 'agent_thought_chunk', messageId: 't1', content: { type: 'text', text: 'Hel' } }, 'child-1'),
+                ...mapper.update({ sessionUpdate: 'agent_thought', messageId: 't1', content: [{ type: 'text', text: 'Hello' }] }, 'child-1'),
+                ...mapper.update({ sessionUpdate: 'agent_message_chunk', messageId: 'm1', content: { type: 'text', text: 'Found it' } }, 'child-1'),
+            ];
+
+            expect(kinds(events)).toEqual([
+                ['thought', 'Hel', false, 'child-1'],
+                ['thought', 'lo', false, 'child-1'],
+                ['thought', '', true, 'child-1'],
+                ['text', 'Found it', false, 'child-1'],
+            ]);
+        });
+
+        test('are apart from the session\'s own, and the sub-agent\'s end closes the one it has open', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(announce());
+
+            const events = [
+                ...mapper.update({ sessionUpdate: 'agent_thought_chunk', messageId: 'own', content: { type: 'text', text: 'Session' } }),
+                ...mapper.update({ sessionUpdate: 'agent_thought_chunk', messageId: 'c', content: { type: 'text', text: 'Child' } }, 'child-1'),
+                ...mapper.update({ sessionUpdate: 'state_update', state: 'idle', stopReason: 'end_turn' }, 'child-1'),
+            ];
+
+            expect(kinds(events)).toEqual([
+                ['thought', 'Session', false, undefined],
+                ['thought', 'Child', false, 'child-1'],
+                ['thought', '', true, 'child-1'],
+            ]);
         });
     });
 

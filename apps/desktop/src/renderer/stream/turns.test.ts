@@ -27,9 +27,13 @@ describe('foldFinishedWork', () => {
         expect(shape(foldFinishedWork(items, false))).toEqual(['user', 'worked(4): Worked for 2m 5s', 'assistant']);
     });
 
-    it('folds a thought as work, and leaves one that trails the answer where it came', () => {
+    it('folds a thought as work, and a thought that trails the answer too: it was thought before it', () => {
         expect(shape(foldFinishedWork([user(0), thought(500), said(1000)], false))).toEqual(['user', 'worked(1): Worked for 1s', 'assistant']);
-        expect(shape(foldFinishedWork([user(0), thought(500), said(1000), thought(1500)], false))).toEqual(['user', 'worked(1): Worked for 1s', 'assistant', 'reasoning']);
+        expect(shape(foldFinishedWork([user(0), thought(500), said(1000), thought(1500)], false))).toEqual(['user', 'worked(2): Worked for 1s', 'assistant']);
+        // Only a thought after the answer: the fold holds it, and the answer is still last.
+        expect(shape(foldFinishedWork([user(0), said(1000), thought(1500)], false))).toEqual(['user', 'worked(1): Worked for 1s', 'assistant']);
+        // What else follows the answer stays where it came, a note for one.
+        expect(shape(foldFinishedWork([user(0), said(1000), thought(1500), note(2000)], false))).toEqual(['user', 'worked(1): Worked for 1s', 'assistant', 'note']);
         // A turn that went on past the person's next message is folded whole, even when it is only a thought.
         expect(shape(foldFinishedWork([user(0), thought(500), user(2000), said(3000)], true))).toEqual(['user', 'worked(1): Worked for 1s', 'user', 'assistant']);
     });
@@ -220,7 +224,23 @@ describe('groupToolRuns', () => {
     it('leaves a thought alone as it is, and with a single call: a group is for two calls or more', () => {
         expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), said(1000, 'Looking.'), thought(1500), tool(2000), tool(3000)], true)))).toEqual(['user', 'reasoning', 'assistant', 'tools(3)']);
         expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), tool(1000), said(2000, 'Looked.'), tool(3000), thought(3500)], true)))).toEqual(['user', 'reasoning', 'tool', 'assistant', 'tool', 'reasoning']);
-        expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), thought(1000)], true)))).toEqual(['user', 'reasoning', 'reasoning']);
+    });
+
+    it('reads thoughts that follow one another as one thought, with the words joined and the times added, going on while its last piece is', () => {
+        const pieces = [item({ kind: 'reasoning', text: '**Reading the form**', done: true, durationMs: 2000 }, 500), item({ kind: 'reasoning', text: '\nThe price is set late.\n', done: true, durationMs: 1500 }, 1000)];
+        const [, merged] = groupToolRuns(foldFinishedWork([user(0), ...pieces], true));
+
+        expect(merged).toEqual({ kind: 'item', item: { ...pieces[0], body: { kind: 'reasoning', text: '**Reading the form**\n\nThe price is set late.', done: true, durationMs: 3500 } } });
+
+        const [, going] = groupToolRuns(foldFinishedWork([user(0), pieces[0], item({ kind: 'reasoning', text: 'And then', done: false }, 1000)], true));
+
+        expect(going).toMatchObject({ item: { body: { kind: 'reasoning', text: '**Reading the form**\n\nAnd then', done: false } } });
+        expect(going).not.toMatchObject({ item: { body: { durationMs: expect.anything() } } });
+    });
+
+    it('does not join thoughts that something stands between, and a run takes the merged thought as one row', () => {
+        expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), thought(600), said(1000, 'Looking.'), thought(1500), thought(1600), tool(2000), thought(2500), thought(2600), tool(3000)], true)))).toEqual(['user', 'reasoning', 'assistant', 'tools(4)']);
+        expect(groupToolRuns(foldFinishedWork([user(0), thought(500), thought(600), tool(1000), tool(2000)], true)).map(block => block.kind === 'tools' ? block.items.length : 0)).toEqual([0, 3]);
     });
 
     it('ends a run that holds a thought at a sub-agent\'s card or a compaction, the thought staying with the calls it follows or precedes', () => {

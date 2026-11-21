@@ -211,11 +211,11 @@ export class Thought {
     private closed = new Set<string>();
 
     /** Adds `delta` to the thought called `messageId` (an agent may name none). A new id is a new thought, even with nothing between. */
-    append(delta: string, messageId?: string): EngineEvent[] {
+    append(delta: string, messageId?: string, agentId?: string): EngineEvent[] {
         const events: EngineEvent[] = [];
 
         if (this.open && messageId !== undefined && this.openId !== undefined && messageId !== this.openId) {
-            events.push(...this.close());
+            events.push(...this.close(agentId));
         }
 
         if (!delta) {
@@ -225,7 +225,7 @@ export class Thought {
         this.open = true;
         this.openId ??= messageId;
         this.text += delta;
-        events.push({ type: 'thought', delta, done: false });
+        events.push({ type: 'thought', delta, done: false, ...(agentId !== undefined && { agentId }) });
 
         return events;
     }
@@ -234,16 +234,16 @@ export class Thought {
      * A thought the agent sends whole, as it has it now (ACP v2 upserts them): the stream only grows, so what shows is what the open thought lacks. One that
      * was shown and closed already, or that does not continue the open thought, adds nothing.
      */
-    upsert(messageId: string, text: string): EngineEvent[] {
+    upsert(messageId: string, text: string, agentId?: string): EngineEvent[] {
         if (this.open && this.openId === messageId) {
-            return text.startsWith(this.text) ? this.append(text.slice(this.text.length), messageId) : [];
+            return text.startsWith(this.text) ? this.append(text.slice(this.text.length), messageId, agentId) : [];
         }
 
-        return this.closed.has(messageId) ? [] : this.append(text, messageId);
+        return this.closed.has(messageId) ? [] : this.append(text, messageId, agentId);
     }
 
     /** Ends the open thought, if there is one. */
-    close(): EngineEvent[] {
+    close(agentId?: string): EngineEvent[] {
         if (!this.open) {
             return [];
         }
@@ -256,7 +256,7 @@ export class Thought {
         this.open = false;
         this.openId = undefined;
 
-        return [{ type: 'thought', delta: '', done: true }];
+        return [{ type: 'thought', delta: '', done: true, ...(agentId !== undefined && { agentId }) }];
     }
 }
 

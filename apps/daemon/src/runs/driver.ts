@@ -873,7 +873,13 @@ export class RunDriver {
 
                         break;
                     case 'thought':
-                        writer.reasoning(event.delta, event.done);
+                        if (event.agentId === undefined) {
+                            writer.reasoning(event.delta, event.done);
+                        }
+                        else {
+                            native.stream({ ...event, agentId: event.agentId });
+                        }
+
                         break;
                     case 'tool':
                         // `ask_user` shows as a question card instead.
