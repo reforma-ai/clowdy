@@ -1,7 +1,7 @@
 import { BackgroundWork, ContentBlock, SessionUpdate, ToolCallContent } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 
 import { Children, textOf } from './children';
-import { COMPACT_TOOL, Gauges, isRecord, Message, patched, ToolLedger, usageEvent } from './mapper-core';
+import { COMPACT_TOOL, Gauges, isRecord, Message, patched, Thought, ToolLedger, usageEvent } from './mapper-core';
 import { TIMED_TOOLS, timingOf } from './timed';
 
 import type { CompactionUpdate, TerminalUpdate, ToolCallUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
@@ -71,7 +71,7 @@ function titled(text: string | null | undefined, fallback: string): string {
  * output arrives on its own and is shown as the result of a call that displays it. The turn's own lifecycle (`state_update`) is the layer's. A
  * sub-agent is a session of its own in v2: the layer passes on what the sessions it announced say, with the id of the session as `from`, and `Children`
  * (`children.ts`) turns them into a child run and the card of the call that started it; its calls and messages are mapped here, with the child's
- * `agentId`. Plans, thoughts and modes are dropped as in v1. A sub-agent's background item is named by the call that started it (see `itemIdOf`).
+ * `agentId`. A sub-agent's thoughts, plans and modes are dropped, and the session's plans and modes as in v1. A sub-agent's background item is named by the call that started it (see `itemIdOf`).
  *
  * One mapper serves a whole session, which may go on for many turns (a turn the agent starts on its own, a prompt sent into the live session): `stop`
  * ends one, `next` starts the following. `background` turns the session's list of open work into the items the runtime shows, named from what the
@@ -79,6 +79,8 @@ function titled(text: string | null | undefined, fallback: string): string {
  */
 export class UpdateMapperV2 {
     private message = new Message(true);
+    /** The session's own reasoning. A sub-agent's is not shown. */
+    private thought = new Thought();
     private tools: ToolLedger;
     private gauges: Gauges;
     private calls = new Map<string, Call>();
@@ -135,7 +137,16 @@ export class UpdateMapperV2 {
 
         // The SDK's union keeps a catch-all for updates it does not know, so each kind is asked for by its guard.
         if (SessionUpdate.isAgentMessageChunk(update)) {
-            return ContentBlock.isText(update.content) ? this.chunk(update.content.text, update.messageId) : [];
+            return ContentBlock.isText(update.content) ? [...this.thought.close(), ...this.chunk(update.content.text, update.messageId)] : [];
+        }
+
+        if (SessionUpdate.isAgentThoughtChunk(update)) {
+            return ContentBlock.isText(update.content) ? this.thought.append(update.content.text, update.messageId) : [];
+        }
+
+        if (SessionUpdate.isAgentThought(update)) {
+            // An update with no content leaves the thought as it is, and one that clears it cannot take back what was shown.
+            return update.content ? this.thought.upsert(update.messageId, textOf(update.content)) : [];
         }
 
         if (SessionUpdate.isAgentMessage(update)) {
@@ -145,7 +156,7 @@ export class UpdateMapperV2 {
             }
 
             const text = textOf(update.content);
-            const settled = this.settle();
+            const settled = [...this.thought.close(), ...this.settle()];
 
             return [...settled, ...(this.folding && this.message.repeats(update.messageId, text) ? [] : this.message.upsert(update.messageId, text))];
         }
@@ -182,7 +193,7 @@ export class UpdateMapperV2 {
             return this.gauges.update(update);
         }
 
-        // Thoughts, plans, commands, modes, titles and notices: nothing the runtime shows. The background work of the session is `background`'s.
+        // Plans, commands, modes, titles and notices: nothing the runtime shows. The background work of the session is `background`'s.
         return [];
     }
 
@@ -365,7 +376,7 @@ export class UpdateMapperV2 {
             return this.children.messageOf(agentId)?.close(agentId) ?? [];
         }
 
-        return [...this.settle(), ...this.message.close()];
+        return [...this.thought.close(), ...this.settle(), ...this.message.close()];
     }
 
     /**

@@ -467,6 +467,11 @@ export type StreamItemBody =
     /** `text` is what the person wrote, and may be empty when files are attached; the line that tells the agent where the files are is not part of it. */
     | { kind: 'user'; text: string; attachments?: Attachment[]; from?: MessageSource }
     | { kind: 'assistant'; text: string; done: boolean }
+    /**
+     * What the agent thought between its other steps, in its own words as it streams (`done` once it moved on to something else), and how long it took
+     * (`durationMs`, set with `done`). Not part of the story the agent is told again, and not an answer: it is shown folded, as the work of a turn.
+     */
+    | { kind: 'reasoning'; text: string; done: boolean; durationMs?: number }
     | { kind: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string }
     /** A system line such as "Background command finished: bun test". */
     | { kind: 'note'; text: string }

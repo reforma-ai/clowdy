@@ -15,14 +15,14 @@ interface ItemRow {
 
 /**
  * The columns of an item, and what its flags are made of: whether it holds a rewind point (`provider_ref`), and whether it is a message of the person's own
- * (a `user` item without `from`) that starts a turn, which is the first item of the stream, or the first one after an item that holds a point. Notes are
- * not part of a turn's story, so the item before is the last one that is not a note. The subquery runs for `user` items only.
+ * (a `user` item without `from`) that starts a turn, which is the first item of the stream, or the first one after an item that holds a point. Notes and
+ * the agent's reasoning are not part of a turn's story, so the item before is the last one that is neither. The subquery runs for `user` items only.
  */
 const FLAGGED = `
     SELECT s.id, s.run_id, s.seq, s.at, s.body, s.provider_ref IS NOT NULL AS point,
         CASE WHEN json_extract(s.body, '$.kind') = 'user' AND json_extract(s.body, '$.from') IS NULL THEN COALESCE((
             SELECT p.provider_ref IS NOT NULL FROM stream_items p
-            WHERE p.run_id = s.run_id AND p.seq < s.seq AND json_extract(p.body, '$.kind') <> 'note'
+            WHERE p.run_id = s.run_id AND p.seq < s.seq AND json_extract(p.body, '$.kind') NOT IN ('note', 'reasoning')
             ORDER BY p.seq DESC LIMIT 1
         ), 1) ELSE 0 END AS opens
     FROM stream_items s`;
@@ -95,11 +95,11 @@ export function listItemsWithRefs(db: Database, runId: string, throughSeq: numbe
 }
 
 /**
- * The item a turn that starts at `seq` follows: the last item before it that is not a note, with the rewind point it holds (`null` for one that holds none);
+ * The item a turn that starts at `seq` follows: the last item before it that is neither a note nor the agent's reasoning, with the rewind point it holds (`null` for one that holds none);
  * `undefined` when nothing comes before it, which makes it the first message of the chat.
  */
 export function itemBefore(db: Database, runId: string, seq: number): { ref: string | null } | undefined {
-    const row = db.query('SELECT provider_ref AS ref FROM stream_items WHERE run_id = ? AND seq < ? AND json_extract(body, \'$.kind\') <> \'note\' ORDER BY seq DESC LIMIT 1').get(runId, seq) as { ref: string | null } | null;
+    const row = db.query('SELECT provider_ref AS ref FROM stream_items WHERE run_id = ? AND seq < ? AND json_extract(body, \'$.kind\') NOT IN (\'note\', \'reasoning\') ORDER BY seq DESC LIMIT 1').get(runId, seq) as { ref: string | null } | null;
 
     return row ?? undefined;
 }
@@ -120,9 +120,9 @@ export function setItemRef(db: Database, runId: string, seq: number, ref: string
     db.query('UPDATE stream_items SET provider_ref = ? WHERE run_id = ? AND seq = ?').run(ref, runId, seq);
 }
 
-/** The number of the last item of a run's stream that is not a note, which is where its story stands; 0 when there is none. */
+/** The number of the last item of a run's stream that is neither a note nor the agent's reasoning, which is where its story stands; 0 when there is none. */
 export function lastStorySeq(db: Database, runId: string): number {
-    return (db.query('SELECT COALESCE(MAX(seq), 0) AS seq FROM stream_items WHERE run_id = ? AND json_extract(body, \'$.kind\') <> \'note\'').get(runId) as { seq: number }).seq;
+    return (db.query('SELECT COALESCE(MAX(seq), 0) AS seq FROM stream_items WHERE run_id = ? AND json_extract(body, \'$.kind\') NOT IN (\'note\', \'reasoning\')').get(runId) as { seq: number }).seq;
 }
 
 export function updateItemBody(db: Database, runId: string, seq: number, body: StreamItemBody): void {

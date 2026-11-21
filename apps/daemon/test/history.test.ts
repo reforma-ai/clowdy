@@ -33,6 +33,12 @@ describe('conversationRecord', () => {
         expect(record).toContain('could not be opened again');
     });
 
+    test('leaves out what the agent thought: it is no part of the story it is told again', () => {
+        const record = conversationRecord(stream(person('Add a footer'), { kind: 'reasoning', text: 'The layout is in App.tsx.', done: true, durationMs: 2000 }, agent('Done.')), []);
+
+        expect(inside(record)).toBe('Person: Add a footer\nYou: Done.');
+    });
+
     test('names the files of a message and keeps a message that is only files', () => {
         const record = conversationRecord(stream({ kind: 'user', text: '', attachments: [{ id: 'att_1', name: 'spec.pdf', mediaType: 'application/pdf', size: 10 }] }, agent('Read it.')), []);
 

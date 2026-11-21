@@ -7,6 +7,9 @@ import type { Store } from '../store';
 /** Streaming text reaches the log at most this often; the last piece is always flushed. */
 const TEXT_THROTTLE_MS = 50;
 
+/** A thought is cut here: reasoning can run to many pages, and nobody reads past what a row of the stream shows. */
+const MAX_THOUGHT_CHARS = 60_000;
+
 /** What a call that was still running says once its turn is over (`STOPPED_TOOL` once the person stopped the run, or the daemon stopped). */
 export const UNFINISHED_TOOL = 'The turn ended before this finished';
 
@@ -14,10 +17,13 @@ type ToolBody = Extract<StreamItemBody, { kind: 'tool' }>;
 
 /**
  * Turns one turn's engine events into stream items. Streaming text updates a single `assistant` item in place,
- * throttled; a tool call is one item that changes state. Anything that is not text ends the open message.
+ * throttled, and a thought is a `reasoning` item that streams the same way; a tool call is one item that changes state. Anything that is not text ends
+ * the open message, and anything that is not a thought ends the open thought, so a thought, a message and a call are items of their own.
  */
 export class TurnWriter {
     private message?: { seq?: number; text: string; messageId?: string };
+    /** The open thought, which is never open together with a message: each ends the other. */
+    private thought?: { seq?: number; text: string; startedAt: number };
     /** The last message that was written out whole, if it said something and came with the agent's own id of it: what `takePoint` hands over. */
     private answer?: { seq: number; ref: string };
     private flushedAt = 0;
@@ -29,11 +35,40 @@ export class TurnWriter {
 
     /** `messageId`: the agent's id of the message, which comes with the event that ends it. */
     text(delta: string, done: boolean, messageId?: string): void {
+        // What the agent said after thinking is a message of its own.
+        if (this.thought) {
+            this.end();
+        }
+
         this.message ??= { text: '' };
         this.message.text += delta;
 
         if (messageId !== undefined) {
             this.message.messageId = messageId;
+        }
+
+        if (done) {
+            this.end();
+        }
+        else {
+            this.schedule();
+        }
+    }
+
+    /** A piece of what the agent thought; `done` ends the thought, and so does a message, a tool call and the end of the turn. */
+    reasoning(delta: string, done: boolean): void {
+        if (delta !== '') {
+            // What it said before thinking is over.
+            if (this.message) {
+                this.end();
+            }
+
+            this.thought ??= { text: '', startedAt: Date.now() };
+            this.thought.text = `${ this.thought.text }${ delta }`.slice(0, MAX_THOUGHT_CHARS);
+        }
+
+        if (!this.thought) {
+            return;
         }
 
         if (done) {
@@ -84,7 +119,7 @@ export class TurnWriter {
         });
     }
 
-    /** Closes the open assistant message, if any: its item gets its final text and `done: true`. */
+    /** Closes the open assistant message or thought, if any: its item gets its final text and `done: true`. */
     end(): void {
         clearTimeout(this.timer);
         this.timer = undefined;
@@ -92,6 +127,11 @@ export class TurnWriter {
         if (this.message) {
             this.flush(true);
             this.message = undefined;
+        }
+
+        if (this.thought) {
+            this.flush(true);
+            this.thought = undefined;
         }
     }
 
@@ -127,6 +167,12 @@ export class TurnWriter {
     }
 
     private flush(done: boolean): void {
+        if (this.thought) {
+            this.flushThought(this.thought, done);
+
+            return;
+        }
+
         const message = this.message;
 
         if (!message || (message.text === '' && message.seq === undefined)) {
@@ -144,6 +190,24 @@ export class TurnWriter {
 
         if (done) {
             this.answer = message.messageId !== undefined && message.text.trim() !== '' ? { seq: message.seq, ref: message.messageId } : undefined;
+        }
+
+        this.flushedAt = Date.now();
+    }
+
+    /** Writes the open thought out: a thought of nothing but blank space is no item, and the one that ends takes the time it lasted. */
+    private flushThought(thought: NonNullable<TurnWriter['thought']>, done: boolean): void {
+        if (thought.text.trim() === '' && thought.seq === undefined) {
+            return;
+        }
+
+        const body = { kind: 'reasoning' as const, text: thought.text, done, ...(done && { durationMs: Date.now() - thought.startedAt }) };
+
+        if (thought.seq === undefined) {
+            thought.seq = appendItem(this.store, this.runId, body).seq;
+        }
+        else {
+            updateItem(this.store, this.runId, thought.seq, body);
         }
 
         this.flushedAt = Date.now();

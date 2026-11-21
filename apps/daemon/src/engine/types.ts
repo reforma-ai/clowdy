@@ -160,6 +160,11 @@ export type EngineEvent =
      * which the runtime keeps for the turn's final message. Absent for an agent that names none, and for a sub-agent's messages.
      */
     | { type: 'text'; delta: string; done: boolean; agentId?: string; messageId?: string }
+    /**
+     * A piece of what the agent thought (its reasoning, in its own words). `done: true` ends the thought, and so does anything else the session says (a message,
+     * a tool call): the next piece starts a new one. Only an agent that shows its reasoning sends them.
+     */
+    | { type: 'thought'; delta: string; done: boolean }
     | { type: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string; agentId?: string }
     /**
      * A sub-agent that lives inside the session (an agent's own `Agent` or `Task`, when the engine can tell). The runtime shows it as a child run;

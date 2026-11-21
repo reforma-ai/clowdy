@@ -51,6 +51,9 @@ function entryOf(item: StreamItem): string | undefined {
 
             return `Tool ${ body.name } (${ body.state })${ input ? `: ${ input }` : '' }${ result ? ` → ${ result }` : '' }`;
         }
+        // What the agent thought is not part of the story it is told again.
+        case 'reasoning':
+            return undefined;
         case 'note':
             return `Clowdy: ${ clip(body.text) }`;
         case 'question':

@@ -871,6 +871,9 @@ export class RunDriver {
                         }
 
                         break;
+                    case 'thought':
+                        writer.reasoning(event.delta, event.done);
+                        break;
                     case 'tool':
                         // `ask_user` shows as a question card instead.
                         if (event.name === ASK_USER) {
