@@ -5,7 +5,8 @@
  * holds it (the message's root): the pointer on any part of that element shows it, and so does the keyboard's focus
  * (`:focus-visible`, so a press with the pointer on Copy or on a link in the message does not pin the row open
  * after the pointer has left). Out of sight it takes no presses, so the pointer has to be on the message first, and
- * it is no part of a selection that crosses the message.
+ * it is no part of a selection that crosses the message. It stands a little way off the bubble or the text, so the buttons read as a
+ * line of their own and do not touch what they act on.
  */
 .row {
     display: flex;
@@ -13,6 +14,7 @@
     align-items: center;
     gap: var(--spacing-xs);
     height: var(--spacing-24);
+    margin-block-start: var(--spacing-20);
     opacity: 0;
     pointer-events: none;
     user-select: none;
