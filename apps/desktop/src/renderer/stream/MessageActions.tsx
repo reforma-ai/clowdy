@@ -2,7 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { CopyButton } from '@clowdy/components/CopyButton';
 import { Show } from '@clowdy/components/Show';
 // Fork wears the thread's mark until a Fork icon is drawn: swapping it is this one import.
-import { EditPen, Split as ForkIcon, Revert } from '@clowdy/icons/14';
+import { EditPen, Split as ForkIcon, Reply } from '@clowdy/icons/14';
 
 import { formatFullTime, formatMessageTime } from '../shared/time';
 import { Unavailable } from '../shared/Unavailable';
@@ -25,7 +25,7 @@ export interface MessageActionsConfig {
     show: MessageActionsShow;
     /** Reply: called with the message as it was written, to quote it in the message box. */
     onReply?: (text: string) => void;
-    /** A sideways swipe over the message does what the Reply button does (`useSwipeReply`); a message that has no Reply button has no swipe either. */
+    /** A long swipe to the left over the message, let go, does what the Reply button does (`useSwipeReply`); a message that has no Reply button has no swipe either. */
     swipeToReply?: boolean;
     /** Edit the message in place: drawn only where it is given (`StreamView` gives it to a message of the person's that the agent can rewrite the chat from, and to none while one is being edited). */
     onEdit?: () => void;
@@ -86,7 +86,7 @@ export function MessageActions({ text, at, align, actions }: MessageActionsProps
                     <Show when={ hasText && onReply }>
                         { reply => (
                             <Button variant="filling" size="xs" iconOnly tooltip="Reply" tooltipPlacement="bottom" aria-label="Reply" onPress={ () => reply(text) }>
-                                <Revert />
+                                <Reply />
                             </Button>
                         ) }
                     </Show>

@@ -60,7 +60,7 @@ export function ChatPage() {
                         </ToggleButtonGroup>
                     </SettingsRow>
 
-                    <SettingsRow title={ SWIPE_LABEL } description="Scroll sideways over a message to reply to it">
+                    <SettingsRow title={ SWIPE_LABEL } description="Swipe left over a message and let go to reply to it">
                         <Switch size="sm" isSelected={ swipeToReply.enabled } aria-label={ SWIPE_LABEL } onChange={ enabled => swipeToReply.setEnabled(enabled) } />
                     </SettingsRow>
                 </SettingsCard>

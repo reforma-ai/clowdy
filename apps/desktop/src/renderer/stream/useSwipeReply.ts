@@ -1,12 +1,12 @@
 import { normalizeWheelDelta } from '@clowdy/lib';
 import { useEffect, useEffectEvent, useRef, type RefObject } from 'react';
 
-import { dragStep, IDLE, releaseStep, sidewaysRoom, SWIPE, wheelStep, type SwipeState } from './swipeReply';
+import { dragStep, IDLE, isArmed, progressOf, releaseStep, sidewaysRoom, SWIPE, wheelStep, type SwipeState } from './swipeReply';
 
 export interface SwipeReplyOptions {
     /** Off, the hook does nothing: the setting is off, or the message has no Reply. */
     enabled: boolean;
-    /** The pull went far enough: Reply to the message. */
+    /** The swipe was let go far enough: Reply to the message. */
     onReply: () => void;
 }
 
@@ -31,12 +31,15 @@ function scrollerBelow(target: EventTarget | null, message: HTMLElement, pull: n
 }
 
 /**
- * Swipe a message to reply: a sideways scroll of the trackpad over the message (wheel events that go mostly sideways), or a sideways drag of a finger or a pen,
- * pulls the message along with resistance, shows a Reply mark at the side it left, and replies once the pull is far enough; the message then settles back. A
- * mouse drag is left alone, since it selects text, and so is everything that goes mostly up or down, or that a code block or table inside the message can still
- * scroll sideways. The decisions are in `swipeReply.ts`; this puts them on the page: native listeners on the returned element (React's wheel listener is
- * passive and cannot cancel the event), the pull as the element's own `translate` (an entry animation owns its `transform`) and `--swipe-progress` and
- * `data-swipe` (`left`, `right`) for the Reply mark. The settle is not animated for a person who asked for reduced motion.
+ * Swipe a message to reply: a long sideways scroll of the trackpad to the left over the message (wheel events that go mostly sideways), or a sideways drag of a
+ * finger or a pen to the left, pulls the message along with resistance and shows a Reply mark at the side it left, which takes its full look once the pull is
+ * far enough. Reply is for the end of the swipe, never for the middle of it: the pointer is let go, or the wheel goes quiet (a wheel has no end event, and the
+ * inertia a trackpad keeps sending after the fingers left counts as part of the swipe), and the message is held past the threshold at that moment. A pull taken
+ * back below it replies to nothing. The message then settles back. A mouse drag is left alone, since it selects text, and so is a swipe to the right, everything
+ * that goes mostly up or down, and whatever a code block or table inside the message can still scroll sideways. The decisions are in `swipeReply.ts`; this puts
+ * them on the page: native listeners on the returned element (React's wheel listener is passive and cannot cancel the event), the pull as the element's own
+ * `translate` (an entry animation owns its `transform`), `--swipe-progress`, `data-swipe` (`left`) and `data-swipe-armed` for the Reply mark. The settle is not
+ * animated for a person who asked for reduced motion.
  */
 export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: SwipeReplyOptions): RefObject<T | null> {
     const ref = useRef<T>(null);
@@ -53,7 +56,9 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
         // What the message shows now, to tell a pull from a settle.
         let shown = 0;
 
-        const draw = (offset: number, pointerY = 0) => {
+        const draw = (pulled: SwipeState, pointerY = 0) => {
+            const { offset } = pulled;
+            const pulling = pulled.phase === 'pulling';
             const settle = offset === 0 && shown !== 0 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
             // The mark stands at the height of the pointer, where the swipe is: the middle of a tall answer can be out of view. Measured once, as the pull starts.
@@ -66,32 +71,48 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
             // A settle animates, a pull follows the fingers at once.
             message.style.transition = settle ? `translate ${ SETTLE_MS }ms cubic-bezier(0.22, 1, 0.36, 1)` : '';
             message.style.translate = offset === 0 ? '' : `${ offset }px 0`;
-            message.style.setProperty('--swipe-progress', String(Math.min(1, Math.abs(offset) / SWIPE.threshold)));
+            message.style.setProperty('--swipe-progress', String(pulling ? progressOf(pulled.x) : 0));
+            // Armed: letting go now replies. The mark says so, and takes it back when the pull is.
+            message.toggleAttribute('data-swipe-armed', pulling && isArmed(pulled.x));
 
-            if (offset !== 0) message.dataset.swipe = offset < 0 ? 'left' : 'right';
+            if (offset !== 0) message.dataset.swipe = 'left';
 
             shown = offset;
         };
 
-        const settle = () => {
+        /** The swipe is over, the pointer let go or the wheel gone quiet: Reply when it is held past the threshold (never after a cancel), and the message settles back. */
+        const end = (release: boolean) => {
             clearTimeout(idle);
-            state = IDLE;
-            draw(0);
+
+            const released = release ? releaseStep(state) : { state: IDLE, fire: false };
+
+            state = released.state;
+            draw(IDLE);
+
+            if (released.fire) reply();
         };
 
         const follow = (next: SwipeState, pointerY: number) => {
             state = next;
 
-            if (next.offset !== shown) draw(next.offset, pointerY);
+            // A pull is drawn at every event (it may be the armed mark that changes, not the offset); a gesture that is not ours draws nothing.
+            if (next.phase === 'pulling' || shown !== 0) draw(next, pointerY);
         };
 
         const onWheel = (event: WheelEvent) => {
             // A pinch is a wheel with Ctrl held, and Shift turns a mouse wheel into a sideways scroll: neither is a swipe.
             if (event.ctrlKey || event.shiftKey) return;
 
+            // When the event happened, not when it is handled: a page that was busy for a while handles events that came a few ms apart late, and that is no pause
+            // of the fingers (it would end the swipe, and reply, while they still move).
+            const at = event.timeStamp;
+
+            // The wheel went quiet before this event and its timer has not run yet (a page that is busy takes input first): that swipe ends here, with its Reply.
+            if (state.phase !== 'idle' && at - state.at > SWIPE.idleMs) end(true);
+
             const { dx, dy } = normalizeWheelDelta({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode });
             // The wheel reports where the content would go; the message goes where the fingers do.
-            const result = wheelStep(state, { dx: -dx, dy: -dy, at: performance.now(), scrolls: pull => scrollerBelow(event.target, message, pull) });
+            const result = wheelStep(state, { dx: -dx, dy: -dy, at, scrolls: pull => scrollerBelow(event.target, message, pull) });
 
             follow(result.state, event.clientY);
 
@@ -100,20 +121,20 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
                 event.stopPropagation();
             }
 
-            // A wheel has no end event: the pull settles once it goes quiet.
+            // A wheel has no end event: the swipe is over once it goes quiet.
             clearTimeout(idle);
 
-            if (result.state.phase === 'pulling') idle = setTimeout(settle, SWIPE.idleMs);
-
-            if (result.fire) reply();
+            if (result.state.phase === 'pulling') idle = setTimeout(() => end(true), SWIPE.idleMs);
         };
 
         const onPointerDown = (event: PointerEvent) => {
             // A mouse selects text with a drag; only fingers and pens swipe.
             if (event.pointerType === 'mouse' || !event.isPrimary || drag) return;
 
+            // A wheel swipe still in its quiet time ends here, without a Reply: its timer would otherwise run in the middle of this drag and reply for it.
+            if (state.phase !== 'idle') end(false);
+
             drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
-            state = IDLE;
         };
 
         const onPointerMove = (event: PointerEvent) => {
@@ -141,12 +162,7 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
             drag = undefined;
 
             // A cancel (the browser took the touch for a vertical scroll) replies to nothing, whatever the pull was.
-            const released = event.type === 'pointerup' ? releaseStep(state) : { state: IDLE, fire: false };
-
-            state = released.state;
-            draw(0);
-
-            if (released.fire) reply();
+            end(event.type === 'pointerup');
         };
 
         const touchAction = message.style.touchAction;
@@ -171,6 +187,7 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
             message.style.translate = '';
             message.style.removeProperty('--swipe-progress');
             message.style.removeProperty('--swipe-y');
+            message.removeAttribute('data-swipe-armed');
             delete message.dataset.swipe;
         };
     }, [enabled]);

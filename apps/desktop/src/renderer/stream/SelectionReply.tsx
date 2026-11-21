@@ -1,5 +1,5 @@
 import { Button } from '@clowdy/components/Button';
-import { Revert } from '@clowdy/icons/14';
+import { Reply } from '@clowdy/icons/14';
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -114,7 +114,7 @@ export function SelectionReply({ scope, onReply }: SelectionReplyProps) {
                     onReply(selected.text);
                 } }
             >
-                <Revert />
+                <Reply />
                 Reply
             </Button>
         </div>,

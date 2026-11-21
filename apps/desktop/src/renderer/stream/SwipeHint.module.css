@@ -1,6 +1,6 @@
 /*
- * Out of the flow, beside the message that is being pulled. The message moves, and its edge with it, so the mark rides on the edge the pull opened up:
- * on the right of a message pulled left, on the left of one pulled right. Without a pull it is not drawn.
+ * Out of the flow, beside the message that is being pulled. The message moves to the left, and its edge with it, so the mark rides on the edge the pull
+ * opened up, on the right of the message. Without a pull it is not drawn.
  */
 .hint {
     position: absolute;
@@ -18,7 +18,10 @@
     scale: calc(0.6 + 0.4 * var(--swipe-progress, 0));
     translate: 0 -50%;
     pointer-events: none;
-    transition: opacity var(--transition-duration-fast) ease;
+    transition:
+        opacity var(--transition-duration-fast) ease,
+        background-color var(--transition-duration-fast) ease,
+        color var(--transition-duration-fast) ease;
 }
 
 :global([data-swipe='left']) > .hint {
@@ -26,9 +29,10 @@
     left: calc(100% + var(--spacing-sm));
 }
 
-:global([data-swipe='right']) > .hint {
-    display: flex;
-    right: calc(100% + var(--spacing-sm));
+/* Armed: letting go now replies. */
+:global([data-swipe-armed]) > .hint {
+    background-color: var(--color-primary-muted-light);
+    color: var(--color-primary-text);
 }
 
 @media (prefers-reduced-motion: reduce) {

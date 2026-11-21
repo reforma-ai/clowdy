@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureData, FIXTURE_FORK_CHAT_ID, FIXTURE_PROJECT_ID, withFixtureFork, type FixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { SWIPE } from '../../stream/swipeReply';
 import { ChatView } from './ChatView';
 import { draftOf, editDraftKey, messageOf, saveDraft } from './composerDrafts';
 import { filesOf } from './composerFiles';
@@ -477,6 +478,10 @@ describe('Reply in a chat', () => {
 
     const card = () => container.querySelector<HTMLElement>('[role="group"][aria-label^="Replying to"]');
     const wheel = (target: Element, deltaX: number) => target.dispatchEvent(new WheelEvent('wheel', { deltaX, deltaY: 0, bubbles: true, cancelable: true }));
+    // A swipe replies when it is over, once the wheel has been quiet for a while.
+    const quiet = () => act(async () => {
+        await new Promise(resolve => setTimeout(resolve, SWIPE.idleMs + 50));
+    });
 
     // What is typed and not sent, and the message replied to, are kept per chat for the whole session.
     beforeEach(() => {
@@ -533,15 +538,24 @@ describe('Reply in a chat', () => {
         expect(card()).toBeNull();
     });
 
-    it('takes a sideways swipe over a message for a press on its Reply: the card of that message', async () => {
+    it('takes a long swipe to the left, let go, for a press on its Reply: the card of that message, and none for a swipe to the right', async () => {
         await start();
         await draw('c-2');
 
         const message = [...container.querySelectorAll<HTMLElement>('[data-message]')].find(node => node.textContent?.includes('Build the first version'))!;
 
+        for (let i = 0; i < 30; i++) wheel(message, -10);
+
+        await quiet();
+
+        expect(card()).toBeNull();
+
         for (let i = 0; i < 30; i++) wheel(message, 10);
 
-        await act(async () => undefined);
+        // Not yet: the fingers may still be moving.
+        expect(card()).toBeNull();
+
+        await quiet();
 
         expect(card()?.textContent).toContain('You');
         expect(card()?.textContent).toContain('Build the first version');
@@ -556,7 +570,8 @@ describe('Reply in a chat', () => {
         const message = container.querySelector<HTMLElement>('[data-message]')!;
         const events = Array.from({ length: 30 }, () => wheel(message, 10));
 
-        await act(async () => undefined);
+        // Long enough for a swipe that was taken to have replied.
+        await quiet();
 
         expect(events.every(taken => taken)).toBe(true);
         expect(card()).toBeNull();
@@ -578,6 +593,8 @@ describe('Reply in a chat', () => {
         // No swipe either: there is no box to reply into.
         const message = container.querySelector<HTMLElement>('[data-message]')!;
         const events = Array.from({ length: 30 }, () => wheel(message, 10));
+
+        await quiet();
 
         expect(events.some(event => !event)).toBe(false);
         expect(message.style.translate).toBe('');
