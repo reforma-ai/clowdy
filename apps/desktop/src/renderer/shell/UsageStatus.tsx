@@ -201,7 +201,7 @@ function ProviderUsage({ agent, now, onOpenProviders, isRefreshing, onRefresh }:
                 <Show when={ isSignedIn ? line.plan : undefined }>
                     { plan => <Badge size="xs" color="secondary" textValue={ plan } className={ styles.plan }>{ plan }</Badge> }
                 </Show>
-                <RefreshUsageButton isRefreshing={ isRefreshing } onRefresh={ onRefresh } className={ styles.refresh } />
+                <RefreshUsageButton size="sm" isRefreshing={ isRefreshing } onRefresh={ onRefresh } className={ styles.refresh } />
             </header>
 
             { isSignedOut && (
