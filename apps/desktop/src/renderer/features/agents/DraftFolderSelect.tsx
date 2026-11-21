@@ -32,7 +32,7 @@ export function DraftFolderSelect({ folders, selectedId, missing, onPick }: Draf
 
     return (
         <MenuTrigger>
-            <Trigger name={ names[selected] ?? folders[selected]?.path ?? '' } />
+            <FolderTrigger name={ names[selected] ?? folders[selected]?.path ?? '' } />
             <Popover placement="bottom start" spacing="xs" width={ 240 }>
                 <Menu
                     aria-label="Folders"
@@ -64,18 +64,26 @@ export function DraftFolderSelect({ folders, selectedId, missing, onPick }: Draf
     );
 }
 
-function Trigger({ name }: { name: string }) {
+/**
+ * The pill that opens a menu for a folder, under the message box: the folder's name and a chevron, with the plate staying while the menu is open. The select
+ * of a new chat uses it to pick the folder, and `ChatFolder` to open the folder of a chat that is made in another program, in the warning colour when the folder
+ * is gone from the disk. It goes inside a `MenuTrigger`.
+ */
+export function FolderTrigger({ name, tooltip, missing = false }: { name: string; tooltip?: string; missing?: boolean }) {
     const isOpen = use(OverlayTriggerStateContext)!.isOpen;
 
     return (
         <Button
             size="sm"
             variant="filling"
+            color={ missing ? 'warning' : undefined }
             rounded
             className={ styles.trigger }
             contentClassName={ styles.triggerContent }
             data-open={ isOpen || undefined }
+            data-missing={ missing || undefined }
             aria-label={ `Folder: ${ name }` }
+            tooltip={ tooltip }
         >
             <Folder aria-hidden="true" />
             <Text truncate>{ name }</Text>
