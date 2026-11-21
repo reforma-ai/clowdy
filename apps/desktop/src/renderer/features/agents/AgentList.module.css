@@ -73,12 +73,13 @@
 }
 
 /*
- * The heading of a folder's group: the folder's name, and the chevron after it, with the group's new-chat button at the row's end. It has no icon, so the
- * name starts where the icons of the chats below it do, and a gap above it sets the group apart from the one before. A missing folder's name is the
- * warning's colour.
+ * The heading of a folder's group is a label, not an item: no plate under it (`plateless`), the name in the medium weight, and the chevron button after
+ * it, which is what folds the group, with the group's new-chat button at the row's end. It has no icon, so the name starts where the icons of the chats
+ * below it do, and a gap above it sets the group apart from the one before. A missing folder's name is the warning's colour.
  */
 .group {
     margin-block-start: var(--spacing-md);
+    cursor: default;
 }
 
 .group[data-missing] {
@@ -88,14 +89,14 @@
 .groupTitle {
     display: inline-flex;
     align-items: center;
-    gap: var(--spacing-md);
+    gap: var(--spacing-xs);
     min-width: 0;
+    font-weight: 500;
 }
 
-.groupChevron {
+.groupFold {
     display: inline-flex;
     flex-shrink: 0;
-    color: var(--color-secondary-muted-text);
 }
 
 /* The note of a group with no chat: a chat's own row, drawn in the muted colour, and nothing to press. */

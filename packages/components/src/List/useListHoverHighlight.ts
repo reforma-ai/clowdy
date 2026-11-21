@@ -80,6 +80,15 @@ export function useListHoverHighlight(
             || row.hasAttribute('data-nested-selected')
         );
 
+        // A label row (`data-plateless`) is no item to point at: the pointer draws no plate under it. The keyboard focus still does, so the focus is seen.
+        const isPlateless = (row: HTMLElement) => row.hasAttribute('data-plateless');
+
+        const pointedRow = (target: EventTarget | null) => {
+            const row = rowFrom(target);
+
+            return row && !isPlateless(row) ? row : null;
+        };
+
         const keyboardRow = () => (
             root.querySelector<HTMLElement>(`${ itemSelector }[data-focus-visible]`)
         );
@@ -142,6 +151,12 @@ export function useListHoverHighlight(
         const followPointer = (target: EventTarget | null, x: number, y: number) => {
             followKeyboard = false;
             const row = rowFrom(target);
+
+            if (row && isPlateless(row)) {
+                hide();
+
+                return;
+            }
 
             if (row) {
                 if (row !== current) {
@@ -248,7 +263,7 @@ export function useListHoverHighlight(
                 return;
             }
 
-            show(rowFrom(document.elementFromPoint(pointerX, pointerY)));
+            show(pointedRow(document.elementFromPoint(pointerX, pointerY)));
         };
 
         const onScroll = () => {
@@ -288,7 +303,7 @@ export function useListHoverHighlight(
             port.addEventListener('scroll', onScroll, { passive: true });
         }
 
-        show(root.querySelector<HTMLElement>(`${ itemSelector }:hover`));
+        show(root.querySelector<HTMLElement>(`${ itemSelector }:hover:not([data-plateless])`));
 
         return () => {
             rowState.disconnect();

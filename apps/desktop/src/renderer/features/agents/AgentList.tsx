@@ -4,8 +4,8 @@ import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Archive, Check, Message, More, NewChat, Plus } from '@clowdy/icons/14';
-import { ChevronDown, ChevronRight } from '@clowdy/icons/8';
+import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Plus } from '@clowdy/icons/14';
+import { ChevronDown as FoldDown, ChevronRight as FoldRight } from '@clowdy/icons/8';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type SyntheticEvent } from 'react';
 
 import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
@@ -186,9 +186,8 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
 
     const select = (id: string) => {
         if (id === NEW_CHAT_ROW) ui.openDraft();
-        // A heading is not a page: a press folds or opens its group.
-        else if (id.startsWith(GROUP_PREFIX)) ui.toggleFolderCollapsed(id.slice(GROUP_PREFIX.length));
-        else ui.openChat(id);
+        // A heading is a label, not a page: only its chevron, and Right and Left on it, fold the group.
+        else if (!id.startsWith(GROUP_PREFIX)) ui.openChat(id);
     };
 
     const renderGroup = (group: AgentGroup, isCollapsed: boolean) => {
@@ -200,6 +199,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                 id={ groupKey(group.folder.id) }
                 text={ group.name }
                 className={ styles.group }
+                plateless
                 endAffix={ (
                     <span className={ styles.end } { ...ownEvents }>
                         <Button
@@ -226,9 +226,21 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
             >
                 <span className={ styles.groupTitle }>
                     <span className={ styles.title }>{ group.name }</span>
-                    {/* Always there on a folded group, which says it is folded; an open one shows it as the pointer or the keyboard comes. */}
-                    <span className={ styles.groupChevron } aria-hidden data-show={ isCollapsed ? undefined : listBoxItemDataShow.itemBoth }>
-                        { isCollapsed ? <ChevronRight /> : <ChevronDown /> }
+                    {/* The way to fold the group. On a folded group it is always there, which says it is folded; on an open one it comes with the pointer or the keyboard. */}
+                    <span className={ styles.groupFold } { ...ownEvents }>
+                        <Button
+                            variant="filling"
+                            color="secondary"
+                            size="xs"
+                            iconOnly
+                            aria-label={ `${ isCollapsed ? 'Expand' : 'Collapse' } ${ group.name }` }
+                            aria-expanded={ !isCollapsed }
+                            preventFocusOnPress
+                            data-show={ isCollapsed ? undefined : listBoxItemDataShow.itemBoth }
+                            onPress={ () => ui.toggleFolderCollapsed(group.folder.id) }
+                        >
+                            { isCollapsed ? <ChevronRight /> : <ChevronDown /> }
+                        </Button>
                     </span>
                 </span>
             </GridListItem>
@@ -410,7 +422,7 @@ function Fold({ row, onToggle }: { row: AgentRow; onToggle: () => void }) {
                 aria-expanded={ row.isExpanded }
                 onClick={ onToggle }
             >
-                { row.isExpanded ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden /> }
+                { row.isExpanded ? <FoldDown aria-hidden /> : <FoldRight aria-hidden /> }
             </button>
         </span>
     );

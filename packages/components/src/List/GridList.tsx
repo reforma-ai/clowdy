@@ -47,6 +47,10 @@ export type GridListItemProps<T extends object = object> = AriaGridListItemProps
        * pager already owns the scroll, so a preselected row cannot jump it.
        */
       scrollActive?: boolean;
+      /**
+       * A row that is a label, such as a group's heading: the pointer draws no hover plate under it. The keyboard focus still does, so the focus is seen.
+       */
+      plateless?: boolean;
   };
 
 export function GridList<T extends object>({
@@ -94,6 +98,7 @@ export function GridListItem<T extends object>({
     isDanger,
     align,
     scrollActive = true,
+    plateless,
     ref,
     ...props
 }: GridListItemProps<T> & { ref?: Ref<HTMLDivElement> }) {
@@ -115,6 +120,7 @@ export function GridListItem<T extends object>({
             ref={ mergeRefs(scrollRef, ref) }
             className={ cn(styles.item, isDanger && styles.itemDanger, className) }
             data-align={ align }
+            data-plateless={ plateless || undefined }
             textValue={ textValue }
             { ...props }
         >

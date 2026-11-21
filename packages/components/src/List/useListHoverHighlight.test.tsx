@@ -141,6 +141,29 @@ describe('useListHoverHighlight', () => {
         }
     });
 
+    it('draws no plate under a pointer on a label row, and none is left from the row it came from', async () => {
+        row('b').setAttribute('data-plateless', '');
+        row('a').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 5, clientY: 15 }));
+
+        expect(plate()).toEqual({ shown: true, top: '10px' });
+
+        row('b').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 5, clientY: 55 }));
+
+        expect(plate().shown).toBe(false);
+
+        row('c').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 5, clientY: 95 }));
+
+        expect(plate()).toEqual({ shown: true, top: '90px' });
+    });
+
+    it('still draws the plate on a label row the keyboard focus reached', async () => {
+        row('b').setAttribute('data-plateless', '');
+        focusByKeyboard('b');
+        await frame();
+
+        expect(plate()).toEqual({ shown: true, top: '50px' });
+    });
+
     it('shows no plate for a selected row, which has its own fill', async () => {
         focusByKeyboard('a');
         await frame();
