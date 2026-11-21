@@ -45,6 +45,7 @@ interface StoredProjectUi {
     chatSort: ChatSort;
     showFinishedThreads: boolean;
     expandedChats: ChatId[];
+    agentsFolded: boolean;
     tasksView: TasksView;
 }
 
@@ -53,7 +54,7 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'chatSort' | 'showFinishedThreads' | 'expandedChats' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'chatSort' | 'showFinishedThreads' | 'expandedChats' | 'agentsFolded' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -79,6 +80,8 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
 
     if (params.get('expand')) initial.expandedChats = params.get('expand')!.split(',').filter(Boolean);
 
+    if (params.has('agents')) initial.agentsFolded = params.get('agents') === 'folded';
+
     if (view === 'board' || view === 'list') initial.tasksView = view;
 
     return initial;
@@ -101,6 +104,8 @@ export class ProjectUi {
     showFinishedThreads = true;
     /** Agents: the chats whose threads the person opened in the list. A chat that is not here is folded, which is how every chat starts. */
     expandedChats: readonly ChatId[] = [];
+    /** Chats: the strip of running agents over the message box shows its line only, with the rows folded away. Kept for every chat of the project. */
+    agentsFolded = false;
     tasksView: TasksView = 'board';
     /** Agents: files that a hand-off from another chat left for the new-chat page, which takes them once it is open. Not kept between sessions. */
     pendingFiles: readonly File[] = [];
@@ -119,6 +124,7 @@ export class ProjectUi {
             this.chatSort = stored.chatSort === 'created' ? 'created' : 'activity';
             this.showFinishedThreads = stored.showFinishedThreads !== false;
             this.expandedChats = Array.isArray(stored.expandedChats) ? stored.expandedChats.filter(id => typeof id === 'string') : [];
+            this.agentsFolded = stored.agentsFolded === true;
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';
         }
 
@@ -135,6 +141,7 @@ export class ProjectUi {
                 chatSort: this.chatSort,
                 showFinishedThreads: this.showFinishedThreads,
                 expandedChats: [...this.expandedChats],
+                agentsFolded: this.agentsFolded,
                 tasksView: this.tasksView,
             }),
             value => writeStored(storage, key, value)
@@ -224,6 +231,11 @@ export class ProjectUi {
         const closed = chatIds.filter(id => !this.expandedChats.includes(id));
 
         if (closed.length > 0) this.expandedChats = [...this.expandedChats, ...closed];
+    }
+
+    /** Folds the rows of the running-agents strip under its line, or shows them again. */
+    toggleAgentsFolded(): void {
+        this.agentsFolded = !this.agentsFolded;
     }
 
     setTasksView(view: TasksView): void {

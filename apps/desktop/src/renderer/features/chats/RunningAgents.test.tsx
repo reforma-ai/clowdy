@@ -52,7 +52,8 @@ const lines = () => [...container.querySelectorAll('[aria-label="Work in progres
 const header = () => lines().find(line => line.textContent?.startsWith('Agents running'));
 /** The rows of the strip: every line but the header. */
 const rows = () => lines().filter(line => line !== header());
-const buttons = (line: Element | undefined) => [...(line?.querySelectorAll('button') ?? [])].map(button => button.textContent);
+/** The buttons of a line by their words, or by their label when they have none (the chevron of the header). */
+const buttons = (line: Element | undefined) => [...(line?.querySelectorAll('button') ?? [])].map(button => button.textContent || button.getAttribute('aria-label'));
 const runs = () => store.selectedProject!.runs;
 /** Sets a run in the demo daemon and in what the app shows of it, so a command finds the run the strip draws. */
 function put(run: Run) {
@@ -136,7 +137,7 @@ describe('RunningAgents, the header', () => {
         await draw();
 
         expect(lines().map(line => line.textContent)).toEqual(['Agents running', expect.stringContaining('Explore agent')]);
-        expect(buttons(header())).toEqual([]);
+        expect(buttons(header())).toEqual(['Hide agents']);
         expect(buttons(rows()[0]).slice(1)).toEqual(['Stop']);
     });
 
@@ -145,7 +146,7 @@ describe('RunningAgents, the header', () => {
         await draw();
 
         expect(lines().map(line => line.textContent)).toEqual(['Agents running', expect.stringContaining('General agent'), expect.stringContaining('Explore agent')]);
-        expect(buttons(header())).toEqual([]);
+        expect(buttons(header())).toEqual(['Hide agents']);
     });
 
     it('has Stop all that stops every agent that can stop alone and lets the orchestrator go on, its queue not held', async () => {
@@ -189,7 +190,7 @@ describe('RunningAgents, the header', () => {
         expect(lines().filter(line => line.textContent?.startsWith('Agents running'))).toHaveLength(1);
         expect(lines()).toHaveLength(7);
         expect(lines()[0]).toBe(header());
-        expect(buttons(header())).toEqual(['Stop all']);
+        expect(buttons(header())).toEqual(['Stop all', 'Hide agents']);
         expect(rows()).toHaveLength(6);
         expect(rows().slice(0, 5).every(row => buttons(row).at(-1) === 'Stop')).toBe(true);
         expect(rows().at(-1)?.textContent).toBe('3 more agents at work');
@@ -234,6 +235,65 @@ function waitWithSubagent(items = [{ id: 'bg-1', kind: 'command' as const, title
         createdAt: 1,
     });
 }
+
+describe('RunningAgents, folding the rows', () => {
+    const chevron = () => header()!.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
+
+    it('has a chevron at the end of the line that folds every row away and says how many agents are at work', async () => {
+        await draw();
+
+        expect(chevron().getAttribute('aria-expanded')).toBe('true');
+        expect(chevron().getAttribute('aria-label')).toBe('Hide agents');
+        expect(chevron()).toBe([...header()!.querySelectorAll('button')].at(-1));
+
+        await act(async () => chevron().click());
+        await draw();
+
+        expect(ui().agentsFolded).toBe(true);
+        expect(lines()).toEqual([header()]);
+        expect(header()!.textContent).toBe('Agents running · 2Stop all');
+        expect(chevron().getAttribute('aria-expanded')).toBe('false');
+        expect(chevron().getAttribute('aria-label')).toBe('Show agents');
+    });
+
+    it('shows the rows again from the chevron, and keeps the fold for every chat of the project', async () => {
+        await draw();
+        await act(async () => chevron().click());
+        await draw('c-6');
+
+        expect(lines()).toEqual([header()]);
+        expect(header()!.textContent).toBe('Agents running · 2Stop all');
+
+        await act(async () => chevron().click());
+        await draw('c-6');
+
+        expect(ui().agentsFolded).toBe(false);
+        expect(rows().map(row => row.textContent?.split(' · ')[0])).toEqual(['Fix the price rounding', 'Load test the checkout']);
+    });
+
+    it('keeps Stop all on the folded line, and it stops the agents the rows would', async () => {
+        await draw();
+        await act(async () => chevron().click());
+        await draw();
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => header()!.querySelector('button')!.click());
+        expect(command).toHaveBeenCalledWith({ type: 'run.stopAgents', runId: 'r-orch-1' });
+        await vi.waitFor(() => expect(['r-na-03', 'r-na-02'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled']));
+    });
+
+    it('folds the background rows under the line too, and does not fold them when there is no line to unfold them from', async () => {
+        put({ ...runs().get('r-orch-1')!, background: [{ id: 'bg-1', kind: 'command', title: 'command 1', canStopAlone: true }] });
+        ui().toggleAgentsFolded();
+        await draw();
+        expect(lines()).toEqual([header()]);
+
+        await draw('c-5');
+        expect(header()).toBeUndefined();
+        expect(rows().map(row => row.textContent)).toEqual(['Command · bun run testStop', 'Background task runningStop']);
+    });
+});
 
 describe('RunningAgents, a sub-agent of a session that waits', () => {
     it('is one row of its own, which the background row does not count again', async () => {
@@ -290,7 +350,7 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
         await draw('c-5');
 
         expect(rows().map(row => buttons(row))).toEqual([['Explore agent working']]);
-        expect(buttons(header())).toEqual([]);
+        expect(buttons(header())).toEqual(['Hide agents']);
     });
 
     it('has no Stop all label anywhere in the strip', async () => {
@@ -402,7 +462,7 @@ describe('RunningAgents, threads', () => {
             ['Fix the price rounding · Running bun test src/checkout', 'Stop'],
             ['Load test the checkout · Waiting for background work', 'Stop'],
         ]);
-        expect(buttons(header())).toEqual(['Stop all']);
+        expect(buttons(header())).toEqual(['Stop all', 'Hide agents']);
     });
 
     it('opens the thread\'s chat from its row', async () => {
@@ -466,7 +526,7 @@ describe('RunningAgents, threads', () => {
         putChat({ ...store.selectedProject!.chats.get('c-6e')!, parentChatId: 'c-1' });
         await draw();
 
-        expect(buttons(header())).toEqual(['Stop all']);
+        expect(buttons(header())).toEqual(['Stop all', 'Hide agents']);
     });
 
     it('counts threads in the five rows and in the line that counts the rest', async () => {
@@ -518,7 +578,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         await draw();
         expect(header()).toBeDefined();
         expect(rows().map(row => row.textContent?.split(' · ')[0])).toEqual(['General agent', 'Explore agent', 'Command']);
-        expect(buttons(header())).toEqual(['Stop all']);
+        expect(buttons(header())).toEqual(['Stop all', 'Hide agents']);
 
         const spy = vi.spyOn(store, 'command');
 
