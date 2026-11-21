@@ -12,6 +12,7 @@
 
 .trigger {
     @ruleset typography-text-sm;
+    font-weight: 500;
 }
 
 .panel {
