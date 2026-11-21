@@ -390,4 +390,13 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 17,
+        up(db) {
+            // The folder of the project a chat works in (see `Chat.folderId`); NULL for a chat that follows the main folder, which is every chat of an older
+            // database. No foreign key: `upsertProject` writes the folder rows anew, which would clear the column of every chat. A project update clears the
+            // chats of a folder that left.
+            db.run('ALTER TABLE chats ADD COLUMN folder_id TEXT');
+        },
+    },
 ];

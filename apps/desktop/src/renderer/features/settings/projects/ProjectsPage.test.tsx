@@ -564,7 +564,7 @@ describe('ProjectsPage project', () => {
     });
 
     it('warns about each folder that is gone: the main one stops the agents, another is left out', async () => {
-        const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: false }, { folderId: 'fld_added_1', exists: false }, { folderId: 'fld_added_2', exists: true, remoteUrl: 'git@github.com:acme/notes.git' }], chats: 0, tasks: 0, activeRuns: 0 };
+        const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: false, chats: 0 }, { folderId: 'fld_added_1', exists: false, chats: 0 }, { folderId: 'fld_added_2', exists: true, remoteUrl: 'git@github.com:acme/notes.git', chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 };
 
         await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes'));
 

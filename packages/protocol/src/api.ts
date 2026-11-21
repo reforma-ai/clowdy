@@ -11,8 +11,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/health                         -> Health
  * GET  /v1/snapshot                       -> RootSnapshot
  * GET  /v1/projects/:id/snapshot          -> ProjectSnapshot
- * GET  /v1/projects/info                  -> ProjectInfo[] (one per project, in the order of the snapshot: whether each of its folders exists and its
- *                                            git remote, and how many chats, tasks and unfinished runs it has; read when asked, never announced)
+ * GET  /v1/projects/info                  -> ProjectInfo[] (one per project, in the order of the snapshot: whether each of its folders exists, its
+ *                                            git remote and how many chats chose it, and how many chats, tasks and unfinished runs the project has;
+ *                                            read when asked, never announced)
  * GET  /v1/events?cursor=N                -> text/event-stream of ClowdyEvent (frame name `clowdy`, id = cursor); without a
  *                                            cursor the stream is live only; `Last-Event-ID` also resumes; `&projectId=ID`
  *                                            limits it to one project. 410 when the cursor is ahead of the log (the log is not pruned

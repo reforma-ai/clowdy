@@ -163,7 +163,7 @@ export interface RunProcess {
 
 /** What the runtime keeps about a run besides the entity clients see. */
 export interface RunWork {
-    /** Working directory the run's engine starts in; the project's main folder when absent. */
+    /** Working directory the run's engine starts in; absent, the folder its chat works in, else the project's main folder (`workingFolder` in `runs/driver.ts`). */
     cwd?: string;
     /** The user message or assignment of the turn that has not started yet. */
     nextPrompt?: string;

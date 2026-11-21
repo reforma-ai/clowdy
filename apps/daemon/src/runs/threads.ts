@@ -215,6 +215,8 @@ export class ThreadService {
                 model: inherits ? current.model : input.model,
                 effort: input.effort ?? (inherits ? current.effort : undefined),
                 parentChatId: parent.id,
+                // The thread works where its parent does, unless the call names a folder of its own (`cwd`, which the run keeps).
+                folderId: parent.folderId,
             });
 
             for (const task of tasks) {
