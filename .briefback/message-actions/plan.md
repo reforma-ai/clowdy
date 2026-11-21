@@ -17,7 +17,7 @@
 - Under a **user** message: Copy message, Edit message, Reply. Under a **final answer** of a turn: Copy, Reply, Fork into new chat. Only the person's own messages (`user` items without `from`) and final answers of finished turns have a row; thread cards, notices, tool rows, notes, errors, anything inside a "Worked for" fold, and the read-only sub-agent run page have none. No `...` menu, no Copy link, no "Reply in side chat", no keyboard shortcuts.
 - Row visibility: hidden until hover or focus-within, always visible on the last message that has a row, always visible where the pointer cannot hover (`@media (hover: none)`). The row reserves its height so revealing it never moves the list. The time sits in the row, appears with it, and replaces the permanent time on user bubbles. Format: time only (`22:54`) for today, `19 Nov, 22:54` for another day, `19 Nov 2025, 22:54` for another year; `<time>` carries the full date as `title`. A streaming turn has no answer row until it is done.
 - Copy and whole-message Reply use the message's **source Markdown** (`body.text`), not the rendered DOM. A selection quotes the **rendered text** of the selection (`Selection.toString()`), and only when it lies inside one message.
-- Quote format is BB's: `> ` before every line, a bare `>` for a blank line, blank lines between two quoted lines dropped, trimmed, appended at the end of the draft with a trailing newline, a blank line between stacked quotes, empty text ignored. The composer shows the `>` as plain text; no blockquote node.
+- Quote format is BB's: `> ` before every line, a bare `>` for a blank line, blank lines between two quoted lines dropped, trimmed, appended at the end of the draft and followed by a blank line for the caret (so a reply typed below is not a lazy continuation of the quote), a blank line between stacked quotes, empty text ignored. The composer shows the `>` as plain text; no blockquote node.
 - Selection toolbar: one floating **Reply** button next to the selection, nothing else. One set of document listeners for the whole list, reads batched in `requestAnimationFrame`; a press on the toolbar must not collapse the selection; it closes on Escape, scroll, resize or a collapsed selection.
 - **Provider support.** Edit and Fork use ACP `session/fork` with the fork point in `_meta.jetbrains.air.fork` (`{ version: 1, messageId }`). It is an unstable method and a vendor extension read by both pinned adapters; the accepted risk is that an adapter bump can break it, so the check below is rerun on every bump and the catalog flag goes off if it fails. Claude Code (`claude-agent-acp@0.107.0`) cuts at an exact assistant message. Codex (`codex-acp@2.8.0`) rounds to the end of a turn, which is where Clowdy only ever forks, so it fits; its flag stays **off until a real check passes** (the pin cannot be launched on this machine before 2026-11-22). Every other agent has the flag off: no Fork, no Edit.
 - **Rewind points are turn ends.** At the end of a turn the daemon stores the provider's `messageId` of the turn's final assistant message on that stream item (daemon-only column `stream_items.provider_ref`). Fork uses the clicked answer's point. Edit of the user message that starts turn N forks at the point of turn N-1; for the first message of the chat it starts a fresh session. Items from before this feature have no point, so old chats get no Fork and no Edit past their first message. No transcript-fingerprint fallback.
@@ -48,13 +48,13 @@
 
 **This stage:** The row under messages and everything it needs to be right, with Copy as its only action. The row appears under the person's own messages and under the final answer of each finished turn, hidden until hover and always visible on the last one, with the hover time that replaces the bubble's permanent time. Later stages only add actions by passing handlers; this stage settles which messages get a row, where it sits and how it behaves. It exists first because every other renderer stage hangs off it.
 
-- [ ] Complete
-  - [ ] `foldFinishedWork` marks the final answer of a finished turn (the same `isAnswer` it already uses), exported for the stream
-  - [ ] `MessageActions` row: Copy (source Markdown, with the `CopyButton` feedback), the hover time, reserved height, hover and focus-within reveal, always visible on the last row and without hover
-  - [ ] `UserBubble` and `AssistantMessage` hand it their message; the permanent time on user bubbles is gone; `data-turn` still sits on the user row root
-  - [ ] Opt-in from `ChatView` through `StreamView`; `RunDetail`, `from` items, folded work and live turns get no row
-  - [ ] `formatMessageTime` (today, other day, other year) with tests
-  - [ ] Tests for which messages get a row, the last-row rule and the answer marker; a screenshot check of light and dark
+- [x] Complete
+  - [x] `foldFinishedWork` marks the final answer of a finished turn (the same `isAnswer` it already uses), exported for the stream
+  - [x] `MessageActions` row: Copy (source Markdown, with the `CopyButton` feedback), the hover time, reserved height, hover and focus-within reveal, always visible on the last row and without hover
+  - [x] `UserBubble` and `AssistantMessage` hand it their message; the permanent time on user bubbles is gone; `data-turn` still sits on the user row root
+  - [x] Opt-in from `ChatView` through `StreamView`; `RunDetail`, `from` items, folded work and live turns get no row
+  - [x] `formatMessageTime` (today, other day, other year) with tests
+  - [x] Tests for which messages get a row, the last-row rule and the answer marker; a screenshot check of light and dark
 
 **Files**
 
@@ -68,7 +68,10 @@
 
 **Done when:** a finished chat shows a hover-only row with Copy and the time under each of the person's messages and each final answer, the last one always visible, and nothing else in the app changed.
 **Verify:** `cd apps/desktop && bun run test && bun run lint && bun run typecheck`, then `bun scripts/screenshot.ts` (see `apps/desktop/AGENTS.md`)
-**Commits:** None yet.
+**Commits:**
+
+- `160f9ad` feat(desktop): add an action row with copy and a hover time under messages. Review: the reveal uses `:has(:focus-visible)` so a mouse press does not pin the row open; a person's message in a live turn keeps its row (Edit needs it while the run is busy); a user bubble on the read-only run page has no time.
+
 
 ## Stage 2 — Reply and text selection
 
@@ -76,13 +79,13 @@
 
 **This stage:** Reply puts a Markdown quote into the composer, from the row (the whole message) and from a floating button next to a selection. It adds the quote helper and a way for `ChatView` to hand text to the composer, the Reply button in the row, and the selection toolbar. The whole-message path is the plain `> text` insertion; Stage 7 may turn it into a card.
 
-- [ ] Complete
-  - [ ] `withQuoteLast` builds and appends a quote exactly as the decision says, with tests copied in spirit from BB's `prompt-draft.test.ts`
-  - [ ] `ComposerHandle.quote(text)`: appends to this chat's draft, focuses the end of the composer
-  - [ ] Reply in the row, for user messages and final answers
-  - [ ] `SelectionReply`: shared listeners, one-message rule, clamped fixed box, Escape/scroll/resize/collapse dismissal, focus and selection kept on press
-  - [ ] Messages carry the attribute the toolbar looks for; no toolbar in `RunDetail`, the composer or the find bar
-  - [ ] Tests for the quote helper, the composer handle and the toolbar's open and close rules
+- [x] Complete
+  - [x] `withQuoteLast` builds and appends a quote exactly as the decision says, with tests copied in spirit from BB's `prompt-draft.test.ts`
+  - [x] `ComposerHandle.quote(text)`: appends to this chat's draft, focuses the end of the composer
+  - [x] Reply in the row, for user messages and final answers
+  - [x] `SelectionReply`: shared listeners, one-message rule, clamped fixed box, Escape/scroll/resize/collapse dismissal, focus and selection kept on press
+  - [x] Messages carry the attribute the toolbar looks for; no toolbar in `RunDetail`, the composer or the find bar
+  - [x] Tests for the quote helper, the composer handle and the toolbar's open and close rules
 
 **Files**
 
@@ -95,7 +98,10 @@
 
 **Done when:** pressing Reply under a message, or on a selection inside one message, leaves `> quote` at the end of the composer draft with the caret below it.
 **Verify:** `cd apps/desktop && bun run test && bun run lint && bun run typecheck`, then `bun scripts/screenshot.ts`
-**Commits:** None yet.
+**Commits:**
+
+- `b7aa67a` feat(desktop): reply to a message or a selection with a markdown quote. Beyond the plan: `actions` is one object prop (`{ show, onReply }`, later `onEdit`, `onFork`); button order is DOM order (person: time, Copy, Edit, Reply; answer: Copy, Reply, Fork, time). The quote is its own paragraph followed by an empty paragraph for the caret, so a typed reply is sent as `> quote\n\nreply` and is not a lazy continuation of the quote.
+
 
 ## Stage 3 — Rewind points and the engine fork
 
@@ -103,14 +109,14 @@
 
 **This stage:** The daemon can cut a provider session at a turn end. It remembers the provider's message id at every turn end, knows which agents can fork, can fork a session at such a point, and tells the renderer which items offer Fork and Edit. No command or UI yet. This stage carries the one real risk of the feature (does the vendor `_meta` fork work end to end), so it ends with a check against the real Claude Code adapter.
 
-- [ ] Complete
-  - [ ] Migration 17: `stream_items.provider_ref` (daemon-only)
-  - [ ] The ACP mapper passes the provider `messageId` of assistant text up; the driver stamps the turn's final assistant item at turn completion and re-emits it
-  - [ ] Catalog flag `fork` per agent (Claude on, Codex off until verified, others off)
-  - [ ] `AgentEngine.fork`: `V2Layer` runs initialize, `session/fork` with `_meta.jetbrains.air.fork`, and returns the new session id (system prompt, additional directories and tool bridge as for a resume); `V1Layer` refuses; `FakeEngine`, `ScriptEngine` and the fake v2 ACP agent support it
-  - [ ] `StreamItem.canFork` and `StreamItem.canEdit` (optional booleans, set only when true) derived by the daemon from the engine flag, the point and the turn rule; protocol type, fixtures and `RunStream` accept them
-  - [ ] Real check: Claude Code on a scratch daemon (own data dir and port), a few short prompts, fork at a stored point, the fork answers from the cut history; Codex attempted, flag stays off unless it passes; results recorded in `research/real-checks.md`
-  - [ ] `apps/daemon/AGENTS.md` describes rewind points and the fork flag
+- [x] Complete
+  - [x] Migration 17: `stream_items.provider_ref` (daemon-only)
+  - [x] The ACP mapper passes the provider `messageId` of assistant text up; the driver stamps the turn's final assistant item at turn completion and re-emits it
+  - [x] Catalog flag `fork` per agent (Claude on, Codex off until verified, others off)
+  - [x] `AgentEngine.fork`: `V2Layer` runs initialize, `session/fork` with `_meta.jetbrains.air.fork`, and returns the new session id (system prompt, additional directories and tool bridge as for a resume); `V1Layer` refuses; `FakeEngine`, `ScriptEngine` and the fake v2 ACP agent support it
+  - [x] `StreamItem.canFork` and `StreamItem.canEdit` (optional booleans, set only when true) derived by the daemon from the engine flag, the point and the turn rule; protocol type, fixtures and `RunStream` accept them
+  - [x] Real check: Claude Code on a scratch daemon (own data dir and port), a few short prompts, fork at a stored point, the fork answers from the cut history; Codex attempted, flag stays off unless it passes; results recorded in `research/real-checks.md`
+  - [x] `apps/daemon/AGENTS.md` describes rewind points and the fork flag
 
 **Files**
 
@@ -124,7 +130,10 @@
 
 **Done when:** a finished turn on a flagged agent has a stored rewind point and its answer reports `canFork`, `AgentEngine.fork` returns a new session id for it, and the real Claude Code check passes.
 **Verify:** `cd apps/daemon && bun test && bun run lint && bun run typecheck`; `cd packages/protocol && bun run test`; the real check described in `research/real-checks.md`
-**Commits:** None yet.
+**Commits:**
+
+- `8ac5c1e` feat(daemon): record rewind points at turn ends and fork a provider session. Real check passed for Claude Code (`claude-agent-acp@0.107.0`, `claude` 2.1.312): stored points are real `msg_` ids, a fork at turn 1 forgets turn 2, a fork at turn 2 keeps a tool call with its result, a fork takes 0.6 to 1.2 s. Codex could not be launched (`minimumReleaseAge` until 2026-11-22), so its flag stays off: rerun the check on or after that date, then turn the flag on in `catalog.ts`. Flags are derived on read and publish, never stored, so a flag switched off removes Fork and Edit at once. After a compact turn the next user message is not editable. `FakeEngine` is flagged on by default (dev and `?fixtures` reach Fork and Edit); `ScriptEngine` is off by default.
+
 
 ## Stage 4 — Fork into a new chat (daemon)
 
@@ -139,6 +148,7 @@
   - [ ] Stream items through the turn end copied with new ids; attachments of copied items usable in the new chat; the first message of the fork carries no first-message prefix
   - [ ] Fixture daemon implements `chat.fork`
   - [ ] Daemon tests with `ScriptEngine` for the copy, title numbering, refusals and the first message of a fork
+  - [ ] Cost baseline of a forked session: the first prompt in a fork reports tokens but no `costUsd` (no baseline for the new session id); log the first-prompt cumulative cost in the real check, and if it equals that prompt's own cost seed 0 where `AcpEngine.fork` returns, otherwise leave it
   - [ ] Real check: fork a Claude Code chat on a scratch daemon, send a message in the fork, the answer knows the copied history
 
 **Files**
