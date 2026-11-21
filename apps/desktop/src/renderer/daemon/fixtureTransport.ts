@@ -83,6 +83,9 @@ const COMPACT_MS = 1200;
 const COMPACT_TEXT = 'Compact the conversation';
 
 const isCompact = (item: QueuedMessage) => item.command === 'compact';
+
+/** The agents whose chats offer Fork and Edit, as the daemon's catalog flags them (`AgentSpec.fork`): Claude Code only. */
+const FORKABLE_ENGINES: ReadonlySet<string> = new Set(['claude']);
 const REPLY = 'Got it. I will split this into tasks, start the independent ones in parallel, and report back here.';
 /** What the fixture's agent says when it is told that threads stopped. */
 const NOTICE_REPLY = 'Noted. I will look at what the thread found and carry on.';
@@ -159,6 +162,8 @@ export class FixtureTransport implements Transport {
     readonly #files = new Map<string, StoredFile>();
     /** The turn each run is on, so the end of an older turn does not end a newer one. */
     readonly #turns = new Map<RunId, number>();
+    /** How many times an edit rewrote each run's stream: an item written after one gets an id of its own, as the daemon's items do, though it takes the freed number. */
+    readonly #rewrites = new Map<RunId, number>();
 
     constructor({ data = createFixtureData(), timeline = false }: FixtureTransportOptions = {}) {
         this.#data = data;
@@ -386,14 +391,28 @@ export class FixtureTransport implements Transport {
         this.#emit(run.projectId, { type: 'stream.item', item });
     }
 
+    /**
+     * Appends an item, as the daemon does: a message of the person's own that starts a turn (the first item, or the one after a final answer that holds a
+     * point) offers Edit, for an agent that can fork (`canEdit`).
+     */
     #appendItem(run: Run, body: StreamItemBody): StreamItem {
         const items = this.#data.items[run.id] ??= [];
         const seq = (items.at(-1)?.seq ?? 0) + 1;
-        const item = { id: `${ run.id }-${ seq }`, runId: run.id, seq, at: Date.now(), body };
+        const rewrites = this.#rewrites.get(run.id) ?? 0;
+        const previous = items.findLast(candidate => candidate.body.kind !== 'note');
+        const opens = body.kind === 'user' && body.from === undefined && FORKABLE_ENGINES.has(run.engine) && (previous === undefined || previous.canFork === true);
+        const item: StreamItem = { id: `${ run.id }-${ seq }${ rewrites > 0 ? `-r${ rewrites }` : '' }`, runId: run.id, seq, at: Date.now(), body, ...(opens && { canEdit: true }) };
 
         this.#saveItem(run, item);
 
         return item;
+    }
+
+    /** The turn ended: its final answer holds a rewind point and offers Fork (`canFork`), as the daemon's driver stamps it, when the stream's story ends with it. */
+    #markRewindPoint(run: Run): void {
+        const last = this.#data.items[run.id]?.findLast(item => item.body.kind !== 'note');
+
+        if (last?.body.kind === 'assistant' && FORKABLE_ENGINES.has(run.engine)) this.#saveItem(run, { ...last, canFork: true });
     }
 
     /** Streams a reply into one item in three steps, the way an engine's text arrives. */
@@ -808,6 +827,8 @@ export class FixtureTransport implements Transport {
                 return this.#sendQueued(command.chatId, command.itemId);
             case 'chat.fork':
                 return this.#forkChat(command.chatId, command.itemId);
+            case 'chat.edit':
+                return this.#editMessage(command.chatId, command.itemId, command.text, command.attachmentIds ?? []);
 
             case 'task.create': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
@@ -1192,6 +1213,84 @@ export class FixtureTransport implements Transport {
         return ok({ chat: structuredClone(made) });
     }
 
+    /**
+     * `chat.edit` as the daemon does it, the agent's own part left out: a chat at rest is rewritten from a message of the person's that starts a turn. The
+     * stream from it on is cut with the sub-agent runs it started and the files of its messages, except the files the new message carries on, the run takes
+     * a new session (none for the first message of the chat) and forgets its context reading, `stream.truncated` is announced, and the new text goes as an
+     * ordinary turn, so the new message takes the freed number under a new id. Everything is checked before anything changes.
+     */
+    #editMessage(chatId: string, itemId: string, rawText: string, attachmentIds: string[]): Outcome {
+        const data = this.#data;
+        const chat = data.chats.find(candidate => candidate.id === chatId);
+
+        if (!chat) return fail('not_found', 'No such chat');
+
+        const run = data.runs.find(candidate => candidate.id === chat.orchestratorRunId);
+
+        if (!run) return fail('invalid', 'This chat has no conversation to edit yet');
+
+        const items = data.items[run.id] ?? [];
+        const edited = items.find(item => item.id === itemId);
+
+        if (!edited) return fail('not_found', `Message ${ itemId } does not exist`);
+
+        if (!edited.canEdit) return fail('invalid', 'This message cannot be edited');
+
+        if (!isTerminalRunStatus(run.status)) return fail('conflict', 'Stop the agent to edit this message');
+
+        if (!rawText.trim() && attachmentIds.length === 0) return fail('invalid', 'The message is empty');
+
+        const dropped = items.filter(item => item.seq >= edited.seq);
+        const droppedFiles = new Set(dropped.flatMap(item => (item.body.kind === 'user' ? item.body.attachments ?? [] : []).map(file => file.id)));
+
+        // What the message carries is checked as a send checks it, except that the files of the dropped messages may go on in it.
+        for (const id of new Set(attachmentIds)) {
+            const stored = this.#files.get(id);
+
+            if (stored?.projectId !== chat.projectId) return fail('not_found', `No such attachment: ${ id }`);
+
+            if (stored.sent && !droppedFiles.has(id)) return fail('conflict', `${ stored.attachment.name } was sent already`);
+        }
+
+        const calls = new Set(dropped.flatMap(item => (item.body.kind === 'tool' ? [item.body.toolCallId] : [])));
+        const started = data.runs.filter(candidate => candidate.parentRunId === run.id && (candidate.parentToolCallId !== undefined ? calls.has(candidate.parentToolCallId) : candidate.createdAt >= edited.at));
+        const removed = new Set(started.map(candidate => candidate.id));
+
+        // The sub-agents of those are theirs to go with them.
+        for (const candidate of data.runs) {
+            if (candidate.parentRunId !== undefined && removed.has(candidate.parentRunId)) removed.add(candidate.id);
+        }
+
+        data.items[run.id] = items.filter(item => item.seq < edited.seq);
+        data.runs = data.runs.filter(candidate => !removed.has(candidate.id));
+        data.runTaskLinks = data.runTaskLinks.filter(link => !removed.has(link.runId));
+        removed.forEach(runId => delete data.items[runId]);
+        this.#rewrites.set(run.id, (this.#rewrites.get(run.id) ?? 0) + 1);
+
+        for (const id of droppedFiles) {
+            const stored = this.#files.get(id);
+
+            if (!stored) continue;
+
+            if (attachmentIds.includes(id)) stored.sent = false;
+            else this.#files.delete(id);
+        }
+
+        this.#emit(run.projectId, { type: 'stream.truncated', runId: run.id, fromSeq: edited.seq, removedRunIds: [...removed] });
+
+        delete run.context;
+
+        if (items.some(item => item.seq < edited.seq && item.body.kind !== 'note')) run.sessionId = this.#id('fork-session');
+        else delete run.sessionId;
+
+        this.#saveRun(run);
+
+        // A fork's divider follows the last item it inherited: a cut into that history ends it where the cut begins, as the daemon moves `forkedFrom.atSeq`.
+        if (chat.forkedFrom && chat.forkedFrom.atSeq >= edited.seq) chat.forkedFrom = { ...chat.forkedFrom, atSeq: edited.seq - 1 };
+
+        return this.#sendMessage(chat.id, rawText, attachmentIds, 'queue');
+    }
+
     /** A turn of a chat's orchestrator: the message that starts it, a canned reply, and the end of the turn, after which the queue gives the next one. */
     #startTurn(chat: Chat, run: Run, body: StreamItemBody, reply = REPLY): void {
         const turn = (this.#turns.get(run.id) ?? 0) + 1;
@@ -1220,6 +1319,8 @@ export class FixtureTransport implements Transport {
      * thread is told when the turn `said` something.
      */
     #endTurn(chat: Chat, run: Run, said = true): void {
+        this.#markRewindPoint(run);
+
         if ((run.background?.length ?? 0) > 0) {
             run.status = 'waiting_background';
             run.statusReason = 'Waiting for background work';

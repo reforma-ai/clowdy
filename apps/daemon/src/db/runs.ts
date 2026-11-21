@@ -94,6 +94,34 @@ export function upsertRun(db: Database, run: Run): void {
     );
 }
 
+/**
+ * Deletes runs by id in one statement, which SQLite checks at its end, so a parent and its children may go together. Their streams and run-task links go
+ * with them; an artifact keeps its row and loses the run.
+ */
+export function deleteRuns(db: Database, ids: readonly string[]): void {
+    if (ids.length > 0) {
+        db.query('DELETE FROM runs WHERE id IN (SELECT value FROM json_each(?))').run(JSON.stringify(ids));
+    }
+}
+
+/**
+ * The sub-agent runs a rewrite of `runId`'s stream cuts off, with every sub-agent they started: those whose parent call is one of `toolCallIds` (the calls
+ * of the items that go), and those no call is recorded for that began at or after `since` (epoch ms, the time of the first item that goes), since an
+ * engine may leave the call out and a sub-agent only starts inside a turn, after the message that began it.
+ */
+export function runsStartedAfter(db: Database, runId: string, toolCallIds: readonly string[], since: number): string[] {
+    const rows = db.query(`
+        WITH RECURSIVE tree(id) AS (
+            SELECT id FROM runs WHERE parent_run_id = ?1 AND (parent_tool_call_id IN (SELECT value FROM json_each(?2)) OR (parent_tool_call_id IS NULL AND created_at >= ?3))
+            UNION ALL
+            SELECT r.id FROM runs r JOIN tree ON r.parent_run_id = tree.id
+        )
+        SELECT id FROM tree
+    `).all(runId, JSON.stringify(toolCallIds), since) as { id: string }[];
+
+    return rows.map(row => row.id);
+}
+
 export function listActiveRuns(db: Database): Run[] {
     return (db.query(`SELECT * FROM runs WHERE status IN (${ ACTIVE }) ORDER BY created_at, id`).all() as RunRow[]).map(toRun);
 }

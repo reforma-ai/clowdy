@@ -125,7 +125,7 @@ export function createRoutes(context: RouteContext): Route[] {
                     return failure('invalid', 'The command is not valid', parsed.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })), requestId);
                 }
 
-                // A fork waits for the agent's process, which may outlast the idle timeout of a connection that sends nothing meanwhile.
+                // A fork or an edit waits for the agent's process, which may outlast the idle timeout of a connection that sends nothing meanwhile.
                 if (waitsForAgent(parsed.data)) {
                     context.keepOpen(request);
                 }

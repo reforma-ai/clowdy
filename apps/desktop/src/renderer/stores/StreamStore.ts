@@ -7,14 +7,15 @@ export type StreamStatus = 'idle' | 'loading' | 'ready' | 'failed';
 
 /**
  * The items of one run, from an initial fetch and live `stream.item` upserts, merged by item id and
- * shown in `seq` order. A chat reads the stream of its orchestrator run.
+ * shown in `seq` order. A `stream.truncated` event cuts the stream from a number on (an edit of a message
+ * rewrote the chat there). A chat reads the stream of its orchestrator run.
  */
 export class RunStream {
     status: StreamStatus = 'idle';
     error = '';
     byId = new Map<string, StreamItem>();
-    /** Live items that arrived while the fetch was in flight; they are newer than, or equal to, what it returns. */
-    #pending: StreamItem[] = [];
+    /** Live items and cuts that arrived while the fetch was in flight, in arrival order; they are newer than, or equal to, what it returns. */
+    #pending: Array<{ item: StreamItem } | { fromSeq: number }> = [];
 
     constructor(readonly runId: RunId, private readonly transport: Transport) {
         makeAutoObservable<RunStream, 'transport'>(this, { runId: false, transport: false, byId: observableShallow });
@@ -41,8 +42,8 @@ export class RunStream {
 
             runInAction(() => {
                 this.byId = new Map(fetched.map(item => [item.id, item]));
-                // Replayed in arrival order over the fetched state, so the newest version of an item wins.
-                this.#pending.splice(0).forEach(item => this.byId.set(item.id, item));
+                // Replayed in arrival order over the fetched state, so the newest version of an item wins and a cut takes what was cut after it.
+                this.#pending.splice(0).forEach(change => ('item' in change ? this.byId.set(change.item.id, change.item) : this.#cut(change.fromSeq)));
                 this.status = 'ready';
                 this.error = '';
             });
@@ -57,8 +58,20 @@ export class RunStream {
 
     /** A live item: appended, or replacing the earlier version of the same item. */
     upsert(item: StreamItem): void {
-        if (this.status === 'loading') this.#pending.push(item);
+        if (this.status === 'loading') this.#pending.push({ item });
         else if (this.status === 'ready') this.byId.set(item.id, item);
+    }
+
+    /** The daemon dropped every item from `fromSeq` on: they go, the rest stays. The next item may take `fromSeq` under a new id. */
+    truncate(fromSeq: number): void {
+        if (this.status === 'loading') this.#pending.push({ fromSeq });
+        else if (this.status === 'ready') this.#cut(fromSeq);
+    }
+
+    #cut(fromSeq: number): void {
+        for (const [id, item] of this.byId) {
+            if (item.seq >= fromSeq) this.byId.delete(id);
+        }
     }
 }
 
@@ -82,6 +95,10 @@ export class StreamStore {
 
     applyItem(item: StreamItem): void {
         this.#streams.get(item.runId)?.upsert(item);
+    }
+
+    applyTruncation(runId: RunId, fromSeq: number): void {
+        this.#streams.get(runId)?.truncate(fromSeq);
     }
 
     /** Drops the streams of runs that no longer exist. */

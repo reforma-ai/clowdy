@@ -34,8 +34,8 @@ export interface Services {
 
 export type CommandOf<T extends CommandType> = Extract<Command, { type: T }>;
 
-/** The commands that wait for an agent before they change anything (a fork): they have an `AsyncHandlers` entry and no `Handlers` one. */
-export type AsyncCommandType = 'chat.fork';
+/** The commands that wait for an agent before they change anything (a fork, an edit): they have an `AsyncHandlers` entry and no `Handlers` one. */
+export type AsyncCommandType = 'chat.fork' | 'chat.edit';
 
 /**
  * One handler per command type, run inside the transaction that also stores the command's result. Handlers are

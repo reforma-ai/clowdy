@@ -1,5 +1,5 @@
-import { getItem, insertItem, itemSeqOf, lastStorySeq, listItems, nextSeq, setItemRef, updateItemBody } from '../db/items';
-import { getRun } from '../db/runs';
+import { deleteItemsFrom, getItem, insertItem, itemSeqOf, lastStorySeq, listItems, nextSeq, setItemRef, updateItemBody } from '../db/items';
+import { deleteRuns, getRun, runsStartedAfter } from '../db/runs';
 import { notFound } from '../errors';
 import { newId } from '../ids';
 
@@ -36,6 +36,26 @@ export function copyItems(store: Store, items: readonly { item: StreamItem; ref?
     for (const { item, ref } of items) {
         insertItem(store.db, { ...item, id: newId('itm'), runId: toRunId, body: rewrite(item.body) }, ref);
     }
+}
+
+/**
+ * Drops the items of a run's stream from `fromSeq` on, and the sub-agent runs they started (the runs whose call is one of the dropped tool items, and the
+ * ones no call is recorded for that began after the first dropped item, each with its own sub-agents and streams), and announces it as one event
+ * (`stream.truncated`) in the same transaction. The next item of the stream takes `fromSeq` again. Returns the items as they were stored, so the caller can
+ * see what went (the files of the messages among them). Call it inside a transaction.
+ */
+export function cutStream(store: Store, run: Run, fromSeq: number): StreamItem[] {
+    return store.tx(() => {
+        const items = listItems(store.db, run.id, fromSeq - 1);
+        const calls = items.flatMap(item => item.body.kind === 'tool' ? [item.body.toolCallId] : []);
+        const removedRunIds = items.length > 0 ? runsStartedAfter(store.db, run.id, calls, items[0].at) : [];
+
+        deleteItemsFrom(store.db, run.id, fromSeq);
+        deleteRuns(store.db, removedRunIds);
+        store.emit(run.projectId, { type: 'stream.truncated', runId: run.id, fromSeq, removedRunIds });
+
+        return items;
+    });
 }
 
 /** Appends an item to a run's stream and publishes it. */

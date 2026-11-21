@@ -94,6 +94,21 @@ export function listItemsWithRefs(db: Database, runId: string, throughSeq: numbe
     return rows.map(row => ({ item: toItem(row, false), ...(row.ref !== null && { ref: row.ref }) }));
 }
 
+/**
+ * The item a turn that starts at `seq` follows: the last item before it that is not a note, with the rewind point it holds (`null` for one that holds none);
+ * `undefined` when nothing comes before it, which makes it the first message of the chat.
+ */
+export function itemBefore(db: Database, runId: string, seq: number): { ref: string | null } | undefined {
+    const row = db.query('SELECT provider_ref AS ref FROM stream_items WHERE run_id = ? AND seq < ? AND json_extract(body, \'$.kind\') <> \'note\' ORDER BY seq DESC LIMIT 1').get(runId, seq) as { ref: string | null } | null;
+
+    return row ?? undefined;
+}
+
+/** Removes the items of a run's stream from `seq` on. */
+export function deleteItemsFrom(db: Database, runId: string, seq: number): void {
+    db.query('DELETE FROM stream_items WHERE run_id = ? AND seq >= ?').run(runId, seq);
+}
+
 /** The rewind point an item holds: the agent's own id of the message it says, or `undefined` for an item that holds none. */
 export function itemRef(db: Database, runId: string, seq: number): string | undefined {
     const row = db.query('SELECT provider_ref AS ref FROM stream_items WHERE run_id = ? AND seq = ?').get(runId, seq) as { ref: string | null } | null;

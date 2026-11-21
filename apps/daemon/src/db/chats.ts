@@ -1,4 +1,5 @@
 import { clean, parseJson, toJson } from './json';
+import { deleteRuns } from './runs';
 
 import type { Chat, ChatTaskLink, QueuedMessage, Run } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
@@ -50,7 +51,7 @@ export function listChats(db: Database, projectId: string): Chat[] {
     return (db.query('SELECT * FROM chats WHERE project_id = ? ORDER BY created_at, id').all(projectId) as ChatRow[]).map(toChat);
 }
 
-/** A chat's parent and the fork it comes from are set when the chat is made and never change, so an update leaves them alone. */
+/** A chat's parent and the fork it comes from are set when the chat is made and never change, so an update leaves them alone (`setForkPoint` moves where a fork's history ends). */
 export function upsertChat(db: Database, chat: Chat): void {
     db.query(`
         INSERT INTO chats (id, project_id, title, mode, engine, model, effort, orchestrator_run_id, parent_chat_id, source_chat_id, forked_at_seq, archived_at, queue, queue_paused, created_at,
@@ -63,6 +64,11 @@ export function upsertChat(db: Database, chat: Chat): void {
         chat.id, chat.projectId, chat.title, chat.mode, chat.engine ?? null, chat.model ?? null, chat.effort ?? null, chat.orchestratorRunId ?? null,
         chat.parentChatId ?? null, chat.forkedFrom?.chatId ?? null, chat.forkedFrom?.atSeq ?? null, chat.archivedAt ?? null, chat.queue?.length ? toJson(chat.queue) : null, chat.queuePaused ?? null, chat.createdAt, chat.updatedAt
     );
+}
+
+/** Moves where a fork's inherited history ends (`forkedFrom.atSeq`), for an edit that cut into it: an update leaves the relation alone, so this is its one writer. */
+export function setForkPoint(db: Database, chatId: string, atSeq: number): void {
+    db.query('UPDATE chats SET forked_at_seq = ? WHERE id = ? AND source_chat_id IS NOT NULL').run(atSeq, chatId);
 }
 
 /** The threads a chat started, oldest first: its direct children, not theirs. */
@@ -117,7 +123,7 @@ export function runsOfChat(db: Database, chatId: string): { id: string; status: 
  * The runs go in one statement, which SQLite checks at its end, so parents and children may go together. The chat's threads are not touched.
  */
 export function deleteChatAndRuns(db: Database, chatId: string): void {
-    db.query('DELETE FROM runs WHERE chat_id = ?1 OR root_run_id IN (SELECT id FROM runs WHERE chat_id = ?1)').run(chatId);
+    deleteRuns(db, runsOfChat(db, chatId).map(run => run.id));
     db.query('DELETE FROM chats WHERE id = ?').run(chatId);
 }
 

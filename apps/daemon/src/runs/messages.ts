@@ -36,6 +36,12 @@ export interface MessageInput {
     mode?: QueuedMessageMode;
     /** Who wrote it when the person did not: the stream's `user` item and the queued message carry it. */
     from?: MessageSource;
+    /**
+     * The message opens a session with no history behind it, though the chat's orchestrator exists already (an edit of the chat's first message cleared its
+     * session): it gets the first message's prefix (`firstMessage`), as the session's first message does, since nothing else tells the agent the entry skill
+     * and the mode. Only the path of an orchestrator at rest reads it: the first message of a chat has the prefix anyway, and a busy one has a session.
+     */
+    fresh?: boolean;
     /** For the first message of a chat: the folder its orchestrator works in and the tasks it is assigned to. A later message ignores it. */
     start?: { cwd?: string; assigned?: Task[] };
 }
@@ -118,7 +124,7 @@ export function sendMessage(deps: MessageDeps, chatId: string, input: MessageInp
     attachments.markSent(files, chatId, run.id);
     appendItem(store, run.id, body);
     saveChat(store, { ...chat, updatedAt: now });
-    runs.resume(run.id, content);
+    runs.resume(run.id, input.fresh ? firstMessage(chat.mode, content) : content);
     driver.launch(run.id);
 
     return { chatId, runId: run.id, delivery: 'started' };

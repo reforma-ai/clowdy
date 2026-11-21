@@ -794,6 +794,26 @@ describe('FixtureTransport forks', () => {
         expect((await forkedAt('c-2', 6)).title).toBe('(1) First version');
     });
 
+    it('ends the history a fork inherited where an edit into it cuts, and leaves it when the edit is after it', async () => {
+        const { transport, events } = await connected({ data: withFixtureFork(createFixtureData()) });
+        const atSeq = async () => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(chat => chat.id === FIXTURE_FORK_CHAT_ID)?.forkedFrom?.atSeq;
+        const items = await transport.getItems({ chatId: FIXTURE_FORK_CHAT_ID });
+
+        expect(await atSeq()).toBe(6);
+
+        // The fork's own message, after the divider: the inherited history is as long as it was.
+        expect(await transport.command({ type: 'chat.edit', chatId: FIXTURE_FORK_CHAT_ID, itemId: items.find(item => item.seq === 7)?.id ?? '', text: 'Another second question' })).toMatchObject({ ok: true });
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(await atSeq()).toBe(6);
+
+        // The first message of the fork: nothing of the history it inherited is left.
+        events.length = 0;
+        expect(await transport.command({ type: 'chat.edit', chatId: FIXTURE_FORK_CHAT_ID, itemId: items[0].id, text: 'Another first question' })).toMatchObject({ ok: true });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(await atSeq()).toBe(0);
+        expect(events.flatMap(event => (event.data.type === 'chat.upserted' && event.data.chat.id === FIXTURE_FORK_CHAT_ID ? [event.data.chat.forkedFrom?.atSeq] : []))).toEqual([0]);
+    });
+
     it('refuses what the daemon refuses: no chat, no conversation, no such item, an item that cannot be forked', async () => {
         const { transport } = await connected();
         const code = async (chatId: string, itemId: string) => (await transport.command({ type: 'chat.fork', chatId, itemId }) as { ok: false; error: { code: string } }).error.code;
@@ -828,5 +848,125 @@ describe('FixtureTransport forks', () => {
         // The call that ran at the answer has no process in the fork; the source's own is still running.
         expect(copied[10].body).toMatchObject({ kind: 'tool', state: 'error', error: 'Stopped before it finished' });
         expect(source[10].body).toMatchObject({ kind: 'tool', state: 'running' });
+    });
+});
+
+describe('FixtureTransport edits', () => {
+    const kinds = (items: { body: { kind: string; text?: string } }[]) => items.map(item => (item.body.kind === 'user' ? item.body.text : item.body.kind));
+    const code = async (transport: FixtureTransport, fields: { chatId: string; itemId: string; text: string; attachmentIds?: string[] }) =>
+        (await transport.command({ type: 'chat.edit', ...fields }) as { ok: false; error: { code: string } }).error.code;
+
+    it('rewrites a chat from its first message: the stream is cut, the sub-agent runs of the cut part go, and the new message is answered on a stream that starts again', async () => {
+        const { transport, events } = await connected();
+        const before = await transport.getItems({ chatId: 'c-2' });
+        const result = await transport.command({ type: 'chat.edit', chatId: 'c-2', itemId: before[0].id, text: '  Start again  ' });
+
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(result).toMatchObject({ ok: true, data: { chatId: 'c-2', runId: 'r-orch-2' } });
+        expect(events[0].data).toEqual({ type: 'stream.truncated', runId: 'r-orch-2', fromSeq: 1, removedRunIds: ['r-na-06'] });
+        // The cut comes first: the new message and the turn that answers it follow.
+        expect(events.map(event => event.data.type)).toContain('stream.item');
+
+        const snapshot = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+
+        expect(snapshot.runs.some(run => run.id === 'r-na-06')).toBe(false);
+        expect(snapshot.runs.find(run => run.id === 'r-orch-2')).toMatchObject({ status: 'running', chatId: 'c-2' });
+
+        const cut = await transport.getItems({ chatId: 'c-2' });
+
+        // The new message takes the freed number under a new id, and offers Edit again.
+        expect(cut.map(item => [item.seq, item.canEdit === true])).toEqual([[1, true]]);
+        expect(cut[0]).toMatchObject({ body: { kind: 'user', text: 'Start again' } });
+        expect(cut[0].id).not.toBe(before[0].id);
+
+        // Its turn ends with an answer that offers Fork, and the next message offers Edit, as the daemon's flags go.
+        await vi.advanceTimersByTimeAsync(3000);
+        await transport.command({ type: 'chat.send', chatId: 'c-2', text: 'And then?' });
+        await vi.advanceTimersByTimeAsync(3000);
+
+        const grown = await transport.getItems({ chatId: 'c-2' });
+
+        expect(grown.map(item => [item.seq, item.body.kind, item.canEdit === true, item.canFork === true])).toEqual([
+            [1, 'user', true, false], [2, 'assistant', false, true], [3, 'user', true, false], [4, 'assistant', false, true],
+        ]);
+    });
+
+    it('rewrites from a message in the middle: what goes before it stays, the run gets a session of its own and forgets its context reading', async () => {
+        const { transport } = await connected();
+        const forkAnswer = (await transport.getItems({ chatId: 'c-2' }))[5];
+        const { data } = await transport.command({ type: 'chat.fork', chatId: 'c-2', itemId: forkAnswer.id }) as { ok: true; data: { chat: { id: string; orchestratorRunId: string } } };
+        const { id, orchestratorRunId } = data.chat;
+
+        await transport.command({ type: 'chat.send', chatId: id, text: 'Second question' });
+        await vi.advanceTimersByTimeAsync(3000);
+
+        const grown = await transport.getItems({ chatId: id });
+        const session = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === orchestratorRunId)?.sessionId;
+
+        expect(kinds(grown).slice(-2)).toEqual(['Second question', 'assistant']);
+        expect(session).toBeDefined();
+
+        const second = grown.find(item => item.seq === 7);
+
+        expect(second?.canEdit).toBe(true);
+        expect(await transport.command({ type: 'chat.edit', chatId: id, itemId: second?.id ?? '', text: 'Another question' })).toMatchObject({ ok: true });
+        await vi.advanceTimersByTimeAsync(3000);
+
+        const after = await transport.getItems({ chatId: id });
+        const run = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(candidate => candidate.id === orchestratorRunId);
+
+        // The copied history is as it was, and the second turn is the new one.
+        expect(after.map(item => item.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+        expect(kinds(after).slice(0, 6)).toEqual(grown.slice(0, 6).map(item => (item.body.kind === 'user' ? item.body.text : item.body.kind)));
+        expect(kinds(after).slice(6)).toEqual(['Another question', 'assistant']);
+        expect(run?.sessionId).toBeDefined();
+        expect(run?.sessionId).not.toBe(session);
+        expect(run?.status).toBe('succeeded');
+    });
+
+    it('refuses what the daemon refuses: no chat, no conversation, no such item, an item that cannot be edited, a chat that works, an empty message', async () => {
+        const { transport } = await connected();
+        const items = await transport.getItems({ chatId: 'c-2' });
+        const running = await transport.getItems({ chatId: 'c-1' });
+
+        expect(await code(transport, { chatId: 'c-nope', itemId: 'x', text: 'again' })).toBe('not_found');
+        expect(await code(transport, { chatId: 'c-4', itemId: 'x', text: 'again' })).toBe('invalid');
+        expect(await code(transport, { chatId: 'c-2', itemId: 'r-orch-2-99', text: 'again' })).toBe('not_found');
+        // An answer, a call, and a message after the agent's compact turn.
+        expect([await code(transport, { chatId: 'c-2', itemId: items[1].id, text: 'again' }), await code(transport, { chatId: 'c-2', itemId: items[2].id, text: 'again' })]).toEqual(['invalid', 'invalid']);
+        expect(running[0].canEdit).toBe(true);
+        expect(await code(transport, { chatId: 'c-1', itemId: running[0].id, text: 'again' })).toBe('conflict');
+        expect(await code(transport, { chatId: 'c-2', itemId: items[0].id, text: '   ' })).toBe('invalid');
+        expect(await code(transport, { chatId: 'c-2', itemId: items[0].id, text: 'again', attachmentIds: ['a-nope'] })).toBe('not_found');
+        expect(await transport.getItems({ chatId: 'c-2' })).toEqual(items);
+    });
+
+    it('drops the files of the cut messages except those the new message carries on, and sends the files it names', async () => {
+        const { transport } = await connected();
+        const upload = (name: string) => transport.uploadAttachment(FIXTURE_PROJECT_ID, new File([name], name, { type: 'text/plain' }));
+        const served = async (id: string) => (await transport.getAttachment(FIXTURE_PROJECT_ID, id).then(blob => blob.text(), () => undefined));
+        const [a, b, c, d] = await Promise.all(['a.txt', 'b.txt', 'c.txt', 'd.txt'].map(upload));
+        const first = (await transport.getItems({ chatId: 'c-2' }))[0];
+
+        // Two turns: the first message carries `a`, the second `b` and `c`.
+        await transport.command({ type: 'chat.edit', chatId: 'c-2', itemId: first.id, text: 'One', attachmentIds: [a.id] });
+        await vi.advanceTimersByTimeAsync(3000);
+        await transport.command({ type: 'chat.send', chatId: 'c-2', text: 'Two', attachmentIds: [b.id, c.id] });
+        await vi.advanceTimersByTimeAsync(3000);
+
+        const second = (await transport.getItems({ chatId: 'c-2' })).find(item => item.seq === 3);
+
+        expect(second?.canEdit).toBe(true);
+        // A file of an earlier message cannot go with a later one.
+        expect(await code(transport, { chatId: 'c-2', itemId: second?.id ?? '', text: 'Two again', attachmentIds: [a.id] })).toBe('conflict');
+        expect(await served(b.id)).toBe('b.txt');
+
+        expect(await transport.command({ type: 'chat.edit', chatId: 'c-2', itemId: second?.id ?? '', text: 'Two again', attachmentIds: [c.id, d.id] })).toMatchObject({ ok: true });
+
+        const rewritten = (await transport.getItems({ chatId: 'c-2' })).find(item => item.seq === 3);
+
+        expect(rewritten?.body).toMatchObject({ kind: 'user', text: 'Two again', attachments: [{ id: c.id }, { id: d.id }] });
+        expect([await served(a.id), await served(b.id), await served(c.id), await served(d.id)]).toEqual(['a.txt', undefined, 'c.txt', 'd.txt']);
     });
 });

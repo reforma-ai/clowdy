@@ -67,7 +67,7 @@ function planFork({ store, runs, agents }: Services, chatId: string, itemId: str
 }
 
 /** The agent's reason, as one phrase of the daemon's own: no trailing period, since the person reads it in a toast. */
-const reasonOf = (error: EngineFailure) => error.message.trim().replace(/\.+$/, '');
+export const reasonOf = (error: EngineFailure) => error.message.trim().replace(/\.+$/, '');
 
 /**
  * `chat.fork`: a new chat from a final answer of another, with the conversation through that answer. The agent forks its session first (a short job of its

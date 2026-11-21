@@ -164,7 +164,8 @@ export interface Chat {
      * Set on a chat made by `chat.fork`: where its conversation was taken from. `atSeq` is the `seq` of the last item the new chat's stream has from the
      * source (the answer the fork was made at), so what comes after it is the fork's own; the copied items keep the `seq` they had in the source. A fork is no
      * thread (`parentChatId` stays empty) and no child: it lives on when the source is archived or deleted, which leaves `chatId` naming a chat that is gone.
-     * Set when the chat is made and never changed. Absent on every other chat.
+     * Set when the chat is made; it changes only when `chat.edit` cuts into the history the fork inherited (an edited message at or before `atSeq`), which
+     * moves `atSeq` back to the item before the edited message (`0` when nothing inherited is left). Absent on every other chat.
      */
     forkedFrom?: { chatId: ChatId; atSeq: number };
     /** When the person archived the chat; absent for a chat in use. An archived chat keeps its runs, tasks and stream, and a message to it brings it back. */
