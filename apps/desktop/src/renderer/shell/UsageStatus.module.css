@@ -97,9 +97,10 @@
     margin-block: calc((var(--spacing-30) - 14px) / -2);
 }
 
-/* The plan is short and says what the account is: a long e-mail gives way to it. */
+/* The plan is short and says what the account is: a long e-mail gives way to it. The chip is 20px tall and the rest of the line 16px: its margin takes the 2px back, so it does not make the line taller. */
 .plan {
     flex-shrink: 0;
+    margin-block: calc(var(--spacing-2) * -1);
 }
 
 .note {
