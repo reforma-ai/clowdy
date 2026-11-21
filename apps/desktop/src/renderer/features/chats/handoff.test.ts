@@ -362,6 +362,17 @@ describe('startHandoff', () => {
         expect(toast.error).not.toHaveBeenCalled();
     });
 
+    it('opens the draft in the folder the chat works in, and in the main folder for a chat with none', async () => {
+        const run = root.selectedProject!.runs.get(chatOf('c-1').orchestratorRunId ?? '');
+        const handOffFrom = (chat: Chat) => startHandoff({ root, ui: ui(), chat, run });
+
+        expect(await handOffFrom({ ...chatOf('c-1'), folderId: 'fld-api' })).toBe(true);
+        expect(ui().draftFolderId).toBe('fld-api');
+
+        expect(await handOffFrom(chatOf('c-1'))).toBe(true);
+        expect(ui().draftFolderId).toBeNull();
+    });
+
     it('follows words already in the new-chat draft after a blank line, and keeps them', async () => {
         saveDraft(NEW_CHAT_KEY, plainTextToDoc('Also check the footer'));
 
