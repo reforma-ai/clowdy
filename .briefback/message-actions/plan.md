@@ -9,7 +9,7 @@
 
 **Goal:** every message in the chat has actions under it (copy, reply, edit a sent message, fork an answer into a new chat), the person can select text and reply with it, and an action is drawn only where the agent behind the chat can really do it.
 
-**Approach:** The renderer gets one action row under user messages and final answers, a quote helper for the composer, and a selection toolbar (Stages 1, 2). The daemon records the provider's own message id at the end of every turn, learns to fork a provider session at such a point through ACP `session/fork` (Stage 3), and builds fork-into-new-chat (Stage 4) and edit-and-resend (Stage 5) on that single primitive. The renderer then wires Fork and an in-place Edit mode to the new commands (Stage 6). A final polish stage adds the quote card, swipe-to-reply and its setting (Stage 7). Research: `research/index.md`; BB (`get-bb/bb`, commit `4e45c9b`) is the behaviour reference, Orca is not.
+**Approach:** The renderer gets one action row under user messages and final answers, a quote helper for the composer, and a selection toolbar (Stages 1, 2). The daemon records the provider's own message id at the end of every turn, learns to fork a provider session at such a point through ACP `session/fork` (Stage 3), and builds fork-into-new-chat (Stage 4) and edit-and-resend (Stage 5) on that single primitive. The renderer then wires Fork (Stage 6) and an in-place Edit mode (Stage 7) to the new commands. A final polish stage adds the quote card, swipe-to-reply and its setting (Stage 8). Research: `research/index.md`; BB (`get-bb/bb`, commit `4e45c9b`) is the behaviour reference, Orca is not.
 
 **Decisions**
 
@@ -77,7 +77,7 @@
 
 **Depends on:** Stage 1.
 
-**This stage:** Reply puts a Markdown quote into the composer, from the row (the whole message) and from a floating button next to a selection. It adds the quote helper and a way for `ChatView` to hand text to the composer, the Reply button in the row, and the selection toolbar. The whole-message path is the plain `> text` insertion; Stage 7 may turn it into a card.
+**This stage:** Reply puts a Markdown quote into the composer, from the row (the whole message) and from a floating button next to a selection. It adds the quote helper and a way for `ChatView` to hand text to the composer, the Reply button in the row, and the selection toolbar. The whole-message path is the plain `> text` insertion; Stage 8 may turn it into a card.
 
 - [x] Complete
   - [x] `withQuoteLast` builds and appends a quote exactly as the decision says, with tests copied in spirit from BB's `prompt-draft.test.ts`
@@ -173,14 +173,14 @@
 
 **This stage:** `chat.edit` rewrites a chat from a person's turn-starting message: refuse unless at rest, fork the provider at the previous point (or clear the session for the first message), delete the suffix of the stream, tell clients, and send the edited text as a new turn. A new event makes the renderer drop the items; the renderer's stream store applies it. The fixture daemon implements the command.
 
-- [ ] Complete
-  - [ ] `EventData` gains a stream-truncation event; `RunStream` / `StreamStore` drop items from `fromSeq` on and keep the rest; a feed resync still works
-  - [ ] `chat.edit { chatId, itemId, text, attachmentIds? }`; refusals: item not `canEdit`, run busy, queued message currently being sent, failed provider fork (nothing changed)
-  - [ ] One transaction: delete stream items from the edited one, child runs and attachments under them (keeping the attachments the new message uses), set `session_id`, emit the event; then `sendMessage` as a normal turn (no first-message prefix, a fresh session for the first message keeps it)
-  - [ ] Queue, threads, tasks, usage and files left alone as decided
-  - [ ] Fixture daemon implements `chat.edit`
-  - [ ] Daemon tests: middle message, first message, busy refusal, failed fork leaves history intact, attachments, queued messages kept
-  - [ ] Real check: edit the second message of a Claude Code chat on a scratch daemon, the answer is consistent with the cut history
+- [x] Complete
+  - [x] `EventData` gains a stream-truncation event; `RunStream` / `StreamStore` drop items from `fromSeq` on and keep the rest; a feed resync still works
+  - [x] `chat.edit { chatId, itemId, text, attachmentIds? }`; refusals: item not `canEdit`, run busy, queued message currently being sent, failed provider fork (nothing changed)
+  - [x] One transaction: delete stream items from the edited one, child runs and attachments under them (keeping the attachments the new message uses), set `session_id`, emit the event; then `sendMessage` as a normal turn (no first-message prefix, a fresh session for the first message keeps it)
+  - [x] Queue, threads, tasks, usage and files left alone as decided
+  - [x] Fixture daemon implements `chat.edit`
+  - [x] Daemon tests: middle message, first message, busy refusal, failed fork leaves history intact, attachments, queued messages kept
+  - [x] Real check: edit the second message of a Claude Code chat on a scratch daemon, the answer is consistent with the cut history
 
 **Files**
 
@@ -192,37 +192,64 @@
 
 **Done when:** `chat.edit` on a flagged, idle chat removes everything from the edited message on, starts a turn with the new text on the forked session, and the renderer's stream shows the same cut.
 **Verify:** `cd apps/daemon && bun test && bun run lint && bun run typecheck`; `cd apps/desktop && bun run test && bun run typecheck`; the real check
-**Commits:** None yet.
+**Commits:**
 
-## Stage 6 — Fork and Edit in the chat
+- `086d1ab` feat(daemon): edit a sent message and restart the chat from it. Beyond the plan: `chat.edit` is an async command and the edit and its new turn share ONE transaction (a failed send rolls everything back; launches and events are published only after commit); the event is `stream.truncated { runId, fromSeq, removedRunIds }`; at rest means a terminal run status only (`waiting_background` and a run stopped to send a queued message refuse); the strict last-seq check at commit makes a concurrent send a `conflict`; the first message starts a fresh session with the first-message prefix (`MessageInput.fresh`); `RunService.rewind` clears context, `lost_background` and `next_prompt` and keeps usage; sub-agent runs of the dropped part are deleted (shared `deleteRuns`); kept attachments are released and claimed again; an edited first message retitles a chat still named by its first words; an edit inside a fork moves `forkedFrom.atSeq` (0 for the fork's first message). `ProjectState` also handles the event (outside the planned files). Real check passed on Claude Code (middle and first message, an earlier fork stayed independent). Not covered by a real check: an edit whose dropped part used sub-agents or files, an edit after a compact turn, a long chat. Follow-up: the note that background work was lost is not re-told after an edit.
 
-**Depends on:** Stage 1, Stage 2, Stage 5.
 
-**This stage:** The row gets its last two actions and the chat shows a fork's origin. Fork on a final answer with `canFork` runs `chat.fork` and opens the new chat; the list shows the `Forked from` divider. Edit on a user message with `canEdit` swaps the bubble for the in-place `Editing message` frame with a composer of its own (own draft key, no queue or running agents above it), Esc or X cancels, Enter sends `chat.edit`. While the run is busy Edit is disabled with the hint.
+## Stage 6 — Fork in the chat
 
-- [ ] Complete
-  - [ ] Fork action: `chat.fork`, open the new chat, toast on refusal (`Couldn't fork the chat`)
-  - [ ] Divider after `forkedFrom.atSeq` with the source title link
-  - [ ] `Composer` takes a draft key and an edit mode (no queue, no `ComposerBanner`, Esc and Enter semantics, own placeholder `Edit message`), seeded with the message text and its attachments as ready files
-  - [ ] Edit frame in the list replacing the bubble, one edit at a time, other Edit buttons hidden while it is open; the hint while the run is busy; failure keeps the editor open with a toast; a message that disappears closes the editor
-  - [ ] Fixture-based tests for both flows; a screenshot check; `apps/desktop/AGENTS.md` updated
+**Depends on:** Stage 1, Stage 4.
+
+**This stage:** The row gets Fork and the chat shows a fork's origin. Fork on a final answer with `canFork` runs `chat.fork` and opens the new chat; the message list shows the `Forked from` divider after the last inherited item. Split from Edit so it can be built while the daemon's edit command is still in progress.
+
+- [x] Complete
+  - [x] Fork action in the row of final answers with `canFork` (`onFork` in the `actions` object): `chat.fork`, open the new chat, toast on refusal (`Couldn't fork the chat`), one fork at a time
+  - [x] Divider after `forkedFrom.atSeq` with the source title as a link that opens the source chat (plain `Forked` when the source is gone)
+  - [x] Fixture-based tests (`withFixtureFork`) for the action, the divider and the missing source; a screenshot check; `apps/desktop/AGENTS.md` updated
 
 **Files**
 
-- `apps/desktop/src/renderer/stream/MessageActions.tsx`, `StreamView.tsx` — Edit and Fork buttons, the divider block
+- `apps/desktop/src/renderer/stream/MessageActions.tsx`, `StreamView.tsx` — Fork button, the divider block
+- `apps/desktop/src/renderer/features/chats/ChatView.tsx` — command, open the fork, pass the source lookup
+- `apps/desktop/src/renderer/features/chats/ChatView.test.tsx`, `stream/StreamView.test.tsx`, `stream/MessageActions.test.tsx`
+- `apps/desktop/AGENTS.md`
+
+**Done when:** in the fixture app a flagged answer forks into a new chat that shows the divider where the inherited history ends.
+**Verify:** `cd apps/desktop && bun run test && bun run lint && bun run typecheck`, then `bun scripts/screenshot.ts`
+**Commits:**
+
+- `e67cc7c` feat(desktop): fork an answer into a new chat and mark where a fork begins. Beyond the plan: new `stream/ForkDivider.tsx`, `features/chats/forkChat.ts` and `useFork.ts`; the app waits up to 5 s for the new chat to reach the store before opening it and does not navigate if the person already left the source chat; one fork at a time with a ref guard.
+
+
+## Stage 7 — Edit in the chat
+
+**Depends on:** Stage 2, Stage 5, Stage 6.
+
+**This stage:** The row gets Edit. On a user message with `canEdit` the bubble is swapped for the in-place `Editing message` frame with a composer of its own (own draft key, no queue or running agents above it); Esc or X cancels, Enter sends `chat.edit`. While the run is busy Edit is disabled with the hint `Stop the agent to edit`. The later messages stay on screen until the daemon's truncation event arrives.
+
+- [ ] Complete
+  - [ ] `Composer` takes a draft key and an edit mode (no queue, no `ComposerBanner`, Esc and Enter semantics, own placeholder `Edit message`), seeded with the message text and its attachments as ready files
+  - [ ] Edit frame in the list replacing the bubble, one edit at a time, other Edit buttons hidden while it is open; the hint while the run is busy
+  - [ ] Failure keeps the editor open with its text and shows a toast; a message that disappears closes the editor
+  - [ ] Fixture-based tests for the flow; a screenshot check; `apps/desktop/AGENTS.md` updated
+
+**Files**
+
+- `apps/desktop/src/renderer/stream/MessageActions.tsx`, `StreamView.tsx` — Edit button
 - `apps/desktop/src/renderer/stream/EditMessage.tsx` and `.module.css` — create: the in-place frame has its own state and layout that `UserBubble` should not carry
 - `apps/desktop/src/renderer/features/chats/Composer.tsx`, `composerDrafts.ts`, `composerFiles.ts` — draft key, edit mode, seeded files
-- `apps/desktop/src/renderer/features/chats/ChatView.tsx` — commands, edit session, busy rule, open the fork
+- `apps/desktop/src/renderer/features/chats/ChatView.tsx` — command, edit session, busy rule
 - `apps/desktop/src/renderer/features/chats/ChatView.test.tsx`, `Composer.test.tsx`, `stream/StreamView.test.tsx`
 - `apps/desktop/AGENTS.md`
 
-**Done when:** in the fixture app a flagged answer forks into a new chat with the divider, and a flagged message can be edited in place and resent, with the later messages disappearing when the edit commits.
+**Done when:** in the fixture app a flagged message can be edited in place and resent, and the later messages disappear when the edit commits.
 **Verify:** `cd apps/desktop && bun run test && bun run lint && bun run typecheck`, then `bun scripts/screenshot.ts`
 **Commits:** None yet.
 
-## Stage 7 — Reply card, swipe to reply, setting
+## Stage 8 — Reply card, swipe to reply, setting
 
-**Depends on:** Stage 2, Stage 6.
+**Depends on:** Stage 2, Stage 7.
 
 **This stage:** The optional polish. Reply on a whole message becomes a messenger-style quote card above the composer (per chat key, removable with an X, sent as a `> ` block before the message text); a selection still inserts `> text`. A horizontal trackpad scroll over a message (and a pointer drag where one exists) pulls the message sideways and triggers Reply past a threshold; vertical scrolling is not touched. A Chat setting turns the swipe off.
 
@@ -247,4 +274,4 @@
 
 ## Order of work
 
-Stage 1 and Stage 3 touch disjoint trees (renderer, daemon) and run together. Then Stage 2 (renderer) runs with Stage 4 (daemon, protocol, fixture). Stage 5 follows Stage 4, Stage 6 follows Stage 5 and Stage 2, Stage 7 closes. Concurrent workers own disjoint files; the coordinator commits each stage separately and stages only that stage's files. When signing fails, stage trees are recorded as in the `git-signing-needs-owner` note and the commit is retried at the end.
+Stage 1 and Stage 3 touched disjoint trees (renderer, daemon) and ran together; Stage 2 (renderer) ran with Stage 4 (daemon). Stage 5 (daemon, store, fixtures) runs with Stage 6 (renderer stream and chats), which owns different files. Stage 7 follows Stage 5 and Stage 6, Stage 8 closes. Concurrent workers own disjoint files; the coordinator commits each stage separately and stages only that stage's files. When signing fails, stage trees are recorded as in the `git-signing-needs-owner` note and the commit is retried at the end.

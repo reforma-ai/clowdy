@@ -566,3 +566,285 @@ finally {
     say(`log: ${ join(root, 'log.txt') }`);
 }
 ```
+
+
+---
+
+# Stage 5: `chat.edit` on Claude Code
+
+Stage 5 of `.briefback/message-actions/plan.md`. The question: does `chat.edit` (provider fork at the point before the edited message, one transaction that cuts the stream and sends the new text on the copy; a fresh session with the first-message prefix for the first message) work end to end on the real Claude Code adapter, and is the cut chat consistent afterwards? Date: 2026-11-21 (local). `claude-agent-acp@0.107.0`, the user's `claude` 2.1.312, model `haiku`. Codex was not run (its flag is off). It spends the owner's subscription, so it is run by hand: nine tiny prompts.
+
+## Verdict
+
+**Pass**, on the first run. The edited chat answered from the cut history in both cases, the stream and the rows are consistent, and a fork made earlier from an answer of the cut part kept working with its own copy.
+
+| Check | Observed |
+| --- | --- |
+| Source chat | 3 turns (a word, a number, a color), each answered `OK`, one session `e33712d9-...`; items 1 to 6 with `canEdit` on 1, 3 and 5, `canFork` and a stored `msg_...` point on 2, 4 and 6 |
+| Fork made **before** the edit, at turn 2's answer (`#4`, part of what the edit cuts) | `ok`, `(1) <title>`, `forkedFrom { atSeq: 4 }`, its own session `a91ee773-...` |
+| `chat.edit` of the **second** user message (`#3`: `417` becomes `903`) | `ok` in 579 ms: the agent copied session `e33712d9-...` at turn 1's point `msg_011ChFSjssc2So6YefjyTs3H` in 575 ms, giving `e51e55db-...`; the new turn started with the bare text `Remember the number 903. Reply OK.` and `resumeSessionId=e51e55db-...` (no first-message prefix). The run's session after it is the copy's |
+| Transaction events | `stream.truncated { fromSeq: 3, removedRunIds: [] }`, `run.upserted`, `stream.item`, `chat.upserted`, `run.upserted`, in that order |
+| Stream after it | `#1 user`, `#2 assistant (point msg_011ChFSjssc2So6YefjyTs3H)`, `#3 user "...903..."` with a **new item id** at the freed number, `#4 assistant (a new point)`; turns 2 and 3 of the old stream are gone. The rows hold points on `#2` and `#4` only; the chat still has its one run (no sub-agent in this check) |
+| Question after the edit: `List what I asked you to remember, as "<word>, <number>, <color>"...` | `PINEAPPLE, 903, none`: the word, the **new** number, and neither the old number nor the color |
+| The earlier fork, asked the same question after the edit | `PINEAPPLE, 417, none`: its copy is independent and still has turn 2 as it was |
+| `chat.edit` of the **first** user message (`#1`: `PINEAPPLE` becomes `BANANA`) | `ok` in 2 ms (no fork: nothing to copy). No `fork` call was made. The new turn started with `Follow clowdy:orchestrate. Mode: autopilot` + blank line + `Remember the word BANANA. Reply OK.` and `resumeSessionId=undefined`; a fresh session `58dd8610-...` replaced `e51e55db-...`. Stream: `#1 user (BANANA)`, `#2 assistant`, nothing else |
+| Question after it | `BANANA, none, none`: only the new text is known |
+| The earlier fork once more, after both edits | `PINEAPPLE, 417, none` |
+| Title | The chat's title was the agent's own name for it, so it was left alone by the first-message edit (the rule retitles only a chat still named for the first words of its first message; covered by `test/edit.test.ts`) |
+
+## Setup and commands
+
+Same scratch daemon as Stages 3 and 4 (the daemon's own modules in one Bun process, the real `AgentRegistry` and engines): data dir, projects dir and personal dir are folders under the session scratchpad, port `47313` (not the default random one), token `scratch-token`, user skills pointed at an empty folder, `CLOWDY_PROFILE=scratch`. The script (appendix) runs every command through `executeCommandAsync`, as the HTTP route does, and wraps `engine.start` and `engine.fork` to log what the daemon asks of the agent (prompt, resumed session, fork point). The project folder is an empty scratch folder; Claude Code keeps its session files under `~/.claude/projects/<scratch folder>/` (a handful of small files; they stay).
+
+```
+cd <a scratch folder that holds only the script>
+bun edit-chat-check.ts <scratch dir>
+```
+
+Prompts: turn 1 `Remember the word PINEAPPLE. Reply OK.`; turn 2 `Remember the number 417. Reply OK.`; turn 3 `Remember the color TEAL. Reply OK.`; the edit of message 2 `Remember the number 903. Reply OK.`; the edit of message 1 `Remember the word BANANA. Reply OK.`; the question `List what I asked you to remember, as "<word>, <number>, <color>", using "none" for anything I did not ask you to remember. Answer with that line only.`
+
+## What was not tried
+
+- An edit of a message whose dropped part used a sub-agent or files (the unit tests cover the cut of child runs and files, not the adapter).
+- An edit after the agent's own compact turn (the flag rules say it is not offered).
+- An edit of a long chat (the fork time with a large transcript is as unknown as after Stage 3; `forkTimeoutMs` bounds it).
+- Codex.
+
+## Appendix: the script (`edit-chat-check.ts`, throwaway, kept in the session scratchpad)
+
+```ts
+/**
+ * Real check of Stage 5 (message-actions): `chat.edit` against the real Claude Code adapter, through the daemon's own modules, on a scratch data
+ * directory and a non-default port. Usage: `bun edit-chat-check.ts <scratch dir>`.
+ *
+ *  1. A daemon (own data dir, projects dir, personal dir, port 47313, token) with the real engine registry.
+ *  2. A 3-turn Claude Code chat: a word, a number, a color (tiny prompts).
+ *  3. A fork of the source at turn 2's answer (a message that the edit will cut away), made before the edit.
+ *  4. `chat.edit` of the SECOND user message (another number); then a question: the answer must know the word and the new number, and neither the old number nor the color.
+ *  5. The stream and the daemon's rows after it; the earlier fork asked the same question (independent copy).
+ *  6. `chat.edit` of the FIRST user message (a fresh session with the first-message prefix); a question: only the new word is known.
+ *  7. The earlier fork once more after both edits.
+ */
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const DAEMON = '/Users/bionic/WORK/My/@kachurun/clowdy-message-actions/apps/daemon/src';
+const { startDaemon } = await import(`${ DAEMON }/daemon`);
+const { loadConfig } = await import(`${ DAEMON }/config`);
+const { AgentRegistry } = await import(`${ DAEMON }/engine/acp/registry`);
+const { createEngines } = await import(`${ DAEMON }/engine`);
+const { installShimOrWarn } = await import(`${ DAEMON }/cli/shim`);
+const { executeCommandAsync } = await import(`${ DAEMON }/commands`);
+const { streamItems } = await import(`${ DAEMON }/domain/items`);
+const { itemRef } = await import(`${ DAEMON }/db/items`);
+
+const scratch = process.argv[2] as string;
+const root = mkdtempSync(join(scratch, 'real-edit-'));
+const dataDir = join(root, 'data');
+const work = join(root, 'work');
+
+mkdirSync(dataDir, { recursive: true });
+mkdirSync(work, { recursive: true });
+mkdirSync(join(root, 'skills'), { recursive: true });
+
+const out: string[] = [];
+const say = (line: string) => {
+    out.push(line);
+    console.log(line);
+};
+
+const config = loadConfig({
+    ...process.env,
+    CLOWDY_DATA_DIR: dataDir,
+    CLOWDY_PROJECTS_DIR: join(root, 'projects'),
+    CLOWDY_PERSONAL_DIR: join(root, 'personal'),
+    CLOWDY_PORT: '47313',
+    CLOWDY_TOKEN: 'scratch-token',
+    CLOWDY_ENGINE: 'claude',
+    CLOWDY_USER_SKILLS_DIRS: join(root, 'skills'),
+    CLOWDY_PROFILE: 'scratch',
+});
+
+say(`root ${ root }`);
+say(`dataDir ${ config.dataDir }, port ${ config.port }`);
+
+const agents = new AgentRegistry({ dataDir: config.dataDir });
+const shim = installShimOrWarn(config.dataDir);
+const engines = createEngines(config, agents, process.env, shim);
+const daemon = await startDaemon(config, { engines, agents });
+const { services } = daemon;
+const { store } = services;
+const engine = engines.get('claude') as any;
+
+// What the engine is asked for, as the daemon asks it: the turns (prompt and resumed session) and the forks (session and point).
+const asked: string[] = [];
+const start = engine.start.bind(engine);
+const fork = engine.fork.bind(engine);
+
+engine.start = (options: any) => {
+    asked.push(`start prompt=${ JSON.stringify(String(options.prompt).slice(0, 70)) } resumeSessionId=${ options.resumeSessionId }`);
+
+    return start(options);
+};
+engine.fork = async (options: any) => {
+    const started = Date.now();
+    const result = await fork(options);
+
+    asked.push(`fork sessionId=${ options.sessionId } ref=${ options.ref } -> ${ result.sessionId } (${ Date.now() - started } ms)`);
+
+    return result;
+};
+
+let n = 0;
+const run = async (type: string, fields: Record<string, unknown> = {}, expectOk = true) => {
+    const result = await executeCommandAsync(services, { requestId: `real-${ ++n }-${ Date.now() }`, type, ...fields } as any);
+
+    if (expectOk && !result.ok) {
+        throw new Error(`${ type } failed: ${ result.error.code } ${ result.error.message }`);
+    }
+
+    return result as any;
+};
+const waitFor = async (check: () => boolean, what: string, ms = 240_000) => {
+    const deadline = Date.now() + ms;
+
+    while (!check()) {
+        if (Date.now() > deadline) {
+            throw new Error(`timed out: ${ what }`);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 250));
+    }
+};
+const chatRow = (id: string) => store.db.query('SELECT * FROM chats WHERE id = ?').get(id) as any;
+const runIdOf = (chatId: string) => chatRow(chatId).orchestrator_run_id as string;
+const itemsOfChat = (chatId: string) => streamItems(store, runIdOf(chatId), 0);
+const describe = (chatId: string) => itemsOfChat(chatId).map((item) => {
+    const body = item.body as any;
+
+    return `#${ item.seq } ${ item.id } ${ body.kind }${ item.canFork ? ' canFork' : '' }${ item.canEdit ? ' canEdit' : '' } ref=${ itemRef(store.db, item.runId, item.seq) ?? '-' } ${ body.kind === 'user' || body.kind === 'assistant' ? JSON.stringify(body.text.slice(0, 90)) : body.kind === 'tool' ? `${ body.name } ${ body.state }` : '' }`;
+});
+const lastAnswer = (chatId: string) => (itemsOfChat(chatId).filter(item => item.body.kind === 'assistant').at(-1)?.body as any)?.text as string | undefined;
+const rest = (runId: string) => ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(services.runs.require(runId).status);
+
+async function turn(chatId: string, text: string, label: string) {
+    const started = Date.now();
+    const { data } = await run('chat.send', { chatId, text });
+
+    await waitFor(() => rest(data.runId), label);
+
+    const r = services.runs.require(data.runId);
+
+    say(`${ label } (${ Math.round((Date.now() - started) / 1000) } s): run ${ r.status }${ r.error ? ` error=${ r.error }` : '' } session=${ r.sessionId } answer=${ JSON.stringify(lastAnswer(chatId)) }`);
+
+    if (r.status !== 'succeeded') {
+        throw new Error(`${ label } failed`);
+    }
+
+    return r;
+}
+
+/** An edit as the app sends it, then wait for the turn it starts. */
+async function edit(chatId: string, itemId: string, text: string, label: string) {
+    const started = Date.now();
+    const cursor = store.headCursor();
+    const result = await run('chat.edit', { chatId, itemId, text }, false);
+
+    say(`${ label }: chat.edit -> ${ result.ok ? `ok in ${ Date.now() - started } ms` : `FAILED ${ JSON.stringify(result.error) }` }`);
+
+    if (!result.ok) {
+        throw new Error(`${ label } failed`);
+    }
+
+    const events = store.eventsAfter(cursor, undefined, 1000).map(event => event.data as any);
+
+    say(`  events of the edit's transaction (first five): ${ events.slice(0, 5).map(data => data.type === 'stream.truncated' ? `stream.truncated ${ JSON.stringify({ fromSeq: data.fromSeq, removedRunIds: data.removedRunIds }) }` : data.type).join(', ') }`);
+
+    await waitFor(() => rest(result.data.runId) && services.runs.require(result.data.runId).status === 'succeeded' && lastAnswer(chatId) !== undefined && !itemsOfChat(chatId).some(item => (item.body as any).kind === 'assistant' && (item.body as any).done === false), `${ label }: the new turn`);
+
+    const r = services.runs.require(result.data.runId);
+
+    say(`  the new turn: run ${ r.status } session=${ r.sessionId } answer=${ JSON.stringify(lastAnswer(chatId)) }`);
+
+    return r;
+}
+
+const QUESTION = 'List what I asked you to remember, as "<word>, <number>, <color>", using "none" for anything I did not ask you to remember. Answer with that line only.';
+
+try {
+    say(`engine claude: canFork=${ engine.canFork }, store.forkable=${ store.forkable('claude') }`);
+
+    const { data: added } = await run('project.add', { folders: [work] });
+    const { data: created } = await run('chat.create', { projectId: added.project.id, engine: 'claude', model: 'haiku' });
+    const source = created.chat.id as string;
+
+    const r1 = await turn(source, 'Remember the word PINEAPPLE. Reply OK.', 'source turn 1 (word)');
+
+    await turn(source, 'Remember the number 417. Reply OK.', 'source turn 2 (number)');
+    await turn(source, 'Remember the color TEAL. Reply OK.', 'source turn 3 (color)');
+
+    say('--- source stream before any edit');
+    describe(source).forEach(say);
+
+    const before = itemsOfChat(source);
+    const answer2 = before.filter(item => item.canFork)[1];
+    const message2 = before.filter(item => item.canEdit)[1];
+
+    say(`source session before the edits: ${ services.runs.require(runIdOf(source)).sessionId } (turn 1's: ${ r1.sessionId })`);
+
+    // ---- a fork made from an answer of the part the edit will cut away
+    say(`--- chat.fork at turn 2's answer (#${ answer2.seq }), the part that the edit of message #${ message2.seq } will cut`);
+
+    const forkResult = await run('chat.fork', { chatId: source, itemId: answer2.id });
+    const earlier = forkResult.data.chat;
+
+    say(`fork made before the edit: ${ JSON.stringify({ id: earlier.id, title: earlier.title, forkedFrom: earlier.forkedFrom }) }, session ${ services.runs.require(earlier.orchestratorRunId).sessionId }`);
+
+    // ---- edit of the second message
+    say(`--- chat.edit of the SECOND user message (#${ message2.seq }): 417 becomes 903`);
+
+    const asking = asked.length;
+    const r2 = await edit(source, message2.id, 'Remember the number 903. Reply OK.', 'edit 2');
+
+    say('  engine calls of the edit:');
+    asked.slice(asking).forEach(line => say(`    ${ line }`));
+    say(`  session of the run after the edit: ${ r2.sessionId } (the fork's, not the original)`);
+    say('--- source stream after the edit of message 2');
+    describe(source).forEach(say);
+
+    const afterRows = store.db.query('SELECT seq, provider_ref FROM stream_items WHERE run_id = ? ORDER BY seq').all(runIdOf(source)) as any[];
+
+    say(`rows: ${ afterRows.map(row => `#${ row.seq }:${ row.provider_ref ? 'point' : '-' }`).join(' ') }; runs of the chat: ${ (store.db.query('SELECT COUNT(*) AS n FROM runs WHERE chat_id = ? OR root_run_id = ?').get(source, runIdOf(source)) as any).n }`);
+
+    await turn(source, QUESTION, 'source question after edit 2 (expect PINEAPPLE, 903, none)');
+    say('--- the earlier fork, asked the same question (expect PINEAPPLE, 417, none)');
+    await turn(earlier.id, QUESTION, 'earlier fork question');
+
+    // ---- edit of the first message
+    const firstNow = itemsOfChat(source).find(item => item.canEdit && item.seq === 1);
+
+    say(`--- chat.edit of the FIRST user message (#${ firstNow?.seq }): PINEAPPLE becomes BANANA`);
+
+    const asking2 = asked.length;
+    const sessionBefore = services.runs.require(runIdOf(source)).sessionId;
+    const r3 = await edit(source, firstNow?.id as string, 'Remember the word BANANA. Reply OK.', 'edit 1');
+
+    say('  engine calls of the edit:');
+    asked.slice(asking2).forEach(line => say(`    ${ line }`));
+    say(`  session of the run after the edit: ${ r3.sessionId } (before: ${ sessionBefore }); title ${ JSON.stringify(chatRow(source).title) }`);
+    say('--- source stream after the edit of message 1');
+    describe(source).forEach(say);
+    await turn(source, QUESTION, 'source question after edit 1 (expect BANANA, none, none)');
+
+    say('--- the earlier fork once more, after both edits (expect PINEAPPLE, 417, none)');
+    await turn(earlier.id, QUESTION, 'earlier fork question, again');
+    say('--- engine calls, all');
+    asked.forEach(line => say(`  ${ line }`));
+}
+finally {
+    await daemon.stop();
+    engines.stop();
+    writeFileSync(join(root, 'log.txt'), out.join('\n'));
+    say(`log: ${ join(root, 'log.txt') }`);
+}
+```
