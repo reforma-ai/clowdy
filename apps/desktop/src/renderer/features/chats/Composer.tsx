@@ -3,7 +3,7 @@ import { Button } from '@clowdy/components/Button';
 import { ListBoxItem } from '@clowdy/components/List';
 import { emptyComposerDoc, RichInput, type ComposerDoc, type RichInputHandle } from '@clowdy/components/RichInput';
 import { Clip } from '@clowdy/icons/14';
-import { useImperativeHandle, useRef, useState, type MouseEvent, type Ref } from 'react';
+import { useImperativeHandle, useLayoutEffect, useRef, useState, type MouseEvent, type Ref } from 'react';
 
 import { useRootStore } from '../../stores';
 import { busyEnter, sendMode } from './busyEnter';
@@ -11,7 +11,7 @@ import { readRememberedMode, startingMode, writeRememberedMode } from './chatMod
 import { isRunActive, isRunBusy } from './chatRun';
 import { perform } from './commands';
 import styles from './Composer.module.css';
-import { draftOf, messageOf, newChatDraftKey, saveDraft, withTextFirst } from './composerDrafts';
+import { draftOf, messageOf, newChatDraftKey, saveDraft, withQuoteLast, withTextFirst } from './composerDrafts';
 import { filesOf, releaseFiles, restoreFiles, takeFiles, type DraftFile } from './composerFiles';
 import { serializeMention } from './composerMentions';
 import { ComposerQueue } from './ComposerQueue';
@@ -37,6 +37,8 @@ const LINE_HEIGHT = 20;
 export interface ComposerHandle {
     /** Adds files to the message, as if they were picked with the attach button. */
     addFiles: (files: readonly File[]) => void;
+    /** Reply: adds `text` to the end of the message as a quote, and puts the caret on the line below it. */
+    quote: (text: string) => void;
 }
 
 export interface ComposerProps {
@@ -95,12 +97,33 @@ export function Composer({ chat, run, start, minLines, ref }: ComposerProps) {
         ? NO_PROVIDER_HINT
         : attach.uploading ? 'Wait until the files are uploaded' : attach.failed ? 'Retry or remove the file that did not upload' : undefined;
 
-    useImperativeHandle(ref, () => ({ addFiles: attach.add }), [attach.add]);
-
     const edit = (next: ComposerDoc) => {
         saveDraft(key, next);
         setShown({ key, doc: next });
     };
+
+    // Reply focuses the field once it holds the quote. The field takes a new draft in its own layout effect, which runs before this one, and the caret that
+    // replacing the text leaves is at its end (ProseMirror maps the selection to the end of what replaced it), where `focus` puts it: under the quote.
+    const focusAfterQuote = useRef(false);
+
+    useLayoutEffect(() => {
+        if (!focusAfterQuote.current) return;
+
+        focusAfterQuote.current = false;
+        field.current?.focus();
+    });
+
+    const quote = (text: string) => {
+        const draft = draftOf(key);
+        const next = withQuoteLast(draft, text);
+
+        if (next === draft) return;
+
+        focusAfterQuote.current = true;
+        edit(next);
+    };
+
+    useImperativeHandle(ref, () => ({ addFiles: attach.add, quote }), [attach.add, quote]);
 
     /** Sends the message; `mod` (Cmd/Ctrl+Enter) sends it the other way than Enter while the orchestrator works. */
     const send = async (from: ComposerDoc, mod = false) => {

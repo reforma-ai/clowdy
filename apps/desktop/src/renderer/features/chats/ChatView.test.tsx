@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { emptyComposerDoc } from '@clowdy/components/RichInput';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,6 +8,7 @@ import { createFixtureData, FIXTURE_PROJECT_ID, type FixtureData } from '../../d
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { ChatView } from './ChatView';
+import { saveDraft } from './composerDrafts';
 
 import type { KeyValueStorage } from '../../stores/storage';
 
@@ -455,5 +457,86 @@ describe('the messages of a chat', () => {
         expect(rowOf('The refund tests are in.')?.dataset.align).toBe('start');
         expect(rowOf('I told the rounding thread')?.dataset.show).toBe('always');
         expect(rows()).toHaveLength(4);
+    });
+});
+
+describe('Reply in a chat', () => {
+    const reply = (words: string) => [...container.querySelectorAll<HTMLElement>('time')]
+        .map(time => time.parentElement as HTMLElement)
+        .find(row => row.parentElement?.textContent?.includes(words))
+        ?.querySelector<HTMLButtonElement>('button[aria-label="Reply"]');
+    const editor = () => (field() as HTMLElement & { editor: { getText: (options?: { blockSeparator?: string }) => string } }).editor;
+    const written = () => editor().getText({ blockSeparator: '\n' });
+
+    // What is typed and not sent is kept per chat for the whole session.
+    beforeEach(() => saveDraft('c-2', emptyComposerDoc()));
+
+    it('puts the message under Reply into the message box as a quote, the caret on the line below it', async () => {
+        await start();
+        await draw('c-2');
+        await act(async () => reply('Build the first version')!.click());
+
+        expect(written()).toMatch(/^> Build the first version/);
+        expect(document.activeElement).toBe(field());
+    });
+
+    it('quotes an answer as it was written too, under what is already typed', async () => {
+        await start();
+        await draw('c-2');
+        await act(async () => {
+            (field() as HTMLElement & { editor: { commands: { insertContent: (text: string) => void } } }).editor.commands.insertContent('See this');
+        });
+        await act(async () => reply('The booking page, the fleet list and the price calculation are in.')!.click());
+
+        expect(written()).toMatch(/^See this\n> The booking page, the fleet list and the price calculation are in\./);
+    });
+
+    it('has no Reply in a chat that is read only, where the message box is gone: Copy stays', async () => {
+        await start(claudeOff);
+        await draw('c-2');
+
+        expect(field()).toBeNull();
+        expect(container.querySelector('button[aria-label="Reply"]')).toBeNull();
+        expect(container.querySelector('button[aria-label="Copy message"]')).not.toBeNull();
+    });
+
+    it('quotes the words selected inside one message from the toolbar, and collapses the selection', async () => {
+        const frames: FrameRequestCallback[] = [];
+
+        vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
+        vi.spyOn(Range.prototype, 'getClientRects').mockImplementation(() => [{ left: 10, right: 90, top: 100, bottom: 120, width: 80, height: 20 }] as unknown as DOMRectList);
+        vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(() => ({ left: 10, right: 90, top: 100, bottom: 120, width: 80, height: 20 }) as DOMRect);
+
+        try {
+            await start();
+            await draw('c-2');
+
+            const walker = document.createTreeWalker(container.querySelector('[data-message]')!, NodeFilter.SHOW_TEXT);
+            let node = walker.nextNode()!;
+
+            while (!node.textContent?.includes('Build the first version')) node = walker.nextNode()!;
+
+            const range = document.createRange();
+
+            range.setStart(node, 6);
+            range.setEnd(node, 15);
+            window.getSelection()!.removeAllRanges();
+            window.getSelection()!.addRange(range);
+            document.dispatchEvent(new Event('selectionchange'));
+            await act(async () => frames.splice(0).forEach(callback => callback(0)));
+            await act(async () => document.body.querySelector<HTMLButtonElement>('[role="toolbar"] button')!.click());
+            // The editor takes the focus on a frame of its own.
+            await act(async () => frames.splice(0).forEach(callback => callback(0)));
+
+            expect(written()).toBe(`> ${ node.textContent!.slice(6, 15) }\n`);
+            expect(window.getSelection()!.isCollapsed).toBe(true);
+            expect(document.activeElement).toBe(field());
+            expect(document.body.querySelector('[role="toolbar"]')).toBeNull();
+        }
+        finally {
+            window.getSelection()!.removeAllRanges();
+            vi.unstubAllGlobals();
+            vi.restoreAllMocks();
+        }
     });
 });

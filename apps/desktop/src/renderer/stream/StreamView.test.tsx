@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { StreamView } from './StreamView';
+import { StreamView, type StreamViewProps } from './StreamView';
 
 import type { StreamItem, StreamItemBody } from '@clowdy/protocol';
 
@@ -159,10 +159,10 @@ describe('StreamView', () => {
         const twoTurns = [...items, item(4, { kind: 'user', text: 'Now the table' }), item(5, { kind: 'assistant', text: 'The table is done.', done: true })];
         const rows = () => [...container.querySelectorAll<HTMLElement>('time')].map(time => time.parentElement as HTMLElement);
         const rowAfter = (text: string) => [...container.querySelectorAll<HTMLElement>('time')].find(time => time.parentElement?.parentElement?.textContent?.includes(text))?.parentElement;
-        const drawWith = (list: StreamItem[], props: { active?: boolean; messageActions?: boolean } = { messageActions: true }) => act(async () => root.render(<StreamView items={ list } { ...props } />));
+        const drawWith = (list: StreamItem[], props: { active?: boolean; messageActions?: StreamViewProps['messageActions'] } = { messageActions: {} }) => act(async () => root.render(<StreamView items={ list } { ...props } />));
 
         it('draws a row under each message of the person and the answer of each turn, and none under the rest', async () => {
-            await drawWith(twoTurns, { active: false, messageActions: true });
+            await drawWith(twoTurns, { active: false, messageActions: {} });
 
             expect(rows()).toHaveLength(4);
             expect(rowAfter('Fix the form')?.dataset.align).toBe('end');
@@ -179,7 +179,7 @@ describe('StreamView', () => {
         });
 
         it('keeps the turn rail\'s mark on the root of the person\'s message, with the row inside it', async () => {
-            await drawWith(items, { active: false, messageActions: true });
+            await drawWith(items, { active: false, messageActions: {} });
 
             const bubble = container.querySelector<HTMLElement>('[data-turn="i-0"]');
 
@@ -187,7 +187,7 @@ describe('StreamView', () => {
         });
 
         it('gives no row to what another thread wrote or to the notice of threads that stopped', async () => {
-            await drawWith([thread(0), item(1, { kind: 'assistant', text: 'Noted.', done: true }), notice(2)], { active: false, messageActions: true });
+            await drawWith([thread(0), item(1, { kind: 'assistant', text: 'Noted.', done: true }), notice(2)], { active: false, messageActions: {} });
 
             // Only the answer to the thread's message has a row.
             expect(rows()).toHaveLength(1);
@@ -195,20 +195,20 @@ describe('StreamView', () => {
         });
 
         it('gives the answer of a live turn no row until it is done, and the person\'s message its row', async () => {
-            await drawWith(items, { active: true, messageActions: true });
+            await drawWith(items, { active: true, messageActions: {} });
 
             expect(rows()).toHaveLength(1);
             expect(rows()[0].dataset.align).toBe('end');
 
             const writing = [...items.slice(0, 3), item(3, { kind: 'assistant', text: 'The form', done: false })];
 
-            await drawWith(writing, { active: false, messageActions: true });
+            await drawWith(writing, { active: false, messageActions: {} });
 
             expect(rowAfter('The form')).toBeUndefined();
         });
 
         it('draws no row inside the fold when it is opened', async () => {
-            await drawWith(items, { active: false, messageActions: true });
+            await drawWith(items, { active: false, messageActions: {} });
             await act(async () => worked()!.click());
 
             expect(container.textContent).toContain('Looking at it.');
@@ -216,28 +216,105 @@ describe('StreamView', () => {
         });
 
         it('shows the row of the last message that has one, and leaves the others to the pointer', async () => {
-            await drawWith(twoTurns, { active: false, messageActions: true });
+            await drawWith(twoTurns, { active: false, messageActions: {} });
 
             expect(rows().map(row => row.dataset.show)).toEqual(['hover', 'hover', 'hover', 'always']);
             expect(rowAfter('The table is done.')?.dataset.show).toBe('always');
         });
 
         it('moves the last row to the person\'s message while the agent answers, and to the answer when it is done', async () => {
-            await drawWith([...twoTurns.slice(0, 5), item(6, { kind: 'tool', toolCallId: 't2', name: 'Read', input: {}, state: 'running' })], { active: true, messageActions: true });
+            await drawWith([...twoTurns.slice(0, 5), item(6, { kind: 'tool', toolCallId: 't2', name: 'Read', input: {}, state: 'running' })], { active: true, messageActions: {} });
 
             expect(rowAfter('Now the table')?.dataset.show).toBe('always');
             expect(rowAfter('The form is fixed.')?.dataset.show).toBe('hover');
 
-            await drawWith(twoTurns, { active: false, messageActions: true });
+            await drawWith(twoTurns, { active: false, messageActions: {} });
 
             expect(rowAfter('Now the table')?.dataset.show).toBe('hover');
             expect(rowAfter('The table is done.')?.dataset.show).toBe('always');
         });
 
         it('does not take the last row for a message that has none', async () => {
-            await drawWith([...twoTurns, notice(6)], { active: false, messageActions: true });
+            await drawWith([...twoTurns, notice(6)], { active: false, messageActions: {} });
 
             expect(rowAfter('The table is done.')?.dataset.show).toBe('always');
+        });
+        describe('Reply', () => {
+            const replyButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Reply"]')];
+            const toolbar = () => document.body.querySelector('[role="toolbar"]');
+            /** The text node that holds `words` inside the message root `selector` names. */
+            const textNode = (selector: string, words: string) => {
+                const walker = document.createTreeWalker(container.querySelector(selector)!, NodeFilter.SHOW_TEXT);
+
+                for (let node = walker.nextNode(); node; node = walker.nextNode()) if (node.textContent?.includes(words)) return node;
+
+                throw new Error(`No text with ${ words }`);
+            };
+
+            it('draws a Reply under the person\'s messages and the answers, and hands over the message as it was written', async () => {
+                const onReply = vi.fn();
+                const marked = [...twoTurns.slice(0, 4), item(4, { kind: 'user', text: 'Now **the** table' }), twoTurns[5]];
+
+                await drawWith(marked, { active: false, messageActions: { onReply } });
+
+                expect(replyButtons()).toHaveLength(4);
+
+                await act(async () => replyButtons()[2].click());
+                await act(async () => replyButtons()[3].click());
+
+                expect(onReply.mock.calls).toEqual([['Now **the** table'], ['The table is done.']]);
+            });
+
+            it('draws none where no handler is given, whatever else the rows have', async () => {
+                await drawWith(twoTurns, { active: false, messageActions: {} });
+
+                expect(rows()).toHaveLength(4);
+                expect(replyButtons()).toHaveLength(0);
+            });
+
+            it('draws none for a message that has no row', async () => {
+                await drawWith([...twoTurns, notice(6)], { active: false, messageActions: { onReply: vi.fn() } });
+
+                expect(replyButtons()).toHaveLength(4);
+            });
+
+            it('offers Reply on a selection inside one message, and only when the stream has a handler', async () => {
+                const frames: FrameRequestCallback[] = [];
+
+                vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
+                vi.spyOn(Range.prototype, 'getClientRects').mockImplementation(() => [{ left: 10, right: 90, top: 100, bottom: 120, width: 80, height: 20 }] as unknown as DOMRectList);
+                vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(() => ({ left: 10, right: 90, top: 100, bottom: 120, width: 80, height: 20 }) as DOMRect);
+
+                const selectIn = async (selector: string, words: string) => {
+                    const node = textNode(selector, words);
+                    const range = document.createRange();
+
+                    range.setStart(node, node.textContent!.indexOf(words));
+                    range.setEnd(node, node.textContent!.indexOf(words) + words.length);
+                    window.getSelection()!.removeAllRanges();
+                    window.getSelection()!.addRange(range);
+                    document.dispatchEvent(new Event('selectionchange'));
+                    await act(async () => frames.splice(0).forEach(callback => callback(0)));
+                };
+
+                try {
+                    await drawWith(twoTurns, { active: false, messageActions: { onReply: vi.fn() } });
+                    await selectIn('[data-turn="i-0"]', 'the form');
+
+                    expect(toolbar()?.textContent).toBe('Reply');
+
+                    window.getSelection()!.removeAllRanges();
+                    await drawWith(twoTurns, { active: false, messageActions: {} });
+                    await selectIn('[data-turn="i-0"]', 'the form');
+
+                    expect(toolbar()).toBeNull();
+                }
+                finally {
+                    window.getSelection()!.removeAllRanges();
+                    vi.unstubAllGlobals();
+                    vi.restoreAllMocks();
+                }
+            });
         });
     });
 });

@@ -1,6 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { useStickToBottom } from '@clowdy/components/hooks';
+import { Show } from '@clowdy/components/Show';
 import { ArrowDown } from '@clowdy/icons/14';
 import { mergeRefs } from '@clowdy/lib';
 import { Fragment, useMemo, useRef, useState } from 'react';
@@ -11,6 +12,7 @@ import { CompactionLine } from './CompactionLine';
 import { ErrorLine } from './ErrorLine';
 import { NoteLine } from './NoteLine';
 import { QuestionCard } from './QuestionCard';
+import { SelectionReply } from './SelectionReply';
 import { NO_LINKS, StreamLinksContext, type StreamLinks } from './StreamLinks';
 import styles from './StreamView.module.css';
 import { SubagentCard } from './SubagentCard';
@@ -26,7 +28,7 @@ import { WorkingLine } from './WorkingLine';
 
 import type { StreamItem } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
-import type { MessageActionsShow } from './MessageActions';
+import type { MessageActionsConfig } from './MessageActions';
 
 export interface StreamViewProps {
     items: StreamItem[];
@@ -46,9 +48,10 @@ export interface StreamViewProps {
     errorAction?: (item: StreamItem) => ReactNode;
     /**
      * Draws a row of actions and the time under the person's own messages and under the answer of each turn that is over, shown on the pointer
-     * or the focus and always under the last one. Off for a page that only reads a run.
+     * or the focus and always under the last one. Off for a page that only reads a run. Copy comes with the row; the other actions are drawn
+     * when their handler is here: `onReply` also gives a selection inside one message a Reply button (`SelectionReply`).
      */
-    messageActions?: boolean;
+    messageActions?: Omit<MessageActionsConfig, 'show'>;
 }
 
 /**
@@ -57,7 +60,7 @@ export interface StreamViewProps {
  * while it is there. A turn that is over shows what was asked and the answer, and the work between them under one
  * "Worked for" line.
  */
-export function StreamView({ items, active = false, working, onAnswer, emptyState, decorate, links = NO_LINKS, errorAction, messageActions = false }: StreamViewProps) {
+export function StreamView({ items, active = false, working, onAnswer, emptyState, decorate, links = NO_LINKS, errorAction, messageActions }: StreamViewProps) {
     const scroller = useRef<HTMLDivElement>(null);
     const { scrollRef: stickScrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
     const scrollRef = useMemo(
@@ -75,13 +78,13 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
     const showWorking = Boolean(working) && !live;
 
     /** The row a block gets: none unless the caller asked for rows and the block is a message that has one; the last of them always shows. */
-    const actionsOf = (block: StreamBlock): MessageActionsShow | undefined => {
+    const actionsOf = (block: StreamBlock): MessageActionsConfig | undefined => {
         if (!messageActions || !hasMessageActions(block)) return undefined;
 
-        return block.item.id === lastWithActions ? 'always' : 'hover';
+        return { ...messageActions, show: block.item.id === lastWithActions ? 'always' : 'hover' };
     };
 
-    const renderItem = (item: StreamItem, actions?: MessageActionsShow): ReactNode => {
+    const renderItem = (item: StreamItem, actions?: MessageActionsConfig): ReactNode => {
         const { body } = item;
 
         switch (body.kind) {
@@ -131,6 +134,10 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
                 </div>
 
                 <TurnRail marks={ marks } scroller={ scroller } />
+
+                <Show when={ messageActions?.onReply }>
+                    { onReply => <SelectionReply scope={ scroller } onReply={ onReply } /> }
+                </Show>
 
                 <Button
                     variant="bordered"

@@ -50,7 +50,7 @@ describe('UserBubble', () => {
 
     it('has no time of its own: it shows one only in the row of actions it is given', () => {
         const bare = renderToStaticMarkup(<UserBubble text="Hello" at={ 0 } turn="i-1" />);
-        const withRow = renderToStaticMarkup(<UserBubble text="Hello" at={ 0 } turn="i-1" actions="hover" />);
+        const withRow = renderToStaticMarkup(<UserBubble text="Hello" at={ 0 } turn="i-1" actions={ { show: 'hover' } } />);
 
         expect(bare).not.toContain('<time');
         expect(bare).not.toContain('Copy message');

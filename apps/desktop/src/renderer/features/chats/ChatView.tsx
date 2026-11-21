@@ -82,7 +82,8 @@ export function ChatView({ chat }: { chat: Chat }) {
                     active={ isRunActive(run) }
                     working={ isRunActive(run) && liveLine(run.status) }
                     links={ links }
-                    messageActions
+                    // Reply quotes into the message box, which a chat that is read only does not have.
+                    messageActions={ writability.writable ? { onReply: text => composer.current?.quote(text) } : {} }
                     emptyState={ <EmptyChat /> }
                     decorate={ item => (progress && item.id === cardAfter ? <ProgressCard progress={ progress } /> : null) }
                     errorAction={ item => (item.id === overflowAt ? <CompactAction chatId={ chat.id } /> : null) }
