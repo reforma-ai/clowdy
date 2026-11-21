@@ -42,5 +42,5 @@ yarn-error.log*
 # CodeGraph local index
 .codegraph/
 
-/TODO.md
-/TODO-*.md
+/BACKLOG.md
+/BACKLOG-*.md

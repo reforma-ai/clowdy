@@ -15,7 +15,7 @@ import {
   ScrollChromeBars,
   SCROLLABLE_OVERLAY_SLOT,
   type ScrollAxisSource,
-} from '@clowdy/components';
+} from "@clowdy/components";
 ```
 
 ## Pieces
@@ -55,19 +55,28 @@ Something else owns overflow (virtual list, arborist). Paint chrome only:
 
 ```tsx
 const verticalSource = useMemo(
-  () => elementScrollAxisSource(() => scrollEl, 'vertical'),
+  () => elementScrollAxisSource(() => scrollEl, "vertical"),
   [scrollEl],
 );
 
-const { rootRef, setScrollbarV, handlePointerDown, rootPointerHandlers } = useScrollChrome({
-  verticalSource,
-  sourceKey: scrollEl,
-});
+const { rootRef, setScrollbarV, handlePointerDown, rootPointerHandlers } =
+  useScrollChrome({
+    verticalSource,
+    sourceKey: scrollEl,
+  });
 
-<ScrollChromeRoot rootRef={rootRef} vertical rootPointerHandlers={rootPointerHandlers}>
+<ScrollChromeRoot
+  rootRef={rootRef}
+  vertical
+  rootPointerHandlers={rootPointerHandlers}
+>
   {children}
-  <ScrollChromeBars vertical setScrollbarV={setScrollbarV} onPointerDown={handlePointerDown} />
-</ScrollChromeRoot>
+  <ScrollChromeBars
+    vertical
+    setScrollbarV={setScrollbarV}
+    onPointerDown={handlePointerDown}
+  />
+</ScrollChromeRoot>;
 ```
 
 Hide the native bar on the external element yourself.
@@ -95,7 +104,7 @@ Prefer optimistic `setOffset` (update local metrics immediately, then push remot
 
 ```tsx
 useScrollChrome({
-  horizontalSource: elementScrollAxisSource(() => canvasEl, 'horizontal'),
+  horizontalSource: elementScrollAxisSource(() => canvasEl, "horizontal"),
   verticalSource: remotePageSource,
 });
 ```
@@ -105,18 +114,20 @@ useScrollChrome({
 ## Stick-to-bottom
 
 ```tsx
-<Scrollable stickToBottom style={{ height: 360 }}>{lines}</Scrollable>
+<Scrollable stickToBottom style={{ height: 360 }}>
+  {lines}
+</Scrollable>
 ```
 
 `useScrollable().stickToBottom` exposes `isAtBottom`, `enabled` / `setEnabled`, `scrollToBottom`.
 
 ## `useScrollChrome` options
 
-| Option                                            | Notes                                           |
-| ------------------------------------------------- | ----------------------------------------------- |
-| `verticalSource` / `horizontalSource`             | Axis active when source is set                  |
-| `sourceKey`                                       | Re-subscribe / re-observe when identity changes |
-| `gap` / `alwaysShowScrollbar`                     | Same as `Scrollable`                            |
+| Option                                | Notes                                           |
+| ------------------------------------- | ----------------------------------------------- |
+| `verticalSource` / `horizontalSource` | Axis active when source is set                  |
+| `sourceKey`                           | Re-subscribe / re-observe when identity changes |
+| `gap` / `alwaysShowScrollbar`         | Same as `Scrollable`                            |
 
 Returns `rootRef`, `setScrollbarV/H`, `handlePointerDown`, `rootPointerHandlers`, `edgesRef`, `redraw`.
 
