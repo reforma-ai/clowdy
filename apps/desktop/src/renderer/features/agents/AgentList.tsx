@@ -19,7 +19,7 @@ import { deleteChat } from '../chats/deleteChat';
 import { threadsAtWork } from '../chats/runningAgentRows';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
-import { agentGroups, agentRows, ancestorChats, draftTarget, groupFolderOf, isActiveThread, orchestratorOf, type AgentGroup, type AgentRow, type AgentSelection } from './agentTree';
+import { agentGroups, agentRows, ancestorChats, groupFolderOf, isActiveThread, orchestratorOf, type AgentGroup, type AgentRow, type AgentSelection } from './agentTree';
 import { ArchiveButton } from './ArchiveButton';
 import { ChatIcon } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
@@ -96,10 +96,8 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
     const openChatId = selection.draft ? undefined : selection.chat?.id;
     const { folders } = project.project;
     const grouped = ui.groupByFolder && folders.length > 1;
-    // The new-chat page of another folder than the main one belongs to that folder's heading, not to the row at the top: the row stays free to be pressed.
-    const draftFolder = selection.draft && grouped ? draftTarget(folders, ui.draftFolderId) : undefined;
-    const draftElsewhere = draftFolder !== undefined && !draftFolder.isMain;
-    const selectedId = selection.draft ? (draftElsewhere ? undefined : NEW_CHAT_ROW) : openChatId;
+    // The new-chat row is the open one on every new-chat page, whatever folder it is for: the folder is told by the select under the message box.
+    const selectedId = selection.draft ? NEW_CHAT_ROW : openChatId;
     const rowsOf = (roots: readonly Chat[]) => agentRows({
         roots,
         threadsOf: chatId => project.threadsOf(chatId),
@@ -136,7 +134,7 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
         list: () => list.current,
         // The headings are rows the arrows stop on, so they are in the order J and K step through; a group's note has no focus.
         ids: () => [NEW_CHAT_ROW, ...entries.filter(entry => entry.kind !== 'empty').map(entryKey)],
-        openId: () => selectedId ?? (draftFolder && groupKey(draftFolder.folder.id)),
+        openId: () => selectedId,
     }));
 
     // Right-click anywhere on a chat's row: the rows are the list's own elements, so the click is found by its row's key.
@@ -214,8 +212,6 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
                         </Button>
                     </span>
                 ) }
-                // The heading of the folder the open new-chat page is for stays as if hovered, with its button, like the row of an open menu.
-                data-open={ (draftElsewhere && draftFolder.folder.id === group.folder.id) || undefined }
                 data-collapsed={ isCollapsed || undefined }
                 data-missing={ isMissing || undefined }
             >

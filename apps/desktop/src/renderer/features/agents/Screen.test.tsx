@@ -428,32 +428,24 @@ describe('grouped by folder', () => {
         expect(isSelected('c-2')).toBe(true);
     });
 
-    it('has a button in each heading for a chat in that folder: the main folder\'s starts as the new-chat row does, and the page says where', async () => {
+    it('has a button in each heading for a chat in that folder: the page says where, and the new-chat row stays the open one', async () => {
         await restart();
         await press(buttonNamed('New chat in car-rental-api'));
         await draw();
 
         expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
         expect(folderSelect()?.textContent).toBe('car-rental-api');
-        // The page of another folder is marked on its heading, and the row at the top is free to start one in the main folder.
-        expect(isSelected('@new-chat')).toBe(false);
-        expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(true);
-
-        await press(rowOf('@new-chat'));
-        await draw();
-
-        expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
+        // Whatever folder the page is for, the row at the top is the one marked, and no heading is.
         expect(isSelected('@new-chat')).toBe(true);
-        expect(folderSelect()?.textContent).toBe('car-rental');
         expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
 
         // The main group's button is the same page as the row at the top.
-        await press(buttonNamed('New chat in car-rental-api'));
         await press(buttonNamed('New chat in car-rental'));
         await draw();
 
         expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
         expect(isSelected('@new-chat')).toBe(true);
+        expect(folderSelect()?.textContent).toBe('car-rental');
     });
 
     it('shows the main folder\'s page when the folder the new-chat page was for left the project', async () => {
@@ -488,9 +480,9 @@ describe('grouped by folder', () => {
 
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
             expect(folderSelect()?.textContent).toBe('car-rental-api');
-            // The heading of that folder is marked as the page's, as when its own button opened the page.
-            expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(true);
-            expect(isSelected('@new-chat')).toBe(false);
+            // The new-chat row stays the open one, as when the heading's own button opened the page.
+            expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
+            expect(isSelected('@new-chat')).toBe(true);
 
             await press(folderSelect()!);
 
