@@ -1,8 +1,10 @@
 import { ACTIVE_RUN_STATUSES, isBusyRunStatus, isTerminalRunStatus } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
+import { listItems } from '../src/db/items';
 import { getProject } from '../src/db/projects';
 import { listRuns, runningCounts } from '../src/db/runs';
+import { appendItem } from '../src/domain/items';
 import { QUEUE_REASON } from '../src/runs/scheduler';
 import { BACKGROUND_REASON, canTransition, NEEDS_REASON, TRANSITIONS } from '../src/runs/transitions';
 import { cleanTempDirs, GateEngine, gateEngines, Harness, restartHarness, startHarness, waitFor } from './helpers';
@@ -490,6 +492,27 @@ describe('cancellation', () => {
 });
 
 describe('restart recovery', () => {
+    test('a thought the crash cut short comes back done, so the app does not show it as going on', async () => {
+        const gate = new GateEngine();
+        const first = await startHarness({}, { engines: gateEngines(gate) });
+        const project = first.openRepo();
+        const task = first.ok('task.create', { projectId: project.id, title: 'Thinking' }).task;
+        const runId = first.ok('task.start', { taskId: task.id }).runId as string;
+
+        await waitFor(() => first.run(runId).status === 'running', 'the run to start');
+        appendItem(first.store, runId, { kind: 'reasoning', text: 'Let me see', done: false });
+        appendItem(first.store, runId, { kind: 'reasoning', text: 'Already over', done: true, durationMs: 1200 });
+        await first.stop();
+
+        const second = await restartHarness(first, { engines: gateEngines(new GateEngine()) });
+
+        harnesses.push(second);
+
+        const thoughts = listItems(second.store.db, runId, 0).flatMap(item => (item.body.kind === 'reasoning' ? [item.body] : []));
+
+        expect(thoughts).toEqual([{ kind: 'reasoning', text: 'Let me see', done: true }, { kind: 'reasoning', text: 'Already over', done: true, durationMs: 1200 }]);
+    });
+
     test('runs that were mid-turn come back interrupted with a notice; runs that only waited keep waiting', async () => {
         const gate = new GateEngine();
         const first = await startHarness({ maxRuns: 1 }, { engines: gateEngines(gate) });

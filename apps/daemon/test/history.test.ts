@@ -39,6 +39,13 @@ describe('conversationRecord', () => {
         expect(inside(record)).toBe('Person: Add a footer\nYou: Done.');
     });
 
+    test('still leaves out the message this turn sends when a thought of a turn that was cut short follows it', () => {
+        const thought: StreamItemBody = { kind: 'reasoning', text: 'Let me look.', done: true };
+
+        expect(conversationRecord(stream(person('Add a footer'), thought), ['Add a footer'])).toBeUndefined();
+        expect(inside(conversationRecord(stream(person('Add a footer'), agent('Done.'), person('And the header?'), thought), ['And the header?']))).toBe('Person: Add a footer\nYou: Done.');
+    });
+
     test('names the files of a message and keeps a message that is only files', () => {
         const record = conversationRecord(stream({ kind: 'user', text: '', attachments: [{ id: 'att_1', name: 'spec.pdf', mediaType: 'application/pdf', size: 10 }] }, agent('Read it.')), []);
 

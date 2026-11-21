@@ -852,6 +852,7 @@ export class RunDriver {
                 switch (event.type) {
                     case 'session':
                         runs.setSessionId(run.id, event.sessionId);
+                        writer.heard();
                         break;
                     case 'process':
                         runs.setProcess(run.id, describeProcess({ pid: event.pid, pgid: event.pgid, startedAt: event.startedAt }));

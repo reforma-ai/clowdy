@@ -74,6 +74,12 @@ export function listRunningTools(db: Database, runId: string): StreamItem[] {
         .all(runId) as ItemRow[]).map(row => toItem(row, false));
 }
 
+/** The thoughts of a run's stream that are still open (`done: false`), which only a crash leaves behind. */
+export function listOpenThoughts(db: Database, runId: string): StreamItem[] {
+    return (db.query('SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, \'$.kind\') = \'reasoning\' AND json_extract(body, \'$.done\') = 0 ORDER BY seq')
+        .all(runId) as ItemRow[]).map(row => toItem(row, false));
+}
+
 /** `ref` is the item's rewind point, for a copy of an item that holds one (`copyItems`); every other item gets its point later, if it is the end of a turn. */
 export function insertItem(db: Database, item: StreamItem, ref?: string): void {
     db.query('INSERT INTO stream_items (id, run_id, seq, at, body, provider_ref) VALUES (?, ?, ?, ?, ?, ?)')

@@ -8,7 +8,7 @@ import type { Store } from '../store';
 const TEXT_THROTTLE_MS = 50;
 
 /** A thought is cut here: reasoning can run to many pages, and nobody reads past what a row of the stream shows. */
-const MAX_THOUGHT_CHARS = 60_000;
+export const MAX_THOUGHT_CHARS = 60_000;
 
 /** What a call that was still running says once its turn is over (`STOPPED_TOOL` once the person stopped the run, or the daemon stopped). */
 export const UNFINISHED_TOOL = 'The turn ended before this finished';
@@ -24,14 +24,26 @@ export class TurnWriter {
     private message?: { seq?: number; text: string; messageId?: string };
     /** The open thought, which is never open together with a message: each ends the other. */
     private thought?: { seq?: number; text: string; startedAt: number };
+    /**
+     * When the writer last heard from the agent. A thought is dated from here, not from its first piece: an agent sends the thought whole once it has finished
+     * thinking, so the time between its last word or step and the thought is the time it thought.
+     */
+    private heardAt = Date.now();
     /** The last message that was written out whole, if it said something and came with the agent's own id of it: what `takePoint` hands over. */
     private answer?: { seq: number; ref: string };
+    /** The last message item that was written out whole, with what it says: the one a mark that comes after a thought cut its message short belongs to. */
+    private closed?: { seq: number; text: string };
     private flushedAt = 0;
     private timer?: ReturnType<typeof setTimeout>;
     /** Each call's item and what it holds now. */
     private tools = new Map<string, { seq: number; body: ToolBody }>();
 
     constructor(private store: Store, private runId: string, private throttleMs = TEXT_THROTTLE_MS) {}
+
+    /** The agent's session is ready and its prompt goes out: what it thinks about is dated from now, not from the turn's start, which includes starting the agent. */
+    heard(): void {
+        this.heardAt = Date.now();
+    }
 
     /** `messageId`: the agent's id of the message, which comes with the event that ends it. */
     text(delta: string, done: boolean, messageId?: string): void {
@@ -40,8 +52,17 @@ export class TurnWriter {
             this.end();
         }
 
+        // A thought cut the message short before its mark came (the mappers close a message when the prompt ends, after a thought that came last): the
+        // mark names the item that holds the message's last piece, so the turn keeps its rewind point.
+        if (done && delta === '' && messageId !== undefined && !this.message && this.closed) {
+            this.answer = this.closed.text.trim() !== '' ? { seq: this.closed.seq, ref: messageId } : undefined;
+
+            return;
+        }
+
         this.message ??= { text: '' };
         this.message.text += delta;
+        this.heardAt = Date.now();
 
         if (messageId !== undefined) {
             this.message.messageId = messageId;
@@ -57,30 +78,40 @@ export class TurnWriter {
 
     /** A piece of what the agent thought; `done` ends the thought, and so does a message, a tool call and the end of the turn. */
     reasoning(delta: string, done: boolean): void {
+        let grew = false;
+
         if (delta !== '') {
             // What it said before thinking is over.
             if (this.message) {
                 this.end();
             }
 
-            this.thought ??= { text: '', startedAt: Date.now() };
-            this.thought.text = `${ this.thought.text }${ delta }`.slice(0, MAX_THOUGHT_CHARS);
+            this.thought ??= { text: '', startedAt: this.heardAt };
+
+            const text = `${ this.thought.text }${ delta }`.slice(0, MAX_THOUGHT_CHARS);
+
+            // Past the cut a piece changes nothing, and the log is not written again for it (each write holds the whole thought).
+            grew = text !== this.thought.text;
+            this.thought.text = text;
         }
 
         if (!this.thought) {
             return;
         }
 
+        this.heardAt = Date.now();
+
         if (done) {
             this.end();
         }
-        else {
+        else if (grew) {
             this.schedule();
         }
     }
 
     tool(event: Extract<EngineEvent, { type: 'tool' }>): void {
         this.end();
+        this.heardAt = Date.now();
 
         const body: ToolBody = {
             kind: 'tool',
@@ -190,18 +221,22 @@ export class TurnWriter {
 
         if (done) {
             this.answer = message.messageId !== undefined && message.text.trim() !== '' ? { seq: message.seq, ref: message.messageId } : undefined;
+            this.closed = { seq: message.seq, text: message.text };
         }
 
         this.flushedAt = Date.now();
     }
 
-    /** Writes the open thought out: a thought of nothing but blank space is no item, and the one that ends takes the time it lasted. */
+    /** Writes the open thought out: a thought of nothing but blank space is no item, its words are trimmed, and the one that ends takes the time it lasted. */
     private flushThought(thought: NonNullable<TurnWriter['thought']>, done: boolean): void {
-        if (thought.text.trim() === '' && thought.seq === undefined) {
+        const text = thought.text.trim();
+
+        if (text === '' && thought.seq === undefined) {
             return;
         }
 
-        const body = { kind: 'reasoning' as const, text: thought.text, done, ...(done && { durationMs: Date.now() - thought.startedAt }) };
+        // The agents pad a thought with line breaks (a section break before Codex's, after Claude's): they are no part of it.
+        const body = { kind: 'reasoning' as const, text, done, ...(done && { durationMs: Date.now() - thought.startedAt }) };
 
         if (thought.seq === undefined) {
             thought.seq = appendItem(this.store, this.runId, body).seq;

@@ -454,6 +454,12 @@ describe('updates of ACP v2', () => {
             expect(thoughts(events)).toEqual([['thought', 'Hello', false], ['thought', '', true]]);
         });
 
+        test('a whole message ends the open thought before it, and a thought that ended and comes again whole adds nothing', () => {
+            const { events } = run2([think2('Hmm'), whole('Answer'), wholeThought('Hmm')]);
+
+            expect(thoughts(events)).toEqual([['thought', 'Hmm', false], ['thought', '', true], ['text', 'Answer', false], ['text', '', true]]);
+        });
+
         test('a tool call ends the thought before it', () => {
             const { events } = run2([think2('Hmm.'), call({ toolCallId: 'a', title: 'Read file', kind: 'read', status: 'in_progress' })]);
 

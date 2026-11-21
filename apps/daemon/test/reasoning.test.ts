@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
+import { MAX_THOUGHT_CHARS } from '../src/runs/writer';
 import { cleanTempDirs, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
 
 import type { Chat, StreamItem } from '@clowdy/protocol';
@@ -155,6 +156,78 @@ describe('the agent\'s reasoning in the stream', () => {
             'assistant fork',
             'reasoning',
         ]);
+    });
+
+    test('a thought that begins in the middle of a message cuts it, and the text after the thought is an item of its own', async () => {
+        const { send, read, settled } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'text', delta: 'Before. ', done: false };
+            yield* think('Wait.');
+            yield { type: 'text', delta: 'After.', done: false };
+            yield { type: 'text', delta: '', done: true, messageId: 'm1' };
+            yield { type: 'done', result: 'Before. After.' };
+        });
+        const { runId } = send('Go');
+
+        await settled(runId, 1);
+
+        const items = await read();
+
+        expect(items.map(item => item.body.kind)).toEqual(['user', 'assistant', 'reasoning', 'assistant']);
+        expect(items.map(item => (item.body.kind === 'assistant' ? [item.body.text, item.body.done] : undefined))).toEqual([undefined, ['Before. ', true], undefined, ['After.', true]]);
+        // The mark that ends the message names its last piece, which is where the turn ends.
+        expect(items.map(item => item.canFork === true)).toEqual([false, false, false, true]);
+    });
+
+    test('keeps the point of a message that a thought cut short, when the thought is the last thing the agent says', async () => {
+        const { send, read, settled } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            // The order the ACP mappers give: the message is still open when the thought begins, and its mark comes with the end of the prompt.
+            yield { type: 'text', delta: 'Answer', done: false };
+            yield { type: 'thought', delta: 'One more thing.', done: false };
+            yield { type: 'thought', delta: '', done: true };
+            yield { type: 'text', delta: '', done: true, messageId: 'm1' };
+            yield { type: 'done', result: 'Answer' };
+        });
+        const { runId } = send('Go');
+
+        await settled(runId, 1);
+
+        const items = await read();
+
+        expect(items.map(item => item.body.kind)).toEqual(['user', 'assistant', 'reasoning']);
+        expect(items[1]).toMatchObject({ body: { text: 'Answer', done: true }, canFork: true });
+    });
+
+    test('is cut at the most it keeps, and the stream stops being written while the thought grows no more', async () => {
+        const { h, send, read, settled } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'thought', delta: 'x'.repeat(MAX_THOUGHT_CHARS), done: false };
+
+            // Each piece is more than the throttle apart, so each would be written out if it changed anything.
+            for (let piece = 0; piece < 3; piece++) {
+                await new Promise(resolve => setTimeout(resolve, 80));
+                yield { type: 'thought', delta: 'y'.repeat(10), done: false };
+            }
+
+            yield { type: 'thought', delta: '', done: true };
+            yield* say('Done.', 'm1');
+            yield { type: 'done', result: 'Done.' };
+        });
+        const { runId } = send('Go');
+
+        await settled(runId, 1);
+
+        const items = await read();
+        const thought = reasoning(items[1]);
+
+        expect(thought?.text).toBe('x'.repeat(MAX_THOUGHT_CHARS));
+        expect(thought?.done).toBe(true);
+
+        // The first piece and the end: the pieces after the cut changed nothing.
+        const writes = h.events().filter(event => event.data.type === 'stream.item' && event.data.item.runId === runId && event.data.item.body.kind === 'reasoning');
+
+        expect(writes).toHaveLength(2);
     });
 
     test('does not hide the point an edit cuts the session at: the message after a thought that trails the answer is edited from the answer\'s point', async () => {

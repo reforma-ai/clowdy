@@ -1,7 +1,7 @@
 import { ACTIVE_RUN_STATUSES, isTerminalRunStatus, projectEngine, STOPPED_TOOL } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
-import { findQuestion, listRunningTools } from '../db/items';
+import { findQuestion, listOpenThoughts, listRunningTools } from '../db/items';
 import { getProject } from '../db/projects';
 import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
 import { getTask } from '../db/tasks';
@@ -654,6 +654,13 @@ export class RunService {
                 for (const { seq, body } of listRunningTools(this.store.db, run.id)) {
                     if (body.kind === 'tool') {
                         updateItem(this.store, run.id, seq, { ...body, state: 'error', error: STOPPED_TOOL });
+                    }
+                }
+
+                // A thought the crash cut short is over: the app shows an open one as still going.
+                for (const { seq, body } of listOpenThoughts(this.store.db, run.id)) {
+                    if (body.kind === 'reasoning') {
+                        updateItem(this.store, run.id, seq, { ...body, done: true });
                     }
                 }
             }

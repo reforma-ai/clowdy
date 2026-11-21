@@ -347,9 +347,18 @@ export class ThreadService {
         const { db } = this.deps.store;
         const target = this.inTree(caller, threadId);
         const run = this.runOf(target);
-        const items = run ? listItems(db, run.id, Math.max(0, nextSeq(db, run.id) - 1 - limit)) : [];
+        // What the thread thought is not for the agent that reads its log (it is a good deal of words, and not what the thread did or said): the last `limit`
+        // lines are of the rest, so the window widens until it holds that many or reaches the start.
+        const shown = (from: number) => run ? listItems(db, run.id, from).filter(item => item.body.kind !== 'reasoning') : [];
+        let from = run ? Math.max(0, nextSeq(db, run.id) - 1 - limit) : 0;
+        let items = shown(from);
 
-        return { threadId: target.id, title: target.title, state: threadState(run), lines: items.map(item => `#${ item.seq } ${ describeItem(item) }`) };
+        while (items.length < limit && from > 0) {
+            from = Math.max(0, from - limit);
+            items = shown(from);
+        }
+
+        return { threadId: target.id, title: target.title, state: threadState(run), lines: items.slice(-limit).map(item => `#${ item.seq } ${ describeItem(item) }`) };
     }
 
     /** The caller's threads: the ones its chat started, or with `all` every chat below it, a parent before its threads. */

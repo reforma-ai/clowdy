@@ -89,7 +89,16 @@ export interface AgentSpec {
      * goes off when it does. Unset for every agent that has no such fork, which has neither action.
      */
     fork?: boolean;
+    /**
+     * How the agent reaches the task tools: `cli` (the default) gives it `clowdy task get|list|create|update` in its shell, like the thread commands; `mcp` names them
+     * in the MCP server of its session instead. Both run the same tool through the tool bridge, so the choice is only about which door an agent can use: set `mcp`
+     * only after a real check shows that the shell route fails for the agent or needs a person's approval on every call (`.briefback/task-cli/research/real-agents.md`).
+     */
+    taskTools?: TaskChannel;
 }
+
+/** The two doors to the runtime's task tools (`AgentSpec.taskTools`). */
+export type TaskChannel = 'cli' | 'mcp';
 
 /**
  * The agents Clowdy knows how to start. Most run their own program in ACP mode; Claude Code and Codex have no ACP mode of
@@ -113,8 +122,11 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         fork: true,
         // Sub-agents are a feature, this only caps hidden fan-out. The rest of what a run does not do by default (claude.ai
         // connectors, the agent's own memory) is a setting below, off until the person turns it on. Without the last variable
-        // Claude Code reads no CLAUDE.md in the project's other folders, which reach it as additional directories.
-        env: { CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '20', CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1' },
+        // Claude Code reads no CLAUDE.md in the project's other folders, which reach it as additional directories. `CLAUDE_CODE_THINKING_DISPLAY` is what
+        // makes the adapter send the agent's thoughts: recent models omit the text of their thinking unless it is asked for summarized (checked through the
+        // daemon on 2026-11-21 against the pin: without it no `agent_thought_chunk` arrives, with it one thought comes before each step). The person may
+        // set it to `omitted` in the agent's `env` to see none.
+        env: { CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '20', CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1', CLAUDE_CODE_THINKING_DISPLAY: 'summarized' },
         settings: [
             {
                 id: 'memory',
@@ -271,6 +283,8 @@ export interface CustomAgent {
     command: string;
     args: string[];
     env?: Record<string, string>;
+    /** The door to the task tools (`AgentSpec.taskTools`), written in `agents.json` by a person whose agent cannot use the shell route; the shell when absent. */
+    taskTools?: TaskChannel;
 }
 
 /** What the user changed about an agent, built-in or custom. */
