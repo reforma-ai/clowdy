@@ -56,15 +56,15 @@
     app-region: no-drag;
 }
 
-/* The same inset on every side, close enough for the refresh button's plate to sit evenly in the corner: there is no title row above the account any more. */
+/* The same inset on every side: there is no title row above the account any more. */
 .panel {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-lg);
-    padding: var(--spacing-lg);
+    padding: var(--spacing-xl);
 }
 
-/* The account line is further from the first bar than the bars are from each other, and so is a note under the bars. */
+/* The account line is as far from the first bar as the popover's own padding, and so is a note under the bars: more than the bars are from each other. */
 .provider {
     display: flex;
     flex-direction: column;
@@ -87,10 +87,14 @@
     min-width: 0;
 }
 
-/* The refresh button is at the far end of the account line, whatever the length of the e-mail. */
+/*
+ * The refresh button is at the far end of the account line, whatever the length of the e-mail. It is pulled out by the plate's inset around its icon (a 30px button
+ * holds a 14px icon), on the right and above, so the icon, not the plate, stands at the popover's inset, in line with the ends of the bars.
+ */
 .refresh {
     flex-shrink: 0;
-    margin-inline-start: auto;
+    margin-inline: auto calc((var(--spacing-30) - 14px) / -2);
+    margin-block: calc((var(--spacing-30) - 14px) / -2);
 }
 
 /* The plan is short and says what the account is: a long e-mail gives way to it. */
