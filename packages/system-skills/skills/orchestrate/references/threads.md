@@ -21,7 +21,7 @@ The thread does not see this conversation or these skills (it has clowdy:orchest
 ```text
 Mode: <autopilot | semi-manual>.
 Goal: <one sentence, in product terms>.
-Tasks: CLW-21 (read it with task_get; it is assigned to you).
+Tasks: CLW-21 (read it with `clowdy task get CLW-21`; it is assigned to you).
 Read first: the project guide (AGENTS.md or similar), .clowdy/docs/architecture.md (section "API"), <code paths>.
 Decisions already made: <paths of the settled records, with the reason in a few words>.
 Owns: <paths>. Do not edit anything else; put changes needed elsewhere in your report.

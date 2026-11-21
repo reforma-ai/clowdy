@@ -19,7 +19,7 @@ Your first message says `Mode: autopilot` or `Mode: semi-manual`. It decides who
 4. The README lists exactly those commands.
 5. `index.md`, `product.md` and `architecture.md` exist; `architecture.md` fixes the conventions.
 6. The skeleton is committed. If git cannot commit because no author identity is set, it stays uncommitted and the report says so under Open; never invent an identity.
-7. The first slices are tasks in the task list, with `dependsOn` only where one really needs another.
+7. The first slices are tasks in the task list, with `--depends-on` only where one really needs another.
 
 ## Steps
 
@@ -75,7 +75,7 @@ Load clowdy:docs. You wrote `product.md` and the stack decision in steps 1 and 2
 After the skeleton passes its check, so that Owns paths are real. Slice catalog and rules: [task-graph](references/task-graph.md). In short:
 
 - Slice by what can be built and verified on its own: data model, API, UI shell, each feature screen, auth, deployment script, demo data. Not by layer for its own sake.
-- Create tasks with `task_create`, in dependency order, each description in the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, Out of scope).
+- Create tasks with `clowdy task create`, in dependency order, each description in the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, Out of scope).
 - Two tasks are independent when they own different paths and neither needs the other's output. A contract both need is written into `architecture.md` first, so the two can be built against it in any order, or by threads side by side.
 - Aim for 4 to 8 tasks for the first milestone, each about an hour of agent work. Small parts inside a slice go to engine sub-agents.
 - Verification is not a task: you verify the first milestone on the combined result (step 6). Move the skeleton task to Done only after you saw its check pass.

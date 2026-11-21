@@ -38,6 +38,24 @@ export interface CliIo {
  * command's help its own. `test/cli.test.ts` checks them against the real tools.
  */
 export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
+    task_list: [
+        'clowdy task list                                    # the work in flight; the counts of backlog and closed work come with it',
+        'clowdy task list --ready                            # what can start now: every dependency is done',
+        'clowdy task list --status done --updated-since 7d   # closed work, when you need it',
+        'clowdy task list --query "csv export"               # a text query searches closed tasks too: check before you create a duplicate',
+        'clowdy task list --cursor <nextCursor>              # the next page of a long answer',
+    ],
+    task_get: ['clowdy task get CLW-3'],
+    task_create: [
+        'clowdy task create "CSV export endpoint" --depends-on CLW-1,CLW-2 --description-file - <<\'EOF\'',
+        '<Outcome, Owns, Needs, Check, Out of scope>',
+        'EOF',
+    ],
+    task_update: [
+        'clowdy task update CLW-3 --status review',
+        'clowdy task update CLW-3 --append "Verification passed: <what was run>"   # adds to the description; --description replaces it',
+        'clowdy task update CLW-3 --add-depends-on CLW-5 --remove-depends-on CLW-2',
+    ],
     thread_spawn: [
         'clowdy thread spawn --title "Fix the login bug" --prompt-file - <<\'EOF\'',
         '<the whole brief: goal, what it owns, decisions made, how to check, how to report>',

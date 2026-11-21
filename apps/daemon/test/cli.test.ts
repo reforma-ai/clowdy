@@ -292,6 +292,43 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(JSON.parse(ran.stdout)).toMatchObject({ ok: true, result: { threadId, state: 'idle', text: 'There are 41 tests', timedOut: false } });
     });
 
+    test('creates tasks from a heredoc, lists the work in flight, and changes a task with options', async () => {
+        const { shell, json } = await setup();
+        const description = 'Outcome: it exports.\nIt\'s "quoted"; $HOME and `date` stay as written.\nCheck: the page';
+
+        const first = await json(`clowdy task create CSV export --description-file - <<'EOF'\n${ description }\nEOF`);
+
+        expect(first.task).toMatchObject({ key: 'REP-1', title: 'CSV export', description, status: 'To do', createdBy: 'agent' });
+        expect((await json('clowdy task create "Document it" --depends-on REP-1 --status todo')).task).toMatchObject({ key: 'REP-2', dependsOn: [{ key: 'REP-1', title: 'CSV export', status: 'To do' }] });
+
+        const open = await json('clowdy task list');
+
+        expect(open.tasks.map((row: { key: string }) => row.key).sort()).toEqual(['REP-1', 'REP-2']);
+        expect(open.tasks.find((row: { key: string }) => row.key === 'REP-2')).toMatchObject({ blockedBy: ['REP-1'] });
+        expect(open).toMatchObject({ total: 2, counts: { todo: 2, done: 0 } });
+        expect(open.statuses.map((status: { name: string }) => status.name)).toContain('Done');
+
+        expect((await json('clowdy task update REP-1 --status done')).task).toMatchObject({ category: 'done' });
+        expect((await json('clowdy task list')).tasks.map((row: { key: string }) => row.key)).toEqual(['REP-2']);
+        expect((await json('clowdy task list --status done --json')).result).toMatchObject({ total: 1, tasks: [{ key: 'REP-1' }] });
+        expect((await json('clowdy task list --ready')).tasks.map((row: { key: string }) => row.key)).toEqual(['REP-2']);
+        expect((await json('clowdy task list --query export')).tasks.map((row: { key: string }) => row.key)).toEqual(['REP-1']);
+        expect((await json('clowdy task list --all --limit 1 --sort number')).nextCursor).toBeDefined();
+
+        const appended = await json('clowdy task update REP-2 --append "Verification passed: 41 tests" --add-depends-on REP-1');
+
+        expect(appended.task.description).toBe('Verification passed: 41 tests');
+        expect((await json('clowdy task get REP-1')).task).toMatchObject({ description, blocks: [{ key: 'REP-2', title: 'Document it' }] });
+
+        // The removed statusId option is a usage error that lists the options.
+        const old = await shell('clowdy task update REP-2 --status-id done');
+
+        expect(old.code).toBe(2);
+        expect(old.stderr).toContain('Unknown option --status-id');
+        expect(old.stderr).toContain('--status');
+        expect((await shell('clowdy task get REP-99')).code).toBe(1);
+    });
+
     test('a refused call exits 1 with the daemon\'s message, a bad command line 2, and stdin with nothing in it 2 without hanging', async () => {
         const { chat, shell } = await setup();
 
@@ -343,11 +380,11 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect(JSON.parse(ended.stdout)).toMatchObject({ ok: false, error: { code: 'unreachable' } });
     });
 
-    test('the help\'s examples use only commands and options the thread tools have', async () => {
+    test('the help\'s examples use only commands and options the task and thread tools have', async () => {
         const { tools } = await setup();
         const commands = new Map(tools.filter(candidate => candidate.cli).map(candidate => [candidate.name, candidate as unknown as CliTool]));
 
-        expect([...commands.keys()].sort()).toEqual(['thread_list', 'thread_log', 'thread_output', 'thread_spawn', 'thread_stop', 'thread_tell', 'thread_wait']);
+        expect([...commands.keys()].sort()).toEqual(['task_create', 'task_get', 'task_list', 'task_update', 'thread_list', 'thread_log', 'thread_output', 'thread_spawn', 'thread_stop', 'thread_tell', 'thread_wait']);
 
         for (const [name, lines] of Object.entries(EXAMPLES)) {
             const known = commands.get(name);

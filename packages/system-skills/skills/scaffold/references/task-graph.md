@@ -25,9 +25,9 @@ Use the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, O
 
 ## Dependencies
 
-- `dependsOn` only for real ordering: the task needs another's output, or must edit the same files after it.
+- `--depends-on` only for real ordering: the task needs another's output, or must edit the same files after it.
 - Prefer removing a dependency by fixing the contract first. Write the API routes, the data tables and the shared types into `architecture.md` (Contracts). Then the API, the UI and the data slice do not wait for each other: the UI builds against the contract with fixture data, the API against the schema.
-- The skeleton is Done before any slice starts, so listing it in `dependsOn` costs nothing and shows the order to the user.
+- The skeleton is Done before any slice starts, so listing it in `--depends-on` costs nothing and shows the order to the user.
 - A slice that others wait on is checked and set Done by you before its dependents start.
 
 ## Shared files
@@ -57,7 +57,7 @@ CLW-3 Customer ordering page                 Owns: src/web/order/**
         Needs: contract GET /menu, GET /slots, POST /orders (fixtures until CLW-2 lands)
         Check: component test; a headless run picks a cake and a slot and sees the confirmation
 CLW-4 Owner login and orders list           Owns: src/web/admin/**, src/server/auth.*
-        dependsOn: CLW-2
+        Depends on: CLW-2
         Check: wrong password is refused; the list shows an order created through the API
 CLW-5 Deployment script                      Owns: deploy/**
         Check: running it on a clean machine produces a build that starts and answers /health

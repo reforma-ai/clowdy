@@ -82,7 +82,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
 
         const runs = new RunService(store, config, engines);
         // A turn asks for its tools when it starts, by which time the thread service below exists.
-        const driver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, threads }, run, mode), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
+        const driver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, threads }, run, mode, agents.taskChannel(run.engine)), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
         const docs = new DocsService(store);
         const attachments = new AttachmentsService(store, config.dataDir);
         // Before the recovery: a turn the restart interrupted holds its chat's queue.

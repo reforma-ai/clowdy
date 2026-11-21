@@ -3,7 +3,7 @@
  *
  * Per skill folder `skills/<name>/SKILL.md`: front matter with `name` equal to the folder, a one-line `description`, only the
  * allowed keys, a body under the size cap, links that resolve, no orphaned `references/` files, no engine-specific syntax,
- * no tool the agents do not have, and no `clowdy thread` command the daemon does not have.
+ * no tool the agents do not have, and no `clowdy task` or `clowdy thread` command the daemon does not have.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -14,18 +14,21 @@ const MAX_BODY_BYTES = 24_000;
 const MAX_DESCRIPTION_CHARS = 1_000;
 const ALLOWED_KEYS = new Set(['name', 'description', 'allowed-tools']);
 
-/** The Clowdy tools an agent may be told to call (bare names; the harness adds the MCP prefix). */
+/** The Clowdy tools an agent may be told to call (bare names; the harness adds the MCP prefix). Tasks and threads are shell commands, not tools. */
 const TOOLS = new Set([
-    'task_create',
-    'task_update',
-    'task_list',
-    'task_get',
     'ask_user',
 ]);
 /**
- * The commands of `clowdy thread` an agent may be told to run in its shell. They are the daemon's thread tools marked as shell commands, which no skill
- * names as tools (`thread_spawn` is caught below); `apps/daemon/test/skills-vocabulary.test.ts` checks this list against the daemon.
+ * The commands of `clowdy task` an agent may be told to run in its shell. They are the daemon's task tools marked as shell commands, which no skill
+ * names as tools (`task_get` is caught below); `apps/daemon/test/skills-vocabulary.test.ts` checks this list against the daemon.
  */
+const TASK_COMMANDS = new Set([
+    'get',
+    'list',
+    'create',
+    'update',
+]);
+/** The commands of `clowdy thread`, the daemon's thread tools marked as shell commands; checked against the daemon like `TASK_COMMANDS`. */
 const THREAD_COMMANDS = new Set([
     'spawn',
     'tell',
@@ -35,6 +38,7 @@ const THREAD_COMMANDS = new Set([
     'log',
     'list',
 ]);
+const COMMANDS: Record<string, ReadonlySet<string>> = { task: TASK_COMMANDS, thread: THREAD_COMMANDS };
 /** A snake_case word that looks like a tool name but is not one of ours. */
 const TOOL_LIKE = /^(task|run|ask|report|thread|spawn|wait|create|update|list|cancel|get|merge|git|worktree)_[a-z_]+$/;
 const FORBIDDEN: Array<[RegExp, string]> = [
@@ -82,11 +86,11 @@ function lintText(label: string, text: string) {
     }
 
     for (const match of text.matchAll(/`([a-z]+(?:_[a-z]+)+)(?:\(|`)/g)) {
-        if (TOOL_LIKE.test(match[1]) && !TOOLS.has(match[1])) problems.push(`${ label }: \`${ match[1] }\` is not a Clowdy tool`);
+        if (TOOL_LIKE.test(match[1]) && !TOOLS.has(match[1])) problems.push(`${ label }: \`${ match[1] }\` is not a Clowdy tool (tasks and threads are shell commands: \`clowdy task get\`, \`clowdy thread spawn\`)`);
     }
 
-    for (const match of text.matchAll(/\bclowdy thread ([a-z][a-z-]*)/g)) {
-        if (!THREAD_COMMANDS.has(match[1])) problems.push(`${ label }: \`clowdy thread ${ match[1] }\` is not a command (${ [...THREAD_COMMANDS].join(', ') })`);
+    for (const [, group, command] of text.matchAll(/\bclowdy (task|thread) ([a-z][a-z-]*)/g)) {
+        if (!COMMANDS[group].has(command)) problems.push(`${ label }: \`clowdy ${ group } ${ command }\` is not a command (${ [...COMMANDS[group]].join(', ') })`);
     }
 }
 

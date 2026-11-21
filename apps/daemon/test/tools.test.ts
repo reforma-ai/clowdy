@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { getProject } from '../src/db/projects';
+import { ToolBridge } from '../src/engine/acp/bridge';
 import { toolsFor } from '../src/runs/tools';
 import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
 
@@ -70,6 +71,40 @@ describe('the tool vocabulary', () => {
             expect(tool.description.length).toBeGreaterThan(40);
             expect(tool.inputSchema).toMatchObject({ type: 'object' });
             expect(tool.schema).toBeDefined();
+        }
+    });
+
+    test('the task tools are shell commands unless the agent uses MCP, in which case they are MCP tools of the same name; the thread tools are always shell commands', async () => {
+        const { h, orchestrator } = await setup();
+        const { store, runs, threads } = h.daemon.services;
+        const tools = (channel?: 'cli' | 'mcp') => toolsFor({ store, runs, threads }, orchestrator, 'semi', channel);
+        const shell = (channel?: 'cli' | 'mcp') => tools(channel).filter(tool => tool.cli).map(tool => tool.name);
+        const taskTools = ['task_get', 'task_list', 'task_create', 'task_update'];
+        const threadTools = ['thread_spawn', 'thread_tell', 'thread_stop', 'thread_wait', 'thread_output', 'thread_log', 'thread_list'];
+
+        expect(shell()).toEqual([...taskTools, ...threadTools]);
+        expect(shell('cli')).toEqual([...taskTools, ...threadTools]);
+        expect(shell('mcp')).toEqual(threadTools);
+        expect(tools('mcp').map(tool => tool.name)).toEqual(tools('cli').map(tool => tool.name));
+        expect(tools('mcp').find(tool => tool.name === 'task_get')?.cli).toBeUndefined();
+
+        // A bridge lists each door its own tools: in autopilot an agent on the shell route has no MCP server at all.
+        const bridge = new ToolBridge();
+
+        try {
+            const signal = new AbortController().signal;
+            const viaShell = bridge.register(toolsFor({ store, runs, threads }, orchestrator, 'autopilot', 'cli'), signal);
+            const viaMcp = bridge.register(toolsFor({ store, runs, threads }, orchestrator, 'autopilot', 'mcp'), signal);
+            const listed = async (url: string, auth: string, path: string) => ((await (await fetch(`${ url }${ path }`, { headers: { authorization: `Bearer ${ auth }` } })).json()) as { tools: { name: string }[] }).tools.map(tool => tool.name);
+
+            expect(viaShell.server).toBeUndefined();
+            expect(viaMcp.server).toBeDefined();
+            expect(viaShell.cli && await listed(viaShell.cli.url, viaShell.cli.auth, '/cli/tools')).toEqual([...taskTools, ...threadTools]);
+            expect(viaMcp.cli && await listed(viaMcp.cli.url, viaMcp.cli.auth, '/cli/tools')).toEqual(threadTools);
+            expect(viaMcp.cli && await listed(viaMcp.cli.url, viaMcp.cli.auth, '/tools')).toEqual(taskTools);
+        }
+        finally {
+            bridge.stop();
         }
     });
 

@@ -4,7 +4,7 @@ Load this when you write the task graph.
 
 ## Task template
 
-`task_create({ title, description, dependsOn })`. `dependsOn` takes the ids (or keys such as CLW-21) that `task_create` returned, so create dependencies first. Title: the outcome in a few words ("CSV export endpoint"), not an activity ("work on export"). Description, the same five parts for every task, in the project's language:
+`clowdy task create "<title>" --description-file - --depends-on <keys>`, the description as a heredoc. `--depends-on` takes the keys (such as CLW-21) that `clowdy task create` returned, so create dependencies first; `--blocks <keys>` makes tasks that already exist wait for the new one. Title: the outcome in a few words ("CSV export endpoint"), not an activity ("work on export"). Description, the same five parts for every task, in the project's language:
 
 ```text
 Outcome: <what is true when this is done, in product terms, 1-2 sentences>
@@ -26,7 +26,7 @@ One task is one coherent outcome that you can build and check as one piece. Typi
 
 ## Dependencies
 
-Use `dependsOn` only for real ordering: a task needs another's output (a schema, a type, an API) or must edit the same files after it. Everything else can be done in any order. Prefer removing a dependency by fixing the contract up front.
+Use `--depends-on` only for real ordering: a task needs another's output (a schema, a type, an API) or must edit the same files after it. Everything else can be done in any order. Prefer removing a dependency by fixing the contract up front.
 
 Common shapes:
 
@@ -57,9 +57,9 @@ Do not delete tasks to replan: cancel with a reason and create the new one. Hist
 Replan when a result changes the facts: the premise was false, a dependency cannot be met, two tasks collided on a file, scope grew, or a decision changed the shape.
 
 1. State the new fact in one line.
-2. `task_update({ taskId, description, dependsOn })` the affected tasks (outcome, owns, dependsOn); cancel tasks that no longer make sense, with a reason.
+2. `clowdy task update <key> --description-file - --depends-on <keys>` the affected tasks (outcome, owns, dependencies); cancel tasks that no longer make sense, with a reason.
 3. Stop sub-agents working on cancelled or now-wrong pieces, and `clowdy thread stop` such threads; `clowdy thread tell` the others what changed.
-4. If two parallel pieces collided on a file, serialize them with `dependsOn`; do not let both continue.
+4. If two parallel pieces collided on a file, serialize them with `--add-depends-on`; do not let both continue.
 5. Tell the manager what changed and why in one or two lines. Record a decision when it was significant.
 
 If two sub-agents or threads changed the same area, do not pick a winner silently. A mechanical conflict you resolve, keeping both intents. A semantic one (opposite choices) is decided by the contract in the tasks; if none exists, it is a fork for your mode. Changes outside a task's scope in a sub-agent's answer or a thread's report: read what changed and decide whether to keep it. Keeping needs a line in the report; reverting is deliberate, never a blind `git checkout`.

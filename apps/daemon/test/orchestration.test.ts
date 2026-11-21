@@ -53,7 +53,7 @@ describe('task.start', () => {
         expect(h.store.db.query('SELECT run_id, relation FROM run_task_links WHERE task_id = ?').all(fix.id)).toEqual([{ run_id: runId, relation: 'assigned' }]);
 
         // The first message is the task with the instruction to complete it; the chat shows it as the user's message.
-        const message = ['Complete task REP-1: Fix the footer', 'Description:\nOutcome: the footer shows the year.\nCheck: the page.', 'This chat is bound to REP-1; read it with task_get, do the work, and finish with a short report.'].join('\n\n');
+        const message = ['Complete task REP-1: Fix the footer', 'Description:\nOutcome: the footer shows the year.\nCheck: the page.', 'This chat is bound to REP-1; read it with `clowdy task get REP-1`, do the work, and finish with a short report.'].join('\n\n');
 
         expect(engine.turns[0].prompt).toBe(`Follow clowdy:orchestrate. Mode: autopilot\n\n${ message }`);
         expect(h.store.db.query('SELECT body FROM stream_items WHERE run_id = ?').all(runId).map(row => JSON.parse((row as { body: string }).body))).toEqual([{ kind: 'user', text: message }]);
@@ -204,8 +204,10 @@ describe('the prompts of a run', () => {
         const chat = systemPrompt('autopilot', project, undefined, {});
         const thread = systemPrompt('autopilot', project, undefined, { parent });
 
-        // A run without a chat has no thread commands.
+        // A run without a chat has no thread commands, and every run is told how to reach the task tools.
         expect(none).not.toContain('clowdy thread');
+        expect(none).toContain('Tasks: read and change them with the shell command `clowdy task`');
+        expect(none).toContain('`task_get`, `task_list`, `task_create` and `task_update`');
 
         expect(chat).toContain('Threads: you can hand work to other agents as threads');
         expect(chat).toContain('`clowdy thread --help`');
@@ -217,7 +219,7 @@ describe('the prompts of a run', () => {
         expect(chat).toContain('never poll');
         expect(chat).toContain('Never send a thread acknowledgements or thanks');
         expect(chat).not.toContain('This chat is a thread');
-        expect(chat.length).toBeLessThan(1600);
+        expect(chat.length).toBeLessThan(1950);
 
         expect(thread).toContain('This chat is a thread: the chat "Plan the release" (cht_parent) started it, and the first message is your assignment from that chat.');
         expect(thread).toContain('Your last message of each turn is your report to it, delivered when you stop: the verdict first');
@@ -226,7 +228,7 @@ describe('the prompts of a run', () => {
         expect(thread).toContain('threads of your own while the depth limit allows');
         expect(thread).toContain('Follow clowdy:thread');
         expect(thread).toContain('Threads: you can hand work');
-        expect(thread.length).toBeLessThan(2300);
+        expect(thread.length).toBeLessThan(2650);
     });
 
     test('a thread\'s run starts from the thread skill too', () => {
@@ -268,7 +270,7 @@ describe('the prompts of a run', () => {
     test('a task becomes the first message of its chat', () => {
         const task = { key: 'CAR-3', title: 'Fix the footer', description: '' } as Task;
 
-        expect(taskMessage(task)).toBe('Complete task CAR-3: Fix the footer\n\nThis chat is bound to CAR-3; read it with task_get, do the work, and finish with a short report.');
+        expect(taskMessage(task)).toBe('Complete task CAR-3: Fix the footer\n\nThis chat is bound to CAR-3; read it with `clowdy task get CAR-3`, do the work, and finish with a short report.');
     });
 
     test('every turn of a run is told its system prompt, with the chat\'s mode', async () => {

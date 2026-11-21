@@ -13,9 +13,9 @@
 
 **Decisions** (made by the agent with the owner's delegation; the owner trusts Linear's design, so each follows what Linear does where that is known)
 
-- **One execution path, two doors.** `ToolBridge` stays the only place a task tool runs; the shell command and the MCP server are two clients of `POST /call`. Per agent, a task tool is a shell command (default) or an MCP tool (`AgentSpec.taskTools: 'mcp'`), chosen when the session registers its tools. No automatic fallback at run time and no per-run choice.
+- **One execution path, two doors.** `ToolBridge` stays the only place a task tool runs; the shell command and the MCP server are two clients of `POST /call`. Per agent, a task tool is a shell command (default) or an MCP tool (`AgentSpec.taskTools: 'mcp'`; a custom agent says `"taskTools": "mcp"` in its `agents.json` entry), chosen when the session registers its tools. No automatic fallback at run time and no per-run choice.
 - **Closed means solved.** A task in the `done` or `canceled` category is closed; `backlog` is parked. There is no separate archive flag and no archive status now. Linear archives closed issues on a timer and hides them from views and search by default; here the same effect comes from defaults (below), and a stored archive needs board controls, so it is out of scope.
-- **`task list` shows open work by default:** categories `todo`, `active` and `review`, not `backlog`, not closed. Rules, first match wins: `all` shows every task; `status` shows those statuses; `query` shows every task (a duplicate check must find closed work); otherwise open work. `ready`, `blocked`, `running`, `mine` and `updatedSince` narrow whatever that shows.
+- **`task list` shows open work by default:** categories `todo`, `active` and `review`, not `backlog`, not closed. Rules, first match wins: `status` shows those statuses (a category names every status in it); `all` shows every task; `query` shows every task (a duplicate check must find closed work); otherwise open work. `ready`, `blocked`, `running`, `mine` and `updatedSince` narrow whatever that shows.
 - **Full argument list of `task list`** (Linear's `list_issues` filters mapped to our model): `query` (text in key, title, description), `status` (list; each entry an id, a status name or a category), `all`, `ready` (not closed, every dependency `done`), `blocked` (not closed, some dependency not `done`), `running` (an active run works on it), `mine` (linked to this chat), `updatedSince` (ISO date or a duration such as `12h`, `7d`), `sort` (`updated` default, newest first; `created`, `number`), `reverse`, `limit` (default 25, at most 100), `cursor`.
 - **List rows are compact and carry no description:** `key`, `title`, `status`, `category`, `dependsOn` (keys), `blockedBy` (keys of unfinished dependencies, absent when none), `running` (true when a run works on it, absent otherwise), `updatedAt` (ISO). `task get` has the rest.
 - **Every list answer says what it hid:** `total` (tasks matching), `shown`, `nextCursor` (absent on the last page), and `counts` by category for the whole project, so 100 backlog and 500 done tasks show as two numbers. The first page also carries `statuses` (id, name, category); a page that has a `cursor` does not repeat it. Paging is by cursor (Linear: Relay cursors, 50 by default): the cursor is opaque text that encodes the sort position, so tasks changing between pages do not repeat or skip rows.
@@ -43,11 +43,11 @@
 
 **This stage:** The four task tools get the inputs and answers in **Decisions**, still as MCP tools, so a flood of closed tasks can never reach an agent and edits are precise. The read side (scope rules, filters, sort, cursor, counts) is pure logic over a project's tasks and gets its own tests. `statusId` goes; `status` takes its place everywhere a tool names a status. Skills and prompts still name the old tools until Stage 2, so this stage changes their field names where they appear.
 
-- [ ] Complete
-  - [ ] `task_list` implements the scope rules, every filter, sort, `limit`, `cursor`, `total`, `shown`, `counts` and first-page `statuses`
-  - [ ] `task_get` answers with `dependsOn` and `blocks` as key, title and status, plus `createdBy` and the timestamps
-  - [ ] `task_create` takes `status` and `blocks`; `task_update` takes `append`, `status`, `addDependsOn`, `removeDependsOn` and refuses the conflicting pairs
-  - [ ] The skills' field names (`statusId`) become `status`
+- [x] Complete
+  - [x] `task_list` implements the scope rules, every filter, sort, `limit`, `cursor`, `total`, `shown`, `counts` and first-page `statuses`
+  - [x] `task_get` answers with `dependsOn` and `blocks` as key, title and status, plus `createdBy` and the timestamps
+  - [x] `task_create` takes `status` and `blocks`; `task_update` takes `append`, `status`, `addDependsOn`, `removeDependsOn` and refuses the conflicting pairs
+  - [x] The skills' field names (`statusId`) become `status`
 
 **Files**
 
@@ -59,7 +59,11 @@
 
 **Done when:** a project with 100 backlog and 500 done tasks answers a bare `task_list` with only its open work, the `counts` of everything else and a page of at most 25 rows, and the filters, cursor and edits behave as **Decisions** says.
 **Verify:** `cd apps/daemon && bun test test/taskQuery.test.ts test/tools.test.ts test/skills-vocabulary.test.ts && bun run typecheck && bun run lint`; `cd packages/system-skills && bun run test`
-**Commits:** None yet.
+**Commits:**
+
+- `f677ea9` feat(daemon): give task_list a scoped, paged answer and task edits precise inputs
+
+**Review changes:** `status` now wins over `all` when both are given, and a status filter by category matches every status of that category; `append` is trimmed and a blank one is refused; the dependency edit and the append text moved into `dependenciesAfter` and `appended`.
 
 ## Stage 2 — The shell channel
 

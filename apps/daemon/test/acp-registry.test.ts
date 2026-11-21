@@ -145,6 +145,21 @@ describe('AgentRegistry', () => {
         expect(await byId(reg, 'opencode')).toMatchObject({ status: 'missing', detail: expect.stringContaining('no `opencode` command was found'), launch: 'opencode acp' });
     });
 
+    test('the task tools reach an agent through the shell unless its spec says it uses MCP; a custom agent says it in agents.json', () => {
+        const reg = registry();
+
+        reg.add({ id: 'mine', name: 'Mine', command: 'my-agent', args: [] });
+        reg.add({ id: 'sandboxed', name: 'Sandboxed', command: 'my-other-agent', args: [], taskTools: 'mcp' });
+
+        for (const spec of KNOWN_AGENTS) {
+            expect(reg.taskChannel(spec.id)).toBe(spec.taskTools ?? 'cli');
+        }
+
+        expect(reg.taskChannel('mine')).toBe('cli');
+        expect(reg.taskChannel('sandboxed')).toBe('mcp');
+        expect(reg.taskChannel('nobody')).toBe('cli');
+    });
+
     test('on macOS a run of Cursor keeps its state in a folder of Clowdy\'s own (owner only), and Cursor learns that the client can show a model\'s effort', async () => {
         const cursor = program('cursor-agent', 'cursor 2026.09.01');
         const dataDir = join(root, 'data');

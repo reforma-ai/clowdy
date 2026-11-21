@@ -74,7 +74,7 @@ function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
     return [
         defineTool('task_get', 'Reads one task: key, title, full description, status, the tasks it depends on and the tasks waiting for it (key, title, status), the runs working on it now, who created it and when it last changed.', z.strictObject({ taskId: taskRef }), input => ({
             task: describeTask(deps, resolveTask(store, run.projectId, input.taskId)),
-        })),
+        }), { cli: { positional: ['taskId'] } }),
 
         defineTool('task_list', `Lists the project's tasks, one short row each (key, title, status, dependencies, what blocks it, whether a run works on it); task_get has the description. By default it shows the work in flight (todo, active and review), not the backlog and not closed (done, canceled) work: the counts of every category come with the answer, so ask for the rest when you need it. A text query searches every task, closed ones too: use it to find tasks about one thing before you create duplicates. Pages hold ${ DEFAULT_LIMIT } rows unless limit says otherwise (at most ${ MAX_LIMIT }); the answer carries nextCursor while more are left. Newest change first. The first page also lists the project's statuses with their ids.`, z.strictObject({
             query: z.string().optional().describe('Only tasks whose key, title or description contain this text; searches closed tasks too'),
@@ -104,7 +104,7 @@ function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
             });
 
             return { ...page, ...(input.cursor === undefined && { statuses }) };
-        }),
+        }, { cli: {} }),
     ];
 }
 
@@ -136,7 +136,7 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
     return [
         ...readTaskTools(deps, run),
 
-        defineTool('task_create', 'Creates a task in the project, linked to this chat. Create dependencies first and name them in dependsOn; blocks names existing tasks that will wait for the new one. Without a status the task starts in To do.', z.strictObject({
+        defineTool('task_create', 'Creates a task in the project, linked to this chat. Create the tasks it depends on first. It can also make existing tasks wait for the new one. Without a status the task starts in To do.', z.strictObject({
             title: z.string().min(1).describe('The outcome in a few words'),
             description: z.string().optional().describe('Outcome, Owns, Needs, Check, Out of scope'),
             dependsOn: z.array(taskRef).optional().describe('Tasks that must be Done before this one can start'),
@@ -162,9 +162,9 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
             }
 
             return { task: describeTask(deps, task) };
-        })),
+        }), { cli: { positional: ['title'] } }),
 
-        defineTool('task_update', 'Changes a task: title, description (description replaces the text; append adds to its end), dependencies (dependsOn replaces the list; addDependsOn and removeDependsOn change it by tasks) or status. Set Done only after the work is verified; a run waiting for this task starts by itself once it is Done.', z.strictObject({
+        defineTool('task_update', 'Changes a task: its title, its description (replaced, or added to at the end), the tasks it depends on (replaced, or added to and taken from) or its status. Set Done only after the work is verified; a run waiting for this task starts by itself once it is Done.', z.strictObject({
             taskId: taskRef,
             title: z.string().min(1).optional(),
             description: z.string().optional().describe('The whole new text; read the task first to keep what is there, or use append'),
@@ -191,6 +191,6 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
             });
 
             return { task: describeTask(deps, updated) };
-        })),
+        }), { cli: { positional: ['taskId'] } }),
     ];
 }
