@@ -5,7 +5,6 @@ import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Plus } from '@clowdy/icons/14';
-import { ChevronDown as FoldDown, ChevronRight as FoldRight } from '@clowdy/icons/8';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, type SyntheticEvent } from 'react';
 
 import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
@@ -411,16 +410,19 @@ function Fold({ row, icon, onToggle }: { row: AgentRow; icon: ReactNode; onToggl
             <span className={ styles.restIcon } data-show={ listBoxItemDataShow.itemRest }>{ icon }</span>
             {/* The button is a React child of the row, so its clicks and keys would reach the row through the tree. */}
             <span className={ styles.fold } data-show={ listBoxItemDataShow.itemHover } { ...ownEvents }>
-                <button
-                    type="button"
+                <Button
+                    variant="filling"
+                    color="secondary"
+                    size="xs"
+                    iconOnly
                     tabIndex={ -1 }
-                    className={ styles.chevron }
                     aria-label={ row.isExpanded ? `Collapse ${ row.chat.title } threads` : `Expand ${ row.chat.title } threads` }
                     aria-expanded={ row.isExpanded }
-                    onClick={ onToggle }
+                    preventFocusOnPress
+                    onPress={ onToggle }
                 >
-                    { row.isExpanded ? <FoldDown aria-hidden /> : <FoldRight aria-hidden /> }
-                </button>
+                    { row.isExpanded ? <ChevronDown /> : <ChevronRight /> }
+                </Button>
             </span>
         </span>
     );
