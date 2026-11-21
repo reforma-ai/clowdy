@@ -20,6 +20,7 @@ import { ProgressCard } from './ProgressCard';
 import { ReadOnlyNotice } from './ReadOnlyNotice';
 import { RunningAgents } from './RunningAgents';
 import { useCompact } from './useCompact';
+import { useFork } from './useFork';
 
 import type { Attachment, Chat } from '@clowdy/protocol';
 
@@ -41,6 +42,10 @@ export function ChatView({ chat }: { chat: Chat }) {
         onOpenChat: (chatId: string) => void openChat(root, project, ui, chatId),
     }), [project, ui, root]);
     const parent = chat.parentChatId === undefined ? undefined : project.chats.get(chat.parentChatId);
+    // A fork says where it came from. The source opens from there while it is listed: one in the archive is named only, since opening it would bring it back.
+    const source = chat.forkedFrom && project.chats.get(chat.forkedFrom.chatId);
+    const origin = chat.forkedFrom && { atSeq: chat.forkedFrom.atSeq, title: source?.title, onOpen: source && source.archivedAt === undefined ? () => links.onOpenChat(source.id) : undefined };
+    const { fork, forking } = useFork(chat);
     const composer = useRef<ComposerHandle>(null);
     const stream = useChatStream(chat);
     const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
@@ -82,8 +87,9 @@ export function ChatView({ chat }: { chat: Chat }) {
                     active={ isRunActive(run) }
                     working={ isRunActive(run) && liveLine(run.status) }
                     links={ links }
-                    // Reply quotes into the message box, which a chat that is read only does not have.
-                    messageActions={ writability.writable ? { onReply: text => composer.current?.quote(text) } : {} }
+                    // Reply quotes into the message box, and a fork is a conversation to go on in: a chat that is read only has neither.
+                    messageActions={ writability.writable ? { onReply: text => composer.current?.quote(text), onFork: fork, forkingId: forking } : {} }
+                    forkedFrom={ origin }
                     emptyState={ <EmptyChat /> }
                     decorate={ item => (progress && item.id === cardAfter ? <ProgressCard progress={ progress } /> : null) }
                     errorAction={ item => (item.id === overflowAt ? <CompactAction chatId={ chat.id } /> : null) }

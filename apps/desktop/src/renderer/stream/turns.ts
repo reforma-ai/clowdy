@@ -73,6 +73,18 @@ export function hasMessageActions(block: StreamBlock): block is Extract<StreamBl
 }
 
 /**
+ * The item a fork's divider follows: the one whose `seq` is `atSeq` (the answer the fork was made at), else, when that number is missing from the stream,
+ * the last item before it. Nothing when the stream does not reach `atSeq` yet, or has nothing before it.
+ */
+export function forkPointId(items: readonly StreamItem[], atSeq: number): string | undefined {
+    const exact = items.find(item => item.seq === atSeq);
+
+    if (exact) return exact.id;
+
+    return items.some(item => item.seq > atSeq) ? items.findLast(item => item.seq < atSeq)?.id : undefined;
+}
+
+/**
  * Splits a stream into turns, each starting at a message of the person's, and folds the work of the ones that are over.
  * `active`: the run is still going, or waiting for the person, so the latest turn stays as it is.
  */

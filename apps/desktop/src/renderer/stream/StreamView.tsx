@@ -10,6 +10,7 @@ import { AssistantMessage } from './AssistantMessage';
 import { COMPACT_TOOL } from './compaction';
 import { CompactionLine } from './CompactionLine';
 import { ErrorLine } from './ErrorLine';
+import { ForkDivider, type ForkOrigin } from './ForkDivider';
 import { NoteLine } from './NoteLine';
 import { QuestionCard } from './QuestionCard';
 import { SelectionReply } from './SelectionReply';
@@ -21,7 +22,7 @@ import { ThreadMessageCard, ThreadNoticeCards } from './ThreadCards';
 import { ToolCard } from './ToolCard';
 import { turnMarks } from './turnMarks';
 import { TurnRail } from './TurnRail';
-import { foldFinishedWork, hasMessageActions, type StreamBlock } from './turns';
+import { foldFinishedWork, forkPointId, hasMessageActions, type StreamBlock } from './turns';
 import { UserBubble } from './UserBubble';
 import { Worked } from './Worked';
 import { WorkingLine } from './WorkingLine';
@@ -29,6 +30,14 @@ import { WorkingLine } from './WorkingLine';
 import type { StreamItem } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
 import type { MessageActionsConfig } from './MessageActions';
+
+/** What `StreamView` is given for the row under a message: `MessageActionsConfig`, except that a fork is told by the item it is made at. */
+export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onFork' | 'forkState'> {
+    /** Fork the chat at an answer (the id of its item): drawn under an answer that the daemon marked `canFork`. */
+    onFork?: (itemId: string) => void;
+    /** The answer a fork is being made at: its button spins and the others of the stream wait. */
+    forkingId?: string;
+}
 
 export interface StreamViewProps {
     items: StreamItem[];
@@ -49,9 +58,12 @@ export interface StreamViewProps {
     /**
      * Draws a row of actions and the time under the person's own messages and under the answer of each turn that is over, shown on the pointer
      * or the focus and always under the last one. Off for a page that only reads a run. Copy comes with the row; the other actions are drawn
-     * when their handler is here: `onReply` also gives a selection inside one message a Reply button (`SelectionReply`).
+     * when their handler is here: `onReply` also gives a selection inside one message a Reply button (`SelectionReply`), and `onFork` adds Fork to an
+     * answer that carries `canFork`.
      */
-    messageActions?: Omit<MessageActionsConfig, 'show'>;
+    messageActions?: StreamMessageActions;
+    /** The chat is a fork: draws the divider where the history it inherited ends, which stays for the life of the chat. Off for a page that only reads a run. */
+    forkedFrom?: ForkOrigin;
 }
 
 /**
@@ -60,7 +72,7 @@ export interface StreamViewProps {
  * while it is there. A turn that is over shows what was asked and the answer, and the work between them under one
  * "Worked for" line.
  */
-export function StreamView({ items, active = false, working, onAnswer, emptyState, decorate, links = NO_LINKS, errorAction, messageActions }: StreamViewProps) {
+export function StreamView({ items, active = false, working, onAnswer, emptyState, decorate, links = NO_LINKS, errorAction, messageActions, forkedFrom }: StreamViewProps) {
     const scroller = useRef<HTMLDivElement>(null);
     const { scrollRef: stickScrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
     const scrollRef = useMemo(
@@ -72,6 +84,7 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
     const [shown] = useState(() => new Set(items.map(item => item.id)));
     const blocks = useMemo(() => foldFinishedWork(items, active), [items, active]);
     const lastWithActions = messageActions ? blocks.findLast(hasMessageActions)?.item.id : undefined;
+    const forkPoint = forkedFrom && forkPointId(items, forkedFrom.atSeq);
     const last = items.at(-1)?.body;
     // A message that is still arriving carries its own marker, and so does a compaction that runs (Reforma hides its pending line the same way).
     const live = (last?.kind === 'assistant' && !last.done) || (last?.kind === 'tool' && last.name === COMPACT_TOOL && last.state === 'running');
@@ -81,8 +94,19 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
     const actionsOf = (block: StreamBlock): MessageActionsConfig | undefined => {
         if (!messageActions || !hasMessageActions(block)) return undefined;
 
-        return { ...messageActions, show: block.item.id === lastWithActions ? 'always' : 'hover' };
+        const { onFork, forkingId, ...shared } = messageActions;
+        const { id, canFork } = block.item;
+        const show = id === lastWithActions ? 'always' : 'hover';
+
+        if (!onFork || !canFork || !block.answer) return { ...shared, show };
+
+        return { ...shared, show, onFork: () => onFork(id), ...(forkingId !== undefined && { forkState: forkingId === id ? 'pending' : 'blocked' }) };
     };
+
+    const divider = forkedFrom && <ForkDivider title={ forkedFrom.title } onOpen={ forkedFrom.onOpen } />;
+
+    /** The divider of a fork goes after the block that holds its fork point: the answer itself, or the fold the point is inside. */
+    const endsHistory = (block: StreamBlock) => forkPoint !== undefined && (block.kind === 'worked' ? block.items.some(item => item.id === forkPoint) : block.item.id === forkPoint);
 
     const renderItem = (item: StreamItem, actions?: MessageActionsConfig): ReactNode => {
         const { body } = item;
@@ -119,13 +143,17 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
                         { items.length === 0 && emptyState }
                         { blocks.map(block => (block.kind === 'worked'
                             ? (
-                                <Worked key={ block.key } label={ block.label }>
-                                    { block.items.map(item => <Fragment key={ item.id }>{ renderItem(item) }</Fragment>) }
-                                </Worked>
+                                <Fragment key={ block.key }>
+                                    <Worked label={ block.label }>
+                                        { block.items.map(item => <Fragment key={ item.id }>{ renderItem(item) }</Fragment>) }
+                                    </Worked>
+                                    { endsHistory(block) && divider }
+                                </Fragment>
                             )
                             : (
                                 <Fragment key={ block.item.id }>
                                     { renderItem(block.item, actionsOf(block)) }
+                                    { endsHistory(block) && divider }
                                     { decorate?.(block.item) }
                                 </Fragment>
                             ))) }

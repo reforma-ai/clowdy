@@ -152,4 +152,59 @@ describe('MessageActions', () => {
             expect(container.querySelector('[data-message]')?.querySelector('time')).not.toBeNull();
         });
     });
+
+    describe('Fork', () => {
+        const forkButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Fork into new chat"]');
+        const order = () => [...container.querySelectorAll('time, button')].map(node => (node.tagName === 'TIME' ? 'time' : node.getAttribute('aria-label')));
+
+        it('is drawn only where a handler is given, and calls it when pressed', async () => {
+            const onFork = vi.fn();
+
+            await act(async () => root.render(<AssistantMessage text="Done." at={ at } actions={ { show: 'hover' } } />));
+
+            expect(forkButton()).toBeNull();
+
+            await act(async () => root.render(<AssistantMessage text="Done." at={ at } actions={ { show: 'hover', onFork } } />));
+            await act(async () => forkButton()!.click());
+
+            expect(onFork).toHaveBeenCalledOnce();
+        });
+
+        it('sits after Reply and before the time on an answer, so the tab order is the reading order', async () => {
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onReply: vi.fn(), onFork: vi.fn() } } />));
+
+            expect(order()).toEqual(['Copy message', 'Reply', 'Fork into new chat', 'time']);
+        });
+
+        it('spins and takes no press while its fork is being made', async () => {
+            const onFork = vi.fn();
+
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork, forkState: 'pending' } } />));
+
+            expect(forkButton()?.hasAttribute('data-pending')).toBe(true);
+
+            await act(async () => forkButton()!.click());
+
+            expect(onFork).not.toHaveBeenCalled();
+        });
+
+        it('is off, without a spinner, while another answer is being forked', async () => {
+            const onFork = vi.fn();
+
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork, forkState: 'blocked' } } />));
+
+            expect(forkButton()?.disabled).toBe(true);
+            expect(forkButton()?.hasAttribute('data-pending')).toBe(false);
+
+            await act(async () => forkButton()!.click());
+
+            expect(onFork).not.toHaveBeenCalled();
+        });
+
+        it('is not drawn for a message of files alone', async () => {
+            await act(async () => root.render(<UserBubble text="" attachments={ [{ id: 'a-1', name: 'shot.png', mediaType: 'image/png', size: 10 }] } at={ at } actions={ { show: 'hover', onFork: vi.fn() } } />));
+
+            expect(forkButton()).toBeNull();
+        });
+    });
 });

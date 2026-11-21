@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 import { emptyComposerDoc } from '@clowdy/components/RichInput';
+import { toast } from '@clowdy/components/Toast';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, type FixtureData } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_FORK_CHAT_ID, FIXTURE_PROJECT_ID, withFixtureFork, type FixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { ChatView } from './ChatView';
@@ -538,5 +539,282 @@ describe('Reply in a chat', () => {
             vi.unstubAllGlobals();
             vi.restoreAllMocks();
         }
+    });
+});
+
+describe('Fork in a chat', () => {
+    // The fork chat of the fixtures (c-7) is a fork of First version (c-2) at its final answer, which is the one answer that can be forked.
+    const withFork = (fixtures: FixtureData) => void withFixtureFork(fixtures);
+    const forkButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Fork into new chat"]')];
+    const divider = () => container.querySelector<HTMLElement>('[data-slot="fork-divider"]');
+    const ANSWER = 'The booking page, the fleet list and the price calculation are in.';
+    const refusal = { ok: false as const, requestId: 'x', error: { code: 'unavailable' as const, message: 'Claude Code is switched off' } };
+
+    /** Holds the answer to `chat.fork` until `release`, and lets every other command through. */
+    function holdFork(result?: Awaited<ReturnType<RootStore['command']>>) {
+        const command = store.command.bind(store);
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const spy = vi.spyOn(store, 'command').mockImplementation(async (input) => {
+            if (input.type !== 'chat.fork') return command(input);
+
+            await gate;
+
+            return result ?? command(input);
+        });
+
+        return { spy, release, forks: () => spy.mock.calls.filter(([input]) => input.type === 'chat.fork') };
+    }
+
+    beforeEach(() => vi.mocked(toast.error).mockClear());
+
+    it('draws a Fork under the answer the daemon marked and nowhere else', async () => {
+        await start(undefined, withFork);
+        await draw('c-2');
+
+        expect(forkButtons()).toHaveLength(1);
+
+        const row = forkButtons()[0].closest('[data-message]')!;
+
+        expect(row.textContent).toContain(ANSWER);
+        // Reply stays before it.
+        expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Copy message', 'Reply', 'Fork into new chat']);
+    });
+
+    it('draws none in a chat whose answers carry no flag', async () => {
+        await start(undefined, withFork);
+        await draw('c-1');
+
+        expect(container.querySelectorAll('[data-message]').length).toBeGreaterThan(0);
+        expect(forkButtons()).toHaveLength(0);
+    });
+
+    it('draws none in a chat that is read only, where a fork could not be gone on in', async () => {
+        await start(claudeOff, withFork);
+        await draw('c-2');
+
+        expect(container.querySelector('button[aria-label="Copy message"]')).not.toBeNull();
+        expect(forkButtons()).toHaveLength(0);
+    });
+
+    it('sends chat.fork with the chat and the answer, and opens the new chat', async () => {
+        await start(undefined, withFork);
+        await draw('c-2');
+
+        const command = vi.spyOn(store, 'command');
+        const answer = data.items['r-orch-2'][5];
+
+        await act(async () => forkButtons()[0].click());
+
+        expect(command).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat.fork', chatId: 'c-2', itemId: answer.id }));
+
+        const opened = ui().chatId!;
+
+        // Not the fork the fixtures hold (c-7): the one the press made.
+        expect(opened).not.toBe('c-2');
+        expect(opened).not.toBe(FIXTURE_FORK_CHAT_ID);
+        expect(chatOf(opened)).toMatchObject({ title: '(1) First version', forkedFrom: { chatId: 'c-2', atSeq: answer.seq } });
+        expect(ui().section).toBe('agents');
+        expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('shows the daemon\'s words when it refuses, and stays on the chat', async () => {
+        await start(undefined, withFork);
+        await draw('c-2');
+        holdFork(refusal).release();
+
+        const before = ui().chatId;
+
+        await act(async () => forkButtons()[0].click());
+
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith({ message: 'Claude Code is switched off' });
+        expect(ui().chatId).toBe(before);
+        expect(forkButtons()[0].hasAttribute('data-pending')).toBe(false);
+    });
+
+    it('says it could not fork when the refusal has no words', async () => {
+        await start(undefined, withFork);
+        await draw('c-2');
+        holdFork({ ...refusal, error: { ...refusal.error, message: '' } }).release();
+        await act(async () => forkButtons()[0].click());
+
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith({ message: 'Couldn\'t fork the chat' });
+    });
+
+    it('spins while the command runs, takes no second press, and lets the person fork again afterwards', async () => {
+        await start(undefined, withFork);
+        await draw('c-2');
+
+        const held = holdFork(refusal);
+
+        await act(async () => forkButtons()[0].click());
+
+        expect(forkButtons()[0].hasAttribute('data-pending')).toBe(true);
+
+        await act(async () => forkButtons()[0].click());
+
+        expect(held.forks()).toHaveLength(1);
+
+        await act(async () => held.release());
+
+        expect(forkButtons()[0].hasAttribute('data-pending')).toBe(false);
+
+        await act(async () => forkButtons()[0].click());
+
+        expect(held.forks()).toHaveLength(2);
+    });
+
+    it('waits for the store to know the new chat before it opens it', async () => {
+        await start(undefined, withFork);
+        await draw('c-2');
+
+        // The answer to the command comes before the event that adds the chat to the store.
+        const late = { ...chatOf(FIXTURE_FORK_CHAT_ID), id: 'c-late' };
+
+        holdFork({ ok: true, requestId: 'x', data: { chat: late } }).release();
+
+        const before = ui().chatId;
+
+        await act(async () => forkButtons()[0].click());
+
+        expect(ui().chatId).toBe(before);
+
+        const project = store.selectedProject!;
+
+        await act(async () => project.applyEvent({ cursor: project.cursor + 1, at: 1, projectId: FIXTURE_PROJECT_ID, data: { type: 'chat.upserted', chat: late } }));
+
+        await vi.waitFor(() => expect(ui().chatId).toBe('c-late'));
+    });
+
+    it('sends one fork for two presses made before the button has drawn its spinner', async () => {
+        await start(undefined, withFork);
+        await draw('c-2');
+
+        const held = holdFork(refusal);
+
+        // Both clicks land in one batch of updates, so the second sees a button that does not yet know a fork has started.
+        await act(async () => {
+            forkButtons()[0].click();
+            forkButtons()[0].click();
+        });
+
+        expect(held.forks()).toHaveLength(1);
+
+        await act(async () => held.release());
+    });
+
+    it('opens the new chat anyway when the event feed has not brought it after five seconds', async () => {
+        await start(undefined, withFork);
+        await draw('c-2');
+
+        const late = { ...chatOf(FIXTURE_FORK_CHAT_ID), id: 'c-late' };
+
+        holdFork({ ok: true, requestId: 'x', data: { chat: late } }).release();
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+        try {
+            await act(async () => forkButtons()[0].click());
+            await act(async () => vi.advanceTimersByTimeAsync(4900));
+
+            expect(ui().chatId).not.toBe('c-late');
+
+            await act(async () => vi.advanceTimersByTimeAsync(200));
+
+            expect(ui().chatId).toBe('c-late');
+        }
+        finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not take the person to the new chat when they left the chat while it was being made', async () => {
+        await start(undefined, withFork);
+        await draw('c-2');
+
+        const held = holdFork();
+
+        await act(async () => forkButtons()[0].click());
+        await render('c-3');
+
+        const before = ui().chatId;
+
+        await act(async () => held.release());
+
+        expect(ui().chatId).toBe(before);
+        // The chat was made all the same.
+        expect([...store.selectedProject!.chats.values()].some(chat => chat.forkedFrom?.chatId === 'c-2' && chat.id !== FIXTURE_FORK_CHAT_ID)).toBe(true);
+    });
+
+    describe('the divider', () => {
+        it('stands where the inherited history ends, after the answer the chat was forked at and before its own first message', async () => {
+            await start(undefined, withFork);
+            await draw(FIXTURE_FORK_CHAT_ID);
+
+            expect(divider()?.textContent).toBe('Forked from First version');
+            expect(divider()?.previousElementSibling?.textContent).toContain(ANSWER);
+            expect(divider()?.nextElementSibling?.textContent).toContain('Add the weekend surcharge to the price.');
+        });
+
+        it('opens the source chat from its title', async () => {
+            await start(undefined, withFork);
+            await draw(FIXTURE_FORK_CHAT_ID);
+            await act(async () => divider()!.querySelector('button')!.click());
+
+            await vi.waitFor(() => expect(ui().chatId).toBe('c-2'));
+        });
+
+        it('names a source that is in the archive without opening it', async () => {
+            await start(undefined, (fixtures) => {
+                withFixtureFork(fixtures);
+                fixtures.chats.find(chat => chat.id === 'c-2')!.archivedAt = 1;
+            });
+            await draw(FIXTURE_FORK_CHAT_ID);
+
+            expect(divider()?.textContent).toBe('Forked from First version');
+            expect(divider()?.querySelector('button')).toBeNull();
+        });
+
+        it('says only Forked once the source is gone', async () => {
+            await start(undefined, (fixtures) => {
+                withFixtureFork(fixtures);
+                fixtures.chats.splice(fixtures.chats.findIndex(chat => chat.id === 'c-2'), 1);
+            });
+            await draw(FIXTURE_FORK_CHAT_ID);
+
+            expect(divider()?.textContent).toBe('Forked');
+            expect(divider()?.querySelector('button')).toBeNull();
+        });
+
+        it('is drawn in a chat that is read only too', async () => {
+            await start(claudeOff, withFork);
+            await draw(FIXTURE_FORK_CHAT_ID);
+
+            expect(divider()?.textContent).toBe('Forked from First version');
+            expect(forkButtons()).toHaveLength(0);
+        });
+
+        it('is not drawn in a chat that was not forked, the source of a fork included', async () => {
+            await start(undefined, withFork);
+            await draw('c-2');
+
+            expect(divider()).toBeNull();
+        });
+
+        it('shows the fork the person just made, with the divider after the answer they forked at', async () => {
+            await start(undefined, withFork);
+            await draw('c-2');
+            await act(async () => forkButtons()[0].click());
+
+            const made = ui().chatId!;
+
+            await draw(made);
+
+            expect(divider()?.textContent).toBe('Forked from First version');
+            expect(divider()?.previousElementSibling?.textContent).toContain(ANSWER);
+            // Nothing of its own yet: the divider is the end of the list.
+            expect(divider()?.nextElementSibling).toBeNull();
+        });
     });
 });

@@ -316,5 +316,141 @@ describe('StreamView', () => {
                 }
             });
         });
+
+        describe('Fork', () => {
+            const forkButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Fork into new chat"]')];
+            // The first turn's answer and the second's can be forked; so can a message that is no answer, which is not drawn all the same.
+            const forkable = [
+                { ...twoTurns[0], canFork: true },
+                twoTurns[1],
+                { ...twoTurns[2], canFork: true },
+                { ...twoTurns[3], canFork: true },
+                twoTurns[4],
+                { ...twoTurns[5], canFork: true },
+            ];
+
+            it('draws a Fork under an answer the daemon marked, and nowhere else, and hands over the answer\'s item', async () => {
+                const onFork = vi.fn();
+
+                await drawWith(forkable, { active: false, messageActions: { onFork } });
+
+                // Two answers are marked; a message of the person's, and a call inside the fold, carry the flag and get no button.
+                expect(forkButtons()).toHaveLength(2);
+
+                await act(async () => forkButtons()[1].click());
+
+                expect(onFork).toHaveBeenCalledExactlyOnceWith('i-5');
+            });
+
+            it('draws none for an answer that is not marked, or where no handler is given', async () => {
+                await drawWith(twoTurns, { active: false, messageActions: { onFork: vi.fn() } });
+
+                expect(forkButtons()).toHaveLength(0);
+
+                await drawWith(forkable, { active: false, messageActions: {} });
+
+                expect(forkButtons()).toHaveLength(0);
+            });
+
+            it('draws none for a stream that is not given actions, as on the page of a run that only reads', async () => {
+                await drawWith(forkable, { active: false });
+
+                expect(forkButtons()).toHaveLength(0);
+            });
+
+            it('spins the button of the answer being forked and turns the others off', async () => {
+                const onFork = vi.fn();
+
+                await drawWith(forkable, { active: false, messageActions: { onFork, forkingId: 'i-5' } });
+
+                expect(forkButtons().map(button => [button.hasAttribute('data-pending'), button.disabled])).toEqual([[false, true], [true, false]]);
+
+                await act(async () => forkButtons().forEach(button => button.click()));
+
+                expect(onFork).not.toHaveBeenCalled();
+            });
+        });
+    });
+
+    describe('the divider of a fork', () => {
+        const twoTurns = [...items, item(4, { kind: 'user', text: 'Now the table' }), item(5, { kind: 'assistant', text: 'The table is done.', done: true })];
+        const divider = () => container.querySelector<HTMLElement>('[data-slot="fork-divider"]');
+        const drawFork = (forkedFrom: StreamViewProps['forkedFrom'], list: StreamItem[] = twoTurns) => act(async () => root.render(<StreamView items={ list } active={ false } forkedFrom={ forkedFrom } />));
+        /** What stands right before the divider: the block of the stream it follows. */
+        const before = () => divider()?.previousElementSibling?.textContent;
+        const after = () => divider()?.nextElementSibling?.textContent;
+
+        it('stands right after the item whose number is the fork point, the answer, and before what the chat wrote itself', async () => {
+            await drawFork({ atSeq: 3, title: 'Fix the form' });
+
+            expect(before()).toContain('The form is fixed.');
+            expect(after()).toContain('Now the table');
+        });
+
+        it('names the source and opens it from the title', async () => {
+            const onOpen = vi.fn();
+
+            await drawFork({ atSeq: 3, title: 'Fix the form', onOpen });
+
+            expect(divider()?.textContent).toBe('Forked from Fix the form');
+
+            await act(async () => divider()!.querySelector('button')!.click());
+
+            expect(onOpen).toHaveBeenCalledOnce();
+        });
+
+        it('names a source it cannot open in plain words, and says only Forked when the source is gone', async () => {
+            await drawFork({ atSeq: 3, title: 'Fix the form' });
+
+            expect(divider()?.textContent).toBe('Forked from Fix the form');
+            expect(divider()?.querySelector('button')).toBeNull();
+
+            await drawFork({ atSeq: 3 });
+
+            expect(divider()?.textContent).toBe('Forked');
+            expect(divider()?.querySelector('button')).toBeNull();
+        });
+
+        it('goes after the last item before the number when the stream does not have it', async () => {
+            const gap = [items[0], items[1], items[2], items[3], item(7, { kind: 'user', text: 'Later' }), item(8, { kind: 'assistant', text: 'Later answer.', done: true })];
+
+            await drawFork({ atSeq: 5, title: 'Fix the form' }, gap);
+
+            expect(before()).toContain('The form is fixed.');
+            expect(after()).toContain('Later');
+        });
+
+        it('goes after the fold when the point is a call inside it', async () => {
+            await drawFork({ atSeq: 2, title: 'Fix the form' });
+
+            expect(before()).toContain('Worked for');
+            expect(after()).toContain('The form is fixed.');
+        });
+
+        it('is not drawn when the stream has not reached the fork point, and not for a chat that is no fork', async () => {
+            await drawFork({ atSeq: 9, title: 'Fix the form' });
+
+            expect(divider()).toBeNull();
+
+            await drawFork(undefined);
+
+            expect(divider()).toBeNull();
+        });
+
+        it('stays at the same place while the chat goes on after it', async () => {
+            await drawFork({ atSeq: 3, title: 'Fix the form' });
+            await drawFork({ atSeq: 3, title: 'Fix the form' }, [...twoTurns, item(6, { kind: 'user', text: 'And one more' }), item(7, { kind: 'assistant', text: 'One more done.', done: true })]);
+
+            expect(before()).toContain('The form is fixed.');
+            expect(after()).toContain('Now the table');
+        });
+
+        it('is no part of the turn rail: the messages that start a turn keep their marks, and the divider has none', async () => {
+            await drawFork({ atSeq: 3, title: 'Fix the form' });
+
+            expect([...container.querySelectorAll('[data-turn]')].map(node => node.getAttribute('data-turn'))).toEqual(['i-0', 'i-4']);
+            expect(divider()?.hasAttribute('data-turn')).toBe(false);
+            expect(divider()?.querySelector('time')).toBeNull();
+        });
     });
 });

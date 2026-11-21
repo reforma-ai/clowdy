@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { foldFinishedWork, hasMessageActions, workedForLabel, type StreamBlock } from './turns';
+import { foldFinishedWork, forkPointId, hasMessageActions, workedForLabel, type StreamBlock } from './turns';
 
 import type { StreamItem, StreamItemBody } from '@clowdy/protocol';
 
@@ -142,6 +142,26 @@ describe('hasMessageActions', () => {
         expect(hasMessageActions(block(note(1000)))).toBe(false);
         expect(hasMessageActions(block(failure(1000)))).toBe(false);
         expect(hasMessageActions({ kind: 'worked', key: 'w', label: 'Worked', items: [user(0)] })).toBe(false);
+    });
+});
+
+describe('forkPointId', () => {
+    /** Items with the numbers a fork keeps from its source: not one after the other. */
+    const numbered = (...seqs: number[]): StreamItem[] => seqs.map(n => ({ id: `n-${ n }`, runId: 'r', seq: n, at: n, body: { kind: 'note', text: 'x' } }));
+
+    it('is the item whose number is the fork point', () => {
+        expect(forkPointId(numbered(1, 2, 3, 6, 7, 8), 6)).toBe('n-6');
+        expect(forkPointId(numbered(1, 2, 3), 3)).toBe('n-3');
+    });
+
+    it('is the last item before the number when the stream skips it', () => {
+        expect(forkPointId(numbered(1, 2, 3, 7, 8), 6)).toBe('n-3');
+    });
+
+    it('is nothing when the stream stops short of the number, or has nothing before it', () => {
+        expect(forkPointId(numbered(1, 2, 3), 6)).toBeUndefined();
+        expect(forkPointId(numbered(7, 8), 6)).toBeUndefined();
+        expect(forkPointId([], 6)).toBeUndefined();
     });
 });
 

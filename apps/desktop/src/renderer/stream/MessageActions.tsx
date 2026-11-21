@@ -1,7 +1,8 @@
 import { Button } from '@clowdy/components/Button';
 import { CopyButton } from '@clowdy/components/CopyButton';
 import { Show } from '@clowdy/components/Show';
-import { Revert } from '@clowdy/icons/14';
+// Fork wears the thread's mark until a Fork icon is drawn: swapping it is this one import.
+import { Split as ForkIcon, Revert } from '@clowdy/icons/14';
 
 import { formatFullTime, formatMessageTime } from '../shared/time';
 import styles from './MessageActions.module.css';
@@ -17,6 +18,10 @@ export interface MessageActionsConfig {
     show: MessageActionsShow;
     /** Reply: called with the message as it was written, to quote it in the message box. */
     onReply?: (text: string) => void;
+    /** Fork into a new chat, at this message: drawn only where it is given (`StreamView` gives it to an answer the agent can fork at). */
+    onFork?: () => void;
+    /** A fork is being made: `pending` on the button that started it, `blocked` on the others, so there is one at a time. */
+    forkState?: 'pending' | 'blocked';
 }
 
 export interface MessageActionsProps {
@@ -31,12 +36,12 @@ export interface MessageActionsProps {
 
 /**
  * The row under a message: what can be done with it and when it was written. The buttons are in the order they are read and tabbed in, and the time
- * sits on the outside: first on the person's side (`22:54`, Copy, Reply), last on an agent's (Copy, Reply, `22:54`). It keeps its height whether it shows
+ * sits on the outside: first on the person's side (`22:54`, Copy, Reply), last on an agent's (Copy, Reply, Fork, `22:54`). It keeps its height whether it shows
  * or not, so showing it never moves the messages around it. Put it as the last child of the element that holds the message: that element is what the
  * pointer or the focus has to be on (see the stylesheet).
  */
 export function MessageActions({ text, at, align, actions }: MessageActionsProps) {
-    const { show, onReply } = actions;
+    const { show, onReply, onFork, forkState } = actions;
     const time = <time className={ styles.time } dateTime={ new Date(at).toISOString() } title={ formatFullTime(at) }>{ formatMessageTime(at) }</time>;
     const hasText = text.trim() !== '';
 
@@ -51,6 +56,23 @@ export function MessageActions({ text, at, align, actions }: MessageActionsProps
                         { reply => (
                             <Button variant="filling" size="xs" iconOnly tooltip="Reply" tooltipPlacement="bottom" aria-label="Reply" onPress={ () => reply(text) }>
                                 <Revert />
+                            </Button>
+                        ) }
+                    </Show>
+                    <Show when={ onFork }>
+                        { fork => (
+                            <Button
+                                variant="filling"
+                                size="xs"
+                                iconOnly
+                                tooltip="Fork into new chat"
+                                tooltipPlacement="bottom"
+                                aria-label="Fork into new chat"
+                                isPending={ forkState === 'pending' }
+                                isDisabled={ forkState === 'blocked' }
+                                onPress={ fork }
+                            >
+                                <ForkIcon />
                             </Button>
                         ) }
                     </Show>
