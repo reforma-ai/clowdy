@@ -13,8 +13,6 @@ export const SETTINGS_PAGES = ['appearance', 'chat', 'projects', 'providers', 's
 
 export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
-/** The order of the chats in the Agents list, newest first: by the last thing that happened in the chat, or by when it was made. */
-export type ChatSort = 'activity' | 'created';
 
 /** Where a project's window is: the section and what is open in it. History walks these; the view options of a section are not places. */
 export interface ProjectView {
@@ -42,8 +40,6 @@ interface StoredProjectUi {
     runId: RunId | null;
     docPath: string | null;
     docFolderId: FolderId | null;
-    chatSort: ChatSort;
-    showFinishedThreads: boolean;
     expandedChats: ChatId[];
     agentsFolded: boolean;
     tasksView: TasksView;
@@ -54,7 +50,7 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'chatSort' | 'showFinishedThreads' | 'expandedChats' | 'agentsFolded' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'expandedChats' | 'agentsFolded' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -73,10 +69,6 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
     if (params.has('doc')) initial.docPath = params.get('doc');
 
     if (params.has('docFolder')) initial.docFolderId = params.get('docFolder');
-
-    if (params.get('sort') === 'activity' || params.get('sort') === 'created') initial.chatSort = params.get('sort') as ChatSort;
-
-    if (params.has('finished')) initial.showFinishedThreads = params.get('finished') !== '0';
 
     if (params.get('expand')) initial.expandedChats = params.get('expand')!.split(',').filter(Boolean);
 
@@ -98,10 +90,6 @@ export class ProjectUi {
     docFolderId: FolderId | null = null;
     /** Agents: the new-chat row is selected, and the chat it starts does not exist until its first message is sent. Not kept between sessions. */
     draft = false;
-    /** Agents: the order of the chats. Last activity, which is where a chat that just got a message goes up to the top, until the person picks the order they were made in. */
-    chatSort: ChatSort = 'activity';
-    /** Agents: list a thread whose run is over. Off, such a thread is hidden unless something below it still works or it is the open chat. */
-    showFinishedThreads = true;
     /** Agents: the chats whose threads the person opened in the list. A chat that is not here is folded, which is how every chat starts. */
     expandedChats: readonly ChatId[] = [];
     /** Chats: the strip of running agents over the message box shows its line only, with the rows folded away. Kept for every chat of the project. */
@@ -121,8 +109,6 @@ export class ProjectUi {
             this.runId = idOrNull(stored.runId);
             this.docPath = idOrNull(stored.docPath);
             this.docFolderId = idOrNull(stored.docFolderId);
-            this.chatSort = stored.chatSort === 'created' ? 'created' : 'activity';
-            this.showFinishedThreads = stored.showFinishedThreads !== false;
             this.expandedChats = Array.isArray(stored.expandedChats) ? stored.expandedChats.filter(id => typeof id === 'string') : [];
             this.agentsFolded = stored.agentsFolded === true;
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';
@@ -138,8 +124,6 @@ export class ProjectUi {
                 runId: this.runId,
                 docPath: this.docPath,
                 docFolderId: this.docFolderId,
-                chatSort: this.chatSort,
-                showFinishedThreads: this.showFinishedThreads,
                 expandedChats: [...this.expandedChats],
                 agentsFolded: this.agentsFolded,
                 tasksView: this.tasksView,
@@ -211,14 +195,6 @@ export class ProjectUi {
         this.section = 'docs';
         this.docPath = path;
         this.docFolderId = folderId;
-    }
-
-    setChatSort(sort: ChatSort): void {
-        this.chatSort = sort;
-    }
-
-    setShowFinishedThreads(show: boolean): void {
-        this.showFinishedThreads = show;
     }
 
     /** Opens or folds the threads of a chat in the list. */

@@ -207,16 +207,14 @@ describe('NavHistory recording', () => {
         expect(place()).toBe('p-car/agents:null');
     });
 
-    it('does not record the view options: the Tasks view, the order of the chats', () => {
+    it('does not record the view options: the Tasks view', () => {
         ui().setTasksView('list');
-        ui().setChatSort('created');
         ui().setTasksView('board');
 
         expect(root.history.canGoBack).toBe(false);
 
         ui().openTask('t-24');
         ui().setTasksView('list');
-        ui().setChatSort('activity');
 
         expect(stepsBack()).toBe(1);
     });

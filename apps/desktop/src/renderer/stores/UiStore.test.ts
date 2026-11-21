@@ -94,13 +94,12 @@ describe('UiStore', () => {
 
         first.forProject('p1').openTask('t7');
         first.forProject('p1').setTasksView('list');
-        first.forProject('p1').setChatSort('created');
         first.forProject('p2').openChat('c3');
 
         const second = new UiStore(storage);
 
-        expect(second.forProject('p1')).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list', chatSort: 'created' });
-        expect(second.forProject('p2')).toMatchObject({ section: 'agents', chatId: 'c3', tasksView: 'board', chatSort: 'activity' });
+        expect(second.forProject('p1')).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list' });
+        expect(second.forProject('p2')).toMatchObject({ section: 'agents', chatId: 'c3', tasksView: 'board' });
         expect(second.forProject('p3').section).toBe('agents');
     });
 
@@ -155,10 +154,10 @@ describe('UiStore', () => {
     });
 
     it('starts from what the page URL preselects, ahead of the stored state', () => {
-        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&sort=created&chat=c-1&run=r-1&doc=a.md&docFolder=fld-2');
+        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&chat=c-1&run=r-1&doc=a.md&docFolder=fld-2');
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","tasksView":"board"}' }), initial).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', chatSort: 'created', chatId: 'c-1', runId: 'r-1', docPath: 'a.md', docFolderId: 'fld-2' });
+        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', chatId: 'c-1', runId: 'r-1', docPath: 'a.md', docFolderId: 'fld-2' });
     });
 
     it('folds every chat until its threads are opened, and keeps what the person opened per project across a restart', () => {
@@ -190,19 +189,9 @@ describe('UiStore', () => {
         expect(ui.expandedChats).toBe(before);
     });
 
-    it('lists finished threads until the person hides them, and remembers it', () => {
-        const storage = memoryStorage();
-        const ui = new UiStore(storage).forProject('p1');
-
-        expect(ui.showFinishedThreads).toBe(true);
-
-        ui.setShowFinishedThreads(false);
-        expect(new UiStore(storage).forProject('p1').showFinishedThreads).toBe(false);
-    });
-
-    it('reads the folds and the filter of threads from the page URL, and drops what is damaged in storage', () => {
-        expect(initialUiFromSearch('?finished=0&expand=c-6,c-6a')).toEqual({ showFinishedThreads: false, expandedChats: ['c-6', 'c-6a'] });
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":"c-1","showFinishedThreads":"no"}' })).forProject('p1')).toMatchObject({ expandedChats: [], showFinishedThreads: true });
+    it('reads the folds of threads from the page URL, and drops what is damaged in storage', () => {
+        expect(initialUiFromSearch('?expand=c-6,c-6a')).toEqual({ expandedChats: ['c-6', 'c-6a'] });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":"c-1"}' })).forProject('p1')).toMatchObject({ expandedChats: [] });
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"expandedChats":["c-1",5]}' })).forProject('p1').expandedChats).toEqual(['c-1']);
     });
 
