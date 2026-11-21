@@ -11,7 +11,7 @@ requests and CI checks. GitHub Desktop is optional.
 
 ## Where work happens
 
-All local work happens in the main checkout, on the branch `next`. Every chat and every agent works there together, at the same time. A new chat or a new task does not get its own branch or worktree: what changes in the tree shows in the owner's running app at once.
+All local work happens in the main checkout, on the branch `next`. Every chat and every agent works there together, at the same time. A new chat or a new task does not get its own branch or worktree: what changes in the tree shows in the owner's running app at once. Every commit is pushed to `origin/next` right away (Sharing the tree).
 
 `next` starts from `main` and lands back on it through a pull request (Pull Requests). A separate branch and worktree are the exception, and the agent decides on them (Worktrees).
 
@@ -33,7 +33,7 @@ Several agents edit the same tree at once, so each one keeps it clean for the ot
 - A file that holds your edits and another agent's, which you cannot tell apart: commit it whole and name both changes in the message body. A whole file in one commit is better than a file nobody dares to commit.
 - Do not switch branches, rebase, `reset --hard`, or rewrite commits in the shared tree: each of those changes the files under every other agent.
 - `.git/index.lock` means another agent is committing. Wait a few seconds and run the command again. Delete the lock only when no git process is running.
-- Push `next` only when the owner asks.
+- Push after every commit: `git push origin next`. A commit that sits only on this machine does not exist for the owner's other checkouts, for a pull request, or for the next agent that clones. When the push is rejected because `origin/next` moved, run `git fetch origin && git merge origin/next` and push again; never force-push and never rebase. When it fails for another reason (the SSH key needs the owner's approval, for one), leave the commits in place, say so once in the report, and do not work around it.
 
 ## Commit messages
 
@@ -120,9 +120,9 @@ A small edit, a fix, or one more change on the day's work stays in the shared tr
 ./clowdy worktree remove <slug>
 ```
 
-`<slug>` is kebab-case. `add` creates a sibling directory `../clowdy-<slug>` on a new branch `<nickname>/<slug>`, then runs `bun install --frozen-lockfile` there. The branch starts from the local branch `next`, by name, whatever the checkout it runs in has checked out, so it carries the day's commits, pushed or not. `--from <ref>` starts it from another ref: `--from origin/main` for a clean start from what is released, fetched first. Without a local `next` the command stops and asks for `--from`. `<nickname>` is `git config user.name`, lowercased, with spaces turned into hyphens.
+`<slug>` is kebab-case. `add` creates a sibling directory `../clowdy-<slug>` on a new branch `<nickname>/<slug>`, then runs `bun install --frozen-lockfile` there. The branch starts from `origin/main`, fetched first, so it is clean and carries only what is released. `--from <ref>` starts it from another ref: `--from next` when the task builds on commits of `next` that are not on `main` yet. When the fetch fails (the SSH key needs the owner's approval, for one), the branch starts from the last fetched `origin/main` and the command says so. `<nickname>` is `git config user.name`, lowercased, with spaces turned into hyphens.
 
-When the work is done it comes back to `next`, not through a pull request: from the main checkout run `git merge <branch>` (a merge commit keeps the branch's own commits and their signatures), then `./clowdy worktree remove <slug>` and `git branch -d <branch>`. Run the checks of Pull Requests first for what the branch changed. When the merge would touch files that are dirty in the shared tree, wait until their owners have committed; do not stash them.
+When the work is done it comes back to `next`, not through a pull request: from the main checkout run `git merge <branch>` (a merge commit keeps the branch's own commits and their signatures), push `next`, then `./clowdy worktree remove <slug>` and `git branch -d <branch>`. Work that stays in a worktree after the task is pushed on its branch, so it is not only on this machine. Run the checks of Pull Requests first for what the branch changed. When the merge would touch files that are dirty in the shared tree, wait until their owners have committed; do not stash them.
 
 `remove` deletes that checkout. It refuses when the tree still has uncommitted work. Do not delete the directory by hand. A branch that was not merged stays until it is merged or the owner says to drop it.
 

@@ -1,7 +1,7 @@
 /**
  * Extra checkouts for work that should not share the working branch (GITFLOW.md, Worktrees).
- * `add` starts from the local branch `next` by name, whatever the checkout it runs in has checked out, or from
- * `--from <ref>`; a ref of `origin` is fetched first.
+ * `add` starts from `origin/main`, fetched first, or from `--from <ref>` (`--from next` for the working branch's own
+ * commits, pushed or not).
  *
  *   ./clowdy worktree add <slug> [--from <ref>]
  *   ./clowdy worktree remove <slug>
@@ -12,8 +12,8 @@ import path from 'node:path';
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const USAGE = 'Usage: ./clowdy worktree add <kebab-case-slug> [--from <ref>] | remove <kebab-case-slug>';
 
-/** The branch all local work is committed on, and so what an isolated branch starts from and returns to. */
-const WORKING_BRANCH = 'next';
+/** What an isolated branch starts from unless it is told otherwise: what is released, not what a checkout holds. */
+const DEFAULT_BASE = 'origin/main';
 
 export async function worktreeCommand(repoRoot: string, args: string[]): Promise<void> {
     const [sub, slug, ...rest] = args;
@@ -48,7 +48,7 @@ export async function worktreeCommand(repoRoot: string, args: string[]): Promise
     console.log(`Removed ${ removed }`);
 }
 
-/** The ref after `--from`, or nothing for the working branch. */
+/** The ref after `--from`, or nothing for the default base. */
 function parseFrom(rest: string[]): string | undefined {
     if (rest.length === 0) {
         return undefined;
@@ -75,16 +75,22 @@ export function nicknameFromGitName(name: string): string {
 export async function addWorktree(
     repoRoot: string,
     slug: string,
-    from = WORKING_BRANCH
+    from = DEFAULT_BASE
 ): Promise<{ branch: string, path: string, from: string, base: string }> {
     const nick = nicknameFromGitName(await gitName(repoRoot));
     const branch = `${ nick }/${ slug }`;
     const destination = worktreePath(repoRoot, slug);
 
-    // A ref of origin is only as new as the last fetch, so the one who asked for it gets it fresh. The default is local
-    // and needs no network: a fetch asks for the owner's SSH key, which an agent session does not hold.
+    // A ref of origin is only as new as the last fetch. A fetch needs the owner's SSH key, which an agent session may
+    // not be allowed to use; then the branch starts from the last fetched ref, and the warning says so.
     if (from.startsWith('origin/')) {
-        await git(repoRoot, ['fetch', 'origin', '--prune']);
+        const fetched = await gitResult(repoRoot, ['fetch', 'origin', '--prune']);
+
+        if (fetched.code !== 0) {
+            const reason = fetched.stderr.trim().split('\n')[0] || `git fetch exited with ${ fetched.code }`;
+
+            console.error(`Could not fetch origin, so ${ from } is as of the last fetch: ${ reason }`);
+        }
     }
 
     const base = await gitResult(repoRoot, ['rev-parse', '--verify', '--quiet', '--short', `${ from }^{commit}`]);
