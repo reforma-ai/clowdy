@@ -679,6 +679,23 @@ export class RunService {
         this.update(runId, run => ({ ...run, sessionId }));
     }
 
+    /**
+     * Takes a chat's orchestrator, at rest, back to the conversation as it stands after an edit of a message cut its stream: `sessionId` is the agent's copy of
+     * the session cut at the point before the edited message, and none for the first message of the chat, whose turn starts a fresh session. What the
+     * dropped part left on the run is forgotten: the reading of the context window, what its session had lost in the background, a message not sent yet.
+     * Usage stays (it is what was spent). The result and the error are cleared by the turn that follows (`resume`).
+     */
+    rewind(runId: string, sessionId: string | undefined): void {
+        this.store.tx(() => {
+            this.update(runId, (run) => {
+                const { sessionId: _session, context: _context, ...rest } = run;
+
+                return sessionId ? { ...rest, sessionId } : rest;
+            });
+            setRunWork(this.store.db, runId, { nextPrompt: null, lostBackground: null });
+        });
+    }
+
     /** Remembers the engine process of a run, for killing it after a cancel or a crash. */
     setProcess(runId: string, engineProcess: RunProcess | null): void {
         setRunWork(this.store.db, runId, { process: engineProcess });

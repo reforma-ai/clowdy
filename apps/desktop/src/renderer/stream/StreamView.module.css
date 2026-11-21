@@ -9,6 +9,8 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    /* A message pulled sideways (swipe to reply) may leave the column's edge in a narrow window: that is no reason for the list to scroll sideways. */
+    overflow-x: hidden;
 }
 
 .content {

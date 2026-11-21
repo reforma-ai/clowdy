@@ -19,7 +19,10 @@ import { chatProgress } from './progress';
 import { ProgressCard } from './ProgressCard';
 import { ReadOnlyNotice } from './ReadOnlyNotice';
 import { RunningAgents } from './RunningAgents';
+import { swipeToReply } from './swipeReplyPreference';
 import { useCompact } from './useCompact';
+import { useEditMessage } from './useEditMessage';
+import { useFork } from './useFork';
 
 import type { Attachment, Chat } from '@clowdy/protocol';
 
@@ -41,6 +44,10 @@ export function ChatView({ chat }: { chat: Chat }) {
         onOpenChat: (chatId: string) => void openChat(root, project, ui, chatId),
     }), [project, ui, root]);
     const parent = chat.parentChatId === undefined ? undefined : project.chats.get(chat.parentChatId);
+    // A fork says where it came from. The source opens from there while it is listed: one in the archive is named only, since opening it would bring it back.
+    const source = chat.forkedFrom && project.chats.get(chat.forkedFrom.chatId);
+    const origin = chat.forkedFrom && { atSeq: chat.forkedFrom.atSeq, title: source?.title, onOpen: source && source.archivedAt === undefined ? () => links.onOpenChat(source.id) : undefined };
+    const { fork, forking } = useFork(chat);
     const composer = useRef<ComposerHandle>(null);
     const stream = useChatStream(chat);
     const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
@@ -48,6 +55,7 @@ export function ChatView({ chat }: { chat: Chat }) {
     const writability = chatWritability(chat, run, agents, agentsStatus);
     const progress = chatProgress(project.tasksOfChat(chat.id), project.statuses);
     const items = stream?.items ?? [];
+    const edit = useEditMessage({ chat, items, ready: stream?.status === 'ready', writable: writability.writable, attachmentBlob: links.attachmentBlob });
     // The card follows the orchestrator's latest message, where the person is looking.
     const cardAfter = items.findLast(item => item.body.kind === 'assistant')?.id;
     // The conversation outgrew the model's window: the failure offers Compact, when the chat can still be written to and its agent can compact.
@@ -82,6 +90,27 @@ export function ChatView({ chat }: { chat: Chat }) {
                     active={ isRunActive(run) }
                     working={ isRunActive(run) && liveLine(run.status) }
                     links={ links }
+                    // Reply puts a message in the message box as a card, or quotes selected words into the draft; a fork is a conversation to go on in, and an edit sends the
+                    // message again: a chat that is read only has none of them. The chat is rewritten from a message only at rest, so while the agent works Edit is drawn off.
+                    messageActions={ writability.writable
+                        ? {
+                            onReply: message => composer.current?.reply(message),
+                            onQuote: text => composer.current?.quote(text),
+                            swipeToReply: swipeToReply.enabled,
+                            onFork: fork,
+                            forkingId: forking,
+                            onEdit: edit.begin,
+                            editBusy: isRunActive(run),
+                        }
+                        : {} }
+                    editing={ edit.session && writability.writable
+                        ? {
+                            itemId: edit.session.itemId,
+                            onCancel: edit.cancel,
+                            editor: <Composer chat={ chat } run={ run } editMode={ { draftKey: edit.session.draftKey, onSubmit: edit.submit, onCancel: edit.cancel, isPending: edit.pending } } />,
+                        }
+                        : undefined }
+                    forkedFrom={ origin }
                     emptyState={ <EmptyChat /> }
                     decorate={ item => (progress && item.id === cardAfter ? <ProgressCard progress={ progress } /> : null) }
                     errorAction={ item => (item.id === overflowAt ? <CompactAction chatId={ chat.id } /> : null) }

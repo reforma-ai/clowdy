@@ -9,8 +9,41 @@ import type { z } from 'zod';
  */
 export interface AgentEngine {
     id: EngineId;
+    /**
+     * Whether the app may offer Fork and Edit for chats of this agent (`AgentSpec.fork`): its sessions can be cut at a rewind point with `fork`, and it
+     * tells those points (`EngineEvent` `text`, `messageId`). Absent or `false` hides both; `fork` itself works whatever this says, so a check can try an
+     * agent that is not flagged.
+     */
+    readonly canFork?: boolean;
     /** Starts a session that works on `prompt`. Nothing runs until the returned session is iterated. */
     start(options: EngineStartOptions): EngineSession;
+    /**
+     * Copies a stored session of this agent up to a rewind point (the `messageId` an earlier `text` event gave, kept as `ref`) into a new session, and gives
+     * back the new session's id: the later turns of the conversation are not in it, and the session it was copied from is not touched. A short job of its own
+     * (the agent's process starts, copies, and ends), so it takes no slot and writes nothing the runtime keeps. Rejects with an `EngineFailure` when the agent
+     * cannot (it has no fork, the point or the session is not there, the process failed). An engine that cannot fork leaves it out.
+     */
+    fork?(options: EngineForkOptions): Promise<EngineFork>;
+}
+
+export interface EngineForkOptions {
+    /** The session to copy, as an earlier `session` event gave it. */
+    sessionId: string;
+    /** The rewind point: the provider's id of the message the copy ends with (inclusive), as the stream's item holds it. */
+    ref: string;
+    /** The working directory the session was started in: an agent keeps its sessions by it. */
+    cwd: string;
+    /** As for a turn that resumes the session: the project's other folders, the system prompt and the tools the new session is opened with. */
+    additionalDirectories?: string[];
+    systemPrompt?: string;
+    tools?: ToolDefinition[];
+    /** Aborted when the fork is no longer wanted; the job ends promptly. */
+    signal?: AbortSignal;
+}
+
+export interface EngineFork {
+    /** The new session's id, to resume like any other. */
+    sessionId: string;
 }
 
 /**
@@ -121,8 +154,12 @@ export interface EngineSession extends AsyncIterable<EngineEvent> {
  */
 export type EngineEvent =
     | { type: 'session'; sessionId: string }
-    /** A piece of the assistant's message. `done: true` ends the message; the next text starts a new one. */
-    | { type: 'text'; delta: string; done: boolean; agentId?: string }
+    /**
+     * A piece of the assistant's message. `done: true` ends the message; the next text starts a new one. `messageId`, on the event that ends one of the
+     * session's own messages, is the agent's id of it (ACP v2 gives every message one): a point its session can be cut at (see `AgentEngine.fork`),
+     * which the runtime keeps for the turn's final message. Absent for an agent that names none, and for a sub-agent's messages.
+     */
+    | { type: 'text'; delta: string; done: boolean; agentId?: string; messageId?: string }
     | { type: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string; agentId?: string }
     /**
      * A sub-agent that lives inside the session (an agent's own `Agent` or `Task`, when the engine can tell). The runtime shows it as a child run;

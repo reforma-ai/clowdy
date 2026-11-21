@@ -4,7 +4,7 @@ import { statSync } from 'node:fs';
 import { getChat } from '../db/chats';
 import { listItems, nextSeq } from '../db/items';
 import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } from '../db/runs';
-import { appendItem } from '../domain/items';
+import { appendItem, markRewindPoint } from '../domain/items';
 import { EngineFailure, errorMessage } from '../errors';
 import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
@@ -486,6 +486,61 @@ export class RunDriver {
     }
 
     /**
+     * What a session of a chat's orchestrator is opened with, a turn's or a fork's: the folder it works in (`workingFolder`: the run's own, else the folder of
+     * its chat, else the project's main one), the project's other folders, the system prompt (`chat` says what the run's chat adds to it) and the tools of the
+     * run. `ownChat` is the run's chat, which names the folder. Throws an `EngineFailure` when the folder is gone.
+     */
+    private surroundings(run: Run, work: RunWork, ownChat: Chat | undefined, chat: PromptChat | undefined) {
+        const { runs, config } = this.deps;
+        const project = runs.projectOf(run);
+        const mode = runs.modeOf(run);
+        const cwd = workingFolder(project, ownChat, work.cwd);
+
+        // An engine told to start in a folder that is gone fails with the spawn's own error, which blames the program; say what is wrong.
+        if (!isFolder(cwd)) {
+            throw new EngineFailure(`The folder ${ cwd } no longer exists`);
+        }
+
+        return {
+            cwd,
+            additionalDirectories: additionalFolders(project, cwd),
+            systemPrompt: [systemPrompt(mode, project, cwd, chat), skillPrompt(config.systemSkillsDir, chat?.parent !== undefined)].filter(Boolean).join('\n\n'),
+            tools: this.deps.tools(run, mode),
+        };
+    }
+
+    /**
+     * Asks the agent of a chat's orchestrator to copy its session through the rewind point `ref` (`AgentEngine.fork`) and gives the copy's session id. The copy
+     * is opened as a turn of that run opens its session (the same folder, other folders, tools, and a system prompt as for a chat that is no thread, which is
+     * what the fork's chat will be), because an agent keeps its sessions by folder and a later turn of the copy resumes it there. The run's own session is not
+     * touched, so the run may be working. It takes no slot and writes nothing: the caller makes the fork's chat once this answers. Rejects with an
+     * `EngineFailure` when the agent cannot fork or the fork fails; the daemon's stop cancels it.
+     */
+    async forkSession(runId: string, ref: string): Promise<string> {
+        const { store, runs, engines } = this.deps;
+        const run = runs.require(runId);
+        const engine = engines.get(run.engine);
+
+        if (!run.sessionId) {
+            throw new EngineFailure('This chat has no conversation to fork yet');
+        }
+
+        if (!engine?.fork) {
+            throw new EngineFailure(`The ${ run.engine } engine cannot fork a conversation`);
+        }
+
+        const ownChat = run.chatId ? getChat(store.db, run.chatId) : undefined;
+        const { sessionId } = await engine.fork({
+            ...this.surroundings(run, getRunWork(store.db, runId), ownChat, {}),
+            sessionId: run.sessionId,
+            ref,
+            signal: this.stopping.signal,
+        });
+
+        return sessionId;
+    }
+
+    /**
      * One engine session, from its start until it ends: the turn, and for an orchestrator whose agent still has background work open, the wait after it
      * (`consume`). Returns what to wait for when the turn has to be repeated.
      */
@@ -504,8 +559,6 @@ export class RunDriver {
         }
 
         const run = runs.require(runId);
-        const project = runs.projectOf(run);
-        const mode = runs.modeOf(run);
         const engine = engines.get(run.engine);
 
         if (!engine) {
@@ -516,13 +569,7 @@ export class RunDriver {
         const told = nextSeq(store.db, runId) - 1;
         const work = getRunWork(store.db, runId);
         const ownChat = run.chatId ? getChat(store.db, run.chatId) : undefined;
-        const cwd = workingFolder(project, ownChat, work.cwd);
-
-        // An engine told to start in a folder that is gone fails with the spawn's own error, which blames the program; say what is wrong.
-        if (!isFolder(cwd)) {
-            throw new EngineFailure(`The folder ${ cwd } no longer exists`);
-        }
-
+        const surroundings = this.surroundings(run, work, ownChat, promptChat(store, ownChat));
         const { prompt, lost } = this.compose(work, run.engine);
 
         const turnAbort = new AbortController();
@@ -550,18 +597,14 @@ export class RunDriver {
 
         // The message this turn sends is in the stream already; the record leaves it out, as the agent gets it in the prompt.
         const incoming = [prompt];
-        const chat = promptChat(store, ownChat);
         const session = engine.start({
-            cwd,
-            additionalDirectories: additionalFolders(project, cwd),
+            ...surroundings,
             prompt,
-            systemPrompt: [systemPrompt(mode, project, cwd, chat), skillPrompt(config.systemSkillsDir, chat?.parent !== undefined)].filter(Boolean).join('\n\n'),
             resumeSessionId: run.sessionId,
             ...(run.sessionId && { history: () => conversationRecord(listItems(store.db, runId, 0).filter(item => item.seq <= told), incoming) }),
             model: run.model,
             effort: run.effort,
             title: sessionTitle(store, run, this.deps.namesChats(run.engine), prompt),
-            tools: this.deps.tools(run, mode),
             signal: ended,
         });
         let closing: Promise<void> | undefined;
@@ -821,7 +864,7 @@ export class RunDriver {
                                 this.settleFinished(run, live, writer, native);
                             }
 
-                            writer.text(event.delta, event.done);
+                            writer.text(event.delta, event.done, event.messageId);
                         }
                         else {
                             native.stream({ ...event, agentId: event.agentId });
@@ -1007,6 +1050,7 @@ export class RunDriver {
      */
     private async onDone(run: Run, live: LiveRun, session: EngineSession, writer: TurnWriter, native: NativeAgents, result: string | undefined): Promise<boolean> {
         writer.end();
+        this.markPoint(run, live, writer);
 
         if (live.lingering && !live.sent) {
             writer.finish(undefined, this.openTasks(live));
@@ -1053,6 +1097,20 @@ export class RunDriver {
         writer.finish(undefined, this.openTasks(live));
 
         return true;
+    }
+
+    /**
+     * A turn ended at a `done`: its final message, when it ended the turn and the agent gave an id for it, becomes the turn's rewind point (`markRewindPoint`),
+     * which is what the session can be cut at. Every turn end gets its own, a turn the agent started by itself included; a failed or stopped turn never reaches
+     * here, so it has none. The agent's compact command is no turn of the conversation: what it says is a report, and the session after it is not the one
+     * the point was said in.
+     */
+    private markPoint(run: Run, live: LiveRun, writer: TurnWriter): void {
+        const point = writer.takePoint();
+
+        if (point && !this.isCompactCommand(run.engine, live.prompt)) {
+            markRewindPoint(this.deps.store, run.id, point.seq, point.ref);
+        }
     }
 
     /**

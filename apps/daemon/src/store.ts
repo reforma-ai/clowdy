@@ -1,4 +1,4 @@
-import type { ClowdyEvent, CommandResult, EventData } from '@clowdy/protocol';
+import type { ClowdyEvent, CommandResult, EngineId, EventData } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
 
 export type EventListener = (events: ClowdyEvent[]) => void;
@@ -24,6 +24,13 @@ export class Store {
     private pending: ClowdyEvent[] = [];
     private callbacks: (() => void)[] = [];
     private listeners = new Set<EventListener>();
+
+    /**
+     * Whether the engine `id` can fork its sessions at rewind points (`AgentEngine.canFork`). The daemon sets it once its engines exist; until then, and in a
+     * store nobody wired, no engine can. A stream item says `canFork` and `canEdit` by it, read each time an item is listed or published and never stored,
+     * so an agent whose flag is switched off stops offering both for the chats it already has.
+     */
+    forkable: (engine: EngineId) => boolean = () => false;
 
     constructor(readonly db: Database) {}
 

@@ -106,6 +106,24 @@ describe('ProjectState', () => {
         expect(state.chats.size).toBe(10);
     });
 
+    it('drops the sub-agent runs a truncation removed, with their links, and leaves the run whose stream was cut', async () => {
+        const { state } = await loadedProject();
+        const runIds = [...state.runs.values()].filter(run => run.parentRunId !== undefined).slice(0, 2).map(run => run.id);
+        const orchestrator = 'r-orch-1';
+
+        expect(runIds).toHaveLength(2);
+
+        runIds.forEach((runId, index) => state.applyEvent(event(1001 + index, { type: 'link.runTask', link: { runId, taskId: 't-24', relation: 'created' }, present: true })));
+        expect(runIds.flatMap(runId => state.linksOfRun(runId))).toHaveLength(2);
+
+        state.applyEvent(event(1003, { type: 'stream.truncated', runId: orchestrator, fromSeq: 4, removedRunIds: runIds }));
+
+        expect(runIds.some(runId => state.runs.has(runId))).toBe(false);
+        expect(runIds.flatMap(runId => state.linksOfRun(runId))).toEqual([]);
+        expect(state.runs.has(orchestrator)).toBe(true);
+        expect(state.cursor).toBe(1003);
+    });
+
     it('knows the threads of each chat, oldest first, archived ones too, and every thread below a chat at any depth', async () => {
         const { state } = await loadedProject();
 

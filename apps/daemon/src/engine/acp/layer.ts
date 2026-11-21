@@ -1,5 +1,5 @@
 import type { AgentProcess } from '../process';
-import type { EngineEvent, EngineStartOptions } from '../types';
+import type { EngineEvent, EngineFork, EngineStartOptions } from '../types';
 import type { BridgeAccess } from './bridge';
 import type { AgentProtocol } from './catalog';
 import type { ResolvedAgent } from './registry';
@@ -41,7 +41,7 @@ export interface LayerHost {
     options: EngineStartOptions;
     /** Aborted when the turn's own signal is or the session is closed. The layer ends at once; stopping the process is the session's. */
     signal: AbortSignal;
-    deps: Pick<SessionDeps, 'costs' | 'clientVersion' | 'initializeTimeoutMs' | 'backgroundHandoffMs' | 'backgroundReportMs' | 'log'>;
+    deps: Pick<SessionDeps, 'costs' | 'clientVersion' | 'initializeTimeoutMs' | 'forkTimeoutMs' | 'backgroundHandoffMs' | 'backgroundReportMs' | 'log'>;
     /**
      * The session's access to the tool bridge, registered before the process started (its `clowdy` command has the credential in its environment), with
      * the MCP server to name in the session when the run has tools that are not shell commands. `undefined` when the run has no tools.
@@ -94,6 +94,12 @@ export interface ProtocolLayer {
      * such request leaves it out.
      */
     stopItem?(id: string): Promise<boolean>;
+    /**
+     * Copies the agent's stored session `sessionId` up to the message `ref` (inclusive) into a new session, in place of a turn: the handshake and the fork
+     * on this process, nothing else (`AgentEngine.fork`). Used instead of `run`, never with it. Rejects with an `EngineFailure` when the agent cannot: a
+     * layer whose protocol has no fork refuses at once, saying so.
+     */
+    fork(sessionId: string, ref: string): Promise<EngineFork>;
     /** Tells the agent to stop the turn. Settles once it is written, so the session may close the agent's input after it. */
     cancel(): Promise<void>;
     /** Closes the connection, after the process is gone. */

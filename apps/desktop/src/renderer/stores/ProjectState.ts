@@ -176,6 +176,16 @@ export class ProjectState {
             case 'run.upserted':
                 this.runs.set(data.run.id, data.run);
                 break;
+            case 'stream.truncated': {
+                // The stream itself belongs to `StreamStore`; the sub-agent runs the dropped part started are gone from the daemon.
+                const gone = new Set(data.removedRunIds);
+
+                gone.forEach(runId => this.runs.delete(runId));
+
+                for (const [key, link] of this.runTaskLinks) if (gone.has(link.runId)) this.runTaskLinks.delete(key);
+
+                break;
+            }
             case 'link.chatTask':
                 if (data.present) this.chatTaskLinks.set(chatLinkKey(data.link), data.link);
                 else this.chatTaskLinks.delete(chatLinkKey(data.link));

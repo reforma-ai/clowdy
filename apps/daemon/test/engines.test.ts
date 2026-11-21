@@ -37,4 +37,32 @@ describe('the engines of a daemon', () => {
         expect(engines.get('mine')).toBeInstanceOf(AcpEngine);
         engines.stop();
     });
+
+    test('the engines say whether their chats may fork: the fake one, Claude Code and Codex do, the other agents do not', () => {
+        const registry = new AgentRegistry({ discovery: quietDiscovery() });
+        const engines = createEngines(testConfig(), registry, {});
+
+        expect(engines.get('fake')?.canFork).toBe(true);
+        expect(engines.get('claude')?.canFork).toBe(true);
+        expect(engines.get('codex')?.canFork).toBe(true);
+
+        for (const id of ['cursor', 'opencode', 'gemini', 'copilot', 'grok', 'omp', 'hermes']) {
+            expect(engines.get(id)?.canFork).toBe(false);
+        }
+
+        registry.add({ id: 'mine', name: 'Mine', command: '/usr/bin/mine', args: [] });
+        expect(engines.get('mine')?.canFork).toBe(false);
+        engines.stop();
+    });
+
+    test('the fake engine forks a session into a new one that goes on from the same turn', async () => {
+        const fake = new FakeEngine(0);
+        const first = await fake.fork({ sessionId: 'fake-a', ref: 'm1', cwd: '/tmp' });
+        const second = await fake.fork({ sessionId: 'fake-a', ref: 'm1', cwd: '/tmp' });
+
+        expect(first.sessionId).toStartWith('fake-');
+        expect(first.sessionId).not.toBe('fake-a');
+        expect(second.sessionId).not.toBe(first.sessionId);
+        expect(new FakeEngine(0, false).canFork).toBe(false);
+    });
 });

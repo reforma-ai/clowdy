@@ -81,6 +81,14 @@ export interface AgentSpec {
      * reports by itself (Claude Code starts a report turn). Only means something for an agent whose protocol reports background work (`v2`).
      */
     wakesOnBackgroundEnd?: boolean;
+    /**
+     * The app may offer Fork and Edit for chats of this agent: its adapter copies a session at a message through `session/fork` with the fork point in
+     * `_meta.jetbrains.air.fork` (`{ version: 1, messageId }`, a vendor extension of both pinned adapters, read from any client; `session/fork` itself is an
+     * unstable method of the draft protocol), and it tells the message ids a point is made of (ACP v2). Set only after a real check against the pinned
+     * adapter (`.briefback/message-actions/research/real-checks.md`), and rerun it on every bump of the pin: a bump can break the extension, and the flag
+     * goes off when it does. Unset for every agent that has no such fork, which has neither action.
+     */
+    fork?: boolean;
 }
 
 /**
@@ -100,6 +108,9 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         // ACP v2: background commands, sub-agents and workflows are told as `state_update`s, and the agent's own turns come on the same session.
         protocol: 'v2',
         compact: '/compact',
+        // `claude-agent-acp@0.107.0` forks at an exact assistant message (the SDK's `forkSession` with `upToMessageId`), inclusive. Checked through the daemon
+        // on 2026-11-20 against the pin: `.briefback/message-actions/research/real-checks.md`.
+        fork: true,
         // Sub-agents are a feature, this only caps hidden fan-out. The rest of what a run does not do by default (claude.ai
         // connectors, the agent's own memory) is a setting below, off until the person turns it on. Without the last variable
         // Claude Code reads no CLAUDE.md in the project's other folders, which reach it as additional directories.
@@ -171,6 +182,12 @@ export const KNOWN_AGENTS: readonly AgentSpec[] = [
         protocol: 'v2',
         wakesOnBackgroundEnd: true,
         compact: '/compact',
+        // `codex-acp@2.8.0` reads the same fork point (`SessionFork.ts`: the message id is looked up among the thread's items and `thread/fork` runs through the
+        // turn that holds it, which is a turn end, where Clowdy only ever forks). ON BY THE OWNER'S DECISION OF 2026-11-21, NOT CHECKED against the real adapter
+        // (the pin could not be launched on the check's machine before 2026-11-22): the owner tests it. A turn whose message the adapter gives no id for shows no
+        // Fork or Edit, and a fork the adapter refuses fails with a message and creates nothing. Run the check in `real-checks.md` for Codex and turn the flag
+        // off if it fails.
+        fork: true,
         settings: [
             {
                 // Codex's memories are a feature that is off until the person turns it on, so "on" has to turn the feature on too; "off" is also stated, so a feature the person turned on in their own Codex does not reach Clowdy's runs.

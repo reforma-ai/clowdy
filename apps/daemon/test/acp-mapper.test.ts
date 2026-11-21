@@ -407,6 +407,29 @@ describe('updates of ACP v2', () => {
             expect(events.filter(event => event.type === 'text').map(event => event.type === 'text' && event.delta)).toEqual(['Hello', '', 'Hi there', '']);
         });
 
+        test('the event that ends a message says the agent\'s id of it, whether it came in chunks or whole, and the pieces say none', () => {
+            const { events } = run2([chunk2('Hel'), chunk2('lo'), chunk2('Bye', 'm2'), whole('Whole', 'm3')]);
+
+            expect(events.filter(event => event.type === 'text' && event.done)).toEqual([
+                { type: 'text', delta: '', done: true, messageId: 'm1' },
+                { type: 'text', delta: '', done: true, messageId: 'm2' },
+                { type: 'text', delta: '', done: true, messageId: 'm3' },
+            ]);
+            expect(events.filter(event => event.type === 'text' && !event.done).every(event => event.type === 'text' && event.messageId === undefined)).toBe(true);
+        });
+
+        test('a message a tool call ended is closed with its id too, so the message that ends the turn is the last one with an id', () => {
+            const { events } = run2([chunk2('Let me look.', 'a1'), call({ toolCallId: 'a', title: 'Read file', kind: 'read' }), chunk2('Found it.', 'a2')]);
+
+            expect(events.filter(event => event.type === 'text' && event.done).map(event => event.type === 'text' && event.messageId)).toEqual(['a1', 'a2']);
+        });
+
+        test('an agent speaking v1 gets no ids on its messages: only a v2 agent is cut at one', () => {
+            const { events } = run([chunk('Hello', 'm1')]);
+
+            expect(events).toEqual([{ type: 'text', delta: 'Hello', done: false }, { type: 'text', delta: '', done: true }]);
+        });
+
         test('a message with no content, thoughts, plans, user messages and unknown kinds are not shown', () => {
             const { events } = run2([
                 { sessionUpdate: 'agent_message', messageId: 'm1' },

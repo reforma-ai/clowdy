@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { clearChatFolders, getChat, upsertChat } from '../src/db/chats';
 import { openDatabase } from '../src/db/connection';
+import { getItem, itemRef, setItemRef } from '../src/db/items';
 import { MIGRATIONS } from '../src/db/migrations';
 import { getRun, getRunWork } from '../src/db/runs';
 import { newId } from '../src/ids';
@@ -248,6 +249,28 @@ describe('migrations', () => {
         upsertChat(db, { ...notes, updatedAt: 4 });
         expect(getChat(db, 'cht_2')).toMatchObject({ updatedAt: 4 });
         expect(getChat(db, 'cht_2')).not.toHaveProperty('folderId');
+        db.close();
+    });
+
+    test('version 18 gives the items of an older database a rewind point that reads as none, and keeps the point it is given', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 18));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO runs (id, project_id, root_run_id, role, name, summary, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', '', 'succeeded', 'claude', 1);
+        before.query('INSERT INTO stream_items (id, run_id, seq, at, body) VALUES (?, ?, ?, ?, ?)').run('itm_1', 'run_1', 1, 1, JSON.stringify({ kind: 'assistant', text: 'Old answer', done: true }));
+        before.close();
+
+        const db = openDatabase(path);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(itemRef(db, 'run_1', 1)).toBeUndefined();
+        expect(getItem(db, 'run_1', 1)?.body).toEqual({ kind: 'assistant', text: 'Old answer', done: true });
+
+        setItemRef(db, 'run_1', 1, 'msg_1');
+        expect(itemRef(db, 'run_1', 1)).toBe('msg_1');
+        // The point is the daemon's own: the item a client reads has no trace of it.
+        expect(JSON.stringify(getItem(db, 'run_1', 1))).not.toContain('msg_1');
         db.close();
     });
 

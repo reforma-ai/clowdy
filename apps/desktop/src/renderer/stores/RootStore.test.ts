@@ -107,6 +107,45 @@ describe('RootStore', () => {
         root.dispose();
     });
 
+    it('applies a truncation of a run to its stream and forgets the runs it removed: the cut, the new message at the freed number, a feed resync', async () => {
+        const transport = new FixtureTransport();
+        const root = new RootStore(transport, { storage: memoryStorage() });
+
+        await root.load();
+        await settle();
+
+        const stream = root.streams.of('r-orch-2');
+
+        await stream.load();
+
+        const first = stream.items[0];
+        const state = root.projectState(FIXTURE_PROJECT_ID)!;
+        const kept = stream.items.length;
+
+        expect(first.canEdit).toBe(true);
+        expect(kept).toBeGreaterThan(1);
+
+        // The fixture daemon announces the cut the way the real one does, then the new message.
+        const result = await root.command({ type: 'chat.edit', chatId: 'c-2', itemId: first.id, text: 'Start again' });
+
+        await settle();
+
+        expect(result.ok).toBe(true);
+        expect(stream.items.map(item => [item.seq, item.body.kind === 'user' ? item.body.text : item.body.kind])).toEqual([[1, 'Start again']]);
+        expect(stream.items[0].id).not.toBe(first.id);
+        expect(state.runs.get('r-orch-2')?.sessionId).toBeUndefined();
+
+        // The turn the edit started answers on the new stream.
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(stream.items.map(item => item.body.kind)).toEqual(['user', 'assistant']);
+
+        // A resync reads the same state from the daemon.
+        root.handleFeedStatus('resync');
+        await vi.advanceTimersByTimeAsync(100);
+        expect(stream.items.map(item => item.body.kind)).toEqual(['user', 'assistant']);
+        root.dispose();
+    });
+
     it('lists a project that appears by event, and adding one in a new folder selects it', async () => {
         const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
 

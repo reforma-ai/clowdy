@@ -1,0 +1,14 @@
+/*
+ * Marker keeps its words on one line at their full width; a long title would push the rules out of the column, so here the words may shrink and the
+ * title may wrap.
+ */
+.words {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.title {
+    white-space: normal;
+    text-align: start;
+    overflow-wrap: anywhere;
+}

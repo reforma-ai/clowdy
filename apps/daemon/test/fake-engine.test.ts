@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
+import { streamItems } from '../src/domain/items';
 import { projectSnapshot } from '../src/domain/snapshots';
 import { cleanTempDirs, Harness, startHarness, waitFor } from './helpers';
 
@@ -25,7 +26,8 @@ async function setup(overrides: Parameters<typeof startHarness>[0] = {}, mode?: 
 }
 
 const snapshot = (h: Harness, projectId: string) => projectSnapshot(h.store, projectId);
-const items = (h: Harness, runId: string): StreamItem[] => h.store.db.query('SELECT * FROM stream_items WHERE run_id = ? ORDER BY seq').all(runId).map((row: any) => ({ id: row.id, runId: row.run_id, seq: row.seq, at: row.at, body: JSON.parse(row.body) }));
+/** A run's stream as a client reads it, with the flags of what the fake agent can fork. */
+const items = (h: Harness, runId: string): StreamItem[] => streamItems(h.store, runId, 0);
 const toolItems = (list: StreamItem[]) => list.flatMap(item => (item.body.kind === 'tool' ? [item.body] : []));
 const upserts = (events: ClowdyEvent[], runId: string) => events.flatMap(event => (event.data.type === 'run.upserted' && event.data.run.id === runId ? [event.data.run] : []));
 
@@ -430,5 +432,31 @@ describe('log and state agree', () => {
 
         expect(fold(empty, h.events())).toEqual(normalize(final));
         expect(final.cursor).toBe(h.store.headCursor());
+    });
+});
+
+describe('the fake engine and rewind points', () => {
+    test('its chats offer Edit on the first message and Fork on the answer that ends a turn, as an agent that can fork does', async () => {
+        const { h, chat } = await setup();
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'Say hi' });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to succeed', 8000);
+
+        const read = async () => await (await h.fetch(`/v1/chats/${ chat.id }/items`)).json() as StreamItem[];
+        const items = await read();
+        const answers = items.filter(item => item.body.kind === 'assistant');
+
+        expect(items[0]).toMatchObject({ body: { kind: 'user' }, canEdit: true });
+        expect(answers.filter(item => item.canFork)).toEqual([answers.at(-1) as StreamItem]);
+        expect(items.filter(item => item.canEdit)).toHaveLength(1);
+
+        h.ok('chat.send', { chatId: chat.id, text: 'And again' });
+        await waitFor(() => h.run(runId).status === 'succeeded' && streamItems(h.store, runId, 0).filter(item => item.body.kind === 'user').length === 2, 'the second turn', 8000);
+
+        // The follow-up is a message that starts a turn: the one before it ended at a point.
+        const later = await read();
+
+        expect(later.filter(item => item.body.kind === 'user').map(item => item.canEdit)).toEqual([true, true]);
+        expect(later.filter(item => item.canFork)).toHaveLength(2);
     });
 });

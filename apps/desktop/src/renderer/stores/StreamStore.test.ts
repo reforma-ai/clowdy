@@ -113,4 +113,113 @@ describe('StreamStore', () => {
 
         expect(texts(stream.items)).toEqual(['after']);
     });
+
+    describe('a truncation', () => {
+        it('drops the items from its number on and keeps the rest, and the next item may take the freed number under a new id', async () => {
+            const store = new StreamStore({ getItems: async () => [item(1, 'a'), item(2, 'b'), item(3, 'c'), item(4, 'd')] } as unknown as Transport);
+            const stream = store.of('r1');
+
+            await stream.load();
+            store.applyTruncation('r1', 3);
+
+            expect(texts(stream.items)).toEqual(['a', 'b']);
+
+            store.applyItem({ ...item(3, 'new'), id: 'i3-again' });
+            store.applyItem(item(2, 'b, changed'));
+
+            expect(stream.items.map(entry => [entry.seq, entry.id])).toEqual([[1, 'i1'], [2, 'i2'], [3, 'i3-again']]);
+            expect(texts(stream.items)).toEqual(['a', 'b, changed', 'new']);
+        });
+
+        it('cuts nothing when the number is past the end, and everything when it is the first', async () => {
+            const store = new StreamStore({ getItems: async () => [item(1, 'a'), item(2, 'b')] } as unknown as Transport);
+            const stream = store.of('r1');
+
+            await stream.load();
+            store.applyTruncation('r1', 3);
+            expect(texts(stream.items)).toEqual(['a', 'b']);
+
+            store.applyTruncation('r1', 1);
+            expect(stream.items).toEqual([]);
+            expect(stream.status).toBe('ready');
+        });
+
+        it('touches only the stream of its run, and none that nobody opened', async () => {
+            const store = new StreamStore({ getItems: async (target: StreamTarget) => ('runId' in target && target.runId === 'r1' ? [item(1, 'a'), item(2, 'b')] : [{ ...item(1, 'other'), runId: 'r2', id: 'x1' }, { ...item(2, 'other 2'), runId: 'r2', id: 'x2' }]) } as unknown as Transport);
+            const first = store.of('r1');
+            const second = store.of('r2');
+
+            await Promise.all([first.load(), second.load()]);
+            store.applyTruncation('r1', 2);
+            store.applyTruncation('r3', 1);
+
+            expect(texts(first.items)).toEqual(['a']);
+            expect(texts(second.items)).toEqual(['other', 'other 2']);
+        });
+
+        it('replays a cut in arrival order over a fetch that was made before it: the old items go, the new ones that came after it stay', async () => {
+            const { transport, finish } = slowTransport([item(1, 'a'), item(2, 'old b'), item(3, 'old c')]);
+            const store = new StreamStore(transport);
+            const stream = store.of('r1');
+            const loading = stream.load();
+
+            store.applyTruncation('r1', 2);
+            store.applyItem({ ...item(2, 'new b'), id: 'i2-again' });
+            expect(stream.items).toEqual([]);
+
+            finish();
+            await loading;
+
+            expect(stream.items.map(entry => [entry.seq, entry.id])).toEqual([[1, 'i1'], [2, 'i2-again']]);
+        });
+
+        it('replays a cut over a fetch that was made after it: what came after the cut is re-added by its own events', async () => {
+            const { transport, finish } = slowTransport([item(1, 'a'), { ...item(2, 'new b'), id: 'i2-again' }, { ...item(3, 'new answer'), id: 'i3-again' }]);
+            const store = new StreamStore(transport);
+            const stream = store.of('r1');
+            const loading = stream.load();
+
+            store.applyTruncation('r1', 2);
+            store.applyItem({ ...item(2, 'new b'), id: 'i2-again' });
+            store.applyItem({ ...item(3, 'new answer'), id: 'i3-again' });
+
+            finish();
+            await loading;
+
+            expect(texts(stream.items)).toEqual(['a', 'new b', 'new answer']);
+        });
+
+        it('is gone after a resync that fetches the stream again, which shows the daemon\'s own state', async () => {
+            let fetched = [item(1, 'a'), item(2, 'b'), item(3, 'c')];
+            const store = new StreamStore({ getItems: async () => fetched } as unknown as Transport);
+            const stream = store.of('r1');
+
+            await stream.load();
+            store.applyTruncation('r1', 2);
+            // The feed dropped the event that carries the new message; the resync reads it.
+            fetched = [item(1, 'a'), { ...item(2, 'new b'), id: 'i2-again' }];
+            await store.reloadAll();
+
+            expect(texts(stream.items)).toEqual(['a', 'new b']);
+        });
+
+        it('is ignored by a stream that failed to load: its next fetch is the daemon\'s state', async () => {
+            let failing = true;
+            const store = new StreamStore({
+                getItems: async () => {
+                    if (failing) throw new Error('offline');
+
+                    return [item(1, 'a')];
+                },
+            } as unknown as Transport);
+            const stream = store.of('r1');
+
+            await stream.load();
+            store.applyTruncation('r1', 1);
+            failing = false;
+            await stream.load();
+
+            expect(texts(stream.items)).toEqual(['a']);
+        });
+    });
 });

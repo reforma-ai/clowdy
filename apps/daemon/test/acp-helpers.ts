@@ -39,6 +39,8 @@ export interface RigOptions {
     command?: string;
     args?: string[];
     initializeTimeoutMs?: number;
+    /** How long a fork may take once the agent has answered `initialize`. */
+    forkTimeoutMs?: number;
     /** How long an agent that has not named its session by the end of the turn keeps running for the name. */
     titleWaitMs?: number;
     /** How long a session with nothing open waits for the agent to begin a turn before it ends: short here, so a test does not wait the two seconds of a real session. */
@@ -72,7 +74,7 @@ export function rig(options: RigOptions = {}): Rig {
 
     registry.add({ id: 'fake-acp', name: 'Fake ACP', command: options.command ?? process.execPath, args: options.args ?? [options.protocol === 'v2' ? FAKE_AGENT_V2 : FAKE_AGENT], env: options.agentEnv });
 
-    const engine = new AcpEngine('fake-acp', { registry, bridge, shim: options.shim, env, permissions: options.permissions, initializeTimeoutMs: options.initializeTimeoutMs, titleWaitMs: options.titleWaitMs, backgroundHandoffMs: options.backgroundHandoffMs ?? 400, backgroundReportMs: options.backgroundReportMs });
+    const engine = new AcpEngine('fake-acp', { registry, bridge, shim: options.shim, env, permissions: options.permissions, initializeTimeoutMs: options.initializeTimeoutMs, forkTimeoutMs: options.forkTimeoutMs, titleWaitMs: options.titleWaitMs, backgroundHandoffMs: options.backgroundHandoffMs ?? 400, backgroundReportMs: options.backgroundReportMs });
 
     return {
         engine,

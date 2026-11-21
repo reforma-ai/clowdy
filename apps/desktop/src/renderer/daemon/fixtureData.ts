@@ -339,6 +339,65 @@ export function docsTree(paths: string[]): DocNode[] {
 /** The favicon in Car Rental's folder: a car on a blue tile. */
 const CAR_RENTAL_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#2f6fed"/><path d="M9 14.5 11 10h10l2 4.5h1a1 1 0 0 1 1 1V21h-2.2a2.5 2.5 0 0 1-4.6 0h-4.4a2.5 2.5 0 0 1-4.6 0H7v-5.5a1 1 0 0 1 1-1z" fill="#fff"/></svg>';
 
+export const FIXTURE_FORK_CHAT_ID = 'c-7';
+export const FIXTURE_FORK_RUN_ID = 'r-orch-7';
+
+/**
+ * Adds to `data` a chat that is a fork of First version (`c-2`) at its final answer, and gives it back: the history copied through that answer (the same
+ * words, times and flags, new ids), then a turn of its own, so the divider of a fork has something on each side. Not in `createFixtureData`, because
+ * a chat more in the car project moves the counts and the order that other screens' tests read; a test or a build that wants a fork asks for it. A
+ * fork made by `chat.fork` on `c-2` in a running fixture is the same thing made live.
+ */
+export function withFixtureFork(data: FixtureData, now = Date.now()): FixtureData {
+    const ago = (minutes: number) => now - minutes * MINUTE;
+    const source = data.items['r-orch-2'].slice(0, 6);
+    const own: Array<[number, StreamItemBody]> = [
+        [60 * 24 * 3 - 1, { kind: 'user', text: 'Add the weekend surcharge to the price.' }],
+        [60 * 24 * 3 - 4, { kind: 'assistant', done: true, text: 'The weekend surcharge is in `src/booking/price.ts`.' }],
+    ];
+    const items: StreamItem[] = [
+        ...source.map(item => ({ ...structuredClone(item), id: `${ FIXTURE_FORK_RUN_ID }-${ item.seq }`, runId: FIXTURE_FORK_RUN_ID })),
+        ...own.map(([minutes, body], index): StreamItem => ({ id: `${ FIXTURE_FORK_RUN_ID }-${ source.length + index + 1 }`, runId: FIXTURE_FORK_RUN_ID, seq: source.length + index + 1, at: ago(minutes), body })),
+    ];
+    const orchestrator = data.runs.find(run => run.id === 'r-orch-2') as Run;
+
+    // The first message of a turn can be edited, and the answer that ends one forked: the copy keeps the first turn's flags, and the second turn has its own.
+    Object.assign(items[6], { canEdit: true });
+    Object.assign(items[7], { canFork: true });
+    data.items[FIXTURE_FORK_RUN_ID] = items;
+    data.runs.push({
+        id: FIXTURE_FORK_RUN_ID,
+        projectId: orchestrator.projectId,
+        rootRunId: FIXTURE_FORK_RUN_ID,
+        chatId: FIXTURE_FORK_CHAT_ID,
+        role: 'orchestrator',
+        name: 'Orchestrator 12',
+        summary: '(1) First version',
+        status: 'succeeded',
+        engine: orchestrator.engine,
+        ...(orchestrator.model && { model: orchestrator.model }),
+        sessionId: 'fake-session-7',
+        result: 'The weekend surcharge is in `src/booking/price.ts`.',
+        createdAt: ago(60 * 24 * 3 + 1),
+        startedAt: ago(60 * 24 * 3 + 1),
+        finishedAt: ago(60 * 24 * 3 - 5),
+    });
+    data.chats.push({
+        id: FIXTURE_FORK_CHAT_ID,
+        projectId: orchestrator.projectId,
+        title: '(1) First version',
+        mode: 'autopilot',
+        engine: orchestrator.engine,
+        ...(orchestrator.model && { model: orchestrator.model }),
+        orchestratorRunId: FIXTURE_FORK_RUN_ID,
+        forkedFrom: { chatId: 'c-2', atSeq: 6 },
+        createdAt: ago(60 * 24 * 3 + 1),
+        updatedAt: ago(60 * 24 * 3 - 5),
+    });
+
+    return data;
+}
+
 export function createFixtureData(now = Date.now()): FixtureData {
     const ago = (minutes: number) => now - minutes * MINUTE;
     const projectId = FIXTURE_PROJECT_ID;
@@ -777,6 +836,17 @@ export function createFixtureData(now = Date.now()): FixtureData {
             output: JSON.stringify({ trigger: 'manual', preTokens: 41_503, postTokens: 9_870, durationMs: 5_200 }),
         }],
     ]);
+
+    /*
+     * What the daemon says a client may offer, set by hand on the items that stand for the two kinds of turn (`StreamItem.canEdit`, `canFork`): Edit on the
+     * message that starts a turn, Fork on the final answer that ends one, and neither on anything else. Simplify booking is running, which is where Edit shows
+     * its disabled hint; First version rests, with its first message and its final answer (item 6; item 7 is the agent's own compact turn).
+     */
+    const flag = (runId: string, seq: number, flags: Pick<StreamItem, 'canFork' | 'canEdit'>) => Object.assign(items[runId][seq - 1], flags);
+
+    flag('r-orch-1', 1, { canEdit: true });
+    flag('r-orch-2', 1, { canEdit: true });
+    flag('r-orch-2', 6, { canFork: true });
 
     const docs: Record<string, string> = {
         'README.md': '# Car Rental docs\n\nDecisions and specs for the booking service. Agents read this folder before they plan.\n',

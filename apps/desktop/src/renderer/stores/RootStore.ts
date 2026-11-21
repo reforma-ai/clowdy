@@ -290,6 +290,11 @@ export class RootStore {
         else if (data.type === 'stream.item') {
             this.streams.applyItem(data.item);
         }
+        else if (data.type === 'stream.truncated') {
+            this.streams.applyTruncation(data.runId, data.fromSeq);
+            // The sub-agent runs the dropped part started are gone; `ProjectState` drops their rows.
+            this.streams.forget(data.removedRunIds);
+        }
         else if (data.type === 'chat.deleted') {
             this.streams.forget(data.runIds);
         }

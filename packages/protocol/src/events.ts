@@ -1,4 +1,4 @@
-import type { Artifact, Chat, ChatTaskLink, DocsFolder, FolderId, Project, Run, RunTaskLink, StreamItem, Task, TaskId, TaskStatus } from './domain';
+import type { Artifact, Chat, ChatTaskLink, DocsFolder, FolderId, Project, Run, RunId, RunTaskLink, StreamItem, Task, TaskId, TaskStatus } from './domain';
 
 /**
  * The daemon's change feed. Every event has a strictly increasing `cursor`; a client that stores the cursor of
@@ -25,6 +25,12 @@ export type EventData =
     | { type: 'run.upserted'; run: Run }
     /** A stream item was appended or updated in place (streaming text, a tool changing state, an answered question). */
     | { type: 'stream.item'; item: StreamItem }
+    /**
+     * The stream of `runId` lost every item from `fromSeq` on (an edit of a message rewrote the chat from there), and the sub-agent runs `removedRunIds` that
+     * the dropped part had started are gone with their streams. Items before `fromSeq` stay as they are; the next item of the stream may take the number
+     * `fromSeq` again, under a new id. A client drops the items of `runId` from `fromSeq` on and forgets the runs.
+     */
+    | { type: 'stream.truncated'; runId: RunId; fromSeq: number; removedRunIds: RunId[] }
     | { type: 'link.chatTask'; link: ChatTaskLink; present: boolean }
     | { type: 'link.runTask'; link: RunTaskLink; present: boolean }
     | { type: 'artifact.added'; artifact: Artifact }

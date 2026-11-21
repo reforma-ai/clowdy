@@ -52,7 +52,8 @@ export function useComposerFiles(key: string, projectId: ProjectId | undefined) 
         setFiles(key, filesOf(key).filter(file => file.key !== fileKey));
         releaseFiles([gone]);
 
-        if (gone.attachment && projectId) void transport.deleteAttachment(projectId, gone.attachment.id).catch(() => undefined);
+        // A file of a message that was sent stays with that message, which is still there until an edit goes through.
+        if (gone.attachment && !gone.sent && projectId) void transport.deleteAttachment(projectId, gone.attachment.id).catch(() => undefined);
     }, [key, projectId, transport]);
 
     const retry = useCallback((fileKey: string) => {

@@ -1,10 +1,10 @@
 import { commandSchema, mainFolder, MAX_ATTACHMENT_BYTES, PROTOCOL_VERSION } from '@clowdy/protocol';
 
 import { contentDisposition, servedMediaType } from '../attachments/names';
-import { executeCommand } from '../commands';
-import { listItems } from '../db/items';
+import { executeCommandAsync, waitsForAgent } from '../commands';
 import { getRun } from '../db/runs';
 import { requireChat } from '../domain/chats';
+import { streamItems } from '../domain/items';
 import { findProjectIcon } from '../domain/projectIcon';
 import { projectsInfo, requireProject } from '../domain/projects';
 import { projectSnapshot, rootSnapshot, taskDetail } from '../domain/snapshots';
@@ -125,7 +125,12 @@ export function createRoutes(context: RouteContext): Route[] {
                     return failure('invalid', 'The command is not valid', parsed.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })), requestId);
                 }
 
-                return commandResponse(executeCommand(services, parsed.data));
+                // A fork or an edit waits for the agent's process, which may outlast the idle timeout of a connection that sends nothing meanwhile.
+                if (waitsForAgent(parsed.data)) {
+                    context.keepOpen(request);
+                }
+
+                return commandResponse(await executeCommandAsync(services, parsed.data));
             },
         },
         {
@@ -136,7 +141,7 @@ export function createRoutes(context: RouteContext): Route[] {
                     throw notFound('Run', id);
                 }
 
-                return json(listItems(store.db, id, integerParam(url.searchParams.get('after'), 'after', 0)));
+                return json(streamItems(store, id, integerParam(url.searchParams.get('after'), 'after', 0)));
             },
         },
         {
@@ -145,7 +150,7 @@ export function createRoutes(context: RouteContext): Route[] {
             handle: (_request, url, [id]) => {
                 const runId = requireChat(store, id).orchestratorRunId;
 
-                return json(runId ? listItems(store.db, runId, integerParam(url.searchParams.get('after'), 'after', 0)) : []);
+                return json(runId ? streamItems(store, runId, integerParam(url.searchParams.get('after'), 'after', 0)) : []);
             },
         },
         { method: 'GET', pattern: /^\/v1\/tasks\/([^/]+)\/detail$/, handle: (_request, _url, [id]) => json(taskDetail(store, id)) },

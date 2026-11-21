@@ -20,6 +20,8 @@ export interface DraftFile {
     error?: string;
     /** The daemon's record, once the file is uploaded. */
     attachment?: Attachment;
+    /** The file belongs to a message that was sent already (an edit started from it): taking it off the box or letting go of it must never delete the daemon's copy. */
+    sent?: true;
     /** Kept so a failed upload can be tried again. */
     source?: File;
 }

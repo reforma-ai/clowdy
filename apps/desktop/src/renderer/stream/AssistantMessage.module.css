@@ -1,4 +1,5 @@
 .message {
+    position: relative;
     min-width: 0;
     padding-inline: var(--spacing-sm);
 }

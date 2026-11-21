@@ -47,6 +47,16 @@ import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError
  *   listed                      the next `monitor` is listed in `background` as a `tool_call` until its time, as a newer adapter lists one; the turn at its end
  *                               is the report turn of that work
  *
+ * FAKE_ACP_STORE is a folder where the agent keeps every session's conversation (the messages it said, with the ids it named them by, and the prompts it was
+ * given), as the real adapters keep theirs on disk, so a session lives past the process and another process can fork it. Without it nothing is kept. Session ids are
+ * then random, since two processes would both call their first session `fake-1`. The directive `history` says the session's conversation so far, as `user: <text>
+ * | assistant: <text> | ...`. FAKE_ACP_FORK=1 gives the agent `session.fork` and the vendor fork point of the adapters: `session/fork` with `_meta.jetbrains.air.fork`
+ * (`{ version: 1, messageId }`) copies the stored conversation through the message with that id, inclusive, into a new session that is open at once, and refuses
+ * a point or a session it does not have (`-32602` and "Session not found"); `session/close` is taken. FAKE_ACP_FORK=hang never answers a fork. FAKE_ACP_LOG gets
+ * `fork-request <json of what the request carried>` and `fork-process <pid>` for every `session/fork` (and `fork-bridge <url> <token> <status>`, the tool bridge's answer
+ * to the request's own credential, when the request names the bridge's MCP server), `fork <session> <message> <new session>` for one that made a copy, and
+ * `close <session>` for every `session/close`.
+ *
  * `session/cancel` of a sub-agent's session, as Claude's adapter takes it, ends that sub-agent and nothing else: its terminal gets an exit status, its call is
  * `cancelled`, the parent mirrors it in `subagent_update` (`idle`, stop reason `cancelled`, no report), the child says the same on its own session, and the
  * parent's state lists the work without it (a repeated `idle` snapshot, or `running` while a turn goes on); the parent and the other sub-agents are
@@ -79,7 +89,8 @@ import { agent, McpServer, methods, ndJsonStream, PROTOCOL_VERSION, RequestError
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 
 import type { AgentContext, SessionUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
@@ -229,6 +240,36 @@ const log = (line: string) => {
         appendFileSync(process.env.FAKE_ACP_LOG, `${ line }\n`);
     }
 };
+
+/** One thing said in a session: a prompt it was given, or a message it said with the id it named it by. */
+interface Said {
+    role: 'user' | 'assistant';
+    id?: string;
+    text: string;
+}
+
+const storeFile = (sessionId: string) => (process.env.FAKE_ACP_STORE ? join(process.env.FAKE_ACP_STORE, `${ sessionId }.json`) : undefined);
+
+/** The conversation of a stored session, or `undefined` for one the store does not have. */
+function recall(sessionId: string): Said[] | undefined {
+    const file = storeFile(sessionId);
+
+    return file && existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as Said[] : undefined;
+}
+
+function keep(sessionId: string, said: Said[]): void {
+    const file = storeFile(sessionId);
+
+    if (file) {
+        mkdirSync(process.env.FAKE_ACP_STORE as string, { recursive: true });
+        writeFileSync(file, JSON.stringify(said));
+    }
+}
+
+/** Adds one thing to the conversation of a session. */
+function remember(sessionId: string, said: Said): void {
+    keep(sessionId, [...recall(sessionId) ?? [], said]);
+}
 
 /** What the agent says of a resume: its history, as the updates it keeps. */
 async function replay(client: AgentContext, sessionId: string): Promise<void> {
@@ -688,6 +729,7 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
         const messageId = crypto.randomUUID();
 
         said = what;
+        remember(session.id, { role: 'assistant', id: messageId, text: what });
 
         if (process.env.FAKE_ACP_WHOLE === '1') {
             await send({ sessionUpdate: 'agent_message', messageId, content: [{ type: 'text', text: what.slice(0, middle) }] });
@@ -713,6 +755,7 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
     session.cancel = new AbortController();
     session.count += 1;
     session.landed = false;
+    remember(session.id, { role: 'user', text });
 
     if (process.env.FAKE_ACP_SNAPSHOT) {
         await send(state(session, { state: 'idle', ...(process.env.FAKE_ACP_SNAPSHOT === 'reason' && { stopReason: 'end_turn' }) }));
@@ -921,6 +964,9 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                 case 'info':
                     await say(JSON.stringify({ title: session.title, cwd: session.cwd, directories: session.directories, servers: session.mcpServers.map(server => server.name), systemPrompt: session.systemPrompt, meta: session.meta, replayFrom: session.replayFrom, model: session.model, prompts: session.count }));
                     break;
+                case 'history':
+                    await say(`history: ${ (recall(session.id) ?? []).map(entry => `${ entry.role }: ${ entry.text }`).join(' | ') }`);
+                    break;
                 case 'capabilities':
                     await say(JSON.stringify(clientCapabilities));
                     break;
@@ -1027,6 +1073,7 @@ const app = agent({ name: 'fake-acp-agent-v2' })
                     ...(process.env.FAKE_ACP_SYSTEM_PROMPT !== '0' && { systemPrompt: {} }),
                     ...(process.env.FAKE_ACP_DIRECTORIES === '1' && { additionalDirectories: {} }),
                     ...(process.env.FAKE_ACP_TITLES === '1' && { title: {} }),
+                    ...(process.env.FAKE_ACP_FORK && { fork: {} }),
                 },
             },
             ...(process.env.FAKE_ACP_STEERING === '1' && { _meta: { steering: { supported: true } } }),
@@ -1063,9 +1110,11 @@ const app = agent({ name: 'fake-acp-agent-v2' })
             throw new RequestError(-32000, 'Authentication required');
         }
 
-        const id = `fake-${ ++counter }`;
+        // Two processes of a stored agent would both name their first session `fake-1`.
+        const id = process.env.FAKE_ACP_STORE ? `fake-${ crypto.randomUUID().slice(0, 8) }` : `fake-${ ++counter }`;
 
         open(id, params, false);
+        keep(id, []);
 
         return { sessionId: id, configOptions: modelOptions('fast') };
     })
@@ -1085,6 +1134,53 @@ const app = agent({ name: 'fake-acp-agent-v2' })
         await client.notify(methods.client.session.update, { sessionId: params.sessionId, update: { sessionUpdate: 'state_update', state: 'idle', stopReason: 'end_turn' } });
 
         return { configOptions: modelOptions('fast') };
+    })
+    .onRequest(methods.agent.session.fork, async ({ params }) => {
+        log(`fork-request ${ JSON.stringify({ cwd: params.cwd, directories: params.additionalDirectories, servers: (params.mcpServers ?? []).map(server => server.name), systemPrompt: systemText(params.systemPrompt?.content), meta: params._meta }) }`);
+        log(`fork-process ${ process.pid }`);
+
+        // The tool bridge's credential of the request, tried while the fork runs, so a test can tell it worked then and not after.
+        const env = Object.fromEntries(((params.mcpServers ?? []) as { env?: { name: string; value: string }[] }[]).flatMap(server => (server.env ?? []).map(entry => [entry.name, entry.value])));
+
+        if (env.CLOWDY_BRIDGE_URL) {
+            log(`fork-bridge ${ env.CLOWDY_BRIDGE_URL } ${ env.CLOWDY_BRIDGE_TOKEN } ${ (await fetch(`${ env.CLOWDY_BRIDGE_URL }/tools`, { headers: { authorization: `Bearer ${ env.CLOWDY_BRIDGE_TOKEN }` } })).status }`);
+        }
+
+        // FAKE_ACP_FORK=hang: the adapter takes the request and never answers, as one that copies a huge transcript seems to.
+        if (process.env.FAKE_ACP_FORK === 'hang') {
+            await new Promise<never>(() => undefined);
+        }
+
+        const point = (params._meta as { jetbrains?: { air?: { fork?: { version?: number; messageId?: string } } } } | null | undefined)?.jetbrains?.air?.fork;
+        const source = recall(params.sessionId);
+
+        if (!source) {
+            throw RequestError.sessionNotFound(params.sessionId);
+        }
+
+        if (point?.version !== 1 || !point.messageId?.trim()) {
+            throw RequestError.invalidParams(undefined, 'The fork point is not { version: 1, messageId }');
+        }
+
+        const at = source.findIndex(entry => entry.role === 'assistant' && entry.id === point.messageId);
+
+        if (at < 0) {
+            throw RequestError.invalidParams({ messageId: point.messageId }, `Fork point message ${ point.messageId } was not found in session ${ params.sessionId }`);
+        }
+
+        const id = `fork-${ crypto.randomUUID().slice(0, 8) }`;
+
+        // The copy ends with the message, inclusive; the session is open at once, so the client could prompt it.
+        keep(id, source.slice(0, at + 1));
+        open(id, params, true);
+        log(`fork ${ params.sessionId } ${ point.messageId } ${ id }`);
+
+        return { sessionId: id, configOptions: modelOptions('fast') };
+    })
+    .onRequest(methods.agent.session.close, ({ params }) => {
+        log(`close ${ params.sessionId }`);
+
+        return {};
     })
     .onRequest(methods.agent.session.setConfigOption, ({ params }) => {
         const session = sessions.get(params.sessionId);

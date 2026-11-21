@@ -8,10 +8,10 @@ import { Text } from '@clowdy/components/Text';
 import { Clip, Collapse, EditPen, Split, Trash } from '@clowdy/icons/14';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 
+import { Unavailable } from '../../shared/Unavailable';
 import { useRootStore } from '../../stores';
 import { perform } from './commands';
 import styles from './ComposerQueue.module.css';
-import { Unavailable } from './Unavailable';
 
 import type { Chat, QueuedMessage, QueuePause } from '@clowdy/protocol';
 

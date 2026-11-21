@@ -94,6 +94,25 @@ export const commandSchema = z.discriminatedUnion('type', [
      * orchestrator works it stays where it is, and at rest it is refused like `chat.compact` until the orchestrator can compact.
      */
     z.object({ ...base, type: z.literal('chat.sendQueued'), chatId: z.string(), itemId: z.string() }),
+    /**
+     * Forks a chat at a final answer: a new chat of the same project, agent, model, level and mode that holds the conversation through that answer (`itemId`, a
+     * stream item with `canFork` in the chat's own stream) and goes on from there on its own, with the answer's session copied by the agent. The new chat is
+     * titled `(n) <title>`, is no thread, has no queue and no usage, and says where it came from in `Chat.forkedFrom`. The source need not be at rest: only the
+     * turn the answer ends has to be finished. The agent is asked first, and when it cannot fork nothing is created. Answers `{ chat }`. Refused (`invalid`) for
+     * an item that cannot be forked or a chat that has no conversation yet, `unavailable` while the agent is switched off or when the agent's fork failed.
+     */
+    z.object({ ...base, type: z.literal('chat.fork'), chatId: z.string(), itemId: z.string() }),
+    /**
+     * Rewrites a chat from a message of the person's: the stream from `itemId` (a `user` item with `canEdit` in the chat's own stream) on is dropped, with the
+     * sub-agent runs and the files under it, the agent's session goes back to the point before that message (a fresh session for the first message of the
+     * chat), and `text` is sent as an ordinary new turn on it. `attachmentIds` are the files the new message carries: files uploaded to the chat's project and
+     * not sent yet, and files of the messages being dropped, which survive when named here (the others go with their messages). `text` may be empty when files
+     * are named. Only for a chat at rest: refused (`conflict`) while the orchestrator works, waits for the person or waits for background work, and when the chat
+     * changed while the agent was asked (a message sent meanwhile, another edit). Refused (`invalid`) for an item that cannot be edited, a chat with no
+     * conversation and an empty message, `unavailable` while the agent is switched off or when the agent's fork failed (nothing changes then). Queued messages,
+     * threads, tasks, usage and the files the agent changed stay as they are. Answers `{ chatId, runId }` like `chat.send`.
+     */
+    z.object({ ...base, type: z.literal('chat.edit'), chatId: z.string(), itemId: z.string(), text: z.string(), attachmentIds: z.array(z.string()).max(MAX_ATTACHMENTS_PER_MESSAGE).optional() }),
 
     /* Tasks */
     z.object({

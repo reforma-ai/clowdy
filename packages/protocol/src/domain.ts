@@ -168,6 +168,14 @@ export interface Chat {
      * clears the field, and the chat's next turn starts a new conversation. A thread has its parent's.
      */
     folderId?: FolderId;
+    /**
+     * Set on a chat made by `chat.fork`: where its conversation was taken from. `atSeq` is the `seq` of the last item the new chat's stream has from the
+     * source (the answer the fork was made at), so what comes after it is the fork's own; the copied items keep the `seq` they had in the source. A fork is no
+     * thread (`parentChatId` stays empty) and no child: it lives on when the source is archived or deleted, which leaves `chatId` naming a chat that is gone.
+     * Set when the chat is made; it changes only when `chat.edit` cuts into the history the fork inherited (an edited message at or before `atSeq`), which
+     * moves `atSeq` back to the item before the edited message (`0` when nothing inherited is left). Absent on every other chat.
+     */
+    forkedFrom?: { chatId: ChatId; atSeq: number };
     /** When the person archived the chat; absent for a chat in use. An archived chat keeps its runs, tasks and stream, and a message to it brings it back. */
     archivedAt?: number;
     /**
@@ -430,6 +438,18 @@ export interface StreamItem {
     seq: number;
     at: number;
     body: StreamItemBody;
+    /**
+     * Set (`true`) only on the final answer of a finished turn that the chat's agent can fork the conversation at: the daemon holds the agent's own id of
+     * the message as a rewind point, and the agent can cut its session there. Never written as `false`; absent everywhere else, so a client draws Fork
+     * where it is set and nowhere it is not.
+     */
+    canFork?: boolean;
+    /**
+     * Set (`true`) only on a message of the person's own (a `user` item without `from`) that starts a turn (the first item of the chat, or the first one
+     * after a turn that ended at a rewind point) in a chat whose agent can cut its session there: the message may be edited and sent again. A steer
+     * inside a running turn, a message another chat wrote and a message that follows a turn from before rewind points were kept are not. Never written as `false`.
+     */
+    canEdit?: boolean;
 }
 
 /** A file the person attached to a message. The daemon keeps the bytes; the agent is told where they are. */

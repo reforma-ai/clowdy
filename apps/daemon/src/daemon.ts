@@ -77,6 +77,9 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             throw new Error(`CLOWDY_ENGINE=${ config.engine } is not an agent this daemon knows: pick fake, claude, codex, cursor, opencode, gemini, copilot, grok, omp, hermes, or the id of a custom agent`);
         }
 
+        // Stream items say what the agent behind them can fork (`StreamItem.canFork`, `canEdit`), read from the engine when an item is listed or published.
+        store.forkable = engine => engines.get(engine)?.canFork === true;
+
         const runs = new RunService(store, config, engines);
         // A turn asks for its tools when it starts, by which time the thread service below exists.
         const driver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, threads }, run, mode), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
