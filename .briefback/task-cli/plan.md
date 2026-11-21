@@ -71,12 +71,12 @@
 
 **This stage:** The task tools become `clowdy task get|list|create|update`. A switch on the agent decides per session whether they are shell commands (the default) or MCP tools, and both doors call the same tool. Prompts, system skills, the skill validator and the docs move to the command form, with the MCP note for sessions that use the switch.
 
-- [ ] Complete
-  - [ ] The four tools carry `cli` options (`task get <task>`, `task create <title>`, `task update <task>`, `task list`) and show in `GET /cli/tools`
-  - [ ] `AgentSpec.taskTools` (`'cli'` default, `'mcp'`) reaches `toolsFor`; a session of an `mcp` agent registers the task tools without `cli`, and one of a `cli` agent without an MCP server unless `ask_user` needs it
-  - [ ] The system prompt has one Tasks line that names the command and the MCP equivalents; `clowdy task --help` shows examples of the common flow
-  - [ ] System skills name commands, never `task_*` tools; the validator knows `clowdy task` commands and the skill vocabulary test checks them against the daemon
-  - [ ] `apps/daemon/AGENTS.md` and `packages/system-skills/README.md` describe the two doors and the list defaults
+- [x] Complete
+  - [x] The four tools carry `cli` options (`task get <task>`, `task create <title>`, `task update <task>`, `task list`) and show in `GET /cli/tools`
+  - [x] `AgentSpec.taskTools` (`'cli'` default, `'mcp'`) reaches `toolsFor`; a session of an `mcp` agent registers the task tools without `cli`, and one of a `cli` agent without an MCP server unless `ask_user` needs it
+  - [x] The system prompt has one Tasks line that names the command and the MCP equivalents; `clowdy task --help` shows examples of the common flow
+  - [x] System skills name commands, never `task_*` tools; the validator knows `clowdy task` commands and the skill vocabulary test checks them against the daemon
+  - [x] `apps/daemon/AGENTS.md` and `packages/system-skills/README.md` describe the two doors and the list defaults
 
 **Files**
 
@@ -92,17 +92,22 @@
 
 **Done when:** an orchestrator on the scripted engine reads and changes tasks with `clowdy task` commands, the same session with `taskTools: 'mcp'` does it with MCP tools, and no skill, prompt or doc names a `task_*` tool for the default channel.
 **Verify:** `cd apps/daemon && bun test && bun run typecheck && bun run lint`; `cd packages/system-skills && bun run test`; `bunx turbo run build lint typecheck test --affected`
-**Commits:** None yet.
+**Commits:**
+
+- `c30798c` feat(daemon): run the task tools as the clowdy task command, with MCP as a per-agent door
+- `039bd35` (another agent's commit, which held these files whole): `AgentSpec.taskTools`, `CustomAgent.taskTools` and `TaskChannel` in `catalog.ts`, the AGENTS.md notes, and the bound-task message in `threads.test.ts`
+
+**Scope changes:** a custom agent can say `taskTools` in `agents.json` (the runtime test and a person whose agent cannot use the shell route need it); the prompt has one Tasks line for both doors, so `driver.ts` is untouched; the system prompt size caps in `orchestration.test.ts` rose by about 350 characters for that line; `shim.ts` says tasks as well as threads in its warning.
 
 ## Stage 3 — Real agents
 
 **Depends on:** Stage 2.
 
-**This stage:** The scripted engine proves the wiring, not what a model does with it. On a scratch daemon (own data folder and port, as the threads work did), a real Claude Code, Cursor and Codex session each reads the task list of a project that holds 100 backlog and 500 done tasks, creates a task with a heredoc description, updates it with `--append`, and sets a status. The result decides `taskTools` for each agent: `mcp` only where the shell route fails or needs a person's approval on every call (Codex's sandbox is the suspect).
+**This stage:** The scripted engine proves the wiring, not what a model does with it. On a scratch daemon (own data folder and port, as the threads work did), a real Claude Code, Cursor and Codex session each reads the task list of a project that holds 100 open and 500 done tasks (the default statuses have no backlog one), creates a task with a heredoc description, updates it with `--append`, and sets a status. The result decides `taskTools` for each agent: `mcp` only where the shell route fails or needs a person's approval on every call (Codex's sandbox is the suspect).
 
-- [ ] Complete
-  - [ ] A research note records, per agent, the commands run, what came back, the tokens of the first list and whether the shell needed approval
-  - [ ] `taskTools` is set in the catalog from that note, with a comment that names the reason
+- [x] Complete
+  - [x] A research note records, per agent, the commands run, what came back, the tokens of the first list and whether the shell needed approval
+  - [x] `taskTools` stays unset for every built-in agent: the note shows none needs the MCP door (the field's own comment in `catalog.ts` points to the note)
 
 **Files**
 
@@ -111,4 +116,4 @@
 
 **Done when:** each of the three agents completed the flow, and the note shows why each agent has the channel it has.
 **Verify:** the note's own runs; `cd apps/daemon && bun test test/acp-registry.test.ts`
-**Commits:** None yet.
+**Commits:** with this plan update.
