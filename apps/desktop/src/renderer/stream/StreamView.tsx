@@ -30,10 +30,17 @@ import { WorkingLine } from './WorkingLine';
 
 import type { StreamItem } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
-import type { MessageActionsConfig } from './MessageActions';
+import type { MessageActionsConfig, ReplyMessage } from './MessageActions';
 
-/** What `StreamView` is given for the row under a message: `MessageActionsConfig`, except that a fork and an edit are told by the item they are made at. */
-export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onFork' | 'forkState' | 'onEdit' | 'editState'> {
+/**
+ * What `StreamView` is given for the row under a message: `MessageActionsConfig`, except that a reply names who wrote the message and a fork and an edit are told
+ * by the item they are made at.
+ */
+export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onReply' | 'onFork' | 'forkState' | 'onEdit' | 'editState'> {
+    /** Reply to a whole message, from its row or by swiping it: called with who wrote it and its source Markdown. */
+    onReply?: (message: ReplyMessage) => void;
+    /** Quote the words selected inside one message (the floating Reply button of `SelectionReply`): called with them as they are drawn. Not drawn without it. */
+    onQuote?: (text: string) => void;
     /** Fork the chat at an answer (the id of its item): drawn under an answer that the daemon marked `canFork`. */
     onFork?: (itemId: string) => void;
     /** The answer a fork is being made at: its button spins and the others of the stream wait. */
@@ -73,8 +80,9 @@ export interface StreamViewProps {
     /**
      * Draws a row of actions and the time under the person's own messages and under the answer of each turn that is over, shown on the pointer
      * or the focus and always under the last one. Off for a page that only reads a run. Copy comes with the row; the other actions are drawn
-     * when their handler is here: `onReply` also gives a selection inside one message a Reply button (`SelectionReply`), `onFork` adds Fork to an
-     * answer that carries `canFork`, and `onEdit` adds Edit to a message of the person's that carries `canEdit`.
+     * when their handler is here: `onReply` adds Reply (and, with `swipeToReply`, the swipe that does the same), `onQuote` gives a selection inside one
+     * message a Reply button (`SelectionReply`), `onFork` adds Fork to an answer that carries `canFork`, and `onEdit` adds Edit to a message of the
+     * person's that carries `canEdit`.
      */
     messageActions?: StreamMessageActions;
     /** A message is being edited in place: the frame stands where its bubble was, and no other message offers Edit meanwhile. The rest of the stream stays as it is. */
@@ -136,9 +144,12 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
     const actionsOf = (block: StreamBlock): MessageActionsConfig | undefined => {
         if (!messageActions || !hasMessageActions(block)) return undefined;
 
-        const { onFork, forkingId, onEdit, editBusy, ...shared } = messageActions;
+        const { onFork, forkingId, onEdit, editBusy, onReply, onQuote: _onQuote, ...shared } = messageActions;
         const { id, canFork, canEdit, body } = block.item;
         const actions: MessageActionsConfig = { ...shared, show: id === lastWithActions ? 'always' : 'hover' };
+
+        // The reply says who wrote the message: the person, or the agent whose answer it is.
+        if (onReply) actions.onReply = text => onReply({ role: body.kind === 'user' ? 'user' : 'assistant', text });
 
         if (onFork && canFork && block.answer) {
             actions.onFork = () => onFork(id);
@@ -218,8 +229,8 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
 
                 <TurnRail marks={ marks } scroller={ scroller } />
 
-                <Show when={ messageActions?.onReply }>
-                    { onReply => <SelectionReply scope={ scroller } onReply={ onReply } /> }
+                <Show when={ messageActions?.onQuote }>
+                    { onQuote => <SelectionReply scope={ scroller } onReply={ onQuote } /> }
                 </Show>
 
                 <Button

@@ -7,8 +7,10 @@ import { Markdown } from './Markdown';
 import { MessageActions, type MessageActionsConfig } from './MessageActions';
 import { personMarkdown } from './personMarkdown';
 import { StreamLinksContext } from './StreamLinks';
+import { SwipeHint } from './SwipeHint';
 import { useAttachmentPreviews } from './useAttachmentPreviews';
 import styles from './UserBubble.module.css';
+import { useSwipeReply } from './useSwipeReply';
 
 import type { Attachment } from '@clowdy/protocol';
 
@@ -40,9 +42,16 @@ export function UserBubble({ text, attachments, at, actions, animate, turn }: Us
     const { taskOfKey } = use(StreamLinksContext);
     const previews = useAttachmentPreviews(attachments);
     const body = <Markdown text={ personMarkdown(text, taskOfKey) } fromPerson />;
+    // A swipe is the Reply button's other way in: it needs the same handler and words.
+    const swipes = Boolean(actions?.onReply && actions.swipeToReply && text.trim() !== '');
+    const row = useSwipeReply<HTMLDivElement>({ enabled: swipes, onReply: () => actions?.onReply?.(text) });
 
     return (
-        <div className={ styles.row } data-animate={ animate || undefined } data-turn={ turn } data-message="">
+        <div ref={ row } className={ styles.row } data-animate={ animate || undefined } data-turn={ turn } data-message="">
+            { /* Before the row of actions, which stays the last child of the message (see `MessageActions`). */ }
+            <Show when={ swipes }>
+                <SwipeHint />
+            </Show>
             <Show when={ attachments?.length }>
                 <Attachments size="sm" className={ styles.files }>
                     { attachments?.map(attachment => (

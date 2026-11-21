@@ -8,6 +8,12 @@ import { formatFullTime, formatMessageTime } from '../shared/time';
 import { Unavailable } from '../shared/Unavailable';
 import styles from './MessageActions.module.css';
 
+/** A whole message handed to Reply: who wrote it (the person, or the agent whose answer it is), and its source Markdown. */
+export interface ReplyMessage {
+    role: 'user' | 'assistant';
+    text: string;
+}
+
 /** When a row shows: while the pointer or the focus is on its message, or all the time (the last message that has a row). Where the pointer cannot hover, it always shows. */
 export type MessageActionsShow = 'hover' | 'always';
 
@@ -19,6 +25,8 @@ export interface MessageActionsConfig {
     show: MessageActionsShow;
     /** Reply: called with the message as it was written, to quote it in the message box. */
     onReply?: (text: string) => void;
+    /** A sideways swipe over the message does what the Reply button does (`useSwipeReply`); a message that has no Reply button has no swipe either. */
+    swipeToReply?: boolean;
     /** Edit the message in place: drawn only where it is given (`StreamView` gives it to a message of the person's that the agent can rewrite the chat from, and to none while one is being edited). */
     onEdit?: () => void;
     /** `busy`: the agent is working, and the chat can be rewritten only at rest. The button is drawn off, with the reason on a tooltip. */

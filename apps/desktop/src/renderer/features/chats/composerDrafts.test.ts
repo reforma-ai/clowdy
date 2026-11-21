@@ -1,7 +1,7 @@
 import { docToPlainText, emptyComposerDoc, plainTextToDoc, type ComposerDoc } from '@clowdy/components/RichInput';
 import { describe, expect, it } from 'vitest';
 
-import { docOfMessage, draftOf, dropDraft, editDraftKey, messageOf, newChatDraftKey, saveDraft, withQuoteLast } from './composerDrafts';
+import { docOfMessage, draftOf, dropDraft, editDraftKey, messageOf, newChatDraftKey, quotedMessage, saveDraft, withQuoteLast } from './composerDrafts';
 
 /** What the doc writes, with the line break a hard break writes (a Markdown line break) shown as the newline it is. */
 const written = (doc: ComposerDoc) => docToPlainText(doc).replaceAll('  \n', '\n');
@@ -184,5 +184,28 @@ describe('the key of an edit session', () => {
         expect(messageOf(draftOf('c-drop'))).toBe('chat words');
 
         dropDraft('c-drop');
+    });
+});
+
+describe('quotedMessage', () => {
+    it('is the quote, a blank line and the words, so the words are not a part of the quote', () => {
+        expect(quotedMessage('Use the blue one', 'Why?')).toBe('> Use the blue one\n\nWhy?');
+    });
+
+    it('is the quote alone when nothing was typed', () => {
+        expect(quotedMessage('Use the blue one', '')).toBe('> Use the blue one');
+    });
+
+    it('writes the quote as a quote added to the draft does, a bare `>` for a blank line and hard breaks inside it', () => {
+        const quoted = 'First paragraph\nsecond line\n\nSecond paragraph';
+
+        // The same text as the draft would send for a selection quoted the same way, then the words after a blank line.
+        expect(quotedMessage(quoted, 'Both')).toBe(`${ messageOf(withQuoteLast(emptyComposerDoc(), quoted)) }\n\nBoth`);
+        expect(quotedMessage(quoted, 'Both')).toContain('> First paragraph  \n> second line  \n>  \n> Second paragraph');
+    });
+
+    it('leaves the words as they are when there is nothing to quote', () => {
+        expect(quotedMessage('  \n ', 'Why?')).toBe('Why?');
+        expect(quotedMessage('', '')).toBe('');
     });
 });

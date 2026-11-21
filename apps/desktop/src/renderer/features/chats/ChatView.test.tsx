@@ -11,6 +11,8 @@ import { RootStore, RootStoreProvider } from '../../stores';
 import { ChatView } from './ChatView';
 import { draftOf, editDraftKey, messageOf, saveDraft } from './composerDrafts';
 import { filesOf } from './composerFiles';
+import { dropReplyQuote } from './composerQuotes';
+import { swipeToReply } from './swipeReplyPreference';
 
 import type { Attachment, CommandResult, StreamItem, StreamItemBody } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
@@ -473,27 +475,96 @@ describe('Reply in a chat', () => {
     const editor = () => (field() as HTMLElement & { editor: { getText: (options?: { blockSeparator?: string }) => string } }).editor;
     const written = () => editor().getText({ blockSeparator: '\n' });
 
-    // What is typed and not sent is kept per chat for the whole session.
-    beforeEach(() => saveDraft('c-2', emptyComposerDoc()));
+    const card = () => container.querySelector<HTMLElement>('[role="group"][aria-label^="Replying to"]');
+    const wheel = (target: Element, deltaX: number) => target.dispatchEvent(new WheelEvent('wheel', { deltaX, deltaY: 0, bubbles: true, cancelable: true }));
 
-    it('puts the message under Reply into the message box as a quote, the caret on the line below it', async () => {
+    // What is typed and not sent, and the message replied to, are kept per chat for the whole session.
+    beforeEach(() => {
+        saveDraft('c-2', emptyComposerDoc());
+        dropReplyQuote('c-2');
+        swipeToReply.setEnabled(true);
+    });
+
+    afterEach(() => {
+        dropReplyQuote('c-2');
+        swipeToReply.setEnabled(true);
+    });
+
+    it('puts the message under Reply above the message box as a card, with the focus in the box and nothing in the draft', async () => {
         await start();
         await draw('c-2');
         await act(async () => reply('Build the first version')!.click());
 
-        expect(written()).toMatch(/^> Build the first version/);
+        expect(card()?.textContent).toContain('You');
+        expect(card()?.textContent).toContain('Build the first version');
+        expect(written()).toBe('');
+        expect(messageOf(draftOf('c-2'))).toBe('');
         expect(document.activeElement).toBe(field());
     });
 
-    it('quotes an answer as it was written too, under what is already typed', async () => {
+    it('replies to an answer as it was written too, named by its agent, in place of the first card and beside what is already typed', async () => {
         await start();
         await draw('c-2');
+        await act(async () => reply('Build the first version')!.click());
         await act(async () => {
             (field() as HTMLElement & { editor: { commands: { insertContent: (text: string) => void } } }).editor.commands.insertContent('See this');
         });
         await act(async () => reply('The booking page, the fleet list and the price calculation are in.')!.click());
 
-        expect(written()).toMatch(/^See this\n> The booking page, the fleet list and the price calculation are in\./);
+        expect(container.querySelectorAll('[role="group"][aria-label^="Replying to"]')).toHaveLength(1);
+        expect(card()?.getAttribute('aria-label')).toBe('Replying to Claude Code');
+        expect(card()?.textContent).toContain('The booking page, the fleet list and the price calculation are in.');
+        expect(written()).toBe('See this');
+    });
+
+    it('sends the card as a quote in front of what was typed', async () => {
+        await start();
+        await draw('c-2');
+
+        const send = vi.spyOn(store, 'command');
+
+        await act(async () => reply('The booking page, the fleet list and the price calculation are in.')!.click());
+        await act(async () => {
+            (field() as HTMLElement & { editor: { commands: { insertContent: (text: string) => void } } }).editor.commands.insertContent('Now the invoices');
+        });
+        await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')!.click());
+
+        expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'chat.send', chatId: 'c-2', text: '> The booking page, the fleet list and the price calculation are in.\n\nNow the invoices' }));
+        expect(card()).toBeNull();
+    });
+
+    it('takes a sideways swipe over a message for a press on its Reply: the card of that message', async () => {
+        await start();
+        await draw('c-2');
+
+        const message = [...container.querySelectorAll<HTMLElement>('[data-message]')].find(node => node.textContent?.includes('Build the first version'))!;
+
+        for (let i = 0; i < 30; i++) wheel(message, 10);
+
+        await act(async () => undefined);
+
+        expect(card()?.textContent).toContain('You');
+        expect(card()?.textContent).toContain('Build the first version');
+        expect(message.style.translate).toBe('');
+    });
+
+    it('has no swipe once the setting is off: the message stays where it is, the wheel is not taken and no card comes', async () => {
+        swipeToReply.setEnabled(false);
+        await start();
+        await draw('c-2');
+
+        const message = container.querySelector<HTMLElement>('[data-message]')!;
+        const events = Array.from({ length: 30 }, () => wheel(message, 10));
+
+        await act(async () => undefined);
+
+        expect(events.every(taken => taken)).toBe(true);
+        expect(card()).toBeNull();
+        expect(message.style.translate).toBe('');
+        // The button still replies.
+        await act(async () => reply('Build the first version')!.click());
+
+        expect(card()).not.toBeNull();
     });
 
     it('has no Reply in a chat that is read only, where the message box is gone: Copy stays', async () => {
@@ -503,6 +574,14 @@ describe('Reply in a chat', () => {
         expect(field()).toBeNull();
         expect(container.querySelector('button[aria-label="Reply"]')).toBeNull();
         expect(container.querySelector('button[aria-label="Copy message"]')).not.toBeNull();
+
+        // No swipe either: there is no box to reply into.
+        const message = container.querySelector<HTMLElement>('[data-message]')!;
+        const events = Array.from({ length: 30 }, () => wheel(message, 10));
+
+        expect(events.some(event => !event)).toBe(false);
+        expect(message.style.translate).toBe('');
+        expect(card()).toBeNull();
     });
 
     it('quotes the words selected inside one message from the toolbar, and collapses the selection', async () => {

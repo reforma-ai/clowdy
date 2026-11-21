@@ -1,0 +1,38 @@
+/*
+ * Out of the flow, beside the message that is being pulled. The message moves, and its edge with it, so the mark rides on the edge the pull opened up:
+ * on the right of a message pulled left, on the left of one pulled right. Without a pull it is not drawn.
+ */
+.hint {
+    position: absolute;
+    /* At the height of the pointer when the pull started (`useSwipeReply`), in the middle of the message until it has. */
+    top: var(--swipe-y, 50%);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-24);
+    height: var(--spacing-24);
+    border-radius: var(--radius-full);
+    background-color: var(--color-secondary-muted-light);
+    color: var(--color-secondary-muted-text);
+    opacity: var(--swipe-progress, 0);
+    scale: calc(0.6 + 0.4 * var(--swipe-progress, 0));
+    translate: 0 -50%;
+    pointer-events: none;
+    transition: opacity var(--transition-duration-fast) ease;
+}
+
+:global([data-swipe='left']) > .hint {
+    display: flex;
+    left: calc(100% + var(--spacing-sm));
+}
+
+:global([data-swipe='right']) > .hint {
+    display: flex;
+    right: calc(100% + var(--spacing-sm));
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hint {
+        transition: none;
+    }
+}

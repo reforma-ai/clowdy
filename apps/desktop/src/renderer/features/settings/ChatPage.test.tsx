@@ -8,6 +8,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { busyEnter } from '../chats/busyEnter';
 import { newChatDefaults } from '../chats/newChatDefaults';
+import { swipeToReply } from '../chats/swipeReplyPreference';
 import { ChatPage } from './ChatPage';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -20,12 +21,15 @@ let root: Root;
 let store: RootStore;
 
 const LABEL = 'Send a message while the agent is working';
+const SWIPE = 'Swipe a message to reply';
+const swipeSwitch = () => container.querySelector<HTMLInputElement>(`input[aria-label="${ SWIPE }"]`)!;
 const radio = (group: string, label: string) => [...container.querySelectorAll<HTMLElement>(`[aria-label="${ group }"] [role="radio"]`)].find(item => item.textContent === label)!;
 const checked = (group: string) => container.querySelector(`[aria-label="${ group }"] [role="radio"][aria-checked="true"]`)?.textContent;
 const labels = (group: string) => [...container.querySelectorAll<HTMLElement>(`[aria-label="${ group }"] [role="radio"]`)].map(item => item.textContent);
 
 function reset() {
     busyEnter.setMode('steer');
+    swipeToReply.setEnabled(true);
     newChatDefaults.setEngine(undefined);
     newChatDefaults.setMode(undefined);
 }
@@ -63,6 +67,28 @@ describe('ChatPage', () => {
 
         expect(busyEnter.mode).toBe('queue');
         expect(checked(LABEL)).toBe('Queue');
+    });
+
+    it('offers to swipe a message to reply, on by default, with a line that says what it does and no period after it', () => {
+        expect(container.textContent).toContain(SWIPE);
+        expect(container.textContent).toContain('Scroll sideways over a message to reply to it');
+        expect(container.textContent).not.toContain('Scroll sideways over a message to reply to it.');
+        expect(swipeSwitch().checked).toBe(true);
+        expect(swipeToReply.enabled).toBe(true);
+    });
+
+    it('keeps the swipe setting on this computer, off and on again', () => {
+        act(() => swipeSwitch().click());
+
+        expect(swipeToReply.enabled).toBe(false);
+        expect(swipeSwitch().checked).toBe(false);
+        expect(localStorage.getItem('clowdy:swipe-to-reply')).toBe('false');
+
+        act(() => swipeSwitch().click());
+
+        expect(swipeToReply.enabled).toBe(true);
+        expect(swipeSwitch().checked).toBe(true);
+        expect(localStorage.getItem('clowdy:swipe-to-reply')).toBe('true');
     });
 
     it('offers the app\'s agent and mode of new chats, with no Default, Last used at first', () => {

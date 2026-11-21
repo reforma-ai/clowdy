@@ -262,7 +262,8 @@ describe('StreamView', () => {
                 await act(async () => replyButtons()[2].click());
                 await act(async () => replyButtons()[3].click());
 
-                expect(onReply.mock.calls).toEqual([['Now **the** table'], ['The table is done.']]);
+                // Who wrote it goes with the words: the person, or the agent whose answer it is.
+                expect(onReply.mock.calls).toEqual([[{ role: 'user', text: 'Now **the** table' }], [{ role: 'assistant', text: 'The table is done.' }]]);
             });
 
             it('draws none where no handler is given, whatever else the rows have', async () => {
@@ -278,7 +279,33 @@ describe('StreamView', () => {
                 expect(replyButtons()).toHaveLength(4);
             });
 
-            it('offers Reply on a selection inside one message, and only when the stream has a handler', async () => {
+            it('lets the messages be swiped to reply only when the stream says so, with the same hand-over as the button', async () => {
+                const onReply = vi.fn();
+                const messages = () => [...container.querySelectorAll<HTMLElement>('[data-message]')];
+                const swipe = (target: HTMLElement) => Array.from({ length: 30 }, () => target.dispatchEvent(new WheelEvent('wheel', { deltaX: 10, deltaY: 0, bubbles: true, cancelable: true })));
+
+                await drawWith(twoTurns, { active: false, messageActions: { onReply } });
+
+                expect(swipe(messages()[0]).every(untouched => untouched)).toBe(true);
+                expect(onReply).not.toHaveBeenCalled();
+
+                await drawWith(twoTurns, { active: false, messageActions: { onReply, swipeToReply: true } });
+                swipe(messages()[0]);
+                swipe(messages().find(node => node.textContent?.includes('The table is done.'))!);
+
+                expect(onReply.mock.calls).toEqual([[{ role: 'user', text: 'Fix the form' }], [{ role: 'assistant', text: 'The table is done.' }]]);
+            });
+
+            it('has no swipe where there is no Reply, even when the stream says swipes are on', async () => {
+                await drawWith(twoTurns, { active: false, messageActions: { swipeToReply: true } });
+
+                const events = Array.from({ length: 30 }, () => container.querySelector('[data-message]')!.dispatchEvent(new WheelEvent('wheel', { deltaX: 10, deltaY: 0, bubbles: true, cancelable: true })));
+
+                expect(events.every(untouched => untouched)).toBe(true);
+                expect(container.querySelector<HTMLElement>('[data-message]')!.style.translate).toBe('');
+            });
+
+            it('offers Reply on a selection inside one message, and only when the stream has a handler for a quote', async () => {
                 const frames: FrameRequestCallback[] = [];
 
                 vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
@@ -298,10 +325,17 @@ describe('StreamView', () => {
                 };
 
                 try {
-                    await drawWith(twoTurns, { active: false, messageActions: { onReply: vi.fn() } });
+                    await drawWith(twoTurns, { active: false, messageActions: { onQuote: vi.fn() } });
                     await selectIn('[data-turn="i-0"]', 'the form');
 
                     expect(toolbar()?.textContent).toBe('Reply');
+
+                    // A whole-message reply is no reason for the toolbar: it quotes words, and has a handler of its own.
+                    window.getSelection()!.removeAllRanges();
+                    await drawWith(twoTurns, { active: false, messageActions: { onReply: vi.fn() } });
+                    await selectIn('[data-turn="i-0"]', 'the form');
+
+                    expect(toolbar()).toBeNull();
 
                     window.getSelection()!.removeAllRanges();
                     await drawWith(twoTurns, { active: false, messageActions: {} });
@@ -545,7 +579,7 @@ describe('StreamView', () => {
                 };
 
                 try {
-                    await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn(), onReply: vi.fn() }, editing: editing('i-4') });
+                    await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn(), onQuote: vi.fn() }, editing: editing('i-4') });
                     await selectIn('[data-testid="editor"]');
 
                     expect(toolbar()).toBeNull();

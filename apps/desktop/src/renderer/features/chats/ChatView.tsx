@@ -19,6 +19,7 @@ import { chatProgress } from './progress';
 import { ProgressCard } from './ProgressCard';
 import { ReadOnlyNotice } from './ReadOnlyNotice';
 import { RunningAgents } from './RunningAgents';
+import { swipeToReply } from './swipeReplyPreference';
 import { useCompact } from './useCompact';
 import { useEditMessage } from './useEditMessage';
 import { useFork } from './useFork';
@@ -89,10 +90,18 @@ export function ChatView({ chat }: { chat: Chat }) {
                     active={ isRunActive(run) }
                     working={ isRunActive(run) && liveLine(run.status) }
                     links={ links }
-                    // Reply quotes into the message box, a fork is a conversation to go on in, and an edit sends the message again: a chat that is read only has none of them.
-                    // The chat is rewritten from a message only at rest, so while the agent works Edit is drawn off.
+                    // Reply puts a message in the message box as a card, or quotes selected words into the draft; a fork is a conversation to go on in, and an edit sends the
+                    // message again: a chat that is read only has none of them. The chat is rewritten from a message only at rest, so while the agent works Edit is drawn off.
                     messageActions={ writability.writable
-                        ? { onReply: text => composer.current?.quote(text), onFork: fork, forkingId: forking, onEdit: edit.begin, editBusy: isRunActive(run) }
+                        ? {
+                            onReply: message => composer.current?.reply(message),
+                            onQuote: text => composer.current?.quote(text),
+                            swipeToReply: swipeToReply.enabled,
+                            onFork: fork,
+                            forkingId: forking,
+                            onEdit: edit.begin,
+                            editBusy: isRunActive(run),
+                        }
                         : {} }
                     editing={ edit.session && writability.writable
                         ? {

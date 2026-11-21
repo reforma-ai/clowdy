@@ -108,3 +108,16 @@ export function withQuoteLast(draft: ComposerDoc, text: string): ComposerDoc {
 
     return { ...draft, content: [...kept, ...(plainTextToDoc(quote).content ?? []), { type: 'paragraph' }] };
 }
+
+/**
+ * The message a box sends when it replies to another: the quote of `quoted`, written as `withQuoteLast` writes it in a draft (so a quote that was added with a
+ * selection and one that is a card read alike), a blank line, then `message`, which is what is typed. The blank line keeps the words out of the quote (text
+ * right under it would be a lazy continuation, one blockquote). Without words it is the quote alone; a quote of nothing leaves the words as they are.
+ */
+export function quotedMessage(quoted: string, message: string): string {
+    const quote = messageOf(withQuoteLast(emptyComposerDoc(), quoted));
+
+    if (!quote) return message;
+
+    return message ? `${ quote }\n\n${ message }` : quote;
+}

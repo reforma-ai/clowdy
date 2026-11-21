@@ -1,0 +1,50 @@
+@reference '@clowdy/styles/rulesets';
+
+/* A plate on the card's own surface, with an accent bar on its start like a quote in a message. It is not text to select and type in, so the press goes to the field. */
+.card {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+    padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) var(--spacing-xl);
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-secondary-muted-light);
+    cursor: default;
+}
+
+/* The bar is its own shape, so the plate's rounded corners do not bend it. */
+.card::before {
+    content: '';
+    position: absolute;
+    inset-block: var(--spacing-sm);
+    inset-inline-start: var(--spacing-sm);
+    width: 3px;
+    border-radius: var(--radius-full);
+    background-color: var(--color-primary);
+}
+
+.text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    min-width: 0;
+    /* The label and the first line sit level with the 24px X, not above it. */
+    padding-block: var(--spacing-2);
+}
+
+/* Three lines of the words, then cut: a long answer is a reminder of what it was, not a copy of it. Line breaks fold into spaces. */
+.quote {
+    @ruleset typography-text-sm;
+
+    display: -webkit-box;
+    margin: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    color: var(--color-secondary-muted-text);
+    overflow-wrap: anywhere;
+}

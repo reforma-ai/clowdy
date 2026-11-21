@@ -6,26 +6,29 @@ import { Clip } from '@clowdy/icons/14';
 import { useImperativeHandle, useLayoutEffect, useRef, useState, type MouseEvent, type Ref } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
-import { useRootStore } from '../../stores';
+import { useAgents, useRootStore } from '../../stores';
 import { busyEnter, sendMode } from './busyEnter';
 import { readRememberedMode, startingMode, writeRememberedMode } from './chatModeMemory';
 import { isRunActive, isRunBusy } from './chatRun';
 import { perform } from './commands';
 import styles from './Composer.module.css';
-import { draftOf, messageOf, newChatDraftKey, saveDraft, withQuoteLast, withTextFirst } from './composerDrafts';
+import { draftOf, messageOf, newChatDraftKey, quotedMessage, saveDraft, withQuoteLast, withTextFirst } from './composerDrafts';
 import { filesOf, releaseFiles, restoreFiles, takeFiles, type DraftFile } from './composerFiles';
 import { serializeMention } from './composerMentions';
 import { ComposerQueue } from './ComposerQueue';
+import { dropReplyQuote, restoreReplyQuote, setReplyQuote, takeReplyQuote, useReplyQuote } from './composerQuotes';
 import { ComposerSend } from './ComposerSend';
 import { ContextRing } from './ContextRing';
 import { MentionChip } from './MentionChip';
 import { ModelPicker, ModelPickerOff } from './ModelPicker';
 import { ModePicker } from './ModePicker';
+import { ReplyCard } from './ReplyCard';
 import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
 import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
 
 import type { Chat, ChatId, ChatMode, ProjectId, QueuedMessage, Run } from '@clowdy/protocol';
+import type { ReplyMessage } from '../../stream/MessageActions';
 
 /** What a press on the card's empty parts must leave alone: the controls, which take the press themselves. */
 const CONTROLS = 'button, [role="button"], [role="combobox"], [contenteditable="true"], a, input';
@@ -37,7 +40,9 @@ const LINE_HEIGHT = 20;
 export interface ComposerHandle {
     /** Adds files to the message, as if they were picked with the attach button. */
     addFiles: (files: readonly File[]) => void;
-    /** Reply: adds `text` to the end of the message as a quote, and puts the caret on the line below it. */
+    /** Reply to a whole message: it becomes the card above the field (instead of the one that is there), sent as a quote in front of the words, and the field takes the focus. */
+    reply: (message: ReplyMessage) => void;
+    /** Quote words selected inside a message: adds `text` to the end of the draft as a quote, and puts the caret on the line below it. */
     quote: (text: string) => void;
 }
 
@@ -110,6 +115,10 @@ export function Composer({ chat, run, start, minLines, editMode, ref }: Composer
     const busy = isRunBusy(run);
     const model = useModelChoice({ chat, made, run, preferredEngine: start?.defaults?.engine });
     const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
+    // The message the box replies to, shown as a card above the field. The box of an edit frame has none.
+    const replyTo = useReplyQuote(key);
+    const { agents } = useAgents();
+    const agentName = agents.find(agent => agent.id === model.choice?.engine)?.name ?? 'Assistant';
     const picker = useRef<HTMLInputElement>(null);
     const hasMessage = messageOf(doc) !== '' || attach.files.length > 0;
     // A file still going up, or one that failed, holds the message back until the person has dealt with it.
@@ -146,7 +155,12 @@ export function Composer({ chat, run, start, minLines, editMode, ref }: Composer
         edit(next);
     };
 
-    useImperativeHandle(ref, () => ({ addFiles: attach.add, quote }), [attach.add, quote]);
+    const reply = (message: ReplyMessage) => {
+        setReplyQuote(key, message);
+        field.current?.focus();
+    };
+
+    useImperativeHandle(ref, () => ({ addFiles: attach.add, reply, quote }), [attach.add, reply, quote]);
 
     /** Sends the message; `mod` (Cmd/Ctrl+Enter) sends it the other way than Enter while the orchestrator works. */
     const send = async (from: ComposerDoc, mod = false) => {
@@ -158,11 +172,14 @@ export function Composer({ chat, run, start, minLines, editMode, ref }: Composer
         edit(emptyComposerDoc());
 
         const files = takeFiles(key);
-        // Give the words and the files back, unless the person has already started something new.
+        const replied = takeReplyQuote(key);
+        // Give the words, the files and the quote back, unless the person has already started something new.
         const giveBack = () => {
             if (!messageOf(draftOf(key))) edit(from);
 
             restoreFiles(key, files);
+
+            if (replied) restoreReplyQuote(key, replied);
         };
         let chatId = target?.id;
 
@@ -198,7 +215,8 @@ export function Composer({ chat, run, start, minLines, editMode, ref }: Composer
         const result = await perform(root, {
             type: 'chat.send',
             chatId,
-            text: message,
+            // The message replied to goes first, as a quote, then a blank line and what was typed.
+            text: replied ? quotedMessage(replied.text, message) : message,
             ...(attachmentIds.length > 0 && { attachmentIds }),
             mode: sendMode(busyEnter.mode, mod),
         });
@@ -271,6 +289,17 @@ export function Composer({ chat, run, start, minLines, editMode, ref }: Composer
 
             { /* The field is the keyboard way in; this only gives the mouse the whole card. */ }
             <div className={ styles.main } onMouseDown={ focusField }>
+                { replyTo && !editMode && (
+                    <ReplyCard
+                        message={ replyTo }
+                        who={ replyTo.role === 'user' ? 'You' : agentName }
+                        onRemove={ () => {
+                            dropReplyQuote(key);
+                            field.current?.focus();
+                        } }
+                    />
+                ) }
+
                 { attach.files.length > 0 && (
                     <Attachments size="sm" className={ styles.files }>
                         { attach.files.map(file => (
