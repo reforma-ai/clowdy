@@ -100,4 +100,4 @@
 
 **Done when:** with the switch on in a project of two folders, the list shows a group per folder, the button of the second group opens a draft that says `in <folder>`, and its first message makes a chat whose agent works in that folder.
 **Verify:** `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`, then the app on a real daemon with the fake engine (`apps/desktop/AGENTS.md`, fixtures and real-daemon checks)
-**Commits:** None yet.
+**Commits:** `4103b2d` feat(desktop): group the agents list by folder, with a new chat button in each group.
