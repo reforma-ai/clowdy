@@ -113,7 +113,7 @@
     min-width: 0;
 }
 
-/* The attach button and the mode keep their size; the model's pill, on the right, is the one that shrinks. */
+/* The attach button keeps its size; the model's pill, on the right, is the one that shrinks. */
 .start {
     flex-shrink: 0;
 }

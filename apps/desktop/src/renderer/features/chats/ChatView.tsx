@@ -31,8 +31,9 @@ import type { ReactNode } from 'react';
 /**
  * One chat: the orchestrator's stream with the progress card in it, and the composer. When the chat's provider cannot run
  * (switched off, not installed, signed out) the stream stays as it is and a notice stands in place of the composer. A thread is a chat like
- * any other, with a slim line over its stream that names the chat it belongs to and opens it. `controls` are what the line under the message box holds
- * (where the chat works, read only), the line the new-chat page drew with controls that change; there is no line when the caller has none.
+ * any other, with a slim line over its stream that names the chat it belongs to and opens it. `controls` are what the line under the message box holds at its
+ * start (where the chat works, read only), the line the new-chat page drew with controls that change; the composer adds the mode at the end of that line, so a chat
+ * that can be written to always has the line, and a read only one has it only when the caller has `controls`.
  */
 export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode }) {
     const root = useRootStore();
@@ -128,11 +129,16 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
 
             <ContentColumn className={ styles.composer }>
                 <RunningAgents chat={ chat } />
+                { /* The composer draws the line under its box itself, with the mode at the end of it; a chat that is read only has no mode to show. */ }
                 { writability.writable
-                    ? <Composer ref={ composer } chat={ chat } run={ run } />
-                    : <ReadOnlyNotice chat={ chat } run={ run } message={ writability.message } /> }
+                    ? <Composer ref={ composer } chat={ chat } run={ run } controls={ controls } />
+                    : (
+                        <>
+                            <ReadOnlyNotice chat={ chat } run={ run } message={ writability.message } />
 
-                { controls && <ChatControls>{ controls }</ChatControls> }
+                            { controls && <ChatControls>{ controls }</ChatControls> }
+                        </>
+                    ) }
             </ContentColumn>
         </ChatDropZone>
     );

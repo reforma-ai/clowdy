@@ -4,7 +4,6 @@ import { mainFolder } from '@clowdy/protocol';
 import { useEffect, useRef } from 'react';
 
 import { useProjectState, useProjectUi } from '../../stores';
-import { ChatControls } from '../chats/ChatControls';
 import { ChatDropZone } from '../chats/ChatDropZone';
 import { Composer, type ComposerHandle } from '../chats/Composer';
 import { newChatDefaults, startingChoice } from '../chats/newChatDefaults';
@@ -18,7 +17,7 @@ import type { FolderId } from '@clowdy/protocol';
 /**
  * The new-chat row's page, a start page: the heading and the message box in the middle. No chat exists yet: the composer
  * makes it when the first message is sent, and then this page gives way to the chat. A hand-off from another chat arrives
- * with its words already in the box's draft and its conversation as a file in `ui.pendingFiles`. A line under the box says which folder the chat is for
+ * with its words already in the box's draft and its conversation as a file in `ui.pendingFiles`. A line under the box (drawn by the composer, with the mode at its end) says which folder the chat is for
  * (`ui.draftFolderId`, the main folder's when none): a select that changes it in a project of several folders, the folder read only (`ChatFolder`) in one of a
  * single folder. `missing` are the folders gone from the disk, which the select lists and does not let be picked. The chat this page makes keeps the line, with the folder read only.
  */
@@ -51,10 +50,13 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                     <Text variant="heading-3">What should we work on?</Text>
 
                     <ContentColumn className={ styles.composerSlot }>
-                        <Composer ref={ composer } chat={ undefined } run={ undefined } minLines={ 3 } start={ { projectId: project.id, folderId, onStarted: chatId => ui.openChat(chatId), defaults } } />
-
-                        <ChatControls>
-                            { folders.length > 1
+                        <Composer
+                            ref={ composer }
+                            chat={ undefined }
+                            run={ undefined }
+                            minLines={ 3 }
+                            start={ { projectId: project.id, folderId, onStarted: chatId => ui.openChat(chatId), defaults } }
+                            controls={ folders.length > 1
                                 ? (
                                     <DraftFolderSelect
                                         folders={ folders }
@@ -66,7 +68,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                                 )
                                 // A project of one folder has nothing to pick: the line says where the chat will work, as the chat's own does.
                                 : <ChatFolder name={ target.name } path={ target.folder.path } missing={ missing.has(target.folder.id) } /> }
-                        </ChatControls>
+                        />
                     </ContentColumn>
                 </div>
             </div>

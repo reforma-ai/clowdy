@@ -8,6 +8,7 @@ import { useImperativeHandle, useLayoutEffect, useRef, useState, type MouseEvent
 import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useRootStore } from '../../stores';
 import { busyEnter, sendMode } from './busyEnter';
+import { ChatControls } from './ChatControls';
 import { readRememberedMode, startingMode, writeRememberedMode } from './chatModeMemory';
 import { isRunActive, isRunBusy } from './chatRun';
 import { perform } from './commands';
@@ -28,6 +29,7 @@ import { useMentionTriggers } from './useMentionTriggers';
 import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
 
 import type { Chat, ChatId, ChatMode, FolderId, ProjectId, QueuedMessage, Run } from '@clowdy/protocol';
+import type { ReactNode } from 'react';
 import type { ReplyMessage } from '../../stream/MessageActions';
 
 /** What a press on the card's empty parts must leave alone: the controls, which take the press themselves. */
@@ -78,18 +80,20 @@ export interface ComposerProps {
     minLines?: number;
     /** The box of an edit frame (see `EditMode`) in place of the chat's message box. */
     editMode?: EditMode;
+    /** What the line under the box holds at its start (where the chat works); the mode stands at its end. An edit frame has no line. */
+    controls?: ReactNode;
     ref?: Ref<ComposerHandle>;
 }
 
 /**
  * The message box: the messages waiting for the orchestrator, the files picked for the message and the text, below them attach, the model and its
- * reasoning level, the mode and send. Enter sends, Shift+Enter starts a new line, `@` mentions a task, document or file and `/` asks for a skill.
+ * reasoning level and send, and under the card a line with `controls` at its start and the mode at its end. Enter sends, Shift+Enter starts a new line, `@` mentions a task, document or file and `/` asks for a skill.
  * While the orchestrator works a message waits for it in the chat's queue: Enter steers the running turn or queues the message for the next turn,
  * as Settings > Chat says, and Cmd/Ctrl+Enter does the other; the send button sends the way Enter does, and stops the orchestrator while nothing
  * is typed. Without a chat the first message makes one, on the model the picker holds, so opening the new-chat page again and again leaves no
  * empty chats behind; if the message then fails the chat stays, and the retry goes to it.
  */
-export function Composer({ chat, run, start, minLines, editMode, ref }: ComposerProps) {
+export function Composer({ chat, run, start, minLines, editMode, controls, ref }: ComposerProps) {
     const root = useRootStore();
     const field = useRef<RichInputHandle>(null);
     const box = useRef<HTMLDivElement>(null);
@@ -274,7 +278,7 @@ export function Composer({ chat, run, start, minLines, editMode, ref }: Composer
     };
 
     // A press on the card's own space puts the caret in the text, as in any input; the controls keep their presses.
-    // A press inside the mode list bubbles here through its portal without being on the card: it is the list's own.
+    // A press inside the model list bubbles here through its portal without being on the card: it is the list's own.
     const focusField = (event: MouseEvent) => {
         const target = event.target as HTMLElement;
 
@@ -285,133 +289,142 @@ export function Composer({ chat, run, start, minLines, editMode, ref }: Composer
     };
 
     return (
-        <div ref={ box } className={ styles.surface }>
-            { chat && !editMode && <ComposerQueue chat={ chat } busy={ busy } running={ running } onEdit={ editQueued } /> }
+        <>
+            <div ref={ box } className={ styles.surface }>
+                { chat && !editMode && <ComposerQueue chat={ chat } busy={ busy } running={ running } onEdit={ editQueued } /> }
 
-            { /* The field is the keyboard way in; this only gives the mouse the whole card. */ }
-            <div className={ styles.main } onMouseDown={ focusField }>
-                { replyTo && !editMode && (
-                    <ReplyCard
-                        message={ replyTo }
-                        who={ replyTo.role === 'user' ? 'You' : agentName }
-                        onRemove={ () => {
-                            dropReplyQuote(key);
-                            field.current?.focus();
-                        } }
+                { /* The field is the keyboard way in; this only gives the mouse the whole card. */ }
+                <div className={ styles.main } onMouseDown={ focusField }>
+                    { replyTo && !editMode && (
+                        <ReplyCard
+                            message={ replyTo }
+                            who={ replyTo.role === 'user' ? 'You' : agentName }
+                            onRemove={ () => {
+                                dropReplyQuote(key);
+                                field.current?.focus();
+                            } }
+                        />
+                    ) }
+
+                    { attach.files.length > 0 && (
+                        <Attachments size="sm" className={ styles.files }>
+                            { attach.files.map(file => (
+                                <PreviewableAttachment
+                                    key={ file.key }
+                                    data={ { id: file.key, filename: file.name, mediaType: file.mediaType, size: file.size, preview: file.preview } }
+                                    loading={ file.status === 'uploading' }
+                                    error={ file.status === 'error' }
+                                    onRetry={ () => attach.retry(file.key) }
+                                    onRemove={ () => attach.remove(file.key) }
+                                />
+                            )) }
+                        </Attachments>
+                    ) }
+
+                    <RichInput
+                        ref={ field }
+                        value={ doc }
+                        onChange={ edit }
+                        triggers={ triggers }
+                        renderMention={ MentionChip }
+                        serializeMention={ serializeMention }
+                        autoFocus={ editMode !== undefined || !chat?.orchestratorRunId }
+                        className={ styles.field }
+                        minHeight={ minLines ? minLines * LINE_HEIGHT : undefined }
+                        aria-label={ editMode ? 'Edit message' : 'Message' }
+                        placeholder={ editMode ? 'Edit message' : busy ? 'Queue another message…' : 'Write a message…' }
+                        submitOnEnter
+                        onSubmit={ (next, origin) => (editMode ? submitEdit(next) : void send(next, origin?.mod === true)) }
+                        onEscape={ editMode?.onCancel }
+                        // Files before text, as the zone around the page does: a file copied in Finder also puts its name on the clipboard as text.
+                        onPasteFiles={ attach.add }
                     />
-                ) }
 
-                { attach.files.length > 0 && (
-                    <Attachments size="sm" className={ styles.files }>
-                        { attach.files.map(file => (
-                            <PreviewableAttachment
-                                key={ file.key }
-                                data={ { id: file.key, filename: file.name, mediaType: file.mediaType, size: file.size, preview: file.preview } }
-                                loading={ file.status === 'uploading' }
-                                error={ file.status === 'error' }
-                                onRetry={ () => attach.retry(file.key) }
-                                onRemove={ () => attach.remove(file.key) }
-                            />
-                        )) }
-                    </Attachments>
-                ) }
+                    <div className={ styles.row }>
+                        <div className={ styles.start }>
+                            <Button variant="filling" color="secondary" size="sm" iconOnly aria-label="Attach files" tooltip="Attach files" onPress={ () => picker.current?.click() }>
+                                <Clip />
+                            </Button>
+                        </div>
+                        <input
+                            ref={ picker }
+                            type="file"
+                            multiple
+                            hidden
+                            aria-hidden
+                            tabIndex={ -1 }
+                            onChange={ event => {
+                                attach.add(Array.from(event.currentTarget.files ?? []));
+                                // The same file may be picked again.
+                                event.currentTarget.value = '';
+                                field.current?.focus();
+                            } }
+                        />
 
-                <RichInput
-                    ref={ field }
-                    value={ doc }
-                    onChange={ edit }
-                    triggers={ triggers }
-                    renderMention={ MentionChip }
-                    serializeMention={ serializeMention }
-                    autoFocus={ editMode !== undefined || !chat?.orchestratorRunId }
-                    className={ styles.field }
-                    minHeight={ minLines ? minLines * LINE_HEIGHT : undefined }
-                    aria-label={ editMode ? 'Edit message' : 'Message' }
-                    placeholder={ editMode ? 'Edit message' : busy ? 'Queue another message…' : 'Write a message…' }
-                    submitOnEnter
-                    onSubmit={ (next, origin) => (editMode ? submitEdit(next) : void send(next, origin?.mod === true)) }
-                    onEscape={ editMode?.onCancel }
-                    // Files before text, as the zone around the page does: a file copied in Finder also puts its name on the clipboard as text.
-                    onPasteFiles={ attach.add }
-                />
+                        <div className={ styles.end }>
+                            { /* The model and the context belong to the chat, not to a message that is sent again: an edit frame has neither. */ }
+                            { !editMode && (
+                                <>
+                                    <ContextRing chat={ chat } run={ run } />
 
-                <div className={ styles.row }>
-                    <div className={ styles.start }>
-                        <Button variant="filling" color="secondary" size="sm" iconOnly aria-label="Attach files" tooltip="Attach files" onPress={ () => picker.current?.click() }>
-                            <Clip />
-                        </Button>
+                                    { model.noProvider
+                                        ? <Unavailable label="Model" hint={ NO_PROVIDER_HINT }><ModelPickerOff /></Unavailable>
+                                        : <ModelPicker choice={ model.choice } providers={ model.providers } running={ running } onPick={ model.pick } /> }
+                                </>
+                            ) }
 
-                        { /* The mode, the model and the context belong to the chat, not to a message that is sent again: an edit frame has none of them. */ }
-                        { !editMode && (
-                            <Unavailable label="Mode" hint={ running ? 'The mode stays as it is while the orchestrator works' : undefined }>
-                                <ModePicker
-                                    mode={ target?.mode ?? draftMode }
-                                    // A chat made by a first message that failed keeps the mode it was made with.
-                                    isDisabled={ running || (!chat && made !== undefined) }
-                                    onPick={ (picked) => {
-                                        if (chat) void perform(root, { type: 'chat.setMode', chatId: chat.id, mode: picked });
-                                        else setPickedMode({ projectId: start?.projectId, mode: picked });
+                            <Unavailable label={ editMode ? 'Submit edit' : 'Send' } hint={ hasMessage ? blocked : undefined }>
+                                <ComposerSend
+                                    label={ editMode ? 'Submit edit' : undefined }
+                                    canSend={ hasMessage }
+                                    blocked={ blocked !== undefined }
+                                    isPending={ editMode?.isPending }
+                                    running={ running && !editMode }
+                                    waits={ busy && !editMode ? busyEnter.mode : undefined }
+                                    isStopping={ isStopping }
+                                    onSend={ () => {
+                                        if (editMode) {
+                                            submitEdit(doc);
 
-                                        // Every pick is remembered, as the model's is, for the next new chat that has no mode of its project's.
-                                        setRememberedMode(picked);
-                                        writeRememberedMode(picked);
+                                            return;
+                                        }
+
+                                        void send(doc);
+                                        // The button is off once the text is gone; the caret goes back to the field.
+                                        field.current?.focus();
                                     } }
+                                    onStop={ () => void stop() }
                                 />
                             </Unavailable>
-                        ) }
-                    </div>
-                    <input
-                        ref={ picker }
-                        type="file"
-                        multiple
-                        hidden
-                        aria-hidden
-                        tabIndex={ -1 }
-                        onChange={ event => {
-                            attach.add(Array.from(event.currentTarget.files ?? []));
-                            // The same file may be picked again.
-                            event.currentTarget.value = '';
-                            field.current?.focus();
-                        } }
-                    />
-
-                    <div className={ styles.end }>
-                        { !editMode && (
-                            <>
-                                <ContextRing chat={ chat } run={ run } />
-
-                                { model.noProvider
-                                    ? <Unavailable label="Model" hint={ NO_PROVIDER_HINT }><ModelPickerOff /></Unavailable>
-                                    : <ModelPicker choice={ model.choice } providers={ model.providers } running={ running } onPick={ model.pick } /> }
-                            </>
-                        ) }
-
-                        <Unavailable label={ editMode ? 'Submit edit' : 'Send' } hint={ hasMessage ? blocked : undefined }>
-                            <ComposerSend
-                                label={ editMode ? 'Submit edit' : undefined }
-                                canSend={ hasMessage }
-                                blocked={ blocked !== undefined }
-                                isPending={ editMode?.isPending }
-                                running={ running && !editMode }
-                                waits={ busy && !editMode ? busyEnter.mode : undefined }
-                                isStopping={ isStopping }
-                                onSend={ () => {
-                                    if (editMode) {
-                                        submitEdit(doc);
-
-                                        return;
-                                    }
-
-                                    void send(doc);
-                                    // The button is off once the text is gone; the caret goes back to the field.
-                                    field.current?.focus();
-                                } }
-                                onStop={ () => void stop() }
-                            />
-                        </Unavailable>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+
+            { /* The mode stands at the end of the line under the card, where the chat's other starting controls are. It belongs to the chat, not to a message that is sent again: an edit frame has no line. */ }
+            { !editMode && (
+                <ChatControls
+                    end={ (
+                        <Unavailable label="Mode" hint={ running ? 'The mode stays as it is while the orchestrator works' : undefined }>
+                            <ModePicker
+                                mode={ target?.mode ?? draftMode }
+                                // A chat made by a first message that failed keeps the mode it was made with.
+                                isDisabled={ running || (!chat && made !== undefined) }
+                                onPick={ (picked) => {
+                                    if (chat) void perform(root, { type: 'chat.setMode', chatId: chat.id, mode: picked });
+                                    else setPickedMode({ projectId: start?.projectId, mode: picked });
+
+                                    // Every pick is remembered, as the model's is, for the next new chat that has no mode of its project's.
+                                    setRememberedMode(picked);
+                                    writeRememberedMode(picked);
+                                } }
+                            />
+                        </Unavailable>
+                    ) }
+                >
+                    { controls }
+                </ChatControls>
+            ) }
+        </>
     );
 }
