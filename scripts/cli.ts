@@ -4,7 +4,7 @@
  *   ./clowdy dev [electron args]   Run the desktop app, rebuilding and reloading as you edit.
  *   ./clowdy build [mac|win]       Build the unpacked desktop app for an OS (default: this one).
  *   ./clowdy sync icons [...]      Pull the icon packs from Figma into `packages/icons`.
- *   ./clowdy worktree add|remove   Extra checkout for work that should not share this branch.
+ *   ./clowdy worktree add|remove   Extra checkout for work that should not share the working branch.
  *
  * `bun run clowdy <command>` does the same where `./clowdy` cannot run, such as Windows.
  */
@@ -21,7 +21,7 @@ Commands:
   dev [electron args]   Run the desktop app; the renderer is rebuilt and the window reloads as you edit, main and preload restart the app
   build [mac|win]       Build the unpacked desktop app into apps/desktop/release (default: this OS; mac needs a Mac)
   sync icons [pack ...]  Pull icon packs from Figma into packages/icons (--list, --json, auth, --help)
-  worktree add <slug>   New checkout at ../clowdy-<slug> on <nickname>/<slug> from origin/main
+  worktree add <slug>   New checkout at ../clowdy-<slug> on <nickname>/<slug> from the current commit
   worktree remove <slug>  Remove that checkout. Refuses uncommitted work
   help                  Show this help
 

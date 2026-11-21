@@ -1,5 +1,6 @@
 /**
- * Extra checkouts for work that should not share the current branch.
+ * Extra checkouts for work that should not share the working branch (GITFLOW.md, Worktrees).
+ * `add` starts from the current commit of the checkout it runs in, so from the main checkout that is `next`.
  *
  *   ./clowdy worktree add <slug>
  *   ./clowdy worktree remove <slug>
@@ -53,8 +54,6 @@ export async function addWorktree(repoRoot: string, slug: string): Promise<{ bra
     const branch = `${ nick }/${ slug }`;
     const destination = worktreePath(repoRoot, slug);
 
-    await git(repoRoot, ['fetch', 'origin', '--prune']);
-
     if (await gitOk(repoRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${ branch }`])) {
         die(`Branch ${ branch } already exists.`);
     }
@@ -67,8 +66,9 @@ export async function addWorktree(repoRoot: string, slug: string): Promise<{ bra
         die(`Path already exists: ${ destination }`);
     }
 
-    // --no-track: a start point of origin/main would otherwise set that as upstream.
-    await git(repoRoot, ['worktree', 'add', '--no-track', '-b', branch, destination, 'origin/main']);
+    // From HEAD, so the branch carries what the working branch holds, committed and not yet pushed. No fetch: it would
+    // need the owner's SSH key, and the branch is merged back locally. --no-track keeps the new branch off any upstream.
+    await git(repoRoot, ['worktree', 'add', '--no-track', '-b', branch, destination, 'HEAD']);
 
     return { branch, path: destination };
 }
