@@ -1,8 +1,11 @@
-/* Level with the message box's text and its attach button (the card's inset and one step in). */
+/*
+ * Flush with the message box's card: the pill's own inset (its padding and border) is the card's inset to the text, so the plate stands at the card's edge
+ * and the pill's icon is level with the box's text.
+ */
 .controls {
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
     min-width: 0;
-    padding: var(--spacing-md) var(--spacing-lg) 0;
+    padding: var(--spacing-md) 0 0;
 }
