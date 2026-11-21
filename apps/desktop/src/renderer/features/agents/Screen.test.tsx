@@ -3,8 +3,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID, type FixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
+import { hotkeys, installDispatcher } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { Screen } from './Screen';
 
@@ -243,6 +244,245 @@ describe('the new-chat row', () => {
         expect(rowKeys()).toEqual(['@new-chat']);
         expect(isSelected('@new-chat')).toBe(true);
         expect(field()).not.toBeNull();
+    });
+});
+
+describe('grouped by folder', () => {
+    const API = { id: 'fld_api', path: '/Users/dev/car-rental-api' };
+    const MAIN = 'fld_car_rental';
+    const head = (folderId: string) => `@folder:${ folderId }`;
+    const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]');
+    const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
+    const filtersMenu = async () => {
+        await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
+
+        return [...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent);
+    };
+
+    /** The fixture project with a second folder, `car-rental-api`, where c-2 works; the switch is on unless `grouping` says otherwise. */
+    async function restart({ grouping = true, transport = new FixtureTransport({ data: twoFolders() }) }: { grouping?: boolean; transport?: FixtureTransport } = {}) {
+        act(() => reactRoot.unmount());
+        store.dispose();
+        reactRoot = createRoot(container);
+        store = new RootStore(transport, { storage: memoryStorage() });
+        await store.load();
+        await draw(() => ui().setGroupByFolder(grouping));
+    }
+
+    function twoFolders(change?: (data: FixtureData) => void): FixtureData {
+        const data = createFixtureData();
+
+        data.projects.find(candidate => candidate.id === FIXTURE_PROJECT_ID)!.folders.push(API);
+        data.chats.find(chat => chat.id === 'c-2')!.folderId = API.id;
+        change?.(data);
+
+        return data;
+    }
+
+    it('offers the switch only to a project of several folders, off until it is pressed', async () => {
+        // The fixture project has one folder.
+        expect(await filtersMenu()).toEqual(['Finished threads', 'Last activity', 'Created']);
+
+        await restart({ grouping: false });
+
+        expect(await filtersMenu()).toEqual(['Finished threads', 'Group by folder', 'Last activity', 'Created']);
+        expect(menuItem('Group by folder').getAttribute('aria-checked')).toBe('false');
+        expect(rowKeys()).not.toContain(head(MAIN));
+
+        await press(menuItem('Group by folder'));
+        expect(ui().groupByFolder).toBe(true);
+        await draw();
+
+        expect(rowKeys()).toContain(head(MAIN));
+    });
+
+    it('keeps the list flat in a project of one folder, whatever was kept for it', async () => {
+        await draw(() => ui().setGroupByFolder(true));
+
+        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
+    });
+
+    it('lists a group for each folder, main first, with the chats that work in it below; a chat with no folder is in the main one', async () => {
+        await restart();
+
+        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', head(API.id), 'c-2']);
+        expect(rowOf(head(MAIN)).textContent).toContain('car-rental');
+        expect(rowOf(head(API.id)).textContent).toContain('car-rental-api');
+        // A group heading is no page: it is never the selected row.
+        expect(isSelected(head(API.id))).toBe(false);
+    });
+
+    it('says so under a group with no chat', async () => {
+        await restart({ transport: new FixtureTransport({ data: twoFolders(data => void delete data.chats.find(chat => chat.id === 'c-2')!.folderId) }) });
+
+        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2', head(API.id), `@empty:${ API.id }`]);
+        expect(rowOf(`@empty:${ API.id }`).textContent).toBe('No chats');
+    });
+
+    it('folds a group by a press on its heading and by the arrows, and remembers it', async () => {
+        await restart();
+        await press(rowOf(head(API.id)));
+
+        expect(ui().collapsedFolders).toEqual([API.id]);
+        await draw();
+        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', head(API.id)]);
+        expect(rowOf(head(API.id)).hasAttribute('data-collapsed')).toBe(true);
+
+        await press(rowOf(head(API.id)));
+        await draw();
+        expect(rowKeys()).toContain('c-2');
+
+        const key = (name: string) => act(async () => {
+            rowOf(head(MAIN)).dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+        });
+
+        await key('ArrowLeft');
+        expect(ui().collapsedFolders).toEqual([MAIN]);
+        await draw();
+        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), head(API.id), 'c-2']);
+        await key('ArrowRight');
+        expect(ui().collapsedFolders).toEqual([]);
+    });
+
+    it('steps J and K over the headings as the arrows do, and past a group\'s note of no chats', async () => {
+        await restart({ transport: new FixtureTransport({ data: twoFolders(data => void delete data.chats.find(chat => chat.id === 'c-2')!.folderId) }) });
+
+        const uninstall = installDispatcher(hotkeys);
+        const focused = () => document.activeElement?.getAttribute('data-key');
+        const step = async (name: string) => {
+            await act(async () => {
+                document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+            });
+
+            return focused();
+        };
+
+        try {
+            rowOf('@new-chat').focus();
+
+            expect(await step('j')).toBe(head(MAIN));
+            expect(await step('j')).toBe('c-1');
+
+            rowOf('c-2').focus();
+
+            expect(await step('j')).toBe(head(API.id));
+            // The note below the last heading is no row to stop on.
+            expect(await step('j')).toBe(head(API.id));
+            expect(await step('k')).toBe('c-2');
+
+            rowOf(head(MAIN)).focus();
+
+            expect(await step('k')).toBe('@new-chat');
+        }
+        finally {
+            uninstall();
+        }
+    });
+
+    it('opens the folded group of a chat opened from elsewhere', async () => {
+        await restart();
+        await draw(() => ui().toggleFolderCollapsed(API.id));
+
+        expect(rowKeys()).not.toContain('c-2');
+
+        await draw(() => ui().openChat('c-2'));
+        await draw();
+
+        expect(ui().collapsedFolders).toEqual([]);
+        expect(rowKeys()).toContain('c-2');
+        expect(isSelected('c-2')).toBe(true);
+    });
+
+    it('has a button in each heading for a chat in that folder: the main folder\'s starts as the new-chat row does, and the page says where', async () => {
+        await restart();
+        await press(buttonNamed('New chat in car-rental-api'));
+        await draw();
+
+        expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
+        expect(container.textContent).toContain('in car-rental-api');
+        // The page of another folder is marked on its heading, and the row at the top is free to start one in the main folder.
+        expect(isSelected('@new-chat')).toBe(false);
+        expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(true);
+
+        await press(rowOf('@new-chat'));
+        await draw();
+
+        expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
+        expect(isSelected('@new-chat')).toBe(true);
+        expect(container.textContent).toContain('in car-rental');
+        expect(container.textContent).not.toContain('in car-rental-api');
+        expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
+
+        // The main group's button is the same page as the row at the top.
+        await press(buttonNamed('New chat in car-rental-api'));
+        await press(buttonNamed('New chat in car-rental'));
+        await draw();
+
+        expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
+        expect(isSelected('@new-chat')).toBe(true);
+    });
+
+    it('shows the main folder\'s page when the folder the new-chat page was for left the project', async () => {
+        await restart();
+        await draw(() => ui().openDraft([], 'fld_gone'));
+
+        expect(isSelected('@new-chat')).toBe(true);
+        expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
+        expect(container.textContent).toContain('in car-rental');
+        expect(container.textContent).not.toContain('fld_gone');
+    });
+
+    it('reads what the daemon knows of the folders only while grouped, once, and not again on a timer', async () => {
+        vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+
+        try {
+            const transport = new FixtureTransport({ data: twoFolders() });
+            const read = vi.spyOn(transport, 'getProjectsInfo');
+
+            await restart({ grouping: false, transport });
+            expect(read).not.toHaveBeenCalled();
+
+            await draw(() => ui().setGroupByFolder(true));
+            expect(read).toHaveBeenCalledTimes(1);
+
+            await act(async () => void vi.advanceTimersByTime(60_000));
+            expect(read).toHaveBeenCalledTimes(1);
+        }
+        finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('makes the chat in the folder of the page it was started from', async () => {
+        const before = new Set(project().chats.keys());
+
+        await restart();
+        await press(buttonNamed('New chat in car-rental-api'));
+        await draw();
+        editor().commands.insertContent('Fix the endpoint');
+        await act(async () => {
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+        await draw();
+
+        const made = [...project().chats.values()].filter(chat => !before.has(chat.id));
+
+        expect(made).toHaveLength(1);
+        expect(made[0]?.folderId).toBe(API.id);
+    });
+
+    it('says a folder is gone by its name, and keeps its button off', async () => {
+        const transport = new FixtureTransport({ data: twoFolders() });
+        const info = await transport.getProjectsInfo();
+
+        vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(info.map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })) } : entry)));
+        await restart({ transport });
+        await draw();
+
+        expect(rowOf(head(API.id)).hasAttribute('data-missing')).toBe(true);
+        expect(rowOf(head(MAIN)).hasAttribute('data-missing')).toBe(false);
+        expect(buttonNamed('New chat in car-rental-api').disabled).toBe(true);
+        expect(buttonNamed('New chat in car-rental').disabled).toBe(false);
     });
 });
 

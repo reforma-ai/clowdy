@@ -70,6 +70,8 @@ export interface FolderView {
     isMain: boolean;
     /** The daemon found it gone. False until the folders have been read. */
     missing: boolean;
+    /** How many chats work in it by choice: they go back to the main folder when it leaves the project. Zero until the folders have been read. */
+    chats: number;
     remote?: RemoteLink;
 }
 
@@ -81,7 +83,7 @@ export function folderViews(project: Pick<Project, 'folders'>, info: Pick<Projec
         const read = info?.folders.find(entry => entry.folderId === folder.id);
         const remote = remoteLink(read?.remoteUrl);
 
-        return { folder, name: names[index] ?? folder.path, isMain: index === 0, missing: read?.exists === false, ...(remote && { remote }) };
+        return { folder, name: names[index] ?? folder.path, isMain: index === 0, missing: read?.exists === false, chats: read?.chats ?? 0, ...(remote && { remote }) };
     });
 }
 
@@ -103,6 +105,17 @@ export function newMainMessage(projectName: string, next: string, removed?: stri
     const disk = removed ? 'Nothing is moved, copied or deleted.' : 'Nothing is moved or copied.';
 
     return `${ move } ${ disk } An agent that worked in the old main folder starts a new conversation, so what it remembered may not carry over.`;
+}
+
+/**
+ * What taking a folder out of the project means for the chats that work in it, for its confirmation: they go back to the main folder, nothing on
+ * disk changes, and their next message starts a new conversation there.
+ */
+export function removedFolderMessage(chats: number, folderName: string, main: string): string {
+    const who = chats === 1 ? '1 chat works' : `${ chats } chats work`;
+    const them = chats === 1 ? 'It moves' : 'They move';
+
+    return `${ who } in ${ folderName }. ${ them } to ${ main }, the main folder, and the next message starts a new conversation there, so what the agent remembered may not carry over. Nothing is moved or deleted on disk.`;
 }
 
 /** `1 chat`, `2 chats`. */

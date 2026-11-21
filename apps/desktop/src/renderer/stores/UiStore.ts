@@ -27,6 +27,8 @@ export interface ProjectView {
     docFolderId: FolderId | null;
     /** Agents: the new-chat row is selected, and no chat exists yet. */
     draft: boolean;
+    /** Agents: the folder the new chat is for, `null` for the main folder. Meaningful only with `draft`. */
+    draftFolderId: FolderId | null;
 }
 
 /** Whether Settings covers the window, and on which page. The page is `null` while Settings is closed, because it does not show then. */
@@ -45,6 +47,8 @@ interface StoredProjectUi {
     chatSort: ChatSort;
     showFinishedThreads: boolean;
     expandedChats: ChatId[];
+    groupByFolder: boolean;
+    collapsedFolders: FolderId[];
     agentsFolded: boolean;
     tasksView: TasksView;
 }
@@ -54,7 +58,7 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'chatSort' | 'showFinishedThreads' | 'expandedChats' | 'agentsFolded' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'chatSort' | 'showFinishedThreads' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -80,6 +84,10 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
 
     if (params.get('expand')) initial.expandedChats = params.get('expand')!.split(',').filter(Boolean);
 
+    if (params.has('group')) initial.groupByFolder = params.get('group') !== '0';
+
+    if (params.get('collapsed')) initial.collapsedFolders = params.get('collapsed')!.split(',').filter(Boolean);
+
     if (params.has('agents')) initial.agentsFolded = params.get('agents') === 'folded';
 
     if (view === 'board' || view === 'list') initial.tasksView = view;
@@ -98,12 +106,21 @@ export class ProjectUi {
     docFolderId: FolderId | null = null;
     /** Agents: the new-chat row is selected, and the chat it starts does not exist until its first message is sent. Not kept between sessions. */
     draft = false;
+    /** Agents: the folder the new-chat page is for, `null` for the main folder. Not kept between sessions. */
+    draftFolderId: FolderId | null = null;
     /** Agents: the order of the chats. Last activity, which is where a chat that just got a message goes up to the top, until the person picks the order they were made in. */
     chatSort: ChatSort = 'activity';
     /** Agents: list a thread whose run is over. Off, such a thread is hidden unless something below it still works or it is the open chat. */
     showFinishedThreads = true;
     /** Agents: the chats whose threads the person opened in the list. A chat that is not here is folded, which is how every chat starts. */
     expandedChats: readonly ChatId[] = [];
+    /**
+     * Agents: the list has a group for each folder of the project, each with a new-chat button that starts a chat in that folder. Off, the list is flat and
+     * a new chat starts in the main folder. Only a project with several folders groups, whatever is kept here.
+     */
+    groupByFolder = false;
+    /** Agents: the folders whose group is folded in the list. A folder that is not here is open, which is how every group starts. */
+    collapsedFolders: readonly FolderId[] = [];
     /** Chats: the strip of running agents over the message box shows its line only, with the rows folded away. Kept for every chat of the project. */
     agentsFolded = false;
     tasksView: TasksView = 'board';
@@ -124,12 +141,14 @@ export class ProjectUi {
             this.chatSort = stored.chatSort === 'created' ? 'created' : 'activity';
             this.showFinishedThreads = stored.showFinishedThreads !== false;
             this.expandedChats = Array.isArray(stored.expandedChats) ? stored.expandedChats.filter(id => typeof id === 'string') : [];
+            this.groupByFolder = stored.groupByFolder === true;
+            this.collapsedFolders = Array.isArray(stored.collapsedFolders) ? stored.collapsedFolders.filter(id => typeof id === 'string') : [];
             this.agentsFolded = stored.agentsFolded === true;
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';
         }
 
         Object.assign(this, initial);
-        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, expandedChats: observableRef });
+        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, expandedChats: observableRef, collapsedFolders: observableRef });
         reaction(
             (): StoredProjectUi => ({
                 section: this.section,
@@ -141,6 +160,8 @@ export class ProjectUi {
                 chatSort: this.chatSort,
                 showFinishedThreads: this.showFinishedThreads,
                 expandedChats: [...this.expandedChats],
+                groupByFolder: this.groupByFolder,
+                collapsedFolders: [...this.collapsedFolders],
                 agentsFolded: this.agentsFolded,
                 tasksView: this.tasksView,
             }),
@@ -150,11 +171,11 @@ export class ProjectUi {
 
     /** The place the window shows, as a value that can be kept and shown again with `show`. */
     get view(): ProjectView {
-        return { section: this.section, chatId: this.chatId, taskId: this.taskId, runId: this.runId, docPath: this.docPath, docFolderId: this.docFolderId, draft: this.draft };
+        return { section: this.section, chatId: this.chatId, taskId: this.taskId, runId: this.runId, docPath: this.docPath, docFolderId: this.docFolderId, draft: this.draft, draftFolderId: this.draftFolderId };
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ section, chatId, taskId, runId, docPath, docFolderId, draft }: ProjectView): void {
+    show({ section, chatId, taskId, runId, docPath, docFolderId, draft, draftFolderId }: ProjectView): void {
         this.section = section;
         this.chatId = chatId;
         this.taskId = taskId;
@@ -162,6 +183,7 @@ export class ProjectUi {
         this.docPath = docPath;
         this.docFolderId = docFolderId;
         this.draft = draft;
+        this.draftFolderId = draftFolderId;
     }
 
     /** Shows the chat, in the Agents section; `null` leaves none selected. */
@@ -170,16 +192,19 @@ export class ProjectUi {
         this.chatId = chatId;
         this.runId = null;
         this.draft = false;
+        this.draftFolderId = null;
     }
 
     /**
      * Shows the new-chat row of the Agents section: a chat that is only made when its first message is sent. `attach` are files for
-     * its message box (a hand-off brings the old conversation this way): the page picks them up with `takePendingFiles`.
+     * its message box (a hand-off brings the old conversation this way): the page picks them up with `takePendingFiles`. `folderId` is the folder
+     * of the project the chat is made for, `null` for the main folder.
      */
-    openDraft(attach: readonly File[] = []): void {
+    openDraft(attach: readonly File[] = [], folderId: FolderId | null = null): void {
         this.section = 'agents';
         this.runId = null;
         this.draft = true;
+        this.draftFolderId = folderId;
 
         if (attach.length > 0) this.pendingFiles = [...this.pendingFiles, ...attach];
     }
@@ -204,6 +229,7 @@ export class ProjectUi {
         this.section = 'agents';
         this.runId = runId;
         this.draft = false;
+        this.draftFolderId = null;
     }
 
     /** Shows a document in the Documents section: its path under the docs folder of `folderId`, the main folder's when none is named. */
@@ -231,6 +257,20 @@ export class ProjectUi {
         const closed = chatIds.filter(id => !this.expandedChats.includes(id));
 
         if (closed.length > 0) this.expandedChats = [...this.expandedChats, ...closed];
+    }
+
+    setGroupByFolder(group: boolean): void {
+        this.groupByFolder = group;
+    }
+
+    /** Folds the group of a folder in the list, or opens it again. */
+    toggleFolderCollapsed(folderId: FolderId): void {
+        this.collapsedFolders = this.collapsedFolders.includes(folderId) ? this.collapsedFolders.filter(id => id !== folderId) : [...this.collapsedFolders, folderId];
+    }
+
+    /** Opens the group of a folder, for a chat in it that was opened from elsewhere. Nothing changes when it is open already. */
+    expandFolder(folderId: FolderId): void {
+        if (this.collapsedFolders.includes(folderId)) this.collapsedFolders = this.collapsedFolders.filter(id => id !== folderId);
     }
 
     /** Folds the rows of the running-agents strip under its line, or shows them again. */

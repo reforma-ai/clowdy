@@ -1,4 +1,4 @@
-import { isTerminalRunStatus, type Chat, type ChatId, type Run, type RunId } from '@clowdy/protocol';
+import { folderNames, isTerminalRunStatus, mainFolder, type Chat, type ChatId, type FolderId, type ProjectFolder, type Run, type RunId } from '@clowdy/protocol';
 
 import { isRunActive } from '../chats/chatRun';
 
@@ -104,6 +104,54 @@ export function visibleChats(chatList: readonly Chat[], sort: ChatSort = 'activi
     const inUse = new Set(chatList.filter(chat => chat.archivedAt === undefined).map(chat => chat.id));
 
     return ordered.filter(chat => chat.archivedAt === undefined && (chat.parentChatId === undefined || !inUse.has(chat.parentChatId)));
+}
+
+/** One folder's part of the grouped list: its chats at depth 0, in the order `visibleChats` gave them. */
+export interface AgentGroup {
+    folder: ProjectFolder;
+    /** The folder's short name, which tells the project's folders apart (`folderNames`). */
+    name: string;
+    isMain: boolean;
+    roots: Chat[];
+}
+
+/** The folder with this id, else the main one: no id follows the main folder, and one the project no longer has was handed back to it. */
+export function folderById(folders: readonly ProjectFolder[], folderId: FolderId | null | undefined): ProjectFolder {
+    return folders.find(folder => folder.id === folderId) ?? mainFolder({ folders: [...folders] });
+}
+
+/** The folder a new chat of the grouped list is for: the one `draftFolderId` names, else the main one (see `folderById`), with its short name. */
+export function draftTarget(folders: readonly ProjectFolder[], draftFolderId: FolderId | null | undefined): Pick<AgentGroup, 'folder' | 'name' | 'isMain'> {
+    const folder = folderById(folders, draftFolderId);
+    const index = folders.indexOf(folder);
+
+    return { folder, name: folderNames(folders)[index] ?? folder.path, isMain: index === 0 };
+}
+
+/**
+ * The root chats split by folder, one group per folder of the project in the project's order (main first), a folder with no chat included. A chat with
+ * no folder follows the main folder, so it stands in the main group. Each group keeps the order of `roots`.
+ */
+export function agentGroups(roots: readonly Chat[], folders: readonly ProjectFolder[]): AgentGroup[] {
+    const names = folderNames(folders);
+    const groups = folders.map((folder, index): AgentGroup => ({ folder, name: names[index] ?? folder.path, isMain: index === 0, roots: [] }));
+
+    for (const chat of roots) {
+        const { id } = folderById(folders, chat.folderId);
+
+        groups.find(group => group.folder.id === id)?.roots.push(chat);
+    }
+
+    return groups;
+}
+
+/** The folder whose group lists a chat: the folder of the chat the person made that it sits below (a thread is below its parent, in its group). */
+export function groupFolderOf(chats: ReadonlyMap<ChatId, Chat>, folders: readonly ProjectFolder[], chatId: ChatId): FolderId | undefined {
+    const chat = chats.get(chatId);
+
+    if (!chat) return undefined;
+
+    return folderById(folders, (ancestorChats(chats, chatId).at(-1) ?? chat).folderId).id;
 }
 
 /**

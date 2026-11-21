@@ -41,7 +41,7 @@
 
 **This stage:** a chat learns which folder of its project it works in. `chat.create` takes a folder, the chat keeps it, and every turn of the chat's orchestrator works there (the main folder when it has none); a thread inherits its parent's. When a project loses a folder, the chats that worked in it fall back to the main folder, and `ProjectInfo` counts the chats of each folder so the app can warn before a removal. The desktop app only gets what keeps it compiling and its fixture daemon like the real one.
 
-- [ ] Complete
+- [x] Complete
   - [x] Protocol: `Chat.folderId`, `folderId` on `chat.create`, `ProjectFolderInfo.chats`
   - [x] Migration 17: `chats.folder_id`, with no foreign key (`upsertProject` rewrites the folder rows, which would clear it)
   - [x] `chat.create` with a `folderId` that is not a folder of the project is `invalid`; a valid one is stored on the chat
@@ -67,7 +67,7 @@
 
 **Done when:** a chat made with a folder of its project runs its turns in that folder (the fake engine reports its `cwd`), a thread of it does too, and removing the folder through `project.update` leaves the chat without a folder and its next turn in the main folder.
 **Verify:** `bun run --cwd apps/daemon test`, `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`
-**Commits:** None yet.
+**Commits:** `2fcef97` feat(daemon): let a chat work in a folder of its project.
 
 ## Stage 2 — Desktop: the grouped Agents list
 
@@ -75,14 +75,14 @@
 
 **This stage:** the Agents list can be grouped by folder. The `⋯` menu gets the switch (only for a project with several folders), the list shows a heading per folder with its chats below, a fold and a button that opens a draft in that folder, and the draft says which folder it is for and creates its chat there. Removing a folder that chats work in asks first and says how many.
 
-- [ ] Complete
-  - [ ] `ProjectUi`: `groupByFolder` and `collapsedFolders` kept per project, a draft that carries its folder (`openDraft` takes it, `ProjectView` keeps it for back and forward)
-  - [ ] `agentGroups`: the root chats split into one group per folder of the project in order, a chat with no folder, or one whose folder the project no longer has, in the main folder's group
-  - [ ] `AgentList` draws a heading row per group (name, the chevron after it, the new-chat button on hover and focus, a warning when the folder is missing and the button off), the group's chats below it unless it is folded, `No chats` in an empty open group; the arrows, J and K, Right and Left keep working across headings
-  - [ ] The "Group by folder" entry in the heading's `⋯` menu, offered only when the project has two or more folders; with the switch off the list is the flat one it is today
-  - [ ] The draft shows `in <folder name>` while the switch is on, and its first message sends `chat.create` with that folder, none for the main folder
-  - [ ] Removing a folder that has chats asks first, with how many chats go back to the main folder
-  - [ ] Tests, `apps/desktop/AGENTS.md`, and the fixture project that has several folders and chats in them
+- [x] Complete
+  - [x] `ProjectUi`: `groupByFolder` and `collapsedFolders` kept per project, a draft that carries its folder (`openDraft` takes it, `ProjectView` keeps it for back and forward)
+  - [x] `agentGroups`: the root chats split into one group per folder of the project in order, a chat with no folder, or one whose folder the project no longer has, in the main folder's group
+  - [x] `AgentList` draws a heading row per group (name, the chevron after it, the new-chat button on hover and focus, a warning when the folder is missing and the button off), the group's chats below it unless it is folded, `No chats` in an empty open group; the arrows, J and K, Right and Left keep working across headings
+  - [x] The "Group by folder" entry in the heading's `⋯` menu, offered only when the project has two or more folders; with the switch off the list is the flat one it is today
+  - [x] The draft shows `in <folder name>` while the switch is on, and its first message sends `chat.create` with that folder, none for the main folder
+  - [x] Removing a folder that has chats asks first, with how many chats go back to the main folder
+  - [x] Tests, `apps/desktop/AGENTS.md`, and the fixture project that has several folders and chats in them
 
 **Files**
 
@@ -97,7 +97,6 @@
 - `apps/desktop/src/renderer/features/settings/projects/ProjectFolders.tsx` — hands `removeFolder` the folder's chat count from `info`
 - `apps/desktop/src/renderer/features/agents/agentTree.test.ts`, `Screen.test.tsx`, `apps/desktop/src/renderer/stores/UiStore.test.ts` (or the store's existing test file), `apps/desktop/src/renderer/features/settings/projects/ProjectsPage.test.tsx` — the groups, the list, the switch and folds, the draft's folder, the removal confirmation
 - `apps/desktop/AGENTS.md` — the Agents list's grouping, the draft's folder, the removal confirmation
-- `BACKLOG.md` — tick "Group chats by folders"
 
 **Done when:** with the switch on in a project of two folders, the list shows a group per folder, the button of the second group opens a draft that says `in <folder>`, and its first message makes a chat whose agent works in that folder.
 **Verify:** `bun run --cwd apps/desktop test`, `bun run typecheck`, `bun run lint`, then the app on a real daemon with the fake engine (`apps/desktop/AGENTS.md`, fixtures and real-daemon checks)

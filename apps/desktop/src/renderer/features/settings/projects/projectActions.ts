@@ -4,7 +4,7 @@ import { folderNames, mainFolder, NO_PROJECT_ICON } from '@clowdy/protocol';
 import { runInAction } from 'mobx';
 
 import { perform } from '../../chats/commands';
-import { newMainMessage, removalMessage } from './projectView';
+import { newMainMessage, removalMessage, removedFolderMessage } from './projectView';
 import { MAX_ICON_SOURCE_BYTES, squareIcon } from './squareIcon';
 
 import type { Project, ProjectFolder, ProjectInfo, ProjectSettings } from '@clowdy/protocol';
@@ -136,22 +136,28 @@ export async function reorderFolders(root: RootStore, project: Project, folders:
 }
 
 /**
- * Takes a folder out of the project; the folder and its files stay on disk. Without the main folder the next one becomes main, which asks
- * first; another folder goes at once. Resolves to whether it was removed.
+ * Takes a folder out of the project; the folder and its files stay on disk. Without the main folder the next one becomes main, which asks first;
+ * another folder goes at once, unless chats work in it (`chats`, from the daemon's info): they go back to the main folder, which asks first too.
+ * Resolves to whether it was removed.
  */
-export async function removeFolder(root: RootStore, project: Project, folder: ProjectFolder): Promise<boolean> {
+export async function removeFolder(root: RootStore, project: Project, folder: ProjectFolder, chats = 0): Promise<boolean> {
     const folders = project.folders.filter(other => other.id !== folder.id);
 
     // A project has at least one folder: its last one is not offered for removal.
     if (folders.length === 0) return false;
 
-    if (folder.id !== mainFolder(project).id) return (await perform(root, { type: 'project.update', projectId: project.id, folders: folderEntries(folders) })).ok;
-
-    const next = mainFolder({ folders });
-    const name = folderNames(project.folders)[0] ?? folder.path;
+    const names = folderNames(project.folders);
+    const name = names[project.folders.findIndex(other => other.id === folder.id)] ?? folder.path;
     const change = (current: readonly ProjectFolder[]) => current.filter(other => other.id !== folder.id);
+    const isMain = folder.id === mainFolder(project).id;
 
-    return confirmNewMain(root, project, change, { title: `Remove ${ name }?`, message: newMainMessage(project.name, next.path, folder.path), confirmLabel: 'Remove folder' });
+    if (!isMain && chats === 0) return (await perform(root, { type: 'project.update', projectId: project.id, folders: folderEntries(folders) })).ok;
+
+    const message = isMain
+        ? newMainMessage(project.name, mainFolder({ folders }).path, folder.path)
+        : removedFolderMessage(chats, name, names[0] ?? mainFolder(project).path);
+
+    return confirmNewMain(root, project, change, { title: `Remove ${ name }?`, message, confirmLabel: 'Remove folder' });
 }
 
 /** Asks, then removes the project from Clowdy. Its folders are never touched. */

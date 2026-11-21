@@ -8,10 +8,11 @@ import type { ProjectId, ProjectInfo } from '@clowdy/protocol';
 const POLL_MS = 10_000;
 
 /**
- * What the daemon reads about each project (`getProjectsInfo`): asked when the page opens, when the list of projects changes and every
- * ten seconds while the window is visible. A failed read keeps what was known, and `failed` says the last one did.
+ * What the daemon reads about each project (`getProjectsInfo`): asked when the page opens, when the list of projects changes and, unless `poll` is
+ * off, every ten seconds while the window is visible. A failed read keeps what was known, and `failed` says the last one did. With `enabled` off
+ * nothing is read (a screen that needs the answer only sometimes).
  */
-export function useProjectsInfo(): { info: ReadonlyMap<ProjectId, ProjectInfo>; failed: boolean } {
+export function useProjectsInfo({ enabled = true, poll = true }: { enabled?: boolean; poll?: boolean } = {}): { info: ReadonlyMap<ProjectId, ProjectInfo>; failed: boolean } {
     const root = useRootStore();
     const [info, setInfo] = useState<ReadonlyMap<ProjectId, ProjectInfo>>(new Map());
     const [failed, setFailed] = useState(false);
@@ -36,20 +37,22 @@ export function useProjectsInfo(): { info: ReadonlyMap<ProjectId, ProjectInfo>; 
     }, [root]);
 
     useEffect(() => {
-        reload();
-    }, [reload, projects]);
+        if (enabled) reload();
+    }, [enabled, reload, projects]);
 
     useEffect(() => {
-        const timer = setInterval(() => {
-            if (!document.hidden) reload();
-        }, POLL_MS);
+        const timer = enabled && poll
+            ? setInterval(() => {
+                if (!document.hidden) reload();
+            }, POLL_MS)
+            : undefined;
 
         return () => {
             clearInterval(timer);
             // An answer that arrives after the page is gone must not set state.
             latest.current++;
         };
-    }, [reload]);
+    }, [enabled, poll, reload]);
 
     return { info, failed };
 }
