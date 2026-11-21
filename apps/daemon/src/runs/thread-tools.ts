@@ -32,7 +32,7 @@ export function threadTools({ threads }: ToolDeps, run: Run): ToolDefinition[] {
             effort: z.string().optional().describe('The reasoning level, in the agent\'s own spelling'),
             mode: z.enum(['autopilot', 'semi']).optional().describe('autopilot decides alone; semi asks the person at significant forks. Default your mode'),
             tasks: z.array(taskRef).optional().describe('Tasks the thread works on: it is assigned to them, and waits while their dependencies are not Done'),
-            cwd: z.string().optional().describe('Absolute path of an existing folder the thread works in (a git worktree you made, say); default the project\'s main folder'),
+            cwd: z.string().optional().describe('Absolute path of an existing folder the thread works in (a git worktree you made, say); default the folder this chat works in'),
         }), input => ({
             ...threads.spawn(run, input),
             note: 'The daemon sends you a message each time this thread stops, with its final answer, and starts a turn of yours for it when you are at rest. Do not poll it or wait for it in a loop: go on with your own work, or end your turn if you have none.',

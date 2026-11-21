@@ -81,7 +81,7 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
                 renderDetails={ view => <FolderState project={ project } view={ view } /> }
                 renderActions={ view => view.remote && <RemoteButton remote={ view.remote } /> }
                 // A project has at least one folder.
-                onRemove={ views.length > 1 ? view => removeFolder(root, project, view.folder) : undefined }
+                onRemove={ views.length > 1 ? view => removeFolder(root, project, view.folder, view.chats) : undefined }
                 isRemoveDisabled={ view => view.isMain && working }
                 onReorder={ reorder }
                 canDrop={ working ? keepsMain : undefined }

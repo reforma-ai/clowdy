@@ -32,8 +32,8 @@ let root: Root;
 let sent: CommandInput[];
 let started: string[];
 
-/** `answer` says what the daemon answers to each command, in the order they are sent. Drawn again for another `projectId`, it is the same composer on another project's page. */
-async function mount(answer: (input: CommandInput) => CommandResult | Promise<CommandResult>, minLines?: number, projectId = 'p') {
+/** `answer` says what the daemon answers to each command, in the order they are sent. Drawn again for another `projectId` or `folderId`, it is the same composer on another project's or folder's page. */
+async function mount(answer: (input: CommandInput) => CommandResult | Promise<CommandResult>, minLines?: number, projectId = 'p', folderId?: string) {
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
 
@@ -44,7 +44,7 @@ async function mount(answer: (input: CommandInput) => CommandResult | Promise<Co
     await act(async () => {
         root.render(
             <RootStoreProvider value={ store as unknown as RootStore }>
-                <Composer chat={ undefined } run={ undefined } minLines={ minLines } start={ { projectId, onStarted: chatId => started.push(chatId) } } />
+                <Composer chat={ undefined } run={ undefined } minLines={ minLines } start={ { projectId, folderId, onStarted: chatId => started.push(chatId) } } />
             </RootStoreProvider>
         );
     });
@@ -133,6 +133,39 @@ describe('Composer without a chat', () => {
         expect(sent.map(input => input.type)).toEqual(['chat.create', 'chat.send', 'chat.send']);
         expect(sent[2]).toEqual({ type: 'chat.send', chatId: 'c-new', text: 'Build the thing', mode: 'steer' });
         expect(started).toEqual(['c-new']);
+    });
+
+    it('makes the chat in the folder the page is for, and in none for the main folder', async () => {
+        await mount(input => (input.type === 'chat.create' ? accepted({ chat: { ...made, folderId: 'fld-api' } }) : accepted()), undefined, 'p', 'fld-api');
+        type('Fix the endpoint');
+        await pressEnter();
+
+        expect(sent[0]).toEqual({ type: 'chat.create', projectId: 'p', folderId: 'fld-api', mode: 'autopilot', engine: 'claude', model: 'opus', effort: 'high' });
+
+        sent = [];
+        await mount(input => (input.type === 'chat.create' ? accepted({ chat: made }) : accepted()));
+        type('Fix the page');
+        await pressEnter();
+
+        expect(sent[0]).not.toHaveProperty('folderId');
+    });
+
+    it('does not send the message of another folder\'s page to the chat a failed message left in this one', async () => {
+        await mount((input) => {
+            if (input.type === 'chat.create') return accepted({ chat: { ...made, folderId: 'fld-api' } });
+
+            return refused;
+        }, undefined, 'p', 'fld-api');
+        type('Fix the endpoint');
+        await pressEnter();
+
+        // The same composer, drawn again for the main folder: the chat made for the api folder is not its chat.
+        sent = [];
+        await mount(input => (input.type === 'chat.create' ? accepted({ chat: { ...made, id: 'c-main' } }) : accepted()));
+        await pressEnter();
+
+        expect(sent.map(input => input.type)).toEqual(['chat.create', 'chat.send']);
+        expect(sent[1]).toMatchObject({ type: 'chat.send', chatId: 'c-main' });
     });
 
     it('starts the chat in the mode it offers: Hands-off', async () => {

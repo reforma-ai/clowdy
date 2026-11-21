@@ -52,8 +52,11 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('project.reorder'), projectIds: z.array(z.string()).max(1000) }),
 
     /* Chats */
-    /** `engine`, `model` and `effort` bind the chat to an agent, a model and a reasoning level (see `Chat`); left out, the first message takes the project's or the daemon's. */
-    z.object({ ...base, type: z.literal('chat.create'), projectId: z.string(), title: z.string().optional(), mode: chatMode.optional(), engine: engine.optional(), model: model.optional(), effort: effort.optional() }),
+    /**
+     * `engine`, `model` and `effort` bind the chat to an agent, a model and a reasoning level (see `Chat`); left out, the first message takes the project's or the daemon's.
+     * `folderId` is a folder of the project the chat works in; left out, the chat works in the main folder. A folder the project does not have is refused.
+     */
+    z.object({ ...base, type: z.literal('chat.create'), projectId: z.string(), title: z.string().optional(), mode: chatMode.optional(), engine: engine.optional(), model: model.optional(), effort: effort.optional(), folderId: z.string().min(1).optional() }),
     z.object({ ...base, type: z.literal('chat.rename'), chatId: z.string(), title: z.string().min(1) }),
     z.object({ ...base, type: z.literal('chat.setMode'), chatId: z.string(), mode: chatMode }),
     /**

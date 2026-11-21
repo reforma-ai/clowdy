@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { agentRows, ancestorChats, archivedChats, chatDotTone, chatOfRun, isActiveThread, isFinishedThread, resolveSelection, visibleChats, type AgentRowsInput } from './agentTree';
+import { agentGroups, agentRows, ancestorChats, archivedChats, chatDotTone, chatOfRun, draftTarget, folderById, groupFolderOf, isActiveThread, isFinishedThread, resolveSelection, visibleChats, type AgentRowsInput } from './agentTree';
 
-import type { Chat, Run, RunStatus } from '@clowdy/protocol';
+import type { Chat, ProjectFolder, Run, RunStatus } from '@clowdy/protocol';
 
 let clock = 0;
 
@@ -42,6 +42,59 @@ describe('visibleChats', () => {
 
         expect(visibleChats(made, 'created').map(candidate => candidate.id)).toEqual(['chat-3', 'chat-1']);
         expect(visibleChats(made, 'activity').map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
+    });
+});
+
+describe('the groups of the list by folder', () => {
+    const folders: ProjectFolder[] = [{ id: 'f-web', path: '/dev/web' }, { id: 'f-api', path: '/dev/api' }, { id: 'f-notes', path: '/dev/notes' }];
+    const inFolder = (id: string, folderId?: string, rest: Partial<Chat> = {}): Chat => ({ ...chat(id), ...(folderId && { folderId }), ...rest });
+
+    it('makes a group for each folder in the project\'s order, an empty one too, with the folder\'s name and the main one marked', () => {
+        const groups = agentGroups([], folders);
+
+        expect(groups.map(group => [group.folder.id, group.name, group.isMain, group.roots.length])).toEqual([
+            ['f-web', 'web', true, 0],
+            ['f-api', 'api', false, 0],
+            ['f-notes', 'notes', false, 0],
+        ]);
+    });
+
+    it('puts each chat in the group of its folder, keeping the order it was given, and a chat with no folder in the main one', () => {
+        const roots = [inFolder('a', 'f-api'), inFolder('b'), inFolder('c', 'f-notes'), inFolder('d', 'f-api'), inFolder('e')];
+        const groups = agentGroups(roots, folders);
+
+        expect(groups.map(group => group.roots.map(candidate => candidate.id))).toEqual([['b', 'e'], ['a', 'd'], ['c']]);
+    });
+
+    it('leaves a chat of a folder the project no longer has in the main group', () => {
+        expect(agentGroups([inFolder('a', 'f-gone')], folders)[0]?.roots.map(candidate => candidate.id)).toEqual(['a']);
+        expect(folderById(folders, 'f-gone').id).toBe('f-web');
+        expect(folderById(folders, null).id).toBe('f-web');
+        expect(folderById(folders, 'f-api').id).toBe('f-api');
+    });
+
+    it('tells which folder a new chat is for, by its name, with the main one when none is named or the folder is gone', () => {
+        const target = (id: string | null) => {
+            const { folder, name, isMain } = draftTarget(folders, id);
+
+            return [folder.id, name, isMain];
+        };
+
+        expect(target('f-api')).toEqual(['f-api', 'api', false]);
+        expect(target('f-web')).toEqual(['f-web', 'web', true]);
+        expect(target(null)).toEqual(['f-web', 'web', true]);
+        expect(target('f-gone')).toEqual(['f-web', 'web', true]);
+    });
+
+    it('names a chat\'s group by the chat the person made that it sits below, which a thread shares', () => {
+        const family = new Map([inFolder('root', 'f-api'), inFolder('thread', 'f-api', { parentChatId: 'root' }), inFolder('deep', undefined, { parentChatId: 'thread' }), inFolder('plain')].map(candidate => [candidate.id, candidate]));
+
+        expect(groupFolderOf(family, folders, 'root')).toBe('f-api');
+        expect(groupFolderOf(family, folders, 'thread')).toBe('f-api');
+        // The root decides, whatever a thread below it says.
+        expect(groupFolderOf(family, folders, 'deep')).toBe('f-api');
+        expect(groupFolderOf(family, folders, 'plain')).toBe('f-web');
+        expect(groupFolderOf(family, folders, 'ghost')).toBeUndefined();
     });
 });
 

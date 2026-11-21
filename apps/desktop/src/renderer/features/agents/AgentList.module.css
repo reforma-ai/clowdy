@@ -71,3 +71,34 @@
 .nested.nested {
     padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) + var(--depth) * var(--spacing-20));
 }
+
+/*
+ * The heading of a folder's group: the folder's name, and the chevron after it, with the group's new-chat button at the row's end. It has no icon, so the
+ * name starts where the icons of the chats below it do, and a gap above it sets the group apart from the one before. A missing folder's name is the
+ * warning's colour.
+ */
+.group {
+    margin-block-start: var(--spacing-md);
+}
+
+.group[data-missing] {
+    color: var(--color-warning-text);
+}
+
+.groupTitle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.groupChevron {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+/* The note of a group with no chat: a chat's own row, drawn in the muted colour, and nothing to press. */
+.empty {
+    color: var(--color-secondary-muted-text);
+}

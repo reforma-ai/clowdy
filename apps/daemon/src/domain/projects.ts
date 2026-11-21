@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node
 import { stat } from 'node:fs/promises';
 import { basename, isAbsolute, join, sep } from 'node:path';
 
+import { chatCountsByFolder, clearChatFolders } from '../db/chats';
 import {
     deleteProjectRow,
     getPersonalProject,
@@ -388,6 +389,11 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
         publishProject(store, next);
 
         if (foldersChanged) {
+            // A chat that worked in a folder that left goes back to the main folder: its next turn starts a new conversation there.
+            for (const chat of clearChatFolders(store.db, projectId, folders.map(folder => folder.id))) {
+                store.emit(projectId, { type: 'chat.upserted', chat });
+            }
+
             // The project's skills come from its folders, so a catalog read before is out of date.
             store.emit(projectId, { type: 'skills.changed' });
             // The watchers hold the old folders; the next request for docs or skills watches the new ones. A folder another project
@@ -476,7 +482,7 @@ async function isFolder(path: string): Promise<boolean> {
  * another, so a long list never starts a crowd of processes.
  */
 export async function projectsInfo(store: Store): Promise<ProjectInfo[]> {
-    const { projects, counts } = store.read(() => ({ projects: listProjects(store.db), counts: projectCounts(store.db) }));
+    const { projects, counts, chatsIn } = store.read(() => ({ projects: listProjects(store.db), counts: projectCounts(store.db), chatsIn: chatCountsByFolder(store.db) }));
     const info: ProjectInfo[] = [];
 
     for (const project of projects) {
@@ -486,7 +492,7 @@ export async function projectsInfo(store: Store): Promise<ProjectInfo[]> {
             const exists = await isFolder(folder.path);
             const remoteUrl = exists ? await gitLine(folder.path, ['remote', 'get-url', 'origin']) : undefined;
 
-            folders.push({ folderId: folder.id, exists, ...(remoteUrl && { remoteUrl }) });
+            folders.push({ folderId: folder.id, exists, ...(remoteUrl && { remoteUrl }), chats: chatsIn.get(folder.id) ?? 0 });
         }
 
         info.push({ projectId: project.id, folders, ...(counts.get(project.id) ?? { chats: 0, tasks: 0, activeRuns: 0 }) });
