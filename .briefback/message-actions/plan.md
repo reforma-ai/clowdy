@@ -256,11 +256,11 @@
 
 **This stage:** The optional polish. Reply on a whole message becomes a messenger-style quote card above the composer (per chat key, removable with an X, sent as a `> ` block before the message text); a selection still inserts `> text`. A horizontal trackpad scroll over a message (and a pointer drag where one exists) pulls the message sideways and triggers Reply past a threshold; vertical scrolling is not touched. A Chat setting turns the swipe off.
 
-- [ ] Complete
-  - [ ] Reply card: per-key state beside drafts and files, rendered above the field, cleared with the draft on send, restored on a failed send; the sent text is `> quoted` + blank line + the message
-  - [ ] Swipe gesture on rows with Reply, resistance and snap-back, threshold, no interference with vertical scroll or text selection
-  - [ ] `Swipe a message to reply` row on the Chat page with a `Switch`, preference on this computer, default on, with a reset in tests
-  - [ ] Tests for the card lifecycle, the gesture decision logic and the setting
+- [x] Complete
+  - [x] Reply card: per-key state beside drafts and files, rendered above the field, cleared with the draft on send, restored on a failed send; the sent text is `> quoted` + blank line + the message
+  - [x] Swipe gesture on rows with Reply, resistance and snap-back, threshold, no interference with vertical scroll or text selection
+  - [x] `Swipe a message to reply` row on the Chat page with a `Switch`, preference on this computer, default on, with a reset in tests
+  - [x] Tests for the card lifecycle, the gesture decision logic and the setting
 
 **Files**
 
@@ -273,8 +273,21 @@
 
 **Done when:** Reply on a whole message shows a card above the composer that is sent as a quote, a sideways scroll on a message does the same unless the setting is off.
 **Verify:** `cd apps/desktop && bun run test && bun run lint && bun run typecheck`, then `bun scripts/screenshot.ts`
-**Commits:** None yet.
+**Commits:**
+
+- Committed `d1b031f` feat(desktop): reply with a quote card, swipe to reply and a setting for it (signed on the retry, after the signing agent had refused earlier attempts). Beyond the plan: a message root pulled sideways needs `.scroll { overflow-x: hidden }` in `StreamView.module.css`; both swipe directions fire Reply (the wheel cannot tell natural scrolling); the Reply mark follows the pointer height; the card shows the quoted source as written, so Markdown marks appear raw. Follow-ups: render the first lines of the card through the static `Markdown`; end a pen drag when `pointermove` reports `buttons === 0`.
+
 
 ## Order of work
 
 Stage 1 and Stage 3 touched disjoint trees (renderer, daemon) and ran together; Stage 2 (renderer) ran with Stage 4 (daemon). Stage 5 (daemon, store, fixtures) runs with Stage 6 (renderer stream and chats), which owns different files. Stage 7 follows Stage 5 and Stage 6, Stage 8 closes. Concurrent workers own disjoint files; the coordinator commits each stage separately and stages only that stage's files. When signing fails, stage trees are recorded as in the `git-signing-needs-owner` note and the commit is retried at the end.
+
+## Follow-ups after the last stage
+
+- Codex: rerun the real fork and edit check on or after 2026-11-22 (the pinned `codex-acp@2.8.0` cannot be launched here before that because of `minimumReleaseAge`), then turn its `fork` flag on in `apps/daemon/src/engine/acp/catalog.ts`. Until then Codex chats show no Fork and no Edit.
+- Every bump of `claude-agent-acp` or `codex-acp` reruns the real check (`research/real-checks.md`, script in its appendix): the fork point is a vendor `_meta` (`jetbrains.air.fork`) of an unstable method.
+- Draw `Reply` and `Fork` icons in Figma and run `./clowdy sync icons` (now `Revert` and `Split`; `Split` is also the thread mark).
+- Claude's cumulative cost can restart at 0 after a resume in a new process, and `usageEvent` in `engine/acp/mapper-core.ts` then clamps a turn's cost to 0 (pre-existing; smallest fix: count `cost` itself when `cost < costBefore`).
+- After an edit, the note that background work was lost is not told again (`RunService.rewind` clears `lost_background`).
+- An unchanged message with a list or a code fence gains two trailing spaces per line when resent from the edit frame.
+- Old chats (from before rewind points) get no Fork and no Edit past their first message.
