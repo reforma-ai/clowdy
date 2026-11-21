@@ -56,15 +56,15 @@
     app-region: no-drag;
 }
 
-/* The same inset on every side: there is no title row above the account any more. */
+/* The same inset on every side, close enough for the refresh button's plate to sit evenly in the corner: there is no title row above the account any more. */
 .panel {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-lg);
-    padding: var(--spacing-xl);
+    padding: var(--spacing-lg);
 }
 
-/* The account line is as far from the first bar as the popover's own padding, and so is a note under the bars: more than the bars are from each other. */
+/* The account line is further from the first bar than the bars are from each other, and so is a note under the bars. */
 .provider {
     display: flex;
     flex-direction: column;
