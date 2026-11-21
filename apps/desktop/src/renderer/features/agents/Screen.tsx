@@ -1,6 +1,7 @@
 import { SidebarLayout } from '../../shared';
 import { useProjectState, useProjectUi } from '../../stores';
 import { ChatView } from '../chats/ChatView';
+import { useProjectsInfo } from '../settings/projects/useProjectsInfo';
 import { AgentList } from './AgentList';
 import { resolveSelection, visibleChats } from './agentTree';
 import { chatListPreferences } from './chatListPreferences';
@@ -19,15 +20,20 @@ export function Screen() {
     const chats = visibleChats(project.chatList, chatListPreferences.sort);
     const selection = resolveSelection(project.chats, chats, project.runs, ui.chatId, ui.runId, ui.draft);
     const { chat, run } = selection;
+    // The folders gone from the disk are told from what the daemon last read, once, when grouping turns on and when the projects change. The list and the
+    // new-chat page share that one read: it costs a `git` call for each folder of each project, so each of them reading it would repeat it.
+    const grouped = ui.groupByFolder && project.project.folders.length > 1;
+    const { info } = useProjectsInfo({ enabled: grouped, poll: false });
+    const missing = new Set(info.get(project.id)?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
 
     return (
-        <SidebarLayout screen="agents" defaultWidth={ 270 } sidebar={ <AgentList selection={ selection } chats={ chats } /> }>
+        <SidebarLayout screen="agents" defaultWidth={ 270 } sidebar={ <AgentList selection={ selection } chats={ chats } missing={ missing } /> }>
             <section className={ styles.main } aria-label={ run ? 'Sub-agent' : 'Chat' }>
                 { run
                     ? <RunDetail key={ run.id } run={ run } />
                     : chat
                         ? <ChatView key={ chat.id } chat={ chat } />
-                        : <DraftChat /> }
+                        : <DraftChat missing={ missing } /> }
             </section>
         </SidebarLayout>
     );

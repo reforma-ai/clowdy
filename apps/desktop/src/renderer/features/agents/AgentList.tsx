@@ -18,7 +18,6 @@ import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
 import { deleteChat } from '../chats/deleteChat';
 import { threadsAtWork } from '../chats/runningAgentRows';
-import { useProjectsInfo } from '../settings/projects/useProjectsInfo';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
 import { agentGroups, agentRows, ancestorChats, draftTarget, groupFolderOf, isActiveThread, orchestratorOf, type AgentGroup, type AgentRow, type AgentSelection } from './agentTree';
@@ -66,10 +65,10 @@ interface ChatActions {
 /**
  * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the heading's `⋯` asks for), each with the
  * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
- * in the heading, beside the filters), and take their threads with them. With the menu's Group chats by folder on (it is, until the person turns it off), in a project of several folders, the
+ * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), in a project of several folders, the
  * chats stand in a group for the folder they work in, under a heading that folds the group and has a button for a chat in that folder.
  */
-export function AgentList({ selection, chats }: { selection: AgentSelection; chats: readonly Chat[] }) {
+export function AgentList({ selection, chats, missing }: { selection: AgentSelection; chats: readonly Chat[]; missing: ReadonlySet<FolderId> }) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -102,9 +101,6 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     const draftFolder = selection.draft && grouped ? draftTarget(folders, ui.draftFolderId) : undefined;
     const draftElsewhere = draftFolder !== undefined && !draftFolder.isMain;
     const selectedId = selection.draft ? (draftElsewhere ? undefined : NEW_CHAT_ROW) : openChatId;
-    // A group's folder is told missing from what the daemon last read, which is read once when grouping turns on and when the projects change.
-    const { info } = useProjectsInfo({ enabled: grouped, poll: false });
-    const missing = new Set(info.get(project.id)?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
     const rowsOf = (roots: readonly Chat[]) => agentRows({
         roots,
         threadsOf: chatId => project.threadsOf(chatId),

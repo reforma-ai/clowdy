@@ -21,3 +21,12 @@
 .composerSlot {
     padding-inline: var(--spacing-xxl);
 }
+
+/* The controls of the start, under the message box and level with its text and its attach button (the card's inset and one step in): the folder now, and more later. */
+.controls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
+    padding: var(--spacing-md) var(--spacing-lg) 0;
+}

@@ -194,6 +194,13 @@ export class ProjectUi {
         if (attach.length > 0) this.pendingFiles = [...this.pendingFiles, ...attach];
     }
 
+    /** Changes the folder the new-chat page is for, `null` for the main folder. Only with that page open: the folder is no part of any other place. */
+    setDraftFolder(folderId: FolderId | null): void {
+        if (!this.draft) return;
+
+        this.draftFolderId = folderId;
+    }
+
     /** The files `openDraft` was given, handed over once: the next call finds none. */
     takePendingFiles(): readonly File[] {
         const files = this.pendingFiles;

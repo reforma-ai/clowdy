@@ -1,0 +1,85 @@
+import { Button } from '@clowdy/components/Button';
+import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
+import { Popover } from '@clowdy/components/Popover';
+import { Text } from '@clowdy/components/Text';
+import { Check, ChevronDown, Folder } from '@clowdy/icons/14';
+import { folderNames } from '@clowdy/protocol';
+import { use } from 'react';
+import { OverlayTriggerStateContext } from 'react-aria-components';
+
+import styles from './DraftFolderSelect.module.css';
+
+import type { FolderId, ProjectFolder } from '@clowdy/protocol';
+
+export interface DraftFolderSelectProps {
+    /** The folders of the project in order: the first is the main one. */
+    folders: readonly ProjectFolder[];
+    /** The folder the new chat is for. */
+    selectedId: FolderId;
+    /** The folders that are gone from the disk: listed with the others, and not to be picked. */
+    missing: ReadonlySet<FolderId>;
+    onPick: (folder: ProjectFolder) => void;
+}
+
+/**
+ * The select of the new-chat page that says which folder of the project the chat will work in, and changes it: a pill under the message box with the folder's
+ * name, and a list of the project's folders by name, the chosen one ticked. It is only for a chat that is not made yet: the page that
+ * draws it is gone once the first message is sent. More controls of the start (a branch, where it runs) join it in the same row.
+ */
+export function DraftFolderSelect({ folders, selectedId, missing, onPick }: DraftFolderSelectProps) {
+    const names = folderNames(folders);
+    const selected = Math.max(0, folders.findIndex(folder => folder.id === selectedId));
+
+    return (
+        <MenuTrigger>
+            <Trigger name={ names[selected] ?? folders[selected]?.path ?? '' } />
+            <Popover placement="bottom start" spacing="xs" width={ 240 }>
+                <Menu
+                    aria-label="Folders"
+                    size="md"
+                    selectionMode="single"
+                    selectedKeys={ [folders[selected]?.id ?? ''] }
+                    disallowEmptySelection
+                    onSelectionChange={ (keys) => {
+                        const folder = keys === 'all' ? undefined : folders.find(candidate => keys.has(candidate.id));
+
+                        if (folder && !missing.has(folder.id)) onPick(folder);
+                    } }
+                >
+                    { folders.map((folder, index) => (
+                        <MenuItem
+                            key={ folder.id }
+                            id={ folder.id }
+                            text={ names[index] ?? folder.path }
+                            icon={ <Folder /> }
+                            isDisabled={ missing.has(folder.id) }
+                            endAffix={ folder.id === folders[selected]?.id ? <Check aria-hidden="true" /> : undefined }
+                            // The name is all the list says, except why a folder cannot be picked.
+                            { ...(missing.has(folder.id) && { description: 'This folder no longer exists', stacked: true, 'data-align': 'center' }) }
+                        />
+                    )) }
+                </Menu>
+            </Popover>
+        </MenuTrigger>
+    );
+}
+
+function Trigger({ name }: { name: string }) {
+    const isOpen = use(OverlayTriggerStateContext)!.isOpen;
+
+    return (
+        <Button
+            size="sm"
+            variant="filling"
+            rounded
+            className={ styles.trigger }
+            contentClassName={ styles.triggerContent }
+            data-open={ isOpen || undefined }
+            aria-label={ `Folder: ${ name }` }
+        >
+            <Folder aria-hidden="true" />
+            <Text truncate>{ name }</Text>
+            <ChevronDown aria-hidden="true" />
+        </Button>
+    );
+}

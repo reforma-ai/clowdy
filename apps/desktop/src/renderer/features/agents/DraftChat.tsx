@@ -1,5 +1,6 @@
 import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { Text } from '@clowdy/components/Text';
+import { mainFolder } from '@clowdy/protocol';
 import { useEffect, useRef } from 'react';
 
 import { useProjectState, useProjectUi } from '../../stores';
@@ -8,14 +9,18 @@ import { Composer, type ComposerHandle } from '../chats/Composer';
 import { newChatDefaults, startingChoice } from '../chats/newChatDefaults';
 import { draftTarget } from './agentTree';
 import styles from './DraftChat.module.css';
+import { DraftFolderSelect } from './DraftFolderSelect';
+
+import type { FolderId } from '@clowdy/protocol';
 
 /**
  * The new-chat row's page, a start page: the heading and the message box in the middle. No chat exists yet: the composer
  * makes it when the first message is sent, and then this page gives way to the chat. A hand-off from another chat arrives
- * with its words already in the box's draft and its conversation as a file in `ui.pendingFiles`. While the list is grouped by folder the page says
- * which folder the chat is for (`ui.draftFolderId`, the main folder's when none): the chat then works there.
+ * with its words already in the box's draft and its conversation as a file in `ui.pendingFiles`. While the list is grouped by folder a select under the box
+ * says which folder the chat is for (`ui.draftFolderId`, the main folder's when none) and changes it: the chat then works there. `missing` are the folders
+ * gone from the disk, which the select lists and does not let be picked.
  */
-export function DraftChat() {
+export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     const project = useProjectState();
     const ui = useProjectUi();
     // What the project asks a new chat to start with, or the app's choice where it follows the app; what neither names starts where the last chat left off.
@@ -43,10 +48,21 @@ export function DraftChat() {
             <div className={ styles.draft }>
                 <div className={ styles.center }>
                     <Text variant="heading-3">What should we work on?</Text>
-                    { target && <Text variant="sm" color="secondary">{ `in ${ target.name }` }</Text> }
 
                     <ContentColumn className={ styles.composerSlot }>
                         <Composer ref={ composer } chat={ undefined } run={ undefined } minLines={ 3 } start={ { projectId: project.id, folderId, onStarted: chatId => ui.openChat(chatId), defaults } } />
+
+                        { target && (
+                            <div className={ styles.controls }>
+                                <DraftFolderSelect
+                                    folders={ folders }
+                                    selectedId={ target.folder.id }
+                                    missing={ missing }
+                                    // The main folder is the one a chat that names none works in.
+                                    onPick={ folder => ui.setDraftFolder(folder.id === mainFolder(project.project).id ? null : folder.id) }
+                                />
+                            </div>
+                        ) }
                     </ContentColumn>
                 </div>
             </div>

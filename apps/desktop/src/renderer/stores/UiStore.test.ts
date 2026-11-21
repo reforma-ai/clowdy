@@ -279,6 +279,28 @@ describe('UiStore', () => {
         expect(ui.draftFolderId).toBeNull();
     });
 
+    it('changes the folder of the open new-chat page without opening another page, and null is the main folder', () => {
+        const ui = new UiStore().forProject('p1');
+
+        ui.openDraft([], 'fld-api');
+        ui.setDraftFolder('fld-notes');
+        expect([ui.draft, ui.draftFolderId]).toEqual([true, 'fld-notes']);
+
+        // The folder is part of the place the window shows (`view`).
+        expect(ui.view).toMatchObject({ draft: true, draftFolderId: 'fld-notes' });
+
+        ui.setDraftFolder(null);
+        expect([ui.draft, ui.draftFolderId]).toEqual([true, null]);
+    });
+
+    it('keeps no folder when no new-chat page is open', () => {
+        const ui = new UiStore().forProject('p1');
+
+        ui.openChat('c1');
+        ui.setDraftFolder('fld-api');
+        expect([ui.draft, ui.draftFolderId]).toEqual([false, null]);
+    });
+
     it('ignores URL values that name no section or view', () => {
         expect(initialUiFromSearch('?section=nope&view=cards')).toEqual({});
         expect(initialUiFromSearch('')).toEqual({});
