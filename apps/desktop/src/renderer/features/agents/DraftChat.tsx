@@ -9,6 +9,7 @@ import { ChatDropZone } from '../chats/ChatDropZone';
 import { Composer, type ComposerHandle } from '../chats/Composer';
 import { newChatDefaults, startingChoice } from '../chats/newChatDefaults';
 import { draftTarget } from './agentTree';
+import { ChatFolder } from './ChatFolder';
 import styles from './DraftChat.module.css';
 import { DraftFolderSelect } from './DraftFolderSelect';
 
@@ -17,9 +18,9 @@ import type { FolderId } from '@clowdy/protocol';
 /**
  * The new-chat row's page, a start page: the heading and the message box in the middle. No chat exists yet: the composer
  * makes it when the first message is sent, and then this page gives way to the chat. A hand-off from another chat arrives
- * with its words already in the box's draft and its conversation as a file in `ui.pendingFiles`. While the list is grouped by folder a select under the box
- * says which folder the chat is for (`ui.draftFolderId`, the main folder's when none) and changes it: the chat then works there. `missing` are the folders
- * gone from the disk, which the select lists and does not let be picked. The chat this page makes keeps the line, with the folder read only (`ChatFolder`).
+ * with its words already in the box's draft and its conversation as a file in `ui.pendingFiles`. A line under the box says which folder the chat is for
+ * (`ui.draftFolderId`, the main folder's when none): a select that changes it in a project of several folders, the folder read only (`ChatFolder`) in one of a
+ * single folder. `missing` are the folders gone from the disk, which the select lists and does not let be picked. The chat this page makes keeps the line, with the folder read only.
  */
 export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     const project = useProjectState();
@@ -29,10 +30,9 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     const composer = useRef<ComposerHandle>(null);
     const pending = ui.pendingFiles;
     const { folders } = project.project;
-    const grouped = ui.groupByFolder && folders.length > 1;
-    const target = grouped ? draftTarget(folders, ui.draftFolderId) : undefined;
+    const target = draftTarget(folders, ui.draftFolderId);
     // The main folder is what a chat works in when it names no folder.
-    const folderId = target && !target.isMain ? target.folder.id : undefined;
+    const folderId = target.isMain ? undefined : target.folder.id;
 
     // Files a hand-off left here join the message as if they were picked: the box uploads them to this project. What the effect adds is
     // what the store hands over, so a second run of it (strict mode) finds nothing and adds nothing.
@@ -53,17 +53,20 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                     <ContentColumn className={ styles.composerSlot }>
                         <Composer ref={ composer } chat={ undefined } run={ undefined } minLines={ 3 } start={ { projectId: project.id, folderId, onStarted: chatId => ui.openChat(chatId), defaults } } />
 
-                        { target && (
-                            <ChatControls>
-                                <DraftFolderSelect
-                                    folders={ folders }
-                                    selectedId={ target.folder.id }
-                                    missing={ missing }
-                                    // The main folder is the one a chat that names none works in.
-                                    onPick={ folder => ui.setDraftFolder(folder.id === mainFolder(project.project).id ? null : folder.id) }
-                                />
-                            </ChatControls>
-                        ) }
+                        <ChatControls>
+                            { folders.length > 1
+                                ? (
+                                    <DraftFolderSelect
+                                        folders={ folders }
+                                        selectedId={ target.folder.id }
+                                        missing={ missing }
+                                        // The main folder is the one a chat that names none works in.
+                                        onPick={ folder => ui.setDraftFolder(folder.id === mainFolder(project.project).id ? null : folder.id) }
+                                    />
+                                )
+                                // A project of one folder has nothing to pick: the line says where the chat will work, as the chat's own does.
+                                : <ChatFolder name={ target.name } path={ target.folder.path } missing={ missing.has(target.folder.id) } /> }
+                        </ChatControls>
                     </ContentColumn>
                 </div>
             </div>

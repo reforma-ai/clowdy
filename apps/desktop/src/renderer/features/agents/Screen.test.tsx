@@ -267,6 +267,8 @@ describe('the new-chat row', () => {
 describe('grouped by folder', () => {
     const API = { id: 'fld_api', path: '/Users/dev/car-rental-api' };
     const MAIN = 'fld_car_rental';
+    /** The name of the one folder of the fixture project. */
+    const SINGLE = 'car-rental';
     const head = (folderId: string) => `@folder:${ folderId }`;
     const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]');
     const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
@@ -566,7 +568,7 @@ describe('grouped by folder', () => {
             expect(made[0]?.folderId).toBe(API.id);
         });
 
-        it('is not there in a chat that is already made, nor while the list is flat, nor in a project of one folder', async () => {
+        it('is only on the new-chat page, grouped or flat, and a project of one folder has its folder read only in its place', async () => {
             await restart();
             await draw(() => ui().openChat('c-2'));
 
@@ -578,9 +580,9 @@ describe('grouped by folder', () => {
 
             await draw(() => ui().setGroupByFolder(false));
 
-            expect(folderSelect()).toBeNull();
+            expect(folderSelect()).not.toBeNull();
 
-            // The fixture project has one folder.
+            // The fixture project has one folder: nothing to pick, so the line only says where the chat will work.
             act(() => reactRoot.unmount());
             store.dispose();
             reactRoot = createRoot(container);
@@ -592,6 +594,7 @@ describe('grouped by folder', () => {
             });
 
             expect(folderSelect()).toBeNull();
+            expect(folderLine()?.textContent).toBe(SINGLE);
             expect(container.textContent).toContain('What should we work on?');
         });
 
@@ -670,11 +673,11 @@ describe('grouped by folder', () => {
             expect(folderLine()?.hasAttribute('data-missing')).toBe(false);
         });
 
-        it('is there only where the new-chat page has its select: while grouped, in a project of several folders', async () => {
+        it('is there in a chat that is made, grouped or flat, and in a project of one folder', async () => {
             await restart({ grouping: false });
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()).toBeNull();
+            expect(folderLine()?.textContent).toBe('car-rental-api');
 
             await draw(() => ui().setGroupByFolder(true));
 
@@ -691,11 +694,11 @@ describe('grouped by folder', () => {
                 ui().openChat('c-1');
             });
 
-            expect(folderLine()).toBeNull();
+            expect(folderLine()?.textContent).toBe(SINGLE);
         });
     });
 
-    it('reads what the daemon knows of the folders only while grouped, once, and not again on a timer', async () => {
+    it('reads what the daemon knows of the folders once, when the screen opens, whether the list is grouped or not, and not again on a timer', async () => {
         vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
 
         try {
@@ -703,7 +706,7 @@ describe('grouped by folder', () => {
             const read = vi.spyOn(transport, 'getProjectsInfo');
 
             await restart({ grouping: false, transport });
-            expect(read).not.toHaveBeenCalled();
+            expect(read).toHaveBeenCalledTimes(1);
 
             await draw(() => ui().setGroupByFolder(true));
             expect(read).toHaveBeenCalledTimes(1);

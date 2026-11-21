@@ -21,14 +21,13 @@ export function Screen() {
     const chats = visibleChats(project.chatList, chatListPreferences.sort);
     const selection = resolveSelection(project.chats, chats, project.runs, ui.chatId, ui.runId, ui.draft);
     const { chat, run } = selection;
-    // The folders gone from the disk are told from what the daemon last read, once, when grouping turns on and when the projects change. The list and the
+    // The folders gone from the disk are told from what the daemon last read, once, when the screen opens and when the projects change. The list and the
     // new-chat page share that one read: it costs a `git` call for each folder of each project, so each of them reading it would repeat it.
-    const grouped = ui.groupByFolder && project.project.folders.length > 1;
-    const { info } = useProjectsInfo({ enabled: grouped, poll: false });
+    const { info } = useProjectsInfo({ poll: false });
     const missing = new Set(info.get(project.id)?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
 
-    // The line under a chat's message box holds its folder, read only, where the new-chat page had the select; like the select it is there only while grouped.
-    const where = grouped && chat ? chatFolder(project.chats, project.project.folders, chat.id) : undefined;
+    // The line under a chat's message box holds its folder, read only, where the new-chat page had the select; it is always there, whatever the project's folders.
+    const where = chat ? chatFolder(project.chats, project.project.folders, chat.id) : undefined;
 
     return (
         <SidebarLayout screen="agents" defaultWidth={ 270 } sidebar={ <AgentList selection={ selection } chats={ chats } missing={ missing } /> }>
