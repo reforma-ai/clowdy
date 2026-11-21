@@ -1,5 +1,6 @@
 import { SSE_EVENT } from '@clowdy/protocol';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { homedir } from 'node:os';
 
 import { isAllowedOrigin, isLoopbackHost, tokenMatches } from '../src/http/guard';
 import { cleanTempDirs, command, Harness, startHarness } from './helpers';
@@ -65,6 +66,13 @@ describe('auth', () => {
         }
 
         expect((await fetch(`${ h.url }/v1/snapshot`, { headers: bearer })).status).toBe(200);
+    });
+
+    test('the root snapshot says the home folder of the person the daemon runs as, which the app shows as ~', async () => {
+        const snapshot = await (await fetch(`${ h.url }/v1/snapshot`, { headers: bearer })).json() as { cursor: number; projects: unknown[]; home?: string };
+
+        expect(snapshot.home).toBe(homedir());
+        expect(snapshot.cursor).toBe(h.store.headCursor());
     });
 
     test('an unauthorized command gets a CommandResult-shaped error and does nothing', async () => {

@@ -3,6 +3,7 @@ import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { Lock } from '@clowdy/icons/12';
 
+import { PathText } from '../../../shared/PathText';
 import { SettingsBlock } from '../ui/SettingsBlock';
 import styles from './SkillRow.module.css';
 import { engineLabel, tokenLabel } from './skillView';
@@ -30,9 +31,10 @@ export function SkillRow({ skill, isPending, onToggle }: SkillRowProps) {
                     <Badge size="xs" color={ source === 'system' ? 'primary' : 'secondary' } textValue={ SOURCE_LABEL[source] }>{ SOURCE_LABEL[source] }</Badge>
                 </div>
                 <Text variant="sm" color="secondary" className={ styles.description }>{ description }</Text>
-                <Text variant="xs" color="secondary" truncate title={ path }>
-                    { path ? `${ engineLabel(engines) } · ${ path }` : engineLabel(engines) }
-                </Text>
+                <span className={ styles.source }>
+                    <Text variant="xs" color="secondary" className={ styles.engines }>{ path ? `${ engineLabel(engines) } ·` : engineLabel(engines) }</Text>
+                    { path && <PathText path={ path } variant="xs" color="secondary" /> }
+                </span>
             </div>
 
             <div className={ styles.side }>

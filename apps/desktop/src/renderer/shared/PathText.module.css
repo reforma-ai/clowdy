@@ -1,0 +1,9 @@
+/* A row of its own that gives way: it takes the width its place gives it and clips what does not fit, so `PathText` can tell when to leave names out. */
+.path {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

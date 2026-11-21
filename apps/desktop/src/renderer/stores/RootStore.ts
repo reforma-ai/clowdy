@@ -1,5 +1,6 @@
 import { makeAutoObservable, observableRef, runInAction } from 'mobx';
 
+import { homeFolder } from '../shared/homeFolder';
 import { ModelsStore } from './ModelsStore';
 import { NavHistory } from './NavHistory';
 import { ProjectIconsStore } from './ProjectIconsStore';
@@ -107,6 +108,7 @@ export class RootStore {
         try {
             const snapshot = await this.transport.getRootSnapshot();
 
+            homeFolder.set(snapshot.home);
             runInAction(() => {
                 this.projects = sortProjects(snapshot.projects);
                 this.phase = 'ready';
@@ -336,6 +338,7 @@ export class RootStore {
         try {
             const snapshot = await this.transport.getRootSnapshot();
 
+            homeFolder.set(snapshot.home);
             // A project removed while the feed was away has no snapshot to load.
             runInAction(() => {
                 for (const id of [...this.#states.keys()]) {

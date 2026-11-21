@@ -7,6 +7,7 @@ import { Folder, More, Sliders, Trash } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
 import { CardRow } from '../../../shared/CardRow';
+import { PathText } from '../../../shared/PathText';
 import { ProjectIcon } from '../../../shared/ProjectIcon';
 import styles from './ProjectRow.module.css';
 import { holdingMarks, plural } from './projectView';
@@ -75,7 +76,7 @@ export function ProjectRow({ project, info, onManage, onOpen, onRemove }: Projec
             ) }
         >
             <span className={ styles.where } title={ more > 0 ? project.folders.map(folder => folder.path).join('\n') : path }>
-                <Text variant="sm" color="secondary" truncate>{ path }</Text>
+                <PathText path={ path } variant="sm" color="secondary" />
                 { more > 0 && <Text variant="sm" color="secondary" className={ styles.more }>{ `+${ plural(more, 'folder') }` }</Text> }
             </span>
         </CardRow>

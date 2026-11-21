@@ -175,7 +175,7 @@ export class FixtureTransport implements Transport {
     }
 
     async getRootSnapshot(): Promise<RootSnapshot> {
-        return structuredClone({ cursor: this.#cursor, projects: this.#listed() });
+        return structuredClone({ cursor: this.#cursor, projects: this.#listed(), home: '/Users/dev' });
     }
 
     async getProjectsInfo(): Promise<ProjectInfo[]> {

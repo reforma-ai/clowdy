@@ -5,6 +5,7 @@ import { Text } from '@clowdy/components/Text';
 import { Check, ChevronDown, Folder, Home, Plus, Sliders } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
+import { PathText } from '../shared/PathText';
 import { ProjectIcon } from '../shared/ProjectIcon';
 import { useRootStore } from '../stores';
 import { openAddProject } from './projectDialogs';
@@ -15,11 +16,16 @@ import type { Project } from '@clowdy/protocol';
 const ADD = 'add-project';
 const MANAGE = 'manage-projects';
 
-/** Where a project is: its main folder, and `+N` for the folders it has besides. */
-function whereLine(project: Pick<Project, 'folders'>): string {
+/** Where a project is: its main folder (the path gives way to the count), and `+N` for the folders it has besides. */
+function Where({ project }: { project: Pick<Project, 'folders'> }) {
     const more = project.folders.length - 1;
 
-    return more > 0 ? `${ mainFolder(project).path } +${ more }` : mainFolder(project).path;
+    return (
+        <span className={ styles.where }>
+            <PathText path={ mainFolder(project).path } />
+            { more > 0 && <span className={ styles.more }>{ `+${ more }` }</span> }
+        </span>
+    );
 }
 
 /**
@@ -57,7 +63,7 @@ export function ProjectSelect() {
                             key={ project.id }
                             id={ project.id }
                             text={ project.name }
-                            description={ whereLine(project) }
+                            description={ <Where project={ project } /> }
                             icon={ <ProjectIcon project={ project } /> }
                             stacked
                             data-align="center"
