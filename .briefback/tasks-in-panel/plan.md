@@ -8,12 +8,12 @@
 
 **Goal:** the left part of the window is always the chat list and the chat: Tasks leaves the sections and becomes a tab of the right side panel, and the panel that covers the chat stays a mode the person lives in.
 
-**Approach:** Stage 1 changes what the expanded panel does when a chat is chosen (it hides, and the flag stays) and keeps the flag between sessions, which the Tasks tab then relies on. Stage 2 makes Tasks a tab that always covers the chat and takes the Tasks section out of the shell. Stage 3 deletes what only sections needed (the left rail, `Section`, the `g a` chord), and Stage 4 takes the open task and the Tasks scope out of the back and forward history. Tasks moves as it is: its screen, commands and hotkey scope are reused, and only what its new container breaks is fixed.
+**Approach:** Stage 1 changes what the expanded panel does when a chat is chosen (it hides, and the flag stays) and keeps the flag between sessions, which the Tasks tab then relies on. Stage 2 makes Tasks a tab that always covers the chat (the corner button skips its expand step there), takes the Tasks section out of the shell, and takes the open task and the Tasks scope out of the back and forward history (Stage 4 of the first plan, done here: leaving them in the history while the section went would have meant rewriting the history tests twice). Stage 3 deletes what only sections needed (the left rail, `Section`, the `g a` chord) and the leftovers of the Tasks history. Tasks moves as it is: its screen, commands and hotkey scope are reused, and only what its new container breaks is fixed.
 
 **Decisions** (owner, 2026-11-22)
 
 - **Tasks is a tab of the right panel**, after Terminal and before Info (Files, Docs, Terminal, Tasks, then Info and Settings at the bottom), with the `Checkbox` icon of the 14 pack it has on the left rail. Its key is `Cmd+4` (`Ctrl+4` off a Mac), toggling like the other tabs: a second press shuts the panel.
-- **The Tasks tab always covers the chat.** It has no button in the title band's corner, it does not change the expanded flag (the person's choice for the other tabs), and `Cmd+Shift+Enter` does nothing on it. The panel covers the chat while it is open and either the flag is on or the tab is Tasks.
+- **The Tasks tab always covers the chat.** The corner button (the three-state step of shown, expanded and hidden that exists now) has two states on it, shown and hidden: it skips the expand step, because the tab is full already. Tasks does not change the expanded flag (the person's choice for the other tabs), hiding it leaves the flag as it is, and `Cmd+Shift+Enter` does nothing on it. The panel covers the chat while it is open and either the flag is on or the tab is Tasks.
 - **A chat that is chosen while the panel covers it hides the panel and never touches the flag.** Choosing a chat, a run or the new-chat row (even the chat that is open already), or history showing another chat, closes the panel. In split mode the chat is beside the panel and the choice leaves it alone. This replaces the rule that shipped first (a chat choice cleared the expanded flag): expanded is a mode to live in, not a temporary view, so the flag stays as the person set it.
 - **The expanded flag is kept per project**, with `sidePanelOpen` and `sidePanelTab`.
 - **The `g a` and `g t` chords and the `nav.*` commands go**, with no replacement chord. The tab keys (`Cmd+0` to `Cmd+4`) are how the panel's tools are reached.
@@ -28,7 +28,7 @@
 ## Out of scope
 
 - Redesigning the Tasks screen (its header, detail panel placement, board and list), and any split mode for the Tasks tab.
-- Per-tab expanded modes, and a button or mode that cycles hide, collapse and expand.
+- Per-tab expanded modes.
 - A replacement chord for going to Agents, and anything to take the left rail's place.
 - Back and forward for the panel's state, in any tab.
 - Windows (the corner and the keys are checked on a Mac only), Linear, and the task model itself.
@@ -62,13 +62,14 @@
 
 **This stage:** Tasks stops being a screen in place of the chat list's page and becomes the fifth tab of the panel, always covering the chat, with the key `Cmd+4`. Every way into a task opens that tab, and the shell, the rail and the commands stop knowing a Tasks section, with the `Section` type narrowed to Agents alone until Stage 3 deletes it. The Tasks screen and its hotkey scope are mounted in the tab as they are; it is mounted once, since its commands have fixed ids.
 
-- [ ] Complete
-  - [ ] `SIDE_PANEL_TABS` has `tasks`; the rail has its item after Terminal; `Cmd+4` toggles it; the terminal lets `Ctrl+3` and `Ctrl+4` through off a Mac (the Docs key was missing too)
-  - [ ] The panel covers the chat while the Tasks tab is shown, whatever the flag; the corner has no button there, and `Cmd+Shift+Enter` does nothing
-  - [ ] The Tasks screen draws in the tab's plate (fills it, scrolls for itself), with the detail panel, the archive and the scope header working
-  - [ ] `openTask(id)` opens the panel on the Tasks tab with the task selected; `openTask(null)` leaves the panel alone
-  - [ ] The shell's outlet is the Agents screen; the Tasks item of the left rail, the `g t` chord and the `nav.tasks` command are gone; a stored `section: 'tasks'` falls back to Agents
-  - [ ] Tests and the guide follow
+- [x] Complete
+  - [x] `SIDE_PANEL_TABS` has `tasks`; the rail has its item after Terminal; `Cmd+4` toggles it; the terminal lets `Ctrl+3` and `Ctrl+4` through off a Mac (the Docs key was missing too)
+  - [x] The panel covers the chat while the Tasks tab is shown, whatever the flag; the corner button steps shown and hidden there and leaves the flag, and `Cmd+Shift+Enter` does nothing
+  - [x] The Tasks screen draws in the tab's plate (fills it, scrolls for itself), with the detail panel, the archive and the scope header working
+  - [x] `openTask(id)` opens the panel on the Tasks tab with the task selected; `openTask(null)` leaves the panel alone
+  - [x] `ProjectView` has no `taskId` or `tasksScope`; `NavHistory` records the project and the chat or run only
+  - [x] The shell's outlet is the Agents screen; the Tasks item of the left rail, the `g t` chord and the `nav.tasks` command are gone; a stored `section: 'tasks'` falls back to Agents
+  - [x] Tests and the guide follow
 
 **Files**
 
@@ -78,7 +79,8 @@
 - `apps/desktop/src/renderer/features/sidePanel/SidePanelRail.tsx` — `TABS`: the Tasks item (`Checkbox`, 14 pack, size 14), after Terminal
 - `apps/desktop/src/renderer/features/sidePanel/SidePanel.tsx` — a lazy `TasksTab` from `../tasks`, shown while the tab is chosen
 - `apps/desktop/src/renderer/features/sidePanel/SidePanel.module.css` — `.plate[data-tab='tasks']` like Files and Terminal (flex column, `overflow: hidden`), the expanded rule's comment
-- `apps/desktop/src/renderer/features/sidePanel/SidePanelCorner.tsx` and `useSidePanel.ts` — no button on the Tasks tab, `expanded` is the covering getter
+- `apps/desktop/src/renderer/features/sidePanel/useSidePanel.ts` — `expanded` is the covering getter, `expandedChoice` also holds for the Tasks tab (the panel comes back covering); `panelStep.ts` then draws the two states with no change
+- `apps/desktop/src/renderer/stores/UiStore.ts` — also `stepSidePanel`: on the Tasks tab an open panel is hidden without clearing the flag
 - `apps/desktop/src/renderer/features/agents/Screen.tsx` — `data-covered` follows the same value (no change if it reads `useSidePanel().expanded`)
 - `apps/desktop/src/renderer/features/tasks/Screen.tsx`, `Screen.module.css` — only what the plate breaks (height, scroll, borders)
 - `apps/desktop/src/renderer/shell/Shell.tsx` — `SCREENS`, `ProjectScreen`: the Agents screen alone
@@ -88,9 +90,11 @@
 - `apps/desktop/src/renderer/features/tasks/*.test.tsx`, `features/chats/*.test.tsx`, `stores/*.test.ts`, `shell/shellCommands.test.ts`, `hotkeys/keymap.test.ts` — tests that set or read `section` or `'tasks'`
 - `apps/desktop/AGENTS.md` — the side panel and Tasks screen bullets
 
-**Done when:** a task chip in a chat opens the Tasks tab full width over the chat with that task selected, `Cmd+4` toggles it, and the window has no way to show Tasks in place of the chat list's page.
+**Done when:** a task chip in a chat opens the Tasks tab full width over the chat with that task selected, `Cmd+4` and the corner button show and hide it, and the window has no way to show Tasks in place of the chat list's page.
 **Verify:** `bun run test`, `bun run lint` and `bun run typecheck` in `apps/desktop`; in the harness `?fixtures=static&panel=open&panelTab=tasks` (full width, detail on a card, archive) and `?fixtures=static&panel=open&panelTab=files` (no change).
-**Commits:** None yet.
+**Commits:**
+
+- `cd74c1e` feat(desktop): make Tasks a tab of the side panel that always covers the chat, and take the Tasks section out of the shell (the history change of the first plan's Stage 4 is in it; an independent review found a press on the open chat's row not shutting a covering panel, a breadcrumb in the panel counted as the rail by the list keys, and the "Tasks is full" rule in four places, all fixed in it)
 
 ## Stage 3 — The left rail and the section state are deleted
 
@@ -99,10 +103,11 @@
 **This stage:** With Agents the only section, the left rail is an item that chooses nothing, and `Section` is a type with one value. This stage deletes them and the `g a` chord, and lets the window's plate reach the window's left edge, which is what the owner meant by the left part always being the chat.
 
 - [ ] Complete
-  - [ ] The left rail, its styles and its `Section` code are gone; the chat list is the leftmost column and the plate has no rounding or border at the window's left edge
-  - [ ] `Section`, `SECTIONS`, `ProjectUi.section`, `showSection`, the stored `section` and `?section=` are gone; `ProjectView` has no `section`
-  - [ ] `g a`, `nav.agents` and `navCommandId` are gone; `Cmd+N` (new chat) opens the draft without a section
-  - [ ] `currentFolder` is the chat's or the new chat's folder in every case
+  - [x] The left rail, its styles and its `Section` code are gone; the chat list is the leftmost column and the plate has no rounding or border at the window's left edge
+  - [x] `Section`, `SECTIONS`, `ProjectUi.section`, `showSection`, the stored `section` and `?section=` are gone; `ProjectView` has no `section`
+  - [x] `g a`, `nav.agents` and `navCommandId` are gone; `Cmd+N` (new chat) opens the draft without a section
+  - [x] `currentFolder` is the chat's or the new chat's folder in every case
+  - [ ] What only kept the Tasks history right goes: `NavHistory.replacing` and its callers in `features/tasks` (`settleScope`, `taskCommands`' `replacing`) once nothing needs them
 
 **Files**
 
@@ -119,25 +124,8 @@
 
 **Done when:** the window has no left rail, `bun run typecheck` finds no `Section`, and chat, new chat and the panel work as before.
 **Verify:** `bun run test`, `bun run lint` and `bun run typecheck` in `apps/desktop`; the harness at `?fixtures=static` and `?fixtures=static&panel=open&panelTab=tasks`, looking at the plate's left edge.
-**Commits:** None yet.
+**Commits:**
 
-## Stage 4 — The open task and the Tasks scope leave the history
+- `b7b23cf` feat(desktop): remove the left rail and the section state, so the left part of the window is always the chats
 
-**Depends on:** Stage 3.
-
-**This stage:** Back and forward record the place the window shows. Now that the Tasks screen is a panel tab, a step back that changes only the selected task or the scope moves nothing the person sees in the window. The panel's tabs are not places, and neither are these.
-
-- [ ] Complete
-  - [ ] `NavHistory` records the project and the chat (the selected chat, run or new-chat row) and nothing of Tasks; a step only in the open task or the scope is no step
-  - [ ] The open task and the Tasks scope stay kept per project, as the panel's own state
-
-**Files**
-
-- `apps/desktop/src/renderer/stores/UiStore.ts` — `ProjectView`, `view`, `show`: no `taskId` or `tasksScope`
-- `apps/desktop/src/renderer/stores/NavHistory.ts` — the snapshot, `#exists`, the repair of a gone scope
-- `apps/desktop/src/renderer/stores/NavHistory.test.ts`, `UiStore.test.ts` — what recorded a task or a scope
-- `apps/desktop/AGENTS.md` — the history and Tasks bullets
-
-**Done when:** opening a task and changing the scope add no history entry, and back and forward still walk the chats and projects.
-**Verify:** `bun run test src/renderer/stores` and `bun run lint` in `apps/desktop`.
-**Commits:** None yet.
+Open: the last task, the leftovers of the Tasks history (`NavHistory.replacing` and `settleScope`, `settledUi`, `openScope` in `features/tasks/tasksScope.ts`, with their callers in `DetailPanel`, `ArchivedPanel`, `useTasksScope`, `Screen` and `taskCommands`, and their tests). They do nothing now that the history keeps no task or scope, and removing `settleScope` stops a gone scope from being reset to the roots when the person acts, so it is its own step. The stage stays unchecked until then.
