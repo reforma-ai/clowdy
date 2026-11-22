@@ -630,6 +630,23 @@ describe('UiStore', () => {
         expect(new UiStore(storage).forProject('p1').sidePanelTab).toBe('files');
     });
 
+    it('opens the side panel on a tab and keeps it open on a second pick of the same tab', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.openSidePanelTab('files');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'files']);
+
+        ui.openSidePanelTab('files');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'files']);
+
+        ui.openSidePanelTab('terminal');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'terminal']);
+
+        ui.toggleSidePanel();
+        ui.openSidePanelTab('info');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'info']);
+    });
+
     it('opens the side panel on a tab, and shuts it when that tab is already shown', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 

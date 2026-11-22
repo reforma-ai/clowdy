@@ -4,7 +4,9 @@ import { Terminal } from '@clowdy/icons/14';
 import { Folder, Info } from '@clowdy/icons/16';
 import { lazy, Suspense } from 'react';
 
+import { commandTooltip } from '../../hotkeys';
 import { useProjectUi } from '../../stores';
+import { SIDE_PANEL_TAB_LABELS, sidePanelTabCommand } from './commands';
 import { InfoTab } from './InfoTab';
 import styles from './SidePanel.module.css';
 import { SidePanelToggle } from './SidePanelToggle';
@@ -18,9 +20,9 @@ const TerminalTab = lazy(() => import('../terminal/TerminalTab'));
 
 /** The tabs of the header, in order. */
 const TABS: ReadonlyArray<{ tab: SidePanelTab; label: string; icon: typeof Info }> = [
-    { tab: 'info', label: 'Info', icon: Info },
-    { tab: 'files', label: 'Files', icon: Folder },
-    { tab: 'terminal', label: 'Terminal', icon: Terminal },
+    { tab: 'info', label: SIDE_PANEL_TAB_LABELS.info, icon: Info },
+    { tab: 'files', label: SIDE_PANEL_TAB_LABELS.files, icon: Folder },
+    { tab: 'terminal', label: SIDE_PANEL_TAB_LABELS.terminal, icon: Terminal },
 ];
 
 /**
@@ -37,7 +39,7 @@ export function SidePanel() {
             <header className={ styles.header }>
                 <div className={ styles.tabs } role="group" aria-label="Panel tabs">
                     { TABS.map(({ tab, label, icon: Icon }) => (
-                        <Button key={ tab } variant="filling" size="sm" isPressed={ tab === chosen } onPress={ () => ui.showSidePanelTab(tab) }>
+                        <Button key={ tab } variant="filling" size="sm" isPressed={ tab === chosen } tooltip={ commandTooltip(label, sidePanelTabCommand(tab)) } tooltipPlacement="bottom" onPress={ () => ui.showSidePanelTab(tab) }>
                             <Icon aria-hidden="true" />
                             { label }
                         </Button>

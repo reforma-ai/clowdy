@@ -1,4 +1,5 @@
-import { SIDE_PANEL_COMMAND, SIDE_PANEL_KEYS, TERMINAL_COMMAND, TERMINAL_KEYS } from '../features/sidePanel';
+import { SIDE_PANEL_COMMAND, SIDE_PANEL_KEYS, SIDE_PANEL_TAB_KEYS, SIDE_PANEL_TAB_LABELS, sidePanelTabCommand, TERMINAL_COMMAND, TERMINAL_KEYS } from '../features/sidePanel';
+import { SIDE_PANEL_TABS } from '../stores';
 
 import type { ScopedCommand } from '../hotkeys';
 import type { NavHistory, RootStore, Section } from '../stores';
@@ -27,7 +28,7 @@ export interface ShellCommandsRoot extends Pick<RootStore, 'phase' | 'selectedPr
 
 /**
  * The commands that work in every section, for `useCommands('app', …)`: the shortcuts page of Settings, the `G` chords that switch sections, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
- * the side panel, `Ctrl+`` for its terminal, and back and forward.
+ * the side panel, `Ctrl+`` for its terminal, `Cmd+0`, `Cmd+1` and `Cmd+2` for its tabs, and back and forward.
  * `?` opens Settings on its Shortcuts page, once the window shows anything to open it over: while the app loads or cannot reach its daemon, the key reaches the page.
  * A section chord and a new chat need a selected project, as the Rail's buttons do, and also leave Settings.
  * `Cmd+N` shows the new-chat page of the Agents section whichever section is open, and works from a text field too: the message box is the place it is most wanted.
@@ -95,6 +96,18 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
                 if (root.selectedProjectId) root.ui.forProject(root.selectedProjectId).toggleSidePanelTab('terminal');
             },
         },
+        // The tabs of the panel by their places in its header, from a text field too, and from the terminal, which hands the keys on (`isAppShortcut`).
+        ...SIDE_PANEL_TABS.map(tab => ({
+            id: sidePanelTabCommand(tab),
+            title: `Show ${ SIDE_PANEL_TAB_LABELS[tab] } in the side panel`,
+            group: 'General',
+            keys: SIDE_PANEL_TAB_KEYS[tab],
+            inInputs: true,
+            when: () => root.showsProjectScreen,
+            handler: () => {
+                if (root.selectedProjectId) root.ui.forProject(root.selectedProjectId).openSidePanelTab(tab);
+            },
+        })),
         { id: 'nav.back', title: 'Go back', group: 'Navigation', keys: BACK_KEYS, when: () => root.history.canGoBack, handler: () => root.history.back() },
         { id: 'nav.forward', title: 'Go forward', group: 'Navigation', keys: FORWARD_KEYS, when: () => root.history.canGoForward, handler: () => root.history.forward() },
     ];

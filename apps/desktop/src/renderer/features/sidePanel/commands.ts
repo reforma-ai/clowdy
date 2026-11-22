@@ -1,8 +1,19 @@
+import type { SidePanelTab } from '../../stores';
+
 /** The command that opens and shuts the side panel, by the id the hotkeys registry and the toggle button's tooltip know it by. */
 export const SIDE_PANEL_COMMAND = 'sidePanel.toggle';
 
 /** `Cmd+Esc` on macOS, `Ctrl+Shift+B` elsewhere: Windows keeps `Ctrl+Esc` for the Start menu, so the key never reaches the app there. */
 export const SIDE_PANEL_KEYS = { mac: 'Meta+Escape', win: '$mod+Shift+b' } as const;
+
+/** The command that shows a tab of the panel, opening the panel when it is shut and leaving it open on a tab that is already shown. */
+export const sidePanelTabCommand = (tab: SidePanelTab) => `sidePanel.show.${ tab }`;
+
+/** `Cmd+0`, `Cmd+1`, `Cmd+2` (`Ctrl+` off a Mac): the tabs by their place in the header, Files and Terminal on the digits that are easy to reach and Info on 0. */
+export const SIDE_PANEL_TAB_KEYS: Record<SidePanelTab, string> = { info: '$mod+0', files: '$mod+1', terminal: '$mod+2' };
+
+/** The tabs' names, in the header, the tooltips and the shortcuts page. */
+export const SIDE_PANEL_TAB_LABELS: Record<SidePanelTab, string> = { info: 'Info', files: 'Files', terminal: 'Terminal' };
 
 /** The command that opens the panel on its Terminal tab, or shuts the panel when that tab is already there. */
 export const TERMINAL_COMMAND = 'sidePanel.terminal';

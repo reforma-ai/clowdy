@@ -2,7 +2,7 @@
 import { observable, runInAction } from 'mobx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SIDE_PANEL_KEYS } from '../features/sidePanel';
+import { SIDE_PANEL_KEYS, SIDE_PANEL_TAB_KEYS } from '../features/sidePanel';
 import { installDispatcher } from '../hotkeys/dispatcher';
 import { commandHint } from '../hotkeys/react';
 import { commandPresses, createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
@@ -323,7 +323,7 @@ describe('the keymap', () => {
         for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'sidePanel.toggle', 'sidePanel.terminal', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'sidePanel.toggle', 'sidePanel.terminal', 'sidePanel.show.info', 'sidePanel.show.files', 'sidePanel.show.terminal', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
         expect(navCommandId('tasks')).toBe('nav.tasks');
     });
 });
@@ -518,5 +518,87 @@ describe('the side panel', () => {
         });
 
         expect(commandHint('sidePanel.toggle', registry)).toBeUndefined();
+    });
+});
+
+describe('the tabs of the side panel', () => {
+    const state = () => ({ open: ui.forProject('p').sidePanelOpen, tab: ui.forProject('p').sidePanelTab });
+    const digit = (value: string, extra: KeyboardEventInit = {}, target?: EventTarget) => press({ key: value, code: `Digit${ value }`, metaKey: true, ...extra }, target);
+
+    it('shows Info on Cmd+0, Files on Cmd+1 and Terminal on Cmd+2, opening the panel when it is shut', () => {
+        const first = digit('1');
+
+        expect(state()).toEqual({ open: true, tab: 'files' });
+        expect(first.defaultPrevented).toBe(true);
+
+        digit('2');
+        expect(state()).toEqual({ open: true, tab: 'terminal' });
+
+        digit('0');
+        expect(state()).toEqual({ open: true, tab: 'info' });
+
+        runInAction(() => ui.forProject('p').toggleSidePanel());
+        expect(state()).toEqual({ open: false, tab: 'info' });
+
+        digit('2');
+        expect(state()).toEqual({ open: true, tab: 'terminal' });
+        expect(ui.forProject('other').sidePanelOpen).toBe(false);
+    });
+
+    it('keeps the panel open when the tab that is shown is picked again', () => {
+        digit('1');
+        digit('1');
+
+        expect(state()).toEqual({ open: true, tab: 'files' });
+    });
+
+    it('works from a text field', () => {
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        try {
+            digit('1', {}, input);
+            expect(state()).toEqual({ open: true, tab: 'files' });
+
+            digit('2', {}, input);
+            expect(state().tab).toBe('terminal');
+        }
+        finally {
+            input.remove();
+        }
+    });
+
+    it('does nothing, and leaves the key to the page, where the window shows no project, and takes no other digit or modifier', () => {
+        runInAction(() => {
+            screen.shown = false;
+        });
+
+        const event = digit('1');
+
+        expect(state().open).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+
+        runInAction(() => {
+            screen.shown = true;
+        });
+        digit('3');
+        digit('1', { shiftKey: true });
+        digit('1', { metaKey: false });
+        digit('1', { altKey: true });
+
+        expect(state().open).toBe(false);
+    });
+
+    it('has Cmd on a Mac and Ctrl elsewhere, and shows the key as the hint of the tab', () => {
+        expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.info }, 'darwin')).toEqual([['meta', '0']]);
+        expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.terminal }, 'win32')).toEqual([['ctrl', '2']]);
+        expect(commandHint('sidePanel.show.files', registry)).toEqual([['meta', '1']]);
+
+        runInAction(() => {
+            screen.shown = false;
+        });
+
+        expect(commandHint('sidePanel.show.files', registry)).toBeUndefined();
     });
 });

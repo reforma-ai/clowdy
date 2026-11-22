@@ -374,6 +374,12 @@ export class ProjectUi {
         this.sidePanelTab = tab;
     }
 
+    /** Opens the side panel on a tab and leaves it open when it already shows that tab: a key that picks a tab does not shut the panel. */
+    openSidePanelTab(tab: SidePanelTab): void {
+        this.sidePanelOpen = true;
+        this.sidePanelTab = tab;
+    }
+
     /** Opens the side panel on a tab, or shuts the panel when it already shows that tab: one key to get a tool and to get rid of it. */
     toggleSidePanelTab(tab: SidePanelTab): void {
         if (this.sidePanelOpen && this.sidePanelTab === tab) {
