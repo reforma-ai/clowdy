@@ -258,6 +258,8 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
         revealed: null,
         activePath: null,
     });
+    // The rows a path can have depend on the scope, so a new scope asks for the active tab and a requested path to be shown again, as a first mount does.
+    const shownScope = useRef(scope);
     const springOpen = useRef<{ folder: string; timer: ReturnType<typeof setTimeout> } | null>(null);
 
     // The list is drawn once its host has a size, and takes its offset from the element after every resize. A list built with no size and asked to scroll to the open file
@@ -289,6 +291,11 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
 
         if (!api) {
             return;
+        }
+
+        if (shownScope.current !== scope) {
+            shownScope.current = scope;
+            shown.current = { revealed: null, activePath: null };
         }
 
         // A row exists for a path the tree shows, or in a scope, for one below its root that it includes.
@@ -329,6 +336,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
     const actions: ExplorerActions = {
         manager,
         root,
+        fileName: scope?.fileName,
         draftParent: draft?.parent ?? null,
         dropFolder,
         menuItems,

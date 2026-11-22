@@ -106,6 +106,9 @@
 
 **Depends on:** Stage 4.
 
-- [ ] Complete
-  - [ ] `briefback review` of the whole change
-  - [ ] `apps/desktop/AGENTS.md` and `packages/file-manager/AGENTS.md` describe the scope and the Docs tab, and the Docs bullet is gone
+- [x] Complete
+  - [x] `briefback review` of the whole change (an independent read-only reviewer; its findings and what became of them below)
+  - [x] `apps/desktop/AGENTS.md` and `packages/file-manager/AGENTS.md` describe the scope and the Docs tab, and the Docs bullet is gone
+
+**Review findings, fixed:** a `loadDeep` asked for while a refresh was in flight was dropped, and the watch stream's first resync does exactly that on a first mount, so only the top level of `.clowdy/docs` showed (`FileTree` now remembers the folder and lists it again once the refresh has committed); `No documents yet` showed while the tree was still being listed (shown only once the tree is ready); the active tab was not revealed after switching between Files and Docs (the explorer shows again when its scope changes); a document's name was completed with `.md` only on create, not checked before it and not on rename (the row's name input checks and applies the completed name); stale wording in the docs skill and `AGENTS.md`; the test for a `.clowdy` that links out of its folder is back.
+**Review findings, left:** a file dropped from outside or pasted into the docs tree that is not Markdown is created and then not shown there (it is in Files); a link inside the docs folder that points at another file of the project is listed and edited through by `fs`, and `docsTree` for `@` mentions still skips links; the docs tab has no error line or Retry when listing fails (Files has none either; the error is a toast).

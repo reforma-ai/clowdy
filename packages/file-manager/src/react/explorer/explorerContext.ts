@@ -45,6 +45,8 @@ export interface ExplorerActions {
     manager: FileManager;
     /** The folder the top rows are in: `''` for the whole tree, the scope's root for a part of it. */
     root: string;
+    /** The name a file gets from the one typed for it, as a scope says (a document gets `.md`); the typed name as it is without one. */
+    fileName?: (name: string) => string;
     /** Folder the inline new row creates in, while it shows. */
     draftParent: string | null;
     /** Folder that files dragged in from outside would go in, while they are over the tree. */

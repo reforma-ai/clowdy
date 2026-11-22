@@ -130,6 +130,14 @@ describe('docs tree', () => {
         expect(readdirSync(fx.outside)).toEqual(['secret.md']);
     });
 
+    symlinks('a .clowdy that is a link out of its folder is refused, though the docs folder is in what it leads to', () => {
+        mkdirSync(join(fx.outside, 'docs'));
+        writeFileSync(join(fx.outside, 'docs', 'secret.md'), 'top secret');
+        symlinkSync(fx.outside, join(fx.project.folders[0].path, '.clowdy'));
+
+        fails(() => docsTree(fx.project), 'invalid');
+    });
+
     symlinks('a docs folder that is a dangling link is not followed to make its target', () => {
         const target = join(fx.outside, 'made-here');
 

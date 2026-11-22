@@ -208,6 +208,30 @@ describe('FileTree', () => {
         await expect(tree.loadDeep('nothing/here')).resolves.toBeUndefined();
     });
 
+    it('should list a folder deep that was asked for while a refresh was in flight, once the refresh has committed', async () => {
+        const fs = new MemoryFileSystem({ 'a.ts': '', '.clowdy/docs/plans/deep/b.md': '', '.clowdy/docs/index.md': '' });
+        const tree = new FileTree(fs, { hidden: ['**/.*'] });
+
+        await tree.refresh();
+
+        // The refresh starts after the deep listing was asked for and before it answers, as a watch stream's first resync does.
+        const deep = tree.loadDeep('.clowdy/docs');
+        const refreshed = tree.refresh();
+
+        await Promise.all([deep, refreshed]);
+        expect(tree.get('.clowdy/docs/plans/deep/b.md')?.kind).toBe('file');
+
+        // A refresh already in flight when it is asked for.
+        const second = tree.refresh();
+
+        await Promise.all([tree.loadDeep('.clowdy/docs'), second]);
+        expect(tree.get('.clowdy/docs/plans/deep/b.md')?.kind).toBe('file');
+
+        await fs.write('.clowdy/docs/plans/deep/c.md', '');
+        await tree.refresh();
+        expect(tree.get('.clowdy/docs/plans/deep/c.md')?.kind).toBe('file');
+    });
+
     it('should list an opened folder again on refresh and leave an unloaded one out', async () => {
         const calls: string[] = [];
         const provider = {
