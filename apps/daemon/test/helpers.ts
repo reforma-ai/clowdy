@@ -71,6 +71,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
         dataDir: join(root, 'data'),
         projectsDir: join(root, 'projects'),
         personalDir: join(root, 'personal'),
+        workspacesDir: join(root, 'workspaces'),
         port: 0,
         token: 'test-token',
         corsOrigins: [],

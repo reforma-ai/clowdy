@@ -81,15 +81,11 @@ async function originHead(folder: string): Promise<string | undefined> {
     return gitLine(folder, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
 }
 
-/** Every branch of the repository, local ones first and then each remote's (without a remote's `HEAD`); none where git says no (outside a repository), `unavailable` where it does not answer. */
-async function readBranches(folder: string): Promise<GitBranch[]> {
-    const read = await gitRead(folder, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes']);
-
-    if (!read.ok && read.reason === 'unavailable') throw unavailable('git did not answer');
-
+/** The branches in the output of `git for-each-ref --format=%(refname) refs/heads refs/remotes`: the local ones and each remote's, without a remote's `HEAD`, in git's order. */
+export function parseBranches(output: string): GitBranch[] {
     const branches: GitBranch[] = [];
 
-    for (const ref of read.ok ? read.stdout.split('\n') : []) {
+    for (const ref of output.split('\n')) {
         if (ref.startsWith('refs/heads/')) {
             branches.push({ name: ref.slice('refs/heads/'.length), remote: false });
         }
@@ -101,11 +97,20 @@ async function readBranches(folder: string): Promise<GitBranch[]> {
     return branches;
 }
 
+/** Every branch of the repository, local ones first and then each remote's (without a remote's `HEAD`); none where git says no (outside a repository), `unavailable` where it does not answer. */
+async function readBranches(folder: string): Promise<GitBranch[]> {
+    const read = await gitRead(folder, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes']);
+
+    if (!read.ok && read.reason === 'unavailable') throw unavailable('git did not answer');
+
+    return parseBranches(read.ok ? read.stdout : '');
+}
+
 /**
  * The first of what `origin/HEAD` names, `origin/main`, `origin/master`, a local `main` and a local `master` that the repository has as a branch, else the branch that is
  * checked out (a short hash on a detached HEAD), which an unborn branch is not: it has nothing to start from. Nothing in a repository with no commit.
  */
-function pickDefaultBranch(remoteHead: string | undefined, branches: readonly GitBranch[], head: Awaited<ReturnType<typeof folderHead>>): string | undefined {
+export function pickDefaultBranch(remoteHead: string | undefined, branches: readonly GitBranch[], head: Awaited<ReturnType<typeof folderHead>>): string | undefined {
     const has = (name: string, remote: boolean) => branches.some(branch => branch.name === name && branch.remote === remote);
     const candidates: Array<[string | undefined, boolean]> = [[remoteHead, true], ['origin/main', true], ['origin/master', true], ['main', false], ['master', false]];
 

@@ -1,3 +1,5 @@
+import { WORKSPACE_TOOL } from '../domain/workspaces';
+
 import type { StreamItem } from '@clowdy/protocol';
 
 /** What one message of the person or of the agent may take; a longer one keeps its start and its end, where the point and the question usually are. */
@@ -46,6 +48,11 @@ function entryOf(item: StreamItem): string | undefined {
         case 'assistant':
             return body.text.trim() ? `You: ${ clip(body.text) }` : undefined;
         case 'tool': {
+            // `Prepare workspace` is the runtime's own step, not something the agent did; where it works is told in its system prompt.
+            if (body.name === WORKSPACE_TOOL) {
+                return undefined;
+            }
+
             const input = brief(body.input);
             const result = body.error ? `failed: ${ brief(body.error) }` : brief(body.output);
 

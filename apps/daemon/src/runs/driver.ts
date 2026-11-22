@@ -5,6 +5,7 @@ import { getChat } from '../db/chats';
 import { listItems, nextSeq } from '../db/items';
 import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } from '../db/runs';
 import { appendItem, markRewindPoint } from '../domain/items';
+import { needsPreparing, prepareWorkspace } from '../domain/workspaces';
 import { EngineFailure, errorMessage } from '../errors';
 import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
@@ -17,13 +18,13 @@ import { ASK_USER } from './tools';
 import { BACKGROUND_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 import { TurnWriter, UNFINISHED_TOOL } from './writer';
 
-import type { BackgroundItem, Chat, ChatMode, EngineId, Project, Run, RunContext } from '@clowdy/protocol';
+import type { BackgroundItem, Chat, ChatMode, ChatWorkspace, EngineId, Project, Run, RunContext } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunWork } from '../db/runs';
 import type { EngineRegistry, EngineSession, ToolDefinition } from '../engine/types';
 import type { Store } from '../store';
 import type { LimitSignal } from './limits';
-import type { PromptChat } from './prompts';
+import type { PromptChat, PromptWorkspace } from './prompts';
 import type { RunService } from './service';
 
 /** A run that fails this many times in a row on passing engine errors (overload, rate limit) is failed for good. */
@@ -109,19 +110,27 @@ export function isFolder(path: string): boolean {
 
 /**
  * The project's folders a turn hands the agent besides the one it works in, in the project's order. A folder that is gone is left out rather than
- * risk an agent that refuses to start on a path that does not exist; `ProjectInfo` reports it missing to the app.
+ * risk an agent that refuses to start on a path that does not exist; `ProjectInfo` reports it missing to the app. A turn that works in its chat's worktree
+ * leaves out the folder the worktree is a checkout of too: that main checkout is the person's, and an agent that is handed it wanders back into it.
  */
-function additionalFolders(project: Project, cwd: string): string[] {
-    return project.folders.flatMap(folder => folder.path !== cwd && isFolder(folder.path) ? [folder.path] : []);
+function additionalFolders(project: Project, cwd: string, workspace: ChatWorkspace | undefined): string[] {
+    const left = workspace?.path === cwd ? workspace.folderId : undefined;
+
+    return project.folders.flatMap(folder => folder.path !== cwd && folder.id !== left && isFolder(folder.path) ? [folder.path] : []);
 }
 
 /**
- * The folder a turn works in: the one the run names (a thread's own `cwd`), else the folder of the project its chat works in (`Chat.folderId`), else the
- * main folder. A chat whose folder the project no longer has was handed back to the main folder when the folder left, so a stale id reads as none.
+ * The folder a turn works in: the one the run names (a thread's own `cwd`), else the worktree of its chat (`Chat.workspace`), else the folder of the project
+ * its chat works in (`Chat.folderId`), else the main folder. A chat whose folder the project no longer has was handed back to the main folder when the folder
+ * left (its worktree with it), so a stale id reads as none.
  */
 function workingFolder(project: Project, chat: Chat | undefined, own: string | undefined): string {
     if (own) {
         return own;
+    }
+
+    if (chat?.workspace) {
+        return chat.workspace.path;
     }
 
     const folder = chat?.folderId === undefined ? undefined : project.folders.find(candidate => candidate.id === chat.folderId);
@@ -138,6 +147,14 @@ function promptChat(store: Store, chat: Chat | undefined): PromptChat | undefine
     const parent = chat.parentChatId ? getChat(store.db, chat.parentChatId) : undefined;
 
     return chat.parentChatId ? { parent: { id: chat.parentChatId, title: parent?.title ?? chat.parentChatId } } : {};
+}
+
+/** What the system prompt says of the worktree: only for a turn that works in it, and with the main checkout it was made from. */
+function promptWorkspace(project: Project, chat: Chat | undefined, cwd: string): PromptWorkspace | undefined {
+    const workspace = chat?.workspace;
+    const folder = workspace && project.folders.find(candidate => candidate.id === workspace.folderId);
+
+    return workspace && folder && workspace.path === cwd ? { path: workspace.path, ...(workspace.branch !== undefined && { branch: workspace.branch }), folder: folder.path } : undefined;
 }
 
 const firstLine = (text: string) => text.split('\n')[0].trim().slice(0, 300);
@@ -486,15 +503,17 @@ export class RunDriver {
     }
 
     /**
-     * What a session of a chat's orchestrator is opened with, a turn's or a fork's: the folder it works in (`workingFolder`: the run's own, else the folder of
-     * its chat, else the project's main one), the project's other folders, the system prompt (`chat` says what the run's chat adds to it) and the tools of the
-     * run. `ownChat` is the run's chat, which names the folder. Throws an `EngineFailure` when the folder is gone.
+     * What a session of a chat's orchestrator is opened with, a turn's or a fork's: the folder it works in (`workingFolder`: the run's own, else the worktree
+     * of its chat, else the folder of its chat, else the project's main one), the project's other folders (not the main checkout of a worktree it works in),
+     * the system prompt (`chat` says what the run's chat adds to it, the worktree too) and the tools of the run. `ownChat` is the run's chat, which names the
+     * folder. Throws an `EngineFailure` when the folder is gone.
      */
     private surroundings(run: Run, work: RunWork, ownChat: Chat | undefined, chat: PromptChat | undefined) {
         const { runs, config } = this.deps;
         const project = runs.projectOf(run);
         const mode = runs.modeOf(run);
         const cwd = workingFolder(project, ownChat, work.cwd);
+        const workspace = promptWorkspace(project, ownChat, cwd);
 
         // An engine told to start in a folder that is gone fails with the spawn's own error, which blames the program; say what is wrong.
         if (!isFolder(cwd)) {
@@ -503,8 +522,8 @@ export class RunDriver {
 
         return {
             cwd,
-            additionalDirectories: additionalFolders(project, cwd),
-            systemPrompt: [systemPrompt(mode, project, cwd, chat), skillPrompt(config.systemSkillsDir, chat?.parent !== undefined)].filter(Boolean).join('\n\n'),
+            additionalDirectories: additionalFolders(project, cwd, ownChat?.workspace),
+            systemPrompt: [systemPrompt(mode, project, cwd, chat && { ...chat, ...(workspace && { workspace }) }), skillPrompt(config.systemSkillsDir, chat?.parent !== undefined)].filter(Boolean).join('\n\n'),
             tools: this.deps.tools(run, mode),
         };
     }
@@ -546,6 +565,12 @@ export class RunDriver {
      */
     private async turn(runId: string, live: LiveRun, signal: AbortSignal, failures: number): Promise<Retry | undefined> {
         const { store, runs, engines, config } = this.deps;
+        // The stream as it is before this turn adds its own lines: what the agent was told so far.
+        const told = nextSeq(store.db, runId) - 1;
+
+        // Before anything that counts a session: the step waits for git, and no session is open yet.
+        await this.prepareWorkspace(runId, signal);
+
         const deadline = Date.now() + 2 * config.timings.killGraceMs;
 
         // The sessions of runs that just ended or were cancelled still shut down while the next runs already hold their
@@ -565,8 +590,6 @@ export class RunDriver {
             throw new EngineFailure(`The ${ run.engine } engine is not available in this daemon`);
         }
 
-        // The stream as it is before this turn adds its own lines: what the agent was told so far.
-        const told = nextSeq(store.db, runId) - 1;
         const work = getRunWork(store.db, runId);
         const ownChat = run.chatId ? getChat(store.db, run.chatId) : undefined;
         const surroundings = this.surroundings(run, work, ownChat, promptChat(store, ownChat));
@@ -692,6 +715,22 @@ export class RunDriver {
             }
 
             runs.setProcess(runId, null);
+        }
+    }
+
+    /**
+     * `Prepare workspace`, the first step of a turn whose chat works in a worktree that is not set up yet, or that Clowdy made and is gone from the disk
+     * (`needsPreparing`): the worktree is made, or checked to be there, with a tool item of the run's stream that shows git's lines. It throws a
+     * `WorkspaceError` with the reason when it cannot, and the run fails with it; the next message tries again. A run whose own `cwd` names the folder it works
+     * in (a thread's) has no use for the chat's worktree, which the chat's own turns make.
+     */
+    private async prepareWorkspace(runId: string, signal: AbortSignal): Promise<void> {
+        const { store, runs } = this.deps;
+        const chatId = runs.require(runId).chatId;
+        const workspace = chatId && !getRunWork(store.db, runId).cwd ? getChat(store.db, chatId)?.workspace : undefined;
+
+        if (workspace && needsPreparing(workspace)) {
+            await prepareWorkspace(store, workspace.id, { runId, signal: AbortSignal.any([signal, this.stopping.signal]) });
         }
     }
 

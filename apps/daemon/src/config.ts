@@ -9,6 +9,8 @@ export interface Config {
     projectsDir: string;
     /** The folder of the personal space: `~/Clowdy/Personal`. */
     personalDir: string;
+    /** Parent folder of the worktrees Clowdy makes for chats: `~/Clowdy/workspaces`, below it `<project-slug>/<chat-id8>/<folder-name>`. */
+    workspacesDir: string;
     /** 0 picks a random free port. */
     port: number;
     token: string;
@@ -115,6 +117,7 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
         dataDir: daemonDataDir({ platform, home: homedir(), env }),
         projectsDir: env.CLOWDY_PROJECTS_DIR || join(homedir(), 'Clowdy', 'projects'),
         personalDir: env.CLOWDY_PERSONAL_DIR || join(homedir(), 'Clowdy', 'Personal'),
+        workspacesDir: env.CLOWDY_WORKSPACES_DIR || join(homedir(), 'Clowdy', 'workspaces'),
         port: numberFrom(env, 'CLOWDY_PORT', 0, v => Number.isInteger(v) && v >= 0 && v <= 65535, 'a port between 0 and 65535'),
         token: env.CLOWDY_TOKEN || randomBytes(32).toString('hex'),
         corsOrigins: (env.CLOWDY_CORS_ORIGINS ?? '').split(',').map(origin => origin.trim()).filter(Boolean),

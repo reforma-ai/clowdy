@@ -24,6 +24,11 @@ describe('config', () => {
         expect(loadConfig({ CLOWDY_PERSONAL_DIR: '/mine' }, 'linux').personalDir).toBe('/mine');
     });
 
+    test('the worktrees of chats go under ~/Clowdy/workspaces, or CLOWDY_WORKSPACES_DIR', () => {
+        expect(loadConfig({}, 'linux').workspacesDir).toBe(join(homedir(), 'Clowdy', 'workspaces'));
+        expect(loadConfig({ CLOWDY_WORKSPACES_DIR: '/trees' }, 'linux').workspacesDir).toBe('/trees');
+    });
+
     test('the data dir comes from the shared protocol function, so the desktop app finds the same folder', () => {
         for (const platform of ['darwin', 'win32', 'linux'] as const) {
             for (const env of [{}, { CLOWDY_PROFILE: 'dev' }, { LOCALAPPDATA: 'D:\\Local' }]) {

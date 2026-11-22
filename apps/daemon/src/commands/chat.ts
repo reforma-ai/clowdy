@@ -14,7 +14,8 @@ type ChatCommand = 'chat.create' | 'chat.rename' | 'chat.setMode' | 'chat.setMod
     | 'chat.removeQueued' | 'chat.moveQueued' | 'chat.sendQueued';
 
 export const chatHandlers: Pick<Handlers, ChatCommand> = {
-    'chat.create': ({ store, runs }, command) => {
+    /** A `workspace` is checked here and its row made; the worktree itself is made by the chat's first turn (`prepareWorkspace`). */
+    'chat.create': ({ store, runs, config }, command) => {
         const project = requireProject(store, command.projectId);
 
         // An unknown agent is refused here; one that is switched off waits for the first message, which says so.
@@ -22,7 +23,7 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
             runs.resolveEngine(project, command.engine);
         }
 
-        return { chat: createChat(store, { ...command, mode: command.mode ?? projectChatMode(project.settings) }) };
+        return { chat: createChat(store, { ...command, mode: command.mode ?? projectChatMode(project.settings) }, config) };
     },
 
     'chat.rename': ({ store }, command) => ({ chat: renameChat(store, command.chatId, command.title) }),

@@ -471,4 +471,29 @@ export const MIGRATIONS: Migration[] = [
             db.run('ALTER TABLE runs ADD COLUMN awaiting_user INTEGER');
         },
     },
+    {
+        version: 24,
+        up(db) {
+            // The worktrees chats work in (see `ChatWorkspace`): one row per worktree, which chats point at through `chats.workspace_id` (NULL for a chat that
+            // works in its folder itself, which every chat of an older database is), so several chats, their threads and their forks can share one. `managed` is 1
+            // for a worktree Clowdy made (under the workspaces folder), which it may remove; `ready` is 0 until the first turn has made it. No foreign keys: a project
+            // update rewrites the folder rows, and a chat and a worktree outlive each other (a deleted chat leaves its worktree on disk).
+            db.run(`
+                CREATE TABLE workspaces (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    folder_id TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    branch TEXT,
+                    base TEXT,
+                    managed INTEGER NOT NULL,
+                    ready INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                );
+                CREATE INDEX workspaces_project ON workspaces(project_id);
+                ALTER TABLE chats ADD COLUMN workspace_id TEXT;
+                CREATE INDEX chats_workspace ON chats(workspace_id) WHERE workspace_id IS NOT NULL;
+            `);
+        },
+    },
 ];

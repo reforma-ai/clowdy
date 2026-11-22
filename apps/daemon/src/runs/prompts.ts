@@ -36,9 +36,28 @@ export interface PromptParent {
     title: string;
 }
 
-/** What the system prompt says about the run's chat: present for every run of a chat, with the parent when the chat is a thread. */
+/** The git worktree a run works in, in place of its folder's own checkout. */
+export interface PromptWorkspace {
+    /** The worktree: the run's working folder. */
+    path: string;
+    /** The branch it was made or picked with; absent for a detached HEAD. */
+    branch?: string;
+    /** The folder of the project it is a checkout of: the main checkout, which the person and the other agents work in. */
+    folder: string;
+}
+
+/** What the system prompt says about the run's chat: present for every run of a chat, with the parent when the chat is a thread and the worktree when it works in one. */
 export interface PromptChat {
     parent?: PromptParent;
+    workspace?: PromptWorkspace;
+}
+
+/** What an orchestrator is told of the worktree it works in: where it is, its branch, and that the checkout it was made from is not its place. */
+function workspaceFacts({ path, branch, folder }: PromptWorkspace): string {
+    return [
+        `Worktree: you work in a git worktree of ${ folder }, at ${ path }, ${ branch ? `on the branch ${ branch }` : 'on a detached HEAD' }. Read and change files there, run commands there and commit your work there.`,
+        `The main checkout at ${ folder } is the person's and other agents' place: leave its files alone, and use it only to read what the worktree does not have.`,
+    ].join(' ');
 }
 
 /** What the orchestrator of a thread is told about its place: who started it, what its report is, and whom it may write to. */
@@ -58,7 +77,7 @@ const modeLabel = (mode: ChatMode) => (mode === 'semi' ? 'semi-manual' : 'autopi
  * absolute path: an agent that takes no additional folders reaches the others only that way, and none reads another folder's instructions unless
  * told to. The folder the run works in is marked, which is not the main one for a run whose `cwd` is another folder.
  */
-function projectFacts(project: Project, cwd: string): string {
+function projectFacts(project: Project, cwd: string, worktreeOf?: string): string {
     const keys = `task keys ${ project.taskPrefix }-<number>`;
 
     if (project.folders.length === 1) {
@@ -69,7 +88,7 @@ function projectFacts(project: Project, cwd: string): string {
     }
 
     const folders = project.folders.map(({ path }, index) => {
-        const marks = [index === 0 && 'main', path === cwd && 'you work here'].filter(Boolean);
+        const marks = [index === 0 && 'main', path === cwd && 'you work here', path === worktreeOf && 'you work in a worktree of it'].filter(Boolean);
 
         return marks.length > 0 ? `- ${ path } (${ marks.join(', ') })` : `- ${ path }`;
     });
@@ -92,7 +111,8 @@ export function systemPrompt(mode: ChatMode, project: Project, cwd = mainFolder(
         INTRO,
         chat?.parent && threadIntro(chat.parent),
         `Mode: ${ modeLabel(mode) }.`,
-        projectFacts(project, cwd),
+        projectFacts(project, cwd, chat?.workspace?.folder),
+        chat?.workspace && workspaceFacts(chat.workspace),
         TASKS,
         chat && THREADS,
     ].filter(Boolean).join('\n');
