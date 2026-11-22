@@ -124,7 +124,7 @@
 
 **Done when:** an agent set to any of its presets by `agent.update` runs its next turn on that preset, a request that must go to the person shows as a classified `approval` item and the run waits, `run.decide` lets the agent go on as the decision says, a session grant spares the repeat, and a provider added in a test needs no change to the core.
 **Verify:** `bun test` in `apps/daemon`; `bun run typecheck` and `bun run lint` in `packages/protocol` and `apps/desktop`; the real checks above
-**Commits** (on the branch `maksim-kachurin/permission-modes`, pushed to `origin`; **not yet merged into `next`**: the main tree had other agents' uncommitted files in paths the merge touches, and GITFLOW says to wait for their owners rather than stash):
+**Commits** (made on the branch `maksim-kachurin/permission-modes`, merged into `next` in `5a3c3af`):
 
 - `4f59c88` feat(daemon): let providers declare permission presets and put requests to the person
 - `f2d2520` fix(daemon): end a turn that leaves a request open, and answer a request the agent takes back (review)
@@ -161,7 +161,7 @@
 
 **Done when:** a request that waits shows as a card in the chat, a click on a decision lets the agent continue as it says, and the card keeps the decision afterwards.
 **Verify:** `bun run test`, `bun run typecheck`, `bun run lint` in `apps/desktop`; the hand check above with `./clowdy dev`
-**Commits** (on the branch `maksim-kachurin/permission-modes`, with Stage 2; not yet merged into `next`):
+**Commits** (made on the branch `maksim-kachurin/permission-modes`, merged into `next` with Stage 2 in `5a3c3af`):
 
 - `99c21b2` feat(desktop): show an agent's permission request as a card in the chat
 - `23d00c0` review fixes: the card is a labelled group, not a landmark section; the "Show N more lines" toggle takes the text colour and a chevron (the muted colour measured about 4.4:1, under the 4.5:1 a small control needs); the fixture's requests follow their tool call and carry a `toolCallId`; a `RunDetail` test
@@ -175,12 +175,12 @@
 
 **This stage:** puts the choice where the person looks for it and turns the default on. Each agent's card lists the presets that agent's provider declares (name and description each), the chosen one marked, the default named. From here an agent whose preset the person never chose runs on its provider's default (Approve for me on Claude and Codex, Full access on a provider without native modes), now that a card exists to answer what it asks.
 
-- [ ] Complete
-  - [ ] Settings: a list of the presets the agent offers, built from `AgentInfo.permissions` with no vendor knowledge in the page; pending state while saved; the default marked
-  - [ ] Registry: no stored choice resolves to the provider's default; a stored choice still wins; `CLOWDY_AGENT_PERMISSIONS` stays the fallback of an engine used without a registry
-  - [ ] Fixture daemon and tests follow the list
-  - [ ] Docs: daemon and desktop `AGENTS.md`; the daemon's Permissions paragraph now says the default is the provider's
-  - [ ] Checked by hand in the running app: the list on Claude, Codex and an agent with the generic pair; a new chat on the default; switching to Full access takes effect on the next turn
+- [x] Complete
+  - [x] Settings: a list of the presets the agent offers, built from `AgentInfo.permissions` with no vendor knowledge in the page; pending state while saved; the default marked
+  - [x] Registry: no stored choice resolves to the provider's default; a stored choice still wins; `CLOWDY_AGENT_PERMISSIONS` stays the fallback of an engine used without a registry
+  - [x] Fixture daemon and tests follow the list
+  - [x] Docs: daemon and desktop `AGENTS.md`; the daemon's Permissions paragraph now says the default is the provider's
+  - [ ] Checked by hand in the running app (left to the owner, now that it is in `next`): the list on Claude, Codex and an agent with the generic pair; a new chat on the default; switching to Full access takes effect on the next turn
 
 **Files**
 
@@ -192,4 +192,20 @@
 
 **Done when:** every agent's card lists its presets and the person's choice reaches the agent's next turn, and an untouched agent runs on its provider's default with approvals going to the card.
 **Verify:** `bun run test`, `bun run typecheck`, `bun run lint` in `apps/desktop`; `bun test` in `apps/daemon`; the hand check above with `./clowdy dev`
-**Commits:** None yet.
+**Commits** (made on the branch, merged into `next` in `72ceb72`):
+
+- `3a3af89` feat(desktop): list an agent's permission presets in the provider settings, and start agents on their default
+- `1ebbf34` review fix: the radios stay enabled and the group is read only while a choice is saved, so keyboard focus stays on the radio (a disabled radio drops focus to the page in Electron's Chromium)
+- `a790883` test(daemon): the default preset end to end over v1 and v2, a provider's own default, and stale wording fixed (review)
+- `1440fcc` docs(briefback): the real check of the default preset
+
+**Review and real check (2026-11-22):** the registry resolves every agent to the person's valid choice, else the provider's default; a stale stored preset falls back; nothing in the core assumes `ResolvedAgent.permission` is absent; the test rig's strip of the registry's preset was checked by removing it (only the two "permission requests are answered by the daemon" tests fail, as intended). Real agents on the default (`research/real-checks.md`): `resolve()` gives `auto`/`auto`/`ask` for Claude Code and `auto`/`agent`/`ask` for Codex, and a file write in the project and `clowdy task list` run with no card. Daemon tests on the merged `next`: 1744 pass, 8 skip, 0 fail; desktop 3618 pass, with two failures in `QuickSearch.test.tsx`, whose files another agent has uncommitted in the shared tree (not this work).
+
+**Open, for the owner (from the review):**
+
+- **Full access in one keystroke:** the radios select as the arrows move and the group wraps, so Up from Ask for approval saves Full access at once. Kept (it matches native radios, the choice shows, it applies from the next turn, and the warning tone marks it); a confirm step for `full` only is the alternative.
+- **A resumed Claude session can stay in Full access:** when Claude does not offer `auto` for the account or model, `applyChoices` sends no mode, and a resumed session continues in the mode its transcript ended in, which can be `bypassPermissions`, while Clowdy answers `ask`. Narrow, but it errs toward more access than chosen. The fix is a product rule: the provider declares an ordered fallback per preset (Claude: `auto`, then `acceptEdits`, then `default`) and `applyChoices` takes the first the agent offers.
+- **Settings says Approve for me when the agent could not honour it** (Claude with no Auto mode starts in `default` or `acceptEdits`): safe, but the person is not told; the fix needs the run to report the mode it really ran on (protocol).
+- **`CLOWDY_AGENT_PERMISSIONS` has no effect in a running daemon any more** (every registry-resolved agent has a preset): delete it and `PermissionPolicy`, or give it a role such as the answer of unattended runs.
+- **The radio's focus ring is probably invisible** (`packages/components/src/Radio/Radio.module.css` draws it from `.root:focus-visible`, but the focus sits on the input inside the label; Switch and Checkbox use the same selector): a shared-component fix, not verified in the app.
+- A run resting in `waiting_background` with an open card shows no sign that it waits (see Stage 3).
