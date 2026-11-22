@@ -90,16 +90,17 @@
 
 **This stage:** everything the inventory lists goes.
 
-- [ ] Complete
+- [x] Complete
   - [x] renderer: `features/docs/`, the left rail item and `Shell`'s screen, `nav.docs` and the `g d` chord, `SECTIONS` 'docs', `docPath`, `docFolderId`, `openDoc`, `NavHistory` and `ProjectState.lastDocsChange` (commit `163a1b3`)
   - [x] renderer, with the protocol: `getDocFile` in the transports, the fixture's `docs.write`, the `docs.changed` case of `ProjectState`, and their tests
   - [x] tasks: kept, not deleted (scope change): a doc result and `O D` open the document on the Docs tab (`openDocument`), so the task model's own feature is not touched
   - [x] daemon and protocol: the `docs.write` command, `GET docs/file`, the docs read, write, announce and watcher code, `docs.changed`, `DocFile`, `ROUTES.docsFile`, `foldersAtPath`. `DocsService` shrank to `docsTree(project)` in `docs/tree.ts` (its `root` rule kept: a missing main folder or a docs folder that is not a folder is `unavailable`, one that leads out `invalid`, another folder's failure leaves it out); `docs/paths.ts` keeps `DOCS_DIR`, `isDocFile` and `realPathBelow` (the project icon uses it); `ProjectWatchers` and `Services` lost `docs`; `GET docs` calls the function; `test/docs.test.ts` keeps the tree cases, the docs parts of `projects.test.ts` and `http.test.ts` went. A stale `docs.changed` row in the event log reaches an app whose `applyEvent` has no case for it, which skips it
-  - [ ] the tests of all of it, the skill's and prompts' wording, the README, both `AGENTS.md`
-  - [ ] stored state: a stored `section: 'docs'` falls back to Agents (already covered); `clowdy:sidebar-width:docs` is left alone
+  - [x] the tests of all of it, the skill's and prompts' wording, the README, both `AGENTS.md`
+  - [x] stored state: a stored `section: 'docs'` falls back to Agents (already covered); `clowdy:sidebar-width:docs` is left alone
 
 **Done when:** no reference to the removed names is left (`grep`), the daemon's tests and the app's pass, and a project with documents shows them in the Docs tab.
 **Verify:** `bunx turbo run build lint typecheck test --affected`
+**Commits:** `163a1b3` refactor(desktop): remove the Docs screen, now that Docs is a tab of the side panel; `1f2c4c7` refactor: remove the daemon's document read, write and watch now that Docs is a tab of the file manager (daemon `bun test`: 1669 pass; the app's typecheck stayed red only on another agent's Settings work in progress)
 
 ## Stage 5 — Review and docs
 
