@@ -3,7 +3,7 @@ import { observable, runInAction } from 'mobx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SETTINGS_COMMAND, SETTINGS_KEYS } from '../features/settings/commands';
-import { SIDE_PANEL_KEYS, SIDE_PANEL_TAB_KEYS } from '../features/sidePanel';
+import { SIDE_PANEL_EXPAND_KEYS, SIDE_PANEL_KEYS, SIDE_PANEL_TAB_KEYS } from '../features/sidePanel';
 import { installDispatcher } from '../hotkeys/dispatcher';
 import { commandHint } from '../hotkeys/react';
 import { commandPresses, createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
@@ -43,6 +43,9 @@ beforeEach(() => {
             return loading.phase;
         },
         selectedProjectId: 'p' as string | null,
+        get selectedProjectUi() {
+            return this.selectedProjectId ? ui.forProject(this.selectedProjectId) : undefined;
+        },
         get showsProjectScreen() {
             return screen.shown;
         },
@@ -386,7 +389,7 @@ describe('the keymap', () => {
         for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'settings.open', 'nav.agents', 'nav.tasks', 'chats.new', 'sidePanel.toggle', 'sidePanel.terminal', 'sidePanel.tab.info', 'sidePanel.tab.files', 'sidePanel.tab.docs', 'sidePanel.tab.terminal', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'settings.open', 'nav.agents', 'nav.tasks', 'chats.new', 'sidePanel.toggle', 'sidePanel.expand', 'sidePanel.terminal', 'sidePanel.tab.info', 'sidePanel.tab.files', 'sidePanel.tab.docs', 'sidePanel.tab.terminal', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
         expect(navCommandId('tasks')).toBe('nav.tasks');
     });
 });
@@ -581,6 +584,57 @@ describe('the side panel', () => {
         });
 
         expect(commandHint('sidePanel.toggle', registry)).toBeUndefined();
+    });
+});
+
+describe('the expanded side panel', () => {
+    const expanded = () => ui.forProject('p').sidePanelExpanded;
+    const expand = (target?: EventTarget) => press({ key: 'Enter', code: 'Enter', metaKey: true, shiftKey: true }, target);
+
+    it('has Cmd+Shift+Enter on a Mac and Ctrl+Shift+Enter elsewhere', () => {
+        expect(commandPresses({ keys: SIDE_PANEL_EXPAND_KEYS }, 'darwin')).toEqual([['shift', 'meta', 'enter']]);
+        expect(commandPresses({ keys: SIDE_PANEL_EXPAND_KEYS }, 'win32')).toEqual([['ctrl', 'shift', 'enter']]);
+    });
+
+    it('expands the open panel and gives the chat its place back on a second press, from a text field too', () => {
+        ui.forProject('p').toggleSidePanel();
+
+        const first = expand();
+
+        expect(expanded()).toBe(true);
+        expect(first.defaultPrevented).toBe(true);
+
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        try {
+            expand(input);
+            expect(expanded()).toBe(false);
+        }
+        finally {
+            input.remove();
+        }
+    });
+
+    it('does nothing, and leaves the key to the page, while the panel is shut or the window shows no project', () => {
+        const shut = expand();
+
+        expect(expanded()).toBe(false);
+        expect(shut.defaultPrevented).toBe(false);
+        expect(commandHint('sidePanel.expand', registry)).toBeUndefined();
+
+        ui.forProject('p').toggleSidePanel();
+        expect(commandHint('sidePanel.expand', registry)).toEqual([['shift', 'meta', 'enter']]);
+
+        runInAction(() => {
+            screen.shown = false;
+        });
+
+        const away = expand();
+
+        expect(expanded()).toBe(false);
+        expect(away.defaultPrevented).toBe(false);
     });
 });
 

@@ -124,6 +124,11 @@ export class ProjectUi {
     sidePanelOpen = false;
     /** The tab the side panel shows, kept for the project: the one it was left on. */
     sidePanelTab: SidePanelTab = 'info';
+    /**
+     * The side panel takes the place of the chat, and only the list of chats stays beside it. It is the project's choice, apart from whether the panel is open: a shut panel
+     * shows the chat in full and brings the panel back expanded. Choosing a chat while the panel is open ends it (`#showChat`). Not kept between sessions.
+     */
+    sidePanelExpanded = false;
     tasksView: TasksView = 'board';
     /**
      * Tasks: the task whose insides the screen shows, `null` for the project's roots. It names a task the project may no longer hold, which is why the screen
@@ -212,6 +217,8 @@ export class ProjectUi {
 
     /** Shows a place kept from `view`, as one change. */
     show({ section, chatId, taskId, runId, draft, draftFolderId, tasksScope }: ProjectView): void {
+        if (chatId !== this.chatId || runId !== this.runId || draft !== this.draft) this.#showChat();
+
         this.section = section;
         this.chatId = chatId;
         this.taskId = taskId;
@@ -223,6 +230,7 @@ export class ProjectUi {
 
     /** Shows the chat, in the Agents section; `null` leaves none selected. */
     openChat(chatId: ChatId | null): void {
+        this.#showChat();
         this.section = 'agents';
         this.chatId = chatId;
         this.runId = null;
@@ -236,6 +244,7 @@ export class ProjectUi {
      * of the project the chat is made for, `null` for the main folder.
      */
     openDraft(attach: readonly File[] = [], folderId: FolderId | null = null): void {
+        this.#showChat();
         this.section = 'agents';
         this.runId = null;
         this.draft = true;
@@ -294,6 +303,7 @@ export class ProjectUi {
 
     /** Shows the run in the Agents section, below its chat; a root run is its chat. */
     openRun(runId: RunId | null): void {
+        this.#showChat();
         this.section = 'agents';
         this.runId = runId;
         this.draft = false;
@@ -334,6 +344,16 @@ export class ProjectUi {
     /** Opens the side panel at the right of the window, or shuts it. */
     toggleSidePanel(): void {
         this.sidePanelOpen = !this.sidePanelOpen;
+    }
+
+    /** Makes the open side panel take the place of the chat, or gives the place back. */
+    toggleSidePanelExpanded(): void {
+        this.sidePanelExpanded = !this.sidePanelExpanded;
+    }
+
+    /** A chat is chosen: an open panel that covered the chat gives the place back. A shut panel keeps the choice, so it comes back expanded. */
+    #showChat(): void {
+        if (this.sidePanelOpen) this.sidePanelExpanded = false;
     }
 
     /** Shuts the side panel; nothing when it is shut. */
@@ -491,6 +511,11 @@ export class UiStore {
     openProjectSettings(projectId: ProjectId | null = null): void {
         this.settingsOpen = true;
         this.settingsPage = 'projects';
+        this.settingsProjectId = projectId;
+    }
+
+    /** Shows the page of a project over Settings > Projects, or the list again with `null`: the Settings window's stack of nested pages, which the window asks to change. */
+    setSettingsProject(projectId: ProjectId | null): void {
         this.settingsProjectId = projectId;
     }
 

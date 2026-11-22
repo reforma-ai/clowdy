@@ -4,6 +4,13 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+    /* The expanded side panel starts at this edge (`SidePanel.module.css`). */
+    anchor-name: --agents-chat;
+}
+
+/* Under the expanded side panel: still laid out, so the chat keeps its width and its scroll, and not seen or reached. */
+.main[data-covered] {
+    visibility: hidden;
 }
 
 .empty {

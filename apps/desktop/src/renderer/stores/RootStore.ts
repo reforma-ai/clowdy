@@ -7,7 +7,7 @@ import { ProjectIconsStore } from './ProjectIconsStore';
 import { ProjectState } from './ProjectState';
 import { browserStorage, readStored, writeStored, type KeyValueStorage } from './storage';
 import { StreamStore } from './StreamStore';
-import { UiStore, type InitialProjectUi } from './UiStore';
+import { UiStore, type InitialProjectUi, type ProjectUi } from './UiStore';
 
 import type { AgentInfo, ClowdyEvent, CommandResult, Project, ProjectId } from '@clowdy/protocol';
 import type { CommandInput, FeedStatus, Transport } from '../daemon/transport';
@@ -94,6 +94,11 @@ export class RootStore {
     /** The selected project, once it has a state (it may still be loading). */
     get selectedProject(): ProjectState | undefined {
         return this.selectedProjectId ? this.#states.get(this.selectedProjectId) : undefined;
+    }
+
+    /** The window's state of the selected project, `undefined` while none is selected. */
+    get selectedProjectUi(): ProjectUi | undefined {
+        return this.selectedProjectId ? this.ui.forProject(this.selectedProjectId) : undefined;
     }
 
     /** A project's own screen can be drawn, with its side panel: the projects are loaded and the selected project has arrived. Settings is a window over it and does not end that. */

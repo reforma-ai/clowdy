@@ -247,6 +247,14 @@ describe('isAppShortcut', () => {
         expect(isAppShortcut(key({ code: 'Escape', metaKey: true }), 'darwin')).toBe(true);
     });
 
+    it('lets the expanded panel\'s key through off a Mac, where Ctrl is the app\'s modifier', () => {
+        expect(isAppShortcut(key({ code: 'Enter', ctrlKey: true, shiftKey: true }), 'win32')).toBe(true);
+        // On a Mac it is Cmd, which xterm never takes, and the shell keeps Ctrl+Shift+Enter.
+        expect(isAppShortcut(key({ code: 'Enter', ctrlKey: true, shiftKey: true }), 'darwin')).toBe(false);
+        expect(isAppShortcut(key({ code: 'Enter', ctrlKey: true }), 'win32')).toBe(false);
+        expect(isAppShortcut(key({ code: 'Enter', shiftKey: true }), 'win32')).toBe(false);
+    });
+
     it('lets the panel\'s tabs through where Ctrl is the app\'s modifier: Ctrl+0, 1 and 2', () => {
         for (const code of ['Digit0', 'Digit1', 'Digit2', 'Numpad1']) {
             expect(isAppShortcut(key({ code, ctrlKey: true }), 'win32')).toBe(true);

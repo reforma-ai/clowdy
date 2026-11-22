@@ -14,13 +14,15 @@ const TerminalTab = lazy(() => import('../terminal/TerminalTab'));
 /**
  * The column at the right of the window, beside the page, as a second sidebar: a paper plate on the window's chrome that shows the tab that is chosen, which the
  * project keeps. The tabs are the items of the rail at the window's right edge (`SidePanelRail`), so a tool the panel is to have later (changes, and perhaps tasks
- * and docs) becomes an item of that rail.
+ * and docs) becomes an item of that rail. Expanded, it is drawn over the chat of the Agents screen as well as in its own column, from the chat's left edge to the column's
+ * right one and as tall as the column (CSS anchors): the layout does not change, so the chat keeps its width, its scroll and its draft under it, and the column keeps its
+ * width for the panel to come back to.
  */
 export function SidePanel() {
-    const { sidePanelTab: chosen } = useProjectUi();
+    const { sidePanelTab: chosen, sidePanelExpanded } = useProjectUi();
 
     return (
-        <aside className={ styles.panel } aria-label="Panel" data-side-panel="">
+        <aside className={ styles.panel } aria-label="Panel" data-side-panel="" data-expanded={ sidePanelExpanded || undefined }>
             <section className={ styles.plate } data-tab={ chosen } aria-label={ SIDE_PANEL_TAB_LABELS[chosen] }>
                 { (chosen === 'files' || chosen === 'docs') && <Suspense fallback={ <PanelLoadingState /> }><FilesTab variant={ chosen } /></Suspense> }
                 { chosen === 'terminal' && <Suspense fallback={ <PanelLoadingState /> }><TerminalTab /></Suspense> }

@@ -6,6 +6,12 @@ export const SIDE_PANEL_COMMAND = 'sidePanel.toggle';
 /** `Cmd+Esc` on macOS, `Ctrl+Shift+B` elsewhere: Windows keeps `Ctrl+Esc` for the Start menu, so the key never reaches the app there. */
 export const SIDE_PANEL_KEYS = { mac: 'Meta+Escape', win: '$mod+Shift+b' } as const;
 
+/** The command that makes the open panel take the place of the chat, or gives it back: what the button in the title band's corner does. */
+export const SIDE_PANEL_EXPAND_COMMAND = 'sidePanel.expand';
+
+/** `Cmd+Shift+Enter` (`Ctrl+Shift+Enter` off a Mac): `Cmd+Shift+F` is the quick search of text, and `Cmd+Enter` is the Tasks' own. */
+export const SIDE_PANEL_EXPAND_KEYS = '$mod+Shift+Enter';
+
 /** The command that opens the panel on a tab, or shuts the panel when that tab is already shown: it does what a click on the tab's item in the rail does. */
 export const sidePanelTabCommand = (tab: SidePanelTab) => `sidePanel.tab.${ tab }`;
 
