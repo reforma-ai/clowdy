@@ -1,6 +1,5 @@
 import { Terminal } from '@clowdy/icons/14';
 import { Folder, Info } from '@clowdy/icons/16';
-import { useRef } from 'react';
 
 import { commandTooltip } from '../../hotkeys';
 import { RailItem } from '../../shared/RailItem';
@@ -18,15 +17,12 @@ const TABS: ReadonlyArray<{ tab: SidePanelTab; icon: typeof Info; size: number }
 ];
 
 /**
- * The rail at the right edge of the window, whether the side panel is open or not, as the sections are at the left: an item for each tab of the panel. A click
- * opens the panel on the tab (and a key of the tab does the same), and a double click opens a shut panel or shuts an open one (`Cmd+Esc` does the same): a
- * click never shuts the panel, so the double click's first click cannot undo the opening that the second would not. Only the tab the panel shows is current,
- * and none is while the panel is shut. Not drawn where the window shows no project.
+ * The rail at the right edge of the window, whether the side panel is open or not, as the sections are at the left: an item for each tab of the panel. A click opens
+ * the panel on the tab, or shuts it when that tab is the one it shows, and the key of the tab does the same (`ProjectUi.toggleSidePanelTab`; `Cmd+Esc` shuts or opens
+ * the panel whatever tab it shows). Only the tab the panel shows is current, and none is while the panel is shut. Not drawn where the window shows no project.
  */
 export function SidePanelRail() {
-    const { available, open, tab: shown, toggle, openTab } = useSidePanel();
-    // Whether the panel was open when the click that may be the first of a double click came: that one only decides which way the second goes.
-    const wasOpen = useRef(false);
+    const { available, open, tab: shown, toggleTab } = useSidePanel();
 
     if (!available) return null;
 
@@ -41,14 +37,7 @@ export function SidePanelRail() {
                     current={ open && tab === shown }
                     tooltip={ commandTooltip(SIDE_PANEL_TAB_LABELS[tab], sidePanelTabCommand(tab)) }
                     tooltipPlacement="left"
-                    onPress={ () => {
-                        wasOpen.current = open;
-                        openTab(tab);
-                    } }
-                    // A shut panel the first click opened stays open; an open one is shut.
-                    onDoublePress={ () => {
-                        if (wasOpen.current) toggle();
-                    } }
+                    onPress={ () => toggleTab(tab) }
                 />
             )) }
         </nav>

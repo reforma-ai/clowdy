@@ -96,17 +96,16 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
                 if (root.selectedProjectId) root.ui.forProject(root.selectedProjectId).toggleSidePanelTab('terminal');
             },
         },
-        // The tabs of the panel: a key does what a click on the tab's item in the rail does, opens the panel on the tab and never shuts it (`Cmd+Esc` is the double click, which
-        // shuts it), from a text field too, and from the terminal, which hands the keys on (`isAppShortcut`).
+        // The tabs of the panel, one key to open the panel on a tab and the same key to shut it, as a click on the tab's item in the rail does, from a text field too, and from the terminal, which hands the keys on (`isAppShortcut`).
         ...SIDE_PANEL_TABS.map(tab => ({
             id: sidePanelTabCommand(tab),
-            title: `Show ${ SIDE_PANEL_TAB_LABELS[tab] } in the side panel`,
+            title: `Toggle ${ SIDE_PANEL_TAB_LABELS[tab] } in the side panel`,
             group: 'General',
             keys: SIDE_PANEL_TAB_KEYS[tab],
             inInputs: true,
             when: () => root.showsProjectScreen,
             handler: () => {
-                if (root.selectedProjectId) root.ui.forProject(root.selectedProjectId).openSidePanelTab(tab);
+                if (root.selectedProjectId) root.ui.forProject(root.selectedProjectId).toggleSidePanelTab(tab);
             },
         })),
         { id: 'nav.back', title: 'Go back', group: 'Navigation', keys: BACK_KEYS, when: () => root.history.canGoBack, handler: () => root.history.back() },

@@ -241,7 +241,7 @@ describe('the rail of the side panel', () => {
         expect(tab('Info')?.getAttribute('aria-current')).toBe('page');
     });
 
-    it('opens a shut panel on the tab that is clicked, and only changes the tab of an open one, and never shuts it', async () => {
+    it('opens a shut panel on the tab that is clicked, changes the tab of an open one, and shuts it when the tab that is shown is clicked', async () => {
         await draw(<Frame />);
 
         await press(tab('Files')!);
@@ -251,14 +251,25 @@ describe('the rail of the side panel', () => {
         expect(ui().sidePanelTab).toBe('files');
 
         await press(tab('Terminal')!);
-        await press(tab('Terminal')!);
         await settle();
 
         expect(ui().sidePanelOpen).toBe(true);
         expect(ui().sidePanelTab).toBe('terminal');
+
+        await press(tab('Terminal')!);
+        await settle();
+
+        expect(ui().sidePanelOpen).toBe(false);
+        expect(panel()).toBeNull();
+        expect(rail()!.querySelector('[aria-current]')).toBeNull();
+
+        await press(tab('Terminal')!);
+        await settle();
+
+        expect(ui().sidePanelOpen).toBe(true);
     });
 
-    it('opens a shut panel with a double click, and shuts an open one', async () => {
+    it('counts a double click as one press, so the second click does not undo the first', async () => {
         await draw(<Frame />);
 
         await doubleClick(tab('Files')!);
@@ -271,7 +282,6 @@ describe('the rail of the side panel', () => {
         await settle();
 
         expect(ui().sidePanelOpen).toBe(false);
-        expect(panel()).toBeNull();
     });
 
     it('is not drawn where the window shows no project', async () => {

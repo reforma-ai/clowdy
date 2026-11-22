@@ -19,12 +19,10 @@ export interface RailItemProps {
     tooltipPlacement?: ComponentProps<typeof Tooltip>['placement'];
     className?: string;
     onPress: () => void;
-    /** What the second click of a double click does, in place of `onPress` (the first click has done `onPress` already). */
-    onDoublePress?: () => void;
 }
 
 /** An item of a rail, the column of a glyph tile and a label under it: the window's left rail and the side panel's right one are made of these. */
-export function RailItem({ label, icon: Icon, size, current, disabled, tooltip, tooltipPlacement = 'right', className, onPress, onDoublePress }: RailItemProps) {
+export function RailItem({ label, icon: Icon, size, current, disabled, tooltip, tooltipPlacement = 'right', className, onPress }: RailItemProps) {
     return (
         <Tooltip content={ tooltip } placement={ tooltipPlacement }>
             <button
@@ -32,8 +30,8 @@ export function RailItem({ label, icon: Icon, size, current, disabled, tooltip, 
                 className={ cn(styles.item, className) }
                 disabled={ disabled }
                 aria-current={ current ? 'page' : undefined }
-                // `detail` counts the clicks of a double click: 1 for the first and 2 for the second; a press from the keyboard has none.
-                onClick={ event => (event.detail === 2 && onDoublePress ? onDoublePress() : onPress()) }
+                // A double click is one press: `detail` counts its clicks (a press from the keyboard has none), and the second would undo the first of an item that toggles.
+                onClick={ event => event.detail < 2 && onPress() }
             >
                 <span className={ styles.glyph }>
                     <Icon width={ size } height={ size } aria-hidden />
