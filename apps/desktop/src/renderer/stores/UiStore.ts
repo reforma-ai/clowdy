@@ -16,7 +16,7 @@ export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
 
 /** The tabs of the side panel's header, in the order they appear there. */
-export const SIDE_PANEL_TABS = ['info', 'files'] as const;
+export const SIDE_PANEL_TABS = ['info', 'files', 'terminal'] as const;
 
 export type SidePanelTab = typeof SIDE_PANEL_TABS[number];
 
@@ -360,6 +360,17 @@ export class ProjectUi {
     /** Shows a tab of the side panel. */
     showSidePanelTab(tab: SidePanelTab): void {
         this.sidePanelTab = tab;
+    }
+
+    /** Opens the side panel on a tab, or shuts the panel when it already shows that tab: one key to get a tool and to get rid of it. */
+    toggleSidePanelTab(tab: SidePanelTab): void {
+        if (this.sidePanelOpen && this.sidePanelTab === tab) {
+            this.sidePanelOpen = false;
+        }
+        else {
+            this.sidePanelOpen = true;
+            this.sidePanelTab = tab;
+        }
     }
 
     setTasksView(view: TasksView): void {

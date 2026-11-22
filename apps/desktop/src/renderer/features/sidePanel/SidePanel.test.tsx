@@ -18,6 +18,8 @@ import type { Chat, ProjectFolder } from '@clowdy/protocol';
 
 // The editor and the file tree have tests of their own; here the panel only has to show the tab.
 vi.mock('../files/FilesTab', () => ({ default: () => <p>The files</p> }));
+// So has the terminal.
+vi.mock('../terminal/TerminalTab', () => ({ default: () => <p>The terminal</p> }));
 // The babel plugin that makes the app's components observers does not run under Vitest: the panel is one, to follow the tab that is chosen.
 vi.mock('./SidePanel', async (importOriginal) => ({ SidePanel: observer((await importOriginal<typeof import('./SidePanel')>()).SidePanel) }));
 
@@ -188,6 +190,25 @@ describe('the side panel of the window', () => {
         await press(tab('Info')!);
 
         expect(panel()?.querySelector('[aria-label="Info"][class*="plate"]')).not.toBeNull();
+        expect(panel()?.textContent).not.toContain('The files');
+    });
+
+    it('has a Terminal tab after Files, which shows the terminal', async () => {
+        await draw(<Layout><p>The page</p></Layout>);
+
+        act(() => ui().toggleSidePanel());
+        await settle();
+
+        const names = [...(panel()?.querySelectorAll<HTMLButtonElement>('header [role="group"] button') ?? [])].map(button => button.textContent);
+
+        expect(names).toEqual(['Info', 'Files', 'Terminal']);
+
+        await press(tab('Terminal')!);
+        await settle();
+
+        expect(ui().sidePanelTab).toBe('terminal');
+        expect(tab('Terminal')?.getAttribute('aria-pressed')).toBe('true');
+        expect(panel()?.querySelector('[aria-label="Terminal"][class*="plate"]')?.textContent).toBe('The terminal');
         expect(panel()?.textContent).not.toContain('The files');
     });
 

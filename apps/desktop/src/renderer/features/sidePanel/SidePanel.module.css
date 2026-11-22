@@ -43,8 +43,9 @@
     overflow: auto;
 }
 
-/* The editor and the file tree scroll for themselves, and fill the plate. */
-.plate[data-tab='files'] {
+/* The editor and the file tree scroll for themselves, and fill the plate; so does the terminal. */
+.plate[data-tab='files'],
+.plate[data-tab='terminal'] {
     display: flex;
     flex-direction: column;
     overflow: hidden;

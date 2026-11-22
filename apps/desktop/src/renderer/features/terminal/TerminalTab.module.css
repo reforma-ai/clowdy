@@ -1,0 +1,90 @@
+@reference '@clowdy/styles/rulesets';
+
+.root {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* The shells of the folder, as a row of small tabs that scrolls sideways before it wraps. */
+.bar {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-bottom: 1px solid var(--color-surface-border);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.tab {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+}
+
+/* The close button of a tab is there for the tab that is chosen and for the one the pointer is over. */
+.close {
+    margin-left: calc(var(--spacing-xs) * -1);
+    opacity: 0;
+}
+
+.tab:hover .close,
+.tab:focus-within .close,
+.tab[data-active] .close {
+    opacity: 1;
+}
+
+.stage {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    padding: var(--spacing-sm) 0 0 var(--spacing-md);
+    background-color: var(--color-surface);
+    color: var(--color-text);
+}
+
+/* The xterm is fitted to this box, so the box carries no padding of its own: the stage does. Its font is the code font, which xterm reads from here. */
+.host {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    @ruleset typography-text-code-xs;
+}
+
+.host :global(.xterm) {
+    height: 100%;
+}
+
+/* xterm paints the viewport black behind the rows, and the box is rarely a whole number of rows high: the strip left over takes the plate's color. */
+.host :global(.xterm) :global(.xterm-viewport) {
+    background-color: transparent;
+    scrollbar-width: thin;
+}
+
+.banner {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-md) var(--spacing-sm) 0;
+    border-top: 1px solid var(--color-surface-border);
+}
+
+.state {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+    text-align: center;
+}

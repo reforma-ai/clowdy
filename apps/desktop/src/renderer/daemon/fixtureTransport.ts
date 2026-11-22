@@ -15,6 +15,7 @@ import {
 import { fixtureFileContents } from './fixtureFiles';
 import { fail, ok, type Outcome } from './fixtureOutcome';
 import { FixtureTasks } from './fixtureTasks';
+import { FixtureTerminals } from './fixtureTerminals';
 import { TransportError, type CommandInput, type FeedStatus, type PageQuery, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
 
 import type {
@@ -47,8 +48,12 @@ import type {
     TaskCommentsPage,
     TaskDetail,
     TaskId,
+    TerminalCreate,
+    TerminalId,
+    TerminalInfo,
     ThreadNotice,
 } from '@clowdy/protocol';
+import type { TerminalStream, TerminalStreamHandlers } from './terminalStream';
 
 export interface FixtureTransportOptions {
     /** Starts from other data. Tests use this. */
@@ -169,6 +174,8 @@ export class FixtureTransport implements Transport {
     readonly #rewrites = new Map<RunId, number>();
     /** The daemon's rules for tasks, their archive and their comments. */
     readonly #tasks: FixtureTasks;
+    /** The shells, which run nothing: see `fixtureTerminals.ts`. */
+    readonly #terminals = new FixtureTerminals();
 
     constructor({ data = createFixtureData(), timeline = false }: FixtureTransportOptions = {}) {
         this.#data = data;
@@ -370,6 +377,27 @@ export class FixtureTransport implements Transport {
 
     async getAgentModels(agentId: string): Promise<AgentModels> {
         return structuredClone(this.#data.agentModels[agentId] ?? { state: 'unavailable', models: [], detail: `Clowdy cannot list the models of ${ agentId }` });
+    }
+
+    async listTerminals(projectId?: ProjectId): Promise<TerminalInfo[]> {
+        return this.#terminals.list(projectId);
+    }
+
+    async createTerminal(request: TerminalCreate): Promise<TerminalInfo> {
+        try {
+            return this.#terminals.create(this.#project(request.projectId), request);
+        }
+        catch (error) {
+            throw error instanceof TransportError ? error : new TransportError((error as Error).message, 404);
+        }
+    }
+
+    async closeTerminal(terminalId: TerminalId): Promise<void> {
+        this.#terminals.close(terminalId);
+    }
+
+    openTerminal(terminalId: TerminalId, handlers: TerminalStreamHandlers): TerminalStream {
+        return this.#terminals.open(terminalId, handlers);
     }
 
     /* --------------------------------- Events --------------------------------- */

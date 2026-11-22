@@ -61,6 +61,14 @@ const unconfigured: Transport = {
     getSkills: noDaemon,
     getAgents: noDaemon,
     getAgentModels: noDaemon,
+    listTerminals: noDaemon,
+    createTerminal: noDaemon,
+    closeTerminal: noDaemon,
+    openTerminal: (_id, handlers) => {
+        handlers.onGone();
+
+        return { write: () => false, resize: () => undefined, close: () => undefined };
+    },
 };
 
 export function createTransport(config: DaemonConfig): Transport {

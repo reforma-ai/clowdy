@@ -322,7 +322,7 @@ describe('the keymap', () => {
         for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'sidePanel.toggle', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'sidePanel.toggle', 'sidePanel.terminal', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
         expect(navCommandId('tasks')).toBe('nav.tasks');
     });
 });
@@ -404,6 +404,51 @@ describe('new chat', () => {
 
     it('shows its keys as the hint of the New chat row', () => {
         expect(commandHint(NEW_CHAT_COMMAND, registry)).toEqual([['meta', 'n']]);
+    });
+});
+
+describe('the terminal key', () => {
+    const state = () => ({ open: ui.forProject('p').sidePanelOpen, tab: ui.forProject('p').sidePanelTab });
+    const press_ = (target?: EventTarget) => press({ key: '`', code: 'Backquote', ctrlKey: true }, target);
+
+    it('opens the panel on the Terminal tab, goes back to the tab it was on when pressed over another one, and shuts the panel on a second press', () => {
+        const first = press_();
+
+        expect(state()).toEqual({ open: true, tab: 'terminal' });
+        expect(first.defaultPrevented).toBe(true);
+
+        ui.forProject('p').showSidePanelTab('files');
+        press_();
+        expect(state()).toEqual({ open: true, tab: 'terminal' });
+
+        press_();
+        expect(state()).toEqual({ open: false, tab: 'terminal' });
+    });
+
+    it('works from a text field, which is where the terminal\'s own input is', () => {
+        const input = document.createElement('textarea');
+
+        document.body.append(input);
+
+        try {
+            press_(input);
+            expect(state().open).toBe(true);
+        }
+        finally {
+            input.remove();
+        }
+    });
+
+    it('does nothing where the window shows no project, and shows its key as a hint where it can run', () => {
+        expect(commandHint('sidePanel.terminal', registry)).toEqual([['ctrl', '`']]);
+
+        runInAction(() => {
+            screen.shown = false;
+        });
+        press_();
+
+        expect(state().open).toBe(false);
+        expect(commandHint('sidePanel.terminal', registry)).toBeUndefined();
     });
 });
 

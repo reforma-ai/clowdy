@@ -1,4 +1,4 @@
-import { SIDE_PANEL_COMMAND, SIDE_PANEL_KEYS } from '../features/sidePanel';
+import { SIDE_PANEL_COMMAND, SIDE_PANEL_KEYS, TERMINAL_COMMAND, TERMINAL_KEYS } from '../features/sidePanel';
 
 import type { ScopedCommand } from '../hotkeys';
 import type { NavHistory, RootStore, Section } from '../stores';
@@ -27,7 +27,7 @@ export interface ShellCommandsRoot extends Pick<RootStore, 'phase' | 'selectedPr
 
 /**
  * The commands that work in every section, for `useCommands('app', …)`: the shortcuts page of Settings, the `G` chords that switch sections, `Cmd+N` for a new chat, `Cmd+Shift+B` for
- * the side panel, and back and forward.
+ * the side panel, `Ctrl+`` for its terminal, and back and forward.
  * `?` opens Settings on its Shortcuts page, once the window shows anything to open it over: while the app loads or cannot reach its daemon, the key reaches the page.
  * A section chord and a new chat need a selected project, as the Rail's buttons do, and also leave Settings.
  * `Cmd+N` shows the new-chat page of the Agents section whichever section is open, and works from a text field too: the message box is the place it is most wanted.
@@ -81,6 +81,18 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
             when: () => root.showsProjectScreen,
             handler: () => {
                 if (root.selectedProjectId) root.ui.forProject(root.selectedProjectId).toggleSidePanel();
+            },
+        },
+        {
+            id: TERMINAL_COMMAND,
+            title: 'Toggle terminal',
+            group: 'General',
+            keys: TERMINAL_KEYS,
+            // From a text field too, and from the terminal itself, which hands the key on (`isAppShortcut`).
+            inInputs: true,
+            when: () => root.showsProjectScreen,
+            handler: () => {
+                if (root.selectedProjectId) root.ui.forProject(root.selectedProjectId).toggleSidePanelTab('terminal');
             },
         },
         { id: 'nav.back', title: 'Go back', group: 'Navigation', keys: BACK_KEYS, when: () => root.history.canGoBack, handler: () => root.history.back() },

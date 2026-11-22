@@ -22,7 +22,11 @@ import type {
     TaskCommentsPage,
     TaskDetail,
     TaskId,
+    TerminalCreate,
+    TerminalId,
+    TerminalInfo,
 } from '@clowdy/protocol';
+import type { TerminalStream, TerminalStreamHandlers } from './terminalStream';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
@@ -99,6 +103,14 @@ export interface Transport {
     getAgents: () => Promise<AgentInfo[]>;
     /** The models an agent offers, with the reasoning levels of each. The daemon reads them from the agent's own program and keeps them for ten minutes. */
     getAgentModels: (agentId: string) => Promise<AgentModels>;
+    /** The shells the daemon runs, those of one project when it is named: running ones and recently exited ones, oldest first. */
+    listTerminals: (projectId?: ProjectId) => Promise<TerminalInfo[]>;
+    /** Starts a shell in a folder of a project, at the given size. Rejects with a `TransportError` that carries the daemon's reason when it refuses. */
+    createTerminal: (request: TerminalCreate) => Promise<TerminalInfo>;
+    /** Ends the shell and forgets the terminal. */
+    closeTerminal: (terminalId: TerminalId) => Promise<void>;
+    /** Follows one terminal: its screen, its output and its end, and types into it. Reconnects by itself until the terminal is gone or the stream is closed. */
+    openTerminal: (terminalId: TerminalId, handlers: TerminalStreamHandlers) => TerminalStream;
 }
 
 /** The daemon could not be reached, or answered something other than the contract. */

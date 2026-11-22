@@ -2,6 +2,7 @@ import { PROTOCOL_HEADER, PROTOCOL_VERSION, ROUTES, SSE_EVENT } from '@clowdy/pr
 
 import { HttpFileSystem } from './httpFileSystem';
 import { SseParser } from './sse';
+import { TerminalSocket } from './terminalStream';
 import { TransportError, type CommandInput, type FeedStatus, type PageQuery, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
 
 import type {
@@ -24,7 +25,11 @@ import type {
     TaskCommentsPage,
     TaskDetail,
     TaskId,
+    TerminalCreate,
+    TerminalId,
+    TerminalInfo,
 } from '@clowdy/protocol';
+import type { TerminalStream, TerminalStreamHandlers } from './terminalStream';
 
 export interface HttpTransportOptions {
     /** Base URL of the daemon, e.g. `http://127.0.0.1:4310`. */
@@ -71,12 +76,14 @@ async function refusal(response: Response, route: string): Promise<TransportErro
 /** The daemon's HTTP + SSE API, as described by `@clowdy/protocol`. */
 export class HttpTransport implements Transport {
     #base: string;
+    #token: string;
     #headers: Record<string, string>;
     readonly #fetch: typeof fetch;
     readonly #sleep: (ms: number) => Promise<void>;
 
     constructor({ url, token, fetch: fetchImpl = (...args) => fetch(...args), sleep = sleepFor }: HttpTransportOptions) {
         this.#base = url.replace(/\/+$/, '');
+        this.#token = token;
         this.#headers = headersFor(token);
         this.#fetch = fetchImpl;
         this.#sleep = sleep;
@@ -88,6 +95,7 @@ export class HttpTransport implements Transport {
      */
     setAddress({ url, token }: { url: string; token: string }): void {
         this.#base = url.replace(/\/+$/, '');
+        this.#token = token;
         this.#headers = headersFor(token);
     }
 
@@ -188,6 +196,43 @@ export class HttpTransport implements Transport {
 
     getAgentModels(agentId: string): Promise<AgentModels> {
         return this.#get(ROUTES.agentModels(agentId));
+    }
+
+    listTerminals(projectId?: ProjectId): Promise<TerminalInfo[]> {
+        return this.#get(projectId === undefined ? ROUTES.terminals : `${ ROUTES.terminals }?projectId=${ encodeURIComponent(projectId) }`);
+    }
+
+    async createTerminal(request: TerminalCreate): Promise<TerminalInfo> {
+        const response = await this.#fetch(this.#base + ROUTES.terminals, { method: 'POST', headers: { ...this.#headers, 'content-type': 'application/json' }, body: JSON.stringify(request) });
+
+        if (!response.ok) throw await refusal(response, ROUTES.terminals);
+
+        return await response.json() as TerminalInfo;
+    }
+
+    async closeTerminal(terminalId: TerminalId): Promise<void> {
+        const route = ROUTES.terminal(terminalId);
+        const response = await this.#fetch(this.#base + route, { method: 'DELETE', headers: this.#headers });
+
+        // Closed from elsewhere already: the wish is met.
+        if (!response.ok && response.status !== 404) throw await refusal(response, route);
+    }
+
+    openTerminal(terminalId: TerminalId, handlers: TerminalStreamHandlers): TerminalStream {
+        return new TerminalSocket({
+            handlers,
+            address: () => ({ url: `${ this.#base.replace(/^http/, 'ws') }${ ROUTES.terminalStream(terminalId) }`, token: this.#token }),
+            exists: async () => {
+                try {
+                    const response = await this.#fetch(this.#base + ROUTES.terminals, { headers: this.#headers });
+
+                    return response.ok ? (await response.json() as TerminalInfo[]).some(terminal => terminal.id === terminalId) : undefined;
+                }
+                catch {
+                    return undefined;
+                }
+            },
+        });
     }
 
     async command(command: CommandInput): Promise<CommandResult> {

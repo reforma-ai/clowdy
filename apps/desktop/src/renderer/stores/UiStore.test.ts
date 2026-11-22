@@ -536,10 +536,29 @@ describe('UiStore', () => {
         expect(new UiStore(storage).forProject('p1').sidePanelTab).toBe('files');
     });
 
+    it('opens the side panel on a tab, and shuts it when that tab is already shown', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.toggleSidePanelTab('terminal');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'terminal']);
+
+        ui.showSidePanelTab('files');
+        ui.toggleSidePanelTab('terminal');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'terminal']);
+
+        ui.toggleSidePanelTab('terminal');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([false, 'terminal']);
+
+        ui.toggleSidePanelTab('files');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'files']);
+    });
+
     it('reads the side panel tab from the page URL, and drops a tab that is not one', () => {
         expect(initialUiFromSearch('?panel=open&panelTab=files')).toEqual({ sidePanelOpen: true, sidePanelTab: 'files' });
-        expect(initialUiFromSearch('?panelTab=terminal')).toEqual({});
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"terminal"}' })).forProject('p1').sidePanelTab).toBe('info');
+        expect(initialUiFromSearch('?panelTab=terminal')).toEqual({ sidePanelTab: 'terminal' });
+        expect(initialUiFromSearch('?panelTab=changes')).toEqual({});
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"terminal"}' })).forProject('p1').sidePanelTab).toBe('terminal');
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"changes"}' })).forProject('p1').sidePanelTab).toBe('info');
     });
 
     it('reads the fold of the strip from the page URL, and drops what is damaged in storage', () => {
