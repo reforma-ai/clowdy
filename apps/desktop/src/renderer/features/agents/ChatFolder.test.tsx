@@ -71,7 +71,7 @@ describe('the folder of a chat', () => {
     });
 
     it('is a pill that opens a menu in the desktop app: the file manager and the editor, the first the computer has until others are picked', async () => {
-        await draw({ bridge: { getOpenApps: async () => APPS, openFolder: vi.fn(async () => undefined) } });
+        await draw({ bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } });
 
         expect(pill()?.textContent).toBe('web');
         expect(pill()?.hasAttribute('data-missing')).toBe(false);
@@ -86,52 +86,52 @@ describe('the folder of a chat', () => {
     });
 
     it('opens the folder in the one that is pressed', async () => {
-        const openFolder = vi.fn(async () => undefined);
+        const openPath = vi.fn(async () => undefined);
 
-        await draw({ bridge: { getOpenApps: async () => APPS, openFolder } });
+        await draw({ bridge: { getOpenApps: async () => APPS, openPath } });
         await press(pill()!);
         await press(item('Open in Cursor'));
 
-        expect(openFolder).toHaveBeenCalledExactlyOnceWith('/Users/dev/web', { kind: 'editor', id: 'cursor' });
+        expect(openPath).toHaveBeenCalledExactlyOnceWith('/Users/dev/web', { kind: 'editor', id: 'cursor' });
 
         await press(pill()!);
         await press(item('Open in Finder'));
 
-        expect(openFolder).toHaveBeenLastCalledWith('/Users/dev/web', { kind: 'fileManager', id: 'finder' });
+        expect(openPath).toHaveBeenLastCalledWith('/Users/dev/web', { kind: 'fileManager', id: 'finder' });
     });
 
     it('uses the programs Settings > Files picked', async () => {
-        const openFolder = vi.fn(async () => undefined);
+        const openPath = vi.fn(async () => undefined);
 
         openWithPreferences.setEditor('zed');
         openWithPreferences.setTerminal('terminal');
         openWithPreferences.setFileManager('path-finder');
-        await draw({ bridge: { getOpenApps: async () => APPS, openFolder } });
+        await draw({ bridge: { getOpenApps: async () => APPS, openPath } });
         await press(pill()!);
 
         expect(items().map(row => row.textContent)).toEqual(['Open in Path Finder', 'Open in Zed', 'Open in Terminal']);
 
         await press(item('Open in Zed'));
 
-        expect(openFolder).toHaveBeenCalledWith('/Users/dev/web', { kind: 'editor', id: 'zed' });
+        expect(openPath).toHaveBeenCalledWith('/Users/dev/web', { kind: 'editor', id: 'zed' });
 
         await press(pill()!);
         await press(item('Open in Terminal'));
 
-        expect(openFolder).toHaveBeenLastCalledWith('/Users/dev/web', { kind: 'terminal', id: 'terminal' });
+        expect(openPath).toHaveBeenLastCalledWith('/Users/dev/web', { kind: 'terminal', id: 'terminal' });
     });
 
     it('has no item for an editor or a terminal when the computer has none', async () => {
-        await draw({ bridge: { getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: APPS.fileManagers }), openFolder: vi.fn(async () => undefined) } });
+        await draw({ bridge: { getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: APPS.fileManagers }), openPath: vi.fn(async () => undefined) } });
         await press(pill()!);
 
         expect(items().map(row => row.textContent)).toEqual(['Open in Finder']);
     });
 
     it('says the folder is gone, and offers nothing to press, when it is missing', async () => {
-        const openFolder = vi.fn(async () => undefined);
+        const openPath = vi.fn(async () => undefined);
 
-        await draw({ bridge: { getOpenApps: async () => APPS, openFolder }, missing: true });
+        await draw({ bridge: { getOpenApps: async () => APPS, openPath }, missing: true });
         await press(pill()!);
 
         expect(pill()?.hasAttribute('data-missing')).toBe(true);
@@ -140,13 +140,13 @@ describe('the folder of a chat', () => {
 
         await press(item('Open in Finder'));
 
-        expect(openFolder).not.toHaveBeenCalled();
+        expect(openPath).not.toHaveBeenCalled();
     });
 
     it('draws each program with its own icon, and a plain one of its kind for a program that has none', async () => {
         const icon = 'data:image/png;base64,Y3Vyc29y';
 
-        await draw({ bridge: { getOpenApps: async () => ({ editors: [{ id: 'cursor', name: 'Cursor', icon }], terminals: [{ id: 'terminal', name: 'Terminal' }], fileManagers: [{ id: 'finder', name: 'Finder' }] }), openFolder: vi.fn(async () => undefined) } });
+        await draw({ bridge: { getOpenApps: async () => ({ editors: [{ id: 'cursor', name: 'Cursor', icon }], terminals: [{ id: 'terminal', name: 'Terminal' }], fileManagers: [{ id: 'finder', name: 'Finder' }] }), openPath: vi.fn(async () => undefined) } });
         await press(pill()!);
 
         const picture = (text: string) => item(text).querySelector<HTMLImageElement>('img');
@@ -159,10 +159,10 @@ describe('the folder of a chat', () => {
     });
 
     it('tells it in a toast when the program cannot open the folder', async () => {
-        await draw({ bridge: { getOpenApps: async () => APPS, openFolder: vi.fn(async () => Promise.reject(new Error('gone'))) } });
+        await draw({ bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => Promise.reject(new Error('gone'))) } });
         await press(pill()!);
         await press(item('Open in Cursor'));
 
-        expect(toasts.error).toHaveBeenCalledWith({ message: 'Couldn\'t open the folder in Cursor' });
+        expect(toasts.error).toHaveBeenCalledWith({ message: 'Couldn\'t open it in Cursor' });
     });
 });

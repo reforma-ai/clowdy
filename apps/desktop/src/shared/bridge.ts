@@ -22,11 +22,11 @@ export const IPC_CHANNELS = {
     findCommand: 'desktop:find-command',
     /** Renderer to main: which editors and file managers this computer has. */
     openApps: 'desktop:open-apps',
-    /** Renderer to main: open a folder in one of them. */
-    openFolder: 'desktop:open-folder',
+    /** Renderer to main: open a folder or a file in one of them. */
+    openPath: 'desktop:open-path',
 } as const;
 
-/** A program that can open a folder: an editor or a file manager, found on this computer. `id` is the catalog's, `name` is what the person reads, and `icon` is its own icon as a `data:` image, none when it could not be read. */
+/** A program that can open a folder or a file: an editor or a file manager, found on this computer. `id` is the catalog's, `name` is what the person reads, and `icon` is its own icon as a `data:` image, none when it could not be read. */
 export interface OpenApp {
     id: string;
     name: string;
@@ -40,8 +40,8 @@ export interface OpenApps {
     fileManagers: OpenApp[];
 }
 
-/** Which program opens a folder. */
-export interface OpenFolderApp {
+/** Which program opens a folder or a file. */
+export interface OpenPathApp {
     kind: 'editor' | 'terminal' | 'fileManager';
     id: string;
 }
@@ -101,6 +101,6 @@ export interface DesktopBridge {
     onFindCommand: (listener: (command: FindCommand) => void) => () => void;
     /** The editors and file managers this computer has, read each time it is asked: a program may be installed while the app runs. */
     getOpenApps: () => Promise<OpenApps>;
-    /** Opens a folder in one of them. Rejects when the folder is gone or the program cannot be started. */
-    openFolder: (folder: string, app: OpenFolderApp) => Promise<void>;
+    /** Opens a folder or a file in one of them: a file is opened by an editor and shown by a file manager, and a terminal takes folders only. Rejects when the path is gone or the program cannot be started. */
+    openPath: (path: string, app: OpenPathApp) => Promise<void>;
 }

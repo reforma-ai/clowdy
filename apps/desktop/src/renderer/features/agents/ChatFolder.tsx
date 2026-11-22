@@ -5,7 +5,7 @@ import { Folder } from '@clowdy/icons/14';
 
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
-import { AppIcon, canOpenFolders, chosenApp, openFolderIn, openWithPreferences, useOpenApps } from '../openWith';
+import { AppIcon, canOpenPaths, chosenApp, openPathIn, openWithPreferences, useOpenApps } from '../openWith';
 import styles from './ChatFolder.module.css';
 import { FolderTrigger } from './DraftFolderSelect';
 
@@ -26,7 +26,7 @@ export interface ChatFolderProps {
 export function ChatFolder({ name, path, missing }: ChatFolderProps) {
     const title = missing ? 'This folder no longer exists' : tildePath(path, homeFolder.path);
 
-    if (!canOpenFolders()) {
+    if (!canOpenPaths()) {
         return (
             <div role="group" aria-label="Folder" className={ styles.folder } data-missing={ missing || undefined } title={ title }>
                 <Folder aria-hidden="true" />
@@ -53,9 +53,9 @@ function FolderMenu({ name, path, missing, title }: ChatFolderProps & { title: s
                         aria-label="Open folder"
                         size="sm"
                         onAction={ (key) => {
-                            if (key === 'fileManager' && fileManager) void openFolderIn(path, 'fileManager', fileManager);
-                            else if (key === 'editor' && editor) void openFolderIn(path, 'editor', editor);
-                            else if (key === 'terminal' && terminal) void openFolderIn(path, 'terminal', terminal);
+                            if (key === 'fileManager' && fileManager) void openPathIn(path, 'fileManager', fileManager);
+                            else if (key === 'editor' && editor) void openPathIn(path, 'editor', editor);
+                            else if (key === 'terminal' && terminal) void openPathIn(path, 'terminal', terminal);
                         } }
                     >
                         <MenuSection aria-label="Open in">

@@ -1,7 +1,7 @@
 import { toast } from '@clowdy/components/Toast';
 import { useEffect, useState } from 'react';
 
-import type { OpenApp, OpenApps, OpenFolderApp } from '../../../shared/bridge';
+import type { OpenApp, OpenApps, OpenPathApp } from '../../../shared/bridge';
 
 const NONE: OpenApps = { editors: [], terminals: [], fileManagers: [] };
 
@@ -10,8 +10,8 @@ export function chosenApp(apps: readonly OpenApp[], id: string | undefined): Ope
     return apps.find(app => app.id === id) ?? apps[0];
 }
 
-/** Whether this window can open a folder in another program: only the desktop app can; a page in a browser cannot. */
-export const canOpenFolders = () => window.desktop?.openFolder !== undefined;
+/** Whether this window can open a folder or a file in another program: only the desktop app can; a page in a browser cannot. */
+export const canOpenPaths = () => window.desktop?.openPath !== undefined;
 
 /**
  * The editors, terminals and file managers this computer has, read from the desktop app each time the component that asks is drawn first (a program may
@@ -40,12 +40,12 @@ export function useOpenApps(): OpenApps {
     return apps;
 }
 
-/** Opens a folder in a program of the computer. What goes wrong (the folder is gone, the program will not start) is a toast. */
-export async function openFolderIn(folder: string, kind: OpenFolderApp['kind'], app: OpenApp): Promise<void> {
+/** Opens a folder or a file in a program of the computer. What goes wrong (the path is gone, the program will not start) is a toast. */
+export async function openPathIn(path: string, kind: OpenPathApp['kind'], app: OpenApp): Promise<void> {
     try {
-        await window.desktop?.openFolder(folder, { kind, id: app.id });
+        await window.desktop?.openPath(path, { kind, id: app.id });
     }
     catch {
-        toast.error({ message: `Couldn't open the folder in ${ app.name }` });
+        toast.error({ message: `Couldn't open it in ${ app.name }` });
     }
 }

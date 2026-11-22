@@ -29,14 +29,14 @@ export interface IpcActions {
     restartToUpdate: () => void;
     /** The editors and file managers this computer has. */
     listOpenApps: () => Promise<OpenApps>;
-    /** Opens a folder in one of them; it checks what the page sent. */
-    openFolder: (folder: unknown, app: unknown) => Promise<void>;
+    /** Opens a folder or a file in one of them; it checks what the page sent. */
+    openPath: (path: unknown, app: unknown) => Promise<void>;
 }
 
 export function registerIpc(
     ipcMain: Pick<IpcMain, 'handle' | 'on'>,
     trustedOrigin: string,
-    { setThemeSource, getDaemon, ready, restartToUpdate, listOpenApps, openFolder }: IpcActions
+    { setThemeSource, getDaemon, ready, restartToUpdate, listOpenApps, openPath }: IpcActions
 ): void {
     // The preload asks while the page loads and cannot wait for a promise, so this one is synchronous for it.
     // The reply may come later: the renderer blocks until `returnValue` is set. Anyone else gets `null`.
@@ -89,10 +89,10 @@ export function registerIpc(
         return listOpenApps();
     });
 
-    ipcMain.handle(IPC_CHANNELS.openFolder, (event, folder: unknown, app: unknown) => {
+    ipcMain.handle(IPC_CHANNELS.openPath, (event, path: unknown, app: unknown) => {
         assertTrustedSender(event, trustedOrigin);
 
-        return openFolder(folder, app);
+        return openPath(path, app);
     });
 
     ipcMain.handle(IPC_CHANNELS.findInPage, (event, text: unknown, options: unknown) => {

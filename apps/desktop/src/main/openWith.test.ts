@@ -11,6 +11,7 @@ function machine({ platform, folders = {}, directories = [], files = [], env = {
     folders?: Record<string, string[]>;
     /** Folders there are besides `web` in the home folder, which every machine has. */
     directories?: string[];
+    /** The files there are, and what a program is looked for by (`exists`). */
     files?: string[];
     env?: Record<string, string>;
     home?: string;
@@ -19,6 +20,7 @@ function machine({ platform, folders = {}, directories = [], files = [], env = {
 }) {
     const launch = vi.fn<OpenWithDeps['launch']>(async () => undefined);
     const openPath = vi.fn<OpenWithDeps['openPath']>(async () => '');
+    const showItem = vi.fn<OpenWithDeps['showItem']>();
     const icon = vi.fn<OpenWithDeps['icon']>(async path => icons[path]);
     const deps: OpenWithDeps = {
         platform,
@@ -28,11 +30,12 @@ function machine({ platform, folders = {}, directories = [], files = [], env = {
         exists: async path => files.includes(path),
         isFolder: async path => path === '/Users/dev/web' || path === 'C:\\Users\\dev\\web' || directories.includes(path),
         openPath,
+        showItem,
         launch,
         icon,
     };
 
-    return { open: createOpenWith(deps), launch, openPath, icon };
+    return { open: createOpenWith(deps), launch, openPath, showItem, icon };
 }
 
 const MAC: Parameters<typeof machine>[0] = {
@@ -79,7 +82,7 @@ describe('opening a folder on a Mac', () => {
     test('has the system open it in Finder', async () => {
         const { open, launch, openPath } = machine(MAC);
 
-        await open.openFolder('/Users/dev/web', { kind: 'fileManager', id: 'finder' });
+        await open.openPath('/Users/dev/web', { kind: 'fileManager', id: 'finder' });
 
         expect(openPath).toHaveBeenCalledWith('/Users/dev/web');
         expect(launch).not.toHaveBeenCalled();
@@ -90,14 +93,14 @@ describe('opening a folder on a Mac', () => {
 
         openPath.mockResolvedValueOnce('Failed to open path');
 
-        await expect(open.openFolder('/Users/dev/web', { kind: 'fileManager', id: 'finder' })).rejects.toThrow('Failed to open path');
+        await expect(open.openPath('/Users/dev/web', { kind: 'fileManager', id: 'finder' })).rejects.toThrow('Failed to open path');
     });
 
     test('starts an editor with the folder as an argument of `open -a`, from the first place its app was found', async () => {
         const { open, launch } = machine(MAC);
 
-        await open.openFolder('/Users/dev/web', { kind: 'editor', id: 'cursor' });
-        await open.openFolder('/Users/dev/web', { kind: 'fileManager', id: 'path-finder' });
+        await open.openPath('/Users/dev/web', { kind: 'editor', id: 'cursor' });
+        await open.openPath('/Users/dev/web', { kind: 'fileManager', id: 'path-finder' });
 
         expect(launch).toHaveBeenNthCalledWith(1, 'open', ['-a', '/Applications/Cursor.app', '/Users/dev/web']);
         expect(launch).toHaveBeenNthCalledWith(2, 'open', ['-a', '/Applications/Path Finder.app', '/Users/dev/web']);
@@ -105,20 +108,79 @@ describe('opening a folder on a Mac', () => {
 
     test('refuses what the page should not have sent, and starts nothing', async () => {
         const { open, launch, openPath } = machine(MAC);
-        const send = (folder: unknown, app: unknown) => open.openFolder(folder, app);
+        const send = (folder: unknown, app: unknown) => open.openPath(folder, app);
 
-        await expect(send('web', { kind: 'editor', id: 'cursor' })).rejects.toThrow('Not a folder');
-        await expect(send(7, { kind: 'editor', id: 'cursor' })).rejects.toThrow('Not a folder');
+        await expect(send('web', { kind: 'editor', id: 'cursor' })).rejects.toThrow('Not a path');
+        await expect(send(7, { kind: 'editor', id: 'cursor' })).rejects.toThrow('Not a path');
         await expect(send('/Users/dev/web', undefined)).rejects.toThrow('Unknown app');
         await expect(send('/Users/dev/web', { kind: 'shell', id: 'cursor' })).rejects.toThrow('Unknown app');
         await expect(send('/Users/dev/web', { kind: 'editor', id: 7 })).rejects.toThrow('Unknown app');
-        await expect(send('/Users/dev/gone', { kind: 'editor', id: 'cursor' })).rejects.toThrow('The folder no longer exists');
+        await expect(send('/Users/dev/gone', { kind: 'editor', id: 'cursor' })).rejects.toThrow('That path no longer exists');
         // A program of the catalog that is not here, a program that is not in it, and a file manager asked for as an editor.
         await expect(send('/Users/dev/web', { kind: 'editor', id: 'zed' })).rejects.toThrow('That app is not installed');
         await expect(send('/Users/dev/web', { kind: 'editor', id: '/bin/sh' })).rejects.toThrow('That app is not installed');
         await expect(send('/Users/dev/web', { kind: 'editor', id: 'finder' })).rejects.toThrow('That app is not installed');
         expect(launch).not.toHaveBeenCalled();
         expect(openPath).not.toHaveBeenCalled();
+    });
+});
+
+describe('opening a file', () => {
+    const FILE = '/Users/dev/web/src/index.ts';
+    const withFile = { ...MAC, files: [FILE] };
+
+    test('has an editor open the file itself', async () => {
+        const { open, launch } = machine(withFile);
+
+        await open.openPath(FILE, { kind: 'editor', id: 'cursor' });
+
+        expect(launch).toHaveBeenCalledExactlyOnceWith('open', ['-a', '/Applications/Cursor.app', FILE]);
+    });
+
+    test('has the system show the file in its folder, and does not open it', async () => {
+        const { open, launch, openPath, showItem } = machine(withFile);
+
+        await open.openPath(FILE, { kind: 'fileManager', id: 'finder' });
+
+        expect(showItem).toHaveBeenCalledExactlyOnceWith(FILE);
+        expect(openPath).not.toHaveBeenCalled();
+        expect(launch).not.toHaveBeenCalled();
+    });
+
+    test('gives another file manager the folder the file is in, since it cannot select a file', async () => {
+        const { open, launch } = machine(withFile);
+
+        await open.openPath(FILE, { kind: 'fileManager', id: 'path-finder' });
+
+        expect(launch).toHaveBeenCalledExactlyOnceWith('open', ['-a', '/Applications/Path Finder.app', '/Users/dev/web/src']);
+    });
+
+    test('is refused by a terminal, which opens folders', async () => {
+        const { open, launch } = machine(withFile);
+
+        await expect(open.openPath(FILE, { kind: 'terminal', id: 'ghostty' })).rejects.toThrow('A terminal opens a folder');
+        expect(launch).not.toHaveBeenCalled();
+    });
+
+    test('is refused when the file is not there', async () => {
+        const { open, launch, showItem } = machine(MAC);
+
+        await expect(open.openPath(FILE, { kind: 'editor', id: 'cursor' })).rejects.toThrow('That path no longer exists');
+        await expect(open.openPath(FILE, { kind: 'fileManager', id: 'finder' })).rejects.toThrow('That path no longer exists');
+        expect(launch).not.toHaveBeenCalled();
+        expect(showItem).not.toHaveBeenCalled();
+    });
+
+    test('has an editor open a file on Windows, and File Explorer show it', async () => {
+        const file = 'C:\\Users\\dev\\web\\index.ts';
+        const cursor = 'C:\\Users\\dev\\AppData\\Local\\Programs\\cursor\\Cursor.exe';
+        const { open, launch, showItem } = machine({ platform: 'win32', env: { LOCALAPPDATA: 'C:\\Users\\dev\\AppData\\Local' }, files: [file, cursor] });
+
+        await open.openPath(file, { kind: 'editor', id: 'cursor' });
+        await open.openPath(file, { kind: 'fileManager', id: 'explorer' });
+
+        expect(launch).toHaveBeenCalledExactlyOnceWith(cursor, [file]);
+        expect(showItem).toHaveBeenCalledExactlyOnceWith(file);
     });
 });
 
@@ -134,8 +196,8 @@ describe('opening a folder in a terminal', () => {
     test('hands the folder to a terminal that opens a window in it, with `open -a`', async () => {
         const { open, launch } = machineWith(['Ghostty.app']);
 
-        await open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'ghostty' });
-        await open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'terminal' });
+        await open.openPath('/Users/dev/web', { kind: 'terminal', id: 'ghostty' });
+        await open.openPath('/Users/dev/web', { kind: 'terminal', id: 'terminal' });
 
         expect(launch).toHaveBeenNthCalledWith(1, 'open', ['-a', '/Applications/Ghostty.app', '/Users/dev/web']);
         expect(launch).toHaveBeenNthCalledWith(2, 'open', ['-a', '/System/Applications/Utilities/Terminal.app', '/Users/dev/web']);
@@ -144,9 +206,9 @@ describe('opening a folder in a terminal', () => {
     test('starts a terminal that has to be told where to open as a new instance, with the folder as one argument of its own', async () => {
         const { open, launch } = machineWith(['Alacritty.app', 'WezTerm.app', 'kitty.app']);
 
-        await open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'alacritty' });
-        await open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'wezterm' });
-        await open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'kitty' });
+        await open.openPath('/Users/dev/web', { kind: 'terminal', id: 'alacritty' });
+        await open.openPath('/Users/dev/web', { kind: 'terminal', id: 'wezterm' });
+        await open.openPath('/Users/dev/web', { kind: 'terminal', id: 'kitty' });
 
         expect(launch.mock.calls).toEqual([
             ['open', ['-n', '-a', '/Applications/Alacritty.app', '--args', '--working-directory', '/Users/dev/web']],
@@ -159,8 +221,8 @@ describe('opening a folder in a terminal', () => {
         const folder = '/Users/dev/my "web" --x; $(id) `id`';
         const { open, launch } = machine({ platform: 'darwin', directories: [folder], folders: { '/Applications': ['Ghostty.app', 'Alacritty.app'] } });
 
-        await open.openFolder(folder, { kind: 'terminal', id: 'ghostty' });
-        await open.openFolder(folder, { kind: 'terminal', id: 'alacritty' });
+        await open.openPath(folder, { kind: 'terminal', id: 'ghostty' });
+        await open.openPath(folder, { kind: 'terminal', id: 'alacritty' });
 
         expect(launch.mock.calls).toEqual([
             ['open', ['-a', '/Applications/Ghostty.app', folder]],
@@ -171,8 +233,8 @@ describe('opening a folder in a terminal', () => {
     test('is a kind of its own: an editor is not asked for as a terminal, nor a terminal as an editor', async () => {
         const { open, launch } = machineWith(['Ghostty.app', 'Cursor.app']);
 
-        await expect(open.openFolder('/Users/dev/web', { kind: 'terminal', id: 'cursor' })).rejects.toThrow('That app is not installed');
-        await expect(open.openFolder('/Users/dev/web', { kind: 'editor', id: 'ghostty' })).rejects.toThrow('That app is not installed');
+        await expect(open.openPath('/Users/dev/web', { kind: 'terminal', id: 'cursor' })).rejects.toThrow('That app is not installed');
+        await expect(open.openPath('/Users/dev/web', { kind: 'editor', id: 'ghostty' })).rejects.toThrow('That app is not installed');
         expect(launch).not.toHaveBeenCalled();
     });
 });
@@ -207,8 +269,8 @@ describe('what a Windows machine has', () => {
             files: ['C:\\Program Files\\JetBrains\\WebStorm 2025.1\\bin\\webstorm64.exe', 'C:\\Program Files\\JetBrains\\WebStorm 2025.2\\bin\\webstorm64.exe'],
         });
 
-        await open.openFolder('C:\\Users\\dev\\web', { kind: 'editor', id: 'webstorm' });
-        await open.openFolder('C:\\Users\\dev\\web', { kind: 'fileManager', id: 'explorer' });
+        await open.openPath('C:\\Users\\dev\\web', { kind: 'editor', id: 'webstorm' });
+        await open.openPath('C:\\Users\\dev\\web', { kind: 'fileManager', id: 'explorer' });
 
         expect(launch).toHaveBeenCalledExactlyOnceWith('C:\\Program Files\\JetBrains\\WebStorm 2025.2\\bin\\webstorm64.exe', ['C:\\Users\\dev\\web']);
         expect(openPath).toHaveBeenCalledWith('C:\\Users\\dev\\web');
@@ -227,8 +289,8 @@ describe('what a Windows machine has', () => {
 
         expect((await open.listApps()).terminals).toEqual([{ id: 'windows-terminal', name: 'Windows Terminal' }, { id: 'git-bash', name: 'Git Bash' }]);
 
-        await open.openFolder('C:\\Users\\dev\\web', { kind: 'terminal', id: 'windows-terminal' });
-        await open.openFolder('C:\\Users\\dev\\web', { kind: 'terminal', id: 'git-bash' });
+        await open.openPath('C:\\Users\\dev\\web', { kind: 'terminal', id: 'windows-terminal' });
+        await open.openPath('C:\\Users\\dev\\web', { kind: 'terminal', id: 'git-bash' });
 
         expect(launch.mock.calls).toEqual([
             [wt, ['-d', 'C:\\Users\\dev\\web']],
@@ -243,10 +305,10 @@ describe('what a Windows machine has', () => {
         const odd = 'C:\\Users\\dev\\web;powershell -c calc';
         const { open, launch } = machine({ platform: 'win32', env, files: [wt, bash], directories: [folder, odd] });
 
-        await open.openFolder(folder, { kind: 'terminal', id: 'windows-terminal' });
-        await open.openFolder(folder, { kind: 'terminal', id: 'git-bash' });
-        await open.openFolder(odd, { kind: 'terminal', id: 'git-bash' });
-        await expect(open.openFolder(odd, { kind: 'terminal', id: 'windows-terminal' })).rejects.toThrow('semicolon');
+        await open.openPath(folder, { kind: 'terminal', id: 'windows-terminal' });
+        await open.openPath(folder, { kind: 'terminal', id: 'git-bash' });
+        await open.openPath(odd, { kind: 'terminal', id: 'git-bash' });
+        await expect(open.openPath(odd, { kind: 'terminal', id: 'windows-terminal' })).rejects.toThrow('semicolon');
 
         expect(launch.mock.calls).toEqual([
             [wt, ['-d', folder]],
@@ -258,7 +320,7 @@ describe('what a Windows machine has', () => {
     test('refuses a path that is not absolute', async () => {
         const { open } = machine({ platform: 'win32', env });
 
-        await expect(open.openFolder('web', { kind: 'fileManager', id: 'explorer' })).rejects.toThrow('Not a folder');
+        await expect(open.openPath('web', { kind: 'fileManager', id: 'explorer' })).rejects.toThrow('Not a path');
     });
 });
 
@@ -329,7 +391,7 @@ test('has no program on a system the app does not run on', async () => {
     const { open } = machine({ platform: 'linux', folders: { '/Applications': ['Cursor.app'] } });
 
     expect(await open.listApps()).toEqual({ editors: [], terminals: [], fileManagers: [] });
-    await expect(open.openFolder('/Users/dev/web', { kind: 'editor', id: 'cursor' })).rejects.toThrow('That app is not installed');
+    await expect(open.openPath('/Users/dev/web', { kind: 'editor', id: 'cursor' })).rejects.toThrow('That app is not installed');
 });
 
 describe('the real machine', () => {
@@ -347,7 +409,7 @@ describe('the real machine', () => {
     });
 
     test('tells a folder from a file and from nothing, and lists a folder it cannot read as empty', async () => {
-        const deps = systemOpenWithDeps(async () => '', async () => undefined);
+        const deps = systemOpenWithDeps(async () => '', async () => undefined, () => undefined);
         const root = await scratch();
 
         await mkdir(join(root, 'web'));
@@ -363,7 +425,7 @@ describe('the real machine', () => {
     });
 
     test('starts a program with each argument as it is, and no shell reads them', async () => {
-        const deps = systemOpenWithDeps(async () => '', async () => undefined);
+        const deps = systemOpenWithDeps(async () => '', async () => undefined, () => undefined);
         const root = await scratch();
         const out = join(root, 'argv.json');
         const folder = 'my web; $(touch pwned) "q" \'s\' -x';
@@ -374,14 +436,14 @@ describe('the real machine', () => {
     });
 
     test.runIf(process.platform === 'darwin')('rejects when `open` cannot start the app it is told to', async () => {
-        const deps = systemOpenWithDeps(async () => '', async () => undefined);
+        const deps = systemOpenWithDeps(async () => '', async () => undefined, () => undefined);
         const root = await scratch();
 
         await expect(deps.launch('open', ['-a', join(root, 'Missing.app'), root])).rejects.toThrow('open failed');
     });
 
     test('rejects when the program cannot be started', async () => {
-        const deps = systemOpenWithDeps(async () => '', async () => undefined);
+        const deps = systemOpenWithDeps(async () => '', async () => undefined, () => undefined);
         const root = await scratch();
 
         await expect(deps.launch(join(root, 'no-such-program'), [root])).rejects.toThrow();

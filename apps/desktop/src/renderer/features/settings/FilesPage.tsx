@@ -10,14 +10,14 @@ import { SettingsPage } from './ui/SettingsPage';
 import { SettingsRow } from './ui/SettingsRow';
 import { SettingsSection } from './ui/SettingsSection';
 
-import type { OpenApp, OpenFolderApp } from '../../../shared/bridge';
+import type { OpenApp, OpenPathApp } from '../../../shared/bridge';
 
 const EDITOR_LABEL = 'Default IDE';
 const TERMINAL_LABEL = 'Default terminal';
 const FILE_MANAGER_LABEL = 'Default file manager';
 const HIDDEN_LABEL = 'Show hidden files';
 
-function AppSelect({ label, kind, apps, selectedId, onSelect }: { label: string; kind: OpenFolderApp['kind']; apps: readonly OpenApp[]; selectedId: string | undefined; onSelect: (id: string) => void }) {
+function AppSelect({ label, kind, apps, selectedId, onSelect }: { label: string; kind: OpenPathApp['kind']; apps: readonly OpenApp[]; selectedId: string | undefined; onSelect: (id: string) => void }) {
     const selected = chosenApp(apps, selectedId);
 
     return (

@@ -5,9 +5,9 @@ import { posix, win32 } from 'node:path';
 
 import { EDITORS, FILE_MANAGERS, MAC_APP_FOLDERS, TERMINALS, type FileManagerSpec, type TerminalSpec } from './openWithCatalog';
 
-import type { OpenApp, OpenApps, OpenFolderApp } from '../shared/bridge';
+import type { OpenApp, OpenApps, OpenPathApp } from '../shared/bridge';
 
-/** What opening a folder needs from the machine, so the search and the launch can be tried without one. */
+/** What opening a folder or a file needs from the machine, so the search and the launch can be tried without one. */
 export interface OpenWithDeps {
     platform: NodeJS.Platform;
     home: string;
@@ -18,6 +18,8 @@ export interface OpenWithDeps {
     isFolder: (path: string) => Promise<boolean>;
     /** Opens a folder in the system's file manager (`shell.openPath`): an error text, or an empty one. */
     openPath: (path: string) => Promise<string>;
+    /** Shows a file in its folder, in the system's file manager (`shell.showItemInFolder`). */
+    showItem: (path: string) => void;
     /** Starts a program and does not wait for it. Rejects when it cannot be started. */
     launch: (command: string, args: readonly string[]) => Promise<void>;
     /** The icon of a program as a `data:` image, or nothing when it cannot be read. */
@@ -38,8 +40,12 @@ interface Found {
 export interface OpenWith {
     /** The editors, terminals and file managers this machine has, with their icons, in the order of the catalog; the system's file manager is first. */
     listApps: () => Promise<OpenApps>;
-    /** Opens `folder` in the app. Rejects when the folder is not there or the app cannot be started. */
-    openFolder: (folder: unknown, app: unknown) => Promise<void>;
+    /**
+     * Opens a folder or a file in the app. A folder goes to any kind of program. A file goes to an editor, which opens it, and to a file manager, which shows
+     * it in its folder (the system's one selects it; another one is given the folder it is in); a terminal opens folders only. Rejects when the path is not
+     * there or the app cannot be started.
+     */
+    openPath: (path: unknown, app: unknown) => Promise<void>;
 }
 
 const escapeRegExp = (text: string) => text.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
@@ -184,6 +190,7 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
     }
 
     const isAbsolute = platform === 'win32' ? win32.isAbsolute : posix.isAbsolute;
+    const dirname = platform === 'win32' ? win32.dirname : posix.dirname;
 
     return {
         async listApps() {
@@ -193,43 +200,56 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
             return { editors: editorApps, terminals: terminalApps, fileManagers: managerApps };
         },
 
-        async openFolder(folder, app) {
-            // The page asked, so nothing it sends is trusted: a folder that is there, and one of the programs this machine has.
-            if (typeof folder !== 'string' || !isAbsolute(folder)) throw new Error('Not a folder');
+        async openPath(target, app) {
+            // The page asked, so nothing it sends is trusted: a path that is there, and one of the programs this machine has.
+            if (typeof target !== 'string' || !isAbsolute(target)) throw new Error('Not a path');
 
             if (typeof app !== 'object' || app === null) throw new Error('Unknown app');
 
-            const { kind, id } = app as Partial<OpenFolderApp>;
+            const { kind, id } = app as Partial<OpenPathApp>;
 
             if ((kind !== 'editor' && kind !== 'terminal' && kind !== 'fileManager') || typeof id !== 'string') throw new Error('Unknown app');
 
-            if (!await deps.isFolder(folder)) throw new Error('The folder no longer exists');
+            const isFolder = await deps.isFolder(target);
+
+            if (!isFolder && !await exists(target)) throw new Error('That path no longer exists');
+
+            if (!isFolder && kind === 'terminal') throw new Error('A terminal opens a folder');
 
             const candidates = kind === 'editor' ? await editors() : kind === 'terminal' ? await terminals() : await fileManagers();
             const found = candidates.find(candidate => candidate.id === id);
 
             if (!found) throw new Error('That app is not installed');
 
-            // The system's own file manager is opened by the system; every other program is told the folder, as a path and not as text for a shell.
+            // The system's own file manager is opened by the system: a folder is opened, a file is shown in its folder.
             if (found.path === '') {
-                const problem = await deps.openPath(folder);
+                if (!isFolder) {
+                    deps.showItem(target);
+
+                    return;
+                }
+
+                const problem = await deps.openPath(target);
 
                 if (problem) throw new Error(problem);
 
                 return;
             }
 
+            // Every other program is told the path, as a path and not as text for a shell. A file manager that is not the system's has no way to select a file, so it is
+            // given the folder the file is in.
+            const path = !isFolder && kind === 'fileManager' ? dirname(target) : target;
             // A program that is told where to open by its arguments is started as a new instance on macOS, since a running one would not read them.
-            const args = found.args?.(folder);
+            const args = found.args?.(path);
 
-            if (platform === 'darwin') await deps.launch('open', args ? ['-n', '-a', found.path, '--args', ...args] : ['-a', found.path, folder]);
-            else await deps.launch(found.path, args ?? [folder]);
+            if (platform === 'darwin') await deps.launch('open', args ? ['-n', '-a', found.path, '--args', ...args] : ['-a', found.path, path]);
+            else await deps.launch(found.path, args ?? [path]);
         },
     };
 }
 
-/** The real machine: its files, its environment, `openPath` of Electron's `shell`, and the way Electron reads an icon. */
-export function systemOpenWithDeps(openPath: OpenWithDeps['openPath'], icon: OpenWithDeps['icon']): OpenWithDeps {
+/** The real machine: its files, its environment, `openPath` and `showItemInFolder` of Electron's `shell`, and the way Electron reads an icon. */
+export function systemOpenWithDeps(openPath: OpenWithDeps['openPath'], icon: OpenWithDeps['icon'], showItem: OpenWithDeps['showItem']): OpenWithDeps {
     return {
         platform: process.platform,
         home: homedir(),
@@ -238,13 +258,14 @@ export function systemOpenWithDeps(openPath: OpenWithDeps['openPath'], icon: Ope
         exists: path => access(path).then(() => true, () => false),
         isFolder: path => stat(path).then(info => info.isDirectory(), () => false),
         openPath,
+        showItem,
         icon,
         launch: (command, args) => new Promise<void>((resolve, reject) => {
             const child = spawn(command, [...args], { detached: true, stdio: 'ignore' });
 
             child.once('error', reject);
 
-            // macOS's `open` hands the folder to the app and exits at once, and its exit code says whether the app could be started.
+            // macOS's `open` hands the path to the app and exits at once, and its exit code says whether the app could be started.
             // Any other program may stay running for as long as the person works in it, so it is enough that it started.
             if (command === 'open') {
                 child.once('exit', code => (code === 0 ? resolve() : reject(new Error(`open failed with code ${ code }`))));

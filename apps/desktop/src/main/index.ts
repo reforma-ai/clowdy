@@ -36,14 +36,15 @@ const ownRendererRoot = app.isPackaged
     : process.env.CLOWDY_RENDERER_DIR ?? path.join(app.getAppPath(), 'dist/renderer');
 const trustedOrigin = APP_ORIGIN;
 
-/** The editors and file managers a folder can be opened in: the page asks which this computer has, and which one to use. */
+/** The editors, terminals and file managers a folder or a file can be opened in: the page asks which this computer has, and which one to use. */
 const openWith = createOpenWith(systemOpenWithDeps(
-    folder => shell.openPath(folder),
+    path => shell.openPath(path),
     createAppIcon({
         platform: process.platform,
         thumbnail: (file, size) => nativeImage.createThumbnailFromPath(file, { width: size, height: size }),
         fileIcon: file => app.getFileIcon(file, { size: 'normal' }),
-    })
+    }),
+    path => shell.showItemInFolder(path)
 ));
 
 /** The OTA bundle installed during this run, which every page that loads is told about. */
@@ -182,7 +183,7 @@ function start(): void {
             ready: () => ota.ready(),
             restartToUpdate: () => ota.restart(),
             listOpenApps: openWith.listApps,
-            openFolder: openWith.openFolder,
+            openPath: openWith.openPath,
         });
 
         /**
