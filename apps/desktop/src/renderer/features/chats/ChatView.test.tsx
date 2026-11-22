@@ -5,7 +5,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_FORK_CHAT_ID, FIXTURE_PROJECT_ID, withFixtureFork, type FixtureData } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_APPROVALS_CHAT_ID, FIXTURE_FORK_CHAT_ID, FIXTURE_PROJECT_ID, withFixtureApprovals, withFixtureFork, type FixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { SWIPE } from '../../stream/swipeReply';
@@ -1585,3 +1585,60 @@ describe('Edit in a chat', () => {
         });
     });
 });
+
+describe('requests for permission', () => {
+    const withApprovals = (fixtures: FixtureData) => void withFixtureApprovals(fixtures);
+    /** The last card that asks for this (`Run this command`, `Change these files`, `Use <tool>`): the chat has an answered request for a command before its open one. */
+    const card = (heading: string) => [...container.querySelectorAll<HTMLElement>(`section[aria-label="${ heading }"]`)].at(-1) ?? null;
+    const cardButton = (heading: string, label: string) => [...card(heading)?.querySelectorAll<HTMLButtonElement>('button') ?? []].find(candidate => candidate.textContent === label);
+
+    it('draws each request in the stream, and a click on a decision sends it with the run and the request, and the card keeps it', async () => {
+        await start(undefined, withApprovals);
+        await draw(FIXTURE_APPROVALS_CHAT_ID);
+
+        expect(card('Run this command')).not.toBeNull();
+        expect(card('Change these files')).not.toBeNull();
+        expect(card('Use mcp__docs__publish')).not.toBeNull();
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => cardButton('Run this command', 'Allow once')!.click());
+        await render(FIXTURE_APPROVALS_CHAT_ID);
+
+        expect(command).toHaveBeenCalledWith({ type: 'run.decide', runId: 'r-orch-8', approvalId: 'apv-2', decision: 'allow_once' });
+        expect(card('Run this command')?.textContent).toContain('Allowed once');
+        expect(cardButton('Run this command', 'Allow once')).toBeUndefined();
+        // The other two still wait, and so does the run.
+        expect(cardButton('Change these files', 'Allow once')).toBeDefined();
+        expect(store.selectedProject!.runs.get('r-orch-8')?.status).toBe('waiting_user');
+    });
+
+    it('lets the person decide while the run is in another state, because the card goes by its own', async () => {
+        await start(undefined, (fixtures) => {
+            withFixtureApprovals(fixtures);
+            fixtures.runs.find(run => run.id === 'r-orch-8')!.status = 'waiting_background';
+        });
+        await draw(FIXTURE_APPROVALS_CHAT_ID);
+
+        expect(cardButton('Change these files', 'Deny')).toBeDefined();
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => cardButton('Change these files', 'Deny')!.click());
+
+        expect(command).toHaveBeenCalledWith({ type: 'run.decide', runId: 'r-orch-8', approvalId: 'apv-3', decision: 'reject' });
+    });
+
+    it('tells the person when the daemon refuses a decision, and leaves the card open', async () => {
+        await start(undefined, withApprovals);
+        await draw(FIXTURE_APPROVALS_CHAT_ID);
+        vi.spyOn(store, 'command').mockResolvedValue({ ok: false, error: { code: 'conflict', message: 'The agent is gone' } } as CommandResult);
+
+        await act(async () => cardButton('Run this command', 'Deny')!.click());
+        await render(FIXTURE_APPROVALS_CHAT_ID);
+
+        expect(toast.error).toHaveBeenCalledWith({ message: 'The agent is gone' });
+        expect(cardButton('Run this command', 'Deny')?.disabled).toBe(false);
+    });
+});
+

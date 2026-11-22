@@ -384,6 +384,38 @@ describe('StreamView', () => {
         expect(container.querySelector('[role="status"] #progress-loader-a')).not.toBeNull();
     });
 
+    it('draws a request for permission as a card that sends the person\'s decision with its id, while the item is open', async () => {
+        const onDecide = vi.fn();
+        const open = item(4, { kind: 'approval', approvalId: 'apv-9', title: 'rm -rf build', subject: { kind: 'command', command: 'rm -rf build' }, decisions: ['allow_once', 'allow_always', 'reject'], state: 'open' });
+        const find = (label: string) => [...container.querySelectorAll('button')].find(button => button.textContent === label);
+
+        await act(async () => root.render(<StreamView items={ [...items.slice(0, 1), open] } active onDecide={ onDecide } />));
+
+        expect(container.textContent).toContain('Run this command');
+        expect(container.textContent).toContain('$ rm -rf build');
+
+        await act(async () => find('Allow for session')!.click());
+
+        expect(onDecide).toHaveBeenCalledWith('apv-9', 'allow_always');
+
+        // Once it is settled the card has no buttons, whatever the caller gives, and the stream says what was decided.
+        const settled = item(4, { kind: 'approval', approvalId: 'apv-9', title: 'rm -rf build', subject: { kind: 'command', command: 'rm -rf build' }, decisions: ['allow_once', 'allow_always', 'reject'], state: 'decided', decision: 'reject' });
+
+        await act(async () => root.render(<StreamView items={ [...items.slice(0, 1), settled] } active onDecide={ onDecide } />));
+
+        expect(find('Allow once')).toBeUndefined();
+        expect(container.textContent).toContain('Denied');
+    });
+
+    it('keeps an open request for permission in sight in a stream whose turn is over', async () => {
+        const open = item(2, { kind: 'approval', approvalId: 'apv-1', title: 'ls', subject: { kind: 'command', command: 'ls' }, decisions: ['allow_once', 'reject'], state: 'open' });
+        const next = item(5, { kind: 'user', text: 'Anything?' });
+
+        await act(async () => root.render(<StreamView items={ [items[0], items[1], open, items[2], items[3], next] } />));
+
+        expect(container.textContent).toContain('Run this command');
+    });
+
     it('puts the action it is given at the end of an error', async () => {
         const failed = [...items, item(4, { kind: 'error', text: 'The conversation no longer fits the model\'s context window. Compact it or start a new chat.' })];
 

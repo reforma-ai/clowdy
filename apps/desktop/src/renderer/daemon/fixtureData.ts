@@ -402,6 +402,77 @@ export function withFixtureFork(data: FixtureData, now = Date.now()): FixtureDat
     return data;
 }
 
+export const FIXTURE_APPROVALS_CHAT_ID = 'c-8';
+export const FIXTURE_APPROVALS_RUN_ID = 'r-orch-8';
+
+/**
+ * Adds to `data` a chat whose agent waits for the person's permission, and gives it back: one request already answered ("for the session"), then three that
+ * are open, a command long enough to be cut, a change to files and a tool, so every body of the approval card has a place on the screen. Not in
+ * `createFixtureData`, for the reason `withFixtureFork` gives: a chat more in the car project moves the counts and the order other screens' tests read.
+ */
+export function withFixtureApprovals(data: FixtureData, now = Date.now()): FixtureData {
+    const ago = (minutes: number) => now - minutes * MINUTE;
+    const orchestrator = data.runs.find(run => run.id === 'r-orch-3') as Run;
+    const approval = (id: number, fields: Pick<Extract<StreamItemBody, { kind: 'approval' }>, 'title' | 'subject'> & Partial<Extract<StreamItemBody, { kind: 'approval' }>>): StreamItemBody => ({
+        kind: 'approval',
+        approvalId: `apv-${ id }`,
+        decisions: ['allow_once', 'allow_always', 'reject'],
+        state: 'open',
+        ...fields,
+    });
+    const entries: Array<[number, StreamItemBody]> = [
+        [20, { kind: 'user', text: 'Run the booking tests and the type check, then update the price helper and publish the rules.' }],
+        [19, { kind: 'assistant', done: true, text: 'I will ask before anything that changes your files or leaves this machine.' }],
+        [18, approval(1, { title: 'bun run test src/booking', subject: { kind: 'command', command: 'bun run test src/booking' }, state: 'decided', decision: 'allow_always' })],
+        [17, { kind: 'tool', toolCallId: 'tc-o8-1', name: 'Bash', state: 'done', input: { command: 'bun run test src/booking' }, output: '12 pass, 0 fail' }],
+        [
+            5,
+            approval(2, {
+                title: 'Run the checks',
+                subject: { kind: 'command', command: 'set -e\ncd src/booking\nbun run test -- --coverage\nbun run typecheck\ngit diff --stat\necho "all checks passed"', cwd: '/Users/dev/car-rental' },
+            }),
+        ],
+        [
+            4,
+            approval(3, {
+                title: 'Edit src/booking/price.ts',
+                subject: { kind: 'file_change', paths: ['src/booking/price.ts', 'src/booking/steps/confirmation/summary.tsx', 'src/booking/__tests__/price.test.ts'] },
+            }),
+        ],
+        [3, approval(4, { title: 'Publish the booking rules', subject: { kind: 'tool_use', tool: 'mcp__docs__publish', detail: 'Publish "Booking rules" to the shared docs' }, decisions: ['allow_once', 'reject'] })],
+    ];
+
+    data.items[FIXTURE_APPROVALS_RUN_ID] = entries.map(([minutes, body], index): StreamItem => ({ id: `${ FIXTURE_APPROVALS_RUN_ID }-${ index + 1 }`, runId: FIXTURE_APPROVALS_RUN_ID, seq: index + 1, at: ago(minutes), body }));
+    data.runs.push({
+        id: FIXTURE_APPROVALS_RUN_ID,
+        projectId: orchestrator.projectId,
+        rootRunId: FIXTURE_APPROVALS_RUN_ID,
+        chatId: FIXTURE_APPROVALS_CHAT_ID,
+        role: 'orchestrator',
+        name: 'Orchestrator 08',
+        summary: 'Run the booking checks',
+        status: 'waiting_user',
+        statusReason: 'Waiting for your approval',
+        engine: orchestrator.engine,
+        ...(orchestrator.model && { model: orchestrator.model }),
+        createdAt: ago(20),
+        startedAt: ago(20),
+    });
+    data.chats.push({
+        id: FIXTURE_APPROVALS_CHAT_ID,
+        projectId: orchestrator.projectId,
+        title: 'Run the booking checks',
+        mode: 'autopilot',
+        engine: orchestrator.engine,
+        ...(orchestrator.model && { model: orchestrator.model }),
+        orchestratorRunId: FIXTURE_APPROVALS_RUN_ID,
+        createdAt: ago(20),
+        updatedAt: ago(3),
+    });
+
+    return data;
+}
+
 export function createFixtureData(now = Date.now()): FixtureData {
     const ago = (minutes: number) => now - minutes * MINUTE;
     const projectId = FIXTURE_PROJECT_ID;

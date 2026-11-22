@@ -1,4 +1,5 @@
 export { AgentAvatar, type AgentAvatarProps } from './AgentAvatar';
+export { ApprovalCard, type ApprovalCardProps } from './ApprovalCard';
 export { AssistantMessage, type AssistantMessageProps } from './AssistantMessage';
 export { ErrorLine } from './ErrorLine';
 export { Markdown } from './Markdown';

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, docHash, FIXTURE_FORK_CHAT_ID, FIXTURE_LIVE_RUN_ID, FIXTURE_LIVE_TEXT_ID, FIXTURE_LIVE_TOOL_ID, FIXTURE_PROJECT_ID, withFixtureFork } from './fixtureData';
+import { createFixtureData, docHash, FIXTURE_FORK_CHAT_ID, FIXTURE_LIVE_RUN_ID, FIXTURE_LIVE_TEXT_ID, FIXTURE_LIVE_TOOL_ID, FIXTURE_PROJECT_ID, withFixtureApprovals, withFixtureFork } from './fixtureData';
 import { FixtureTransport } from './fixtureTransport';
 
 import type { ClowdyEvent, StreamItemBody } from '@clowdy/protocol';
@@ -178,6 +178,25 @@ describe('FixtureTransport', () => {
         expect(await decide('apv-2', 'allow_once')).toMatchObject({ ok: true });
         expect(await status()).toBe('waiting_user');
         expect(await transport.command({ type: 'run.answer', runId: 'r-orch-3', questionId: 'q-store', answer: 'SQLite' })).toMatchObject({ ok: true });
+    });
+
+    it('keeps a run waiting while a request for permission is open, whichever of the cards is answered last', async () => {
+        const data = withFixtureApprovals(createFixtureData());
+
+        data.items['r-orch-8'].push({ id: 'r-orch-8-q', runId: 'r-orch-8', seq: 100, at: Date.now(), body: { kind: 'question', questionId: 'q-order', text: 'Which order?', options: [{ id: 'a', label: 'A' }] } });
+
+        const { transport } = await connected({ data });
+        const status = async () => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === 'r-orch-8')?.status;
+        const decide = (approvalId: string) => transport.command({ type: 'run.decide', runId: 'r-orch-8', approvalId, decision: 'allow_once' });
+
+        // The question is answered first: three requests are still open, so the run does not go on.
+        expect(await transport.command({ type: 'run.answer', runId: 'r-orch-8', questionId: 'q-order', answer: 'A' })).toMatchObject({ ok: true });
+        expect(await status()).toBe('waiting_user');
+        expect(await decide('apv-2')).toMatchObject({ ok: true });
+        expect(await decide('apv-3')).toMatchObject({ ok: true });
+        expect(await status()).toBe('waiting_user');
+        expect(await decide('apv-4')).toMatchObject({ ok: true });
+        expect(await status()).toBe('running');
     });
 
     it('cancels an orchestrator together with the sub-agents below it, and leaves finished ones alone', async () => {

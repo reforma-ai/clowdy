@@ -6,6 +6,7 @@ import { ArrowDown } from '@clowdy/icons/14';
 import { mergeRefs } from '@clowdy/lib';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
+import { ApprovalCard } from './ApprovalCard';
 import { AssistantMessage } from './AssistantMessage';
 import { COMPACT_TOOL } from './compaction';
 import { CompactionLine } from './CompactionLine';
@@ -30,7 +31,7 @@ import { UserBubble } from './UserBubble';
 import { Worked } from './Worked';
 import { WorkingLine } from './WorkingLine';
 
-import type { StreamItem } from '@clowdy/protocol';
+import type { ApprovalDecision, StreamItem } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
 import type { MessageActionsConfig, ReplyMessage } from './MessageActions';
 
@@ -74,6 +75,8 @@ export interface StreamViewProps {
     working?: boolean | string;
     /** The person answered a `question` item. */
     onAnswer?: (questionId: string, answer: string) => void | Promise<void>;
+    /** The person decided an `approval` item that is `open`. A card is read-only without it, and so is one that is not open. */
+    onDecide?: (approvalId: string, decision: ApprovalDecision) => void | Promise<void>;
     /** Shown while there are no items. */
     emptyState?: ReactNode;
     /** Rendered right after an item, in the stream's own flow: the progress card of a chat sits after a message. */
@@ -97,12 +100,12 @@ export interface StreamViewProps {
 }
 
 /**
- * A run's stream: the person's messages, the agent's, tool calls, notes, questions and errors, and the cards of other threads (a message from one,
+ * A run's stream: the person's messages, the agent's, tool calls, notes, questions, requests for permission and errors, and the cards of other threads (a message from one,
  * threads that stopped), kept scrolled to the end
  * while it is there. A turn that is over shows what was asked and the answer, and the work between them under one
  * "Worked for" line.
  */
-export function StreamView({ items, active = false, working, onAnswer, emptyState, decorate, links = NO_LINKS, errorAction, messageActions, editing, forkedFrom }: StreamViewProps) {
+export function StreamView({ items, active = false, working, onAnswer, onDecide, emptyState, decorate, links = NO_LINKS, errorAction, messageActions, editing, forkedFrom }: StreamViewProps) {
     const scroller = useRef<HTMLDivElement>(null);
     const { scrollRef: stickScrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
     const scrollRef = useMemo(
@@ -199,6 +202,8 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
                 return <NoteLine text={ body.text } at={ item.at } />;
             case 'question':
                 return <QuestionCard question={ body } onAnswer={ onAnswer && (answer => onAnswer(body.questionId, answer)) } />;
+            case 'approval':
+                return <ApprovalCard approval={ body } onDecide={ onDecide && (decision => onDecide(body.approvalId, decision)) } />;
             case 'error':
                 return <ErrorLine text={ body.text } action={ errorAction?.(item) } />;
         }

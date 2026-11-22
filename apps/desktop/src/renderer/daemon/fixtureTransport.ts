@@ -1748,12 +1748,21 @@ export class FixtureTransport implements Transport {
         if (!run || !item || item.body.kind !== 'question') return fail('not_found', 'No such question');
 
         this.#saveItem(run, { ...item, body: { ...item.body, answer } });
-        run.status = 'running';
-        run.statusReason = undefined;
-        this.#saveRun(run);
-        this.#later(500, () => this.#streamReply(run, `Thanks. I will go with "${ answer }" and continue.`));
+
+        // The run goes on only when no card is left to answer: a request for permission that still waits keeps it waiting, as it does in the daemon, which counts both.
+        if (!this.#hasOpenCard(runId)) {
+            run.status = 'running';
+            run.statusReason = undefined;
+            this.#saveRun(run);
+            this.#later(500, () => this.#streamReply(run, `Thanks. I will go with "${ answer }" and continue.`));
+        }
 
         return ok();
+    }
+
+    /** A question without an answer, or a request for permission that is open: what keeps a run in `waiting_user`. */
+    #hasOpenCard(runId: RunId): boolean {
+        return (this.#data.items[runId] ?? []).some(candidate => (candidate.body.kind === 'approval' && candidate.body.state === 'open') || (candidate.body.kind === 'question' && candidate.body.answer === undefined));
     }
 
     #decideApproval(runId: RunId, approvalId: string, decision: ApprovalDecision): Outcome {
@@ -1770,9 +1779,7 @@ export class FixtureTransport implements Transport {
         this.#saveItem(run, { ...item, body: { ...item.body, state: 'decided', decision } });
 
         // The run goes back to work when no card is left to answer, a question's included.
-        const open = (this.#data.items[runId] ?? []).some(candidate => (candidate.body.kind === 'approval' && candidate.body.state === 'open') || (candidate.body.kind === 'question' && candidate.body.answer === undefined));
-
-        if (run.status === 'waiting_user' && !open) {
+        if (run.status === 'waiting_user' && !this.#hasOpenCard(runId)) {
             run.status = 'running';
             run.statusReason = undefined;
             this.#saveRun(run);
