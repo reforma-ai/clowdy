@@ -79,7 +79,7 @@ const panel = () => container.querySelector<HTMLElement>('aside[aria-label="Pane
 const rail = () => container.querySelector<HTMLElement>('nav[aria-label="Panel tabs"]');
 const tab = (name: string) => [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(button => button.textContent === name);
 const ui = () => store.ui.forProject(store.selectedProjectId!);
-const expandButton = () => container.querySelector<HTMLButtonElement>('button[aria-label$="panel"]');
+const expandButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Side panel"]');
 const settingsItem = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Settings');
 
 /** A window with no project on show: the projects are loaded and there are none. */
@@ -115,26 +115,26 @@ afterEach(() => {
 describe('the corner over the rail', () => {
     // The icon is one, drawn for the state the panel is in and moving to the one a press leads to.
     const icon = () => `${ expandButton()?.querySelector('svg')?.getAttribute('data-state') } > ${ expandButton()?.querySelector('svg')?.getAttribute('data-next') }`;
-    const label = () => expandButton()?.getAttribute('aria-label');
+    const pressed = () => expandButton()?.getAttribute('aria-pressed');
 
-    it('steps the panel through shown, expanded and hidden with one button, which says what a press does and has an icon that draws the panel as it is and moves to what it will be', async () => {
+    it('steps the panel through shown, expanded and hidden with one button, which is pressed while the panel is shown and has an icon that draws the panel as it is and moves to what it will be', async () => {
         await draw(<><Layout><p>The page</p></Layout><Corner /></>);
 
-        expect(label()).toBe('Show panel');
+        expect(pressed()).toBe('false');
         expect(icon()).toBe('none > small');
 
         await press(expandButton()!);
 
         expect(ui().sidePanelOpen).toBe(true);
         expect(panel()?.hasAttribute('data-expanded')).toBe(false);
-        expect(label()).toBe('Expand panel');
+        expect(pressed()).toBe('true');
         expect(icon()).toBe('small > large');
 
         await press(expandButton()!);
 
         expect(ui().sidePanelExpanded).toBe(true);
         expect(panel()?.hasAttribute('data-expanded')).toBe(true);
-        expect(label()).toBe('Hide panel');
+        expect(pressed()).toBe('true');
         expect(icon()).toBe('large > none');
         // The edge between the page and the panel lies under the expanded panel.
         expect(container.querySelector<HTMLElement>('[role="separator"]')?.className).toMatch(/edgeCovered/);
@@ -144,7 +144,7 @@ describe('the corner over the rail', () => {
         expect([ui().sidePanelOpen, ui().sidePanelExpanded]).toEqual([false, false]);
         expect(panel()).toBeNull();
         // Hidden from the button, the panel comes back beside the chat: the cycle goes round.
-        expect(label()).toBe('Show panel');
+        expect(pressed()).toBe('false');
         expect(icon()).toBe('none > small');
     });
 
@@ -157,13 +157,13 @@ describe('the corner over the rail', () => {
         await settle();
 
         expect(panel()).toBeNull();
-        expect(label()).toBe('Show panel');
+        expect(pressed()).toBe('false');
         expect(icon()).toBe('none > large');
 
         await press(expandButton()!);
 
         expect(panel()?.hasAttribute('data-expanded')).toBe(true);
-        expect(label()).toBe('Hide panel');
+        expect(pressed()).toBe('true');
         expect(icon()).toBe('large > none');
     });
 
