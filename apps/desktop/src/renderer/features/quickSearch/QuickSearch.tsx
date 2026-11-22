@@ -1,17 +1,19 @@
+import { Button } from '@clowdy/components/Button';
 import { FileIcon } from '@clowdy/components/FileIcon';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
-import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/ToggleButtonGroup';
 import { basename, dirname } from '@clowdy/file-manager/paths';
 import { Folder, Search } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useId, useRef, type KeyboardEvent } from 'react';
 
+import { CommandHotkey } from '../../hotkeys';
 import { Marked, visiblePreview, wordRanges } from './preview';
 import styles from './QuickSearch.module.css';
+import { TAB_COMMANDS } from './quickSearchCommands';
 import { QUICK_SEARCH_TABS, type Found, type QuickSearchModel, type QuickSearchTab } from './QuickSearchModel';
 
 export interface QuickSearchProps {
@@ -77,7 +79,7 @@ function Row({ id, found, query, active, onOpen, onHover }: { id: string; found:
 
 /**
  * The palette: a field, the rows found below it (files by their names, and the lines of files that have what was typed), and the tabs that say which of the two to
- * search. The focus stays in the field and the arrows move the row the keys are on (`aria-activedescendant`); Enter opens it, Tab changes the tab, Escape or `Cmd+K` closes.
+ * search. The focus stays in the field and the arrows move the row the keys are on (`aria-activedescendant`); Enter opens it, Tab changes the tab (and so do the keys that open each: the tabs show them), Escape closes.
  */
 export const QuickSearch = observer(function QuickSearch({ model, folder }: QuickSearchProps) {
     const { modal } = useModalContext();
@@ -113,10 +115,6 @@ export const QuickSearch = observer(function QuickSearch({ model, folder }: Quic
             event.preventDefault();
             model.stepTab(event.shiftKey ? -1 : 1);
         }
-        else if (event.code === 'KeyK' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
-            event.preventDefault();
-            modal.cancel();
-        }
     };
 
     let at = 0;
@@ -143,41 +141,47 @@ export const QuickSearch = observer(function QuickSearch({ model, folder }: Quic
                 { pending && <Spinner size="sm" aria-label="Searching" className={ styles.spinner } /> }
             </div>
 
-            <Scrollable className={ styles.results } contentClass={ styles.content }>
-                <div id={ list } role="listbox" aria-label="Results" className={ styles.list }>
-                    { sections.map(section => (
-                        <div key={ section.id } role="group" aria-label={ section.title } className={ styles.section }>
-                            { tab === 'all' && <Text variant="sm" color="secondary" className={ styles.title }>{ section.title }</Text> }
-                            { section.items.map((found) => {
-                                const index = at++;
+            { rows.length > 0
+                ? (
+                    <Scrollable className={ styles.results } contentClass={ styles.content }>
+                        <div id={ list } role="listbox" aria-label="Results" className={ styles.list }>
+                            { sections.map(section => (
+                                <div key={ section.id } role="group" aria-label={ section.title } className={ styles.section }>
+                                    { tab === 'all' && <Text variant="sm" color="secondary" className={ styles.title }>{ section.title }</Text> }
+                                    { section.items.map((found) => {
+                                        const index = at++;
 
-                                return <Row key={ found.id } id={ rowId(list, index) } found={ found } query={ query } active={ index === activeIndex } onOpen={ () => open(found) } onHover={ () => model.activate(found) } />;
-                            }) }
+                                        return <Row key={ found.id } id={ rowId(list, index) } found={ found } query={ query } active={ index === activeIndex } onOpen={ () => open(found) } onHover={ () => model.activate(found) } />;
+                                    }) }
+                                </div>
+                            )) }
                         </div>
-                    )) }
-                </div>
-
-                { rows.length === 0 && (
-                    <Text color="secondary" className={ styles.note } role={ error ? 'alert' : 'status' }>
+                    </Scrollable>
+                )
+                : (
+                    <div className={ styles.empty } role={ error ? 'alert' : 'status' }>
                         { blank ? HINTS[tab] : error ? `Couldn't search: ${ error }` : answered && !pending ? EMPTY[tab] : '' }
-                    </Text>
+                    </div>
                 ) }
-            </Scrollable>
 
             <div className={ styles.footer }>
-                <ToggleButtonGroup
-                    size="sm"
-                    variant="text"
-                    aria-label="What to search"
-                    selectedKeys={ tab }
-                    onSelectionChange={ (keys) => {
-                        const next = [...keys][0] as QuickSearchTab | undefined;
-
-                        if (next) model.setTab(next);
-                    } }
-                >
-                    { QUICK_SEARCH_TABS.map(({ value, label }) => <ToggleButtonGroupItem key={ value } value={ value }>{ label }</ToggleButtonGroupItem>) }
-                </ToggleButtonGroup>
+                <div className={ styles.tabs } role="group" aria-label="What to search">
+                    { QUICK_SEARCH_TABS.map(({ value, label }) => (
+                        <Button
+                            key={ value }
+                            variant="filling"
+                            size="sm"
+                            isPressed={ value === tab }
+                            onPress={ () => {
+                                model.setTab(value);
+                                field.current?.focus();
+                            } }
+                        >
+                            { label }
+                            <CommandHotkey id={ TAB_COMMANDS[value] } size="xs" />
+                        </Button>
+                    )) }
+                </div>
 
                 { folder && (
                     <Text variant="sm" color="secondary" className={ styles.folder } title="The folder that is searched">

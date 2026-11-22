@@ -1,3 +1,4 @@
+import { Modal } from '@clowdy/components/Modal';
 import { folderNames } from '@clowdy/protocol';
 
 import { currentFolder } from '../sidePanel/currentFolder';
@@ -12,7 +13,7 @@ let current: QuickSearchModel | null = null;
 
 /**
  * Opens the quick search palette on a tab, for the folder the window is working in (the one the side panel's Files tab shows). Where it is open already it goes
- * to that tab. The text tab starts with what the open file has selected, when it has a line of it.
+ * to that tab, and over another dialog it does not open. The text tab starts with what the open file has selected, when it has a line of it.
  */
 export function openQuickSearch(root: RootStore, tab: QuickSearchTab = 'all'): void {
     if (current) {
@@ -20,6 +21,9 @@ export function openQuickSearch(root: RootStore, tab: QuickSearchTab = 'all'): v
 
         return;
     }
+
+    // Another dialog is open: the keys work over a dialog (the palette's own tabs are changed with them), and a palette over a form is not what they are for.
+    if (Modal.visible.length > 0) return;
 
     const projectId = root.selectedProjectId;
     const project = root.selectedProject;

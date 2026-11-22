@@ -1,11 +1,16 @@
 @reference '@clowdy/styles/rulesets';
 
-/* A fixed height whatever is listed, so the window keeps its place as the results come and go. */
+/* A fixed size whatever is listed, so the window keeps its place as the results come and go. The width is its own and not the window's: a window that sizes itself to what is in it
+   would grow with the longest line found, and the rows would no longer fit in it. */
 .palette {
+    /* The field's bar and the tabs' bar are as high as a button and the same space above and below it, and that space is also what is left of it: the search icon, the
+       plate of a pressed tab and the plate of the row the keys are on all start the same distance from the window's edge. */
+    --palette-gap: var(--spacing-8);
+    --palette-bar: calc(var(--spacing-30) + 2 * var(--palette-gap));
+
     display: flex;
     flex-direction: column;
-    width: 100%;
-    max-width: calc(100vw - 2 * var(--spacing-lg));
+    width: min(42.5rem, calc(100vw - 2 * var(--spacing-lg)));
     height: min(30rem, calc(100vh - 8rem));
 }
 
@@ -14,8 +19,8 @@
     flex: none;
     align-items: center;
     gap: var(--spacing-10);
-    height: var(--spacing-56);
-    padding-inline: var(--spacing-20);
+    height: var(--palette-bar);
+    padding-inline: var(--palette-gap);
     border-bottom: 1px solid var(--color-surface-border);
 }
 
@@ -50,7 +55,7 @@
 }
 
 .content {
-    padding: var(--spacing-8);
+    padding: var(--palette-gap);
 }
 
 .list {
@@ -112,7 +117,8 @@
 }
 
 .row .code + .meta {
-    flex: 0 1 12rem;
+    flex: none;
+    max-width: 12rem;
     margin-inline-start: auto;
     text-align: end;
 }
@@ -123,19 +129,36 @@
     color: inherit;
 }
 
-.note {
-    padding: var(--spacing-24) var(--spacing-16);
+/* What the list says when it has nothing to show: in the middle of the room the rows would have. */
+.empty {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    padding: var(--spacing-lg);
+    color: var(--color-secondary-muted-text);
     text-align: center;
+    @ruleset typography-text-sm;
 }
 
+/* As tall as the field above. */
 .footer {
     display: flex;
     flex: none;
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-12);
-    padding: var(--spacing-8) var(--spacing-12);
+    height: var(--palette-bar);
+    padding-inline: var(--palette-gap);
     border-top: 1px solid var(--color-surface-border);
+}
+
+.tabs {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
 }
 
 .folder {
@@ -143,6 +166,7 @@
     align-items: center;
     gap: var(--spacing-6);
     min-width: 0;
+    margin-inline-end: var(--palette-gap);
 }
 
 .folder span {

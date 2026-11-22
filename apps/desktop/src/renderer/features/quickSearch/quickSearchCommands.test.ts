@@ -20,9 +20,10 @@ describe('the quick search commands', () => {
         expect(open.mock.calls).toEqual([['all'], ['files'], ['text']]);
     });
 
-    it('work from text fields, and only where there is a project to search', () => {
+    it('work from text fields and with the palette open, where each goes to its tab, and only where there is a project to search', () => {
         for (const command of commands(false)) {
             expect(command.inInputs).toBe(true);
+            expect(command.inOverlays).toBe(true);
             expect(command.when?.()).toBe(false);
         }
 

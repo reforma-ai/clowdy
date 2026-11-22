@@ -116,7 +116,7 @@ describe('the quick search palette', () => {
         await open('all');
         await search('price');
 
-        const headings = [...document.body.querySelectorAll('[role="group"]')].map(group => group.getAttribute('aria-label'));
+        const headings = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'));
 
         expect(headings).toEqual(['Files', 'Text']);
     });
@@ -172,7 +172,7 @@ describe('the quick search palette', () => {
 
         expect(field().placeholder).toBe('Search files by name');
         expect(document.activeElement).toBe(field());
-        expect(document.body.querySelectorAll('[role="group"]')).toHaveLength(1);
+        expect(document.body.querySelectorAll('[role="listbox"] [role="group"]')).toHaveLength(1);
 
         press('Tab', { shiftKey: true });
         press('Tab', { shiftKey: true });
@@ -202,14 +202,6 @@ describe('the quick search palette', () => {
         expect(note()).toBe('No files found');
     });
 
-    it('closes with Cmd+K', async () => {
-        await open('files');
-        press('k', { code: 'KeyK', metaKey: true });
-        await settle();
-
-        expect(document.body.querySelector('[role="combobox"]')).toBeNull();
-    });
-
     it('closes with Escape, and opens again afterwards', async () => {
         await open('files');
         act(() => void field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
@@ -220,6 +212,15 @@ describe('the quick search palette', () => {
         await open('text');
 
         expect(field().placeholder).toBe('Search the text in files');
+    });
+
+    it('does not open over another dialog, which the keys would otherwise reach', async () => {
+        act(() => void Modal.create({ id: 'other', component: <p>Another dialog</p> }));
+        await settle();
+        await open('files');
+
+        expect(document.body.querySelector('[role="combobox"]')).toBeNull();
+        expect(document.body.textContent).toContain('Another dialog');
     });
 
     it('is not opened where there is no project', async () => {
