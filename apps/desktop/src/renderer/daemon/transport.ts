@@ -59,8 +59,11 @@ export interface ProjectFileSystem extends FileSystemProvider {
 export interface Transport {
     getRootSnapshot: () => Promise<RootSnapshot>;
     getProjectSnapshot: (projectId: ProjectId) => Promise<ProjectSnapshot>;
-    /** What the daemon reads about every project when asked: whether its folder is there, its git remote, what it holds. In the order of the project list. */
-    getProjectsInfo: () => Promise<ProjectInfo[]>;
+    /**
+     * What the daemon reads about every project when asked: whether its folder is there, its git remote and branch, what it holds. In the order of the project list.
+     * With a project id, that project alone.
+     */
+    getProjectsInfo: (projectId?: ProjectId) => Promise<ProjectInfo[]>;
     /** Follows the change feed after `cursor`. Returns what ends the subscription. */
     subscribe: (cursor: number, onEvent: (event: ClowdyEvent) => void, onStatus: (status: FeedStatus) => void) => () => void;
     /**

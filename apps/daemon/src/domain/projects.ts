@@ -477,22 +477,40 @@ async function isFolder(path: string): Promise<boolean> {
 }
 
 /**
+ * Where a folder's HEAD is: the branch it has checked out, or on a detached HEAD the short hash of the commit, with `detached`. Nothing outside a repository
+ * (git fails), and nothing in one whose HEAD points at no commit and no branch.
+ */
+async function folderHead(folder: string): Promise<Pick<ProjectFolderInfo, 'branch' | 'detached'> | undefined> {
+    const branch = await gitLine(folder, ['branch', '--show-current']);
+
+    if (branch) return { branch };
+
+    const commit = await gitLine(folder, ['rev-parse', '--short', 'HEAD']);
+
+    return commit ? { branch: commit, detached: true } : undefined;
+}
+
+/**
  * What the page that manages projects shows besides the snapshot: whether each folder is there and its remote, and what the project holds.
  * The page asks again every few seconds, so nothing here may stop the daemon: the folders are read asynchronously, one project after
- * another, so a long list never starts a crowd of processes.
+ * another, so a long list never starts a crowd of processes. With a `projectId` only that project is read (`notFound` when there is none), for a screen that
+ * wants one folder's git facts.
  */
-export async function projectsInfo(store: Store): Promise<ProjectInfo[]> {
+export async function projectsInfo(store: Store, projectId?: string): Promise<ProjectInfo[]> {
+    if (projectId !== undefined) requireProject(store, projectId);
+
     const { projects, counts, chatsIn } = store.read(() => ({ projects: listProjects(store.db), counts: projectCounts(store.db), chatsIn: chatCountsByFolder(store.db) }));
     const info: ProjectInfo[] = [];
 
-    for (const project of projects) {
+    for (const project of projects.filter(candidate => projectId === undefined || candidate.id === projectId)) {
         const folders: ProjectFolderInfo[] = [];
 
         for (const folder of project.folders) {
             const exists = await isFolder(folder.path);
             const remoteUrl = exists ? await gitLine(folder.path, ['remote', 'get-url', 'origin']) : undefined;
+            const head = exists ? await folderHead(folder.path) : undefined;
 
-            folders.push({ folderId: folder.id, exists, ...(remoteUrl && { remoteUrl }), chats: chatsIn.get(folder.id) ?? 0 });
+            folders.push({ folderId: folder.id, exists, ...(remoteUrl && { remoteUrl }), ...head, chats: chatsIn.get(folder.id) ?? 0 });
         }
 
         info.push({ projectId: project.id, folders, ...(counts.get(project.id) ?? { chats: 0, tasks: 0, activeRuns: 0 }) });

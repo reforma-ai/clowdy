@@ -91,6 +91,13 @@ export interface ProjectFolderInfo {
     exists: boolean;
     /** The `origin` remote as git prints it (`git@github.com:acme/app.git`); absent without a remote, or when the folder is not a repository. */
     remoteUrl?: string;
+    /**
+     * The branch the folder has checked out, or on a detached HEAD the short hash of the commit (with `detached`); absent when the folder is not a repository or is
+     * missing.
+     */
+    branch?: string;
+    /** `branch` is a short commit hash, since HEAD points at a commit and not at a branch. */
+    detached?: true;
     /** How many chats work in this folder by choice (`Chat.folderId`): they go back to the main folder when the folder leaves the project. */
     chats: number;
 }

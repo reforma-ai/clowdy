@@ -22,8 +22,8 @@ import type {
 /** Everything the fixture daemon holds. Plain data: the transport mutates it and announces the changes. */
 export interface FixtureData {
     projects: Project[];
-    /** What `git` says in each folder, by the folder's path: the `origin` address; a folder without an entry has no remote. */
-    git: Record<string, { remoteUrl?: string }>;
+    /** What `git` says in each folder, by the folder's path: the `origin` address and the branch (a short hash with `detached`); a folder without an entry has neither. */
+    git: Record<string, { remoteUrl?: string; branch?: string; detached?: true }>;
     statuses: Record<string, TaskStatus[]>;
     chats: Chat[];
     /** Every task of every project, the archived ones too: the snapshot leaves those out, and `getTaskDetail` and the archive's pages read them. */
@@ -900,9 +900,9 @@ export function createFixtureData(now = Date.now()): FixtureData {
     return {
         projects,
         git: {
-            '/Users/dev/car-rental': { remoteUrl: 'git@github.com:acme/car-rental.git' },
-            '/Users/dev/clowdy': { remoteUrl: 'https://github.com/acme/clowdy.git' },
-            '/Users/dev/car-rental-api': { remoteUrl: 'git@github.com:acme/car-rental-api.git' },
+            '/Users/dev/car-rental': { remoteUrl: 'git@github.com:acme/car-rental.git', branch: 'main' },
+            '/Users/dev/clowdy': { remoteUrl: 'https://github.com/acme/clowdy.git', branch: 'next' },
+            '/Users/dev/car-rental-api': { remoteUrl: 'git@github.com:acme/car-rental-api.git', branch: 'feature/payments' },
         },
         statuses: { [projectId]: DEFAULT_STATUSES, [FIXTURE_EMPTY_PROJECT_ID]: DEFAULT_STATUSES, [FIXTURE_PERSONAL_PROJECT_ID]: DEFAULT_STATUSES },
         // As the daemon's migration leaves them: a chat that has an orchestrator records the engine and model it runs on.

@@ -184,10 +184,10 @@ export class FixtureTransport implements Transport {
         return structuredClone({ cursor: this.#cursor, projects: this.#listed(), home: '/Users/dev' });
     }
 
-    async getProjectsInfo(): Promise<ProjectInfo[]> {
+    async getProjectsInfo(projectId?: ProjectId): Promise<ProjectInfo[]> {
         const { chats, tasks, git } = this.#data;
 
-        return structuredClone(this.#listed().map(project => ({
+        return structuredClone(this.#listed().filter(project => projectId === undefined || project.id === projectId).map(project => ({
             projectId: project.id,
             folders: project.folders.map(folder => ({ folderId: folder.id, exists: true, ...git[folder.path], chats: chats.filter(chat => chat.projectId === project.id && chat.folderId === folder.id).length })),
             chats: chats.filter(chat => chat.projectId === project.id).length,

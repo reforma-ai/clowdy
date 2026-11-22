@@ -95,8 +95,8 @@ export class HttpTransport implements Transport {
         return this.#get(ROUTES.snapshot);
     }
 
-    getProjectsInfo(): Promise<ProjectInfo[]> {
-        return this.#get(ROUTES.projectsInfo);
+    getProjectsInfo(projectId?: ProjectId): Promise<ProjectInfo[]> {
+        return this.#get(projectId === undefined ? ROUTES.projectsInfo : `${ ROUTES.projectsInfo }?project=${ encodeURIComponent(projectId) }`);
     }
 
     getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {
