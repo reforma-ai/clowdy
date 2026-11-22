@@ -102,12 +102,12 @@
 
 **This stage:** With Agents the only section, the left rail is an item that chooses nothing, and `Section` is a type with one value. This stage deletes them and the `g a` chord, and lets the window's plate reach the window's left edge, which is what the owner meant by the left part always being the chat.
 
-- [ ] Complete
+- [x] Complete
   - [x] The left rail, its styles and its `Section` code are gone; the chat list is the leftmost column and the plate has no rounding or border at the window's left edge
   - [x] `Section`, `SECTIONS`, `ProjectUi.section`, `showSection`, the stored `section` and `?section=` are gone; `ProjectView` has no `section`
   - [x] `g a`, `nav.agents` and `navCommandId` are gone; `Cmd+N` (new chat) opens the draft without a section
   - [x] `currentFolder` is the chat's or the new chat's folder in every case
-  - [ ] What only kept the Tasks history right goes: `NavHistory.replacing` and its callers in `features/tasks` (`settleScope`, `taskCommands`' `replacing`) once nothing needs them
+  - [x] What only kept the Tasks history right goes: `NavHistory.replacing` and its callers in `features/tasks` (`settleScope`, `taskCommands`' `replacing`) once nothing needs them
 
 **Files**
 
@@ -127,5 +127,4 @@
 **Commits:**
 
 - `b7b23cf` feat(desktop): remove the left rail and the section state, so the left part of the window is always the chats
-
-Open: the last task, the leftovers of the Tasks history (`NavHistory.replacing` and `settleScope`, `settledUi`, `openScope` in `features/tasks/tasksScope.ts`, with their callers in `DetailPanel`, `ArchivedPanel`, `useTasksScope`, `Screen` and `taskCommands`, and their tests). They do nothing now that the history keeps no task or scope, and removing `settleScope` stops a gone scope from being reset to the roots when the person acts, so it is its own step. The stage stays unchecked until then.
+- `052e0b9` refactor(desktop): remove what only kept the Tasks history right: NavHistory.replacing, settleScope and the settling of the Tasks screen (`tasksScope.ts` became `taskNav.ts`; a scope that is gone now stays remembered when the person acts, which the owner accepted)
