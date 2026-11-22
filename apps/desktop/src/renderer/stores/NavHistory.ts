@@ -1,4 +1,4 @@
-import { compareStructural, makeAutoObservable, observableShallow, reaction, runInAction, when } from 'mobx';
+import { compareStructural, makeAutoObservable, observableShallow, reaction, when } from 'mobx';
 
 import type { Project, ProjectId } from '@clowdy/protocol';
 import type { ProjectState } from './ProjectState';
@@ -32,20 +32,17 @@ interface NavHost {
  * One reaction watches the navigation state, so every action that changes what the window shows is an entry without its call site knowing:
  * a new one drops the entries ahead of the current one. Going back or forward applies the entry and moves the position, in one action. When the reaction
  * then looks, the state equals the current entry and records nothing, so applying needs no flag of its own. That holds as long as nothing else changes
- * the state in response: a screen that picks another selection when it mounts (a screen that finds its remembered selection gone) does it in
- * `replacing`, or the pick would be a new entry and drop the way forward.
+ * the state in response: a screen that picks another selection when it mounts would make a new entry and drop the way forward.
  * Recording starts at the first selected project, so loading the app does not leave a pile of entries.
  */
 export class NavHistory {
     private entries: NavSnapshot[] = [];
     /** The entry the window is on; `-1` before recording starts. */
     private index = -1;
-    #replace = false;
     #disposers: Array<() => void> = [];
 
     constructor(private readonly host: NavHost) {
-        // `replacing` must stay a plain function: as an action it would hold the reaction back until after its flag is reset.
-        makeAutoObservable<NavHistory, 'host' | 'entries'>(this, { host: false, entries: observableShallow, replacing: false });
+        makeAutoObservable<NavHistory, 'host' | 'entries'>(this, { host: false, entries: observableShallow });
         this.#disposers.push(when(() => host.selectedProjectId !== null, () => this.#start()));
     }
 
@@ -63,22 +60,6 @@ export class NavHistory {
 
     forward(): void {
         this.#go(1);
-    }
-
-    /**
-     * Runs `change`, which changes the navigation state, and lets that change overwrite the current entry instead of adding one:
-     * for a change that follows another (the open task following the Tasks cursor), so that holding a key does not fill the history.
-     * The next change after it is recorded as usual. Called inside another action the overwrite is lost, and the change is an entry.
-     */
-    replacing(change: () => void): void {
-        this.#replace = true;
-
-        try {
-            runInAction(change);
-        }
-        finally {
-            this.#replace = false;
-        }
     }
 
     dispose(): void {
@@ -107,12 +88,6 @@ export class NavHistory {
 
         // Going back or forward just made this the current entry.
         if (current && compareStructural(current, snapshot)) return;
-
-        if (this.#replace && current) {
-            this.entries[this.index] = snapshot;
-
-            return;
-        }
 
         this.entries.splice(this.index + 1);
         this.#push(snapshot);

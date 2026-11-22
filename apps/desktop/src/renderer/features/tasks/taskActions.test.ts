@@ -149,7 +149,6 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         docPathOf: async id => newestDocPath((await root.transport.getTaskDetail(id)).artifacts),
         copy: (text, message) => copied.push({ text, message }),
         notify: (message, tone) => notices.push({ message, tone }),
-        replacing: change => root.history.replacing(change),
     };
     const registry = createRegistry('darwin');
 

@@ -88,7 +88,7 @@ export function Screen() {
 
     const runsOfTask = runsByTask(project.runTaskLinks.values(), project.runs);
     const tasks = project.taskList;
-    const { isArchive, scope, ancestors, tree, view, content, notesOf, open, setView, commandDeps, settle, nav } = useTasksScope({ cursor, filter, runsOfTask });
+    const { isArchive, scope, ancestors, tree, view, content, notesOf, open, setView, commandDeps, nav } = useTasksScope({ cursor, filter, runsOfTask });
 
     // The panel's task is the board's, or an archived one (read from the daemon when the window does not know it, a task that is archived or deleted meanwhile follows the events).
     const selected = ui.taskId ? project.tasks.get(ui.taskId) : undefined;
@@ -160,9 +160,8 @@ export function Screen() {
         if (isFocusLost()) revealCursor();
     };
 
-    // The person acts: a scope that is gone is settled first, so Back returns to what they saw. A press passes its event to the handler, so the parent is a parameter of its own function.
+    // A press passes its event to the handler, so the parent is a parameter of its own function.
     const createIn = (parentId?: TaskId) => {
-        settle();
         openCreateTask({ root, project, ui, parentId }, { onClose: () => setTimeout(refocusIfLost) });
     };
     // "+ Task" and `C` make a task where the screen is: a sub-task of the task it is inside, a task of the roots at the roots.
@@ -225,19 +224,11 @@ export function Screen() {
             searchField.current?.focus();
             searchField.current?.select();
         },
-        openChat: (chatId) => {
-            settle();
-            void openChat(root, project, ui, chatId);
-        },
+        openChat: chatId => void openChat(root, project, ui, chatId),
         chatsOf: taskId => project.chatsOfTask(taskId),
         docPathOf: async taskId => newestDocPath((await root.transport.getTaskDetail(taskId)).artifacts),
         copy: copyWithToast,
         notify: (message, tone = 'info') => void (tone === 'error' ? toast.error({ message }) : toast.info({ message })),
-        // The scope is settled before the overwrite, so the entry that is overwritten is the one that says what the screen shows.
-        replacing: (change) => {
-            settle();
-            root.history.replacing(change);
-        },
     }));
 
     // The filter popover belongs to the scope and goes with it: it must not be open again when the scope comes back.

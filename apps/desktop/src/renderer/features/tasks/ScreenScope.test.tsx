@@ -301,17 +301,13 @@ describe('a scope that is gone', () => {
         expect(pathText()).toEqual(['Tasks', 'CAR-31']);
     });
 
-    it('settles before the New task dialog opens, which is the person acting', async () => {
-        await mountScreen({
-            prepare: window => window.setTasksScope('t-32'),
-        });
+    it('stays remembered when the person acts, and the New task dialog makes a task of the roots', async () => {
+        await mountScreen({ prepare: window => window.setTasksScope('t-32') });
         await change({ type: 'task.archive', taskId: 't-32', cancel: true });
-
-        expect(ui().tasksScope).toBe('t-32');
-
         await click(buttonNamed('Task'));
 
-        expect(ui().tasksScope).toBeNull();
+        expect(ui().tasksScope).toBe('t-32');
+        expect(lastParent()).toBeUndefined();
     });
 });
 

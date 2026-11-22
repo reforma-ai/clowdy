@@ -114,8 +114,6 @@ export interface TaskCommandDeps {
     copy: (text: string, message: string) => void;
     /** Shows a short message to the person. */
     notify: (message: string, tone?: 'info' | 'error') => void;
-    /** Runs a change of what the window shows so that it overwrites the current history entry instead of adding one. See `NavHistory.replacing`. */
-    replacing: (change: () => void) => void;
 }
 
 /**
@@ -136,14 +134,11 @@ function onTargets(deps: TaskCommandDeps, act: () => void) {
     else deps.revealCursor();
 }
 
-/**
- * After the cursor moved: an open panel follows it, and the item shows.
- * The following replaces the history entry, so holding `J` does not fill Back with every task it passed. Opening a task on purpose (`Enter`, a click) is an entry.
- */
-function settle({ cursor, ui, hasTask, revealCursor, replacing }: TaskCommandDeps) {
+/** After the cursor moved: an open panel follows it, and the item shows. */
+function settle({ cursor, ui, hasTask, revealCursor }: TaskCommandDeps) {
     const { cursorId } = cursor;
 
-    if (cursorId !== null && ui.taskId !== null && hasTask(ui.taskId)) replacing(() => ui.openTask(cursorId));
+    if (cursorId !== null && ui.taskId !== null && hasTask(ui.taskId)) ui.openTask(cursorId);
 
     revealCursor();
 }

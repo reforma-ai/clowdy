@@ -256,53 +256,6 @@ describe('NavHistory recording', () => {
     });
 });
 
-describe('NavHistory.replacing', () => {
-    it('overwrites the current entry, and the next change after it is a new entry', () => {
-        ui().openChat('c-1');
-        root.history.replacing(() => ui().openChat('c-2'));
-        root.history.replacing(() => ui().openChat('c-3'));
-
-        // One entry for the three, over the place it came from.
-        expect(stepsBack()).toBe(1);
-        expect(place()).toBe('p-car/null');
-
-        root.history.forward();
-        expect(place()).toBe('p-car/c-3');
-
-        ui().openChat('c-4');
-        expect(stepsBack()).toBe(2);
-    });
-
-    it('is a normal change when nothing changed inside it, and does not leak into the next one', () => {
-        root.history.replacing(() => {
-            ui().openChat(null);
-        });
-        ui().openChat('c-1');
-        ui().openChat('c-2');
-
-        expect(stepsBack()).toBe(2);
-    });
-
-    it('keeps the entries ahead, as a browser does when it replaces the current one', () => {
-        ui().openChat('c-1');
-        ui().openChat('c-2');
-        root.history.back();
-        root.history.replacing(() => ui().openChat('c-3'));
-
-        expect(place()).toBe('p-car/c-3');
-        root.history.forward();
-        expect(place()).toBe('p-car/c-2');
-    });
-
-    it('does not make back stand still when the replacement repeats the entry before it', () => {
-        ui().openChat('c-1');
-        root.history.replacing(() => ui().openChat(null));
-
-        expect(place()).toBe('p-car/null');
-        expect(root.history.canGoBack).toBe(false);
-    });
-});
-
 describe('NavHistory entries that are gone', () => {
     const remove = async (command: Parameters<RootStore['command']>[0]) => {
         const result = await root.command(command);

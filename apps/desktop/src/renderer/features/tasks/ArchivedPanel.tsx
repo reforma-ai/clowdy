@@ -17,7 +17,7 @@ import { None, Section } from './DetailSections';
 import { Pill, PillLabel } from './Pill';
 import { StatusIcon, StatusPill } from './status';
 import { ChecklistChip } from './TaskChips';
-import { settledUi, settleScope } from './tasksScope';
+import { taskNav } from './taskNav';
 import { checklistOf } from './taskTree';
 import { formatAgo } from './taskView';
 import { useTaskById, useTaskReadings } from './useTaskReadings';
@@ -37,8 +37,7 @@ export function ArchivedPanel({ task }: ArchivedPanelProps) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
-    // What the panel opens makes a place in the history, which must not carry a scope that is gone.
-    const nav = settledUi(root, project, ui, { reveal: true });
+    const nav = taskNav(root, project, ui, { reveal: true });
     const { reading: parent } = useTaskById(task.parentId ?? null);
     const { readings: dependencies } = useTaskReadings(task.dependsOn);
     const [isRestoring, setIsRestoring] = useState(false);
@@ -53,10 +52,7 @@ export function ArchivedPanel({ task }: ArchivedPanelProps) {
     const links: StreamLinks = { taskOfKey: key => project.taskOfKey(key), onOpenTask: id => nav.openTask(id) };
 
     // The agent that wrote a comment opens in Agents, as it does from the panel of a task on the board.
-    const openRun = (runId: string) => {
-        settleScope(root, project, ui);
-        void openRunInAgents(root, project, ui, runId);
-    };
+    const openRun = (runId: string) => void openRunInAgents(root, project, ui, runId);
 
     const restore = async () => {
         setIsRestoring(true);
