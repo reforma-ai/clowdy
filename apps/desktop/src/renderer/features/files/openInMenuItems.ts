@@ -1,13 +1,8 @@
-import { Copy } from '@clowdy/icons/14';
-import { Github } from '@clowdy/icons/logo';
-import { createElement } from 'react';
-
-import { absolutePath, AppIcon, openActions, openEffects, type FolderGit, type OpenAction, type OpenEffects, type OpenPrograms, type OpenTarget } from '../openWith';
+import { absolutePath, actionIcon, openActions, openEffects, type FolderGit, type OpenAction, type OpenEffects, type OpenPrograms, type OpenTarget } from '../openWith';
 
 import type { FileEntry } from '@clowdy/file-manager';
 import type { FileMenuItem } from '@clowdy/file-manager/react';
 import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
-import type { ReactNode } from 'react';
 
 export interface OpenInMenuInput {
     projectId: ProjectId;
@@ -17,12 +12,6 @@ export interface OpenInMenuInput {
     git: FolderGit | undefined;
     effects?: OpenEffects;
 }
-
-const iconOf = (action: OpenAction): ReactNode => {
-    if (action.program) return createElement(AppIcon, { app: action.program.app, kind: action.program.kind });
-
-    return action.id === 'github' ? createElement(Github, { size: 14 }) : createElement(Copy, { 'aria-hidden': true });
-};
 
 /**
  * What the Files tree's row menu gets besides its own items: `Open in…`, a submenu of the editor, the file manager (it shows a file), the terminal (a folder only)
@@ -38,7 +27,7 @@ export function openInMenuItems({ projectId, folder, programs, git, effects = op
         const target: OpenTarget = { projectId, folder, path: absolutePath(folder.path, entry.path), relative: entry.path, kind: entry.kind };
         const items = (group: OpenAction['group']): FileMenuItem[] => openActions({ target, programs, git, effects })
             .filter(action => action.group === group)
-            .map(action => ({ id: action.id, label: action.label, icon: iconOf(action), onAction: action.run }));
+            .map(action => ({ id: action.id, label: action.label, icon: actionIcon(action), onAction: action.run }));
         const opening = items('open');
 
         return [...(opening.length > 0 ? [{ id: 'open-in', label: 'Open in…', onAction: () => undefined, children: opening }] : []), ...items('copy')];

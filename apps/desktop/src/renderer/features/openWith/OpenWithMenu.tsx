@@ -24,7 +24,8 @@ export interface OpenWithMenuProps {
     'aria-label': string;
 }
 
-const iconOf = (action: OpenAction): ReactNode => {
+/** The icon of an item: the program's own, the Files folder, the GitHub mark, or the copy mark. */
+export const actionIcon = (action: OpenAction): ReactNode => {
     if (action.program) return <AppIcon app={ action.program.app } kind={ action.program.kind } />;
 
     return action.id === 'files' ? <Folder aria-hidden="true" /> : action.id === 'github' ? <Github size={ 14 } /> : <Copy aria-hidden="true" />;
@@ -54,7 +55,7 @@ export function OpenWithMenu({ target, missing = false, git, onClose, 'aria-labe
     const opening = actions.filter(action => action.group === 'open');
     const copying = actions.filter(action => action.group === 'copy');
     const item = (action: OpenAction) => (
-        <MenuItem key={ action.id } id={ action.id } icon={ iconOf(action) } textValue={ action.label } isDisabled={ action.isDisabled }>{ action.label }</MenuItem>
+        <MenuItem key={ action.id } id={ action.id } icon={ actionIcon(action) } textValue={ action.label } isDisabled={ action.isDisabled }>{ action.label }</MenuItem>
     );
 
     return (
