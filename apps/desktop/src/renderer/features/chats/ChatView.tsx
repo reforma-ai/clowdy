@@ -83,7 +83,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
 
             { stream && (stream.status === 'idle' || stream.status === 'loading') && (
                 <div className={ styles.center }>
-                    <Loader size="xxl" />
+                    <Loader size="xs" />
                     <Text color="secondary">Loading messages…</Text>
                 </div>
             ) }

@@ -89,7 +89,7 @@ function ProjectScreen() {
 function Loading() {
     return (
         <div className={ styles.center }>
-            <Loader className={ styles.loader } />
+            <Loader size="xs" />
             <Text color="secondary">Loading…</Text>
         </div>
     );

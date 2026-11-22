@@ -32,7 +32,7 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
         return (
             <SettingsPage title="Skills" description={ INTRO }>
                 <Box direction="row" gap="md" align="center">
-                    <Loader size="md" />
+                    <Loader size="xs" />
                     <Text color="secondary">Loading skills…</Text>
                 </Box>
             </SettingsPage>

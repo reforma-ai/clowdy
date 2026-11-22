@@ -103,7 +103,7 @@ function RunStream({ run }: { run: Run }) {
     if (!stream || stream.status === 'idle' || (stream.status === 'loading' && stream.items.length === 0)) {
         return (
             <div className={ styles.center }>
-                <Loader size="xxl" />
+                <Loader size="xs" />
                 <Text color="secondary">Loading the stream…</Text>
             </div>
         );

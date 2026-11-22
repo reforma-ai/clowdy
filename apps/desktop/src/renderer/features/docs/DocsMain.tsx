@@ -140,7 +140,7 @@ function PathBar({ store, buffer }: { store: DocsStore; buffer: DocBuffer }) {
 function Loading() {
     return (
         <div className={ styles.center }>
-            <Loader size="xxl" />
+            <Loader size="xs" />
             <Text color="secondary">Loading…</Text>
         </div>
     );

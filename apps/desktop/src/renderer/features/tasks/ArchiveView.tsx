@@ -75,7 +75,7 @@ export function ArchiveView({ statuses, openId, onOpen, pageSize = ARCHIVE_PAGE_
     if (state.status === 'loading') {
         return (
             <div className={ styles.center } role="status">
-                <Loader size="xl" />
+                <Loader size="xs" />
                 <Text color="secondary">Loading the archive…</Text>
             </div>
         );

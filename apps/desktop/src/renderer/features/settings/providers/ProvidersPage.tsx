@@ -41,7 +41,7 @@ export function ProvidersPage() {
         return (
             <SettingsPage title="Providers" description={ INTRO }>
                 <Box direction="row" gap="md" align="center">
-                    <Loader size="md" />
+                    <Loader size="xs" />
                     <Text color="secondary">Looking for agents…</Text>
                 </Box>
             </SettingsPage>

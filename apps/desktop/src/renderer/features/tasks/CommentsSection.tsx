@@ -89,7 +89,7 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = fa
         <Section title="Comments" count={ state.status === 'ready' ? state.total : undefined }>
             { state.status === 'loading' && (
                 <div className={ styles.loading }>
-                    <Loader size="md" />
+                    <Loader size="xs" />
                     <Text color="secondary">Loading comments…</Text>
                 </div>
             ) }

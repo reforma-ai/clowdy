@@ -25,8 +25,8 @@ PanelEmptyRow.displayName = 'PanelEmptyRow';
 export function PanelLoadingState() {
     return (
         <Box direction="row" align="center" gap="md" className="m-auto" padding="lg">
-            <Loader size="md" />
-            <Text variant="sm" color="secondary">Loading</Text>
+            <Loader size="xs" />
+            <Text color="secondary">Loading</Text>
         </Box>
     );
 }
