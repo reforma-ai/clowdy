@@ -39,9 +39,9 @@ export interface FileManagerViewProps {
     emptyText?: string;
     /** The react-dnd manager the host's other trees use, so they share one HTML5 backend. Without it the explorer makes its own. */
     dndManager?: ExplorerProps['dndManager'];
-    /** The sidebar (the file tree) is shown. It is built each time it opens, at `sidebarWidth`. */
+    /** The sidebar (the file tree) is shown, unless no file is open: then it is shown whatever this says (and has no button to hide it). It is built each time it opens, at `sidebarWidth`. */
     sidebarOpen?: boolean;
-    /** Shows or hides the sidebar: the button at the end of the editor's tab strip, which is there while no file is open too. Without it the view has no such button. */
+    /** Shows or hides the sidebar: the button at the end of the editor's tab strip while a file is open. Without it the view has no such button. */
     onSidebarToggle?: () => void;
     /** The width in pixels the sidebar opens at. */
     sidebarWidth?: number;
@@ -86,6 +86,11 @@ export const FileManagerView = observer(function FileManagerView({
     // once the tree has, and again (all of them, which a tree that holds them already lists once more) when the set of roots changes. The roots are read here, so that the view
     // (an observer) follows a scope whose list changes.
     const ready = manager.tree.status === 'ready';
+    // With no file open the editor has nothing to show, and a tree hidden then leaves an empty panel: the tree is shown whatever the host asked for, and the button that
+    // would hide it is not there. The host's choice is not changed: it applies again as soon as a file is open, which is how a single file can be edited with the tree away.
+    const nothingOpen = manager.tabs.documents.length === 0;
+    const shown = sidebarOpen || nothingOpen;
+    const toggle = nothingOpen ? undefined : onSidebarToggle;
     const rootsKey = scope ? scope.roots.map(({ root }) => root).join('\n') : '';
 
     useEffect(() => {
@@ -152,11 +157,11 @@ export const FileManagerView = observer(function FileManagerView({
                         <EditorArea
                             manager={manager}
                             editorExtensions={editorExtensions}
-                            toolbar={!sidebarOpen && onSidebarToggle && <SidebarToggle open={false} onPress={onSidebarToggle} />}
+                            toolbar={!shown && toggle && <SidebarToggle open={false} onPress={toggle} />}
                         />
                     </ResizablePanel>
 
-                    <Show when={sidebarOpen}>
+                    <Show when={shown}>
                         <Sidebar panelRef={sidebar} width={sidebarWidth}>
                             <Panel side="right" className={styles.sidebar}>
                                 <PanelHeader>
@@ -167,7 +172,7 @@ export const FileManagerView = observer(function FileManagerView({
                                         onSubmit={() => explorer.current?.openFirstMatch()}
                                     />
                                     <PanelHeader.Actions>
-                                        {onSidebarToggle && <SidebarToggle open onPress={onSidebarToggle} />}
+                                        {toggle && <SidebarToggle open onPress={toggle} />}
                                     </PanelHeader.Actions>
                                 </PanelHeader>
                                 <PanelTab>

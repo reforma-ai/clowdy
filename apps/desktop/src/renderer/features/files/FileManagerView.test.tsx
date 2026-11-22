@@ -133,9 +133,10 @@ describe('the button that shows and hides the file tree', () => {
         expect(buttons()).toHaveLength(0);
     });
 
-    it('is one button, pressed in the sidebar\'s header while the tree shows, and in the editor\'s strip while it is hidden, which has it with no file open too', async () => {
+    it('is one button, pressed in the sidebar\'s header while the tree shows, and in the editor\'s strip while it is hidden', async () => {
         const onSidebarToggle = vi.fn();
 
+        await manager.open('a.ts');
         draw({ onSidebarToggle });
         await settle();
 
@@ -154,6 +155,45 @@ describe('the button that shows and hides the file tree', () => {
         expect(buttons()[0]!.getAttribute('aria-pressed')).toBe('false');
         expect(buttons()[0]!.closest('aside')).toBeNull();
         expect(container.querySelector('[role="tree"]')).toBeNull();
+    });
+});
+
+describe('the tree while no file is open', () => {
+    const buttons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="File tree"]')];
+
+    it('is shown whatever the host asks for, with no button to hide it, since a hidden tree leaves nothing in the panel; the host\'s choice applies again once a file is open', async () => {
+        const onSidebarToggle = vi.fn();
+
+        draw({ onSidebarToggle, sidebarOpen: false });
+        await settle();
+
+        expect(container.querySelector('aside')).not.toBeNull();
+        expect(container.querySelectorAll('[role="treeitem"]')).toHaveLength(2);
+        expect(buttons()).toHaveLength(0);
+
+        await act(async () => void await manager.open('a.ts'));
+        await settle();
+
+        expect(container.querySelector('aside')).toBeNull();
+        expect(buttons()).toHaveLength(1);
+        expect(buttons()[0]!.getAttribute('aria-pressed')).toBe('false');
+
+        // The last tab closed: the tree is back and the button is gone, and the host was asked for nothing.
+        act(() => manager.close('a.ts'));
+        await settle();
+
+        expect(container.querySelector('aside')).not.toBeNull();
+        expect(buttons()).toHaveLength(0);
+        expect(onSidebarToggle).not.toHaveBeenCalled();
+    });
+
+    it('is shown with its button as the host chose while a file is open', async () => {
+        await manager.open('a.ts');
+        draw({ onSidebarToggle: () => undefined, sidebarOpen: true });
+        await settle();
+
+        expect(container.querySelector('aside')).not.toBeNull();
+        expect(buttons()).toHaveLength(1);
     });
 });
 
@@ -228,6 +268,7 @@ describe('the filter in the header of the file tree', () => {
     }
 
     it('is the header\'s title, in place of a name for it, with the button that hides the tree after it', async () => {
+        await manager.open('a.ts');
         draw({ onSidebarToggle: () => undefined });
         await settle();
 
