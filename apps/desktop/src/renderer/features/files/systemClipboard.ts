@@ -23,19 +23,31 @@ export function pathInside(root: string, file: string): string | undefined {
     return file.replaceAll('\\', '/').slice(base.length + 1);
 }
 
+/** What main said, without the wrapper Electron puts around an error that crossed the bridge (`Error invoking remote method 'desktop:paste-files': Error: <message>`). */
+function unwrapped(error: unknown): Error {
+    const message = error instanceof Error ? error.message : String(error);
+
+    return new Error(message.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, ''));
+}
+
+/** A bridge call whose failure is the words main gave. */
+const asked = <T>(call: Promise<T>): Promise<T> => call.catch((error: unknown) => {
+    throw unwrapped(error);
+});
+
 /**
  * The system clipboard's files for the file manager of one folder, over the desktop app's bridge. The manager names items of the folder by their paths from its
  * root, and the bridge knows only the disk's absolute ones, so the root is added on the way out and taken off, where the file is inside it, on the way in.
  */
 export function systemFileClipboard(bridge: ClipboardBridge, root: string): FileClipboard {
     return {
-        write: paths => bridge.writeClipboardFiles(paths.map(path => absolutePath(root, path))),
-        read: async () => (await bridge.readClipboardFiles()).map((file): ClipboardEntry => {
+        write: paths => asked(bridge.writeClipboardFiles(paths.map(path => absolutePath(root, path)))),
+        read: async () => (await asked(bridge.readClipboardFiles())).map((file): ClipboardEntry => {
             const local = pathInside(root, file.path);
 
             return { ...file, ...(local === undefined ? {} : { local }) };
         }),
-        paste: (folder, items) => bridge.pasteClipboardFiles(absolutePath(root, folder), items),
+        paste: (folder, items) => asked(bridge.pasteClipboardFiles(absolutePath(root, folder), items)),
     };
 }
 

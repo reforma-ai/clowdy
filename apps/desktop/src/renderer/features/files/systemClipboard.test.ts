@@ -64,6 +64,18 @@ describe('the clipboard of a folder', () => {
     });
 });
 
+describe('a refused paste', () => {
+    test('says what main said, without the wrapper Electron puts around it', async () => {
+        const host = {
+            readClipboardFiles: vi.fn<DesktopBridge['readClipboardFiles']>(async () => []),
+            writeClipboardFiles: vi.fn<DesktopBridge['writeClipboardFiles']>(async () => undefined),
+            pasteClipboardFiles: vi.fn<DesktopBridge['pasteClipboardFiles']>(async () => Promise.reject(new Error('Error invoking remote method \'desktop:paste-files\': Error: My notes already exists'))),
+        };
+
+        await expect(systemFileClipboard(host, '/Users/dev/web').paste('', [{ path: '/Users/dev/My notes', name: 'My notes' }])).rejects.toThrow(/^My notes already exists$/);
+    });
+});
+
 describe('the clipboard of a page', () => {
     afterEach(() => {
         delete window.desktop;
