@@ -16,12 +16,12 @@ import type { Provider } from '../src/providers/types';
 
 const roots: string[] = [];
 
-/** A fresh empty directory, removed when the test file ends. */
 /** The `spec` of a provider a test makes up: it names an agent and starts nothing. */
 export function testSpec(id: string): Pick<Provider, 'spec'> {
     return { spec: { id, name: id, programs: [id], launch: { kind: 'binary', args: [] } } };
 }
 
+/** A fresh empty directory, removed when the test file ends. */
 export function tempDir(label = 'clowdy-test'): string {
     const dir = mkdtempSync(join(tmpdir(), `${ label }-`));
 
