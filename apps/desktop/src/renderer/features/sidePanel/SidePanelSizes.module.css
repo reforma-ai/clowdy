@@ -54,7 +54,8 @@
     transition: background-color 150ms ease-out;
 }
 
-.option:hover:not(:disabled) {
+/* Not on the size the panel is in: it keeps its primary colour under the pointer, and the rule for it below would lose to this one (the more specific). */
+.option:hover:not(:disabled, .current) {
     background-color: var(--color-secondary-muted-light);
     color: var(--color-text);
 }
