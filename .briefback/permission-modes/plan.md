@@ -142,11 +142,11 @@
 **This stage:** draws the `approval` item and sends the person's decision. The card sits in the stream after the tool call it is about and is built like `QuestionCard`: what the agent wants to do by subject kind, three buttons by decision, a decided line afterwards. It stays out of the folded "Worked for" group like a question, and is read-only once the item is no longer `open`. Behaviour is still unchanged for a person who has not chosen a preset, so this stage is checked on the fixture daemon and on a real run with a preset set by command.
 
 - [ ] Complete
-  - [ ] Card: a body per subject (`$ command` clipped at four lines with "Show N more lines", the paths, the tool and its detail), Deny on the left, Allow for session where the agent offered it, Allow once as the main button, pending state on the pressed button, a decided line with the choice, lines for cancelled and expired, read-only unless the item's own `state` is `open`
-  - [ ] Stream: the `approval` item rendered and kept out of the fold, wired to `run.decide` for an `open` item (gate on the item's `state`, not on `run.status`: while an approval waits the run can rest in another status, `waiting_background` for one, and the daemon decides in any of them)
-  - [ ] The reason text of a run that waits on an approval reads `Waiting for your approval`
-  - [ ] Fixture daemon: a script that raises an approval and keeps a session grant; `run.answer` leaves a run waiting while an approval is open, as the daemon counts both
-  - [ ] Checked by hand in the running app with Claude and Codex (a preset set by command): the card appears under the tool call, each button does what it says, Stop with one waiting, a thread's approval shows in its chat and its parent sees it as asking
+  - [x] Card: a body per subject (`$ command` clipped at four lines with "Show N more lines", the paths, the tool and its detail), Deny on the left, Allow for session where the agent offered it, Allow once as the main button, pending state on the pressed button, a decided line with the choice, lines for cancelled and expired, read-only unless the item's own `state` is `open`
+  - [x] Stream: the `approval` item rendered and kept out of the fold, wired to `run.decide` for an `open` item (gate on the item's `state`, not on `run.status`: while an approval waits the run can rest in another status, `waiting_background` for one, and the daemon decides in any of them)
+  - [x] The reason text of a run that waits on an approval reads `Waiting for your approval`
+  - [x] Fixture daemon: data with open and settled approvals (chat `c-8`, added by `withFixtureApprovals` for tests and screenshots, like `withFixtureFork`) and the rules: `run.decide` changes an item, `run.answer` leaves a run waiting while an approval is open, as the daemon counts both. There is no timed script that raises a request and no session grant in the fixture; a script is added when somebody needs the card in `?fixtures` mode
+  - [ ] Checked by hand in the running app (left to the owner, after the merge into `next`) with Claude and Codex (a preset set by command): the card appears under the tool call, each button does what it says, Stop with one waiting, a thread's approval shows in its chat and its parent sees it as asking
 
 **Files**
 
@@ -161,7 +161,13 @@
 
 **Done when:** a request that waits shows as a card in the chat, a click on a decision lets the agent continue as it says, and the card keeps the decision afterwards.
 **Verify:** `bun run test`, `bun run typecheck`, `bun run lint` in `apps/desktop`; the hand check above with `./clowdy dev`
-**Commits:** None yet.
+**Commits** (on the branch `maksim-kachurin/permission-modes`, with Stage 2; not yet merged into `next`):
+
+- `99c21b2` feat(desktop): show an agent's permission request as a card in the chat
+- `23d00c0` review fixes: the card is a labelled group, not a landmark section; the "Show N more lines" toggle takes the text colour and a chevron (the muted colour measured about 4.4:1, under the 4.5:1 a small control needs); the fixture's requests follow their tool call and carry a `toolCallId`; a `RunDetail` test
+- `f07bc7a` test(desktop): a decision that arrives from another window while this card is pending
+
+**Review (2026-11-22):** no logic defect found. Checked with concrete inputs: the gate on the item's `state` (a stale open card under a finished run is refused by the daemon and toasts, and stays open), double press, a decision from another window while pending, thread and child views (both `ChatView` and `RunDetail` can decide), the fold in `turns.ts`, and mutations of the open check that fail two and five tests. Desktop: 202 files, 3597 tests pass, typecheck and lint clean. Follow-up (needs the run to say it waits on a card, a protocol and daemon change): a run that rests in `waiting_background` with an open card keeps its green dot and gets no "Waiting for you" row, so the person sees nothing unless they open the chat.
 
 ## Stage 4 — The preset list in Settings → Providers, and the default
 
