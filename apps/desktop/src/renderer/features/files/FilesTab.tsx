@@ -35,7 +35,6 @@ export default function FilesTab() {
             sidebarWidth={ treeLayout.width }
             onSidebarToggle={ () => treeLayout.toggle() }
             onSidebarWidthChange={ width => treeLayout.setWidth(width) }
-            onSidebarRequest={ () => treeLayout.show() }
         />
     );
 }

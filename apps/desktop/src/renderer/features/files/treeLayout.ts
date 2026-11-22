@@ -36,11 +36,6 @@ export class TreeLayout {
         writeStored(this.storage, OPEN_KEY, this.open);
     }
 
-    /** Shows the tree if it is hidden. */
-    show(): void {
-        if (!this.open) this.toggle();
-    }
-
     setWidth(width: number): void {
         this.width = clampWidth(width);
         writeStored(this.storage, WIDTH_KEY, this.width);

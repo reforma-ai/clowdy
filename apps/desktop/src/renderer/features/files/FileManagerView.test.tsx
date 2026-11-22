@@ -73,47 +73,6 @@ describe('the file tree\'s drag and drop', () => {
     });
 });
 
-describe('the shortcuts of the view', () => {
-    // Both modifiers, so it is the shortcut's key whichever platform the test window takes itself for.
-    const press = (code: string, shiftKey = false) => act(() => {
-        container.querySelector('[role="tablist"]')!.dispatchEvent(new KeyboardEvent('keydown', { code, shiftKey, metaKey: true, ctrlKey: true, bubbles: true, cancelable: true }));
-    });
-
-    it('asks the host to show the sidebar when the filter or the search is wanted while it is hidden', async () => {
-        const onSidebarRequest = vi.fn();
-
-        draw({ sidebarOpen: false, onSidebarRequest });
-        await settle();
-
-        expect(container.querySelector('[role="tree"]')).toBeNull();
-
-        // The tab strip shows once a file is open, and the keys come from the editor's side.
-        await manager.open('a.ts');
-        await settle();
-        await press('KeyP');
-
-        expect(onSidebarRequest).toHaveBeenCalledTimes(1);
-        expect(manager.filterOpen).toBe(true);
-
-        await press('KeyF', true);
-
-        expect(onSidebarRequest).toHaveBeenCalledTimes(2);
-        expect(manager.panel).toBe('search');
-    });
-
-    it('does not ask while the sidebar shows', async () => {
-        const onSidebarRequest = vi.fn();
-
-        draw({ onSidebarRequest });
-        await manager.open('a.ts');
-        await settle();
-        await press('KeyP');
-
-        expect(manager.filterOpen).toBe(true);
-        expect(onSidebarRequest).not.toHaveBeenCalled();
-    });
-});
-
 describe('the button that shows and hides the file tree', () => {
     const buttons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="File tree"]')];
     const press = (target: HTMLElement) => act(async () => {
@@ -149,14 +108,5 @@ describe('the button that shows and hides the file tree', () => {
         expect(buttons()[0]!.getAttribute('aria-pressed')).toBe('false');
         expect(buttons()[0]!.closest('aside')).toBeNull();
         expect(container.querySelector('[role="tree"]')).toBeNull();
-    });
-
-    it('stays in the sidebar\'s header on the Search tab, which has no filter beside it', async () => {
-        draw({ onSidebarToggle: () => undefined });
-        await act(async () => manager.showPanel('search'));
-        await settle();
-
-        expect(buttons()).toHaveLength(1);
-        expect(buttons()[0]!.closest('aside')).not.toBeNull();
     });
 });

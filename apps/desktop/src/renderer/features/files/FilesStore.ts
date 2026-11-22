@@ -4,12 +4,10 @@ import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, reaction } from 'mobx';
 
 import { readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
+import { HIDDEN_GLOBS } from './hidden';
 
 import type { FolderId, ProjectId } from '@clowdy/protocol';
 import type { Transport } from '../../daemon/transport';
-
-/** The hidden files, which the tree shows only when asked to (`TreeLayout.showHidden`): every name that starts with a dot, as on macOS and Linux (a Windows folder has them too), and `node_modules`. Nothing is left out for good. */
-const HIDDEN = ['**/.*', '**/node_modules'];
 
 const tabsKey = (projectId: ProjectId, folderId: FolderId) => `clowdy:files:${ projectId }:${ folderId }`;
 
@@ -28,6 +26,8 @@ function storedTabs(storage: KeyValueStorage | undefined, key: string): TabsSnap
  */
 export class FilesStore {
     readonly #managers = new Map<string, FileManager>();
+    /** Settles when a folder's manager has listed the folder and brought its tabs back. */
+    readonly #started = new Map<string, Promise<void>>();
     readonly #disposers: Array<() => void> = [];
     #disposed = false;
 
@@ -48,6 +48,18 @@ export class FilesStore {
         return manager;
     }
 
+    /**
+     * The file manager of a folder once it has listed the folder and reopened the tabs it had: a file opened before that is a tab the reopening then
+     * takes the focus from. For whoever opens a file as soon as a manager is made.
+     */
+    async startedManagerOf(projectId: ProjectId, folderId: FolderId): Promise<FileManager> {
+        const manager = this.managerOf(projectId, folderId);
+
+        await this.#started.get(tabsKey(projectId, folderId));
+
+        return manager;
+    }
+
     /** Stops every watch the folders hold. */
     dispose(): void {
         this.#disposed = true;
@@ -57,6 +69,7 @@ export class FilesStore {
         for (const manager of this.#managers.values()) manager.dispose();
 
         this.#managers.clear();
+        this.#started.clear();
     }
 
     #open(key: string, projectId: ProjectId, folderId: FolderId): FileManager {
@@ -64,18 +77,21 @@ export class FilesStore {
         const manager = new FileManager({
             provider: files,
             search: files.search?.bind(files),
-            hidden: HIDDEN,
+            hidden: HIDDEN_GLOBS,
             notify: (message, error) => void toast.error({ title: message, message: error === undefined ? undefined : errorMessage(error) }),
         });
         const saved = storedTabs(this.storage, key);
 
         // The tabs are kept as they change, from the moment they are reopened: a reopened tab that no longer has a file is dropped from what is kept.
-        void manager.start().then(() => (saved ? manager.restore(saved) : undefined)).then(() => {
+        const started = manager.start().then(() => (saved ? manager.restore(saved) : undefined)).then(() => {
             // A store that was disposed while the folder was still being listed has nobody left to keep the tabs for.
             if (this.#disposed) return;
 
             this.#disposers.push(reaction(() => manager.snapshot(), snapshot => writeStored(this.storage, key, snapshot)));
         });
+
+        this.#started.set(key, started.catch(() => undefined));
+        void started;
 
         return manager;
     }

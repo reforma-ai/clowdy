@@ -28,9 +28,6 @@ export interface FileManagerOptions {
     search?: SearchService;
 }
 
-/** The tabs of the view's sidebar. */
-export type SidebarPanel = 'files' | 'search';
-
 /** The active tab, as a host reports it (e.g. to chat). */
 export interface ActiveEditor {
     path: string;
@@ -52,10 +49,6 @@ export class FileManager {
     readonly readonly: boolean;
     /** The latest path to show in the explorer; see `reveal`. */
     @observableRef accessor revealed: { path: string } | null = null;
-    /** The sidebar tab the view shows. */
-    @observable accessor panel: SidebarPanel = 'files';
-    /** Counts `showSearch` calls, so the view focuses the search query on each one. */
-    @observable accessor searchRequests = 0;
     /** The filter field shows above the Files tree. */
     @observable accessor filterOpen = false;
     /** Counts `showFilter` calls, so the view focuses the filter on each one. */
@@ -207,30 +200,9 @@ export class FileManager {
         this.revealed = { path: normalizePath(path) };
     }
 
-    @action
-    showPanel(panel: SidebarPanel): void {
-        this.panel = panel;
-    }
-
-    /**
-     * Shows the Search tab and focuses its query, as ⇧⌘F does. `prefill` replaces the query and
-     * searches; without it, a selection on one line in the active editor does.
-     */
-    @action
-    showSearch(prefill = this.#selectedText()): void {
-        this.panel = 'search';
-        this.searchRequests++;
-
-        if (prefill) {
-            this.search.set({ query: prefill });
-            void this.search.run();
-        }
-    }
-
-    /** Shows the Files tab and focuses its filter, as ⌘P does. */
+    /** Shows the filter field above the tree and focuses it. */
     @action
     showFilter(): void {
-        this.panel = 'files';
         this.filterOpen = true;
         this.filterRequests++;
     }
@@ -348,8 +320,8 @@ export class FileManager {
         return new Set(paths);
     }
 
-    /** The active editor's selection, when it is on one line. Rich text keeps its selection to itself. */
-    #selectedText(): string | undefined {
+    /** The active editor's selection, when it is on one line: what a host's search starts with. Rich text keeps its selection to itself. */
+    selectedText(): string | undefined {
         const document = this.tabs.active;
         const state = document?.view === 'source' ? document.state : null;
         const selection = state?.selection.main;

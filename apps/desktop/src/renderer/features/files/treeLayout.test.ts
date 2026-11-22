@@ -29,21 +29,6 @@ describe('TreeLayout', () => {
         expect(next.showHidden).toBe(true);
     });
 
-    it('shows a hidden tree when asked to, and leaves a shown one as it is', () => {
-        const storage = memory();
-        const layout = new TreeLayout(storage);
-
-        layout.show();
-
-        expect(layout.open).toBe(true);
-
-        layout.toggle();
-        layout.show();
-
-        expect(layout.open).toBe(true);
-        expect(new TreeLayout(storage).open).toBe(true);
-    });
-
     it('never makes the tree narrower than it can be drawn, and ignores what is damaged in storage', () => {
         const layout = new TreeLayout(memory());
 

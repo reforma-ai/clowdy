@@ -1,6 +1,7 @@
 import { agentCommands } from '../features/agents/agentCommands';
 import { docSaveCommand, docSearchCommand, docTreeCommands } from '../features/docs/docCommands';
 import { filesCommands } from '../features/files/filesCommands';
+import { quickSearchCommands } from '../features/quickSearch/quickSearchCommands';
 import { taskCommands, type TaskCommandDeps } from '../features/tasks/taskCommands';
 import { createRegistry, hotkeys, type Command, type Platform } from '../hotkeys';
 import { helpEntries, type HelpEntry } from '../hotkeys/helpEntries';
@@ -19,6 +20,7 @@ export function wholeKeymap(): Command[] {
     const app = [
         ...shellCommands(nothing),
         ...findCommands({ open: () => undefined, next: () => undefined, previous: () => undefined }),
+        ...quickSearchCommands({ open: () => undefined, available: () => true }),
     ].map((command): Command => ({ ...command, scope: 'app' }));
     const list = { ids: () => [], openId: () => null };
 

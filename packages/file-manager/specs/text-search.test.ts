@@ -142,37 +142,27 @@ describe('TextSearch', () => {
         expect(service).toHaveBeenCalledTimes(2);
     });
 
-    it('should open the Search tab with a one-line selection of the active editor as the query', async () => {
-        const service = vi.fn<SearchService>(async () => RESULT);
+    it('should offer a one-line selection of the active editor as what to search for', async () => {
         const manager = new FileManager({
             provider: new MemoryFileSystem({ 'app/page.tsx': PAGE, 'README.md': '# Title\n' }),
-            search: service,
+            search: vi.fn<SearchService>(async () => RESULT),
         });
 
         await manager.start();
+        expect(manager.selectedText()).toBeUndefined();
+
         await manager.open('app/page.tsx', { from: { line: 1, column: 10 }, to: { line: 1, column: 18 } });
-        manager.showSearch();
+        expect(manager.selectedText()).toBe('useState');
 
-        expect(manager.panel).toBe('search');
-        expect(manager.searchRequests).toBe(1);
-        expect(manager.search.query).toBe('useState');
-        expect(service).toHaveBeenCalledOnce();
-
-        // A selection over lines leaves the query.
+        // A selection over lines is not one.
         await manager.open('app/page.tsx', { from: { line: 1, column: 1 }, to: { line: 3, column: 1 } });
-        manager.showSearch();
-
-        expect(manager.searchRequests).toBe(2);
-        expect(manager.search.query).toBe('useState');
+        expect(manager.selectedText()).toBeUndefined();
 
         // Rich text shows no code editor selection to take.
         const readme = await manager.open('README.md', { from: { line: 1, column: 3 }, to: { line: 1, column: 8 } });
 
         readme?.setView('rich');
-        manager.showSearch();
-
-        expect(manager.searchRequests).toBe(3);
-        expect(manager.search.query).toBe('useState');
+        expect(manager.selectedText()).toBeUndefined();
     });
 });
 

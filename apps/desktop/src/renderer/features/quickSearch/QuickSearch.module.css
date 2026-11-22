@@ -1,0 +1,152 @@
+@reference '@clowdy/styles/rulesets';
+
+/* A fixed height whatever is listed, so the window keeps its place as the results come and go. */
+.palette {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: calc(100vw - 2 * var(--spacing-lg));
+    height: min(30rem, calc(100vh - 8rem));
+}
+
+.field {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--spacing-10);
+    height: var(--spacing-56);
+    padding-inline: var(--spacing-20);
+    border-bottom: 1px solid var(--color-surface-border);
+}
+
+.lens {
+    flex: none;
+    color: var(--color-secondary-muted-text);
+}
+
+.input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text);
+    outline: none;
+    @ruleset typography-text-md;
+}
+
+.input::placeholder {
+    color: var(--color-secondary-muted-text);
+}
+
+.spinner {
+    flex: none;
+}
+
+.results {
+    flex: 1;
+    min-height: 0;
+}
+
+.content {
+    padding: var(--spacing-8);
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.title {
+    padding: var(--spacing-6) var(--spacing-12) var(--spacing-4);
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-10);
+    min-height: var(--spacing-36);
+    padding-inline: var(--spacing-12);
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    color: var(--color-text);
+    cursor: pointer;
+    @ruleset typography-text-sm;
+}
+
+.row[data-active] {
+    background-color: var(--color-secondary-muted-light);
+}
+
+.icon {
+    flex: none;
+    width: var(--spacing-14);
+    height: var(--spacing-14);
+}
+
+.main {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The line of code takes what the row has, and its place (file and line) keeps the little it needs. */
+.code {
+    flex: 1 1 auto;
+    @ruleset typography-text-code-xs;
+}
+
+.meta {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.row .code + .meta {
+    flex: 0 1 12rem;
+    margin-inline-start: auto;
+    text-align: end;
+}
+
+.main mark {
+    border-radius: var(--radius-xs);
+    background-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+    color: inherit;
+}
+
+.note {
+    padding: var(--spacing-24) var(--spacing-16);
+    text-align: center;
+}
+
+.footer {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-12);
+    padding: var(--spacing-8) var(--spacing-12);
+    border-top: 1px solid var(--color-surface-border);
+}
+
+.folder {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-6);
+    min-width: 0;
+}
+
+.folder span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

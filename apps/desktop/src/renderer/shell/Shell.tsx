@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 
 import { Screen as AgentsScreen } from '../features/agents';
 import { Screen as DocsScreen } from '../features/docs';
+import { openQuickSearch, quickSearchCommands } from '../features/quickSearch';
 import { Screen as SettingsScreen } from '../features/settings';
 import { SidePanelLayout } from '../features/sidePanel';
 import { Screen as TasksScreen } from '../features/tasks';
@@ -37,6 +38,7 @@ export function Shell() {
 
     useEffect(() => installDispatcher(hotkeys), []);
     useCommands('app', shellCommands(root));
+    useCommands('app', quickSearchCommands({ available: () => root.showsProjectScreen, open: tab => openQuickSearch(root, tab) }));
 
     return (
         <div className={ styles.shell }>
