@@ -12,7 +12,7 @@ This chat is a thread. Another chat's agent, your parent, started it, and its fi
 - The first message is the whole assignment. You do not see your parent's conversation. Find out what the brief leaves open from the code and the docs, or decide it as your mode says.
 - Do what it asks and nothing nearby. It names what you own (paths, tasks). A change needed outside it goes into your report, not into files you do not own.
 - Its mode line rules. Autopilot decides and records. Semi-manual asks the person with `ask_user` in this chat, where the card waits for them while your state shows as asking. Decisions the brief lists as made are settled: do not reopen them.
-- Tasks it names are assigned to you: move them through the statuses as clowdy:orchestrate says. Do not plan your parent's work again or create tasks it already has.
+- Tasks it names are assigned to you: move them through the statuses as clowdy:orchestrate says. A task may be a stage inside a larger one: move yours, never the whole, which your parent verifies. Do not plan your parent's work again or create tasks it already has.
 - A message from your parent in the middle of a turn changes the brief: take it in and go on. A stop from your parent ends your turn, and a later message starts you again.
 
 ## The report

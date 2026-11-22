@@ -88,7 +88,7 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         getTaskDetail: async (taskId): Promise<TaskDetail> => {
             if (resultsFail) throw new Error('The daemon is not answering');
 
-            return { taskId, chatIds: [], runIds: [], artifacts: artifactsOf[taskId] ?? [] };
+            return { ...(await base.getTaskDetail(taskId)), chatIds: [], runIds: [], artifacts: artifactsOf[taskId] ?? [] };
         },
     });
 

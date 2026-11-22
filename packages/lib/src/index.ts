@@ -1,5 +1,6 @@
 export * from './array';
 export * from './async';
+export * from './checklist';
 export * from './clsx';
 export * from './comparers';
 export * from './css-units';

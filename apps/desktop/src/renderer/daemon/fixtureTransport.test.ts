@@ -47,6 +47,20 @@ describe('FixtureTransport', () => {
         expect((await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).tasks[0].title).not.toBe('Tampered');
     });
 
+    it('answers the detail of a task with the task itself, and refuses one it does not have', async () => {
+        const transport = new FixtureTransport();
+        const [first] = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).tasks;
+        const detail = await transport.getTaskDetail(first.id);
+
+        expect(detail.taskId).toBe(first.id);
+        expect(detail.task).toEqual(first);
+
+        detail.task.title = 'Tampered';
+
+        expect((await transport.getTaskDetail(first.id)).task.title).toBe(first.title);
+        await expect(transport.getTaskDetail('t-missing')).rejects.toMatchObject({ status: 404 });
+    });
+
     it('replays the events after a cursor to a late subscriber', async () => {
         const transport = new FixtureTransport();
         const { cursor } = await transport.getRootSnapshot();

@@ -18,6 +18,7 @@
     },
     "dependencies": {
         "@agentclientprotocol/sdk": "2.7.0",
+        "@clowdy/lib": "workspace:*",
         "@clowdy/protocol": "workspace:*",
         "zod": "^4.6.7"
     },

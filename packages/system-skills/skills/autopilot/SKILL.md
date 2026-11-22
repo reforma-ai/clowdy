@@ -38,7 +38,7 @@ If the decision contradicts an existing record, write a new record that supersed
 
 ## 3. State assumptions
 
-When the brief leaves a gap you must fill to proceed, fill it with the most likely reading and write it down where the next reader will see it: an `Assumptions:` list in the description of each task it affects (add it with `clowdy task update <key> --append`). One line each, written so a check can prove or break it. An assumption that is also a significant fork gets a decision record as well.
+When the brief leaves a gap you must fill to proceed, fill it with the most likely reading and write it down where the next reader will see it: an `Assumptions:` list on each task it affects, in its description when you create the task and as a comment (`clowdy task comment <key> <text>`) when you find the gap later. One line each, written so a check can prove or break it. An assumption that is also a significant fork gets a decision record as well.
 
 A vague request ("make it better") gets the smallest slice with clear value, stated as your reading in the plan. Do not stretch it to cover every reading.
 

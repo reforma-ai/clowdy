@@ -52,6 +52,7 @@ const FORBIDDEN: Array<[RegExp, string]> = [
     [/merge queue|integration branch/i, 'the daemon has no git machinery'],
     [/\bexecutors?\b|\bverifiers?\b|child runs?|spawned runs?|waiting_children/i, 'spawned runs are gone: the orchestrator works itself or with the engine\'s own sub-agents'],
     [/\blinear\b/i, 'external trackers are out of scope for the skills'],
+    [/--append\b/, '`clowdy task update` has no --append: leave a note as a comment (`clowdy task comment <key> <text>`)'],
 ];
 
 const problems: string[] = [];

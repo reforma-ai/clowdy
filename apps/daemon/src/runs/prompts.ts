@@ -21,7 +21,7 @@ const INTRO = 'You are the orchestrator of a Clowdy chat. Follow clowdy:orchestr
  * What every orchestrator is told about the task tools. Most agents have them as the shell command `clowdy task`; one that uses the MCP door
  * (`AgentSpec.taskTools`) has them as tools of the same names and fields, and this line serves both, so the prompt does not depend on the door.
  */
-const TASKS = 'Tasks: read and change them with the shell command `clowdy task` (`clowdy task --help`). Where your tool list has `task_get`, `task_list`, `task_create` and `task_update`, those are the same commands, with the flags as camelCase fields. `clowdy task list` shows only the work in flight and pages long answers: never list everything.';
+const TASKS = 'Tasks: read, change, comment on and archive them with the shell command `clowdy task` (`clowdy task --help`). Where your tool list has `task_get`, `task_list`, `task_create`, `task_update` and the other `task_` tools, those are the same commands, with the flags as camelCase fields. `clowdy task list` shows only the work in flight and pages long answers: never list everything.';
 
 /** What every chat's orchestrator is told about threads; clowdy:orchestrate says how to delegate. */
 const THREADS = [

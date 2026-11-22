@@ -230,17 +230,20 @@ describe('the tool vocabulary', () => {
         await expect(exec(orchestrator, 'task_update', { taskId: a.key, addDependsOn: [b.key] })).rejects.toThrow(/Circular dependency/);
     });
 
-    test('append adds to the end of the description after a blank line, and starts it when there is none', async () => {
+    test('task_update has no append: a stale call is an error of the strict schema, and a note goes in a comment', async () => {
         const { exec, orchestrator, task } = await setup();
         const a = await task('A', { description: 'Outcome: x\n' });
-        const b = await task('B');
 
-        expect((await exec(orchestrator, 'task_update', { taskId: a.key, append: 'Verification: passed' })).task.description).toBe('Outcome: x\n\nVerification: passed');
-        expect((await exec(orchestrator, 'task_update', { taskId: a.key, append: 'Second note' })).task.description).toBe('Outcome: x\n\nVerification: passed\n\nSecond note');
-        expect((await exec(orchestrator, 'task_update', { taskId: b.key, append: 'First note\n' })).task.description).toBe('First note');
-        expect((await exec(orchestrator, 'task_update', { taskId: b.key, append: '\n\n  Heredoc note\n' })).task.description).toBe('First note\n\nHeredoc note');
-        await expect(exec(orchestrator, 'task_update', { taskId: a.key, append: '  \n' })).rejects.toThrow(/Invalid input for task_update/);
-        await expect(exec(orchestrator, 'task_update', { taskId: a.key, description: 'x', append: 'y' })).rejects.toThrow(/give one of them/);
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, append: 'Verification: passed' })).rejects.toThrow(/Invalid input for task_update.*append/s);
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, description: 'x', append: 'y' })).rejects.toThrow(/Invalid input for task_update.*append/s);
+        expect((await exec(orchestrator, 'task_get', { taskId: a.key })).task.description).toBe('Outcome: x\n');
+
+        await exec(orchestrator, 'task_comment', { taskId: a.key, body: 'Verification: passed' });
+
+        const read = (await exec(orchestrator, 'task_get', { taskId: a.key })).task;
+
+        expect(read.description).toBe('Outcome: x\n');
+        expect(read.latestComments.map((comment: { body: string }) => comment.body)).toEqual(['Verification: passed']);
     });
 
     test('addDependsOn and removeDependsOn change the list by tasks; dependsOn replaces it and cannot be combined with them', async () => {

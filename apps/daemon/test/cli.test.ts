@@ -316,17 +316,23 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect((await json('clowdy task list --query export')).tasks.map((row: { key: string }) => row.key)).toEqual(['REP-1']);
         expect((await json('clowdy task list --all --limit 1 --sort number')).nextCursor).toBeDefined();
 
-        const appended = await json('clowdy task update REP-2 --append "Verification passed: 41 tests" --add-depends-on REP-1');
+        const replaced = await json('clowdy task update REP-2 --description "Verification passed: 41 tests" --add-depends-on REP-1');
 
-        expect(appended.task.description).toBe('Verification passed: 41 tests');
+        expect(replaced.task.description).toBe('Verification passed: 41 tests');
         expect((await json('clowdy task get REP-1')).task).toMatchObject({ description, blocks: [{ key: 'REP-2', title: 'Document it' }] });
 
-        // The removed statusId option is a usage error that lists the options.
+        // The removed statusId and append options are usage errors that list the options.
         const old = await shell('clowdy task update REP-2 --status-id done');
 
         expect(old.code).toBe(2);
         expect(old.stderr).toContain('Unknown option --status-id');
         expect(old.stderr).toContain('--status');
+
+        const stale = await shell('clowdy task update REP-2 --append "a note"');
+
+        expect(stale.code).toBe(2);
+        expect(stale.stderr).toContain('Unknown option --append');
+        expect(stale.stderr).toContain('--description');
         expect((await shell('clowdy task get REP-99')).code).toBe(1);
     });
 

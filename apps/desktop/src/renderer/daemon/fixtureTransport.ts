@@ -247,9 +247,14 @@ export class FixtureTransport implements Transport {
 
     async getTaskDetail(taskId: TaskId): Promise<TaskDetail> {
         const data = this.#data;
+        const task = data.tasks.find(candidate => candidate.id === taskId);
+
+        // Like the daemon, which answers 404 for a task it does not have.
+        if (!task) throw new TransportError(`No such task: ${ taskId }`, 404);
 
         return structuredClone({
             taskId,
+            task,
             chatIds: data.chatTaskLinks.filter(link => link.taskId === taskId).map(link => link.chatId),
             runIds: data.runTaskLinks.filter(link => link.taskId === taskId).map(link => link.runId),
             artifacts: data.artifacts.filter(artifact => artifact.taskId === taskId),

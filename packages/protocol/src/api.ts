@@ -21,7 +21,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * POST /v1/commands                       -> body Command, answers CommandResult
  * GET  /v1/runs/:id/items?after=SEQ       -> StreamItem[] (a run's stream, also an orchestrator's chat)
  * GET  /v1/chats/:id/items?after=SEQ      -> StreamItem[] (the chat's orchestrator stream)
- * GET  /v1/tasks/:id/detail               -> TaskDetail
+ * GET  /v1/tasks/:id/detail               -> TaskDetail (the task itself, an archived one too, so a client can open a task its snapshot does not hold,
+ *                                            with the ids of its chats and runs and its artifacts; `not_found` for no such task)
  * GET  /v1/tasks/:id/comments?limit=&cursor= -> TaskCommentsPage (the task's comments, oldest first; `limit` 1 to 100, default 25; `cursor` is the
  *                                            `nextCursor` of the page before, which is absent on the last page. Comments are not in the snapshot)
  * GET  /v1/projects/:id/archived-tasks?limit=&cursor= -> TaskArchivePage (the project's archived tasks, the ones the snapshot leaves out, newest archived
@@ -118,6 +119,8 @@ export interface DaemonInfo {
 
 export interface TaskDetail {
     taskId: string;
+    /** The task as it is now, an archived one included: the project snapshot leaves archived tasks out, so this is how a client reads one it does not hold. */
+    task: Task;
     chatIds: string[];
     runIds: string[];
     artifacts: import('./domain').Artifact[];

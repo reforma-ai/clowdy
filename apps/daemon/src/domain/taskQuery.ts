@@ -1,11 +1,11 @@
+import { parseChecklist } from '@clowdy/lib/checklist';
 import { isClosedCategory } from '@clowdy/protocol';
 
 import { invalid } from '../errors';
-import { parseChecklist } from './checklist';
 import { sameArchiveSide, TaskTree } from './taskTree';
 
+import type { Checklist } from '@clowdy/lib/checklist';
 import type { Task, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
-import type { Checklist } from './checklist';
 
 /** The categories of work in flight: what `task_list` shows when it is asked for nothing else. Backlog is parked, `done` and `canceled` are closed. */
 export const OPEN_CATEGORIES: readonly TaskStatusCategory[] = ['todo', 'active', 'review'];

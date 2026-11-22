@@ -71,4 +71,4 @@ Do this last, from a clean state, and write down what you saw.
 
 ## 10. Report
 
-Put in the task note and the report to the manager: the check and run commands, the runtime version, the layout in one line, the shared files, any dependency you added beyond the stack decision, and what you saw in step 8. If a part could not be proven, say which and why; when the check or run does not work, the skeleton is not done.
+Put in a comment on the skeleton task and in the report to the manager: the check and run commands, the runtime version, the layout in one line, the shared files, any dependency you added beyond the stack decision, and what you saw in step 8. If a part could not be proven, say which and why; when the check or run does not work, the skeleton is not done.

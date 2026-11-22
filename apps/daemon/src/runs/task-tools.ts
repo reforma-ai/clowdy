@@ -1,3 +1,4 @@
+import { parseChecklist } from '@clowdy/lib/checklist';
 import { MAX_TASK_DEPTH } from '@clowdy/protocol';
 import { z } from 'zod';
 
@@ -5,7 +6,6 @@ import { taskIdsOfChat } from '../db/chats';
 import { listStatuses } from '../db/projects';
 import { countTaskComments, latestTaskComments } from '../db/taskComments';
 import { childIdsOf, dependentsOf, getTask, listAllTasks } from '../db/tasks';
-import { parseChecklist } from '../domain/checklist';
 import { archiveTask, unarchiveTask } from '../domain/taskArchive';
 import { addTaskComment, taskCommentsPage } from '../domain/taskComments';
 import { countByCategory, DEFAULT_LIMIT, isoTime, MAX_LIMIT, parseSince, queryTasks } from '../domain/taskQuery';
@@ -206,9 +206,6 @@ function dependenciesAfter(store: Store, run: Run, task: Task, input: { dependsO
     return [...task.dependsOn.filter(id => !removed.has(id)), ...idsOf(store, run, input.addDependsOn)];
 }
 
-/** `note` after a blank line at the end of `description`; a description with nothing in it is replaced by the note. */
-const appended = (description: string, note: string) => (description.trim() ? `${ description.trimEnd() }\n\n${ note }` : note);
-
 /** The tasks `references` name, each once, those nearest the root first: a task given with one inside it then takes it into its own archive batch, whatever the order of the words. */
 function shallowFirst(store: Store, run: Run, references: string[]): Task[] {
     const tasks = [...new Map(references.map(reference => resolveTask(store, run.projectId, reference)).map(task => [task.id, task])).values()];
@@ -254,11 +251,10 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
             return { task: describeTask(deps, task) };
         }), { cli: { positional: ['title'] } }),
 
-        defineTool('task_update', 'Changes a task: its title, its description (replaced, or added to at the end), the tasks it depends on (replaced, or added to and taken from), its status, or the task it is inside. Set Done only after the work is verified; a run waiting for this task starts by itself once it is Done or Canceled.', z.strictObject({
+        defineTool('task_update', 'Changes a task: its title, its description (replaced whole), the tasks it depends on (replaced, or added to and taken from), its status, or the task it is inside. A note goes in a comment (task_comment), not in the description. Set Done only after the work is verified; a run waiting for this task starts by itself once it is Done or Canceled.', z.strictObject({
             taskId: taskRef,
             title: z.string().min(1).optional(),
-            description: z.string().optional().describe('The whole new text; read the task first to keep what is there, or use append'),
-            append: z.string().trim().min(1).optional().describe('Text added at the end of the description after a blank line: for notes, a check report, an assumption'),
+            description: z.string().optional().describe('The whole new text; read the task first to keep what is there'),
             dependsOn: z.array(taskRef).optional().describe('The complete list of tasks this one depends on'),
             addDependsOn: z.array(taskRef).optional().describe('Tasks to add to the ones this task depends on'),
             removeDependsOn: z.array(taskRef).optional().describe('Tasks to take off the ones this task depends on'),
@@ -266,10 +262,6 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
             clearParent: z.boolean().optional().describe('Make the task a top-level task again, inside no task (not together with parent)'),
             status: statusField,
         }), input => store.tx(() => {
-            if (input.description !== undefined && input.append !== undefined) {
-                throw invalid('description replaces the text and append adds to it: give one of them');
-            }
-
             if (input.dependsOn !== undefined && (input.addDependsOn !== undefined || input.removeDependsOn !== undefined)) {
                 throw invalid('dependsOn is the whole list; do not combine it with addDependsOn or removeDependsOn');
             }
@@ -281,7 +273,7 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
             const task = resolveTask(store, run.projectId, input.taskId);
             const updated = updateTask(store, task.id, {
                 title: input.title,
-                description: input.append === undefined ? input.description : appended(task.description, input.append),
+                description: input.description,
                 statusId: input.status === undefined ? undefined : resolveStatus(store, run.projectId, input.status).id,
                 dependsOn: dependenciesAfter(store, run, task, input),
                 parentId: input.clearParent ? null : input.parent === undefined ? undefined : resolveTask(store, run.projectId, input.parent).id,

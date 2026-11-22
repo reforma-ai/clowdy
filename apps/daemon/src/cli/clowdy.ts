@@ -56,7 +56,6 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
     ],
     task_update: [
         'clowdy task update CLW-3 --status review',
-        'clowdy task update CLW-3 --append "Verification passed: <what was run>"   # adds to the description; --description replaces it',
         'clowdy task update CLW-3 --add-depends-on CLW-5 --remove-depends-on CLW-2',
         'clowdy task update CLW-7 --parent CLW-3     # moves CLW-7, with the tasks inside it, under CLW-3',
         'clowdy task update CLW-7 --clear-parent     # makes it a top-level task again',
