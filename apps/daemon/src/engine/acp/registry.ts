@@ -2,11 +2,13 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, isAbsolute, join } from 'node:path';
 
 import { errorMessage } from '../../errors';
-import { AGENT_ID, KNOWN_AGENTS } from './catalog';
+import { PROVIDERS } from '../../providers/builtin';
+import { AGENT_ID } from './catalog';
 import { Discovery } from './discovery';
 import { buildAgentEnv } from './env';
 
 import type { AgentInfo, AgentSetting } from '@clowdy/protocol';
+import type { Provider } from '../../providers/types';
 import type { AgentOverride, AgentProtocol, AgentSettingSpec, AgentSpec, CustomAgent, SettingEffect, TaskChannel } from './catalog';
 
 /** Detection results are reused this long, so a settings screen can poll without spawning a probe each time. */
@@ -55,6 +57,8 @@ export interface AgentRegistryOptions {
     runtime?: () => Promise<string | undefined>;
     /** The platform agents run on, for what is verified on some only (`AgentSpec.isolation`); this machine's by default. */
     platform?: NodeJS.Platform;
+    /** The built-in agents, each one's `spec`; `PROVIDERS` by default. A test hands in its own. */
+    providers?: readonly Provider[];
 }
 
 export class AgentRegistryError extends Error {
@@ -76,8 +80,10 @@ export class AgentRegistry {
     private file?: string;
     private dataDir?: string;
     private platform: NodeJS.Platform;
+    private specs: readonly AgentSpec[];
 
     constructor(options: AgentRegistryOptions = {}) {
+        this.specs = (options.providers ?? PROVIDERS).map(provider => provider.spec);
         this.discovery = options.discovery ?? new Discovery();
         this.now = options.now ?? Date.now;
         this.platform = options.platform ?? process.platform;
@@ -248,12 +254,12 @@ export class AgentRegistry {
     /* -------------------------------- Resolving ------------------------------- */
 
     private spec(id: string): AgentSpec | undefined {
-        return KNOWN_AGENTS.find(spec => spec.id === id);
+        return this.specs.find(spec => spec.id === id);
     }
 
     private entries(): Entry[] {
         return [
-            ...KNOWN_AGENTS.map(spec => ({ id: spec.id, name: spec.name, custom: false as const, spec })),
+            ...this.specs.map(spec => ({ id: spec.id, name: spec.name, custom: false as const, spec })),
             ...this.stored.agents.map(agent => ({ id: agent.id, name: agent.name, custom: true as const, agent })),
         ];
     }
@@ -380,7 +386,7 @@ export class AgentRegistry {
 
     private load(file: string): Stored {
         try {
-            return parseStored(JSON.parse(readFileSync(file, 'utf8')));
+            return parseStored(JSON.parse(readFileSync(file, 'utf8')), this.specs);
         }
         catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -437,9 +443,9 @@ function checkProgram(program: string, pathOnly = false): void {
 }
 
 /** Reads `agents.json` for what it is worth: whatever is damaged or foreign in it is left out, the rest is kept. */
-function parseStored(data: unknown): Stored {
+function parseStored(data: unknown, specs: readonly AgentSpec[]): Stored {
     const record = isRecord(data) ? data : {};
-    const known = new Set(['fake', ...KNOWN_AGENTS.map(spec => spec.id)]);
+    const known = new Set(['fake', ...specs.map(spec => spec.id)]);
     const agents = new Map<string, CustomAgent>();
 
     for (const entry of Array.isArray(record.agents) ? record.agents : []) {

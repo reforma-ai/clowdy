@@ -4,10 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { withAppServer } from '../src/providers/appserver';
-import { claude, claudeWindows, parseClaudeStatus, parseClaudeUsage, planLabel } from '../src/providers/claude';
-import { codex, codexPlan, codexWindows, parseCodexAccount, windowLabel } from '../src/providers/codex';
-import { cursor, cursorConfigDirs, cursorWindows, readCursorIdentity, readCursorToken } from '../src/providers/cursor';
+import { claudeAccount, claudeWindows, parseClaudeStatus, parseClaudeUsage } from '../src/providers/claude/account';
+import { codexAccount, codexPlan, codexWindows, parseCodexAccount, windowLabel } from '../src/providers/codex/account';
+import { cursorAccount, cursorConfigDirs, cursorWindows, readCursorIdentity, readCursorToken } from '../src/providers/cursor/account';
 import { runProgram } from '../src/providers/exec';
+import { planLabel } from '../src/providers/parse';
 
 import type { ProbeContext } from '../src/providers/types';
 
@@ -175,7 +176,7 @@ describe('Claude Code', () => {
         writeFileSync(join(root, 'usage.jsonl'), JSON.stringify({ type: 'result', is_error: false, result: 'Unknown skill: usage' }));
 
         const old = program('claude-old', `if [ "$1" = auth ]; then cat '${ join(root, 'status.json') }'; else cat '${ join(root, 'usage.jsonl') }'; fi`);
-        const read = await claude.read(context({ program: old }));
+        const read = await claudeAccount.read(context({ program: old }));
 
         expect(read.signIn.status).toBe('signed-in');
         expect(read.usage).toEqual({ state: 'error', windows: [], detail: `Claude Code at ${ old } is too old to report its limits. Update it, then try again` });
@@ -187,20 +188,20 @@ describe('Claude Code', () => {
         writeFileSync(join(root, 'usage.jsonl'), stream);
 
         const subscription = program('claude', `if [ "$1" = auth ]; then cat '${ join(root, 'status.json') }'; else cat '${ join(root, 'usage.jsonl') }'; fi`);
-        const read = await claude.read(context({ program: subscription }));
+        const read = await claudeAccount.read(context({ program: subscription }));
 
         expect(read.signIn).toEqual({ status: 'signed-in', account: { method: 'subscription', email: 'ada@example.com', plan: 'Max' } });
         expect(read.usage).toMatchObject({ state: 'ok', fetchedAt: 1_000, windows: [{ id: 'weekly', label: 'Week', usedPercent: 20 }] });
 
         const key = program('claude-key', `echo '${ JSON.stringify({ loggedIn: true, authMethod: 'api_key' }) }'`);
-        const keyed = await claude.read(context({ program: key }));
+        const keyed = await claudeAccount.read(context({ program: key }));
 
         expect(keyed.signIn.account?.method).toBe('api-key');
         expect(keyed.usage).toMatchObject({ state: 'unavailable', detail: expect.stringContaining('no plan limits') });
 
         const out = program('claude-out', `echo '${ JSON.stringify({ loggedIn: false }) }'; exit 1`);
 
-        expect(await claude.read(context({ program: out }))).toEqual({ signIn: { status: 'signed-out' }, usage: { state: 'unavailable', windows: [] } });
+        expect(await claudeAccount.read(context({ program: out }))).toEqual({ signIn: { status: 'signed-out' }, usage: { state: 'unavailable', windows: [] } });
     });
 
     test('names a plan as a badge', () => {
@@ -262,7 +263,7 @@ describe('Codex', () => {
                 else if (message.id !== undefined) send({ id: message.id, error: { code: -32601, message: 'unknown' } });
             });
         `, `#!${ process.execPath }`);
-        const read = await codex.read(context({ program: fake }));
+        const read = await codexAccount.read(context({ program: fake }));
 
         expect(read.signIn).toEqual({ status: 'signed-in', account: { method: 'subscription', email: 'ada@example.com', plan: 'Plus' } });
         expect(read.usage).toEqual({ state: 'ok', fetchedAt: 1_000, windows: [{ id: 'codex:primary', label: 'Session', usedPercent: 3, resetsAt: 1_795_030_875_000 }] });
@@ -294,7 +295,7 @@ describe('Codex', () => {
         const silent = program('codex-silent', 'sleep 30', '#!/bin/sh');
         const controller = new AbortController();
         const started = Date.now();
-        const read = codex.read(context({ program: silent, signal: controller.signal }));
+        const read = codexAccount.read(context({ program: silent, signal: controller.signal }));
 
         setTimeout(() => controller.abort(), 100);
 
@@ -313,16 +314,16 @@ describe('Codex', () => {
                 else if (message.method === 'account/rateLimits/read') send({ id: message.id, error: { message: 'backend unavailable' } });
             });
         `, `#!${ process.execPath }`);
-        const partial = await codex.read(context({ program: noLimits }));
+        const partial = await codexAccount.read(context({ program: noLimits }));
 
         expect(partial.signIn.status).toBe('signed-in');
         expect(partial.usage).toMatchObject({ state: 'error', detail: expect.stringContaining('backend unavailable') });
 
-        const dead = await codex.read(context({ program: program('codex-dead', 'echo boom >&2; exit 2') }));
+        const dead = await codexAccount.read(context({ program: program('codex-dead', 'echo boom >&2; exit 2') }));
 
         expect(dead.signIn).toMatchObject({ status: 'unknown', detail: expect.stringContaining('boom') });
 
-        const missing = await codex.read(context({ program: join(root, 'not-here') }));
+        const missing = await codexAccount.read(context({ program: join(root, 'not-here') }));
 
         expect(missing.signIn.status).toBe('unknown');
     });
@@ -379,7 +380,7 @@ describe('Cursor', () => {
     });
 
     test('signs nobody in without a token or an identity, and asks the dashboard with the token otherwise', async () => {
-        expect(await cursor.read(context())).toEqual({ signIn: { status: 'signed-out' }, usage: { state: 'unavailable', windows: [] } });
+        expect(await cursorAccount.read(context())).toEqual({ signIn: { status: 'signed-out' }, usage: { state: 'unavailable', windows: [] } });
 
         files({ authInfo: { email: 'ada@example.com' } }, { accessToken: 'secret-token' });
 
@@ -393,7 +394,7 @@ describe('Cursor', () => {
                 ? Response.json({ planInfo: { planName: 'Pro+' } })
                 : Response.json({ billingCycleEnd: '1796000000000', planUsage: { totalPercentUsed: 5 } });
         }) as typeof fetch;
-        const read = await cursor.read(context({ fetch: fetcher }));
+        const read = await cursorAccount.read(context({ fetch: fetcher }));
 
         expect(read.signIn).toEqual({ status: 'signed-in', account: { method: 'subscription', email: 'ada@example.com', plan: 'Pro+' } });
         expect(read.usage).toEqual({ state: 'ok', fetchedAt: 1_000, windows: [{ id: 'plan', label: 'Plan usage', usedPercent: 5, resetsAt: 1_796_000_000_000 }] });
@@ -409,7 +410,7 @@ describe('Cursor', () => {
         files({ authInfo: { email: 'ada@example.com' } }, { accessToken: 'secret-token' });
 
         const inits: Array<RequestInit | undefined> = [];
-        const leaky = await cursor.read(context({
+        const leaky = await cursorAccount.read(context({
             fetch: (async (_url: string | URL | Request, init?: RequestInit) => {
                 inits.push(init);
 
@@ -426,12 +427,12 @@ describe('Cursor', () => {
     test('keeps the account and says why when the dashboard refuses or fails', async () => {
         files({ authInfo: { email: 'ada@example.com' } }, { accessToken: 'stale' });
 
-        const refused = await cursor.read(context({ fetch: (async () => new Response('no', { status: 401 })) as unknown as typeof fetch }));
+        const refused = await cursorAccount.read(context({ fetch: (async () => new Response('no', { status: 401 })) as unknown as typeof fetch }));
 
         expect(refused.signIn.status).toBe('signed-in');
         expect(refused.usage).toMatchObject({ state: 'error', detail: expect.stringContaining('sign in again') });
 
-        const down = await cursor.read(context({ fetch: (async () => {
+        const down = await cursorAccount.read(context({ fetch: (async () => {
             throw new Error('offline');
         }) as unknown as typeof fetch }));
 
@@ -440,7 +441,7 @@ describe('Cursor', () => {
         mkdirSync(join(root, 'other', '.cursor'), { recursive: true });
         writeFileSync(join(root, 'other', '.cursor', 'auth.json'), JSON.stringify({ accessToken: 'stale' }));
 
-        const noIdentity = await cursor.read(context({ home: join(root, 'other'), fetch: (async () => new Response('no', { status: 403 })) as unknown as typeof fetch }));
+        const noIdentity = await cursorAccount.read(context({ home: join(root, 'other'), fetch: (async () => new Response('no', { status: 403 })) as unknown as typeof fetch }));
 
         expect(noIdentity.signIn).toMatchObject({ status: 'signed-out', detail: 'The Cursor login has expired' });
     });

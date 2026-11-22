@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { parseSignInOutput } from '../src/providers/login';
 import { ProvidersService } from '../src/providers/service';
+import { testSpec } from './helpers';
 
 import type { AgentInfo } from '@clowdy/protocol';
 import type { AgentRegistry } from '../src/engine/acp/registry';
@@ -41,7 +42,7 @@ function rig(body: string, options: { loginTimeoutMs?: number; announce?: () => 
         nameOf: () => 'Claude Code',
     } as unknown as AgentRegistry;
     const provider: Provider = {
-        id: 'claude',
+        ...testSpec('claude'),
         login: { args: ['auth', 'login'] },
         read: async () => ({ signIn: { status: await Bun.file(marker).exists() ? 'signed-in' : 'signed-out' }, usage: { state: 'unavailable', windows: [] } }),
     };
@@ -178,7 +179,7 @@ describe('signing in', () => {
 
         const missing = new ProvidersService({
             registry: { probeTarget: async () => undefined, list: async () => [info()], nameOf: () => 'Claude Code' } as unknown as AgentRegistry,
-            providers: [{ id: 'claude', login: { args: ['login'] }, read: async () => ({ signIn: { status: 'unknown' }, usage: { state: 'unavailable', windows: [] } }) }],
+            providers: [{ ...testSpec('claude'), login: { args: ['login'] }, read: async () => ({ signIn: { status: 'unknown' }, usage: { state: 'unavailable', windows: [] } }) }],
             announce: () => undefined,
         });
 

@@ -1,6 +1,7 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
 import { ProvidersService } from '../src/providers/service';
+import { testSpec } from './helpers';
 
 import type { AgentInfo } from '@clowdy/protocol';
 import type { AgentRegistry } from '../src/engine/acp/registry';
@@ -27,7 +28,7 @@ function rig(reads: ProviderRead[], { login = true }: { login?: boolean } = {}) 
     let calls = 0;
     const announced: number[] = [];
     const provider: Provider = {
-        id: 'claude',
+        ...testSpec('claude'),
         ...(login && { login: { args: ['auth', 'login'] } }),
         read: async () => reads[Math.min(calls++, reads.length - 1)]!,
     };
@@ -42,7 +43,7 @@ describe('ProvidersService', () => {
     test('reuses a read as long as its provider says, not as long as the default', async () => {
         let time = 1_000_000;
         let calls = 0;
-        const provider: Provider = { id: 'claude', freshMs: 300_000, read: async () => {
+        const provider: Provider = { ...testSpec('claude'), freshMs: 300_000, read: async () => {
             calls++; return ok(8);
         } };
         const service = new ProvidersService({ registry: registry(['claude']), providers: [provider], announce: () => undefined, now: () => time, freshMs: 60_000, cwd: '/tmp' });
@@ -162,7 +163,7 @@ describe('ProvidersService', () => {
         let calls = 0;
         const service = new ProvidersService({
             registry: registry(['claude']),
-            providers: [{ id: 'claude', read: async () => (++calls === 1 ? (await gate, ok(1)) : ok(2)) }],
+            providers: [{ ...testSpec('claude'), read: async () => (++calls === 1 ? (await gate, ok(1)) : ok(2)) }],
             announce: () => void announced.push(1),
             cwd: '/tmp',
         });
@@ -191,7 +192,7 @@ describe('ProvidersService', () => {
         let calls = 0;
         const service = new ProvidersService({
             registry: registry(['claude']),
-            providers: [{ id: 'claude', read: async () => (++calls === 1 ? (await gate, signedOut) : ok(8)) }],
+            providers: [{ ...testSpec('claude'), read: async () => (++calls === 1 ? (await gate, signedOut) : ok(8)) }],
             announce: () => undefined,
             cwd: '/tmp',
         });
@@ -218,7 +219,7 @@ describe('ProvidersService', () => {
             const service = new ProvidersService({
                 registry: registry(['claude']),
                 providers: [{
-                    id: 'claude',
+                    ...testSpec('claude'),
                     read: async () => {
                         if (++calls === 1) {
                             throw new Error('the reader is broken');
@@ -261,7 +262,7 @@ describe('ProvidersService', () => {
         const service = new ProvidersService({
             registry: registry(['claude']),
             providers: [{
-                id: 'claude',
+                ...testSpec('claude'),
                 read: async (context) => {
                     calls++;
                     signal = context.signal;

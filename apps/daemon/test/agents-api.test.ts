@@ -3,18 +3,20 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { startDaemon } from '../src/daemon';
-import { KNOWN_AGENTS } from '../src/engine/acp/catalog';
 import { announceAgentsChanged } from '../src/providers/announce';
+import { PROVIDERS } from '../src/providers/builtin';
 import { ProvidersService } from '../src/providers/service';
 import { FAKE_AGENT } from './acp-helpers';
-import { cleanTempDirs, Harness, restartHarness, startHarness, testAgents, testConfig, waitFor } from './helpers';
+import { cleanTempDirs, Harness, restartHarness, startHarness, testAgents, testConfig, testSpec, waitFor } from './helpers';
 
 import type { AgentInfo } from '@clowdy/protocol';
+
+const SPECS = PROVIDERS.map(provider => provider.spec);
 
 afterAll(cleanTempDirs);
 
 const harnesses: Harness[] = [];
-const codexLaunch = KNOWN_AGENTS.find(agent => agent.id === 'codex')?.launch;
+const codexLaunch = SPECS.find(agent => agent.id === 'codex')?.launch;
 const codexPackage = codexLaunch?.kind === 'package' ? codexLaunch.package : undefined;
 
 afterEach(async () => {
@@ -166,7 +168,7 @@ describe('accounts, usage and sign-in over the API', () => {
             announce: () => announce(),
             cwd: config.dataDir,
             providers: [{
-                id: 'mine',
+                ...testSpec('mine'),
                 login: { args: [login] },
                 read: async () => await Bun.file(marker).exists()
                     ? { signIn: { status: 'signed-in', account: { email: 'ada@example.com', plan: 'Max', method: 'subscription' } }, usage: { state: 'ok', windows: [{ id: 'session', label: 'Session', usedPercent: 8 }], fetchedAt: 1 } }

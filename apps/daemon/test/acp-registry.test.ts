@@ -3,17 +3,19 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { KNOWN_AGENTS } from '../src/engine/acp/catalog';
 import { Discovery, parseVersion, readLoginPath } from '../src/engine/acp/discovery';
 import { buildAgentEnv } from '../src/engine/acp/env';
 import { AgentRegistry, AgentRegistryError } from '../src/engine/acp/registry';
+import { PROVIDERS } from '../src/providers/builtin';
+
+const SPECS = PROVIDERS.map(provider => provider.spec);
 
 let root: string;
 let bin: string;
 
 /** The package an adapter agent is fetched as, from the catalog, so a new pin touches no test. */
 function pinned(id: string): string {
-    const launch = KNOWN_AGENTS.find(agent => agent.id === id)?.launch;
+    const launch = SPECS.find(agent => agent.id === id)?.launch;
 
     if (launch?.kind !== 'package') throw new Error(`${ id } is not run from a package`);
 
@@ -43,7 +45,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe('the catalog', () => {
     test('fetches each adapter at one exact, stable version, never a range, a tag or a preview', () => {
-        const packages = KNOWN_AGENTS.flatMap(agent => agent.launch.kind === 'package' ? [agent.launch.package] : []);
+        const packages = SPECS.flatMap(agent => agent.launch.kind === 'package' ? [agent.launch.package] : []);
 
         expect(packages.length).toBeGreaterThan(0);
 
@@ -145,13 +147,24 @@ describe('AgentRegistry', () => {
         expect(await byId(reg, 'opencode')).toMatchObject({ status: 'missing', detail: expect.stringContaining('no `opencode` command was found'), launch: 'opencode acp' });
     });
 
+    test('a provider that is only a spec is a working agent: found, started and kept apart from the others, with no change to the registry', async () => {
+        const path = program('plain-agent', 'plain 1.0.0');
+        const reg = new AgentRegistry({ discovery: discovery(), providers: [{ spec: { id: 'plain', name: 'Plain', programs: ['plain-agent'], launch: { kind: 'binary', args: ['--acp'] }, login: 'plain-agent login' } }] });
+
+        expect(await reg.list()).toEqual([{ id: 'plain', name: 'Plain', custom: false, enabled: true, status: 'ready', path, version: '1.0.0', launch: 'plain-agent --acp', login: 'plain-agent login' }]);
+        expect(await reg.resolve('plain')).toMatchObject({ ok: true, agent: { id: 'plain', command: path, args: ['--acp'], protocol: 'v1' } });
+        expect(reg.has('plain')).toBe(true);
+        expect(reg.has('cursor')).toBe(false);
+        expect(() => reg.add({ id: 'plain', name: 'Again', command: 'x', args: [] })).toThrow(AgentRegistryError);
+    });
+
     test('the task tools reach an agent through the shell unless its spec says it uses MCP; a custom agent says it in agents.json', () => {
         const reg = registry();
 
         reg.add({ id: 'mine', name: 'Mine', command: 'my-agent', args: [] });
         reg.add({ id: 'sandboxed', name: 'Sandboxed', command: 'my-other-agent', args: [], taskTools: 'mcp' });
 
-        for (const spec of KNOWN_AGENTS) {
+        for (const spec of SPECS) {
             expect(reg.taskChannel(spec.id)).toBe(spec.taskTools ?? 'cli');
         }
 

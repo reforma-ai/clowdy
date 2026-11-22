@@ -1,44 +1,11 @@
-import { runProgram } from './exec';
+import { runProgram } from '../exec';
+import { jsonObject, planLabel, text } from '../parse';
 
 import type { AgentAccount, AgentUsage, AgentUsageWindow } from '@clowdy/protocol';
-import type { ProbeContext, Provider, ProviderRead, SignInRead } from './types';
+import type { ProbeContext, Provider, ProviderRead, SignInRead } from '../types';
 
 const STATUS_TIMEOUT_MS = 15_000;
 const USAGE_TIMEOUT_MS = 40_000;
-
-/** The plan as a badge: `max` is `Max`, `team` is `Team`. */
-export function planLabel(plan: string | null | undefined): string | undefined {
-    if (!plan) {
-        return undefined;
-    }
-
-    return plan
-        .split(/[_\s-]+/)
-        .filter(Boolean)
-        .map(word => word[0]!.toUpperCase() + word.slice(1))
-        .join(' ');
-}
-
-/** The first JSON object in a program's output, which may have a line or two around it. */
-export function jsonObject(text: string): Record<string, unknown> | undefined {
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
-
-    if (start < 0 || end < start) {
-        return undefined;
-    }
-
-    try {
-        const value: unknown = JSON.parse(text.slice(start, end + 1));
-
-        return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-    }
-    catch {
-        return undefined;
-    }
-}
-
-const text = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
 /**
  * What `claude auth status --json` says: `loggedIn`, `authMethod` (`claude.ai`, `oauth_token`, `api_key`, `api_key_helper`,
@@ -213,8 +180,8 @@ async function readUsage(context: ProbeContext): Promise<AgentUsage> {
     return parseClaudeUsage(run.stdout, context.program);
 }
 
-export const claude: Provider = {
-    id: 'claude',
+/** What the daemon reads of the account Claude Code is signed in with, and the vendor's own login. */
+export const claudeAccount = {
     login: { args: ['auth', 'login', '--claudeai'] },
     async read(context): Promise<ProviderRead> {
         const status = await runProgram(context.program, ['auth', 'status', '--json'], { env: context.env, cwd: context.cwd, timeoutMs: STATUS_TIMEOUT_MS, signal: context.signal });
@@ -232,4 +199,4 @@ export const claude: Provider = {
 
         return { signIn, usage: usage.state === 'ok' ? { ...usage, fetchedAt: context.now() } : usage };
     },
-};
+} satisfies Pick<Provider, 'login' | 'read'>;

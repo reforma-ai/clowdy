@@ -1,4 +1,5 @@
-import type { AgentAccount, AgentUsage, SignInStatus } from '@clowdy/protocol';
+import type { AgentAccount, AgentModels, AgentUsage, SignInStatus } from '@clowdy/protocol';
+import type { AgentSpec } from '../engine/acp/catalog';
 
 /** What a probe needs to look at one agent: the user's program and the environment a run of it would get. */
 export interface ProbeContext {
@@ -29,13 +30,20 @@ export interface ProviderRead {
     usage: AgentUsage;
 }
 
-/** How the daemon talks to one provider. */
+/**
+ * Everything the daemon knows about one agent and everything it asks of the agent's vendor, in one object in one module (`providers/<id>.ts`, or
+ * `providers/<id>/index.ts` when it has parts), named in `PROVIDERS` (`builtin.ts`), the only registration. An agent whose vendor has nothing to
+ * ask is just a `spec`; each method is optional, and the daemon does without the ones a provider does not have.
+ */
 export interface Provider {
-    id: string;
+    /** What is known of the agent without asking it: what finds it, how it starts, its settings and flags. */
+    spec: AgentSpec;
     /** Who is signed in and how much of the plan is used. Never throws: a failure is a status and a detail. */
-    read(context: ProbeContext): Promise<ProviderRead>;
+    read?(context: ProbeContext): Promise<ProviderRead>;
     /** The vendor's login, run for the person; the program is the agent's own. */
     login?: { args: string[] };
     /** How long a read is reused when it did not fail; the service's own default when absent. */
     freshMs?: number;
+    /** The models the agent offers on this machine and account. An agent without it has no list Clowdy can read. */
+    models?(context: ProbeContext): Promise<AgentModels>;
 }

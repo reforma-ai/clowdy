@@ -4,14 +4,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { ToolBridge } from '../src/engine/acp/bridge';
-import { KNOWN_AGENTS } from '../src/engine/acp/catalog';
 import { Discovery } from '../src/engine/acp/discovery';
 import { AcpEngine } from '../src/engine/acp/engine';
 import { AgentRegistry } from '../src/engine/acp/registry';
 import { EngineFailure } from '../src/errors';
+import { PROVIDERS } from '../src/providers/builtin';
 import { alive, collect, rig, tool } from './acp-helpers';
 
 import type { Rig } from './acp-helpers';
+
+const SPECS = PROVIDERS.map(provider => provider.spec);
 
 let root: string;
 let current: Rig | undefined;
@@ -275,7 +277,7 @@ describe('a fork of an ACP session over v1', () => {
 
 describe('the fork flag of an agent', () => {
     test('Claude Code and Codex are flagged, and so is no other agent: every v1 agent is off', () => {
-        expect(KNOWN_AGENTS.filter(spec => spec.fork).map(spec => spec.id)).toEqual(['claude', 'codex']);
+        expect(SPECS.filter(spec => spec.fork).map(spec => spec.id)).toEqual(['claude', 'codex']);
     });
 
     test('the registry says it for a built-in agent, and never for a custom one or one it does not know', () => {

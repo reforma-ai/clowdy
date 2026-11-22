@@ -1,8 +1,6 @@
 import { homedir, tmpdir } from 'node:os';
 
-import { claude } from './claude';
-import { codex } from './codex';
-import { cursor } from './cursor';
+import { PROVIDERS } from './builtin';
 import { LoginSessions } from './login';
 
 import type { AgentInfo, AgentSignIn, AgentUsage } from '@clowdy/protocol';
@@ -16,8 +14,6 @@ const RETRY_MAX_MS = 5 * 60_000;
 
 /** How long a read that failed `failures` times in a row waits before the next one: 30 s, 60 s, up to 5 min. */
 const retryDelay = (failures: number) => Math.min(RETRY_MAX_MS, RETRY_FIRST_MS * 2 ** (failures - 1));
-
-export const PROVIDERS: readonly Provider[] = [claude, codex, cursor];
 
 export interface ProvidersOptions {
     registry: AgentRegistry;
@@ -59,7 +55,7 @@ export class ProvidersService {
     private stopper = new AbortController();
 
     constructor(private options: ProvidersOptions) {
-        this.providers = new Map((options.providers ?? PROVIDERS).map(provider => [provider.id, provider]));
+        this.providers = new Map((options.providers ?? PROVIDERS).map(provider => [provider.spec.id, provider]));
         this.now = options.now ?? Date.now;
         this.freshMs = options.freshMs ?? FRESH_MS;
         this.logins = new LoginSessions({
@@ -94,7 +90,8 @@ export class ProvidersService {
         return infos.map((info) => {
             const provider = this.providers.get(info.id);
 
-            if (!provider || info.status !== 'ready') {
+            // A provider with no reader and no login has nothing to add to what the registry found.
+            if (!provider || (!provider.read && !provider.login) || info.status !== 'ready') {
                 return info;
             }
 
@@ -123,7 +120,7 @@ export class ProvidersService {
 
         void this.options.registry.list().then((infos) => {
             for (const info of infos) {
-                if (info.status === 'ready' && this.providers.has(info.id)) {
+                if (info.status === 'ready' && this.providers.get(info.id)?.read) {
                     this.ensure(info.id);
                 }
             }
@@ -177,6 +174,11 @@ export class ProvidersService {
     }
 
     private ensure(id: string): Promise<void> | undefined {
+        // A provider with no reader has no account to read: nothing to keep.
+        if (!this.providers.get(id)?.read) {
+            return undefined;
+        }
+
         const entry = this.entry(id);
 
         if (entry.inflight || this.now() < entry.nextAt || this.stopper.signal.aborted) {
@@ -220,7 +222,8 @@ export class ProvidersService {
             return;
         }
 
-        const read = await this.providers.get(id)!.read(context);
+        const provider = this.providers.get(id)!;
+        const read = await provider.read!(context);
 
         if (generation !== entry.generation || this.stopper.signal.aborted) {
             return;

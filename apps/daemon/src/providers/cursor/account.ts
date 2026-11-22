@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { runProgram } from './exec';
+import { runProgram } from '../exec';
 
 import type { AgentAccount, AgentUsage, AgentUsageWindow } from '@clowdy/protocol';
-import type { ProbeContext, Provider, ProviderRead } from './types';
+import type { ProbeContext, Provider, ProviderRead } from '../types';
 
 const API = 'https://api2.cursor.sh/aiserver.v1.DashboardService';
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -145,8 +145,8 @@ export function cursorWindows(usage: Record<string, unknown>): AgentUsageWindow[
     return windows;
 }
 
-export const cursor: Provider = {
-    id: 'cursor',
+/** What the daemon reads of the account Cursor is signed in with, and the vendor's own login. */
+export const cursorAccount = {
     login: { args: ['login'] },
     // Each read asks the Keychain for the token, which can ask the person for access: the plan is billed by the month, so not often.
     freshMs: 5 * 60_000,
@@ -184,4 +184,4 @@ export const cursor: Provider = {
             };
         }
     },
-};
+} satisfies Pick<Provider, 'login' | 'freshMs' | 'read'>;

@@ -1,8 +1,8 @@
-import { withAppServer } from './appserver';
-import { planLabel } from './claude';
+import { withAppServer } from '../appserver';
+import { planLabel } from '../parse';
 
 import type { AgentAccount, AgentUsage, AgentUsageWindow } from '@clowdy/protocol';
-import type { Provider, ProviderRead, SignInRead } from './types';
+import type { Provider, ProviderRead, SignInRead } from '../types';
 
 const APP_SERVER_TIMEOUT_MS = 30_000;
 
@@ -137,8 +137,8 @@ export function codexWindows(response: { rateLimits?: Snapshot | null; rateLimit
     return windows;
 }
 
-export const codex: Provider = {
-    id: 'codex',
+/** What the daemon reads of the account Codex is signed in with, and the vendor's own login. */
+export const codexAccount = {
     login: { args: ['login'] },
     async read(context): Promise<ProviderRead> {
         try {
@@ -173,4 +173,4 @@ export const codex: Provider = {
             return { signIn: { status: 'unknown', detail }, usage: { state: 'unavailable', windows: [] } };
         }
     },
-};
+} satisfies Pick<Provider, 'login' | 'read'>;

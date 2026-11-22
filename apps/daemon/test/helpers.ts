@@ -12,10 +12,16 @@ import type { ClowdyEvent, Command, CommandResult, EngineId, Project, Run, TaskS
 import type { Config } from '../src/config';
 import type { Daemon, DaemonOptions } from '../src/daemon';
 import type { AgentEngine, EngineEvent, EngineFork, EngineForkOptions, EngineSession, EngineStartOptions } from '../src/engine/types';
+import type { Provider } from '../src/providers/types';
 
 const roots: string[] = [];
 
 /** A fresh empty directory, removed when the test file ends. */
+/** The `spec` of a provider a test makes up: it names an agent and starts nothing. */
+export function testSpec(id: string): Pick<Provider, 'spec'> {
+    return { spec: { id, name: id, programs: [id], launch: { kind: 'binary', args: [] } } };
+}
+
 export function tempDir(label = 'clowdy-test'): string {
     const dir = mkdtempSync(join(tmpdir(), `${ label }-`));
 
