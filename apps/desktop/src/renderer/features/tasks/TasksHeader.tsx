@@ -3,7 +3,7 @@ import { Button } from '@clowdy/components/Button';
 import { SearchInput } from '@clowdy/components/Input';
 import { Text } from '@clowdy/components/Text';
 import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/ToggleButtonGroup';
-import { Columns, Layers, List, Plus } from '@clowdy/icons/14';
+import { Archive, Columns, Layers, List, Plus } from '@clowdy/icons/14';
 
 import { commandHint, CommandHotkey, commandTooltip } from '../../hotkeys';
 import { SCREEN_TITLE } from '../../shared';
@@ -46,13 +46,16 @@ export interface TasksHeaderProps {
     onSearchExit: () => void;
     isFilterOpen: boolean;
     onFilterOpenChange: (isOpen: boolean) => void;
+    /** The screen shows the project's archive in place of the scope. The scope's path, the view, the search and the filter and the new-task button are for the scope, so they leave. */
+    isArchive: boolean;
+    onArchiveChange: (isArchive: boolean) => void;
 }
 
 /**
- * The screen's header: title and source on the left, or the path of the scope in their place; view switch, the sub-tasks toggle of the board, search, filter
- * and "+ Task" on the right, which is "+ Sub-task" inside a task.
+ * The screen's header: title and source on the left, or the path of the scope in their place; view switch, the sub-tasks toggle of the board, search, filter,
+ * the Archive toggle and "+ Task" on the right, which is "+ Sub-task" inside a task. With the archive on, the title and the Archive toggle are all that is left.
  */
-export function TasksHeader({ subtitle, path, onOpenScope, view, onViewChange, showSubtasks, onSubtasksChange, inTask, createHint, onCreate, filter, onFilterChange, statuses, agents, searchRef, onSearchExit, isFilterOpen, onFilterOpenChange }: TasksHeaderProps) {
+export function TasksHeader({ subtitle, path, onOpenScope, view, onViewChange, showSubtasks, onSubtasksChange, inTask, createHint, onCreate, filter, onFilterChange, statuses, agents, searchRef, onSearchExit, isFilterOpen, onFilterOpenChange, isArchive, onArchiveChange }: TasksHeaderProps) {
     // One key switches the view, so both items carry its hint. A hint on the other item alone would move between them on every switch and rebuild the button that was just pressed.
     const switchView = commandTooltip('Switch view', 'tasks.view.toggle');
     const createLabel = inTask ? 'New sub-task' : 'New task';
@@ -68,7 +71,7 @@ export function TasksHeader({ subtitle, path, onOpenScope, view, onViewChange, s
     return (
         <header className={ styles.header }>
             <div className={ styles.titles }>
-                { path
+                { path && !isArchive
                     ? (
                         <Breadcrumb variant={ SCREEN_TITLE } aria-label="Task path">
                             <Breadcrumb.Link key="tasks" onPress={ () => onOpenScope(null) }>Tasks</Breadcrumb.Link>
@@ -85,62 +88,79 @@ export function TasksHeader({ subtitle, path, onOpenScope, view, onViewChange, s
             </div>
 
             <div className={ styles.toolbar }>
-                <ToggleButtonGroup
-                    aria-label="View"
-                    size="sm"
-                    selectedKeys={ [view] }
-                    onSelectionChange={ (keys) => {
-                        const next = (['board', 'list'] as const).find(candidate => keys.has(candidate));
+                { !isArchive && (
+                    <>
+                        <ToggleButtonGroup
+                            aria-label="View"
+                            size="sm"
+                            selectedKeys={ [view] }
+                            onSelectionChange={ (keys) => {
+                                const next = (['board', 'list'] as const).find(candidate => keys.has(candidate));
 
-                        if (next) onViewChange(next);
-                    } }
-                >
-                    <ToggleButtonGroupItem value="board" tooltip={ switchView }><Columns />Board</ToggleButtonGroupItem>
-                    <ToggleButtonGroupItem value="list" tooltip={ switchView }><List />List</ToggleButtonGroupItem>
-                </ToggleButtonGroup>
+                                if (next) onViewChange(next);
+                            } }
+                        >
+                            <ToggleButtonGroupItem value="board" tooltip={ switchView }><Columns />Board</ToggleButtonGroupItem>
+                            <ToggleButtonGroupItem value="list" tooltip={ switchView }><List />List</ToggleButtonGroupItem>
+                        </ToggleButtonGroup>
 
-                {/* One item that is on or off: the group may be empty. */}
-                { view === 'board' && (
-                    <ToggleButtonGroup
-                        aria-label="Sub-tasks"
-                        size="sm"
-                        disallowEmptySelection={ false }
-                        selectedKeys={ showSubtasks ? ['subtasks'] : [] }
-                        onSelectionChange={ keys => onSubtasksChange(keys.has('subtasks')) }
-                    >
-                        <ToggleButtonGroupItem value="subtasks" tooltip="Show the tasks inside tasks on the board too"><Layers />Sub-tasks</ToggleButtonGroupItem>
-                    </ToggleButtonGroup>
+                        {/* One item that is on or off: the group may be empty. */}
+                        { view === 'board' && (
+                            <ToggleButtonGroup
+                                aria-label="Sub-tasks"
+                                size="sm"
+                                disallowEmptySelection={ false }
+                                selectedKeys={ showSubtasks ? ['subtasks'] : [] }
+                                onSelectionChange={ keys => onSubtasksChange(keys.has('subtasks')) }
+                            >
+                                <ToggleButtonGroupItem value="subtasks" tooltip="Show the tasks inside tasks on the board too"><Layers />Sub-tasks</ToggleButtonGroupItem>
+                            </ToggleButtonGroup>
+                        ) }
+
+                        <SearchInput
+                            className={ styles.search }
+                            size="sm"
+                            aria-label="Search tasks"
+                            placeholder="Search tasks…"
+                            value={ filter.query }
+                            onChange={ (query: string) => onFilterChange({ ...filter, query }) }
+                            inputRef={ searchRef }
+                            onKeyDown={ onSearchKeyDown }
+                        >
+                            {/* While there is text the field's own clear button takes this place. */}
+                            { filter.query === '' && commandHint('tasks.search') && <span slot="suffix" className={ styles.searchHint }><CommandHotkey id="tasks.search" size="xs" /></span> }
+                        </SearchInput>
+
+                        <FilterPopover
+                            filter={ filter }
+                            onChange={ onFilterChange }
+                            statuses={ statuses }
+                            agents={ agents }
+                            isOpen={ isFilterOpen }
+                            onOpenChange={ onFilterOpenChange }
+                        />
+                    </>
                 ) }
 
-                <SearchInput
-                    className={ styles.search }
+                {/* One item that is on or off, like the sub-tasks: the archive in place of the scope, and the scope as it was when it is off. */}
+                <ToggleButtonGroup
+                    aria-label="Archive"
                     size="sm"
-                    aria-label="Search tasks"
-                    placeholder="Search tasks…"
-                    value={ filter.query }
-                    onChange={ (query: string) => onFilterChange({ ...filter, query }) }
-                    inputRef={ searchRef }
-                    onKeyDown={ onSearchKeyDown }
+                    disallowEmptySelection={ false }
+                    selectedKeys={ isArchive ? ['archive'] : [] }
+                    onSelectionChange={ keys => onArchiveChange(keys.has('archive')) }
                 >
-                    {/* While there is text the field's own clear button takes this place. */}
-                    { filter.query === '' && commandHint('tasks.search') && <span slot="suffix" className={ styles.searchHint }><CommandHotkey id="tasks.search" size="xs" /></span> }
-                </SearchInput>
+                    <ToggleButtonGroupItem value="archive" tooltip="Show the archived tasks"><Archive />Archive</ToggleButtonGroupItem>
+                </ToggleButtonGroup>
 
-                <FilterPopover
-                    filter={ filter }
-                    onChange={ onFilterChange }
-                    statuses={ statuses }
-                    agents={ agents }
-                    isOpen={ isFilterOpen }
-                    onOpenChange={ onFilterOpenChange }
-                />
-
-                <Unavailable label={ createLabel } hint={ createHint } placement="bottom">
-                    <Button color="primary" size="sm" isDisabled={ createHint !== undefined } tooltip={ createHint === undefined ? commandTooltip(createLabel, 'tasks.create') : undefined } onPress={ onCreate }>
-                        <Plus />
-                        { inTask ? 'Sub-task' : 'Task' }
-                    </Button>
-                </Unavailable>
+                { !isArchive && (
+                    <Unavailable label={ createLabel } hint={ createHint } placement="bottom">
+                        <Button color="primary" size="sm" isDisabled={ createHint !== undefined } tooltip={ createHint === undefined ? commandTooltip(createLabel, 'tasks.create') : undefined } onPress={ onCreate }>
+                            <Plus />
+                            { inTask ? 'Sub-task' : 'Task' }
+                        </Button>
+                    </Unavailable>
+                ) }
             </div>
         </header>
     );

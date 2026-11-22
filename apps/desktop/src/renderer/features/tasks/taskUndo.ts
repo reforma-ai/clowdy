@@ -104,6 +104,11 @@ function showToast(kind: 'show' | 'success', content: ToastContent): string {
     return lastToast;
 }
 
+/** Says that a change was taken back, in the toast the offer to undo it gave way to. */
+export function showUndone(label: string): void {
+    showToast('success', { message: `Undone: ${ label }` });
+}
+
 function staleMessage(stale: readonly Change[], restoredAny: boolean): string {
     const subject = stale.length === 1 ? stale[0].key : `${ stale.length } tasks`;
 
@@ -129,7 +134,7 @@ async function restore(root: RootStore, project: ProjectState, changes: readonly
     const results = await sendEach(root, inputs);
     const restored = results.filter(result => result.ok).length;
 
-    if (stale.length === 0 && restored === inputs.length) showToast('success', { message: `Undone: ${ label }` });
+    if (stale.length === 0 && restored === inputs.length) showUndone(label);
 
     return restored > 0;
 }
@@ -201,23 +206,42 @@ function record(root: RootStore, project: ProjectState, stack: UndoStack, change
     }
 
     const label = describeChanges(project, changes);
+    const { entry, offer } = pushEntry(stack, project.id, label, () => restore(root, project, changes, label));
+
+    joinable = isDescriptionEdit(changes)
+        ? { stack, entry, change: changes[0], texts: new Set([descriptionOf(changes[0].before), descriptionOf(changes[0].after)]), offer, at: Date.now() }
+        : undefined;
+}
+
+/**
+ * Puts an entry on the stack and offers its undo in a toast: the toast and the stack run the same entry, and the entry closes its toast when it runs, so the
+ * offer is out of the way before anything the undo says. Returns what a join needs to show the offer again.
+ */
+function pushEntry(stack: UndoStack, scope: string, label: string, undo: () => Promise<boolean>): { entry: UndoEntry; offer: Joinable['offer'] } {
     const offer: Joinable['offer'] = {};
     const entry: UndoEntry = {
-        scope: project.id,
+        scope,
         label,
         undo: async () => {
             // Out of the way before anything it says about the undo.
             if (offer.key) toast.queue.close(offer.key);
 
-            return restore(root, project, changes, label);
+            return undo();
         },
     };
 
     stack.push(entry);
     offer.key = offerUndo(stack, entry);
-    joinable = isDescriptionEdit(changes)
-        ? { stack, entry, change: changes[0], texts: new Set([descriptionOf(changes[0].before), descriptionOf(changes[0].after)]), offer, at: Date.now() }
-        : undefined;
+
+    return { entry, offer };
+}
+
+/**
+ * Records a change that is not an edit of a task's fields (an archive, a restore) with its offer to undo. `undo` reverses it and resolves to whether it did; it says
+ * itself why it could not, and `showUndone` when it did. The change is already made: a refused one records nothing.
+ */
+export function recordUndo(stack: UndoStack, scope: string, label: string, undo: () => Promise<boolean>): void {
+    pushEntry(stack, scope, label, undo);
 }
 
 /**

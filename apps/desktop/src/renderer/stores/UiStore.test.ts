@@ -383,6 +383,39 @@ describe('UiStore', () => {
             expect([ui.taskId, ui.tasksScope]).toEqual([null, 't-31']);
         });
 
+        it('leaves the archive view for a task of the board opened from elsewhere, and stays in it for an archived task and for the screen\'s own clicks', () => {
+            const ui = open();
+
+            ui.setTasksArchive(true);
+            ui.openTask('t-38');
+            ui.openTask('t-missing');
+            ui.openTask('t-24', { reveal: false });
+            ui.openTask(null);
+
+            expect(ui.tasksArchive).toBe(true);
+
+            ui.openTask('t-24');
+
+            expect([ui.tasksArchive, ui.taskId]).toEqual([false, 't-24']);
+
+            ui.setTasksArchive(true);
+            // A task just made, which the project does not hold yet, is where the person looks next.
+            ui.openTask('t-new', { madeIn: null });
+
+            expect(ui.tasksArchive).toBe(false);
+        });
+
+        it('does not keep the archive view between sessions, and it is no place of the history', () => {
+            const storage = memoryStorage();
+            const ui = new UiStore(storage).forProject('p1');
+
+            ui.setTasksArchive(true);
+
+            expect(ui.tasksArchive).toBe(true);
+            expect(Object.keys(ui.view)).not.toContain('tasksArchive');
+            expect(new UiStore(storage).forProject('p1').tasksArchive).toBe(false);
+        });
+
         it('does nothing to the scope without the project\'s tasks, as a window state of its own has none', () => {
             const ui = new UiStore().forProject('p1');
 

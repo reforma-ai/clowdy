@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createFixtureData, FIXTURE_PROJECT_ID } from '../daemon/fixtureData';
 import { FixtureTransport } from '../daemon/fixtureTransport';
 import { overrideTransport } from '../daemon/testing';
-import { ProjectState } from './ProjectState';
+import { ARCHIVED_MEMORY_LIMIT, ProjectState } from './ProjectState';
 
 import type { ClowdyEvent, EventData, Run, Task, TaskComment } from '@clowdy/protocol';
 
@@ -161,6 +161,169 @@ describe('ProjectState', () => {
             expect(state.runsOfTask('t-24').map(run => run.id)).toEqual(['r-orch-1', 'r-orch-5']);
             expect(state.chatsOfTask('t-24').map(chat => chat.id)).toEqual(['c-1']);
             expect(state.linksOfRun('r-orch-5')).toHaveLength(1);
+        });
+    });
+
+    describe('the archived tasks the window knows', () => {
+        const archive = (state: ProjectState, id: string, cursor: number, archivedAt = 5000) => state.applyEvent(event(cursor, { type: 'task.upserted', task: { ...state.tasks.get(id)!, archivedAt } }));
+
+        it('remembers a task that is archived by its event, and resolves it by id and by key, which the board no longer does', async () => {
+            const { state } = await loadedProject();
+
+            expect(state.taskOfKey('CAR-22')?.id).toBe('t-22');
+
+            archive(state, 't-22', 1001);
+
+            expect(state.tasks.has('t-22')).toBe(false);
+            expect(state.archivedKnown.get('t-22')?.archivedAt).toBe(5000);
+            expect(state.taskById('t-22')?.key).toBe('CAR-22');
+            expect(state.taskOfKey('CAR-22')?.id).toBe('t-22');
+            expect(state.taskOfKey('CAR-999')).toBeUndefined();
+        });
+
+        it('forgets a task that is restored or deleted, so it holds archived tasks only', async () => {
+            const { state } = await loadedProject();
+
+            archive(state, 't-22', 1001);
+            archive(state, 't-21', 1002);
+
+            const { archivedAt: _, ...restored } = state.archivedKnown.get('t-22')!;
+
+            state.applyEvent(event(1003, { type: 'task.upserted', task: restored }));
+            state.applyEvent(event(1004, { type: 'task.deleted', taskId: 't-21' }));
+
+            expect([...state.archivedKnown.keys()]).toEqual([]);
+            expect(state.tasks.get('t-22')).toEqual(restored);
+            expect(state.taskById('t-21')).toBeUndefined();
+        });
+
+        it('counts what may change the archive: an archive, a restore, a delete of an archived task, a snapshot, and a task made on the board', async () => {
+            const { state, transport } = await loadedProject();
+            const seen: number[] = [];
+
+            seen.push(state.archiveRevision);
+            archive(state, 't-22', 1001);
+            seen.push(state.archiveRevision);
+
+            const { archivedAt: _, ...restored } = state.archivedKnown.get('t-22')!;
+
+            state.applyEvent(event(1002, { type: 'task.upserted', task: restored }));
+            seen.push(state.archiveRevision);
+            // A task changed on the board is not the archive's business.
+            state.applyEvent(event(1003, { type: 'task.upserted', task: { ...restored, title: 'Renamed' } }));
+            seen.push(state.archiveRevision);
+            state.applyEvent(event(1004, { type: 'task.deleted', taskId: 't-24' }));
+            seen.push(state.archiveRevision);
+            state.applyEvent(event(1005, { type: 'task.deleted', taskId: 't-404' }));
+            seen.push(state.archiveRevision);
+            state.applySnapshot(await transport.getProjectSnapshot(state.id));
+            seen.push(state.archiveRevision);
+
+            const [start] = seen;
+
+            expect(seen.map(value => value - start)).toEqual([0, 1, 2, 2, 2, 3, 4]);
+        });
+
+        it('lets the ones read longest ago go past its limit, and moves a task read again to the end', async () => {
+            const { state } = await loadedProject();
+            const many = (from: number, count: number): Task[] => Array.from({ length: count }, (_, index) => ({ ...state.tasks.get('t-22')!, id: `x-${ from + index }`, key: `X-${ from + index }`, archivedAt: 9 }));
+
+            state.rememberArchived(many(0, ARCHIVED_MEMORY_LIMIT));
+            state.rememberArchived(many(0, 1));
+            state.rememberArchived(many(ARCHIVED_MEMORY_LIMIT, 2));
+
+            expect(state.archivedKnown.size).toBe(ARCHIVED_MEMORY_LIMIT);
+            expect(state.archivedKnown.has('x-0')).toBe(true);
+            expect(state.archivedKnown.has('x-1')).toBe(false);
+            expect(state.archivedKnown.has('x-2')).toBe(false);
+            expect(state.archivedKnown.has(`x-${ ARCHIVED_MEMORY_LIMIT + 1 }`)).toBe(true);
+        });
+
+        it('does not remember a task that is not archived, or one the board holds', async () => {
+            const { state } = await loadedProject();
+
+            state.rememberArchived([state.tasks.get('t-22')!, { ...state.tasks.get('t-22')!, archivedAt: 5 }, { ...state.tasks.get('t-21')!, id: 'x-1' }]);
+
+            expect(state.archivedKnown.size).toBe(0);
+        });
+
+        it('drops from its memory what a snapshot shows on the board, which was restored while the feed was away', async () => {
+            const { state, transport } = await loadedProject();
+
+            state.rememberArchived([{ ...state.tasks.get('t-22')!, archivedAt: 5 }]);
+            state.tasks.delete('t-22');
+            state.rememberArchived([{ ...state.tasks.get('t-21')!, archivedAt: 6 }]);
+            state.applySnapshot(await transport.getProjectSnapshot(state.id));
+
+            // Both are on the fixture's board, so neither is archived now.
+            expect(state.archivedKnown.size).toBe(0);
+        });
+
+        describe('reading a task the board does not hold', () => {
+            it('reads an archived task from the daemon once, however many ask, and remembers it', async () => {
+                const data = createFixtureData();
+                const transport = new FixtureTransport({ data });
+                const reads: string[] = [];
+                const state = new ProjectState(overrideTransport(transport, { getTaskDetail: (taskId) => {
+                    reads.push(taskId);
+
+                    return transport.getTaskDetail(taskId);
+                } }), data.projects[0]);
+
+                await state.load();
+
+                const [first, second] = await Promise.all([state.readTask('t-38'), state.readTask('t-38')]);
+
+                expect(first?.key).toBe('CAR-38');
+                expect(second).toBe(first);
+                expect(reads).toEqual(['t-38']);
+                expect(state.archivedKnown.get('t-38')).toBe(first);
+
+                // Remembered: asking again does not go to the daemon.
+                await state.readTask('t-38');
+                expect(reads).toEqual(['t-38']);
+            });
+
+            it('answers a task on the board without the daemon, and nothing for a task the daemon does not have', async () => {
+                const { state } = await loadedProject();
+
+                expect((await state.readTask('t-24'))?.key).toBe('CAR-24');
+                expect(await state.readTask('t-404')).toBeUndefined();
+            });
+
+            it('does not remember a task of another project, and answers nothing for it', async () => {
+                const data = createFixtureData();
+                const transport = new FixtureTransport({ data });
+                const other = data.projects.find(project => project.id !== FIXTURE_PROJECT_ID)!;
+                const foreign: Task = { ...data.tasks.find(task => task.id === 't-38')!, id: 'x-foreign', projectId: other.id };
+
+                data.tasks.push(foreign);
+
+                const state = new ProjectState(transport, data.projects[0]);
+
+                await state.load();
+
+                expect(await state.readTask('x-foreign')).toBeUndefined();
+                expect(state.archivedKnown.has('x-foreign')).toBe(false);
+            });
+
+            it('rejects when the daemon cannot be reached, and reads again the next time', async () => {
+                const data = createFixtureData();
+                const transport = new FixtureTransport({ data });
+                let offline = true;
+                const state = new ProjectState(overrideTransport(transport, { getTaskDetail: (taskId) => {
+                    if (offline) return Promise.reject(new Error('offline'));
+
+                    return transport.getTaskDetail(taskId);
+                } }), data.projects[0]);
+
+                await state.load();
+                await expect(state.readTask('t-38')).rejects.toThrow('offline');
+
+                offline = false;
+
+                expect((await state.readTask('t-38'))?.key).toBe('CAR-38');
+            });
         });
     });
 

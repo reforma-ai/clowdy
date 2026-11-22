@@ -8,10 +8,14 @@ import { undoStack } from '../../hotkeys/undo';
 import { PickerPopover, type PickerRequest } from '../../shared/PickerPopover';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openChat } from '../chats/archiveChat';
+import { archiveTasks } from './archiveActions';
+import { ArchivedPanel } from './ArchivedPanel';
+import { ArchiveView } from './ArchiveView';
 import { Board } from './Board';
 import { copyWithToast, startTask } from './commands';
 import { openCreateTask } from './CreateTaskDialog';
 import { DetailPanel } from './DetailPanel';
+import { OpeningTask } from './OpeningTask';
 import { ScopeEmpty } from './ScopeEmpty';
 import { ScopeHeader } from './ScopeHeader';
 import styles from './Screen.module.css';
@@ -21,9 +25,12 @@ import { TasksHeader } from './TasksHeader';
 import { DEPTH_LIMIT_HINT } from './taskTree';
 import { sendWithUndo } from './taskUndo';
 import { agentOptions, isFiltering, newestDocPath, NO_FILTER, runsByTask, startBlockedReason, tasksSource } from './taskView';
+import { useArchiveMenu } from './useArchiveMenu';
+import { useTaskById } from './useTaskReadings';
 import { useTasksScope } from './useTasksScope';
 
-import type { TaskId } from '@clowdy/protocol';
+import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
+import type { Task, TaskId } from '@clowdy/protocol';
 import type { FocusEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react';
 
 /** The card or row the target is in or is. */
@@ -57,7 +64,8 @@ interface OpenPicker {
 
 /**
  * Tasks: the project's internal task list. It shows a scope, the tasks inside a task or the project's roots, as a board of one level, a board of every level, or a
- * tree list, with a detail panel for the open task. `useTasksScope` holds what the scope and its view are; this component wires the keys, the focus and the pieces.
+ * tree list, or the project's archive in place of it, with a detail panel for the open task (read only for an archived one). `useTasksScope` holds what the scope and its
+ * view are; this component wires the keys, the focus and the pieces.
  */
 export function Screen() {
     const root = useRootStore();
@@ -80,9 +88,11 @@ export function Screen() {
 
     const runsOfTask = runsByTask(project.runTaskLinks.values(), project.runs);
     const tasks = project.taskList;
-    const { scope, ancestors, tree, view, content, notesOf, open, setView, commandDeps, settle, nav } = useTasksScope({ cursor, filter, runsOfTask });
+    const { isArchive, scope, ancestors, tree, view, content, notesOf, open, setView, commandDeps, settle, nav } = useTasksScope({ cursor, filter, runsOfTask });
 
+    // The panel's task is the board's, or an archived one (read from the daemon when the window does not know it, a task that is archived or deleted meanwhile follows the events).
     const selected = ui.taskId ? project.tasks.get(ui.taskId) : undefined;
+    const { reading: opened, retry: retryOpened } = useTaskById(selected ? null : ui.taskId);
 
     const move = (taskId: string, statusId: string) => {
         if (project.tasks.get(taskId)?.statusId !== statusId) void sendWithUndo(root, project, [{ type: 'task.update', taskId, statusId }]);
@@ -127,6 +137,11 @@ export function Screen() {
 
     // After the cursor has its new grid and the board its new cards.
     useLayoutEffect(refocusIfRemoved);
+
+    // The dialog hands focus back to what had it, which is gone when the daemon's event came in while it was open. That happens after `onClose`.
+    const confirm = (options: OpenConfirmModalOptions) => openConfirmModal(options, { onClose: () => setTimeout(refocusIfRemoved) });
+    const archive = (targets: readonly Task[]) => archiveTasks({ root, project, ui: nav, confirm }, targets);
+    const taskMenu = useArchiveMenu({ project, tree, cursor, archive });
 
     // The other view, or another scope, has drawn its items a frame after the switch.
     useEffect(() => {
@@ -191,8 +206,8 @@ export function Screen() {
         undo: { canUndo: () => undoStack.canUndo(project.id), undoLatest: () => undoStack.undoLatest(project.id) },
         start: taskId => startTask(root, taskId),
         openPicker: request => setPicker({ request, anchor: (cursor.cursorId === null ? null : itemOf(region.current, cursor.cursorId)) ?? screen.current?.querySelector('aside') ?? null }),
-        // The dialog hands focus back to what had it, which is gone when the daemon's event came in while it was open. That happens after `onClose`.
-        confirm: options => openConfirmModal(options, { onClose: () => setTimeout(refocusIfRemoved) }),
+        confirm,
+        archive,
         focusTitle: () => {
             // The panel for the task is drawn by the time of the next frame.
             requestAnimationFrame(() => {
@@ -225,6 +240,20 @@ export function Screen() {
         },
     }));
 
+    // The filter popover belongs to the scope and goes with it: it must not be open again when the scope comes back.
+    const showArchive = (show: boolean) => {
+        if (show) setFilterOpen(false);
+
+        ui.setTasksArchive(show);
+    };
+
+    // A card dropped on the Archive target: that card, as a drop on a column moves that card.
+    const archiveDropped = (taskId: TaskId) => {
+        const task = project.tasks.get(taskId);
+
+        if (task) archive([task]);
+    };
+
     // Enter saves a title and Esc drops the edit, and both leave the field. The capture runs before the field's own handler blurs it.
     const onKeyDownCapture = (event: KeyboardEvent) => {
         if (renaming.current && event.target === titleField.current && (event.key === 'Enter' || event.key === 'Escape')) setTimeout(refocusIfLost);
@@ -253,6 +282,13 @@ export function Screen() {
         }
     };
 
+    // A right-click, or the menu key on a card or row, opens its menu: the controls of a card (the agent chips) keep the click they would have.
+    const onContextMenu = (event: MouseEvent) => {
+        const taskId = taskIdOf(event.target);
+
+        if (taskId !== null && !isTaskControl(event.target)) taskMenu.open(event, taskId);
+    };
+
     // Only real movement moves the cursor: a resting pointer under a list that scrolls to the keyboard cursor must not take it back.
     const onPointerMove = (event: PointerEvent) => {
         const taskId = taskIdOf(event.target);
@@ -279,7 +315,7 @@ export function Screen() {
         <div ref={ screen } className={ styles.screen } onKeyDownCapture={ onKeyDownCapture } onBlur={ onBlur }>
             <div className={ styles.main }>
                 <TasksHeader
-                    subtitle={ tasksSource(tasks) }
+                    subtitle={ isArchive ? 'Archived tasks' : tasksSource(tasks) }
                     path={ scope && { ancestors, task: scope } }
                     onOpenScope={ open }
                     view={ view }
@@ -297,9 +333,14 @@ export function Screen() {
                     onSearchExit={ exitSearch }
                     isFilterOpen={ isFilterOpen }
                     onFilterOpenChange={ onFilterOpenChange }
+                    isArchive={ isArchive }
+                    onArchiveChange={ showArchive }
                 />
 
-                { scope && (
+                {/* Keyed by the project: the screen stays mounted when the person switches between two projects that both show their archive, and the list of one must not stand under the other. */}
+                { isArchive && <ArchiveView key={ project.id } statuses={ project.statuses } openId={ ui.taskId } onOpen={ id => nav.openTask(id) } /> }
+
+                { !isArchive && scope && (
                     <ScopeHeader
                         task={ scope }
                         status={ project.statuses.find(status => status.id === scope.statusId) }
@@ -310,7 +351,7 @@ export function Screen() {
                     />
                 ) }
 
-                { content.tasks.length === 0
+                { !isArchive && (content.tasks.length === 0
                     ? (
                         <ScopeEmpty
                             isScope={ scope !== undefined }
@@ -322,13 +363,13 @@ export function Screen() {
                         />
                     )
                     : (
-                        <div ref={ region } className={ styles.region } onClickCapture={ onClickCapture } onPointerMove={ onPointerMove } onFocus={ onFocus }>
+                        <div ref={ region } className={ styles.region } onClickCapture={ onClickCapture } onContextMenu={ onContextMenu } onPointerMove={ onPointerMove } onFocus={ onFocus }>
                             { content.mode === 'tree'
                                 ? <TaskList rows={ content.rows } statuses={ project.statuses } runsOfTask={ runsOfTask } notesOf={ notesOf } onOpenScope={ open } onToggle={ toggleFold } openId={ selected?.id ?? null } selectedIds={ cursor.selected } />
-                                : <Board columns={ content.columns } runsOfTask={ runsOfTask } notesOf={ notesOf } onOpenScope={ open } openId={ selected?.id ?? null } selectedIds={ cursor.selected } onMove={ move } />
+                                : <Board columns={ content.columns } runsOfTask={ runsOfTask } notesOf={ notesOf } onOpenScope={ open } openId={ selected?.id ?? null } selectedIds={ cursor.selected } onMove={ move } onArchive={ archiveDropped } />
                             }
                         </div>
-                    ) }
+                    )) }
             </div>
 
             { selected && (
@@ -344,7 +385,13 @@ export function Screen() {
                 />
             ) }
 
+            { opened.status === 'ready' && opened.task.archivedAt !== undefined && <ArchivedPanel key={ opened.task.id } task={ opened.task } /> }
+
+            { (opened.status === 'loading' || opened.status === 'failed') && <OpeningTask reading={ opened } onRetry={ retryOpened } onClose={ () => nav.openTask(null) } /> }
+
             { picker && <PickerPopover anchor={ picker.anchor } { ...picker.request } onClose={ () => setPicker(null) } /> }
+
+            { taskMenu.menu }
         </div>
     );
 }

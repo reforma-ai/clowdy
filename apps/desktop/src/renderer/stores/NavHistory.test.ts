@@ -444,6 +444,48 @@ describe('NavHistory entries that are gone', () => {
         expect(place()).toBe('p-car/tasks:t-26');
     });
 
+    describe('an archived task', () => {
+        it('is a place to go back and forward to once the window has read it, and is skipped when it was not read', async () => {
+            const project = root.selectedProject!;
+
+            ui().openTask('t-24');
+            // The window read CAR-38 (a dependency row, the archive view): it is opened, then another task.
+            await project.readTask('t-38');
+            ui().openTask('t-38');
+            ui().openTask('t-26');
+
+            root.history.back();
+            expect(place()).toBe('p-car/tasks:t-38');
+            root.history.back();
+            expect(place()).toBe('p-car/tasks:t-24');
+            root.history.forward();
+            expect(place()).toBe('p-car/tasks:t-38');
+
+            // An archived task the window has not read cannot be told from a task that is gone.
+            ui().openTask('t-39');
+            ui().openTask('t-25');
+            root.history.back();
+            expect(place()).toBe('p-car/tasks:t-38');
+        });
+
+        it('stops being one when it is deleted, and stays one when it is restored, now as a task of the board', async () => {
+            const project = root.selectedProject!;
+
+            await project.readTask('t-38');
+            await project.readTask('t-40');
+            ui().openTask('t-38');
+            ui().openTask('t-40');
+            ui().openTask('t-24');
+
+            expect((await root.command({ type: 'task.unarchive', taskId: 't-38' })).ok).toBe(true);
+            expect((await root.command({ type: 'task.delete', taskId: 't-40' })).ok).toBe(true);
+            await settle();
+
+            root.history.back();
+            expect(place()).toBe('p-car/tasks:t-38');
+        });
+    });
+
     it('does not offer a place that is showing already: open a task, delete it, close the panel, and back does not stand still', async () => {
         root.ui.showSection(ui(), 'tasks');
         ui().openTask('t-24');

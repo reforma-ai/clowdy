@@ -10,6 +10,7 @@ import { ListCursor } from '../../hotkeys/listCursor';
 import { createRegistry } from '../../hotkeys/registry';
 import { createUndoStack, type UndoStack } from '../../hotkeys/undo';
 import { RootStore } from '../../stores';
+import { archiveTasks } from './archiveActions';
 import { startTask } from './commands';
 import { taskCommands, TASKS_SCOPE, type TaskCommandDeps } from './taskCommands';
 import { sendWithUndo } from './taskUndo';
@@ -111,6 +112,7 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         view: () => 'list',
         setView: view => ui().setTasksView(view),
         scope: () => null,
+        isArchive: () => false,
         rows: () => [],
         setFolded: () => undefined,
         openScope: () => undefined,
@@ -124,6 +126,7 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         startBlocked: id => startBlockedReason(runsByTask(project().runTaskLinks.values(), project().runs).get(id)),
         send: inputs => sendWithUndo(root, project(), inputs, stack),
         undo: { canUndo: () => stack.canUndo(FIXTURE_PROJECT_ID), undoLatest: () => stack.undoLatest(FIXTURE_PROJECT_ID) },
+        archive: tasks => archiveTasks({ root, project: project(), ui: ui(), confirm: options => confirms.push(options), stack }, tasks),
         start: id => startTask(root, id),
         openPicker: request => pickers.push(request),
         confirm: options => confirms.push(options),
