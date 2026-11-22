@@ -8,34 +8,40 @@ import type { FolderGit } from './openTarget';
 /**
  * What git says about a folder of a project (its `origin` and the branch that is checked out), read from the daemon when the component is drawn, when the folder
  * changes and when the window gets focus again, since the branch changes in a terminal or by an agent while the app is in the background. Nothing until the
- * answer comes, and nothing when it fails: the menu then has no link and the label no branch.
+ * answer for this folder comes (never another folder's), and nothing when it fails: the menu then has no link and the label no branch.
  */
 export function useFolderGit(projectId: ProjectId, folderId: FolderId): FolderGit | undefined {
     const root = useRootStore();
-    const [git, setGit] = useState<FolderGit>();
+    const key = `${ projectId }/${ folderId }`;
+    const [read, setRead] = useState<{ key: string; git: FolderGit | undefined }>();
 
     useEffect(() => {
-        let isCurrent = true;
+        // The number of the latest read: an answer that comes after a newer read was made, or after this effect ended, is out of date.
+        let latest = 0;
 
-        const read = () => {
+        const readGit = () => {
+            const request = ++latest;
+
             root.transport.getProjectsInfo(projectId).then(
                 (infos) => {
+                    if (request !== latest) return;
+
                     const folder = infos.find(info => info.projectId === projectId)?.folders.find(entry => entry.folderId === folderId);
 
-                    if (isCurrent) setGit(folder && { remoteUrl: folder.remoteUrl, branch: folder.branch, detached: folder.detached });
+                    setRead({ key, git: folder && { remoteUrl: folder.remoteUrl, branch: folder.branch, detached: folder.detached } });
                 },
                 () => undefined
             );
         };
 
-        read();
-        window.addEventListener('focus', read);
+        readGit();
+        window.addEventListener('focus', readGit);
 
         return () => {
-            isCurrent = false;
-            window.removeEventListener('focus', read);
+            latest++;
+            window.removeEventListener('focus', readGit);
         };
-    }, [root, projectId, folderId]);
+    }, [root, projectId, folderId, key]);
 
-    return git;
+    return read?.key === key ? read.git : undefined;
 }
