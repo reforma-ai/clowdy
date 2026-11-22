@@ -5,6 +5,7 @@
 
 export type ProjectId = string;
 export type FolderId = string;
+export type WorkspaceId = string;
 export type ChatId = string;
 export type TaskId = string;
 export type RunId = string;
@@ -40,6 +41,24 @@ export interface ProjectFolder {
     id: FolderId;
     /** Absolute, with symbolic links resolved. */
     path: string;
+    /** What the worktrees made from this folder need: the branch they start from and a setup. Belongs to this folder of this project (the same path in another project has its own). Absent when none is set. */
+    settings?: FolderSettings;
+}
+
+/** The settings of one folder of a project, for the worktrees chats make from it. */
+export interface FolderSettings {
+    /** The branch a new worktree starts from (`main`, `origin/next`), in place of the folder's default branch; one the repository does not have is skipped. */
+    baseBranch?: string;
+    /** What makes a new worktree ready to run. */
+    setup?: WorkspaceSetup;
+}
+
+/** Run by `Prepare workspace` after a worktree is checked out: files copied from the folder's main checkout, then one command. */
+export interface WorkspaceSetup {
+    /** Relative paths below the folder, or with a `*` in the last segment (`.env*`), copied when they exist in the main checkout and not in the worktree. */
+    files: string[];
+    /** A script for the system's shell (`sh -c`, `cmd /c` on Windows), run in the worktree. */
+    command?: string;
 }
 
 /** The main folder of a project: the first of its folders, where its agents work. */
@@ -80,6 +99,8 @@ export interface ProjectInfo {
     tasks: number;
     /** Runs that are not finished. Removing the project or choosing another main folder waits until there are none. */
     activeRuns: number;
+    /** The workspaces of the project's chats, read as the folders are. Absent when no chat has one. */
+    workspaces?: ProjectWorkspaceInfo[];
 }
 
 export interface ProjectFolderInfo {
@@ -100,6 +121,16 @@ export interface ProjectFolderInfo {
     detached?: true;
     /** How many chats work in this folder by choice (`Chat.folderId`): they go back to the main folder when the folder leaves the project. */
     chats: number;
+}
+
+/** What `GET /v1/projects/info` reads of one workspace (a worktree a chat works in): whether it is there and the branch it has checked out now. */
+export interface ProjectWorkspaceInfo {
+    workspaceId: WorkspaceId;
+    /** False when the worktree's folder is gone from the disk, or was not made yet. */
+    exists: boolean;
+    /** The branch checked out in it, or on a detached HEAD the short hash of the commit (with `detached`); absent when it does not exist or is no repository. */
+    branch?: string;
+    detached?: true;
 }
 
 export interface ProjectSettings {
@@ -176,6 +207,11 @@ export interface Chat {
      */
     folderId?: FolderId;
     /**
+     * The worktree the chat works in, in place of the folder's own checkout (`ChatWorkspace`): chosen when the chat is made and never changed after, shared with
+     * the threads below the chat and with its forks. Absent for a chat that works in the folder itself.
+     */
+    workspace?: ChatWorkspace;
+    /**
      * Set on a chat made by `chat.fork`: where its conversation was taken from. `atSeq` is the `seq` of the last item the new chat's stream has from the
      * source (the answer the fork was made at), so what comes after it is the fork's own; the copied items keep the `seq` they had in the source. A fork is no
      * thread (`parentChatId` stays empty) and no child: it lives on when the source is archived or deleted, which leaves `chatId` naming a chat that is gone.
@@ -195,6 +231,27 @@ export interface Chat {
     createdAt: number;
     updatedAt: number;
 }
+
+/**
+ * The worktree a chat works in: a checkout of the chat's folder (`Chat.folderId`, else the main folder) on a branch of its own or one that was there already.
+ * Several chats may share one. The git worktree itself is made at the chat's first turn (`Prepare workspace`), so `ready` is false until then.
+ */
+export interface ChatWorkspace {
+    id: WorkspaceId;
+    /** The folder of the project it is a checkout of. */
+    folderId: FolderId;
+    /** Absolute: where the agent's working directory is. */
+    path: string;
+    /** The branch it was made or picked with, which the agent may since have switched (the branch it has now is `ProjectWorkspaceInfo.branch`). Absent for a worktree on a detached HEAD. */
+    branch?: string;
+    /** Clowdy made it (under the workspaces folder), so Clowdy may remove it; false for a worktree it merely found. */
+    managed: boolean;
+    /** The worktree exists and is set up; false until the first turn made it. */
+    ready: boolean;
+}
+
+/** Where a new chat works when it is not in the folder itself: in a new worktree started from `base` (the folder's default branch when absent), or in a worktree that exists. */
+export type ChatWorkspaceChoice = { mode: 'new'; base?: string } | { mode: 'existing'; path: string };
 
 /** How a thread ended its turn, as its parent is told. */
 export type ThreadOutcome = 'finished' | 'failed' | 'interrupted';

@@ -13,6 +13,10 @@ const base = { requestId: z.string().min(8).max(100) };
 const chatMode = z.enum(['autopilot', 'semi']);
 const engine = z.string().min(1).max(64);
 const model = z.string().min(1).max(200);
+const chatWorkspaceChoice = z.union([
+    z.object({ mode: z.literal('new'), base: z.string().min(1).max(300).optional() }).strict(),
+    z.object({ mode: z.literal('existing'), path: z.string().min(1) }).strict(),
+]);
 const effort = z.string().min(1).max(64);
 const actor = z.object({ kind: z.literal('user') });
 const queuedMode = z.enum(['steer', 'queue']);
@@ -56,8 +60,10 @@ export const commandSchema = z.discriminatedUnion('type', [
     /**
      * `engine`, `model` and `effort` bind the chat to an agent, a model and a reasoning level (see `Chat`); left out, the first message takes the project's or the daemon's.
      * `folderId` is a folder of the project the chat works in; left out, the chat works in the main folder. A folder the project does not have is refused.
+     * `workspace` has the chat work in a worktree of that folder (`ChatWorkspaceChoice`): a new one, which the chat's first turn makes, or one `git worktree list` names for
+     * the folder; left out, in the folder itself. Refused for a folder that is not the root of a repository, a base that is not a ref of it, or a path that is not one of its worktrees.
      */
-    z.object({ ...base, type: z.literal('chat.create'), projectId: z.string(), title: z.string().optional(), mode: chatMode.optional(), engine: engine.optional(), model: model.optional(), effort: effort.optional(), folderId: z.string().min(1).optional() }),
+    z.object({ ...base, type: z.literal('chat.create'), projectId: z.string(), title: z.string().optional(), mode: chatMode.optional(), engine: engine.optional(), model: model.optional(), effort: effort.optional(), folderId: z.string().min(1).optional(), workspace: chatWorkspaceChoice.optional() }),
     z.object({ ...base, type: z.literal('chat.rename'), chatId: z.string(), title: z.string().min(1) }),
     z.object({ ...base, type: z.literal('chat.setMode'), chatId: z.string(), mode: chatMode }),
     /**
@@ -74,8 +80,11 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('chat.compact'), chatId: z.string() }),
     /** Hides the chat from the lists without deleting anything (refused while any of its runs is active), or brings it back. */
     z.object({ ...base, type: z.literal('chat.setArchived'), chatId: z.string(), archived: z.boolean() }),
-    /** Removes the chat with its orchestrator's conversation and every run below it; the tasks stay. Refused while any of its runs is active. */
-    z.object({ ...base, type: z.literal('chat.delete'), chatId: z.string() }),
+    /**
+     * Removes the chat with its orchestrator's conversation and every run below it; the tasks stay. Refused while any of its runs is active. `removeWorkspace` also removes
+     * the chat's worktree and its branch, which only a worktree that `GET /v1/chats/:id/workspace` calls `removable` allows (`conflict` otherwise, and nothing is deleted).
+     */
+    z.object({ ...base, type: z.literal('chat.delete'), chatId: z.string(), removeWorkspace: z.boolean().optional() }),
     /**
      * `text` may be empty when `attachmentIds` (files uploaded to the chat's project, not sent yet) name at least one file. A chat at rest (no orchestrator yet,
      * a finished one, or one waiting for background work) gets the message at once, whatever `mode` says. A busy orchestrator gets it later: `mode` puts it in the

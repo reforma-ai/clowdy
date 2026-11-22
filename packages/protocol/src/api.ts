@@ -22,6 +22,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * POST /v1/commands                       -> body Command, answers CommandResult
  * GET  /v1/runs/:id/items?after=SEQ       -> StreamItem[] (a run's stream, also an orchestrator's chat)
  * GET  /v1/chats/:id/items?after=SEQ      -> StreamItem[] (the chat's orchestrator stream)
+ * GET  /v1/chats/:id/workspace            -> ChatWorkspaceRemoval (whether the chat's worktree can be removed together with the chat, which is what `chat.delete`'s
+ *                                            `removeWorkspace` asks for; `removable` is false for a chat with no worktree; `not_found` for no such chat)
  * GET  /v1/tasks/:id/detail               -> TaskDetail (the task itself, an archived one too, so a client can open a task its snapshot does not hold,
  *                                            with the ids of its chats and runs and its artifacts; `not_found` for no such task)
  * GET  /v1/projects/:id/tasks/:key/detail -> TaskDetail (the same answer as `GET /v1/tasks/:id/detail`, for the task a key such as `CAR-12` names in that
@@ -79,6 +81,7 @@ export const ROUTES = {
     commands: '/v1/commands',
     runItems: (runId: string) => `/v1/runs/${ encodeURIComponent(runId) }/items`,
     chatItems: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/items`,
+    chatWorkspace: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/workspace`,
     taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
     projectTaskDetail: (projectId: string, key: string) => `/v1/projects/${ encodeURIComponent(projectId) }/tasks/${ encodeURIComponent(key) }/detail`,
     taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
@@ -104,6 +107,18 @@ export const MAX_PROJECT_FOLDERS = 50;
 
 /** The longest `ProjectSettings.icon`: a 64px PNG the app made is a few kilobytes as a data URL. */
 export const MAX_PROJECT_ICON_LENGTH = 64 * 1024;
+
+/** What `GET /v1/chats/:id/workspace` says: the chat's worktree and whether deleting the chat may remove it (and its branch) too. */
+export interface ChatWorkspaceRemoval {
+    /**
+     * True only for a worktree that Clowdy made, that is on the disk, that no chat outside this chat and the threads below it uses, in which nothing is uncommitted
+     * (a new file counts) and whose branch is contained in the ref it was started from, as last fetched. False when there is no worktree, and for any other reason.
+     */
+    removable: boolean;
+    /** The worktree's path and branch, when the chat has one. */
+    path?: string;
+    branch?: string;
+}
 
 /** The most branches `GET /v1/projects/:id/git` lists: a repository with more is cut, local branches first, and `FolderGit.truncated` says so. */
 export const MAX_GIT_BRANCHES = 1000;

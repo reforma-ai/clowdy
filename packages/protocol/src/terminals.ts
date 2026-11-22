@@ -1,4 +1,4 @@
-import type { FolderId, ProjectId } from './domain';
+import type { FolderId, ProjectId, WorkspaceId } from './domain';
 
 /**
  * Terminals: shells the daemon runs on a pseudo-terminal in one of a project's folders. The shell belongs to the daemon, not to the window: a reload, a second
@@ -49,6 +49,8 @@ export interface TerminalInfo {
     id: TerminalId;
     projectId: ProjectId;
     folderId: FolderId;
+    /** Set when the shell runs in a worktree of the folder (`ChatWorkspace`) in place of the folder's own checkout. */
+    workspaceId?: WorkspaceId;
     /** Absolute path the shell started in. */
     cwd: string;
     /** The shell program's name, `zsh`, `bash`, `pwsh`: what a tab can be called. */
@@ -64,7 +66,9 @@ export interface TerminalInfo {
 export interface TerminalCreate {
     projectId: ProjectId;
     folderId: FolderId;
-    /** A folder below the project folder, `/` separators, `''` or absent for the folder itself. */
+    /** A worktree of the folder to start in, in place of the folder's own checkout; refused when it is not a workspace of that folder, or is not made yet. */
+    workspaceId?: WorkspaceId;
+    /** A folder below the project folder (or the worktree), `/` separators, `''` or absent for the folder itself. */
     path?: string;
     cols: number;
     rows: number;
