@@ -306,4 +306,94 @@ describe('tasks', () => {
         expect(detail.task.archivedAt).toBeGreaterThan(0);
         expect(detail.task.closedAt).toBeGreaterThan(0);
     });
+
+    describe('the task detail by key', () => {
+        const byKey = (projectId: string, key: string) => h.fetch(`/v1/projects/${ encodeURIComponent(projectId) }/tasks/${ encodeURIComponent(key) }/detail`);
+
+        test('answers what the detail by id does, for a task on the board and for an archived one', async () => {
+            const { projectId, create } = setup();
+            const done = h.statuses(projectId).find(status => status.category === 'done')!.id;
+            const { chat } = h.ok('chat.create', { projectId });
+            const onBoard = create('On the board', { chatId: chat.id });
+            const epic = create('Epic');
+            const stage = h.ok('task.create', { projectId, title: 'Stage', parentId: epic.id, statusId: done }).task;
+
+            h.ok('task.update', { taskId: epic.id, statusId: done });
+            h.ok('task.archive', { taskId: epic.id });
+
+            const board = await byKey(projectId, onBoard.key);
+            const archived = await byKey(projectId, stage.key);
+
+            expect(board.status).toBe(200);
+
+            const boardDetail = await board.json() as TaskDetail;
+
+            expect(boardDetail).toEqual(await (await h.fetch(`/v1/tasks/${ onBoard.id }/detail`)).json());
+            expect(boardDetail).toMatchObject({ taskId: onBoard.id, task: { key: onBoard.key }, chatIds: [chat.id] });
+            expect(archived.status).toBe(200);
+
+            const detail = await archived.json() as TaskDetail;
+
+            expect(detail).toEqual({ taskId: stage.id, task: getTask(h.store.db, stage.id)!, chatIds: [], runIds: [], artifacts: [] });
+            expect(detail.task).toMatchObject({ key: stage.key, parentId: epic.id });
+            expect(detail.task.archivedAt).toBeGreaterThan(0);
+        });
+
+        test('takes the prefix in any case, as the reference of a command does', async () => {
+            const { projectId, create } = setup();
+            const task = create('Mixed case');
+            const [prefix, number] = task.key.split('-');
+
+            for (const key of [task.key, `${ prefix.toLowerCase() }-${ number }`, `${ prefix[0] }${ prefix.slice(1).toLowerCase() }-${ number }`]) {
+                const response = await byKey(projectId, key);
+
+                expect(response.status).toBe(200);
+                expect(((await response.json()) as TaskDetail).taskId).toBe(task.id);
+            }
+        });
+
+        test('is not_found, never invalid, for an unknown number, another project\'s key, a malformed key and an unknown project', async () => {
+            const { projectId, create } = setup();
+            const other = h.openRepo('other');
+            const mine = create('Mine');
+            const foreign = h.ok('task.create', { projectId: other.id, title: 'Foreign' }).task;
+            const [prefix] = mine.key.split('-');
+            const keys = [
+                // Nobody has this number, or a number too large to be one.
+                `${ prefix }-999`,
+                `${ prefix }-0`,
+                `${ prefix }-99999999999999999999999`,
+                // The other project's key, which that project has: a project answers for its own keys only.
+                foreign.key,
+                // Not a key at all.
+                prefix,
+                `${ prefix }-`,
+                `-${ mine.key.split('-')[1] }`,
+                mine.key.split('-')[1],
+                `${ prefix }-abc`,
+                `${ prefix }-1.5`,
+                `${ mine.key } `,
+                `${ mine.key }-2`,
+                `${ prefix }--1`,
+                mine.id,
+                '',
+                'x/y',
+            ];
+
+            for (const key of keys) {
+                const response = await byKey(projectId, key);
+
+                expect([key, response.status]).toEqual([key, 404]);
+                expect([key, ((await response.json()) as { error: { code: string } }).error.code]).toEqual([key, 'not_found']);
+            }
+
+            const project = await byKey('prj_nope', mine.key);
+
+            expect(project.status).toBe(404);
+            expect(((await project.json()) as { error: { code: string } }).error.code).toBe('not_found');
+            // The other project still reads its own task, so the refusal above was about the project asked.
+            expect((await byKey(other.id, foreign.key)).status).toBe(200);
+            expect((await byKey(other.id, mine.key)).status).toBe(404);
+        });
+    });
 });

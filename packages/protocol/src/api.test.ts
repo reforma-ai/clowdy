@@ -10,6 +10,13 @@ describe('ROUTES', () => {
     });
 });
 
+describe('ROUTES.projectTaskDetail', () => {
+    test('a task is read by its key from beside its project, with both segments made safe for a path', () => {
+        expect(ROUTES.projectTaskDetail('prj_1', 'CAR-12')).toBe('/v1/projects/prj_1/tasks/CAR-12/detail');
+        expect(ROUTES.projectTaskDetail('a/b?c', 'x/y?z')).toBe('/v1/projects/a%2Fb%3Fc/tasks/x%2Fy%3Fz/detail');
+    });
+});
+
 describe('ROUTES.projectArchivedTasks', () => {
     test('the archive of a project is read from beside its snapshot, with the id made safe for a path', () => {
         expect(ROUTES.projectArchivedTasks('prj_1')).toBe('/v1/projects/prj_1/archived-tasks');

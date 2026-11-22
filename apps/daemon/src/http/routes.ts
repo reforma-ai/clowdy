@@ -7,7 +7,7 @@ import { requireChat } from '../domain/chats';
 import { streamItems } from '../domain/items';
 import { findProjectIcon } from '../domain/projectIcon';
 import { projectsInfo, requireProject } from '../domain/projects';
-import { projectSnapshot, rootSnapshot, taskDetail } from '../domain/snapshots';
+import { projectSnapshot, rootSnapshot, taskDetail, taskDetailByKey } from '../domain/snapshots';
 import { archivedTasksPage } from '../domain/taskArchive';
 import { taskCommentsPage } from '../domain/taskComments';
 import { DEFAULT_LIMIT } from '../domain/taskQuery';
@@ -157,6 +157,8 @@ export function createRoutes(context: RouteContext): Route[] {
             },
         },
         { method: 'GET', pattern: /^\/v1\/tasks\/([^/]+)\/detail$/, handle: (_request, _url, [id]) => json(taskDetail(store, id)) },
+        // The same answer by a task's key within a project; the key segment is escaped by the client like any other.
+        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/tasks\/([^/]+)\/detail$/, handle: (_request, _url, [id, key]) => json(taskDetailByKey(store, id, key)) },
         {
             method: 'GET',
             pattern: /^\/v1\/tasks\/([^/]+)\/comments$/,
