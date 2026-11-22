@@ -45,6 +45,7 @@ interface StoredProjectUi {
     agentsFolded: boolean;
     sidePanelOpen: boolean;
     sidePanelTab: SidePanelTab;
+    sidePanelExpanded: boolean;
     tasksView: TasksView;
     tasksScope: TaskId | null;
     tasksSubtasks: boolean;
@@ -125,8 +126,8 @@ export class ProjectUi {
     /** The tab the side panel shows, kept for the project: the one it was left on. */
     sidePanelTab: SidePanelTab = 'info';
     /**
-     * The side panel takes the place of the chat, and only the list of chats stays beside it. It is the project's choice, apart from whether the panel is open: a shut panel
-     * shows the chat in full and brings the panel back expanded. Choosing a chat while the panel is open ends it (`#showChat`). Not kept between sessions.
+     * The side panel takes the place of the chat, and only the list of chats stays beside it. It is the project's choice, kept for it and apart from whether the panel is open:
+     * a shut panel shows the chat in full and brings the panel back expanded. Choosing a chat while the panel covers it shuts the panel and leaves the choice (`#showChat`).
      */
     sidePanelExpanded = false;
     tasksView: TasksView = 'board';
@@ -171,6 +172,7 @@ export class ProjectUi {
             this.agentsFolded = stored.agentsFolded === true;
             this.sidePanelOpen = stored.sidePanelOpen === true;
             this.sidePanelTab = SIDE_PANEL_TABS.find(tab => tab === stored.sidePanelTab) ?? this.sidePanelTab;
+            this.sidePanelExpanded = stored.sidePanelExpanded === true;
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';
             this.tasksScope = idOrNull(stored.tasksScope);
             this.tasksSubtasks = stored.tasksSubtasks === true;
@@ -192,6 +194,7 @@ export class ProjectUi {
                 agentsFolded: this.agentsFolded,
                 sidePanelOpen: this.sidePanelOpen,
                 sidePanelTab: this.sidePanelTab,
+                sidePanelExpanded: this.sidePanelExpanded,
                 tasksView: this.tasksView,
                 tasksScope: this.tasksScope,
                 tasksSubtasks: this.tasksSubtasks,
@@ -368,9 +371,12 @@ export class ProjectUi {
         }
     }
 
-    /** A chat is chosen: an open panel that covered the chat gives the place back. A shut panel keeps the choice, so it comes back expanded. */
+    /**
+     * A chat is chosen: an open panel that covers the chat is shut, so the chat shows, and the choice of the expanded size stays as the person made it: the panel comes
+     * back in it. A panel beside the chat, or a shut one, is left as it is.
+     */
     #showChat(): void {
-        if (this.sidePanelOpen) this.sidePanelExpanded = false;
+        if (this.sidePanelOpen && this.sidePanelExpanded) this.sidePanelOpen = false;
     }
 
     /** Shuts the side panel; nothing when it is shut. */

@@ -646,9 +646,10 @@ describe('UiStore', () => {
         expect(ui.sidePanelOpen).toBe(false);
     });
 
-    it('keeps the side panel expanded apart from whether it is open, and not between sessions', () => {
+    it('keeps the side panel expanded apart from whether it is open, per project and between sessions', () => {
         const storage = memoryStorage();
-        const ui = new UiStore(storage).forProject('p1');
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
 
         expect(ui.sidePanelExpanded).toBe(false);
 
@@ -662,18 +663,15 @@ describe('UiStore', () => {
         ui.toggleSidePanelTab('terminal');
         expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
 
-        expect(new UiStore(storage).forProject('p1').sidePanelExpanded).toBe(false);
+        expect(store.forProject('p2').sidePanelExpanded).toBe(false);
+        expect(new UiStore(storage).forProject('p1').sidePanelExpanded).toBe(true);
 
         ui.toggleSidePanelExpanded();
-        expect(ui.sidePanelExpanded).toBe(false);
+        expect(new UiStore(storage).forProject('p1').sidePanelExpanded).toBe(false);
     });
 
-    it('gives the chat its place back when a chat is chosen with the panel open, and only then', () => {
+    it('shuts a panel that covers the chat when a chat is chosen, and leaves the choice of the expanded size', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
-        const expand = () => {
-            ui.sidePanelOpen = true;
-            ui.sidePanelExpanded = true;
-        };
         const choose = [
             ['a chat', () => ui.openChat('c1')],
             ['the chat that is open already', () => ui.openChat(ui.chatId)],
@@ -682,21 +680,35 @@ describe('UiStore', () => {
         ] as const;
 
         for (const [, open] of choose) {
-            expand();
+            ui.sidePanelOpen = true;
+            ui.sidePanelExpanded = true;
             open();
-            expect(ui.sidePanelExpanded).toBe(false);
+            expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, true]);
         }
 
-        // With the panel shut the chat is in full already: the choice stays for when the panel is opened again.
+        // The panel comes back where the chat has not moved, expanded as it was left.
+        ui.toggleSidePanel();
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
+    });
+
+    it('leaves a panel beside the chat, and a shut one, as they are when a chat is chosen', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.sidePanelOpen = true;
+        ui.openChat('c1');
+        ui.openRun('r1');
+        ui.openDraft();
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, false]);
+
         ui.sidePanelOpen = false;
         ui.sidePanelExpanded = true;
         ui.openChat('c2');
         ui.openRun('r2');
         ui.openDraft();
-        expect(ui.sidePanelExpanded).toBe(true);
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, true]);
     });
 
-    it('gives the chat its place back when history shows another chat, and not when it shows the same one', () => {
+    it('shuts a panel that covers the chat when history shows another chat, and not when it shows the same one', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 
         ui.openChat('c1');
@@ -704,10 +716,10 @@ describe('UiStore', () => {
         ui.sidePanelExpanded = true;
 
         ui.show({ ...ui.view, section: 'tasks' });
-        expect(ui.sidePanelExpanded).toBe(true);
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
 
         ui.show({ ...ui.view, chatId: 'c2' });
-        expect(ui.sidePanelExpanded).toBe(false);
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, true]);
     });
 
     it('opens the side panel on a tab from a shut panel or another tab, and never shuts it', () => {
