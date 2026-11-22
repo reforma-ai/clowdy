@@ -175,11 +175,11 @@ describe('CORS', () => {
 
         expect(response.status).toBe(204);
         expect(response.headers.get('access-control-allow-origin')).toBe('app://clowdy');
-        expect(response.headers.get('access-control-allow-methods')).toBe('GET, POST, DELETE, OPTIONS');
+        expect(response.headers.get('access-control-allow-methods')).toBe('GET, POST, PUT, DELETE, OPTIONS');
 
         const allowed = response.headers.get('access-control-allow-headers')!.toLowerCase();
 
-        for (const header of ['authorization', 'content-type', 'x-clowdy-protocol', 'last-event-id']) {
+        for (const header of ['authorization', 'content-type', 'x-clowdy-protocol', 'last-event-id', 'if-match', 'if-none-match']) {
             expect(allowed).toContain(header);
         }
 

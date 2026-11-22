@@ -12,6 +12,7 @@ import { createEngines } from './engine';
 import { CHAT_TITLE_SETTING } from './engine/acp/catalog';
 import { AgentRegistry } from './engine/acp/registry';
 import { FilesService } from './files/service';
+import { FsService } from './fs/service';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
 import { announceAgentsChanged } from './providers/announce';
@@ -94,7 +95,8 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             registry: agents,
             announce: () => announceAgentsChanged(store),
         });
-        const services: Services = { config, store, runs, driver, queue, threads, docs, files: new FilesService(), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
+        const files = new FilesService();
+        const services: Services = { config, store, runs, driver, queue, threads, docs, files, fs: new FsService(files), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
 
         await runs.recover();
         attachments.sweep();
@@ -116,6 +118,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             providers.stop();
             services.models.stop();
             docs.stop();
+            services.fs.stop();
             skills.stop();
             store.db.close();
             removeInfo();

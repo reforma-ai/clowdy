@@ -1,7 +1,8 @@
-import { PROTOCOL_HEADER, PROTOCOL_VERSION } from '@clowdy/protocol';
+import { FS_VERSION_HEADER, PROTOCOL_HEADER, PROTOCOL_VERSION } from '@clowdy/protocol';
 
 import { CommandError, invalid, TooLargeError } from '../errors';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT } from './body';
+import { fsRoutes } from './fs-routes';
 import { ALLOWED_HEADERS, isAllowedOrigin, isLoopbackHost, protocolMismatch, tokenMatches } from './guard';
 import { bodyTooLarge, failure, forbidden } from './responses';
 import { createRoutes } from './routes';
@@ -30,7 +31,8 @@ function decode(segment: string): string {
 /** Binds 127.0.0.1 only; `port` 0 picks a free port. */
 export function startServer({ services, version, startedAt, heartbeatMs, shutdown }: ServerOptions): Server<undefined> {
     const { config } = services;
-    const routes = createRoutes({ services, version, startedAt, heartbeatMs, shutdown, keepOpen: request => server.timeout(request, 0) });
+    const context = { services, version, startedAt, heartbeatMs, shutdown, keepOpen: (request: Request) => server.timeout(request, 0) };
+    const routes = [...createRoutes(context), ...fsRoutes(context)];
 
     async function route(request: Request): Promise<Response> {
         const url = new URL(request.url);
@@ -91,12 +93,13 @@ export function startServer({ services, version, startedAt, heartbeatMs, shutdow
             return forbidden('This origin is not allowed');
         }
 
-        const cors: Record<string, string> = origin === null ? {} : { 'access-control-allow-origin': origin, vary: 'Origin' };
+        // The version of a file is a header a page may read only when it is exposed.
+        const cors: Record<string, string> = origin === null ? {} : { 'access-control-allow-origin': origin, 'access-control-expose-headers': FS_VERSION_HEADER, vary: 'Origin' };
 
         if (request.method === 'OPTIONS') {
             return new Response(null, {
                 status: 204,
-                headers: { ...cors, 'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS', 'access-control-allow-headers': ALLOWED_HEADERS, 'access-control-max-age': '600' },
+                headers: { ...cors, 'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS', 'access-control-allow-headers': ALLOWED_HEADERS, 'access-control-max-age': '600' },
             });
         }
 

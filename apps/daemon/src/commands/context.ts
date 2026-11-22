@@ -4,6 +4,7 @@ import type { Config } from '../config';
 import type { DocsService } from '../docs/service';
 import type { AgentRegistry } from '../engine/acp/registry';
 import type { FilesService } from '../files/service';
+import type { FsService } from '../fs/service';
 import type { ModelCatalog } from '../providers/models';
 import type { ProvidersService } from '../providers/service';
 import type { RunDriver } from '../runs/driver';
@@ -25,6 +26,8 @@ export interface Services {
     threads: ThreadService;
     docs: DocsService;
     files: FilesService;
+    /** The files of a project's folders for the file manager. */
+    fs: FsService;
     attachments: AttachmentsService;
     skills: SkillsService;
     agents: AgentRegistry;
