@@ -1,0 +1,25 @@
+/*
+ * The panel inside the frame is a rect whose left edge, width and radius are CSS properties (the geometry of the state comes in as custom properties from `PanelIcon`):
+ * the state it is in, and, while the pointer is over the button the icon is in, the one a press leads to, with the move between them as a transition.
+ */
+.panel {
+    x: var(--from-x);
+    width: var(--from-width);
+    rx: var(--from-rx);
+    transition:
+        x 260ms var(--ease-in-out),
+        width 260ms var(--ease-in-out),
+        rx 260ms var(--ease-in-out);
+}
+
+:is(button, [role='button']):hover .icon .panel {
+    x: var(--to-x);
+    width: var(--to-width);
+    rx: var(--to-rx);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .panel {
+        transition: none;
+    }
+}

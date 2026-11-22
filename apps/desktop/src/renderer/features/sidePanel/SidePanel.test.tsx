@@ -113,35 +113,31 @@ afterEach(() => {
 });
 
 describe('the corner over the rail', () => {
-    const icon = () => expandButton()?.querySelector('svg')?.innerHTML;
+    // The icon is one, drawn for the state the panel is in and moving to the one a press leads to.
+    const icon = () => `${ expandButton()?.querySelector('svg')?.getAttribute('data-state') } > ${ expandButton()?.querySelector('svg')?.getAttribute('data-next') }`;
     const label = () => expandButton()?.getAttribute('aria-label');
 
-    it('steps the panel through shown, expanded and hidden with one button, which says what a press does and draws the state it leads to', async () => {
+    it('steps the panel through shown, expanded and hidden with one button, which says what a press does and has an icon that draws the panel as it is and moves to what it will be', async () => {
         await draw(<><Layout><p>The page</p></Layout><Corner /></>);
 
         expect(label()).toBe('Show panel');
-
-        const toNarrow = icon();
+        expect(icon()).toBe('none > small');
 
         await press(expandButton()!);
 
         expect(ui().sidePanelOpen).toBe(true);
         expect(panel()?.hasAttribute('data-expanded')).toBe(false);
         expect(label()).toBe('Expand panel');
-
-        const toWide = icon();
+        expect(icon()).toBe('small > large');
 
         await press(expandButton()!);
 
         expect(ui().sidePanelExpanded).toBe(true);
         expect(panel()?.hasAttribute('data-expanded')).toBe(true);
         expect(label()).toBe('Hide panel');
+        expect(icon()).toBe('large > none');
         // The edge between the page and the panel lies under the expanded panel.
         expect(container.querySelector<HTMLElement>('[role="separator"]')?.className).toMatch(/edgeCovered/);
-
-        const toNone = icon();
-
-        expect(new Set([toNarrow, toWide, toNone]).size).toBe(3);
 
         await press(expandButton()!);
 
@@ -149,14 +145,12 @@ describe('the corner over the rail', () => {
         expect(panel()).toBeNull();
         // Hidden from the button, the panel comes back beside the chat: the cycle goes round.
         expect(label()).toBe('Show panel');
-        expect(icon()).toBe(toNarrow);
+        expect(icon()).toBe('none > small');
     });
 
-    it('opens a panel that was shut while expanded, by another way than the button, expanded again, with the wide icon on the button', async () => {
+    it('opens a panel that was shut while expanded, by another way than the button, expanded again, with the icon moving to the wide panel', async () => {
         act(() => ui().toggleSidePanel());
         await draw(<><Layout><p>The page</p></Layout><Corner /></>);
-
-        const wide = icon();
 
         act(() => ui().toggleSidePanelExpanded());
         act(() => ui().toggleSidePanel());
@@ -164,12 +158,13 @@ describe('the corner over the rail', () => {
 
         expect(panel()).toBeNull();
         expect(label()).toBe('Show panel');
-        expect(icon()).toBe(wide);
+        expect(icon()).toBe('none > large');
 
         await press(expandButton()!);
 
         expect(panel()?.hasAttribute('data-expanded')).toBe(true);
         expect(label()).toBe('Hide panel');
+        expect(icon()).toBe('large > none');
     });
 
     it('is as wide as the rail even with no project, and has no button there', async () => {
