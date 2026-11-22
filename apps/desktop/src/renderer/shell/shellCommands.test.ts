@@ -2,9 +2,10 @@
 import { observable, runInAction } from 'mobx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SIDE_PANEL_KEYS } from '../features/sidePanel';
 import { installDispatcher } from '../hotkeys/dispatcher';
 import { commandHint } from '../hotkeys/react';
-import { createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
+import { commandPresses, createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
 import { UiStore } from '../stores';
 import { findCommands } from './findCommands';
 import { navCommandId, NEW_CHAT_COMMAND, shellCommands, type ShellCommandsRoot } from './shellCommands';
@@ -455,16 +456,21 @@ describe('the terminal key', () => {
 describe('the side panel', () => {
     const panelOpen = () => ui.forProject('p').sidePanelOpen;
 
-    it('opens and shuts the selected project\'s panel on Cmd+Shift+B, and on the key of a layout without Latin letters', () => {
-        const first = press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true });
+    it('opens and shuts the selected project\'s panel on Cmd+Esc', () => {
+        const first = press({ key: 'Escape', code: 'Escape', metaKey: true });
 
         expect(panelOpen()).toBe(true);
         expect(first.defaultPrevented).toBe(true);
 
-        press({ key: 'И', code: 'KeyB', metaKey: true, shiftKey: true });
+        press({ key: 'Escape', code: 'Escape', metaKey: true });
 
         expect(panelOpen()).toBe(false);
         expect(ui.forProject('other').sidePanelOpen).toBe(false);
+    });
+
+    it('has Cmd+Esc on a Mac and Ctrl+Shift+B elsewhere, where Ctrl+Esc is the Start menu', () => {
+        expect(commandPresses({ keys: SIDE_PANEL_KEYS }, 'darwin')).toEqual([['meta', 'escape']]);
+        expect(commandPresses({ keys: SIDE_PANEL_KEYS }, 'win32')).toEqual([['ctrl', 'shift', 'b']]);
     });
 
     it('works from a text field, since the message box is where a hand is', () => {
@@ -473,7 +479,7 @@ describe('the side panel', () => {
         document.body.append(input);
 
         try {
-            press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true }, input);
+            press({ key: 'Escape', code: 'Escape', metaKey: true }, input);
 
             expect(panelOpen()).toBe(true);
         }
@@ -482,12 +488,12 @@ describe('the side panel', () => {
         }
     });
 
-    it('does nothing, and leaves the key to the page, where the window shows no project (Settings, loading), and does not take Cmd+B alone', () => {
+    it('does nothing, and leaves the key to the page, where the window shows no project (Settings, loading), and takes neither a plain Esc nor Cmd+Shift+B', () => {
         runInAction(() => {
             screen.shown = false;
         });
 
-        const event = press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true });
+        const event = press({ key: 'Escape', code: 'Escape', metaKey: true });
 
         expect(panelOpen()).toBe(false);
         expect(event.defaultPrevented).toBe(false);
@@ -495,13 +501,17 @@ describe('the side panel', () => {
         runInAction(() => {
             screen.shown = true;
         });
-        press({ key: 'b', code: 'KeyB', metaKey: true });
+
+        const plain = press({ key: 'Escape', code: 'Escape' });
+
+        press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true });
 
         expect(panelOpen()).toBe(false);
+        expect(plain.defaultPrevented).toBe(false);
     });
 
     it('shows its key as the hint of the toggle button, and none where it cannot run', () => {
-        expect(commandHint('sidePanel.toggle', registry)).toEqual([['shift', 'meta', 'b']]);
+        expect(commandHint('sidePanel.toggle', registry)).toEqual([['meta', 'escape']]);
 
         runInAction(() => {
             screen.shown = false;

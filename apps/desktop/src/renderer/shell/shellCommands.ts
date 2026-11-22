@@ -26,7 +26,7 @@ export interface ShellCommandsRoot extends Pick<RootStore, 'phase' | 'selectedPr
 }
 
 /**
- * The commands that work in every section, for `useCommands('app', …)`: the shortcuts page of Settings, the `G` chords that switch sections, `Cmd+N` for a new chat, `Cmd+Shift+B` for
+ * The commands that work in every section, for `useCommands('app', …)`: the shortcuts page of Settings, the `G` chords that switch sections, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
  * the side panel, `Ctrl+`` for its terminal, and back and forward.
  * `?` opens Settings on its Shortcuts page, once the window shows anything to open it over: while the app loads or cannot reach its daemon, the key reaches the page.
  * A section chord and a new chat need a selected project, as the Rail's buttons do, and also leave Settings.

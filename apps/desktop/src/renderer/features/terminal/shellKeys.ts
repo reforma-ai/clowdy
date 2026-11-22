@@ -23,10 +23,15 @@ export function shellSequence(event: Pick<KeyboardEvent, 'type' | 'key' | 'altKe
 
 /**
  * Keys that are the app's own and must reach it from the terminal, where xterm would turn them into bytes for the shell and stop them: `Ctrl+`` (the terminal's
- * toggle) on every system, and `Ctrl+Shift+B` (the side panel's) where Ctrl is the app's modifier. Cmd chords on a Mac are never taken by xterm.
+ * toggle) on every system, `Cmd+Esc` (the side panel's) on a Mac, where xterm would send the Esc, and `Ctrl+Shift+B` (the panel's) elsewhere. Other Cmd chords on a
+ * Mac are never taken by xterm.
  */
 export function isAppShortcut(event: Pick<KeyboardEvent, 'type' | 'code' | 'ctrlKey' | 'altKey' | 'metaKey' | 'shiftKey'>, platform: string): boolean {
-    if (event.type !== 'keydown' || !event.ctrlKey || event.altKey || event.metaKey) return false;
+    if (event.type !== 'keydown' || event.altKey) return false;
+
+    if (platform === 'darwin' && event.code === 'Escape') return event.metaKey && !event.ctrlKey && !event.shiftKey;
+
+    if (!event.ctrlKey || event.metaKey) return false;
 
     if (event.code === 'Backquote') return !event.shiftKey;
 

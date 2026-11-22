@@ -219,11 +219,12 @@ describe('terminalTheme', () => {
 describe('isAppShortcut', () => {
     const key = (init: Partial<KeyboardEvent> & { code: string }) => ({ type: 'keydown', ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, ...init });
 
-    it('lets the terminal toggle through on every system, and the panel toggle where Ctrl is the app\'s modifier', () => {
+    it('lets the terminal toggle through on every system, and the panel toggle as each system has it', () => {
         expect(isAppShortcut(key({ code: 'Backquote', ctrlKey: true }), 'darwin')).toBe(true);
         expect(isAppShortcut(key({ code: 'Backquote', ctrlKey: true }), 'win32')).toBe(true);
         expect(isAppShortcut(key({ code: 'KeyB', ctrlKey: true, shiftKey: true }), 'win32')).toBe(true);
         expect(isAppShortcut(key({ code: 'KeyB', ctrlKey: true, shiftKey: true }), 'darwin')).toBe(false);
+        expect(isAppShortcut(key({ code: 'Escape', metaKey: true }), 'darwin')).toBe(true);
     });
 
     it('keeps every other key for the shell', () => {
@@ -231,5 +232,12 @@ describe('isAppShortcut', () => {
         expect(isAppShortcut(key({ code: 'Backquote' }), 'darwin')).toBe(false);
         expect(isAppShortcut(key({ code: 'Backquote', ctrlKey: true, shiftKey: true }), 'darwin')).toBe(false);
         expect(isAppShortcut({ ...key({ code: 'Backquote', ctrlKey: true }), type: 'keyup' }, 'darwin')).toBe(false);
+        // A plain Esc is the shell's (vim, a prompt's menu), and so is Esc with Ctrl, Shift or Alt; off a Mac Cmd+Esc is the Windows key's.
+        expect(isAppShortcut(key({ code: 'Escape' }), 'darwin')).toBe(false);
+        expect(isAppShortcut(key({ code: 'Escape', metaKey: true, ctrlKey: true }), 'darwin')).toBe(false);
+        expect(isAppShortcut(key({ code: 'Escape', metaKey: true, shiftKey: true }), 'darwin')).toBe(false);
+        expect(isAppShortcut(key({ code: 'Escape', metaKey: true, altKey: true }), 'darwin')).toBe(false);
+        expect(isAppShortcut(key({ code: 'Escape', metaKey: true }), 'win32')).toBe(false);
+        expect(isAppShortcut({ ...key({ code: 'Escape', metaKey: true }), type: 'keyup' }, 'darwin')).toBe(false);
     });
 });
