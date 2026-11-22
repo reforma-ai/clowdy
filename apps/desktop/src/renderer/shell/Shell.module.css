@@ -46,12 +46,6 @@
     background-color: transparent;
 }
 
-/* The edge between the list and the chat is at the island's rounded side now, and its line stops short of the corners. */
-.covered [data-slot='resizable-handle']::after {
-    top: var(--plate-radius);
-    bottom: var(--plate-radius);
-}
-
 /* Before the projects are loaded there is no rail and no plate to draw: the message fills the window. */
 .bare {
     margin: 0;

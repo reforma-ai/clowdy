@@ -19,13 +19,9 @@
     anchor-name: --side-panel-column;
 }
 
-/*
- * The line of the edge between the plates, which shows while it is hovered or dragged, stops short of their corners: by the radius at the top, and at the bottom by the radius
- * and by the room under the plates, which the edge's own height, the window's, reaches into.
- */
+/* The line of the edge between the plates, which shows while it is hovered or dragged, runs the plates' height: the edge's own is the window's, and reaches into the room under the plates. */
 .edge::after {
-    top: var(--plate-radius);
-    bottom: calc(var(--plate-inset) + var(--plate-radius));
+    bottom: var(--plate-inset);
 }
 
 /* The edge between the page and the panel lies under the expanded panel: it is not there to be seen, reached by key or dragged. It keeps its place, so nothing moves. */
