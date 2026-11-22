@@ -1,6 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
 import { Text } from '@clowdy/components/Text';
+import { searchInEditor } from '@clowdy/file-manager/editor-search';
 import { ChevronDown, ChevronUp, Close } from '@clowdy/icons/14';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 
@@ -182,7 +183,12 @@ export function FindBar() {
         void run(query, forward, starting);
     };
 
-    actions.current = { open: () => show(true), next: () => step(true), previous: () => step(false) };
+    // In a code editor (the side panel's Files tab) the keys are the editor's own search; everywhere else they are the window's.
+    actions.current = {
+        open: () => searchInEditor('open') || show(true),
+        next: () => searchInEditor('next') || step(true),
+        previous: () => searchInEditor('previous') || step(false),
+    };
 
     useCommands('app', findCommands({
         open: () => actions.current.open(),

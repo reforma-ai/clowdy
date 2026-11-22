@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { search } from '@codemirror/search';
+import { EditorView } from '@codemirror/view';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -322,5 +324,36 @@ describe('Find in page', () => {
             expect(stopFind).not.toHaveBeenCalled();
             expect(count()).toBe('1 of 2');
         });
+    });
+});
+
+describe('Find in page with a code editor in focus', () => {
+    it('leaves Find, Find next and Find previous to the editor\'s own search while it has the focus, and has them back once the focus is elsewhere', async () => {
+        await draw();
+
+        const host = document.createElement('div');
+
+        document.body.append(host);
+
+        const view = new EditorView({ doc: 'one two one', extensions: [search({ top: true })], parent: host });
+
+        view.contentDOM.focus();
+        act(() => command!('open'));
+
+        expect(bar()).toBeNull();
+        expect(host.querySelector('.cm-search')).not.toBeNull();
+
+        act(() => command!('next'));
+        act(() => command!('previous'));
+
+        expect(bar()).toBeNull();
+        expect(findInPage).not.toHaveBeenCalled();
+
+        view.destroy();
+        host.remove();
+        (document.activeElement as HTMLElement | null)?.blur();
+        act(() => command!('open'));
+
+        expect(bar()).not.toBeNull();
     });
 });

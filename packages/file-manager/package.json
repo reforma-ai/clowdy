@@ -19,6 +19,11 @@
             "import": "./src/react/index.ts",
             "default": "./src/react/index.ts"
         },
+        "./editor-search": {
+            "types": "./src/react/editor/editorSearch.ts",
+            "import": "./src/react/editor/editorSearch.ts",
+            "default": "./src/react/editor/editorSearch.ts"
+        },
         "./memory": {
             "types": "./src/memory/MemoryFileSystem.ts",
             "import": "./src/memory/MemoryFileSystem.ts",
