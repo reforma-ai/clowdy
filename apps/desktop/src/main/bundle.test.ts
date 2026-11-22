@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
-import { bundleRuntime, installBun, installOwnBundle, parseBundleInfo, pruneBunCopies, updatesDir } from './bundle';
+import { bundleRuntime, installBun, installedRipgrep, installOwnBundle, parseBundleInfo, pruneBunCopies, RG_VERSION_FILE, updatesDir } from './bundle';
 
 const BUNDLE = { version: 412, minShell: '0.1.0', protocol: 1 };
 
@@ -91,6 +91,99 @@ describe('installBun and installOwnBundle', () => {
     });
 });
 
+describe('the ripgrep beside Bun', () => {
+    let root: string;
+    let resources: string;
+    let updates: string;
+
+    beforeEach(async () => {
+        root = await mkdtemp(path.join(tmpdir(), 'clowdy-rg-'));
+        resources = path.join(root, 'Resources');
+        updates = path.join(root, 'updates');
+        await mkdir(path.join(resources, 'bun'), { recursive: true });
+        await writeFile(path.join(resources, 'bun/bun'), 'bun');
+        await writeFile(path.join(resources, 'bun/bun.exe'), 'bun');
+        await writeFile(path.join(resources, 'bun/VERSION'), '1.4.4\n');
+    });
+
+    afterEach(async () => {
+        await rm(root, { recursive: true, force: true });
+    });
+
+    const shipRipgrep = async (version: string) => {
+        await writeFile(path.join(resources, 'bun/rg'), `rg ${ version }`);
+        await writeFile(path.join(resources, 'bun/rg.exe'), `rg ${ version }`);
+        await writeFile(path.join(resources, 'bun', RG_VERSION_FILE), `${ version }\n`);
+    };
+
+    test('is copied with Bun into a folder that names both versions, and handed to the daemon', async () => {
+        await shipRipgrep('15.2.0');
+
+        const bun = await installBun({ resources, updates, platform: 'darwin', arch: 'arm64' });
+        const rg = await installedRipgrep(bun, 'darwin');
+
+        expect(bun).toBe(path.join(updates, 'bun/1.4.4-rg15.2.0-arm64/bun'));
+        expect(rg).toBe(path.join(updates, 'bun/1.4.4-rg15.2.0-arm64/rg'));
+        expect(await readFile(rg!, 'utf8')).toBe('rg 15.2.0');
+        expect(bundleRuntime(bun, path.join(updates, 'bundles/412'), rg)).toEqual({
+            bun,
+            entry: path.join(updates, 'bundles/412/daemon/main.js'),
+            skillsDir: path.join(updates, 'bundles/412/system-skills'),
+            rg,
+        });
+
+        // Windows has no executable bit.
+        if (process.platform !== 'win32') expect((await stat(rg!)).mode & 0o111).not.toBe(0);
+    });
+
+    test('is rg.exe on Windows', async () => {
+        await shipRipgrep('15.2.0');
+
+        const bun = await installBun({ resources, updates, platform: 'win32', arch: 'x64' });
+
+        expect(bun).toBe(path.join(updates, 'bun/1.4.4-rg15.2.0-x64/bun.exe'));
+        expect(await installedRipgrep(bun, 'win32')).toBe(path.join(updates, 'bun/1.4.4-rg15.2.0-x64/rg.exe'));
+    });
+
+    test('is not handed over when the runtime has none, and the daemon starts without it', async () => {
+        const bun = await installBun({ resources, updates, platform: 'darwin', arch: 'arm64' });
+
+        expect(bun).toBe(path.join(updates, 'bun/1.4.4-arm64/bun'));
+        expect(await installedRipgrep(bun, 'darwin')).toBeUndefined();
+        expect(bundleRuntime(bun, path.join(updates, 'bundles/412'), undefined)).not.toHaveProperty('rg');
+    });
+
+    test('a shell that ships it does not reuse the copy of an older one without it, which a running daemon keeps', async () => {
+        const older = await installBun({ resources, updates, platform: 'darwin', arch: 'arm64' });
+
+        await shipRipgrep('15.2.0');
+
+        const bun = await installBun({ resources, updates, platform: 'darwin', arch: 'arm64' });
+
+        expect(bun).not.toBe(older);
+        expect(await installedRipgrep(bun, 'darwin')).toBeDefined();
+        expect(await installedRipgrep(older, 'darwin')).toBeUndefined();
+        expect(await readFile(older, 'utf8')).toBe('bun');
+    });
+
+    test('a newer ripgrep with the same Bun is a new copy, and the same one is reused', async () => {
+        await shipRipgrep('15.2.0');
+
+        const first = await installBun({ resources, updates, platform: 'darwin', arch: 'arm64' });
+
+        await writeFile(path.join(resources, 'bun/rg'), 'changed');
+        expect(await installBun({ resources, updates, platform: 'darwin', arch: 'arm64' })).toBe(first);
+        expect(await readFile((await installedRipgrep(first, 'darwin'))!, 'utf8')).toBe('rg 15.2.0');
+
+        await shipRipgrep('15.3.0');
+
+        const next = await installBun({ resources, updates, platform: 'darwin', arch: 'arm64' });
+
+        expect(next).toBe(path.join(updates, 'bun/1.4.4-rg15.3.0-arm64/bun'));
+        expect(await readFile((await installedRipgrep(next, 'darwin'))!, 'utf8')).toBe('rg 15.3.0');
+    });
+});
+
 describe('pruneBunCopies', () => {
     let updates: string;
 
@@ -108,6 +201,14 @@ describe('pruneBunCopies', () => {
         await pruneBunCopies(updates, path.join(updates, 'bun/1.5.0-arm64/bun'));
 
         expect(await readdir(path.join(updates, 'bun'))).toEqual(['1.5.0-arm64']);
+    });
+
+    test('keeps the copy that holds the ripgrep in use, and drops the older ones', async () => {
+        for (const dir of ['1.4.4-arm64', '1.4.4-rg15.1.0-arm64', '1.4.4-rg15.2.0-arm64']) await mkdir(path.join(updates, 'bun', dir), { recursive: true });
+
+        await pruneBunCopies(updates, path.join(updates, 'bun/1.4.4-rg15.2.0-arm64/bun'));
+
+        expect(await readdir(path.join(updates, 'bun'))).toEqual(['1.4.4-rg15.2.0-arm64']);
     });
 
     test('does nothing without copies', async () => {

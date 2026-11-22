@@ -194,6 +194,28 @@ describe('ensureDaemon: how the daemon is started', () => {
         expect(world.launches[0].env.CLOWDY_SYSTEM_SKILLS_DIR).toBe(`${ bundle }/system-skills`);
     });
 
+    test('hands the ripgrep the app ships to the daemon', async () => {
+        const { world, context } = setup({
+            runtime: { bun: '/updates/bun/1.4.4-rg15.2.0-arm64/bun', entry: '/updates/bundles/412/daemon/main.js', rg: '/updates/bun/1.4.4-rg15.2.0-arm64/rg' },
+            onLaunch: state => void publish(state),
+        });
+
+        await ensureDaemon(context);
+
+        expect(world.launches[0].env.CLOWDY_RG).toBe('/updates/bun/1.4.4-rg15.2.0-arm64/rg');
+    });
+
+    test('sets no ripgrep for a runtime that has none, and leaves one the person set', async () => {
+        const bare = setup({ runtime: { bun: '/updates/bun/1.4.4-arm64/bun', entry: '/updates/bundles/412/daemon/main.js' }, onLaunch: state => void publish(state) });
+        const own = setup({ env: { CLOWDY_RG: '/opt/rg' }, runtime: CHECKOUT, onLaunch: state => void publish(state) });
+
+        await ensureDaemon(bare.context);
+        await ensureDaemon(own.context);
+
+        expect(bare.world.launches[0].env).not.toHaveProperty('CLOWDY_RG');
+        expect(own.world.launches[0].env.CLOWDY_RG).toBe('/opt/rg');
+    });
+
     test('says so when no daemon is bundled', async () => {
         const { world, context } = setup({ runtime: null });
         const error = await failureOf(ensureDaemon(context));
@@ -332,6 +354,20 @@ describe('daemonEnvironment', () => {
         }, DATA_DIR);
 
         expect(env).toEqual({ CHROME_PATH: '/Applications/Chrome', HOME: '/Users/a', LANG: 'en_US.UTF-8', CLOWDY_DATA_DIR: DATA_DIR });
+    });
+
+    test('names the system skills and the ripgrep of a bundled daemon', () => {
+        expect(daemonEnvironment({}, DATA_DIR, undefined, '/updates/bundles/412/system-skills', '/updates/bun/1.4.4-rg15.2.0-arm64/rg')).toEqual({
+            CLOWDY_DATA_DIR: DATA_DIR,
+            CLOWDY_SYSTEM_SKILLS_DIR: '/updates/bundles/412/system-skills',
+            CLOWDY_RG: '/updates/bun/1.4.4-rg15.2.0-arm64/rg',
+        });
+    });
+
+    test('the ripgrep the app ships wins over one in the app\'s environment, and none leaves it alone', () => {
+        expect(daemonEnvironment({ CLOWDY_RG: '/opt/rg' }, DATA_DIR, undefined, undefined, '/updates/rg').CLOWDY_RG).toBe('/updates/rg');
+        expect(daemonEnvironment({ CLOWDY_RG: '/opt/rg' }, DATA_DIR).CLOWDY_RG).toBe('/opt/rg');
+        expect(daemonEnvironment({}, DATA_DIR)).not.toHaveProperty('CLOWDY_RG');
     });
 
     test('puts the login-shell PATH in front of the app\'s', () => {

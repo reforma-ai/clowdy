@@ -34,6 +34,8 @@ export interface DaemonRuntime {
     entry: string;
     /** The system skills plugin folder, passed as `CLOWDY_SYSTEM_SKILLS_DIR`; a checkout's daemon finds its own. */
     skillsDir?: string;
+    /** The ripgrep the app ships, passed as `CLOWDY_RG` for the daemon's file search; without it the daemon uses `rg` from the PATH, or searches by itself. */
+    rg?: string;
 }
 
 export interface DaemonContext {
@@ -108,9 +110,9 @@ const ELECTRON_VARIABLES = new Set(['CHROME_DESKTOP', 'CHROME_CRASHPAD_PIPE_NAME
  * The environment of the daemon, and of the agents it starts: the app's own, minus what only makes sense inside
  * Electron (`ELECTRON_RUN_AS_NODE` would turn a child into plain Node), with the data folder pinned and, when the
  * app was started from Finder, the user's login-shell PATH, so agents find git, node, and the rest of the toolchain.
- * A bundled daemon is told where its system skills are.
+ * A bundled daemon is told where its system skills are, and where the ripgrep is that the app ships.
  */
-export function daemonEnvironment(env: NodeJS.ProcessEnv, dataDir: string, loginPath?: string, skillsDir?: string): Record<string, string> {
+export function daemonEnvironment(env: NodeJS.ProcessEnv, dataDir: string, loginPath?: string, skillsDir?: string, rg?: string): Record<string, string> {
     const result: Record<string, string> = {};
 
     for (const [name, value] of Object.entries(env)) {
@@ -122,6 +124,8 @@ export function daemonEnvironment(env: NodeJS.ProcessEnv, dataDir: string, login
     result.CLOWDY_DATA_DIR = dataDir;
 
     if (skillsDir) result.CLOWDY_SYSTEM_SKILLS_DIR = skillsDir;
+
+    if (rg) result.CLOWDY_RG = rg;
 
     if (loginPath) result.PATH = mergePaths(loginPath, env.PATH);
 
@@ -171,7 +175,7 @@ async function startDaemon(context: DaemonContext): Promise<DaemonInfo> {
         );
     }
 
-    const { bun, entry, skillsDir } = runtime;
+    const { bun, entry, skillsDir, rg } = runtime;
 
     const logPath = path.join(dataDir, 'daemon.log');
     const loginPath = platform !== 'win32' && isMinimalPath(env.PATH) ? await host.loginPath(platform, env) : undefined;
@@ -184,7 +188,7 @@ async function startDaemon(context: DaemonContext): Promise<DaemonInfo> {
 
     try {
         // The daemon's folder is the parent of the folder that holds its entry point.
-        exited = host.launch({ bun, entry, cwd: path.dirname(path.dirname(entry)), env: daemonEnvironment(env, dataDir, loginPath, skillsDir), logPath });
+        exited = host.launch({ bun, entry, cwd: path.dirname(path.dirname(entry)), env: daemonEnvironment(env, dataDir, loginPath, skillsDir, rg), logPath });
     }
     catch (error) {
         throw await failure(`The daemon could not be started: ${ error instanceof Error ? error.message : String(error) }`);

@@ -1,8 +1,9 @@
 /**
- * The Bun a packaged app runs its daemon on, one per target: `runtime/<target>/bun` (`bun.exe` on Windows). It is the
- * version the repository pins (`packageManager`), downloaded from Bun's releases, checked against the hashes below, and
- * cached in `runtime/.cache`. electron-builder ships `runtime/<platform>-${arch}` as `Resources/bun`; its `VERSION` file
- * names the folder the app copies Bun into (`src/main/bundle.ts`).
+ * What a packaged app runs its daemon on, one folder per target: `runtime/<target>/bun` (`bun.exe` on Windows) and the
+ * ripgrep beside it (`rg`, see `ripgrep.ts`). Bun is the version the repository pins (`packageManager`), downloaded from
+ * Bun's releases; both are checked against the hashes pinned here and in `ripgrep.ts`, and cached in `runtime/.cache`.
+ * electron-builder ships `runtime/<platform>-${arch}` as `Resources/bun`; its `VERSION` and `RG_VERSION` files name the
+ * folder the app copies the runtime into (`src/main/bundle.ts`).
  *
  *   bun scripts/bun-runtime.ts [target...]    default: this machine's
  *
@@ -12,6 +13,8 @@ import { $ } from 'bun';
 import { createHash } from 'node:crypto';
 import { chmod, copyFile, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
+
+import { layoutRipgrep, RG_ARCHIVES, RG_VERSION, rgUrl, ripgrepLaidOut } from './ripgrep';
 
 export type RuntimeTarget = 'darwin-arm64' | 'darwin-x64' | 'win32-x64' | 'win32-arm64';
 
@@ -84,7 +87,68 @@ async function download(url: string, file: string): Promise<Uint8Array> {
     return Bun.file(file).bytes();
 }
 
-/** Lays out `runtime/<target>/bun` for each target. A target already laid out is left alone. */
+/** The archive at `url`, cached as `name` and checked against `sha256`; resolves to its path in the cache. */
+async function fetchVerified(url: string, name: string, sha256: string): Promise<string> {
+    const archive = path.join(cacheDir, `${ sha256.slice(0, 12) }-${ name }`);
+    const actual = createHash('sha256').update(await download(url, archive)).digest('hex');
+
+    if (actual !== sha256) {
+        await rm(archive, { force: true });
+        throw new Error(`${ url }: SHA-256 ${ actual }, expected ${ sha256 }`);
+    }
+
+    return archive;
+}
+
+/** Unpacks `archive` into a new folder of the cache, hands it to `use`, and deletes it. */
+async function withUnpacked(archive: string, use: (unpacked: string) => Promise<void>): Promise<void> {
+    const work = await mkdtemp(path.join(cacheDir, 'unpack-'));
+
+    try {
+        if (archive.endsWith('.tar.gz')) await $`tar -xzf ${ archive } -C ${ work }`.quiet();
+        // bsdtar reads zips on Windows; macOS has unzip.
+        else if (process.platform === 'win32') await $`tar -xf ${ archive } -C ${ work }`.quiet();
+        else await $`unzip -q -o ${ archive } -d ${ work }`.quiet();
+
+        await use(work);
+    }
+    finally {
+        await rm(work, { recursive: true, force: true });
+    }
+}
+
+/** Bun, laid out in `out` from its archive; whatever else the folder held is gone. */
+async function layBun(target: RuntimeTarget, version: string, out: string): Promise<void> {
+    const exe = target.startsWith('win32') ? 'bun.exe' : 'bun';
+    const { file, sha256 } = ARCHIVES[target];
+    const archive = await fetchVerified(`https://github.com/oven-sh/bun/releases/download/bun-v${ version }/${ file }`, file, sha256);
+
+    await withUnpacked(archive, async (unpacked) => {
+        // The archive holds one folder named after itself with the executable inside.
+        const [folder] = await readdir(unpacked);
+
+        if (!folder) throw new Error(`${ file } is empty`);
+
+        await rm(out, { recursive: true, force: true });
+        await mkdir(out, { recursive: true });
+        await copyFile(path.join(unpacked, folder, exe), path.join(out, exe));
+        await chmod(path.join(out, exe), 0o755);
+        await Bun.write(path.join(out, 'VERSION'), `${ version }\n`);
+    });
+
+    console.log(`Bun ${ version } for ${ target } is in ${ out }`);
+}
+
+/** The ripgrep of `ripgrep.ts`, laid out in `out` beside Bun. */
+async function layRipgrep(target: RuntimeTarget, out: string): Promise<void> {
+    const { file, sha256 } = RG_ARCHIVES[target];
+
+    await withUnpacked(await fetchVerified(rgUrl(target), file, sha256), unpacked => layoutRipgrep(unpacked, out, target));
+
+    console.log(`ripgrep ${ RG_VERSION } for ${ target } is in ${ out }`);
+}
+
+/** Lays out `runtime/<target>/` (Bun and ripgrep) for each target. What is laid out at the pinned versions is left alone. */
 export async function fetchBunRuntimes(targets: readonly RuntimeTarget[]): Promise<void> {
     const version = await pinnedBun();
 
@@ -93,43 +157,13 @@ export async function fetchBunRuntimes(targets: readonly RuntimeTarget[]): Promi
     for (const target of targets) {
         const exe = target.startsWith('win32') ? 'bun.exe' : 'bun';
         const out = path.join(runtimeDir, target);
+        const bunCurrent = await Bun.file(path.join(out, exe)).exists() && await Bun.file(path.join(out, 'VERSION')).exists()
+            && (await Bun.file(path.join(out, 'VERSION')).text()).trim() === version;
 
-        if (await Bun.file(path.join(out, exe)).exists() && await Bun.file(path.join(out, 'VERSION')).exists()
-            && (await Bun.file(path.join(out, 'VERSION')).text()).trim() === version) continue;
+        if (!bunCurrent) await layBun(target, version, out);
 
-        const { file, sha256 } = ARCHIVES[target];
-        const url = `https://github.com/oven-sh/bun/releases/download/bun-v${ version }/${ file }`;
-        const archive = path.join(cacheDir, `${ sha256.slice(0, 12) }-${ file }`);
-        const actual = createHash('sha256').update(await download(url, archive)).digest('hex');
-
-        if (actual !== sha256) {
-            await rm(archive, { force: true });
-            throw new Error(`${ url }: SHA-256 ${ actual }, expected ${ sha256 }`);
-        }
-
-        const work = await mkdtemp(path.join(cacheDir, 'unpack-'));
-
-        try {
-            // bsdtar reads zips on Windows; macOS has unzip.
-            if (process.platform === 'win32') await $`tar -xf ${ archive } -C ${ work }`.quiet();
-            else await $`unzip -q -o ${ archive } -d ${ work }`.quiet();
-
-            // The archive holds one folder named after itself with the executable inside.
-            const [folder] = await readdir(work);
-
-            if (!folder) throw new Error(`${ file } is empty`);
-
-            await rm(out, { recursive: true, force: true });
-            await mkdir(out, { recursive: true });
-            await copyFile(path.join(work, folder, exe), path.join(out, exe));
-            await chmod(path.join(out, exe), 0o755);
-            await Bun.write(path.join(out, 'VERSION'), `${ version }\n`);
-        }
-        finally {
-            await rm(work, { recursive: true, force: true });
-        }
-
-        console.log(`Bun ${ version } for ${ target } is in ${ out }`);
+        // After Bun, whose layout empties the folder.
+        if (!await ripgrepLaidOut(out, target)) await layRipgrep(target, out);
     }
 }
 
