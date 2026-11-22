@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { currentPanelSize, panelIconState, panelSizes } from './panelSize';
+import { currentPanelSize, panelIconState, panelSizeOptions } from './panelSize';
 
 describe('currentPanelSize', () => {
     it('is hide while the panel is shut, whatever size it comes back in', () => {
@@ -14,13 +14,14 @@ describe('currentPanelSize', () => {
     });
 });
 
-describe('panelSizes', () => {
-    it('lists wide, half and hide', () => {
-        expect(panelSizes(false)).toEqual(['wide', 'half', 'hide']);
+describe('panelSizeOptions', () => {
+    it('lists wide, half and hide, all of them to choose', () => {
+        expect(panelSizeOptions(null)).toEqual([{ size: 'wide' }, { size: 'half' }, { size: 'hide' }]);
     });
 
-    it('leaves out half for a tab that is always in the chat\'s place', () => {
-        expect(panelSizes(true)).toEqual(['wide', 'hide']);
+    it('keeps half, with the reason it cannot be chosen, for a tab that is always wide and for a window too narrow', () => {
+        expect(panelSizeOptions('tab')).toEqual([{ size: 'wide' }, { size: 'half', unavailable: 'Always wide' }, { size: 'hide' }]);
+        expect(panelSizeOptions('window')).toEqual([{ size: 'wide' }, { size: 'half', unavailable: 'Too narrow' }, { size: 'hide' }]);
     });
 });
 

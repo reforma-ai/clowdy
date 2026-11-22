@@ -1,4 +1,4 @@
-import { useRootStore, type SidePanelSize, type SidePanelTab } from '../../stores';
+import { useRootStore, type NoHalfReason, type SidePanelSize, type SidePanelTab } from '../../stores';
 
 export interface SidePanelControl {
     /** The window shows a project's screen (Settings may be open over it), so the panel and the project's tabs of the rail can be there. */
@@ -11,8 +11,8 @@ export interface SidePanelControl {
     tab: SidePanelTab;
     /** The panel is drawn in the place of the chat: it is open, and the project has it expanded or it shows the Tasks tab, which is always so. A shut panel is never expanded, and comes back expanded when the project has it so. */
     expanded: boolean;
-    /** The tab the panel shows, or showed last, is in the place of the chat whatever the project chose (Tasks always, Files and Docs in a window too narrow for them beside the chat), so it has no size beside the chat. */
-    tabIsFull: boolean;
+    /** Why the tab the panel shows, or showed last, cannot be beside the chat, if it cannot: it is in the place of the chat whatever the project chose (Tasks always, Files and Docs in a window too narrow for them beside it). */
+    noHalf: NoHalfReason | null;
     /** The tab is a tree beside a view (Files, Docs), which needs more room than the other tabs while it is beside the chat. */
     tabHasTree: boolean;
     toggle: () => void;
@@ -27,5 +27,5 @@ export function useSidePanel(): SidePanelControl {
     const root = useRootStore();
     const ui = root.projectScreenReady && root.selectedProjectId ? root.ui.forProject(root.selectedProjectId) : undefined;
 
-    return { available: ui !== undefined, railShown: root.phase === 'ready', open: ui?.sidePanelOpen === true, tab: ui?.sidePanelTab ?? 'info', expanded: ui?.sidePanelCoversChat === true, tabIsFull: ui?.sidePanelTabIsFull === true, tabHasTree: ui?.sidePanelTabHasTree === true, toggle: () => ui?.toggleSidePanel(), setSize: size => ui?.setSidePanelSize(size), toggleTab: tab => ui?.toggleSidePanelTab(tab) };
+    return { available: ui !== undefined, railShown: root.phase === 'ready', open: ui?.sidePanelOpen === true, tab: ui?.sidePanelTab ?? 'info', expanded: ui?.sidePanelCoversChat === true, noHalf: ui?.sidePanelNoHalf ?? null, tabHasTree: ui?.sidePanelTabHasTree === true, toggle: () => ui?.toggleSidePanel(), setSize: size => ui?.setSidePanelSize(size), toggleTab: tab => ui?.toggleSidePanelTab(tab) };
 }

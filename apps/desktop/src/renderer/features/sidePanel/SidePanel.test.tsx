@@ -121,7 +121,7 @@ describe('the corner at the top of the rail', () => {
     // The menu is in the overlay layer of the page, outside the container.
     const sizes = () => document.querySelector('[role="group"][aria-label="Side panel size"]');
     const sizeButtons = () => [...(sizes()?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
-    const size = (name: string) => sizeButtons().find(button => button.textContent === name)!;
+    const size = (name: string) => sizeButtons().find(button => button.textContent?.startsWith(name))!;
     const current = () => sizeButtons().filter(button => button.getAttribute('aria-pressed') === 'true').map(button => button.textContent);
     const pause = (ms: number) => act(async () => {
         await new Promise(resolve => setTimeout(resolve, ms));
@@ -211,13 +211,14 @@ describe('the corner at the top of the rail', () => {
         expect(icon()).toBe('small');
     });
 
-    it('offers Wide and Hide on the Tasks tab, which has no size beside the chat, and leaves the expanded choice alone', async () => {
+    it('keeps Half in the menu, grey and saying why, where the panel cannot be beside the chat: the Tasks tab, and a window too narrow for Files', async () => {
         act(() => ui().showSidePanelTab('tasks'));
         await draw(<><Layout><p>The page</p></Layout><Rail /></>);
 
         await press(expandButton()!);
 
-        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'Hide']);
+        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'HalfAlways wide', 'Hide']);
+        expect(size('Half').disabled).toBe(true);
 
         await press(size('Wide'));
 
@@ -231,43 +232,52 @@ describe('the corner at the top of the rail', () => {
 
         expect([ui().sidePanelOpen, ui().sidePanelExpanded]).toEqual([false, false]);
         expect(panel()).toBeNull();
+
+        act(() => {
+            ui().showSidePanelTab('files');
+            store.ui.setWindowFitsHalf(false);
+        });
+        await settle();
+        await press(expandButton()!);
+
+        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'HalfToo narrow', 'Hide']);
+        expect(size('Half').disabled).toBe(true);
     });
 
-    it('moves the focus to the current size on a press, and gives it back to the button when Escape shuts the menu', async () => {
+    it('shuts the menu with Escape, and the button is its trigger again', async () => {
         await draw(<><Layout><p>The page</p></Layout><Rail /></>);
 
         await press(expandButton()!);
-        await pause(50);
-
-        expect(document.activeElement).toBe(size('Hide'));
+        expect(sizes()).not.toBeNull();
+        expect(expandButton()?.getAttribute('aria-expanded')).toBe('true');
 
         await act(async () => {
-            document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            (document.activeElement ?? sizes())?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         });
-        await pause(50);
+        await pause(100);
 
         expect(sizes()).toBeNull();
-        expect(document.activeElement).toBe(expandButton());
+        expect(expandButton()?.getAttribute('aria-expanded')).toBe('false');
+        expect(ui().sidePanelOpen).toBe(false);
     });
 
-    it('opens the menu when the pointer rests on the button, without taking the focus, and shuts it when the pointer leaves', async () => {
+    it('does not open the menu when the pointer rests on the button: only a press does', async () => {
         await draw(<><Layout><p>The page</p></Layout><Rail /></>);
 
         const button = expandButton()!;
-        const over = (type: string, target: HTMLElement, relatedTarget: HTMLElement) => act(async () => {
-            target.dispatchEvent(new MouseEvent(type, { bubbles: true, relatedTarget }));
+
+        await act(async () => {
+            button.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
         });
-
-        await over('mouseover', button, document.body);
-        expect(sizes()).toBeNull();
-
-        await pause(300);
-        expect(sizes()).not.toBeNull();
-        expect(document.activeElement).not.toBe(size('Hide'));
-
-        await over('mouseout', button, document.body);
         await pause(400);
+
         expect(sizes()).toBeNull();
+        expect(button.getAttribute('aria-expanded')).toBe('false');
+
+        await press(button);
+
+        expect(sizes()).not.toBeNull();
+        expect(button.getAttribute('aria-expanded')).toBe('true');
     });
 
     it('is the first item of the rail, and the rail keeps its top empty when there is no project, with no button there', async () => {

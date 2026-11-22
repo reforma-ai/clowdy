@@ -19,6 +19,9 @@ export type SidePanelTab = typeof SIDE_PANEL_TABS[number];
 /** The sizes of the side panel the corner button offers: not shown, beside the chat, and in the chat's place. */
 export type SidePanelSize = 'hide' | 'half' | 'wide';
 
+/** Why the panel cannot be beside the chat: the tab is always in the chat's place (Tasks), or the window is too narrow for the tab beside it (Files, Docs). */
+export type NoHalfReason = 'tab' | 'window';
+
 /** The tabs whose view is always the size of the chat's place, whatever the project chose for the others (`ProjectUi.sidePanelIsFull`). */
 const FULL_TABS: readonly SidePanelTab[] = ['tasks'];
 
@@ -359,7 +362,14 @@ export class ProjectUi {
      * where the window is too narrow for it beside the chat (`UiStore.windowFitsHalf`). Nothing is kept for it: in a wider window the project's own choice is back.
      */
     get sidePanelTabIsFull(): boolean {
-        return FULL_TABS.includes(this.sidePanelTab) || (TREE_TABS.includes(this.sidePanelTab) && !this.#windowFitsHalf());
+        return this.sidePanelNoHalf !== null;
+    }
+
+    /** Why the tab the panel shows cannot be beside the chat, or `null` when it can: it is the Tasks tab, or the window is too narrow for a tree beside the chat. */
+    get sidePanelNoHalf(): NoHalfReason | null {
+        if (FULL_TABS.includes(this.sidePanelTab)) return 'tab';
+
+        return TREE_TABS.includes(this.sidePanelTab) && !this.#windowFitsHalf() ? 'window' : null;
     }
 
     /** The tab the panel shows is a tree beside a view, which needs more room than the other tabs do while it is beside the chat. */

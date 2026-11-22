@@ -28,9 +28,11 @@
     line-height: var(--spacing-16);
 }
 
-/* The row stands as far under the text as the menu's edge stands from it at the sides (the hover card's own padding). */
+/* The row stands as far under the text as the menu's edge stands from it at the sides (the popover's own padding). The tiles are as wide as the widest. */
 .sizes {
-    display: flex;
+    display: grid;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
     gap: var(--spacing-xs);
     margin-top: var(--spacing-md);
 }
@@ -52,7 +54,7 @@
     transition: background-color 150ms ease-out;
 }
 
-.option:hover {
+.option:hover:not(:disabled) {
     background-color: var(--color-secondary-muted-light);
     color: var(--color-text);
 }
@@ -66,6 +68,22 @@
     font-size: var(--spacing-12);
     font-weight: 500;
     line-height: var(--spacing-16);
+}
+
+/* A size that cannot be chosen: its picture and name are grey, and the reason under them stays readable. */
+.option:disabled {
+    cursor: default;
+}
+
+.option:disabled .preview,
+.option:disabled .label {
+    opacity: var(--opacity-disabled);
+}
+
+.caption {
+    margin-top: calc(var(--spacing-xs) * -1);
+    font-size: calc(var(--spacing-12) - 1px);
+    line-height: var(--spacing-14);
 }
 
 .preview {
