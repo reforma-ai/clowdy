@@ -53,7 +53,7 @@ export function useOpenApps(): OpenApps {
 }
 
 /** Opens a folder or a file in a program of the computer. What goes wrong (the path is gone, the program will not start) is a toast. */
-export async function openPathIn(path: string, kind: OpenPathApp['kind'], app: OpenApp): Promise<void> {
+async function openPathIn(path: string, kind: OpenPathApp['kind'], app: OpenApp): Promise<void> {
     try {
         await window.desktop?.openPath(path, { kind, id: app.id });
     }

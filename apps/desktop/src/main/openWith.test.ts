@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -6,11 +6,13 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createOpenWith, systemOpenWithDeps, type OpenWithDeps } from './openWith';
 
 /** A machine of folders and files named by plain strings; `launch` and `openPath` only record what they were asked. */
-function machine({ platform, folders = {}, directories = [], files = [], env = {}, home = '/Users/dev', icons = {} }: {
+function machine({ platform, folders = {}, directories = [], links = {}, files = [], env = {}, home = '/Users/dev', icons = {} }: {
     platform: NodeJS.Platform;
     folders?: Record<string, string[]>;
     /** Folders there are besides `web` in the home folder, which every machine has. */
     directories?: string[];
+    /** Where a link goes, by the link's path. */
+    links?: Record<string, string>;
     /** The files there are, and what a program is looked for by (`exists`). */
     files?: string[];
     env?: Record<string, string>;
@@ -29,6 +31,7 @@ function machine({ platform, folders = {}, directories = [], files = [], env = {
         list: async folder => folders[folder] ?? [],
         exists: async path => files.includes(path),
         isFolder: async path => path === '/Users/dev/web' || path === 'C:\\Users\\dev\\web' || directories.includes(path),
+        realPath: async path => links[path] ?? path,
         openPath,
         showItem,
         launch,
@@ -94,6 +97,28 @@ describe('opening a folder on a Mac', () => {
         openPath.mockResolvedValueOnce('Failed to open path');
 
         await expect(open.openPath('/Users/dev/web', { kind: 'fileManager', id: 'finder' })).rejects.toThrow('Failed to open path');
+    });
+
+    test('has the system show an app bundle in its folder, and not open it: that would start the program', async () => {
+        const bundle = '/Users/dev/web/Evil.app';
+        const { open, launch, openPath, showItem } = machine({ ...MAC, directories: [bundle, '/Users/dev/web/docs'], links: { '/Users/dev/web/docs': bundle } });
+
+        await open.openPath(bundle, { kind: 'fileManager', id: 'finder' });
+        // A link in the folder that goes to the bundle is no way round it.
+        await open.openPath('/Users/dev/web/docs', { kind: 'fileManager', id: 'finder' });
+
+        expect(showItem.mock.calls).toEqual([[bundle], ['/Users/dev/web/docs']]);
+        expect(openPath).not.toHaveBeenCalled();
+        expect(launch).not.toHaveBeenCalled();
+    });
+
+    test('opens a folder with a name like an app\'s on Windows, which the system does not run', async () => {
+        const { open, openPath, showItem } = machine({ platform: 'win32', directories: ['C:\\Users\\dev\\web\\Evil.app'] });
+
+        await open.openPath('C:\\Users\\dev\\web\\Evil.app', { kind: 'fileManager', id: 'explorer' });
+
+        expect(openPath).toHaveBeenCalledExactlyOnceWith('C:\\Users\\dev\\web\\Evil.app');
+        expect(showItem).not.toHaveBeenCalled();
     });
 
     test('starts an editor with the folder as an argument of `open -a`, from the first place its app was found', async () => {
@@ -418,10 +443,22 @@ describe('the real machine', () => {
         expect(await deps.isFolder(join(root, 'web'))).toBe(true);
         expect(await deps.isFolder(join(root, 'notes.txt'))).toBe(false);
         expect(await deps.isFolder(join(root, 'gone'))).toBe(false);
+        expect(await deps.realPath(join(root, 'web'))).toBe(await realpath(join(root, 'web')));
+        expect(await deps.realPath(join(root, 'gone'))).toBe(join(root, 'gone'));
         expect(await deps.exists(join(root, 'notes.txt'))).toBe(true);
         expect(await deps.exists(join(root, 'gone'))).toBe(false);
         expect((await deps.list(root)).sort()).toEqual(['notes.txt', 'web']);
         expect(await deps.list(join(root, 'gone'))).toEqual([]);
+    });
+
+    test.runIf(process.platform !== 'win32')('follows a link to where a path really is', async () => {
+        const deps = systemOpenWithDeps(async () => '', async () => undefined, () => undefined);
+        const root = await scratch();
+
+        await mkdir(join(root, 'Real.app'));
+        await symlink(join(root, 'Real.app'), join(root, 'docs'));
+
+        expect(await deps.realPath(join(root, 'docs'))).toBe(await realpath(join(root, 'Real.app')));
     });
 
     test('starts a program with each argument as it is, and no shell reads them', async () => {

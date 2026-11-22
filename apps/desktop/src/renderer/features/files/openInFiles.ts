@@ -19,14 +19,36 @@ export function showFilesTab(root: RootStore, projectId: ProjectId): void {
 }
 
 /**
+ * Whether a path is there on the disk, a file or a folder: the tree says so for what it has listed, and the path's own folder is listed to find out for the rest
+ * (the tree lists a folder only once it is opened, and a file made a moment ago may not have reached it yet). The file manager's package is not imported here: this
+ * module is in the window's first load.
+ */
+async function isThere(manager: FileManager, path: string): Promise<boolean> {
+    if (manager.tree.get(path)) return true;
+
+    try {
+        const slash = path.lastIndexOf('/');
+
+        return (await manager.provider.list(slash === -1 ? '' : path.slice(0, slash), 1)).some(entry => entry.path === path);
+    }
+    catch {
+        return false;
+    }
+}
+
+/**
  * Opens a file in a tab of the Files tab, or a folder in its tree, and shows the panel. `relative` is the path inside the folder, empty for the folder itself (the tab
- * only shows). Resolves `false`, with nothing opened and the panel as it was, when the file cannot be read: it is not there.
+ * only shows). Resolves `false`, with nothing opened and the panel and the tabs as they were, when the path is not there or the file cannot be read.
  */
 export async function openInFiles(root: RootStore, projectId: ProjectId, folder: ProjectFolder, relative: string): Promise<boolean> {
     const manager = await filesManagerOf(root, projectId, folder);
+
+    // Asked before opening: opening a path that is not there still adds a tab, which takes the focus and, at the most tabs, closes the one used least, before it fails.
+    if (relative !== '' && !await isThere(manager, relative)) return false;
+
     const document = await manager.open(relative);
 
-    // A path that is not on the disk still gets a tab, which says why it cannot be shown: that is not a file opened, so the tab goes.
+    // A file that is there but cannot be read gets a tab that says why, which is not a file opened, so the tab goes.
     if (document?.status === 'error') {
         manager.close(relative);
 

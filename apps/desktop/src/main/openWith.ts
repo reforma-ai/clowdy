@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { access, readdir, stat } from 'node:fs/promises';
+import { access, readdir, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { posix, win32 } from 'node:path';
 
@@ -16,6 +16,8 @@ export interface OpenWithDeps {
     list: (folder: string) => Promise<string[]>;
     exists: (path: string) => Promise<boolean>;
     isFolder: (path: string) => Promise<boolean>;
+    /** Where a path really is, the links in it followed; the path itself when that cannot be told. */
+    realPath: (path: string) => Promise<string>;
     /** Opens a folder in the system's file manager (`shell.openPath`): an error text, or an empty one. */
     openPath: (path: string) => Promise<string>;
     /** Shows a file in its folder, in the system's file manager (`shell.showItemInFolder`). */
@@ -189,6 +191,9 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
         return icon ? { id, name, icon } : { id, name };
     }
 
+    /** A folder macOS runs as a program (`Name.app`), also when it is reached by a link. */
+    const isAppBundle = async (path: string) => platform === 'darwin' && /\.app$/i.test(await deps.realPath(path));
+
     const isAbsolute = platform === 'win32' ? win32.isAbsolute : posix.isAbsolute;
     const dirname = platform === 'win32' ? win32.dirname : posix.dirname;
 
@@ -221,9 +226,10 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
 
             if (!found) throw new Error('That app is not installed');
 
-            // The system's own file manager is opened by the system: a folder is opened, a file is shown in its folder.
+            // The system's own file manager is opened by the system: a folder is opened, a file is shown in its folder. An app bundle on macOS is a folder too, but
+            // `shell.openPath` would start the program in it, and a folder of a cloned project is nothing to run: it is shown in its folder, like a file.
             if (found.path === '') {
-                if (!isFolder) {
+                if (!isFolder || await isAppBundle(target)) {
                     deps.showItem(target);
 
                     return;
@@ -257,6 +263,7 @@ export function systemOpenWithDeps(openPath: OpenWithDeps['openPath'], icon: Ope
         list: folder => readdir(folder).catch(() => []),
         exists: path => access(path).then(() => true, () => false),
         isFolder: path => stat(path).then(info => info.isDirectory(), () => false),
+        realPath: path => realpath(path).catch(() => path),
         openPath,
         showItem,
         icon,
