@@ -42,6 +42,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            512 KB), with its media type; `not_found` when there is none, and for the personal space. The
  *                                            icon the person uploaded is `ProjectSettings.icon`, which the app shows first
  * DELETE /v1/projects/:id/attachments/:attachmentId -> { ok: true }; only for a file that was not sent yet (`conflict` otherwise)
+ * /v1/projects/:id/fs/*                  -> the files of one of the project's folders: list, find, read, write, make a folder, move, copy,
+ *                                            delete, watch. The routes are described in `fs.ts`
  * POST /v1/shutdown                       -> { ok: true }; stops the daemon gracefully (live engines are aborted, their runs
  *                                            come back `interrupted` at the next start, nothing is marked cancelled)
  * GET  /v1/skills?projectId=              -> SkillCatalog (system and user skills; with `projectId` also that project's skills)
@@ -60,13 +62,14 @@ export const ROUTES = {
     runItems: (runId: string) => `/v1/runs/${ encodeURIComponent(runId) }/items`,
     chatItems: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/items`,
     taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
+    taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
     docsFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs/file`,
-    taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
     projectIcon: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/icon`,
+    projectFs: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/fs`,
     skills: '/v1/skills',
     agents: '/v1/agents',
     agentModels: (agentId: string) => `/v1/agents/${ encodeURIComponent(agentId) }/models`,
