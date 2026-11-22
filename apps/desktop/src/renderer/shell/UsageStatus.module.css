@@ -1,4 +1,4 @@
-/* The badges sit together, left of the shortcuts button. */
+/* The badges sit together, left of the side panel's toggle. */
 .group {
     display: flex;
     align-items: center;

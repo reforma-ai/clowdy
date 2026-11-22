@@ -27,12 +27,12 @@ export interface PlatformKeys {
 
 export type CommandKeys = Keys | PlatformKeys;
 
-/** A command: what the keys do, and the labels the help overlay and key hints show for it. */
+/** A command: what the keys do, and the labels the shortcuts page and key hints show for it. */
 export interface Command {
     /** Stable and unique, like `tasks.cursor.down`. */
     id: string;
     title: string;
-    /** Section of the help overlay. */
+    /** Group of the shortcuts page. */
     group: string;
     /** A string or a list of alternatives; the first is the one hints show. */
     keys: CommandKeys;
@@ -40,13 +40,13 @@ export interface Command {
     scope: string;
     /**
      * Switches the command off while it returns false: it does not exist for the screen now (no task under the cursor, nothing to save).
-     * A key hint is not shown for it. The help overlay lists every command the same way.
+     * A key hint is not shown for it. The shortcuts page lists every command the same way.
      */
     when?: () => boolean;
     /**
      * Whether the keyboard focus is where the command's keys belong, for a key that a widget has its own use for (the arrows in a text field's neighbour, a Select's type-ahead).
-     * The dispatcher runs the command only while this and `when` agree, but the help overlay and the key hints ignore it: they say whether the command
-     * exists on this screen, not where the focus is, and the focus is in the overlay itself whenever it is open.
+     * The dispatcher runs the command only while this and `when` agree, but the key hints ignore it: they say whether the command
+     * exists on this screen, not where the focus is.
      */
     focus?: () => boolean;
     /** Also runs while a text field has focus (modifier chords, Escape). */
@@ -380,7 +380,7 @@ export class HotkeyRegistry {
         return entry !== undefined && this.isEntryLive(entry);
     }
 
-    /** Every defined command, and those that are live now, for the help overlay. */
+    /** Every defined command, and those that are live now. */
     listCommands(): { live: Command[]; all: Command[] } {
         return {
             all: this.entries.map(entry => entry.command),

@@ -121,12 +121,12 @@ function settle({ cursor, ui, hasTask, revealCursor, replacing }: TaskCommandDep
     revealCursor();
 }
 
-/** Whether there is a task under the cursor. The help overlay and the key hints ask this too. */
+/** Whether there is a task under the cursor. The key hints ask this too. */
 const hasCursor = ({ cursor }: TaskCommandDeps) => cursor.cursorId !== null;
 
 /**
- * Whether the focus is not in a widget that keeps its own arrows and letters. Only the dispatcher asks: the help overlay's search field
- * has the focus while it lists the commands, and it would show every one of them as unavailable.
+ * Whether the focus is not in a widget that keeps its own arrows and letters. Only the dispatcher asks: the key hints would change with every move of the focus,
+ * and show a command as unavailable while a field has it.
  */
 const inList = ({ focusZone }: TaskCommandDeps) => focusZone() !== 'other';
 

@@ -1597,7 +1597,7 @@ describe('Undo', () => {
         expect(commandHint('tasks.undo', harness.registry)).toBeUndefined();
     });
 
-    it('turns on with the first change and off again when the history is empty, for the hint and for what the overlay marks as available', async () => {
+    it('turns on with the first change and off again when the history is empty, for the hint', async () => {
         const harness = setup(list, 'list');
         const isLive = () => harness.registry.listCommands().live.some(command => command.id === 'tasks.undo');
 
@@ -1676,7 +1676,7 @@ describe('Undo', () => {
     });
 });
 
-describe('where the focus is, and the help overlay and the key hints', () => {
+describe('where the focus is, and the shortcuts page and the key hints', () => {
     it('keeps a key off while a widget has the focus, but the command is still listed and still has its hint', () => {
         const harness = setup(list, 'list');
 
@@ -1701,7 +1701,7 @@ describe('where the focus is, and the help overlay and the key hints', () => {
     });
 });
 
-describe('the help overlay', () => {
+describe('the shortcuts page', () => {
     it('shows every command under Tasks with a title that says what it does', () => {
         const harness = setup(list, 'list');
         const groups = groupHelpEntries(helpEntries(harness.registry));

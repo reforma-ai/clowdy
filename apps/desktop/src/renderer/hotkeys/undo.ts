@@ -32,7 +32,7 @@ export class UndoStack {
     }
 
     /**
-     * Whether the scope has something to undo. A command that is on only then (the help overlay and the hints read it) follows this.
+     * Whether the scope has something to undo. A command that is on only then (the hints read it) follows this.
      * A method rather than an action, so a reaction that calls it tracks the entries.
      */
     canUndo(scope: string): boolean {

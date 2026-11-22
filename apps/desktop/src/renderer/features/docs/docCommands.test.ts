@@ -113,7 +113,7 @@ describe('document tree commands', () => {
         }
     });
 
-    it('stay live for the help overlay and the key hints while a field has the focus, as the overlay\'s own search field does', () => {
+    it('stay live for the key hints while a field has the focus', () => {
         setup();
         element('search').focus();
 

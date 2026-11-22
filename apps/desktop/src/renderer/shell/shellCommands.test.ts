@@ -14,9 +14,10 @@ let uninstall: () => void;
 let ui: UiStore;
 /** Whether the window shows a project: what the real root works out from its phase, Settings and the selected project. */
 let screen: { shown: boolean };
+/** How far the window has loaded, as the real root's `phase` says. */
+let loading: { phase: ShellCommandsRoot['phase'] };
 let root: ShellCommandsRoot;
 let history: ShellCommandsRoot['history'] & { canGoBack: boolean; canGoForward: boolean };
-let openHelp: () => void;
 
 const press = (init: KeyboardEventInit & { key: string }, target: EventTarget = document.body) => {
     const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
@@ -34,12 +35,20 @@ beforeEach(() => {
     history = observable({ canGoBack: false, canGoForward: false, back: vi.fn(), forward: vi.fn() }, { back: false, forward: false });
     // `ui` and `history` stay out of the observable: they are stores of their own, like on the real `RootStore`.
     screen = observable({ shown: true });
-    root = observable({ selectedProjectId: 'p' as string | null, get showsProjectScreen() {
-        return screen.shown;
-    }, ui, history }, { ui: false, history: false });
-    openHelp = vi.fn();
+    loading = observable({ phase: 'ready' as ShellCommandsRoot['phase'] });
+    root = observable({
+        get phase() {
+            return loading.phase;
+        },
+        selectedProjectId: 'p' as string | null,
+        get showsProjectScreen() {
+            return screen.shown;
+        },
+        ui,
+        history,
+    }, { ui: false, history: false });
 
-    for (const command of shellCommands(root, openHelp)) registry.defineCommand({ ...command, scope: 'app' });
+    for (const command of shellCommands(root)) registry.defineCommand({ ...command, scope: 'app' });
 
     uninstall = installDispatcher(registry);
 });
@@ -157,34 +166,37 @@ describe('section chords', () => {
 });
 
 describe('help.open', () => {
-    it('opens on ?, which is Shift+/ on a US keyboard, and on Cmd+/', () => {
+    const shown = () => [ui.settingsOpen, ui.settingsPage];
+
+    it('opens Settings on the Shortcuts page on ?, which is Shift+/ on a US keyboard', () => {
         press({ key: '?', shiftKey: true });
+
+        expect(shown()).toEqual([true, 'shortcuts']);
+    });
+
+    it('opens it on Cmd+/ too, and from another page of Settings', () => {
+        ui.openSettings('providers');
+
         press({ key: '/', metaKey: true });
 
-        expect(openHelp).toHaveBeenCalledTimes(2);
+        expect(shown()).toEqual([true, 'shortcuts']);
     });
 
-    it('opens on Cmd+? too, which is Cmd+Shift+/ on a US keyboard: Shift turns the key into "?", so `$mod+/` alone does not match it', () => {
+    it('opens it on Cmd+? too, which is Cmd+Shift+/ on a US keyboard: Shift turns the key into "?", so `$mod+/` alone does not match it', () => {
         const event = press({ key: '?', code: 'Slash', metaKey: true, shiftKey: true });
 
-        expect(openHelp).toHaveBeenCalledTimes(1);
+        expect(shown()).toEqual([true, 'shortcuts']);
         expect(event.defaultPrevented).toBe(true);
-    });
-
-    it('calls openHelp with nothing, not with the key event it would take for a registry', () => {
-        press({ key: '?', shiftKey: true });
-
-        expect(openHelp).toHaveBeenCalledWith();
     });
 
     it('does not open on Ctrl+/ on macOS, or on a bare slash', () => {
         press({ key: '/', ctrlKey: true });
         press({ key: '/' });
 
-        expect(openHelp).not.toHaveBeenCalled();
+        expect(ui.settingsOpen).toBe(false);
     });
 
-    it('stays shut while a text field has focus, so the search field of the overlay can take a ?', () => {
+    it('stays shut while a text field has focus, so the field can take a ?', () => {
         const input = document.createElement('input');
 
         document.body.append(input);
@@ -192,12 +204,23 @@ describe('help.open', () => {
         try {
             const event = press({ key: '?', shiftKey: true }, input);
 
-            expect(openHelp).not.toHaveBeenCalled();
+            expect(ui.settingsOpen).toBe(false);
             expect(event.defaultPrevented).toBe(false);
         }
         finally {
             input.remove();
         }
+    });
+
+    it('stays shut until the window has loaded, because Settings shows over nothing before then', () => {
+        runInAction(() => {
+            loading.phase = 'unreachable';
+        });
+
+        const event = press({ key: '?', shiftKey: true });
+
+        expect(ui.settingsOpen).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
     });
 });
 
@@ -294,7 +317,7 @@ describe('the keymap', () => {
     it('has no key conflicts and unique ids', () => {
         const probe = createRegistry('win32');
 
-        for (const command of shellCommands(root, openHelp)) probe.defineCommand({ ...command, scope: 'app' });
+        for (const command of shellCommands(root)) probe.defineCommand({ ...command, scope: 'app' });
 
         for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
 

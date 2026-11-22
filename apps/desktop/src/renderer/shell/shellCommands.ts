@@ -21,18 +21,19 @@ const BACK_KEYS = '$mod+BracketLeft';
 const FORWARD_KEYS = '$mod+BracketRight';
 
 /** What the shell's commands need of the root store. */
-export interface ShellCommandsRoot extends Pick<RootStore, 'selectedProjectId' | 'showsProjectScreen' | 'ui'> {
+export interface ShellCommandsRoot extends Pick<RootStore, 'phase' | 'selectedProjectId' | 'showsProjectScreen' | 'ui'> {
     history: Pick<NavHistory, 'back' | 'forward' | 'canGoBack' | 'canGoForward'>;
 }
 
 /**
- * The commands that work in every section, for `useCommands('app', …)`: the help overlay, the `G` chords that switch sections, `Cmd+N` for a new chat, `Cmd+Shift+B` for
+ * The commands that work in every section, for `useCommands('app', …)`: the shortcuts page of Settings, the `G` chords that switch sections, `Cmd+N` for a new chat, `Cmd+Shift+B` for
  * the side panel, and back and forward.
+ * `?` opens Settings on its Shortcuts page, once the window shows anything to open it over: while the app loads or cannot reach its daemon, the key reaches the page.
  * A section chord and a new chat need a selected project, as the Rail's buttons do, and also leave Settings.
  * `Cmd+N` shows the new-chat page of the Agents section whichever section is open, and works from a text field too: the message box is the place it is most wanted.
  * Back and forward are off while there is nowhere to go, so the key reaches the page and the hint is not shown. Text fields keep `Cmd+[` for outdenting.
  */
-export function shellCommands(root: ShellCommandsRoot, openHelp: () => void): ScopedCommand[] {
+export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
     const sections = (Object.keys(SECTION_CHORDS) as Section[]).map((section): ScopedCommand => ({
         id: navCommandId(section),
         title: SECTION_CHORDS[section].title,
@@ -45,7 +46,14 @@ export function shellCommands(root: ShellCommandsRoot, openHelp: () => void): Sc
     }));
 
     return [
-        { id: 'help.open', title: 'Show keyboard shortcuts', group: 'General', keys: ['?', '$mod+/', '$mod+?'], handler: () => openHelp() },
+        {
+            id: 'help.open',
+            title: 'Show keyboard shortcuts',
+            group: 'General',
+            keys: ['?', '$mod+/', '$mod+?'],
+            when: () => root.phase === 'ready',
+            handler: () => root.ui.openSettings('shortcuts'),
+        },
         ...sections,
         {
             id: NEW_CHAT_COMMAND,

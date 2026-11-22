@@ -9,7 +9,6 @@ import { Screen as SettingsScreen } from '../features/settings';
 import { SidePanelLayout } from '../features/sidePanel';
 import { Screen as TasksScreen } from '../features/tasks';
 import { ChordHud, hotkeys, installDispatcher, useCommands } from '../hotkeys';
-import { openHelp } from '../hotkeys/openHelp';
 import { useProjectUi, useRootStore } from '../stores';
 import { FindBar } from './FindBar';
 import { NoProject } from './NoProject';
@@ -37,7 +36,7 @@ export function Shell() {
     const root = useRootStore();
 
     useEffect(() => installDispatcher(hotkeys), []);
-    useCommands('app', shellCommands(root, openHelp));
+    useCommands('app', shellCommands(root));
 
     return (
         <div className={ styles.shell }>

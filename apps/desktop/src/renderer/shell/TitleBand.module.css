@@ -19,7 +19,7 @@
     padding-right: var(--spacing-lg);
 }
 
-/* What sits at the right edge: the usage badges, then the shortcuts button. The band's own right padding keeps it clear of the Windows caption buttons. */
+/* What sits at the right edge: the usage badges, then the side panel's toggle. The band's own right padding keeps it clear of the Windows caption buttons. */
 .end {
     display: flex;
     flex-shrink: 0;
