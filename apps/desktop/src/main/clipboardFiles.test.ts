@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -6,11 +6,15 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createClipboardFiles, systemClipboardFilesDeps, type ClipboardFilesDeps } from './clipboardFiles';
 
 /** A machine of the files and folders named, with a clipboard that holds the addresses given; `copy` and `writeUris` only record what they were asked. */
-function machine({ platform = 'darwin', uris = [], files = [], directories = [] }: {
+function machine({ platform = 'darwin', uris = [], files = [], directories = [], links = {}, dangling = [] }: {
     platform?: NodeJS.Platform;
     uris?: string[];
     files?: string[];
     directories?: string[];
+    /** Where a link goes, by the link's path. */
+    links?: Record<string, string>;
+    /** Links that go nowhere: there is something at the path, and it is neither a file nor a folder. */
+    dangling?: string[];
 }) {
     const copy = vi.fn<ClipboardFilesDeps['copy']>(async () => undefined);
     const writeUris = vi.fn<ClipboardFilesDeps['writeUris']>(async () => undefined);
@@ -19,6 +23,8 @@ function machine({ platform = 'darwin', uris = [], files = [], directories = [] 
         readUris: async () => uris,
         writeUris,
         kindOf: async path => (files.includes(path) ? 'file' : directories.includes(path) ? 'directory' : undefined),
+        exists: async path => files.includes(path) || directories.includes(path) || dangling.includes(path),
+        realPath: async path => links[path] ?? path,
         copy,
     };
 
@@ -129,6 +135,84 @@ describe('pasting files from the clipboard', () => {
     });
 });
 
+describe('pasting where the spelling of a path says too little', () => {
+    const base = {
+        uris: ['file:///Users/dev/web/'],
+        directories: ['/Users/dev/web', '/Users/dev/web/sub', '/Users/dev/out', '/Users/dev/out/x'],
+    };
+
+    test('reads a folder\'s address with a separator at its end as the folder', async () => {
+        const { clipboard } = machine(base);
+
+        expect(await clipboard.read()).toEqual([{ path: '/Users/dev/web', name: 'web', kind: 'directory' }]);
+    });
+
+    test('does not copy a folder into a folder that a link leads into it', async () => {
+        const { clipboard, copy } = machine({ ...base, directories: [...base.directories, '/Users/dev/out/x/y'], links: { '/Users/dev/out/x/y': '/Users/dev/web/sub' } });
+
+        await expect(clipboard.paste('/Users/dev/out/x/y', [{ path: '/Users/dev/web', name: 'web' }])).rejects.toThrow('web can’t be copied into itself');
+        expect(copy).not.toHaveBeenCalled();
+    });
+
+    test('does not copy a folder into a link that leads to the folder itself', async () => {
+        const { clipboard, copy } = machine({ ...base, directories: [...base.directories, '/Users/dev/out/self'], links: { '/Users/dev/out/self': '/Users/dev/web' } });
+
+        await expect(clipboard.paste('/Users/dev/out/self', [{ path: '/Users/dev/web', name: 'web' }])).rejects.toThrow('web can’t be copied into itself');
+        expect(copy).not.toHaveBeenCalled();
+    });
+
+    test('counts a name with a name inside the folder that starts with two dots as inside it', async () => {
+        const { clipboard, copy } = machine({ ...base, directories: [...base.directories, '/Users/dev/web/..hidden'] });
+
+        await expect(clipboard.paste('/Users/dev/web/..hidden', [{ path: '/Users/dev/web', name: 'web' }])).rejects.toThrow('web can’t be copied into itself');
+        expect(copy).not.toHaveBeenCalled();
+    });
+
+    test('counts a link that goes nowhere as a name that is taken', async () => {
+        const { clipboard, copy } = machine({ ...base, dangling: ['/Users/dev/out/web'] });
+
+        await expect(clipboard.paste('/Users/dev/out', [{ path: '/Users/dev/web', name: 'web' }])).rejects.toThrow('web already exists');
+        expect(copy).not.toHaveBeenCalled();
+    });
+});
+
+describe('pasting on Windows', () => {
+    const held = {
+        platform: 'win32' as const,
+        uris: ['file:///C:/Users/dev/Downloads/My%20notes.md'],
+        files: ['C:\\Users\\dev\\Downloads\\My notes.md'],
+        directories: ['C:\\Users\\dev\\web'],
+    };
+
+    test('copies into a folder under the name given, in the way Windows writes the path', async () => {
+        const { clipboard, copy } = machine(held);
+
+        await clipboard.paste('C:\\Users\\dev\\web', [{ path: 'C:\\Users\\dev\\Downloads\\My notes.md', name: 'notes.md' }]);
+
+        expect(copy).toHaveBeenCalledWith('C:\\Users\\dev\\Downloads\\My notes.md', 'C:\\Users\\dev\\web\\notes.md');
+    });
+
+    test.each([['x:stream'], ['NUL'], ['com1.txt'], ['name.'], ['a?b'], ['..\\a']])('refuses the name %s', async (name) => {
+        const { clipboard, copy } = machine(held);
+
+        await expect(clipboard.paste('C:\\Users\\dev\\web', [{ path: 'C:\\Users\\dev\\Downloads\\My notes.md', name }])).rejects.toThrow('Bad paste');
+        expect(copy).not.toHaveBeenCalled();
+    });
+
+    test('does not copy a folder into itself, whatever the case of its path', async () => {
+        const { clipboard, copy } = machine({ ...held, uris: ['file:///C:/Users/dev/web'], directories: ['C:\\Users\\dev\\web', 'c:\\users\\dev\\WEB\\dist'] });
+
+        await expect(clipboard.paste('c:\\users\\dev\\WEB\\dist', [{ path: 'C:\\Users\\dev\\web', name: 'web' }])).rejects.toThrow('web can’t be copied into itself');
+        expect(copy).not.toHaveBeenCalled();
+    });
+
+    test('keeps the root of a drive as it is', async () => {
+        const { clipboard } = machine({ ...held, uris: ['file:///C:/'], directories: ['C:\\'] });
+
+        expect((await clipboard.read()).map(file => file.path)).toEqual(['C:\\']);
+    });
+});
+
 describe('the system clipboard and disk', () => {
     let folder: string | undefined;
 
@@ -154,6 +238,28 @@ describe('the system clipboard and disk', () => {
 
         return { clipboard: clipboard as never, Item: Item as never, written: () => uris };
     }
+
+    test('refuse a folder copied into itself through a link, and a name that a link that goes nowhere has', async () => {
+        folder = await mkdtemp(join(tmpdir(), 'clowdy-clipboard-'));
+
+        const source = join(folder, 'src');
+        const target = join(folder, 't');
+
+        await mkdir(join(source, 'sub'), { recursive: true });
+        await mkdir(join(target, 'x'), { recursive: true });
+        await symlink(join('..', '..', 'src', 'sub'), join(target, 'x', 'y'));
+        await symlink('nowhere', join(target, 'src'));
+
+        const { clipboard: fake, Item } = fakeClipboard();
+        const files = createClipboardFiles(systemClipboardFilesDeps(fake, Item));
+
+        await files.write([source]);
+
+        await expect(files.paste(join(target, 'x', 'y'), [{ path: source, name: 'src' }])).rejects.toThrow('src can’t be copied into itself');
+        await expect(files.paste(target, [{ path: source, name: 'src' }])).rejects.toThrow('src already exists');
+        // Nothing was made inside the source on the way.
+        await expect(readdir(join(source, 'sub'))).resolves.toEqual([]);
+    });
 
     test('copy a folder with what it holds and a link in it as it is, and read back what was written', async () => {
         folder = await mkdtemp(join(tmpdir(), 'clowdy-clipboard-'));

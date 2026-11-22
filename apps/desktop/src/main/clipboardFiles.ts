@@ -1,4 +1,4 @@
-import { cp, stat } from 'node:fs/promises';
+import { cp, lstat, realpath, stat } from 'node:fs/promises';
 import { posix, win32 } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -15,8 +15,12 @@ export interface ClipboardFilesDeps {
     readUris: () => Promise<string[]>;
     /** Replaces the clipboard with these files, and with `text` for the places that take only text. */
     writeUris: (uris: readonly string[], text: string) => Promise<void>;
-    /** What the path is, or nothing when it is gone or cannot be read. */
+    /** What the path is, a link followed, or nothing when it is gone or cannot be read. */
     kindOf: (path: string) => Promise<ClipboardFile['kind'] | undefined>;
+    /** Whether anything is at the path: a link counts, even one that goes nowhere. */
+    exists: (path: string) => Promise<boolean>;
+    /** Where the path really is, its links followed; the path itself when that cannot be told. */
+    realPath: (path: string) => Promise<string>;
     /** Copies a file or a folder with everything in it, and never over what is there. */
     copy: (from: string, to: string) => Promise<void>;
 }
@@ -28,9 +32,11 @@ export interface ClipboardFiles {
     /** Puts files and folders on the clipboard, as the system's file manager does: they paste as files into it and into other programs, and as their paths into a text field. */
     write: (paths: unknown) => Promise<void>;
     /**
-     * Copies files and folders of the clipboard into `folder`, each under the name given with it. The page names the entries by their paths,
-     * but only to say which of what is on the clipboard now goes under which name: a path that is not there is refused, so the page can copy
-     * nothing it was not given by the person. A name that is taken is refused rather than replaced.
+     * Copies files and folders of the clipboard into `folder`, each under the name given with it. The page names the entries by their paths, but only to say
+     * which of what is on the clipboard now goes under which name: a path that is not there is refused. That keeps a page from copying a file it did not put on
+     * the clipboard first; it is no wall against a page that can write the clipboard itself, which the daemon's shell lets it do anyway. Every name is checked
+     * before the first copy is made: a name that is taken is refused rather than replaced, and so is a folder copied into itself. A copy that fails while it runs
+     * leaves what was copied until then, and the error says what failed.
      */
     paste: (folder: unknown, items: unknown) => Promise<void>;
 }
@@ -63,24 +69,35 @@ export function systemClipboardFilesDeps(clipboard: Pick<Clipboard, 'read' | 'wr
                 return undefined;
             }
         },
+        exists: path => lstat(path).then(() => true, () => false),
+        realPath: path => realpath(path).catch(() => path),
         copy: (from, to) => cp(from, to, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true }),
     };
 }
 
-/** Whether `name` is one plain name: nothing that would take it out of the folder it is made in. */
-function isPlainName(name: unknown): name is string {
-    return typeof name === 'string' && name !== '' && name !== '.' && name !== '..' && !/[\\/\0]/.test(name);
-}
+/** The names Windows keeps for devices, which a file cannot be named, with or without an extension. */
+const DEVICE_NAME = /^(?:con|prn|aux|nul|com\d|lpt\d)(?:\..*)?$/i;
 
-export function createClipboardFiles({ platform, readUris, writeUris, kindOf, copy }: ClipboardFilesDeps): ClipboardFiles {
+export function createClipboardFiles({ platform, readUris, writeUris, kindOf, exists, realPath, copy }: ClipboardFilesDeps): ClipboardFiles {
     const api = platform === 'win32' ? win32 : posix;
     const windows = platform === 'win32';
+
+    /** `path` without the separator at its end that a folder's address may have, a root (`/`, `C:\`) excepted. */
+    const withoutTrailingSeparator = (path: string) => (windows ? !/^[A-Za-z]:[\\/]*$/.test(path) && /[\\/]$/.test(path) : path.length > 1 && path.endsWith('/'))
+        ? path.replace(windows ? /[\\/]+$/ : /\/+$/, '')
+        : path;
+
+    /** Whether `name` is one plain name: nothing that would take it out of the folder it is made in, or onto a device or into a stream of another file on Windows. */
+    const isPlainName = (name: unknown): name is string => typeof name === 'string'
+        && name !== '' && name !== '.' && name !== '..'
+        && !/[\\/\0]/.test(name)
+        && (!windows || !(/[<>:"|?*]/.test(name) || /[. ]$/.test(name) || DEVICE_NAME.test(name)));
 
     /** Whether `path` is inside the folder `parent`. */
     const isInside = (path: string, parent: string) => {
         const relative = api.relative(parent, path);
 
-        return relative !== '' && !relative.startsWith('..') && !api.isAbsolute(relative);
+        return relative !== '' && relative !== '..' && !relative.startsWith(`..${ api.sep }`) && !api.isAbsolute(relative);
     };
 
     async function read(): Promise<ClipboardFile[]> {
@@ -97,6 +114,8 @@ export function createClipboardFiles({ platform, readUris, writeUris, kindOf, co
                 // An address that is not a file's.
                 continue;
             }
+
+            path = withoutTrailingSeparator(path);
 
             if (seen.has(path)) continue;
 
@@ -145,11 +164,17 @@ export function createClipboardFiles({ platform, readUris, writeUris, kindOf, co
 
             return { source, to: api.join(folder, name) };
         });
+        // Where the folder really is: a link in its path may lead into the folder that is copied, which the spelling of the path does not show.
+        const real = await realPath(folder);
 
         for (const { source, to } of copies) {
-            if (source.kind === 'directory' && isInside(to, source.path)) throw new Error(`${ source.name } can’t be copied into itself`);
+            if (source.kind === 'directory') {
+                const from = await realPath(source.path);
 
-            if (await kindOf(to)) throw new Error(`${ api.basename(to) } already exists`);
+                if (real === from || isInside(real, from) || isInside(to, source.path)) throw new Error(`${ source.name } can’t be copied into itself`);
+            }
+
+            if (await exists(to)) throw new Error(`${ api.basename(to) } already exists`);
         }
 
         for (const { source, to } of copies) await copy(source.path, to);
