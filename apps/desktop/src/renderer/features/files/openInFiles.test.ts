@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore } from '../../stores';
-import { filesManagerOf, openInFiles } from './openInFiles';
+import { filesManagerOf, kindOnDisk, openInFiles } from './openInFiles';
 import { filesStoreOf } from './useFilesStore';
 
 // The Car Rental project's only folder, with the fixture's files: README.md, package.json, src/booking/price.ts and the like.
@@ -76,5 +76,21 @@ describe('opening a path in the Files tab', () => {
         expect(await tabs()).toEqual(FILES);
         expect(await open('src/gone.ts')).toBe(false);
         expect(await tabs()).toEqual(FILES);
+    });
+});
+
+describe('what a path is on the disk', () => {
+    const kind = (path: string) => kindOnDisk(store, FIXTURE_PROJECT_ID, FOLDER, path);
+
+    it('is a file or a folder, as the disk has it, for a path with or without a trailing slash', async () => {
+        expect(await kind('src/booking/price.ts')).toBe('file');
+        expect(await kind('src/booking')).toBe('directory');
+        expect(await kind('src')).toBe('directory');
+    });
+
+    it('is a folder for the folder itself, and nothing for a path that is not there', async () => {
+        expect(await kind('')).toBe('directory');
+        expect(await kind('src/gone')).toBeUndefined();
+        expect(await kind('gone/deeper/file.ts')).toBeUndefined();
     });
 });

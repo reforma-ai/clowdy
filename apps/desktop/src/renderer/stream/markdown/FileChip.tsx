@@ -6,6 +6,7 @@ import { Copy } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
 import { openInFiles } from '../../features/files/openInFiles';
+import { useKindOnDisk } from '../../features/files/useKindOnDisk';
 import { openEffects, OpenWithMenu, useFolderGit, type OpenTarget } from '../../features/openWith';
 import { currentFolder } from '../../features/sidePanel/currentFolder';
 import chipStyles from '../../shared/Chip.module.css';
@@ -23,11 +24,15 @@ export interface FileChipProps {
     className?: string;
 }
 
-/** The menu of a path that is in a folder of the project: the same as everywhere (`OpenWithMenu`), with the git facts of its folder read when it opens. */
+/**
+ * The menu of a path that is in a folder of the project: the same as everywhere (`OpenWithMenu`), with the git facts of its folder read when it opens. A path
+ * written with no trailing slash is taken for a file until the disk says it is a folder (the terminal, `Open in Finder` and the `/tree/` page of GitHub follow).
+ */
 function TargetMenu({ target, onClose }: { target: OpenTarget; onClose: () => void }) {
     const git = useFolderGit(target.projectId, target.folder.id);
+    const kind = useKindOnDisk(target.projectId, target.folder, target.relative);
 
-    return <OpenWithMenu target={ target } git={ git } onClose={ onClose } aria-label="File actions" />;
+    return <OpenWithMenu target={ kind ? { ...target, kind } : target } git={ git } onClose={ onClose } aria-label="File actions" />;
 }
 
 /** The menu of a path that is in no folder of the project: only what does not need a folder, the copy of the path as it was written. */
