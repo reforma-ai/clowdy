@@ -7,13 +7,13 @@
     gap: var(--spacing-md);
 
     --overhang: calc((var(--leading-xl) - var(--spacing-30)) / 2);
-    --reach: var(--spacing-10);
+    --reach: var(--spacing-8);
 }
 
 /*
  * A button's plate is taller than the title's line, so it overhangs the row by half the difference (`--overhang`, negative) instead of stretching it. And the column's own margin
  * is wider than the plate needs: the plates reach out of it by `--reach`, to the left (the project select) and to the right (the buttons), so with the margin of 16px a plate is
- * 6px from the column's edge on both sides, and from its top by the margin above the row (`AgentList.module.css`).
+ * 8px from the column's edge on both sides, as far as the plates of the rows below are, and from its top by the margin above the row (`AgentList.module.css`).
  */
 .actions {
     display: flex;
