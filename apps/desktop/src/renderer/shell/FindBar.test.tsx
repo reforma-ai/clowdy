@@ -8,21 +8,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hotkeys, installDispatcher } from '../hotkeys';
 import { FindBar } from './FindBar';
 
-import type { DesktopBridge, FindCommand, FindOptions, FindResult } from '../../shared/bridge';
+import type { DesktopBridge, FindCommand } from '../../shared/bridge';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+class FakeHighlight {
+    ranges: Range[] = [];
+    priority = 0;
+
+    constructor(...ranges: Range[]) {
+        this.ranges = ranges;
+    }
+
+    add(range: Range) {
+        this.ranges.push(range);
+    }
+}
+
+const PAGE = '<p>First booking here.</p><p>A second Booking, and then a third booking.</p>';
+
 let container: HTMLDivElement;
+let page: HTMLDivElement;
 let root: Root;
 let uninstall: () => void;
 let command: ((command: FindCommand) => void) | undefined;
-
-const findInPage = vi.fn<(text: string, options: FindOptions) => Promise<FindResult>>(async () => ({ matches: 4, activeMatchOrdinal: 1 }));
-const stopFind = vi.fn(async () => undefined);
+const painted = new Map<string, FakeHighlight>();
 
 const field = () => container.querySelector<HTMLInputElement>('input[aria-label="Find in page"]');
 const bar = () => container.querySelector('[role="search"]');
-const count = () => container.querySelector('[aria-live="polite"]')?.getAttribute('aria-label');
+const count = () => container.querySelector('[aria-live="polite"]')?.textContent;
+const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`);
+/** The text of the hit that is on, as the page paints it. */
+const active = () => painted.get('find-active')?.ranges.map(range => range.toString());
 
 function press(key: string, init: KeyboardEventInit & { mod?: boolean } = {}, target: Element = document.body) {
     const { mod, ...rest } = init;
@@ -41,22 +58,21 @@ async function type(text: string) {
 
         setValue.call(input, text);
         input.dispatchEvent(new Event('input', { bubbles: true }));
-
-        for (let step = 0; step < 5; step++) await Promise.resolve();
     });
 }
 
 beforeEach(() => {
+    painted.clear();
+    vi.stubGlobal('Highlight', FakeHighlight);
+    vi.stubGlobal('CSS', { highlights: painted });
     container = document.createElement('div');
-    document.body.append(container);
+    page = document.createElement('div');
+    page.innerHTML = PAGE;
+    document.body.append(page, container);
     root = createRoot(container);
     uninstall = installDispatcher(hotkeys);
     command = undefined;
-    findInPage.mockClear();
-    stopFind.mockClear();
     window.desktop = {
-        findInPage,
-        stopFind,
         onFindCommand: (listener: (command: FindCommand) => void) => {
             command = listener;
 
@@ -71,11 +87,18 @@ afterEach(() => {
     act(() => root.unmount());
     uninstall();
     container.remove();
+    page.remove();
     window.desktop = undefined;
+    vi.unstubAllGlobals();
 });
 
 async function draw() {
     await act(async () => root.render(<FindBar />));
+}
+
+async function open() {
+    await draw();
+    await act(async () => press('f', { mod: true }));
 }
 
 describe('Find in page', () => {
@@ -108,133 +131,231 @@ describe('Find in page', () => {
         }
     });
 
-    it('searches what is typed, then moves to the next and previous match', async () => {
-        await draw();
-        await act(async () => press('f', { mod: true }));
+    it('searches what is typed, paints the hits and goes to the first', async () => {
+        await open();
         await type('booking');
 
-        expect(findInPage).toHaveBeenCalledWith('booking', { forward: true, findNext: true });
         expect(count()).toBe('1 of 3');
-
-        findInPage.mockClear();
-        await act(async () => press('Enter', {}, field()!));
-
-        expect(findInPage).toHaveBeenCalledWith('booking', { forward: true, findNext: false });
-
-        findInPage.mockClear();
-        await act(async () => press('Enter', { shiftKey: true }, field()!));
-
-        expect(findInPage).toHaveBeenCalledWith('booking', { forward: false, findNext: false });
+        expect(painted.get('find')?.ranges.map(range => range.toString())).toEqual(['booking', 'Booking', 'booking']);
+        expect(active()).toEqual(['booking']);
     });
 
-    it('drops the match in the field, and clears the highlight when that is the only one', async () => {
-        findInPage.mockResolvedValue({ matches: 1, activeMatchOrdinal: 1 });
-        await draw();
-        await act(async () => press('f', { mod: true }));
+    it('moves to the next and previous match with Enter and Shift+Enter, round the ends', async () => {
+        await open();
+        await type('booking');
+        await act(async () => press('Enter', {}, field()!));
+
+        expect(count()).toBe('2 of 3');
+        expect(active()).toEqual(['Booking']);
+
+        await act(async () => press('Enter', {}, field()!));
+        await act(async () => press('Enter', {}, field()!));
+
+        expect(count()).toBe('1 of 3');
+
+        await act(async () => press('Enter', { shiftKey: true }, field()!));
+
+        expect(count()).toBe('3 of 3');
+    });
+
+    it('moves with the buttons too', async () => {
+        await open();
+        await type('booking');
+        await act(async () => button('Next match')!.click());
+
+        expect(count()).toBe('2 of 3');
+
+        await act(async () => button('Previous match')!.click());
+        await act(async () => button('Previous match')!.click());
+
+        expect(count()).toBe('3 of 3');
+    });
+
+    it('does not find its own query: the field is not part of the page', async () => {
+        page.innerHTML = '<p>nothing about it</p>';
+        await open();
         await type('booking');
 
         expect(count()).toBe('No matches');
-        expect(stopFind).toHaveBeenCalled();
+        expect(painted.size).toBe(0);
+
+        page.innerHTML = PAGE;
+        await type('booking!');
+        await type('booking');
+
+        // The three on the page, and not a fourth in the bar.
+        expect(count()).toBe('1 of 3');
+        expect(painted.get('find')?.ranges.every(range => !bar()!.contains(range.startContainer))).toBe(true);
     });
 
-    it('moves the highlight off the field when the page has other matches', async () => {
-        await draw();
-        await act(async () => press('f', { mod: true }));
+    it('keeps the focus in the field while typing and stepping, by the keys and by the buttons', async () => {
+        await open();
+        await type('b');
 
-        const input = field()!;
-
-        input.getBoundingClientRect = () => ({
-            x: 420,
-            y: 48,
-            width: 188,
-            height: 36,
-            left: 420,
-            top: 48,
-            right: 608,
-            bottom: 84,
-            toJSON() {
-                return {};
-            },
-        });
-        findInPage.mockReset();
-        findInPage
-            .mockResolvedValueOnce({
-                matches: 5,
-                activeMatchOrdinal: 2,
-                selectionArea: { x: 424, y: 56, width: 40, height: 16 },
-            })
-            .mockResolvedValueOnce({
-                matches: 5,
-                activeMatchOrdinal: 3,
-                selectionArea: { x: 20, y: 200, width: 40, height: 16 },
-            });
+        expect(document.activeElement).toBe(field());
 
         await type('booking');
 
-        expect(findInPage).toHaveBeenLastCalledWith('booking', { forward: true, findNext: false });
-        expect(count()).toBe('2 of 4');
-        expect(stopFind).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(field());
+
+        await act(async () => press('Enter', {}, field()!));
+
+        expect(document.activeElement).toBe(field());
+
+        await act(async () => button('Next match')!.click());
+        await act(async () => button('Previous match')!.click());
+
+        expect(document.activeElement).toBe(field());
     });
 
-    it('steps from the last page match, not from the caret in the field', async () => {
-        await draw();
-        await act(async () => press('f', { mod: true }));
+    it('gives the focus to the field when the bar around it is pressed, and leaves the field its own press so the pointer places the caret', async () => {
+        await open();
         await type('booking');
 
+        const press = (target: Element) => {
+            const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+
+            target.dispatchEvent(event);
+
+            return event;
+        };
+        const label = container.querySelector('[aria-live="polite"]')!;
+
+        field()!.blur();
+
+        expect(document.activeElement).not.toBe(field());
+        expect(press(label).defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(field());
-        field()!.setSelectionRange(1, 4);
 
-        let focusedDuringFind = true;
+        field()!.blur();
 
-        findInPage.mockImplementation(() => {
-            focusedDuringFind = document.activeElement === field();
-
-            return Promise.resolve({ matches: 19, activeMatchOrdinal: 2 });
-        });
-
-        await act(async () => {
-            press('Enter', {}, field()!);
-
-            for (let step = 0; step < 5; step++) await Promise.resolve();
-        });
-
-        expect(focusedDuringFind).toBe(false);
+        expect(press(bar()!).defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(field());
-        expect(count()).toBe('2 of 18');
-        expect(field()!.selectionStart).toBe(1);
-        expect(field()!.selectionEnd).toBe(4);
+
+        // Where the caret goes is the field's own business.
+        expect(press(field()!).defaultPrevented).toBe(false);
     });
 
-    it('says when nothing matches, and Escape closes the bar and clears the highlights', async () => {
-        findInPage.mockResolvedValue({ matches: 0, activeMatchOrdinal: 0 });
-        await draw();
-        await act(async () => press('f', { mod: true }));
+    it('says when nothing matches and leaves the field alive: it keeps the focus, takes the next word, and finds again', async () => {
+        await open();
         await type('zzzz');
 
         expect(count()).toBe('No matches');
+        expect(painted.size).toBe(0);
+        expect(document.activeElement).toBe(field());
 
-        await act(async () => press('Escape', {}, field()!));
+        await act(async () => press('Enter', {}, field()!));
+        await act(async () => button('Next match')!.click());
 
-        expect(bar()).toBeNull();
-        expect(stopFind).toHaveBeenCalled();
+        expect(document.activeElement).toBe(field());
+
+        await type('booking');
+
+        expect(count()).toBe('1 of 3');
+        expect(document.activeElement).toBe(field());
     });
 
-    it('Cmd+G opens a closed bar and starts a search, and moves through one that is open', async () => {
-        await draw();
-        await act(async () => press('f', { mod: true }));
+    it('stays on the hit it is on when more of the word is typed, and goes to the first when that hit is gone', async () => {
+        await open();
+        await type('book');
+        await act(async () => press('Enter', {}, field()!));
+        await type('booking');
+
+        expect(count()).toBe('2 of 3');
+
+        await type('booking,');
+
+        expect(count()).toBe('1 of 1');
+    });
+
+    it('drops the count and the paint when the field is emptied', async () => {
+        await open();
+        await type('booking');
+        await type('');
+
+        expect(count()).toBe('');
+        expect(painted.size).toBe(0);
+    });
+
+    it('closes on Escape, clears the paint, and the bar can be opened again', async () => {
+        await open();
         await type('booking');
         await act(async () => press('Escape', {}, field()!));
 
-        findInPage.mockClear();
+        expect(bar()).toBeNull();
+        expect(painted.size).toBe(0);
+
+        await act(async () => press('f', { mod: true }));
+
+        expect(bar()).not.toBeNull();
+        expect(field()!.value).toBe('booking');
+        // It starts again from its query, so the page shows the hits it had.
+        expect(count()).toBe('1 of 3');
+        expect(painted.get('find')?.ranges).toHaveLength(3);
+    });
+
+    it('closes from its button and takes the paint with it', async () => {
+        await open();
+        await type('booking');
+        await act(async () => button('Close find')!.click());
+
+        expect(bar()).toBeNull();
+        expect(painted.size).toBe(0);
+    });
+
+    it('takes the paint off the page when it goes away with the bar open', async () => {
+        await open();
+        await type('booking');
+        await act(async () => root.render(null));
+
+        expect(painted.size).toBe(0);
+    });
+
+    it('wears the same buttons as the rest of the app', async () => {
+        await open();
+
+        for (const label of ['Previous match', 'Next match', 'Close find']) expect(button(label)?.dataset.variant).toBe('filling');
+    });
+
+    it('Cmd+G opens a closed bar and starts a search, and moves through one that is open', async () => {
+        await open();
+        await type('booking');
+        await act(async () => press('Escape', {}, field()!));
         await act(async () => press('g', { mod: true }));
 
         expect(bar()).not.toBeNull();
-        expect(findInPage).toHaveBeenCalledWith('booking', { forward: true, findNext: true });
+        expect(count()).toBe('1 of 3');
 
-        findInPage.mockClear();
+        await act(async () => press('g', { mod: true }));
+
+        expect(count()).toBe('2 of 3');
+
         await act(async () => press('g', { mod: true, shiftKey: true, code: 'KeyG' }));
 
-        expect(findInPage).toHaveBeenCalledWith('booking', { forward: false, findNext: false });
+        expect(count()).toBe('1 of 3');
+    });
+
+    it('Cmd+G with nothing to look for opens the bar and does not search', async () => {
+        await draw();
+        await act(async () => press('g', { mod: true }));
+
+        expect(bar()).not.toBeNull();
+        expect(document.activeElement).toBe(field());
+        expect(count()).toBe('');
+        expect(painted.size).toBe(0);
+    });
+
+    it('goes to the next match from the place the last one stood, even when the page changed in between', async () => {
+        await open();
+        await type('booking');
+        await act(async () => press('Enter', {}, field()!));
+
+        expect(count()).toBe('2 of 3');
+
+        page.insertAdjacentHTML('beforeend', '<p>The last booking of all.</p>');
+        await act(async () => press('Enter', {}, field()!));
+
+        expect(count()).toBe('3 of 4');
     });
 
     it('follows the Edit menu', async () => {
@@ -244,86 +365,13 @@ describe('Find in page', () => {
         expect(document.activeElement).toBe(field());
 
         await type('booking');
-        findInPage.mockClear();
         await act(async () => command?.('next'));
 
-        expect(findInPage).toHaveBeenCalledWith('booking', { forward: true, findNext: false });
-    });
+        expect(count()).toBe('2 of 3');
 
-    describe('a search that finishes late', () => {
-        const pending: Array<(result: FindResult) => void> = [];
+        await act(async () => command?.('previous'));
 
-        beforeEach(() => {
-            pending.length = 0;
-            findInPage.mockImplementation(() => new Promise(resolve => {
-                pending.push(resolve);
-            }));
-        });
-
-        afterEach(() => {
-            findInPage.mockReset();
-            findInPage.mockResolvedValue({ matches: 4, activeMatchOrdinal: 1 });
-        });
-
-        async function finish(index: number, result: FindResult = { matches: 3, activeMatchOrdinal: 1 }) {
-            await act(async () => {
-                pending[index]!(result);
-                await Promise.resolve();
-            });
-        }
-
-        it('clears the highlights again when the query was emptied', async () => {
-            await draw();
-            await act(async () => press('f', { mod: true }));
-            await type('booking');
-
-            stopFind.mockClear();
-            await type('');
-
-            expect(stopFind).toHaveBeenCalledTimes(1);
-            expect(count() ?? '').toBe('');
-
-            stopFind.mockClear();
-            await finish(0);
-
-            expect(stopFind).toHaveBeenCalledTimes(1);
-            expect(count() ?? '').toBe('');
-            expect(bar()).not.toBeNull();
-        });
-
-        it('clears the highlights again after Escape', async () => {
-            await draw();
-            await act(async () => press('f', { mod: true }));
-            await type('booking');
-
-            stopFind.mockClear();
-            await act(async () => press('Escape', {}, field()!));
-
-            expect(bar()).toBeNull();
-            expect(stopFind).toHaveBeenCalledTimes(1);
-
-            stopFind.mockClear();
-            await finish(0);
-
-            expect(stopFind).toHaveBeenCalledTimes(1);
-        });
-
-        it('leaves a newer search alone when an older one finishes', async () => {
-            await draw();
-            await act(async () => press('f', { mod: true }));
-            await type('book');
-            await type('booking');
-
-            stopFind.mockClear();
-            await finish(0);
-
-            expect(stopFind).not.toHaveBeenCalled();
-
-            await finish(1);
-
-            expect(stopFind).not.toHaveBeenCalled();
-            expect(count()).toBe('1 of 2');
-        });
+        expect(count()).toBe('1 of 3');
     });
 });
 
@@ -347,7 +395,7 @@ describe('Find in page with a code editor in focus', () => {
         act(() => command!('previous'));
 
         expect(bar()).toBeNull();
-        expect(findInPage).not.toHaveBeenCalled();
+        expect(painted.size).toBe(0);
 
         view.destroy();
         host.remove();

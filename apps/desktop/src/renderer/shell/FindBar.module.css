@@ -8,9 +8,9 @@
     box-sizing: border-box;
     display: flex;
     align-items: center;
-    width: 24rem;
+    width: 18rem;
     max-width: calc(100vw - 2 * var(--spacing-lg));
-    padding-left: var(--spacing-sm);
+    padding-inline: var(--spacing-sm) var(--spacing-4);
     border: 1px solid var(--color-surface-border);
     border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
     corner-shape: superellipse(var(--squircle-value));
@@ -18,10 +18,7 @@
     box-shadow: var(--shadow-md);
 }
 
-.bar:focus-within {
-    border-color: var(--color-primary);
-}
-
+/* The caret says the field has the focus; the bar keeps its own border, with no ring. */
 .field,
 .field:hover,
 .field:focus-within {
@@ -34,28 +31,33 @@
     box-shadow: none;
 }
 
-/* The words are generated content: Chromium's find only sees DOM text, so "1 of 3" is not a match.
-   The width stays whether or not there is a label, so the field does not move. */
 .trail {
     display: flex;
     flex: none;
     align-items: center;
+    gap: var(--spacing-4);
 }
 
+/* The width stays whether or not there is a label, so the field does not move; a longer one (`12345 of 30000`) takes room from the field, not from the buttons. */
 .count {
     flex: none;
-    width: 5.75rem;
+    min-width: 4.5rem;
     font-variant-numeric: tabular-nums;
     text-align: end;
     white-space: nowrap;
-}
-
-.count::before {
-    content: attr(data-label);
 }
 
 .steps {
     display: flex;
     align-items: center;
     gap: 0;
+}
+
+/* The hits that `pageSearch.ts` paints on the page: the same two strengths as the code editor's search. */
+::highlight(find) {
+    background-color: color-mix(in srgb, var(--color-warning) 30%, transparent);
+}
+
+::highlight(find-active) {
+    background-color: color-mix(in srgb, var(--color-warning) 65%, transparent);
 }
