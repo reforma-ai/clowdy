@@ -607,6 +607,45 @@ describe('ProjectsPage project', () => {
     });
 });
 
+describe('ProjectsPage, a folder that is gone', () => {
+    const info = { projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ folderId: 'fld_clowdy', exists: true, chats: 0 }, { folderId: 'fld_added_1', exists: false, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 };
+
+    afterEach(() => {
+        (window as { desktop?: unknown }).desktop = undefined;
+    });
+
+    it('has a Locate… button on it, which moves the folder to the place that is picked, in its place in the order', async () => {
+        const choose = vi.fn(async () => ['/Users/dev/api-moved']);
+
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: choose };
+        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+
+        // Only the folder that is gone has it.
+        expect(container.querySelectorAll('button[aria-label^="Locate "]')).toHaveLength(1);
+
+        await click(button('Locate car-rental-api'));
+        await flush();
+
+        expect(choose).toHaveBeenCalledOnce();
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/api-moved']);
+        expect(store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.folders[1]!.id).toBe('fld_added_1');
+    });
+
+    it('moves nothing when the dialog is closed, and has no button where the window has no dialog', async () => {
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => [] };
+        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+        await click(button('Locate car-rental-api'));
+        await flush();
+
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/car-rental-api']);
+
+        (window as { desktop?: unknown }).desktop = undefined;
+        await open(FIXTURE_EMPTY_PROJECT_ID, { getProjectsInfo: async () => [info] }, withFolders(FIXTURE_EMPTY_PROJECT_ID, '/Users/dev/car-rental-api'));
+
+        expect(container.querySelector('button[aria-label^="Locate "]')).toBeNull();
+    });
+});
+
 describe('ProjectsPage icon', () => {
     const PNG = 'data:image/png;base64,iVBORw0KGgo=';
     const settingsOf = (projectId: ProjectId) => store.projects.find(project => project.id === projectId)!.settings;

@@ -92,7 +92,7 @@ export function missingFolderNote(project: Pick<Project, 'personal'>, isMain: bo
     if (project.personal) return 'This folder no longer exists. Clowdy makes it again the next time it starts.';
 
     return isMain
-        ? 'This folder no longer exists, so the agents of this project cannot work. If it moved, add its new place and make that the main folder.'
+        ? 'This folder no longer exists, so the agents of this project cannot work. If it moved, locate its new place.'
         : 'This folder no longer exists, so the agents leave it out';
 }
 

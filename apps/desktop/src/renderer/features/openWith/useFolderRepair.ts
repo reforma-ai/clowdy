@@ -1,5 +1,5 @@
 import { useProjectState, useRootStore } from '../../stores';
-import { locateFolder, removeFolder } from '../settings/projects/projectActions';
+import { locateFolderByDialog, removeFolder } from '../settings/projects/projectActions';
 
 import type { ProjectFolder } from '@clowdy/protocol';
 
@@ -18,17 +18,12 @@ export interface FolderRepair {
 export function useFolderRepair(folder: ProjectFolder, missing: boolean): FolderRepair | undefined {
     const root = useRootStore();
     const state = useProjectState();
-    const choose = window.desktop?.chooseDirectories;
-
-    if (!missing || state.project.personal || !choose) return undefined;
+    if (!missing || state.project.personal || !window.desktop?.chooseDirectories) return undefined;
 
     const chats = [...state.chats.values()].filter(chat => chat.folderId === folder.id).length;
 
     return {
-        // The dialog takes several folders; the first is the new place.
-        locate: () => void choose().then(([path]) => {
-            if (path) void locateFolder(root, state.project, folder, path);
-        }),
+        locate: () => void locateFolderByDialog(root, state.project, folder),
         remove: state.project.folders.length > 1 ? () => void removeFolder(root, state.project, folder, chats) : undefined,
     };
 }

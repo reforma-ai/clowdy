@@ -106,7 +106,7 @@ describe('folderViews', () => {
 
 describe('missingFolderNote', () => {
     it('says the agents cannot work without the main folder, and that another one is left out', () => {
-        expect(missingFolderNote({}, true)).toContain('the agents of this project cannot work');
+        expect(missingFolderNote({}, true)).toBe('This folder no longer exists, so the agents of this project cannot work. If it moved, locate its new place.');
         expect(missingFolderNote({}, false)).toBe('This folder no longer exists, so the agents leave it out');
         expect(missingFolderNote({ personal: true }, true)).toContain('Clowdy makes it again');
     });

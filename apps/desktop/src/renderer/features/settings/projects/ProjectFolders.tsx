@@ -9,7 +9,7 @@ import { FolderList } from '../../../shell/FolderList';
 import { useRootStore } from '../../../stores';
 import { SettingsSection } from '../ui/SettingsSection';
 import { openFolderWorkspace } from './FolderWorkspaceDialog';
-import { addFolders, removeFolder, reorderFolders } from './projectActions';
+import { addFolders, locateFolderByDialog, removeFolder, reorderFolders } from './projectActions';
 import styles from './ProjectDetail.module.css';
 import { folderViews, missingFolderNote, siteName, type FolderView, type RemoteLink } from './projectView';
 
@@ -31,7 +31,8 @@ interface DraggedOrder {
 
 /**
  * The Folders block of a project's page, in the `FolderList` the Add project form has too: the folders in order, the first marked Main,
- * dragged into another order, removed one by one, and more added with Add folders…. Each shows that it is missing, and opens its git
+ * dragged into another order, removed one by one, and more added with Add folders…. Each shows that it is missing, with a Locate… button that moves it to
+ * the place the person picks, and opens its git
  * remote's page (Open in GitHub). Its Workspace button opens the dialog of what the worktrees made from the folder start from and need
  * (`FolderWorkspaceDialog`). A new main folder asks first and waits while agents of the project work; anything else applies at once.
  * The personal space shows its one folder, which nobody changes, and has no worktrees to set up.
@@ -83,6 +84,7 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
                 renderDetails={ view => <FolderState project={ project } view={ view } /> }
                 renderActions={ view => (
                     <>
+                        <LocateButton project={ project } view={ view } isDisabled={ view.isMain && working } />
                         { view.remote && <RemoteButton remote={ view.remote } /> }
                         <WorkspaceButton project={ project } view={ view } />
                     </>
@@ -122,6 +124,24 @@ function FolderState({ project, view }: { project: Project; view: FolderView }) 
     if (view.missing) return <Text variant="sm" color="warning">{ missingFolderNote(project, view.isMain) }</Text>;
 
     return view.remote && !view.remote.href ? <Text variant="sm" color="secondary" className={ styles.value }>{ view.remote.text }</Text> : null;
+}
+
+/**
+ * For a folder that is gone from the disk: asks where it is now and moves the folder there, so its chats stay with it (`locateFolderByDialog`). Nothing for a folder that is
+ * there, or in a window with no folder dialog. The main folder waits while agents work, as the page says under the list.
+ */
+function LocateButton({ project, view, isDisabled }: { project: Project; view: FolderView; isDisabled: boolean }) {
+    const root = useRootStore();
+
+    if (!view.missing || !window.desktop?.chooseDirectories) return null;
+
+    return (
+        <Tooltip content="Pick where the folder is now">
+            <Button variant="filling" color="secondary" size="sm" aria-label={ `Locate ${ view.name }` } isDisabled={ isDisabled } onPress={ () => void locateFolderByDialog(root, project, view.folder) }>
+                Locate…
+            </Button>
+        </Tooltip>
+    );
 }
 
 /** Opens the dialog of the base branch and the setup the worktrees made from this folder get. */

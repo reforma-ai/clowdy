@@ -185,6 +185,20 @@ export async function locateFolder(root: RootStore, project: Project, folder: Pr
     return (await perform(root, { type: 'project.update', projectId: project.id, folders })).ok;
 }
 
+/**
+ * Asks where the folder is now, with the desktop's folder dialog (it takes several; the first is the new place), and moves the folder there (`locateFolder`). Resolves
+ * to whether it was moved: false when the person closed the dialog, the window has none (a page outside the desktop app), or the daemon refused.
+ */
+export async function locateFolderByDialog(root: RootStore, project: Project, folder: ProjectFolder): Promise<boolean> {
+    const choose = window.desktop?.chooseDirectories;
+
+    if (!choose) return false;
+
+    const [path] = await choose();
+
+    return path ? locateFolder(root, project, folder, path) : false;
+}
+
 /** Asks, then removes the project from Clowdy. Its folders are never touched. */
 export function removeProject(root: RootStore, project: Project, info: ProjectInfo | undefined): void {
     openConfirmModal({
