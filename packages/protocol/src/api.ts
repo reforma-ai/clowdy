@@ -49,6 +49,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * DELETE /v1/projects/:id/attachments/:attachmentId -> { ok: true }; only for a file that was not sent yet (`conflict` otherwise)
  * /v1/projects/:id/fs/*                  -> the files of one of the project's folders: list, find, read, write, make a folder, move, copy,
  *                                            delete, watch. The routes are described in `fs.ts`
+ * /v1/terminals/*                         -> the shells the daemon runs for the app's terminal: list, create, close, and a WebSocket stream of one. The
+ *                                            routes are described in `terminals.ts`
  * POST /v1/shutdown                       -> { ok: true }; stops the daemon gracefully (live engines are aborted, their runs
  *                                            come back `interrupted` at the next start, nothing is marked cancelled)
  * GET  /v1/skills?projectId=              -> SkillCatalog (system and user skills; with `projectId` also that project's skills)
@@ -76,6 +78,9 @@ export const ROUTES = {
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
     projectIcon: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/icon`,
     projectFs: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/fs`,
+    terminals: '/v1/terminals',
+    terminal: (terminalId: string) => `/v1/terminals/${ encodeURIComponent(terminalId) }`,
+    terminalStream: (terminalId: string) => `/v1/terminals/${ encodeURIComponent(terminalId) }/stream`,
     skills: '/v1/skills',
     agents: '/v1/agents',
     agentModels: (agentId: string) => `/v1/agents/${ encodeURIComponent(agentId) }/models`,

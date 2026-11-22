@@ -6,3 +6,4 @@ export * from './events';
 export * from './fs';
 export * from './paths';
 export * from './skills';
+export * from './terminals';
