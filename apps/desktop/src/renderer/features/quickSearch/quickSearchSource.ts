@@ -5,8 +5,37 @@ import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
 import type { RootStore } from '../../stores';
 import type { Found, QuickSearchSource } from './QuickSearchModel';
 
-/** The most files the daemon is asked for: its own cap. */
+/** The most files the daemon is asked for by the project's list: its own cap. */
 const FILE_LIMIT = 100;
+
+/** How well a path answers the words typed, the way the daemon ranks a name: its name starts with the first word, has it, or only the path has it. */
+function scoreOf(path: string, first: string): number {
+    const lower = path.toLowerCase();
+    const name = lower.slice(lower.lastIndexOf('/') + 1);
+
+    return name.startsWith(first) ? 0 : name.includes(first) ? 1 : 2;
+}
+
+/** The files of the tree (the folders it has listed so far, and the ones that are shown: not the hidden ones unless they are asked for) that have every word of `query` in their path. */
+function treeFiles(tree: FileManager['tree'], query: string): string[] {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+
+    tree.setShowHidden(treeLayout.showHidden);
+
+    return [...tree.entries.values()]
+        .filter(({ path, kind }) => kind === 'file' && words.every(word => path.toLowerCase().includes(word)) && tree.isVisible(path))
+        .map(({ path }) => path);
+}
+
+/**
+ * The files of two lists, as one: the ones that name the words best first, then the shorter paths, the project's list before the other where they tie (the sort is
+ * stable), each file once.
+ */
+export function mergeFiles(query: string, ...lists: ReadonlyArray<readonly string[]>): string[] {
+    const first = query.trim().toLowerCase().split(/\s+/)[0] ?? '';
+
+    return [...new Set(lists.flat())].toSorted((a, b) => scoreOf(a, first) - scoreOf(b, first) || a.length - b.length);
+}
 
 /** The file manager of a folder, which the palette loads when it needs it: the manager and the editor behind it are a chunk of their own, kept out of the window's first load. */
 async function managerOf(root: RootStore, projectId: ProjectId, folder: ProjectFolder): Promise<FileManager> {
@@ -50,8 +79,8 @@ export async function selectedText(root: RootStore, projectId: ProjectId, folder
 }
 
 /**
- * The palette's search of one folder of a project. The names come from the daemon's list of the project's files (git's tracked and unignored ones, best match first); the
- * content from the folder's file manager, which searches through the daemon (ripgrep) and, where a provider has no search, reads the files itself. Hidden files are left out
+ * The palette's search of one folder of a project. The names come from the daemon's list of the project's files (git's tracked and unignored ones) and from the folder's
+ * file tree, so a file the tree shows is found whether git ignores it or not; the content from the folder's file manager, which searches through the daemon (ripgrep) and, where a provider has no search, reads the files itself. Hidden files are left out
  * unless the tree shows them: what the tree does not show is not searched either.
  */
 export function quickSearchSource(root: RootStore, projectId: ProjectId, folder: ProjectFolder): QuickSearchSource {
@@ -59,9 +88,19 @@ export function quickSearchSource(root: RootStore, projectId: ProjectId, folder:
 
     return {
         files: async (query) => {
-            const matches = await root.transport.getProjectFiles(projectId, query, FILE_LIMIT);
+            // Two answers: the project's list (git's tracked and unignored files, the words matched one by one), and the files the tree has, which is what the person
+            // sees: a file that git ignores is in the tree and not in that list. Either one on its own is an answer; a failure is one only when both fail.
+            const [listed, shown] = await Promise.allSettled([
+                root.transport.getProjectFiles(projectId, query, FILE_LIMIT),
+                managerOf(root, projectId, folder).then(({ tree }) => treeFiles(tree, query)),
+            ]);
 
-            return matches.filter(match => match.folderId === folder.id && (treeLayout.showHidden || !isHiddenPath(match.path))).map(match => match.path);
+            if (listed.status === 'rejected' && shown.status === 'rejected') throw listed.reason;
+
+            const tracked = listed.status === 'fulfilled' ? listed.value.filter(match => match.folderId === folder.id).map(match => match.path) : [];
+            const files = mergeFiles(query, tracked, shown.status === 'fulfilled' ? shown.value : []);
+
+            return treeLayout.showHidden ? files : files.filter(path => !isHiddenPath(path));
         },
         text: async (query) => {
             manager = await managerOf(root, projectId, folder);

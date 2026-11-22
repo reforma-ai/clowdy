@@ -186,6 +186,14 @@ describe('the quick search palette', () => {
         expect(document.body.querySelectorAll('input[role="combobox"]')).toHaveLength(1);
     });
 
+    it('finds a file the tree shows although the project\'s list of files leaves it out, as it does one that git ignores', async () => {
+        // The fixture's list has no tsconfig.json, its folder has.
+        await open('files');
+        await search('tsconfig');
+
+        expect(names()).toEqual(['tsconfig.json']);
+    });
+
     it('does not show the hidden files until the tree does, and not the ones of another folder', async () => {
         await open('files');
         await search('gitignore');
