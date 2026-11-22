@@ -7,7 +7,7 @@ import { Screen as AgentsScreen } from '../features/agents';
 import { Screen as DocsScreen } from '../features/docs';
 import { openQuickSearch, quickSearchCommands } from '../features/quickSearch';
 import { Screen as SettingsScreen } from '../features/settings';
-import { SidePanelLayout } from '../features/sidePanel';
+import { SidePanelLayout, SidePanelRail, useSidePanel } from '../features/sidePanel';
 import { Screen as TasksScreen } from '../features/tasks';
 import { ChordHud, hotkeys, installDispatcher, useCommands } from '../hotkeys';
 import { useProjectUi, useRootStore } from '../stores';
@@ -30,11 +30,12 @@ const SCREENS: Record<Section, ComponentType> = {
 };
 
 /**
- * The window: title band on top, rail on the left, the selected section's screen beside it, and, while a project's side panel is open, the panel at the
- * right, from the top edge to the bottom, with all of the rest beside it.
+ * The window: one title band across the top, and under it the rail on the left, the selected section's screen, the side panel beside it while a project's panel
+ * is open, and the panel's rail at the right edge, which is there whether the panel is open or not.
  */
 export function Shell() {
     const root = useRootStore();
+    const panel = useSidePanel();
 
     useEffect(() => installDispatcher(hotkeys), []);
     useCommands('app', shellCommands(root));
@@ -42,16 +43,17 @@ export function Shell() {
 
     return (
         <div className={ styles.shell }>
-            <SidePanelLayout>
-                <TitleBand />
-                <div className={ styles.body }>
-                    { root.phase === 'ready' && <Rail /> }
-                    <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare) }>
+            <TitleBand />
+            <div className={ styles.body }>
+                { root.phase === 'ready' && <Rail /> }
+                <SidePanelLayout>
+                    <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare, panel.available && !panel.open && styles.railed) }>
                         <Outlet />
                     </main>
-                </div>
-                <SyncBanner />
-            </SidePanelLayout>
+                </SidePanelLayout>
+                <SidePanelRail />
+            </div>
+            <SyncBanner />
             <ChordHud />
             <FindBar />
         </div>

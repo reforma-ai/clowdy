@@ -1,0 +1,9 @@
+/* The same column as the window's left rail (`shell/Rail`): 58px, its items from the top, under the header and beside the plates. */
+.rail {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    width: 58px;
+    padding-block: var(--spacing-lg);
+}

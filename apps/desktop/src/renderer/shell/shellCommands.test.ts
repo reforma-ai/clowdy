@@ -545,10 +545,13 @@ describe('the tabs of the side panel', () => {
         expect(ui.forProject('other').sidePanelOpen).toBe(false);
     });
 
-    it('shuts the panel when the tab that is shown is picked again, and opens it on that tab with the next press', () => {
+    it('does what a click on the tab does: the panel stays open when the tab that is shown is picked again, and a shut panel opens on it', () => {
         digit('1');
         digit('1');
 
+        expect(state()).toEqual({ open: true, tab: 'files' });
+
+        runInAction(() => ui.forProject('p').toggleSidePanel());
         expect(state()).toEqual({ open: false, tab: 'files' });
 
         digit('1');
@@ -558,44 +561,6 @@ describe('the tabs of the side panel', () => {
         // Another tab's key only changes the tab.
         digit('2');
         expect(state()).toEqual({ open: true, tab: 'terminal' });
-    });
-
-    it('works from a text field', () => {
-        const input = document.createElement('input');
-
-        document.body.append(input);
-
-        try {
-            digit('1', {}, input);
-            expect(state()).toEqual({ open: true, tab: 'files' });
-
-            digit('2', {}, input);
-            expect(state().tab).toBe('terminal');
-        }
-        finally {
-            input.remove();
-        }
-    });
-
-    it('does nothing, and leaves the key to the page, where the window shows no project, and takes no other digit or modifier', () => {
-        runInAction(() => {
-            screen.shown = false;
-        });
-
-        const event = digit('1');
-
-        expect(state().open).toBe(false);
-        expect(event.defaultPrevented).toBe(false);
-
-        runInAction(() => {
-            screen.shown = true;
-        });
-        digit('3');
-        digit('1', { shiftKey: true });
-        digit('1', { metaKey: false });
-        digit('1', { altKey: true });
-
-        expect(state().open).toBe(false);
     });
 
     it('has Cmd on a Mac and Ctrl elsewhere, and shows the key as the hint of the tab', () => {

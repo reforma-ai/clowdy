@@ -9,13 +9,13 @@ import { useSidePanel } from './useSidePanel';
 
 import type { ReactNode } from 'react';
 
-/** What the window keeps at the left of the panel: the rail, the narrowest left column and the narrowest page (about 640), with a little to spare, so dragging the panel wide cannot squeeze them out. */
-const WINDOW_MIN_WIDTH = 656;
+/** What the window keeps at the left of the panel: the narrowest left column and the narrowest page (about 640), with a little to spare, so dragging the panel wide cannot squeeze them out. The rails are outside the layout. */
+const WINDOW_MIN_WIDTH = 598;
 
 /**
- * The window split in two: everything (title band, rail, the page) on the left, and the side panel on the right while it is open, from the top edge to the
- * bottom. The edge between them can be dragged (or moved with the arrow keys while it has focus), and the width is remembered for the whole window.
- * The left part is the same element whether the panel is open or not, so opening it moves nothing: no page is built again, and no draft or scroll position is lost.
+ * The part of the window between its two rails split in two: the page on the left, and the side panel on the right while it is open. The edge between them
+ * can be dragged (or moved with the arrow keys while it has focus), and the width is remembered for the whole window. The page is the same element whether
+ * the panel is open or not, so opening it moves nothing: no page is built again, and no draft or scroll position is lost.
  */
 export function SidePanelLayout({ children }: { children: ReactNode }) {
     const { open } = useSidePanel();

@@ -13,9 +13,7 @@ export async function filesManagerOf(root: RootStore, projectId: ProjectId, fold
 export function showFilesTab(root: RootStore, projectId: ProjectId): void {
     const ui = root.ui.forProject(projectId);
 
-    if (!ui.sidePanelOpen) ui.toggleSidePanel();
-
-    ui.showSidePanelTab('files');
+    ui.openSidePanelTab('files');
 }
 
 /**
