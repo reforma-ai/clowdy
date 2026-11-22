@@ -40,17 +40,16 @@ describe('archiveBatches', () => {
 describe('offersRestore', () => {
     const onBoard = (ids: string[]) => (id: string) => ids.includes(id);
 
-    it('offers it on every top once the whole batch is loaded', () => {
-        expect(offersRestore({ parentId: 't-1' }, false, onBoard([]))).toBe(true);
-        expect(offersRestore({ parentId: undefined }, false, onBoard([]))).toBe(true);
+    it('offers it on a top that has no parent', () => {
+        expect(offersRestore({ parentId: undefined }, onBoard([]))).toBe(true);
     });
 
-    it('waits, in the batch the end of the list cuts, for a top whose parent may be in the part that is not loaded', () => {
-        expect(offersRestore({ parentId: 't-1' }, true, onBoard([]))).toBe(false);
+    it('offers it on a top whose parent is on the board', () => {
+        expect(offersRestore({ parentId: 't-1' }, onBoard(['t-1']))).toBe(true);
     });
 
-    it('offers it, in a cut batch, where the task has no parent or its parent is on the board, which no later page can change', () => {
-        expect(offersRestore({ parentId: undefined }, true, onBoard([]))).toBe(true);
-        expect(offersRestore({ parentId: 't-1' }, true, onBoard(['t-1']))).toBe(true);
+    it('does not offer it on a top whose parent is not on the board: the parent is archived, in this batch or another, and the daemon refuses the restore', () => {
+        expect(offersRestore({ parentId: 't-1' }, onBoard([]))).toBe(false);
+        expect(offersRestore({ parentId: 't-1' }, onBoard(['t-2']))).toBe(false);
     });
 });

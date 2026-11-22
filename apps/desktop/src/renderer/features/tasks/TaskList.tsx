@@ -70,6 +70,8 @@ export function TaskList({ rows, statuses, runsOfTask, notesOf, onOpenScope, onT
                             >
                                 <TableCell className={ styles.key }>{ task.key }</TableCell>
                                 <TableCell className={ styles.title }>
+                                    {/* A table row carries no level (React Aria passes no `aria-level` through), so a screen reader is told it here, as the first words of the cell. */}
+                                    <span className={ styles.level }>{ `Level ${ depth + 1 }` }</span>
                                     <div className={ styles.line } style={ { '--depth': depth } as CSSProperties }>
                                         {/* A row with nothing inside leaves the room, so the titles of one level line up, and a press there is a press on the row. The keys fold from the keyboard, so the button is for the pointer. */}
                                         <span className={ styles.fold }>

@@ -293,22 +293,6 @@ describe('task.update', () => {
         expect((await task('t-22')).closedAt).toBe(closedAt);
     });
 
-    it('never leaves an open task with a closing time: the run that moves a closed task to In progress, and then to Review, takes it away', async () => {
-        const { send, task } = await connected();
-
-        expect((await task('t-22')).closedAt).toBeDefined();
-
-        await send({ type: 'task.start', taskId: 't-22' });
-
-        expect(await task('t-22')).toMatchObject({ statusId: 'active' });
-        expect('closedAt' in await task('t-22')).toBe(false);
-
-        await vi.advanceTimersByTimeAsync(3000);
-
-        expect(await task('t-22')).toMatchObject({ statusId: 'review' });
-        expect('closedAt' in await task('t-22')).toBe(false);
-    });
-
     it('refuses to reopen an archived task, and lets it move from Done to Canceled', async () => {
         const { send } = await connected();
 
@@ -324,6 +308,76 @@ describe('task.update', () => {
         // CAR-22 already depends on CAR-21, so CAR-21 cannot depend on it.
         expect(refusal(await send({ type: 'task.update', taskId: 't-21', dependsOn: ['t-22'] }))).toEqual({ code: 'invalid', message: 'Circular dependency: the task would depend on CAR-22, which already depends on it' });
         expect(refusal(await send({ type: 'task.update', taskId: 't-nope', title: 'x' }))).toEqual({ code: 'not_found', message: 'Task t-nope does not exist' });
+    });
+});
+
+describe('task.start', () => {
+    /** The statuses the task is announced in, in order, since the call. */
+    const statusesOf = (events: ClowdyEvent[], taskId: string) => events.flatMap(event => (event.data.type === 'task.upserted' && event.data.task.id === taskId ? [event.data.task.statusId] : []));
+
+    it('moves a task that waits to In progress when its run starts, and to Review when the run finishes: To do, and Backlog too', async () => {
+        const { send, task, events } = await connected();
+
+        await send({ type: 'task.start', taskId: 't-27' });
+        await send({ type: 'task.start', taskId: 't-28' });
+
+        expect([(await task('t-27')).statusId, (await task('t-28')).statusId]).toEqual(['active', 'active']);
+
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect([(await task('t-27')).statusId, (await task('t-28')).statusId]).toEqual(['review', 'review']);
+        expect(statusesOf(events, 't-27')).toEqual(['active', 'review']);
+    });
+
+    it('leaves a task that is not waiting where it is when the run starts: in review, done or canceled', async () => {
+        const { send, task, events } = await connected();
+        const before = await Promise.all(['t-23', 't-22', 't-29'].map(async id => (await task(id)).statusId));
+
+        for (const taskId of ['t-23', 't-22', 't-29']) await send({ type: 'task.start', taskId });
+
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(before).toEqual(['review', 'done', 'canceled']);
+        expect(await Promise.all(['t-23', 't-22', 't-29'].map(async id => (await task(id)).statusId))).toEqual(before);
+        expect(['t-23', 't-22', 't-29'].flatMap(id => statusesOf(events, id))).toEqual([]);
+    });
+
+    it('keeps the closing time of a closed task that a run was started on', async () => {
+        const { send, task } = await connected();
+        const { closedAt } = await task('t-22');
+
+        expect(closedAt).toBeDefined();
+
+        await send({ type: 'task.start', taskId: 't-22' });
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(await task('t-22')).toMatchObject({ statusId: 'done', closedAt });
+    });
+
+    it('leaves a task that is in progress there when the run starts, and moves it to Review when the run finishes', async () => {
+        const { send, task, events } = await connected();
+
+        expect((await task('t-25')).statusId).toBe('active');
+
+        // An agent works on it already, so the second run is forced.
+        await send({ type: 'task.start', taskId: 't-25', force: true });
+
+        expect(statusesOf(events, 't-25')).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(statusesOf(events, 't-25')).toEqual(['review']);
+    });
+
+    it('does not move a task to Review that someone took out of In progress while the run worked', async () => {
+        const { send, task } = await connected();
+
+        await send({ type: 'task.start', taskId: 't-27' });
+        await send({ type: 'task.update', taskId: 't-27', statusId: 'done' });
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect((await task('t-27')).statusId).toBe('done');
+        expect((await task('t-27')).closedAt).toBeDefined();
     });
 });
 

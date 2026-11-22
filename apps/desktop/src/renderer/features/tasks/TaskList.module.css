@@ -33,6 +33,19 @@
     font-weight: 500;
 }
 
+/* Said to a screen reader and not drawn: the row's level in the tree, which the table's rows cannot carry. */
+.level {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
 /* The title with its fold and chips on one line; the indent grows by a level per `--depth`, set by the row. */
 .line {
     display: flex;

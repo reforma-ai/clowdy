@@ -232,21 +232,35 @@ describe('Restore', () => {
         expect(batches().map(batch => batch.rows)).toEqual([['0:CAR-38', '1:CAR-39', '1:CAR-40']]);
     });
 
-    it('shows the daemon\'s reason as a toast when it refuses, and the batch stays: its parent was archived by another call', async () => {
-        // CAR-33 is archived alone, and later CAR-32 above it: CAR-33 is the top of its own batch and cannot be restored under an archived parent.
+    it('is not on a top whose parent was archived by another call, the daemon refuses that, and is on the parent\'s own top', async () => {
+        // CAR-33 is archived alone, and later CAR-32 above it: CAR-33 is the top of its own batch, under a parent that is archived.
         await mount({ before: [archive('t-33'), { type: 'task.update', taskId: 't-34', statusId: 'canceled' }, { type: 'task.update', taskId: 't-32', statusId: 'done' }, archive('t-32')] });
 
-        expect(restoreOf('t-33')).not.toBeNull();
+        expect(restoreOf('t-33')).toBeNull();
+        expect(restoreOf('t-32')).not.toBeNull();
+        expect(restoreOf('t-34')).toBeNull();
+    });
 
-        await act(async () => restoreOf('t-33')!.click());
+    it('shows the daemon\'s reason as a toast when it refuses, and the batch stays with the focus on its button', async () => {
+        // A refusal that comes after the button was drawn, as when the parent was archived by another call a moment before.
+        const reason = 'Task CAR-38 is inside CAR-37, which is archived: restore CAR-37 first';
+
+        await mount({ read: base => ({ command: async (input) => {
+            sent.push(input);
+
+            return input.type === 'task.unarchive' ? { ok: false, requestId: 'r', error: { code: 'invalid', message: reason } } : base.command(input);
+        } }) });
+        restoreOf('t-38')!.focus();
+        await act(async () => restoreOf('t-38')!.click());
         await wait(0);
 
-        expect(toast.error).toHaveBeenCalledWith({ message: 'Task CAR-33 is inside CAR-32, which is archived: restore CAR-32 first' });
-        expect(project().tasks.has('t-33')).toBe(false);
-        expect(row('t-33')).not.toBeNull();
+        expect(toast.error).toHaveBeenCalledWith({ message: reason });
+        expect(project().tasks.has('t-38')).toBe(false);
+        expect(row('t-38')).not.toBeNull();
         expect(undoStack.entries).toEqual([]);
-        // The button is usable again.
-        expect(restoreOf('t-33')!.disabled).toBe(false);
+        // The button is usable again, and keeps the focus: nothing left.
+        expect(restoreOf('t-38')!.disabled).toBe(false);
+        expect(document.activeElement).toBe(restoreOf('t-38'));
     });
 
     it('keeps the button from a second press while the daemon works', async () => {
@@ -266,6 +280,84 @@ describe('Restore', () => {
         expect(sent).toHaveLength(1);
 
         await act(async () => release());
+    });
+});
+
+describe('the focus after Restore', () => {
+    const openOf = (taskId: string) => row(taskId)?.querySelector<HTMLElement>('[data-archive-open]') ?? null;
+
+    /** Presses Restore with the focus on it, as a keyboard does, and waits for the batch to leave. */
+    const restoreFocused = async (taskId: string) => {
+        restoreOf(taskId)!.focus();
+        await act(async () => restoreOf(taskId)!.click());
+        await draw();
+        await wait(RELOAD_DELAY_MS + 80);
+    };
+
+    it('goes to the next batch when the batch it sat on is restored', async () => {
+        // The newest batch is CAR-20, the old one CAR-38 with its tasks.
+        await mount({ before: [archive('t-20')] });
+        await restoreFocused('t-20');
+
+        expect(row('t-20')).toBeNull();
+        expect(document.activeElement).toBe(openOf('t-38'));
+    });
+
+    it('goes to the batch before it when the last one is restored', async () => {
+        await mount({ before: [archive('t-20')] });
+        await restoreFocused('t-38');
+
+        expect(row('t-38')).toBeNull();
+        expect(document.activeElement).toBe(openOf('t-20'));
+    });
+
+    it('goes to the heading of the empty view when the only batch is restored, and not to the page', async () => {
+        await mount();
+        await restoreFocused('t-38');
+
+        const heading = container.querySelector<HTMLElement>('[data-archive-heading]');
+
+        expect(heading?.textContent).toBe('Nothing archived');
+        expect(document.activeElement).toBe(heading);
+    });
+
+    it('leaves the focus where the person put it meanwhile', async () => {
+        const elsewhere = document.createElement('button');
+
+        document.body.append(elsewhere);
+        await mount({ before: [archive('t-20')] });
+        restoreOf('t-20')!.focus();
+        await act(async () => restoreOf('t-20')!.click());
+        elsewhere.focus();
+        await draw();
+        await wait(RELOAD_DELAY_MS + 80);
+
+        expect(row('t-20')).toBeNull();
+        expect(document.activeElement).toBe(elsewhere);
+
+        elsewhere.remove();
+    });
+
+    it('does not take the focus when it was not on the batch', async () => {
+        await mount({ before: [archive('t-20')] });
+        openOf('t-38')!.focus();
+        await act(async () => restoreOf('t-20')!.click());
+        await draw();
+        await wait(RELOAD_DELAY_MS + 80);
+
+        expect(row('t-20')).toBeNull();
+        expect(document.activeElement).toBe(openOf('t-38'));
+    });
+
+    it('leaves the focus on the page when it was nowhere, as when a press did not focus its button', async () => {
+        await mount({ before: [archive('t-20')] });
+        (document.activeElement as HTMLElement | null)?.blur();
+        await act(async () => restoreOf('t-20')!.click());
+        await draw();
+        await wait(RELOAD_DELAY_MS + 80);
+
+        expect(row('t-20')).toBeNull();
+        expect(document.activeElement).toBe(document.body);
     });
 });
 

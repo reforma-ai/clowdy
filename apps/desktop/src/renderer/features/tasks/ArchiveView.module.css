@@ -16,6 +16,11 @@
     max-width: 36rem;
 }
 
+/* The focus lands here when the last batch is restored; a heading is not a control, so it draws no ring. */
+.heading:focus {
+    outline: none;
+}
+
 .view {
     display: flex;
     flex: 1;

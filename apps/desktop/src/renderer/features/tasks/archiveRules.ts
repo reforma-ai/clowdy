@@ -59,15 +59,3 @@ export function archiveReply(data: unknown): ArchiveReply {
 
     return { archived: idsOf(reply.archived), canceled: idsOf(reply.canceled), restored: idsOf(reply.restored) };
 }
-
-/**
- * Whether the task is the top of its archive batch, the one a restore is offered on: nothing above it was archived with it. A restore of a task whose parent is still
- * archived is refused, so it is not offered below the top. `parentOf` gives the task above, `undefined` for a root or a parent the caller does not know.
- */
-export function isBatchTop(task: Pick<Task, 'parentId' | 'archivedAt'>, parentOf: (parentId: TaskId) => Pick<Task, 'archivedAt'> | undefined): boolean {
-    if (task.parentId === undefined) return true;
-
-    const parent = parentOf(task.parentId);
-
-    return parent === undefined || parent.archivedAt !== task.archivedAt;
-}

@@ -64,7 +64,7 @@ export function FilterPopover({ filter, onChange, statuses, agents, isOpen, onOp
 
                     <div className={ styles.group }>
                         <span className={ styles.heading }>Agent</span>
-                        { agents.length === 0 && <span className={ styles.none }>No agent has worked on a task yet.</span> }
+                        { agents.length === 0 && <span className={ styles.none }>No agent has worked on a task yet</span> }
                         <div className={ styles.agents }>
                             { agents.map(run => (
                                 <Checkbox

@@ -27,10 +27,11 @@ export function archiveBatches(tasks: readonly Task[]): ArchiveBatch[] {
 }
 
 /**
- * Whether Restore is offered on the top of a batch: always once the whole batch is loaded; while the end of the list cuts it (`isCut`: more pages follow and this is the oldest
- * batch loaded), only when what is above the task is known to be off the archive: it has no parent, or its parent is on the board. A task whose parent is not loaded may have it
- * in the part of the batch that is not here yet, and a restore of such a task is refused, so it waits for the page that shows its parent.
+ * Whether Restore is offered on the top of a batch: only when the task has no parent or its parent is on the board, the same for a batch the end of the loaded list cuts and
+ * one that is whole. The daemon refuses to restore a task whose parent is still archived (`unarchiveTask`), and a task never has a parent that is gone (deleting a task moves
+ * what is inside it up), so a parent that is not on the board is archived: in this batch, when the list ends before it and the next page brings it, or in another batch, archived
+ * earlier or later.
  */
-export function offersRestore(top: Pick<Task, 'parentId'>, isCut: boolean, isOnBoard: (taskId: TaskId) => boolean): boolean {
-    return !isCut || top.parentId === undefined || isOnBoard(top.parentId);
+export function offersRestore(top: Pick<Task, 'parentId'>, isOnBoard: (taskId: TaskId) => boolean): boolean {
+    return top.parentId === undefined || isOnBoard(top.parentId);
 }

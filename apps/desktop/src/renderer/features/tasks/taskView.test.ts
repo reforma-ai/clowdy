@@ -97,8 +97,8 @@ describe('dependencyState', () => {
 
 describe('start', () => {
     it('is blocked by an active assigned run, and names it', () => {
-        expect(startBlockedReason([run('07', 'running', { name: 'Orchestrator 07' })])).toBe('Orchestrator 07 is already working on this task.');
-        expect(startBlockedReason([run('a', 'queued'), run('b', 'waiting_user')])).toBe('2 agents are already working on this task.');
+        expect(startBlockedReason([run('07', 'running', { name: 'Orchestrator 07' })])).toBe('Orchestrator 07 is already working on this task');
+        expect(startBlockedReason([run('a', 'queued'), run('b', 'waiting_user')])).toBe('2 agents are already working on this task');
     });
 
     it('is open when the runs finished, or there are no runs', () => {

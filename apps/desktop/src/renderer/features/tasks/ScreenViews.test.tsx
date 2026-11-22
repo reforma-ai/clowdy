@@ -153,6 +153,22 @@ describe('the list as a tree', () => {
         expect(depths.find(([id]) => id === 't-24')).toEqual(['t-24', 0]);
     });
 
+    it('says the level of every row to a screen reader, which a table row cannot carry, counted from the first level the list shows', async () => {
+        await mountScreen({ prepare: window => window.setTasksView('list') });
+
+        // The first cell of the title is the words for a screen reader: not drawn, before the line the title is on.
+        const level = (taskId: string) => itemOf(taskId)!.querySelector<HTMLElement>('td:nth-of-type(2) > span');
+
+        expect([level('t-24'), level('t-31'), level('t-32'), level('t-33')].map(item => item?.textContent)).toEqual(['Level 1', 'Level 1', 'Level 2', 'Level 3']);
+        expect(itemOf('t-33')!.querySelector('td:nth-of-type(2) > div')?.textContent).not.toContain('Level');
+    });
+
+    it('counts the levels from the scope: the tasks inside a task start at Level 1', async () => {
+        await mountScreen(listInside());
+
+        expect(['t-32', 't-33'].map(taskId => itemOf(taskId)!.querySelector('td:nth-of-type(2) > span')?.textContent)).toEqual(['Level 1', 'Level 2']);
+    });
+
     it('has no sub-tasks toggle, since it is always a tree', async () => {
         await mountScreen({ prepare: window => window.setTasksView('list') });
 

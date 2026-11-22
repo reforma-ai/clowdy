@@ -298,6 +298,72 @@ describe('the Archive target of the board', () => {
         expect(target()).toBeNull();
     });
 
+    describe('when the card is rebuilt mid-drag and its dragend never comes', () => {
+        /** An event moves the task to another column: the card that was dragged leaves the page and a new one is drawn, so the browser's `dragend` goes to a node that is gone. */
+        async function rebuildCard(taskId: string) {
+            const dragged = itemOf(taskId)!;
+
+            await act(async () => void (await page.store.command({ type: 'task.update', taskId, statusId: 'todo' })));
+            await draw();
+
+            expect(itemOf(taskId)).not.toBe(dragged);
+            expect(dragged.isConnected).toBe(false);
+
+            await act(async () => void dragged.dispatchEvent(dragEvent('dragend', taskId)));
+        }
+
+        const pointer = (type: 'pointermove' | 'pointerdown', buttons: number) => act(async () => void document.body.dispatchEvent(new MouseEvent(type, { bubbles: true, buttons })));
+
+        it('goes with the first pointer move that has no button down, which only comes when the drag is over', async () => {
+            await mountScreen({ transport: daemon });
+            await startDrag('t-20');
+            await rebuildCard('t-20');
+
+            expect(target()).not.toBeNull();
+
+            // A move with a button down is not past the drag.
+            await pointer('pointermove', 1);
+
+            expect(target()).not.toBeNull();
+
+            await pointer('pointermove', 0);
+
+            expect(target()).toBeNull();
+        });
+
+        it('goes with the first press', async () => {
+            await mountScreen({ transport: daemon });
+            await startDrag('t-20');
+            await rebuildCard('t-20');
+            await pointer('pointerdown', 1);
+
+            expect(target()).toBeNull();
+        });
+
+        it('goes with a dragend or a drop that reaches the window', async () => {
+            await mountScreen({ transport: daemon });
+            await startDrag('t-20');
+            await act(async () => void document.body.dispatchEvent(dragEvent('dragend', 't-20')));
+
+            expect(target()).toBeNull();
+
+            await startDrag('t-21');
+            await act(async () => void document.body.dispatchEvent(dragEvent('drop', 't-21')));
+
+            expect(target()).toBeNull();
+        });
+
+        it('lets a drop on the strip archive the card first, so the window\'s end of the drag does not cost it', async () => {
+            await mountScreen({ transport: daemon });
+            await startDrag('t-20');
+            await act(async () => void target()!.dispatchEvent(dragEvent('drop', 't-20')));
+            await wait(0);
+
+            expect(archives()).toEqual([{ type: 'task.archive', taskId: 't-20' }]);
+            expect(target()).toBeNull();
+        });
+    });
+
     it('is on the through board too, which draws every level of the scope', async () => {
         await mountScreen({ prepare: (window) => {
             window.setTasksSubtasks(true);

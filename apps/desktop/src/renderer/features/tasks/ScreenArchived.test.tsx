@@ -235,6 +235,24 @@ describe('the panel of an archived task', () => {
         expect(panel('CAR-33')!.textContent).not.toContain('It was archived with');
     });
 
+    it('has no Restore for a top whose parent was archived in a later batch, and says which task to restore first', async () => {
+        // CAR-33 goes to the archive alone, then CAR-32 that it is inside: they are two batches, and the daemon takes CAR-33 back only after CAR-32.
+        await mountScreen({ transport: recording });
+        await change({ type: 'task.archive', taskId: 't-33' });
+        await change({ type: 'task.archive', taskId: 't-32', cancel: true });
+        await wait(0);
+        ui().openTask('t-33');
+        await draw();
+        await wait(0);
+        await draw();
+
+        const aside = panel('CAR-33')!;
+
+        expect(buttonNamed('Restore', aside)!.hasAttribute('disabled')).toBe(true);
+        expect(aside.textContent).toContain('Its parent CAR-32 is in the archive, restore it first');
+        expect(aside.textContent).not.toContain('It was archived with');
+    });
+
     it('restores the batch: the task is back on the board, the panel is the one of a task of the board, and the undo offers to archive it again', async () => {
         await mountScreen({ prepare: window => window.openTask('t-38'), transport: recording });
         await wait(0);

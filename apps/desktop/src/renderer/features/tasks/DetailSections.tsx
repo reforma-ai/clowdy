@@ -43,7 +43,7 @@ export function Executors({ taskRuns, onOpen }: { taskRuns: readonly Run[]; onOp
     return (
         <Section title="Executors" count={ taskRuns.length }>
             { taskRuns.length === 0
-                ? <None>No agent has worked on this task yet.</None>
+                ? <None>No agent has worked on this task yet</None>
                 : (
                     <div className={ styles.rows }>
                         { taskRuns.map(run => (
@@ -67,7 +67,7 @@ export function RelatedChats({ chats, onOpen }: { chats: readonly Chat[]; onOpen
     return (
         <Section title="Related chats" count={ chats.length }>
             { chats.length === 0
-                ? <None>No chat is linked to this task.</None>
+                ? <None>No chat is linked to this task</None>
                 : (
                     <div className={ styles.rows }>
                         { chats.map(chat => (
@@ -113,7 +113,7 @@ export function Results({ taskId, expectChecks, onOpenDoc }: { taskId: TaskId; e
             { state.status === 'loading' && <Spinner size="sm" aria-label="Loading results" /> }
             { state.status === 'failed' && (
                 <div className={ styles.failed }>
-                    <None>Results did not load.</None>
+                    <None>Results did not load</None>
                     <Button size="xs" variant="bordered" onPress={ retry }>Retry</Button>
                 </div>
             ) }

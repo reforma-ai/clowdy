@@ -8,8 +8,8 @@ import { Markdown } from '../../stream/Markdown';
 import { StreamLinksContext, type StreamLinks } from '../../stream/StreamLinks';
 import { openRun as openRunInAgents } from '../chats/archiveChat';
 import { restoreTask } from './archiveActions';
+import { offersRestore } from './archiveBatches';
 import styles from './ArchivedPanel.module.css';
-import { isBatchTop } from './archiveRules';
 import { CommentsSection } from './CommentsSection';
 import { DependencyList } from './DependencyList';
 import panelStyles from './DetailPanel.module.css';
@@ -30,8 +30,8 @@ export interface ArchivedPanelProps {
 
 /**
  * An archived task in the place of the detail panel: what it said when it was archived, read only, with its archive status and **Restore**. It has no fields to edit,
- * no start and no sub-tasks (the archive's own view draws the tree). Restore is offered on the top of an archive batch only, since the daemon refuses a task whose parent is
- * still archived: below the top the panel says which task to restore. Its parent and dependencies and the keys in its text open as everywhere, an archived task too.
+ * no start and no sub-tasks (the archive's own view draws the tree). Restore is offered only when the task has no parent or its parent is on the board, since the daemon
+ * refuses a task whose parent is still archived: the panel then says which task to restore first. Its parent and dependencies and the keys in its text open as everywhere, an archived task too.
  */
 export function ArchivedPanel({ task }: ArchivedPanelProps) {
     const root = useRootStore();
@@ -47,8 +47,8 @@ export function ArchivedPanel({ task }: ArchivedPanelProps) {
     const checklist = checklistOf(task);
     const above = parent.status === 'ready' ? parent.task : undefined;
     const aboveStatus = project.statuses.find(candidate => candidate.id === above?.statusId);
-    // While the parent is being read it cannot be said whether it went into the archive with this task.
-    const isTop = isBatchTop(task, () => above);
+    // The daemon takes a restore only when the task has no parent or its parent is on the board, so it is not offered while the parent is archived, whether with this task or in a later batch.
+    const canRestore = offersRestore(task, id => project.tasks.has(id));
     // A key in the description is a chip that opens the task, as in a comment.
     const links: StreamLinks = { taskOfKey: key => project.taskOfKey(key), onOpenTask: id => nav.openTask(id) };
 
@@ -128,14 +128,16 @@ export function ArchivedPanel({ task }: ArchivedPanelProps) {
             </div>
 
             <div className={ panelStyles.foot }>
-                { !isTop && above && (
-                    <Text color="secondary">{ `It was archived with ${ above.key }. Restore ${ above.key } to bring it back.` }</Text>
+                { !canRestore && above && (
+                    <Text color="secondary">
+                        { above.archivedAt === task.archivedAt ? `It was archived with ${ above.key }. Restore ${ above.key } to bring it back.` : `Its parent ${ above.key } is in the archive, restore it first` }
+                    </Text>
                 ) }
                 <div className={ panelStyles.actions }>
                     <Button
                         color="primary"
                         size="sm"
-                        isDisabled={ !isTop || parent.status === 'loading' }
+                        isDisabled={ !canRestore }
                         isPending={ isRestoring }
                         onPress={ () => void restore() }
                     >

@@ -4,7 +4,7 @@ import { ArchiveDropTarget } from './ArchiveDropTarget';
 import styles from './Board.module.css';
 import { StatusPill } from './status';
 import { TaskCard } from './TaskCard';
-import { DRAG_TYPE } from './taskDrag';
+import { DRAG_TYPE, useEndStuckDrag } from './taskDrag';
 import { activeExecutors } from './taskView';
 
 import type { Run, Task, TaskId, TaskStatus } from '@clowdy/protocol';
@@ -45,6 +45,9 @@ export function Board({ columns, runsOfTask, notesOf, onOpenScope, openId, selec
         setDragging(null);
         setOver(null);
     };
+
+    // A card rebuilt mid-drag never sends its `dragend`, and the Archive strip would stay up.
+    useEndStuckDrag(dragging !== null, endDrag);
 
     const accepts = (event: DragEvent) => event.dataTransfer.types.includes(DRAG_TYPE);
 

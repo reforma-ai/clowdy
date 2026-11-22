@@ -1567,7 +1567,17 @@ export class FixtureTransport implements Transport {
         };
         const link = { runId: id, taskId, relation: 'assigned' as const };
         const chatLink = { chatId: chat.id, taskId };
-        const active = (data.statuses[task.projectId] ?? DEFAULT_STATUSES).find(status => status.category === 'active');
+        const statuses = data.statuses[task.projectId] ?? DEFAULT_STATUSES;
+        const categoryOf = (candidate: Task) => statuses.find(status => status.id === candidate.statusId)?.category ?? 'todo';
+        const moveTo = (category: 'active' | 'review') => {
+            const status = statuses.find(candidate => candidate.category === category);
+
+            if (!status) return;
+
+            task.statusId = status.id;
+            task.updatedAt = Date.now();
+            this.#saveTask(task);
+        };
 
         data.chats.push(chat);
         data.runs.push(run);
@@ -1578,13 +1588,9 @@ export class FixtureTransport implements Transport {
         this.#emit(task.projectId, { type: 'link.chatTask', link: chatLink, present: true });
         this.#emit(task.projectId, { type: 'link.runTask', link, present: true });
 
-        if (active) {
-            task.statusId = active.id;
-            task.updatedAt = now;
-            // An open status: a task that was closed is not any longer.
-            delete task.closedAt;
-            this.#saveTask(task);
-        }
+        // Like the daemon (`syncTasks`): a run that starts moves a task that waits, To do or Backlog, to the first active status, and no other task; a task that is closed,
+        // or is in progress or in review already, stays where it is.
+        if (categoryOf(task) === 'todo' || categoryOf(task) === 'backlog') moveTo('active');
 
         this.#appendItem(run, { kind: 'user', text: `Work on ${ task.key }: ${ task.title }.` });
         this.#later(500, () => this.#streamReply(run, `I will start on ${ task.key } by reading the code around it.`));
@@ -1594,14 +1600,8 @@ export class FixtureTransport implements Transport {
             run.finishedAt = Date.now();
             this.#saveRun(run);
 
-            const review = (data.statuses[task.projectId] ?? DEFAULT_STATUSES).find(status => status.category === 'review');
-
-            if (review && data.tasks.includes(task)) {
-                task.statusId = review.id;
-                task.updatedAt = Date.now();
-                delete task.closedAt;
-                this.#saveTask(task);
-            }
+            // And a run that finishes moves a task that is in progress to review, as long as someone has not moved it elsewhere meanwhile.
+            if (data.tasks.includes(task) && categoryOf(task) === 'active') moveTo('review');
         });
 
         // Like the daemon: `{ runId, chatId }`.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_STATUSES } from '../../daemon/fixtureData';
-import { archiveReply, archiveWording, cancelDialog, isBatchTop, openWork } from './archiveRules';
+import { archiveReply, archiveWording, cancelDialog, openWork } from './archiveRules';
 import { TaskTree } from './taskTree';
 
 import type { Task } from '@clowdy/protocol';
@@ -105,26 +105,5 @@ describe('archiveReply', () => {
         expect(archiveReply(undefined)).toEqual({ archived: [], canceled: [], restored: [] });
         expect(archiveReply('no')).toEqual({ archived: [], canceled: [], restored: [] });
         expect(archiveReply({ archived: ['t-1', 5, null], canceled: 'x' })).toEqual({ archived: ['t-1'], canceled: [], restored: [] });
-    });
-});
-
-describe('isBatchTop', () => {
-    const archived = (parentId: string | undefined, archivedAt = 5) => ({ parentId, archivedAt });
-
-    it('is the top for a task with no parent', () => {
-        expect(isBatchTop(archived(undefined), () => undefined)).toBe(true);
-    });
-
-    it('is not the top when the parent went into the archive with it', () => {
-        expect(isBatchTop(archived('t-1'), () => ({ archivedAt: 5 }))).toBe(false);
-    });
-
-    it('is the top when the parent is on the board, or was archived by another call', () => {
-        expect(isBatchTop(archived('t-1'), () => ({ archivedAt: undefined }))).toBe(true);
-        expect(isBatchTop(archived('t-1'), () => ({ archivedAt: 9 }))).toBe(true);
-    });
-
-    it('is the top when nothing is known of the parent, which the daemon then decides', () => {
-        expect(isBatchTop(archived('t-1'), () => undefined)).toBe(true);
     });
 });

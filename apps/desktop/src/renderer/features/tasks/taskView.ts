@@ -37,7 +37,7 @@ export function startBlockedReason(taskRuns: readonly Run[] = []): string | null
 
     if (active.length === 0) return null;
 
-    return active.length === 1 ? `${ active[0].name } is already working on this task.` : `${ active.length } agents are already working on this task.`;
+    return active.length === 1 ? `${ active[0].name } is already working on this task` : `${ active.length } agents are already working on this task`;
 }
 
 /* --------------------------------- Filters -------------------------------- */
