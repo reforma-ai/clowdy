@@ -22,7 +22,7 @@ function GroupFolderMenu({ folder, missing }: { folder: ProjectFolder; missing: 
 
 /**
  * The name on the heading of a folder's group. In the desktop app a press on it opens the menu of the folder, the same as the folder under the message box has (Open in Files,
- * Copy path, Open in…), and the name tells the path on hover, or that the folder is gone from the disk; the name has a plate on hover to say it can be pressed. Anywhere else,
+ * Copy path, Open in…), and the name tells the path on hover, or that the folder is gone from the disk; the name has the plate of an `xs` button, the chevron's size, on hover to say it can be pressed. Anywhere else,
  * a page in a browser, there is nothing to open the folder in, and the name is only a label.
  */
 export function GroupFolderName({ name, folder, missing }: { name: string; folder: ProjectFolder; missing: boolean }) {
