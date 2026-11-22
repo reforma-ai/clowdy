@@ -11,7 +11,7 @@ import { Button } from '../Button';
 import { For } from '../For';
 import { tooltipWithHotkey } from '../Hotkey';
 import { layerRest, paneTransition, SECTION_RISE, SECTION_START_OPACITY, sectionTransition, SLIDE_IN } from '../LayerStack/motion';
-import { ListBox, ListBoxItem } from '../List';
+import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '../List';
 import { ModalContext } from '../Modal/hooks/useModalProvider';
 import { confirmDiscardChanges } from '../modals/ConfirmModal';
 import { Scrollable } from '../Scrollable';
@@ -38,6 +38,8 @@ export interface SettingsNavItem {
     id: string;
     label: string;
     icon?: ReactNode;
+    /** A heading over the item, shared with the ones after it that name the same group. Items with none stay as a flat list. */
+    group?: string;
 }
 
 export interface SettingsStackItem {
@@ -120,6 +122,12 @@ export interface SettingsLayoutProps {
     items: readonly SettingsNavItem[];
     defaultSelected?: string;
     defaultStack?: readonly SettingsStackItem[];
+    /** Makes the section the host's to hold: the layout shows this one and asks for a change through `onSelectedChange` (a section left with the leave guard's leave). */
+    selectedId?: string;
+    onSelectedChange?: (id: string) => void;
+    /** Likewise for the nested views over the section, deepest last: `onStackChange` is told the whole stack that a push, a pop, a rename or leaving the section makes. */
+    stack?: readonly SettingsStackItem[];
+    onStackChange?: (stack: readonly SettingsStackItem[]) => void;
     className?: string;
     children: ReactNode;
 }
@@ -128,14 +136,46 @@ function SettingsLayoutRoot({
     items,
     defaultSelected,
     defaultStack,
+    selectedId: selectedIdProp,
+    onSelectedChange,
+    stack: stackProp,
+    onStackChange,
     className,
     children,
 }: SettingsLayoutProps) {
-    const [selectedId, setSelectedId] = useState(defaultSelected ?? items[0]?.id ?? '');
-    const [stack, setStack] = useState<SettingsStackItem[]>(() => (
+    const [ownSelectedId, setOwnSelectedId] = useState(defaultSelected ?? items[0]?.id ?? '');
+    const [ownStack, setOwnStack] = useState<readonly SettingsStackItem[]>(() => (
         defaultStack ? [...defaultStack] : []
     ));
+    const selectedId = selectedIdProp ?? ownSelectedId;
+    const stack = stackProp ?? ownStack;
     const leaveGuardRef = useRef<(() => boolean | Promise<boolean>) | null>(null);
+    // The stack as the last change left it, so two changes in one turn (a push, then a rename of what was pushed) build on each other whoever holds the stack.
+    const latestStack = useRef(stack);
+
+    useEffect(() => {
+        latestStack.current = stack;
+    }, [stack]);
+
+    const setSelectedId = (id: string) => {
+        if (selectedIdProp === undefined) {
+            setOwnSelectedId(id);
+        }
+
+        onSelectedChange?.(id);
+    };
+
+    const changeStack = (update: (current: readonly SettingsStackItem[]) => readonly SettingsStackItem[]) => {
+        const next = update(latestStack.current);
+
+        latestStack.current = next;
+
+        if (stackProp === undefined) {
+            setOwnStack(next);
+        }
+
+        onStackChange?.(next);
+    };
 
     const select = (id: string) => {
         const changeTab = id !== selectedId;
@@ -150,7 +190,9 @@ function SettingsLayoutRoot({
                 setSelectedId(id);
             }
 
-            setStack([]);
+            if (clearStack) {
+                changeStack(() => []);
+            }
         });
     };
 
@@ -160,7 +202,7 @@ function SettingsLayoutRoot({
         }
 
         settleLeave(leaveGuardRef.current?.() ?? true, () => {
-            setStack(current => current.slice(0, -1));
+            changeStack(current => current.slice(0, -1));
         });
     };
 
@@ -170,7 +212,7 @@ function SettingsLayoutRoot({
         }
 
         settleLeave(leaveGuardRef.current?.() ?? true, () => {
-            setStack([]);
+            changeStack(() => []);
         });
     };
 
@@ -182,12 +224,16 @@ function SettingsLayoutRoot({
                     selectedId,
                     select,
                     stack,
-                    push: item => setStack(current => [...current, item]),
-                    rename: (id, label) => setStack(current => current.map(item => (
-                        item.id === id && item.label !== label
-                            ? { ...item, label }
-                            : item
-                    ))),
+                    push: item => changeStack(current => [...current, item]),
+                    rename: (id, label) => {
+                        if (latestStack.current.some(item => item.id === id && item.label !== label)) {
+                            changeStack(current => current.map(item => (
+                                item.id === id && item.label !== label
+                                    ? { ...item, label }
+                                    : item
+                            )));
+                        }
+                    },
                     pop,
                     reset,
                 } }
@@ -205,6 +251,24 @@ export interface SettingsLayoutSidebarProps {
     className?: string;
     'aria-label'?: string;
     footer?: ReactNode;
+}
+
+/** The items in runs that share a group, in order. A run with no group is a flat part of the list. */
+function navRuns(items: readonly SettingsNavItem[]): Array<{ group?: string; items: SettingsNavItem[] }> {
+    const runs: Array<{ group?: string; items: SettingsNavItem[] }> = [];
+
+    for (const item of items) {
+        const last = runs.at(-1);
+
+        if (last && last.group === item.group) {
+            last.items.push(item);
+        }
+        else {
+            runs.push({ group: item.group, items: [item] });
+        }
+    }
+
+    return runs;
 }
 
 function Sidebar({
@@ -229,18 +293,29 @@ function Sidebar({
                 selectedKeys={ [selectedId] }
                 disallowEmptySelection
             >
-                <For each={ items }>
-                    { item => (
-                        <ListBoxItem
-                            key={ item.id }
-                            id={ item.id }
-                            icon={ item.icon }
-                            textValue={ item.label }
-                            onPress={ () => select(item.id) }
-                        >
-                            { item.label }
-                        </ListBoxItem>
-                    ) }
+                <For each={ navRuns(items) }>
+                    { (run, index) => {
+                        const rows = run.items.map(item => (
+                            <ListBoxItem
+                                key={ item.id }
+                                id={ item.id }
+                                icon={ item.icon }
+                                textValue={ item.label }
+                                onPress={ () => select(item.id) }
+                            >
+                                { item.label }
+                            </ListBoxItem>
+                        ));
+
+                        return run.group === undefined
+                            ? rows
+                            : (
+                                <ListBoxSection key={ `${ index }:${ run.group }` }>
+                                    <ListBoxHeader>{ run.group }</ListBoxHeader>
+                                    { rows }
+                                </ListBoxSection>
+                            );
+                    } }
                 </For>
             </ListBox>
             <Show when={ footer }>
@@ -364,6 +439,15 @@ function Shell({
                 { footer }
             </div>
         </SettingsOverlayContext>
+    );
+}
+
+/** What a section or a nested view is for, at the top of its content: muted, short lines, and a hairline under it. */
+function Intro({ className, children }: { className?: string; children: ReactNode }) {
+    return (
+        <div className={ cn(styles.intro, className) }>
+            <Text color="secondary" className={ styles.introText }>{ children }</Text>
+        </div>
     );
 }
 
@@ -661,6 +745,7 @@ export const SettingsLayout = Object.assign(SettingsLayoutRoot, {
     Content,
     Pane,
     Empty,
+    Intro,
 });
 
 SettingsLayoutRoot.displayName = 'SettingsLayout';
