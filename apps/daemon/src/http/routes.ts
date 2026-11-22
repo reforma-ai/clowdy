@@ -29,7 +29,7 @@ export interface RouteContext {
     keepOpen(request: Request): void;
 }
 
-interface Route {
+export interface Route {
     method: 'GET' | 'POST' | 'DELETE';
     pattern: RegExp;
     /** Only the health check is open. */

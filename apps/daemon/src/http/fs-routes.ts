@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { requireProject } from '../domain/projects';
 import { invalid } from '../errors';
 import { MAX_BATCH } from '../fs/service';
-import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body';
+import { declaredLength, readJson } from './body';
 import { json } from './responses';
 
 import type { RouteContext } from './routes';
@@ -30,29 +30,6 @@ const moveBody = z.object({ folderId: z.string(), moves, overwrite: z.boolean().
 const copyBody = z.object({ folderId: z.string(), copies: moves, overwrite: z.boolean().optional() });
 const deleteBody = z.object({ folderId: z.string(), paths: z.array(z.string()).max(MAX_BATCH) });
 const searchBody = z.object({ folderId: z.string(), query: z.string(), matchCase: z.boolean().optional(), wholeWord: z.boolean().optional(), exclude: z.array(z.string()).optional() });
-
-async function readJson<S extends z.ZodType>(request: Request, schema: S): Promise<z.output<S>> {
-    let body: unknown;
-
-    try {
-        body = JSON.parse(await readText(request, JSON_BODY_LIMIT));
-    }
-    catch (error) {
-        if (error instanceof BodyTooLarge) {
-            throw error;
-        }
-
-        throw invalid('The body is not valid JSON');
-    }
-
-    const parsed = schema.safeParse(body);
-
-    if (!parsed.success) {
-        throw invalid('The request is not valid', parsed.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })));
-    }
-
-    return parsed.data;
-}
 
 /** A version as a client sends it in `If-Match`: bare, or quoted the way HTTP quotes an entity tag. */
 const versionFrom = (header: string) => header.trim().replace(/^W\//, '').replace(/^"(.*)"$/, '$1');

@@ -26,6 +26,7 @@ import { ThreadService } from './runs/threads';
 import { toolsFor } from './runs/tools';
 import { SkillsService } from './skills/service';
 import { Store } from './store';
+import { TerminalService } from './terminals/service';
 
 import type { DaemonInfo } from '@clowdy/protocol';
 import type { Services } from './commands';
@@ -54,6 +55,8 @@ export interface DaemonOptions {
     providers?: ProvidersService;
     /** Replaces the reader of model lists; tests use it to keep the real programs out of the run. */
     models?: ModelCatalog;
+    /** Replaces the terminal service; tests use it to run a shell of their own on a PTY of their own. */
+    terminals?: TerminalService;
     heartbeatMs?: number;
     /** Called once the daemon has stopped because a client asked (`POST /v1/shutdown`); the entry point exits the process here. */
     onShutdown?: () => void;
@@ -96,7 +99,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             announce: () => announceAgentsChanged(store),
         });
         const files = new FilesService();
-        const services: Services = { config, store, runs, driver, queue, threads, docs, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
+        const services: Services = { config, store, runs, driver, queue, threads, docs, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }), terminals: options.terminals ?? new TerminalService() };
 
         await runs.recover();
         attachments.sweep();
@@ -113,6 +116,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             // Notices still in their window are lost: their timers must not write to a store that is closing.
             notices.stop();
             await server.stop(true);
+            services.terminals.stop();
             await driver.stop();
             created?.stop();
             providers.stop();

@@ -13,6 +13,7 @@ import type { RunService } from '../runs/service';
 import type { ThreadService } from '../runs/threads';
 import type { SkillsService } from '../skills/service';
 import type { Store } from '../store';
+import type { TerminalService } from '../terminals/service';
 
 /** What a command handler may use. */
 export interface Services {
@@ -33,6 +34,8 @@ export interface Services {
     agents: AgentRegistry;
     providers: ProvidersService;
     models: ModelCatalog;
+    /** The shells the app's terminal runs. */
+    terminals: TerminalService;
 }
 
 export type CommandOf<T extends CommandType> = Extract<Command, { type: T }>;

@@ -6,11 +6,11 @@ import type { CliAccess } from './bridge';
 type Env = Record<string, string | undefined>;
 
 /**
- * Variables an agent never inherits from the daemon. The daemon's own settings and secrets (`CLOWDY_TOKEN`, an API key
+ * Variables an agent, and a terminal's shell, never inherit from the daemon. The daemon's own settings and secrets (`CLOWDY_TOKEN`, an API key
  * meant for something else), markers of the app or terminal that started it (`ELECTRON_RUN_AS_NODE` would make a
  * Node-based agent run as Electron, `CLAUDECODE` makes a nested Claude Code behave as a sub-session), and Node flags aimed at the daemon.
  */
-const NEVER = [
+export const NEVER_INHERITED = [
     /^CLOWDY_/i,
     /^ELECTRON_/i,
     /^NODE_OPTIONS$/i,
@@ -38,7 +38,7 @@ export function buildAgentEnv({ daemonEnv, path, scrub = [], set = {} }: AgentEn
     const env: Record<string, string> = {};
 
     for (const [name, value] of Object.entries(daemonEnv)) {
-        if (value === undefined || /^path$/i.test(name) || NEVER.some(pattern => pattern.test(name)) || scrub.some(pattern => pattern.test(name))) {
+        if (value === undefined || /^path$/i.test(name) || NEVER_INHERITED.some(pattern => pattern.test(name)) || scrub.some(pattern => pattern.test(name))) {
             continue;
         }
 
