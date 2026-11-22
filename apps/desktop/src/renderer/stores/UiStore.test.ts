@@ -727,6 +727,37 @@ describe('UiStore', () => {
         expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'terminal']);
     });
 
+    it('steps the side panel through its three states: shown, expanded, hidden, and shown beside the chat again', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+        const state = () => [ui.sidePanelOpen, ui.sidePanelExpanded];
+
+        expect(state()).toEqual([false, false]);
+
+        ui.stepSidePanel();
+        expect(state()).toEqual([true, false]);
+
+        ui.stepSidePanel();
+        expect(state()).toEqual([true, true]);
+
+        ui.stepSidePanel();
+        expect(state()).toEqual([false, false]);
+
+        ui.stepSidePanel();
+        expect(state()).toEqual([true, false]);
+    });
+
+    it('opens a panel that was shut expanded by another way in the size it was left in, with a step', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.toggleSidePanel();
+        ui.toggleSidePanelExpanded();
+        ui.toggleSidePanel();
+        expect(ui.sidePanelExpanded).toBe(true);
+
+        ui.stepSidePanel();
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
+    });
+
     it('opens the side panel on a tab, and shuts it when that tab is already shown', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 

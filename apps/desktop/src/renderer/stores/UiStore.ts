@@ -351,6 +351,23 @@ export class ProjectUi {
         this.sidePanelExpanded = !this.sidePanelExpanded;
     }
 
+    /**
+     * The next of the panel's three states, the one the button in the title band's corner leads to: a shut panel opens in the size it was left in, an open one beside the chat
+     * is expanded, and an expanded one is hidden, and starts beside the chat when it comes back by this button again.
+     */
+    stepSidePanel(): void {
+        if (!this.sidePanelOpen) {
+            this.sidePanelOpen = true;
+        }
+        else if (!this.sidePanelExpanded) {
+            this.sidePanelExpanded = true;
+        }
+        else {
+            this.sidePanelOpen = false;
+            this.sidePanelExpanded = false;
+        }
+    }
+
     /** A chat is chosen: an open panel that covered the chat gives the place back. A shut panel keeps the choice, so it comes back expanded. */
     #showChat(): void {
         if (this.sidePanelOpen) this.sidePanelExpanded = false;
