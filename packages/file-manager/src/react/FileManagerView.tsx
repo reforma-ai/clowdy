@@ -7,7 +7,8 @@ import { Spinner } from '@clowdy/components/Spinner';
 import { Folder } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { observer } from 'mobx-react-lite';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import useResizeObserver from 'use-resize-observer';
 
 import { closeTab } from './editor/closeTab';
 import { EditorArea } from './editor/EditorArea';
@@ -65,6 +66,17 @@ export const FileManagerView = observer(function FileManagerView({
     const sidebar = usePanelRef();
     const explorer = useRef<ExplorerHandle>(null);
     const id = useId();
+    const { ref: rootRef, width: rootWidth = 0 } = useResizeObserver<HTMLDivElement>();
+    // A group built in a box that has no width yet (a host that mounts the view in the same pass that sizes its column, as the side panel does when it opens
+    // again) lays itself out at that width, which squeezes the sidebar to its narrowest and leaves it there once the box grows. So the group is built when the
+    // box has a width, and stays built.
+    const [sized, setSized] = useState(false);
+
+    useEffect(() => {
+        if (rootWidth > 0) {
+            setSized(true);
+        }
+    }, [rootWidth]);
 
     // ⌘ on macOS and Ctrl elsewhere, by physical key like the app's hotkeys.
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -90,47 +102,49 @@ export const FileManagerView = observer(function FileManagerView({
     };
 
     return (
-        <div className={cn(styles.root, className)} onKeyDown={handleKeyDown}>
-            <ResizablePanelGroup
-                orientation="horizontal"
-                // Only the person's own drag is kept: a window that is resized, or a width the range had to correct, changes the layout too.
-                onLayoutChanged={(_layout, meta) => {
-                    if (!meta.isUserInteraction) {
-                        return;
-                    }
-
-                    // After the layout has landed: a key press announces its change a step before the panel's size shows it.
-                    requestAnimationFrame(() => {
-                        if (sidebar.current) {
-                            onSidebarWidthChange?.(sidebar.current.getSize().inPixels);
+        <div ref={rootRef} className={cn(styles.root, className)} onKeyDown={handleKeyDown}>
+            <Show when={sized}>
+                <ResizablePanelGroup
+                    orientation="horizontal"
+                    // Only the person's own drag is kept: a window that is resized, or a width the range had to correct, changes the layout too.
+                    onLayoutChanged={(_layout, meta) => {
+                        if (!meta.isUserInteraction) {
+                            return;
                         }
-                    });
-                }}
-            >
-                <ResizablePanel id={`${id}-editor`} className={styles.editor} minSize={EDITOR_MIN_WIDTH}>
-                    <EditorArea
-                        manager={manager}
-                        editorExtensions={editorExtensions}
-                        toolbar={!sidebarOpen && onSidebarToggle && <SidebarToggle open={false} onPress={onSidebarToggle} />}
-                    />
-                </ResizablePanel>
 
-                <Show when={sidebarOpen}>
-                    <Sidebar panelRef={sidebar} width={sidebarWidth}>
-                        <Panel side="right" className={styles.sidebar}>
-                            <PanelHeader>
-                                <FilterField manager={manager} onSubmit={() => explorer.current?.openFirstMatch()} />
-                                <PanelHeader.Actions>
-                                    {onSidebarToggle && <SidebarToggle open onPress={onSidebarToggle} />}
-                                </PanelHeader.Actions>
-                            </PanelHeader>
-                            <PanelTab>
-                                <Explorer ref={explorer} manager={manager} menuItems={menuItems} dndManager={dndManager} />
-                            </PanelTab>
-                        </Panel>
-                    </Sidebar>
-                </Show>
-            </ResizablePanelGroup>
+                        // After the layout has landed: a key press announces its change a step before the panel's size shows it.
+                        requestAnimationFrame(() => {
+                            if (sidebar.current) {
+                                onSidebarWidthChange?.(sidebar.current.getSize().inPixels);
+                            }
+                        });
+                    }}
+                >
+                    <ResizablePanel id={`${id}-editor`} className={styles.editor} minSize={EDITOR_MIN_WIDTH}>
+                        <EditorArea
+                            manager={manager}
+                            editorExtensions={editorExtensions}
+                            toolbar={!sidebarOpen && onSidebarToggle && <SidebarToggle open={false} onPress={onSidebarToggle} />}
+                        />
+                    </ResizablePanel>
+
+                    <Show when={sidebarOpen}>
+                        <Sidebar panelRef={sidebar} width={sidebarWidth}>
+                            <Panel side="right" className={styles.sidebar}>
+                                <PanelHeader>
+                                    <FilterField manager={manager} onSubmit={() => explorer.current?.openFirstMatch()} />
+                                    <PanelHeader.Actions>
+                                        {onSidebarToggle && <SidebarToggle open onPress={onSidebarToggle} />}
+                                    </PanelHeader.Actions>
+                                </PanelHeader>
+                                <PanelTab>
+                                    <Explorer ref={explorer} manager={manager} menuItems={menuItems} dndManager={dndManager} />
+                                </PanelTab>
+                            </Panel>
+                        </Sidebar>
+                    </Show>
+                </ResizablePanelGroup>
+            </Show>
         </div>
     );
 });

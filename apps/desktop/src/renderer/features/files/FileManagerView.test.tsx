@@ -8,8 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// happy-dom has no layout: the tree measures its host to know how many rows to draw, so it is told a size.
-vi.mock('use-resize-observer', () => ({ default: () => ({ ref: () => undefined, width: 240, height: 320 }) }));
+// happy-dom has no layout: the tree measures its host to know how many rows to draw, so it is told a size. The view measures its own box too, and a test can take the width away.
+const box = vi.hoisted(() => ({ width: 240 }));
+
+vi.mock('use-resize-observer', () => ({ default: () => ({ ref: () => undefined, width: box.width, height: 320 }) }));
 
 let container: HTMLDivElement;
 let root: Root;
@@ -32,6 +34,7 @@ function dragEvent(type: string, types: string[]) {
 }
 
 beforeEach(async () => {
+    box.width = 240;
     manager = new FileManager({ provider: new MemoryFileSystem({ 'a.ts': '', 'b.ts': '' }) });
     container = document.createElement('div');
     document.body.append(container);
@@ -46,6 +49,27 @@ afterEach(() => {
     act(() => root.unmount());
     container.remove();
     manager.dispose();
+});
+
+describe('the layout of the view', () => {
+    it('builds the editor and the tree once its box has a width, not before: a group built in an unsized box leaves the tree at its narrowest', async () => {
+        act(() => root.unmount());
+        root = createRoot(container);
+        box.width = 0;
+        draw();
+        await settle();
+
+        expect(container.querySelector('[role="treeitem"]')).toBeNull();
+        expect(container.querySelector('[aria-label="Resize the file tree"]')).toBeNull();
+
+        // The view is memoized: a changed prop is what makes it measure again, as the observer's own update would.
+        box.width = 600;
+        draw({ className: 'measured' });
+        await settle();
+
+        expect(container.querySelectorAll('[role="treeitem"]').length).toBe(2);
+        expect(container.querySelector('[aria-label="Resize the file tree"]')).not.toBeNull();
+    });
 });
 
 describe('the file tree\'s drag and drop', () => {
