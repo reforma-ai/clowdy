@@ -18,7 +18,7 @@ import type { Chat, ProjectFolder } from '@clowdy/protocol';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // The editor and the file tree have tests of their own; here the panel only has to show the tab.
-// It is told which of its two tabs it draws, and says when it is built: the two tabs are one view, which stays where it is when the panel moves between them.
+// It is told which of its two tabs it draws, and says when it is built: the two tabs are one component, which stays built when the panel moves between them (the view inside it is made again for the file manager of the tab on show).
 const built = vi.hoisted(() => vi.fn());
 
 vi.mock('../files/FilesTab', async () => {
@@ -279,7 +279,7 @@ describe('the side panel of the window', () => {
         expect(panel()?.textContent).not.toContain('The files');
     });
 
-    it('has a Docs tab, which is the Files view over the same file manager: it stays built when the panel moves between the two', async () => {
+    it('has a Docs tab, which is the Files view for the documents: the panel keeps the one component built when it moves between the two', async () => {
         built.mockClear();
         act(() => ui().toggleSidePanel());
         await draw(<Frame />);

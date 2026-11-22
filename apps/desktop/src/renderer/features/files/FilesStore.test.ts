@@ -62,6 +62,38 @@ describe('FilesStore', () => {
         other.dispose();
     });
 
+    it('gives a folder a file manager for its documents besides the one for its files, each with its own tabs, kept between runs under its own key', async () => {
+        const storage = memory();
+        const first = new FilesStore(new FixtureTransport(), storage);
+        const files = first.managerOf(FIXTURE_PROJECT_ID, FOLDER);
+        const docs = first.managerOf(FIXTURE_PROJECT_ID, FOLDER, 'docs');
+
+        expect(docs).not.toBe(files);
+        expect(first.managerOf(FIXTURE_PROJECT_ID, FOLDER, 'docs')).toBe(docs);
+        expect(first.managerOf(FIXTURE_PROJECT_ID, FOLDER, 'files')).toBe(files);
+
+        await settle();
+        await files.open('README.md');
+        await docs.open('.clowdy/docs/decisions/pricing.md');
+        await settle();
+
+        // A tab of one is not a tab of the other, though both are the same folder on the disk.
+        expect(files.tabs.documents.map(document => document.path)).toEqual(['README.md']);
+        expect(docs.tabs.documents.map(document => document.path)).toEqual(['.clowdy/docs/decisions/pricing.md']);
+        expect(JSON.parse(storage.data.get(`clowdy:files:${ FIXTURE_PROJECT_ID }:${ FOLDER }`)!)).toEqual({ paths: ['README.md'], active: 'README.md' });
+        expect(JSON.parse(storage.data.get(`clowdy:docs:${ FIXTURE_PROJECT_ID }:${ FOLDER }`)!)).toEqual({ paths: ['.clowdy/docs/decisions/pricing.md'], active: '.clowdy/docs/decisions/pricing.md' });
+
+        first.dispose();
+
+        const second = new FilesStore(new FixtureTransport(), storage);
+        const reopened = await second.startedManagerOf(FIXTURE_PROJECT_ID, FOLDER, 'docs');
+
+        expect(reopened.tabs.documents.map(document => document.path)).toEqual(['.clowdy/docs/decisions/pricing.md']);
+        expect((await second.startedManagerOf(FIXTURE_PROJECT_ID, FOLDER)).tabs.documents.map(document => document.path)).toEqual(['README.md']);
+
+        second.dispose();
+    });
+
     it('lists the folder through the provider and keeps the hidden files back until asked: the names that start with a dot, and node_modules', async () => {
         const provider = new MemoryFileSystem({ 'a.ts': '', '.git/config': '', '.DS_Store': '', 'src/.env': '', 'src/b.ts': '', 'node_modules/x/index.js': '', '.clowdy/docs/a.md': '' });
         const store = new FilesStore({ fileSystem: () => provider }, memory());

@@ -15,12 +15,12 @@
 
 **Decisions** (the owner's, from the chat)
 
-- Docs is a tab of the side panel (rail item **Docs**), no longer a section of the left rail. Opening a document reuses the Files UI whole: the tab strip, the editor area, the buffers. Only the sidebar tree differs.
-- The same file opened from the file tree or from the docs tree is the same tab, with the same behaviour on a conflict (Reload / Overwrite, as Files has it). There is one file manager per folder, not two.
+- Docs is a tab of the side panel (rail item **Docs**), no longer a section of the left rail. Opening a document reuses the Files UI (the same view: the tab strip, the editor area), over tabs of its own.
+- **Changed by the owner after Stage 4:** the Docs tab has its own file manager for the folder, so its open tabs are its own (the first decision, one manager and one set of tabs for both, left a TypeScript file open in the Docs tab and made a click on a tab there change nothing). The same file open in both is two buffers of one file on the disk, each seeing the other's save as an outside change (Reload / Overwrite on a conflict, as Files has it).
 - The docs tree is the file tree's own rows (the same explorer, not a custom layout), with a structure close to the file system: `.clowdy/docs`, Markdown files and the folders that hold them. A custom navigation (research and plans in groups, whatever the folders say) comes later; nothing is done for it now.
 - The panel shows one folder, as Files and Terminal do (`currentFolder`): the all-folders view of the old Docs screen goes. Accepted.
 - Not needed now, though Files has them already or the old Docs had them: rename, delete, move (Files' row menu has them), the three-way conflict view with a line diff, the read-only Preview.
-- `@doc` mentions stay. Cmd+K probably gets a **Docs** tab: the files tab keeps leaving out `.clowdy`, the docs tab returns what is hidden in it.
+- `@doc` mentions stay. Cmd+K has a **Docs** tab, and the documents come before the files in it (the owner's order): the files tab keeps leaving out `.clowdy`, the docs tab returns what is hidden in it (done: `35c935a`).
 - The old Docs code is deleted: the screen, its store, the left rail item and its chord, the history and UI state of a document, the daemon's docs read, write, watch, command, route and event, the task doc artifacts that nothing writes, their tests.
 
 **Defaults I took** (the owner may change them)
@@ -75,14 +75,14 @@
 
 **This stage:** a path chip below `.clowdy/docs` opens in the Docs tab; `@doc` mentions read the daemon's docs listing as they do now, and Cmd+K gets a Docs tab (names from the same listing, opening a document in the Docs tab).
 
-- [ ] Complete
+- [x] Complete
   - [x] `openInFiles` picks the tab by the path; the chip, the row menu and the palette's results follow (`showFilesTab` takes the tab)
-  - [ ] the palette's Docs tab, its model, source, keys and tests (not done: the owner said "possibly"; it is a follow-up, nothing breaks without it, since the palette never found documents)
+  - [x] the palette's Docs tab, its model, source, keys and tests (`Cmd+Shift+D`; the owner asked for it after Stage 4, documents before files on the All tab and in the footer)
   - [x] `@doc` mentions keep working: they read the daemon's docs listing, which stays
 
 **Done when:** a chip to `.clowdy/docs/decisions/pricing.md` opens the document in the Docs tab, Cmd+K's Docs tab finds a document by its name, and `@` still offers documents.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/features/quickSearch src/renderer/features/chats src/renderer/features/files src/renderer/stream`
-**Commits:** `6f4501f` feat(desktop): open a document from a chip or the palette on the Docs tab
+**Commits:** `35c935a` feat(desktop): add a Docs tab to the quick search, before the files; `6f4501f` feat(desktop): open a document from a chip or the palette on the Docs tab
 
 ## Stage 4 — Delete the old Docs
 
@@ -101,6 +101,21 @@
 **Done when:** no reference to the removed names is left (`grep`), the daemon's tests and the app's pass, and a project with documents shows them in the Docs tab.
 **Verify:** `bunx turbo run build lint typecheck test --affected`
 **Commits:** `163a1b3` refactor(desktop): remove the Docs screen, now that Docs is a tab of the side panel; `1f2c4c7` refactor: remove the daemon's document read, write and watch now that Docs is a tab of the file manager (daemon `bun test`: 1669 pass; the app's typecheck stayed red only on another agent's Settings work in progress)
+
+## Stage 6 — The Docs tab's own tabs (the owner's change, after Stage 5)
+
+**Depends on:** Stage 4.
+
+**This stage:** a folder gets a second file manager for its documents (`FilesStore.managerOf(project, folder, 'docs')`, its tabs stored under `clowdy:docs:...`), the Docs tab draws the same view over it, and whatever opens a path picks the manager by `isDocumentPath` (`tabOf`): `openInFiles`, the palette's results, the selected text of the palette's Text tab.
+
+- [x] Complete
+  - [x] `FilesStore` keeps a manager and a stored tab list for each of `files` and `docs`
+  - [x] `FilesTab` takes its manager by `variant` and makes the view again when the tab changes
+  - [x] `openInFiles`, `openFound`, `selectedText` and the task actions' tests follow
+  - [x] tests: the store (two managers, two keys, both restored), `openInFiles` (a document is a tab of the Docs manager only, a file of the Files manager only), the palette
+
+**Done when:** a document opened on the Docs tab is not a tab of the Files tab and a file opened in the Files tab is not one of the Docs tab, and each comes back with its own after a restart.
+**Cost left:** the Docs manager lists the folder as the Files manager does (a second listing and a second watch stream of the same folder); a provider rooted at `.clowdy/docs` would list only the documents.
 
 ## Stage 5 — Review and docs
 

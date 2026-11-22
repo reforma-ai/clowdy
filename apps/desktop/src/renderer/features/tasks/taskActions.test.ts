@@ -533,7 +533,7 @@ describe('Open the linked chat', () => {
 
 describe('Open the latest document', () => {
     /** The paths open in the tabs of the main folder's file manager, which the Files and Docs tabs share. */
-    const tabsOfFolder = () => filesStoreOf(root).managerOf(FIXTURE_PROJECT_ID, project().project.folders[0].id).tabs.documents.map(document => document.path);
+    const tabsOfFolder = (kind: 'files' | 'docs' = 'docs') => filesStoreOf(root).managerOf(FIXTURE_PROJECT_ID, project().project.folders[0].id, kind).tabs.documents.map(document => document.path);
 
     it('opens the newest document the daemon lists for the task, on the Docs tab', async () => {
         await mount();

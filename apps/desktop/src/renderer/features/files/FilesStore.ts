@@ -10,7 +10,10 @@ import { clipboardOf } from './systemClipboard';
 import type { FolderId, ProjectId } from '@clowdy/protocol';
 import type { Transport } from '../../daemon/transport';
 
-const tabsKey = (projectId: ProjectId, folderId: FolderId) => `clowdy:files:${ projectId }:${ folderId }`;
+/** The two sets of tabs a folder has: the files the person opened, and the documents. The Docs tab is the Files view with a tree of its own and tabs of its own. */
+export type FilesKind = 'files' | 'docs';
+
+const tabsKey = (projectId: ProjectId, folderId: FolderId, kind: FilesKind) => `clowdy:${ kind }:${ projectId }:${ folderId }`;
 
 function storedTabs(storage: KeyValueStorage | undefined, key: string): TabsSnapshot | undefined {
     const stored = readStored(storage, key) as Partial<TabsSnapshot> | undefined;
@@ -23,7 +26,8 @@ function storedTabs(storage: KeyValueStorage | undefined, key: string): TabsSnap
 /**
  * The files of the project's folders as the window shows them: a file manager for each folder, made when the folder is first asked for and kept for as long
  * as the app runs, so the tabs open in a folder and what is typed in them are still there when another chat or another folder has been on show. The
- * tabs open in a folder are kept between runs.
+ * tabs open in a folder are kept between runs. A folder has two managers, the Files tab's and the Docs tab's: the view is the same, but each has its own tabs, so
+ * a document opened in the Docs tab is not a tab of the Files tab, and a TypeScript file opened there never shows up among the documents.
  */
 export class FilesStore {
     readonly #managers = new Map<string, FileManager>();
@@ -40,9 +44,9 @@ export class FilesStore {
         makeAutoObservable<FilesStore, 'transport' | 'storage' | 'folderPath'>(this, { transport: false, storage: false, folderPath: false });
     }
 
-    /** The file manager of a folder of a project. */
-    managerOf(projectId: ProjectId, folderId: FolderId): FileManager {
-        const key = tabsKey(projectId, folderId);
+    /** The file manager of a folder of a project, the Files tab's or the Docs tab's. */
+    managerOf(projectId: ProjectId, folderId: FolderId, kind: FilesKind = 'files'): FileManager {
+        const key = tabsKey(projectId, folderId, kind);
         let manager = this.#managers.get(key);
 
         if (!manager) {
@@ -57,10 +61,10 @@ export class FilesStore {
      * The file manager of a folder once it has listed the folder and reopened the tabs it had: a file opened before that is a tab the reopening then
      * takes the focus from. For whoever opens a file as soon as a manager is made.
      */
-    async startedManagerOf(projectId: ProjectId, folderId: FolderId): Promise<FileManager> {
-        const manager = this.managerOf(projectId, folderId);
+    async startedManagerOf(projectId: ProjectId, folderId: FolderId, kind: FilesKind = 'files'): Promise<FileManager> {
+        const manager = this.managerOf(projectId, folderId, kind);
 
-        await this.#started.get(tabsKey(projectId, folderId));
+        await this.#started.get(tabsKey(projectId, folderId, kind));
 
         return manager;
     }

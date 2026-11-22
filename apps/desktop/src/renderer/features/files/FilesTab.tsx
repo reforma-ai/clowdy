@@ -18,8 +18,9 @@ import { useFilesStore } from './useFilesStore';
  * folder the Info tab names). Each folder keeps its own tabs, so the tree and the tabs change with the folder, and come back with it. A row's menu has, after its own items,
  * Open in Terminal (a folder), Copy path (absolute or relative) and Open in… (the editor, the file manager, the terminal program, GitHub).
  *
- * The Docs tab is this same view over the same file manager, so the tabs, the editor and the buffers are the same ones: the only difference is the tree at the right,
- * which draws the folder's documents (`DOCS_SCOPE`) in place of every file. The component stays mounted when the panel moves between the two tabs.
+ * The Docs tab is this same view over a file manager of its own for the folder: the tabs, the editor and the buffers are the Docs tab's, so the documents open there
+ * are not the files open in the Files tab, and the tree at the right draws the folder's documents (`DOCS_SCOPE`) in place of every file. The component stays mounted when
+ * the panel moves between the two tabs, and the view is made again for the manager of the one that comes on show.
  */
 export default function FilesTab({ variant = 'files' }: { variant?: 'files' | 'docs' }) {
     const root = useRootStore();
@@ -27,7 +28,7 @@ export default function FilesTab({ variant = 'files' }: { variant?: 'files' | 'd
     const ui = useProjectUi();
     const files = useFilesStore();
     const folder = currentFolder(project, ui);
-    const manager = files.managerOf(project.project.id, folder.id);
+    const manager = files.managerOf(project.project.id, folder.id, variant);
     const apps = useOpenApps();
     const git = useFolderGit(project.id, folder.id);
 
@@ -40,7 +41,7 @@ export default function FilesTab({ variant = 'files' }: { variant?: 'files' | 'd
     return (
         <FileManagerView
             className={ styles.view }
-            key={ `${ project.project.id }/${ folder.id }` }
+            key={ `${ project.project.id }/${ folder.id }/${ variant }` }
             manager={ manager }
             scope={ variant === 'docs' ? DOCS_SCOPE : undefined }
             filterPlaceholder={ variant === 'docs' ? 'Filter documents' : undefined }

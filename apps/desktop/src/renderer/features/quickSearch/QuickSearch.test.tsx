@@ -56,10 +56,10 @@ async function open(tab: Parameters<typeof openQuickSearch>[1]) {
     await settle();
 }
 
-const manager = () => {
+const manager = (kind: 'files' | 'docs' = 'files') => {
     const project = store.selectedProject!;
 
-    return filesStoreOf(store).managerOf(project.project.id, project.project.folders[0]!.id);
+    return filesStoreOf(store).managerOf(project.project.id, project.project.folders[0]!.id, kind);
 };
 
 beforeEach(async () => {
@@ -277,7 +277,8 @@ describe('the quick search palette', () => {
         expect(document.body.querySelector('[role="combobox"]')).toBeNull();
         expect(ui.sidePanelOpen).toBe(true);
         expect(ui.sidePanelTab).toBe('docs');
-        expect(manager().tabs.active?.path).toBe('.clowdy/docs/decisions/pricing.md');
+        expect(manager('docs').tabs.active?.path).toBe('.clowdy/docs/decisions/pricing.md');
+        expect(manager().tabs.documents.map(document => document.path)).not.toContain('.clowdy/docs/decisions/pricing.md');
     });
 
     it('finds a file the tree shows although the project\'s list of files leaves it out, as it does one that git ignores', async () => {

@@ -1,8 +1,8 @@
 import { openChat } from '../chats/archiveChat';
 import { docPaths } from '../chats/mentionItems';
 import { isHiddenPath, treeLayout } from '../files';
-import { DOCS_ROOT, isDocumentPath } from '../files/docsScope';
-import { filesManagerOf as managerOf, showFilesTab } from '../files/openInFiles';
+import { DOCS_ROOT } from '../files/docsScope';
+import { filesManagerOf as managerOf, showFilesTab, tabOf } from '../files/openInFiles';
 import { foundChats } from './quickSearchChats';
 
 import type { FileManager } from '@clowdy/file-manager';
@@ -47,9 +47,11 @@ export function matchDocs(query: string, paths: readonly string[]): string[] {
  * when the result is a line. The tab shows the folder the window is working in, which is the one the palette searched.
  */
 export async function openFound(root: RootStore, projectId: ProjectId, folder: ProjectFolder, found: Exclude<Found, FoundChat | FoundDoc>): Promise<void> {
-    showFilesTab(root, projectId, isDocumentPath(found.path) ? 'docs' : 'files');
+    const tab = tabOf(found.path);
 
-    const manager = await managerOf(root, projectId, folder);
+    showFilesTab(root, projectId, tab);
+
+    const manager = await managerOf(root, projectId, folder, tab);
 
     if (found.kind === 'file') {
         await manager.open(found.path);
@@ -67,10 +69,10 @@ export async function openFound(root: RootStore, projectId: ProjectId, folder: P
 export async function selectedText(root: RootStore, projectId: ProjectId, folder: ProjectFolder): Promise<string | undefined> {
     const ui = root.ui.forProject(projectId);
 
-    // The Docs tab is the same editor.
+    // The Docs tab is the same editor, over tabs of its own: the selection is the one of the tab on show.
     if (!ui.sidePanelOpen || (ui.sidePanelTab !== 'files' && ui.sidePanelTab !== 'docs')) return undefined;
 
-    return (await managerOf(root, projectId, folder)).selectedText();
+    return (await managerOf(root, projectId, folder, ui.sidePanelTab)).selectedText();
 }
 
 /**

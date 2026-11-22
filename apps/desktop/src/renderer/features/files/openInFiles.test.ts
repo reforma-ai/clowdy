@@ -14,9 +14,9 @@ const FILES = ['README.md', 'package.json', 'src/booking/index.tsx', 'src/bookin
 let store: RootStore;
 
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
-const manager = () => filesManagerOf(store, FIXTURE_PROJECT_ID, FOLDER);
+const manager = (kind: 'files' | 'docs' = 'files') => filesManagerOf(store, FIXTURE_PROJECT_ID, FOLDER, kind);
 const open = (path: string) => openInFiles(store, FIXTURE_PROJECT_ID, FOLDER, path);
-const tabs = async () => (await manager()).tabs.documents.map(document => document.path);
+const tabs = async (kind: 'files' | 'docs' = 'files') => (await manager(kind)).tabs.documents.map(document => document.path);
 
 beforeEach(async () => {
     // The tabs of a folder are kept in the browser's storage and come back with it: a test starts with none.
@@ -42,16 +42,19 @@ describe('opening a path in the Files tab', () => {
         expect(ui().sidePanelTab).toBe('files');
     });
 
-    it('shows a document on the Docs tab, which has the same tabs, and any other file on the Files tab', async () => {
+    it('shows a document on the Docs tab, in the tabs of that tab, and any other file on the Files tab, in the tabs of that one', async () => {
         expect(await open('.clowdy/docs/decisions/pricing.md')).toBe(true);
 
-        expect((await manager()).tabs.active?.path).toBe('.clowdy/docs/decisions/pricing.md');
+        expect((await manager('docs')).tabs.active?.path).toBe('.clowdy/docs/decisions/pricing.md');
         expect(ui().sidePanelOpen).toBe(true);
         expect(ui().sidePanelTab).toBe('docs');
 
         expect(await open('README.md')).toBe(true);
         expect(ui().sidePanelTab).toBe('files');
-        expect(await tabs()).toEqual(['.clowdy/docs/decisions/pricing.md', 'README.md']);
+
+        // Each tab has its own tabs: a document is not a tab of the Files tab, and a file is not one of the Docs tab.
+        expect(await tabs('docs')).toEqual(['.clowdy/docs/decisions/pricing.md']);
+        expect(await tabs('files')).toEqual(['README.md']);
     });
 
     it('shows a folder of the tree, with no tab for it, and the folder itself by showing the tab', async () => {
