@@ -35,7 +35,7 @@ export function Screen() {
                 { run
                     ? <RunDetail key={ run.id } run={ run } />
                     : chat
-                        ? <ChatView key={ chat.id } chat={ chat } controls={ where && <ChatFolder name={ where.name } path={ where.folder.path } missing={ missing.has(where.folder.id) } /> } />
+                        ? <ChatView key={ chat.id } chat={ chat } controls={ where && <ChatFolder name={ where.name } folder={ where.folder } missing={ missing.has(where.folder.id) } /> } />
                         : <DraftChat missing={ missing } /> }
             </section>
         </SidebarLayout>

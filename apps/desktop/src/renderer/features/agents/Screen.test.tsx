@@ -520,10 +520,12 @@ describe('grouped by folder', () => {
         it('adds no read of what the daemon knows of the folders when the page opens: the list and the page share the one', async () => {
             const transport = new FixtureTransport({ data: twoFolders() });
             const read = vi.spyOn(transport, 'getProjectsInfo');
+            // The folder line reads the git facts of its one project (the branch): that is a read of its own, cheap, and not the one of every project that these tests watch.
+            const allProjects = () => read.mock.calls.filter(([projectId]) => projectId === undefined).length;
 
             await restart({ transport });
 
-            const reads = read.mock.calls.length;
+            const reads = allProjects();
 
             expect(reads).toBe(1);
 
@@ -536,7 +538,7 @@ describe('grouped by folder', () => {
             await draw();
 
             expect(folderSelect()).not.toBeNull();
-            expect(read).toHaveBeenCalledTimes(reads);
+            expect(allProjects()).toBe(reads);
         });
 
         it('makes the chat in the folder that was picked there', async () => {
@@ -696,15 +698,17 @@ describe('grouped by folder', () => {
         try {
             const transport = new FixtureTransport({ data: twoFolders() });
             const read = vi.spyOn(transport, 'getProjectsInfo');
+            // The folder line's own read of its project (the branch) is not counted: this is about the read of every project.
+            const allProjects = () => read.mock.calls.filter(([projectId]) => projectId === undefined).length;
 
             await restart({ grouping: false, transport });
-            expect(read).toHaveBeenCalledTimes(1);
+            expect(allProjects()).toBe(1);
 
             await draw(() => ui().setGroupByFolder(true));
-            expect(read).toHaveBeenCalledTimes(1);
+            expect(allProjects()).toBe(1);
 
             await act(async () => void vi.advanceTimersByTime(60_000));
-            expect(read).toHaveBeenCalledTimes(1);
+            expect(allProjects()).toBe(1);
         }
         finally {
             vi.useRealTimers();

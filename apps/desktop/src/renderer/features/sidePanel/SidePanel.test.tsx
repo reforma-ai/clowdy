@@ -165,6 +165,9 @@ describe('the side panel of the window', () => {
         expect(panel()?.textContent).toContain('Folder');
         expect(panel()?.textContent).toContain('car-rental');
         expect(mainFolder(project).path).toBe('/Users/dev/car-rental');
+        // The branch checked out in the folder, read from the daemon (the fixture's git has Car Rental on main).
+        expect(panel()?.textContent).toContain('Branch');
+        expect(panel()?.textContent).toContain('main');
         await press(panel()!.querySelector<HTMLButtonElement>('button[aria-label="Side panel"]')!);
 
         expect(ui().sidePanelOpen).toBe(false);

@@ -67,7 +67,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                                     />
                                 )
                                 // A project of one folder has nothing to pick: the line says where the chat will work, as the chat's own does.
-                                : <ChatFolder name={ target.name } path={ target.folder.path } missing={ missing.has(target.folder.id) } /> }
+                                : <ChatFolder name={ target.name } folder={ target.folder } missing={ missing.has(target.folder.id) } /> }
                         />
                     </ContentColumn>
                 </div>

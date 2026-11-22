@@ -1,72 +1,66 @@
-import { Menu, MenuHeader, MenuItem, MenuSection, MenuTrigger } from '@clowdy/components/List';
-import { Popover, PopoverScroll } from '@clowdy/components/Popover';
+import { MenuTrigger } from '@clowdy/components/List';
+import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { Folder } from '@clowdy/icons/14';
 
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
-import { AppIcon, canOpenPaths, chosenApp, openPathIn, openWithPreferences, useOpenApps } from '../openWith';
+import { useProjectState } from '../../stores';
+import { canOpenPaths, OpenWithMenu, useFolderGit, type FolderGit, type OpenTarget } from '../openWith';
 import styles from './ChatFolder.module.css';
 import { FolderTrigger } from './DraftFolderSelect';
 
+import type { ProjectFolder } from '@clowdy/protocol';
+
 export interface ChatFolderProps {
     name: string;
-    path: string;
+    folder: ProjectFolder;
     /** The folder is gone from the disk. */
     missing: boolean;
 }
 
+/** The branch that is checked out, in the muted type of the line: its name, or the short hash of a detached HEAD. Nothing for a folder that is not a repository. */
+function Branch({ git }: { git: FolderGit | undefined }) {
+    if (!git?.branch) return null;
+
+    return <Text truncate className={ styles.branch } title={ git.detached ? 'Detached HEAD' : 'Branch' }>{ git.branch }</Text>;
+}
+
 /**
  * The folder a chat works in, in the place the new-chat page's select (`DraftFolderSelect`) had it, and the same size and name. In the desktop app it is the
- * same pill, and a press opens a menu to open the folder in the file manager, the editor and the terminal (the ones Settings > Files names, else the first
- * the computer has; no editor or terminal, no item), each with the program's own icon, and the pill tells the path on hover, or that the folder is gone from
- * the disk, when the items are off. Anywhere else, a page in a browser, it is read only: no plate and no chevron, since the folder of a chat never changes and there is
- * nothing to open it in.
+ * same pill, and a press opens the menu of the folder (`OpenWithMenu`: Open in Files, the file manager, the editor and the terminal, each with the program's own
+ * icon, GitHub when the folder is a GitHub repository, and Copy path), and the pill tells the path on hover, or that the folder is gone from the disk, when
+ * the items are off. The branch that is checked out stands after the name. Anywhere else, a page in a browser, it is read only: no plate and no chevron, since
+ * the folder of a chat never changes and there is nothing to open it in.
  */
-export function ChatFolder({ name, path, missing }: ChatFolderProps) {
-    const title = missing ? 'This folder no longer exists' : tildePath(path, homeFolder.path);
+export function ChatFolder({ name, folder, missing }: ChatFolderProps) {
+    const project = useProjectState();
+    const git = useFolderGit(project.id, folder.id);
+    const title = missing ? 'This folder no longer exists' : tildePath(folder.path, homeFolder.path);
 
     if (!canOpenPaths()) {
         return (
-            <div role="group" aria-label="Folder" className={ styles.folder } data-missing={ missing || undefined } title={ title }>
-                <Folder aria-hidden="true" />
-                <Text truncate>{ name }</Text>
-            </div>
+            <>
+                <div role="group" aria-label="Folder" className={ styles.folder } data-missing={ missing || undefined } title={ title }>
+                    <Folder aria-hidden="true" />
+                    <Text truncate>{ name }</Text>
+                </div>
+                <Branch git={ git } />
+            </>
         );
     }
 
-    return <FolderMenu name={ name } path={ path } missing={ missing } title={ title } />;
-}
-
-function FolderMenu({ name, path, missing, title }: ChatFolderProps & { title: string }) {
-    const apps = useOpenApps();
-    const fileManager = chosenApp(apps.fileManagers, openWithPreferences.fileManager);
-    const editor = chosenApp(apps.editors, openWithPreferences.editor);
-    const terminal = chosenApp(apps.terminals, openWithPreferences.terminal);
+    const target: OpenTarget = { projectId: project.id, folder, path: folder.path, relative: '', kind: 'directory' };
 
     return (
-        <MenuTrigger>
-            <FolderTrigger name={ name } tooltip={ title } missing={ missing } />
-            <Popover placement="bottom start" spacing="xs">
-                <PopoverScroll>
-                    <Menu
-                        aria-label="Open folder"
-                        size="sm"
-                        onAction={ (key) => {
-                            if (key === 'fileManager' && fileManager) void openPathIn(path, 'fileManager', fileManager);
-                            else if (key === 'editor' && editor) void openPathIn(path, 'editor', editor);
-                            else if (key === 'terminal' && terminal) void openPathIn(path, 'terminal', terminal);
-                        } }
-                    >
-                        <MenuSection aria-label="Open in">
-                            { missing && <MenuHeader>This folder no longer exists</MenuHeader> }
-                            { fileManager && <MenuItem id="fileManager" icon={ <AppIcon app={ fileManager } kind="fileManager" /> } textValue={ `Open in ${ fileManager.name }` } isDisabled={ missing }>{ `Open in ${ fileManager.name }` }</MenuItem> }
-                            { editor && <MenuItem id="editor" icon={ <AppIcon app={ editor } kind="editor" /> } textValue={ `Open in ${ editor.name }` } isDisabled={ missing }>{ `Open in ${ editor.name }` }</MenuItem> }
-                            { terminal && <MenuItem id="terminal" icon={ <AppIcon app={ terminal } kind="terminal" /> } textValue={ `Open in ${ terminal.name }` } isDisabled={ missing }>{ `Open in ${ terminal.name }` }</MenuItem> }
-                        </MenuSection>
-                    </Menu>
-                </PopoverScroll>
-            </Popover>
-        </MenuTrigger>
+        <>
+            <MenuTrigger>
+                <FolderTrigger name={ name } tooltip={ title } missing={ missing } />
+                <Popover placement="bottom start" spacing="xs">
+                    <OpenWithMenu target={ target } missing={ missing } git={ git } aria-label="Open folder" />
+                </Popover>
+            </MenuTrigger>
+            <Branch git={ git } />
+        </>
     );
 }
