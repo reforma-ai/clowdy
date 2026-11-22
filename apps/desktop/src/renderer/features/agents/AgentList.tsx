@@ -67,7 +67,7 @@ interface ChatActions {
  * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the heading's `⋯` asks for), each with the
  * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
  * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), in a project of several folders, the
- * chats stand in a group for the folder they work in, under a heading that folds the group, has a button for a chat in that folder, and opens the folder's menu (`GroupFolderName`) from a press on its name.
+ * chats stand in a group for the folder they work in, under a heading that folds the group, has a button for a chat in that folder, and opens the folder's menu (`GroupFolderName`) from a press on its name, which also shows the new-chat page for that folder.
  */
 export function AgentList({ selection, chats, missing, isCovered }: { selection: AgentSelection; chats: readonly Chat[]; missing: ReadonlySet<FolderId>; /** The side panel is in the place of the chat, so the list is a plate of its own. */ isCovered: boolean }) {
     const root = useRootStore();
@@ -229,7 +229,13 @@ export function AgentList({ selection, chats, missing, isCovered }: { selection:
             >
                 <span className={ styles.groupTitle }>
                     <span className={ styles.groupNameBox } { ...ownEvents }>
-                        <GroupFolderName name={ group.name } folder={ group.folder } missing={ isMissing } />
+                        {/* The press also shows the new-chat page for the folder, so the window works in it and the menu can open it in Files and the terminal. A folder gone from the disk has no chat to start. */}
+                        <GroupFolderName
+                            name={ group.name }
+                            folder={ group.folder }
+                            missing={ isMissing }
+                            onOpen={ isMissing ? undefined : () => ui.openDraft([], group.isMain ? null : group.folder.id) }
+                        />
                     </span>
                     {/* The way to fold the group. On a folded group it is always there, which says it is folded; on an open one it comes with the pointer or the keyboard. */}
                     <span className={ styles.groupFold } { ...ownEvents }>

@@ -22,14 +22,16 @@ function GroupFolderMenu({ folder, missing }: { folder: ProjectFolder; missing: 
 
 /**
  * The name on the heading of a folder's group. In the desktop app a press on it opens the menu of the folder, the same as the folder under the message box has (Open in Files,
- * Copy path, Open in…), and the name tells the path on hover, or that the folder is gone from the disk; the name has the plate of an `xs` button, the chevron's size, on hover to say it can be pressed. Anywhere else,
- * a page in a browser, there is nothing to open the folder in, and the name is only a label.
+ * Open in Terminal, Copy path, Open in…), and the name tells the path on hover, or that the folder is gone from the disk; the name has the plate of an `xs` button, the chevron's
+ * size, on hover to say it can be pressed. `onOpen` runs as the menu opens: the list uses it to show the new-chat page for the folder, which makes the folder the one the window
+ * works in, so the menu can open it in the Files tab and the terminal, as the folder of a chat can. Anywhere else, with no desktop bridge (tests, the screenshot harness), there is
+ * nothing to open the folder in, and the name is only a label.
  */
-export function GroupFolderName({ name, folder, missing }: { name: string; folder: ProjectFolder; missing: boolean }) {
+export function GroupFolderName({ name, folder, missing, onOpen }: { name: string; folder: ProjectFolder; missing: boolean; onOpen?: () => void }) {
     if (!canOpenPaths()) return <span className={ cn(styles.title, styles.groupPlainName) }>{ name }</span>;
 
     return (
-        <MenuTrigger>
+        <MenuTrigger onOpenChange={ (isOpen) => { if (isOpen) onOpen?.(); } }>
             <Button
                 variant="filling"
                 color="inherit"
