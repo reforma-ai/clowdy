@@ -71,13 +71,15 @@ Also from the data: a "completed in the last N days" view option from `closedAt`
 
 **Depends on:** Stage 1 (it edits the same migration, protocol and task-tools files).
 
-- [ ] Migration: `task_comments` (`id`, `task_id` with `ON DELETE CASCADE`, `author` JSON, `body`, `created_at`, `edited_at`, index on `task_id, created_at`). `db/taskComments.ts`.
-- [ ] Protocol: `TaskComment`, commands `task.comment.add`, `task.comment.edit`, `task.comment.delete`, an event for a comment changing, a read route for a task's comments (paged); names follow the neighbouring commands and routes.
-- [ ] Domain: add (author from the caller: the person, or the run), edit (sets `editedAt`), delete; a deleted task takes its comments with it; the comment count and the latest three in `task get`.
-- [ ] Tools and CLI: `task_comment` (add; text as the positional words, `--body-file -` or stdin for a heredoc) and `task_comments` (paged list, oldest first with a cursor); examples and help.
-- [ ] Tests: every command, authorship by the person and by a run, paging, cascade on task delete, the shape in `task get`, the stdin path.
+- [x] Migration: `task_comments` (`id`, `task_id` with `ON DELETE CASCADE`, `author` JSON, `body`, `created_at`, `edited_at`, index on `task_id, created_at`). `db/taskComments.ts`.
+- [x] Protocol: `TaskComment`, commands `task.comment.add`, `task.comment.edit`, `task.comment.delete`, an event for a comment changing, a read route for a task's comments (paged); names follow the neighbouring commands and routes.
+- [x] Domain: add (author from the caller: the person, or the run), edit (sets `editedAt`), delete; a deleted task takes its comments with it; the comment count and the latest three in `task get`.
+- [x] Tools and CLI: `task_comment` (add; text as the positional words, `--body-file -` or stdin for a heredoc) and `task_comments` (paged list, oldest first with a cursor); examples and help.
+- [x] Tests: every command, authorship by the person and by a run, paging, cascade on task delete, the shape in `task get`, the stdin path.
 
 **Done when:** an agent can leave and read comments through the shell command and the UI-facing commands exist and are tested; checks as in Stage 1.
+
+**Landed:** `bede769` feat(daemon): add Markdown comments to tasks, for the person and for agents (reviewed by a separate agent; no defects, one test added; the two skills-vocabulary tests were kept green by naming `task comment` and `task comments` in the validator and the orchestrate skill, the rest of the skills pass is Stage 4). Choices made in the stage: events `task.comment.upserted` and `task.comment.deleted` (a task delete emits only `task.deleted`); edit and delete take `taskId` and `commentId`, the person may edit or delete any comment; a body is kept less trailing whitespace; the route is `GET /v1/tasks/:id/comments` oldest first, cursor `<createdAt>.<id>`; `task_get` shows `commentCount` and `latestComments` (last three, 300 characters); the fixture transport answers `unavailable` for the comment commands until Stage 5a; a comment does not touch `Task.updatedAt` (revisit with the Linear mapping). For Stage 5: a long thread may want a newest-first or end-anchored read (an `order` parameter on the route), and an agent comment's run may be gone, so its link can dangle.
 
 ## Stage 3 — Archive
 
