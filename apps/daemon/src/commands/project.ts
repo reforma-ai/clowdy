@@ -9,8 +9,8 @@ export const projectHandlers: Pick<Handlers, 'project.add' | 'project.update' | 
         return { project, ...(existing && { existing: true }) };
     },
 
-    'project.update': ({ store, runs, docs, skills }, command) => {
-        const project = updateProject(store, command.projectId, command, { docs, skills });
+    'project.update': ({ store, runs, skills }, command) => {
+        const project = updateProject(store, command.projectId, command, { skills });
 
         // A changed parallel-run limit may free slots.
         store.afterCommit(() => runs.tick());
@@ -18,8 +18,8 @@ export const projectHandlers: Pick<Handlers, 'project.add' | 'project.update' | 
         return { project };
     },
 
-    'project.delete': ({ store, attachments, docs, skills }, command) => {
-        deleteProject(store, command.projectId, { attachments, docs, skills });
+    'project.delete': ({ store, attachments, skills }, command) => {
+        deleteProject(store, command.projectId, { attachments, skills });
 
         return { projectId: command.projectId };
     },

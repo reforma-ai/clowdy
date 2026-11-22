@@ -3,6 +3,7 @@ import { commandSchema, mainFolder, MAX_ATTACHMENT_BYTES, PROTOCOL_VERSION } fro
 import { contentDisposition, servedMediaType } from '../attachments/names';
 import { executeCommandAsync, waitsForAgent } from '../commands';
 import { getRun } from '../db/runs';
+import { docsTree } from '../docs/tree';
 import { requireChat } from '../domain/chats';
 import { streamItems } from '../domain/items';
 import { findProjectIcon } from '../domain/projectIcon';
@@ -64,7 +65,7 @@ function integerParam(raw: string | null, name: string, fallback: number): numbe
 
 export function createRoutes(context: RouteContext): Route[] {
     const { services } = context;
-    const { store, docs, files, skills, attachments } = services;
+    const { store, files, skills, attachments } = services;
 
     return [
         {
@@ -183,12 +184,7 @@ export function createRoutes(context: RouteContext): Route[] {
                 return json({ tasks, total, ...(nextCursor !== undefined && { nextCursor }) } satisfies TaskArchivePage);
             },
         },
-        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/docs$/, handle: (_request, _url, [id]) => json(docs.tree(requireProject(store, id))) },
-        {
-            method: 'GET',
-            pattern: /^\/v1\/projects\/([^/]+)\/docs\/file$/,
-            handle: (_request, url, [id]) => json(docs.read(requireProject(store, id), url.searchParams.get('folderId') ?? '', url.searchParams.get('path') ?? '')),
-        },
+        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/docs$/, handle: (_request, _url, [id]) => json(docsTree(requireProject(store, id))) },
         {
             method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/files$/,

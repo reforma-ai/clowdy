@@ -74,11 +74,6 @@ export function getProjectByFolders(db: Database, paths: readonly string[]): Pro
     return row ? getProject(db, row.project_id) : undefined;
 }
 
-/** Every project that has the folder at `path`, with the id the folder has in each. */
-export function foldersAtPath(db: Database, path: string): { projectId: string; folderId: string }[] {
-    return (db.query('SELECT id, project_id FROM project_folders WHERE path = ?').all(path) as Omit<FolderRow, 'path'>[]).map(row => ({ projectId: row.project_id, folderId: row.id }));
-}
-
 export function getPersonalProject(db: Database): Project | undefined {
     return withFolders(db, db.query('SELECT * FROM projects WHERE personal = 1').get() as ProjectRow | null);
 }

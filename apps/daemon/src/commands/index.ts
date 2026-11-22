@@ -1,7 +1,6 @@
 import { CommandError, errorMessage } from '../errors';
 import { agentsHandlers } from './agents';
 import { chatAsyncHandlers, chatHandlers } from './chat';
-import { docsHandlers } from './docs';
 import { projectHandlers } from './project';
 import { runHandlers } from './run';
 import { skillsHandlers } from './skills';
@@ -13,7 +12,7 @@ import type { AsyncHandlers, Handlers, Services } from './context';
 
 export type { Services } from './context';
 
-const handlers: Handlers = { ...projectHandlers, ...chatHandlers, ...taskHandlers, ...runHandlers, ...docsHandlers, ...skillsHandlers, ...agentsHandlers };
+const handlers: Handlers = { ...projectHandlers, ...chatHandlers, ...taskHandlers, ...runHandlers, ...skillsHandlers, ...agentsHandlers };
 const asyncHandlers: AsyncHandlers = { ...chatAsyncHandlers };
 
 const isAsync = (type: Command['type']): type is keyof AsyncHandlers => type in asyncHandlers;

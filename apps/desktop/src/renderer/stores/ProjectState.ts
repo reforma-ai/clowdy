@@ -271,8 +271,7 @@ export class ProjectState {
             case 'artifact.added':
                 this.artifactsRevision++;
                 break;
-            // Stream items belong to `StreamStore`; notices and a deleted project are handled by the root store. A document is a file now: the file manager's watch reports it.
-            case 'docs.changed':
+            // Stream items belong to `StreamStore`; notices and a deleted project are handled by the root store.
             case 'project.deleted':
             case 'stream.item':
             case 'notice':

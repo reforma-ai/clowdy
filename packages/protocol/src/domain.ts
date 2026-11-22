@@ -563,17 +563,9 @@ export interface DocNode {
 }
 
 /**
- * The documents of one folder of a project: Markdown files under its `.clowdy/docs`. A folder whose docs folder does not exist yet has no nodes;
- * the first document written there makes it.
+ * The documents of one folder of a project: Markdown files under its `.clowdy/docs`. A folder whose docs folder does not exist has no nodes.
  */
 export interface DocsFolder {
     folderId: FolderId;
     nodes: DocNode[];
-}
-
-export interface DocFile {
-    path: string;
-    content: string;
-    /** SHA-256 of the content on disk; send it back as `baseHash` when saving. */
-    hash: string;
 }

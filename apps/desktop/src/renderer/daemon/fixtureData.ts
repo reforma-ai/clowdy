@@ -259,14 +259,6 @@ export const DEFAULT_STATUSES: TaskStatus[] = [
     { id: 'canceled', name: 'Canceled', category: 'canceled' },
 ];
 
-export function docHash(content: string): string {
-    let hash = 5381;
-
-    for (let index = 0; index < content.length; index++) hash = ((hash * 33) ^ content.charCodeAt(index)) >>> 0;
-
-    return `fx-${ hash.toString(16) }`;
-}
-
 const BOOKING_SKETCH = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><rect width="320" height="200" fill="#f3efe9"/><rect x="24" y="24" width="272" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="24" y="72" width="132" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="164" y="72" width="132" height="34" rx="8" fill="#fff" stroke="#d8d0c4"/><rect x="24" y="130" width="272" height="44" rx="10" fill="#fa8854"/></svg>';
 const BOOKING_LOG = 'TypeError: Cannot read properties of undefined (reading \'price\')\n    at BookingForm (src/booking/BookingForm.tsx:42:18)\n';
 

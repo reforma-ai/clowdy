@@ -11,7 +11,6 @@ import type {
     Attachment,
     ClowdyEvent,
     CommandResult,
-    DocFile,
     DocsTree,
     FolderId,
     ProjectFileMatch,
@@ -135,10 +134,6 @@ export class HttpTransport implements Transport {
 
     getDocsTree(projectId: ProjectId): Promise<DocsTree> {
         return this.#get(ROUTES.docsTree(projectId));
-    }
-
-    getDocFile(projectId: ProjectId, folderId: FolderId, path: string): Promise<DocFile> {
-        return this.#get(`${ ROUTES.docsFile(projectId) }?folderId=${ encodeURIComponent(folderId) }&path=${ encodeURIComponent(path) }`);
     }
 
     getProjectFiles(projectId: ProjectId, query: string, limit?: number): Promise<ProjectFileMatch[]> {

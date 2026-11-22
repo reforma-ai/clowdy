@@ -24,7 +24,6 @@ import { git, gitLine } from './git';
 import type { Project, ProjectFolder, ProjectFolderInfo, ProjectInfo, ProjectSettings, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
-import type { DocsService } from '../docs/service';
 import type { SkillsService } from '../skills/service';
 import type { Store } from '../store';
 
@@ -301,7 +300,6 @@ export interface ProjectPatch {
 
 /** What a project's removal or move must tell the services that watch its folder. */
 export interface ProjectWatchers {
-    docs: DocsService;
     skills: SkillsService;
 }
 
@@ -355,7 +353,7 @@ const sameFolders = (a: readonly ProjectFolder[], b: readonly ProjectFolder[]) =
  * Renames the project, gives it another list of folders, or changes its settings. New folders take the checks of `addProject`; a new main
  * folder waits until no agent of the project is working, as the agents work in it. The personal space keeps its name and its one folder.
  */
-export function updateProject(store: Store, projectId: string, patch: ProjectPatch, { docs, skills }: ProjectWatchers): Project {
+export function updateProject(store: Store, projectId: string, patch: ProjectPatch, { skills }: ProjectWatchers): Project {
     return store.tx(() => {
         const current = requireProject(store, projectId);
         const name = patch.name === undefined ? current.name : cleanName(patch.name);
@@ -396,12 +394,8 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
 
             // The project's skills come from its folders, so a catalog read before is out of date.
             store.emit(projectId, { type: 'skills.changed' });
-            // The watchers hold the old folders; the next request for docs or skills watches the new ones. A folder another project
-            // still has keeps its docs watcher.
-            store.afterCommit(() => {
-                docs.release();
-                skills.forgetProject(current);
-            });
+            // The skills watchers hold the old folders; the next request for skills watches the new ones.
+            store.afterCommit(() => skills.forgetProject(current));
         }
 
         return next;
@@ -413,7 +407,7 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
  * attachment folders go once the transaction commits). Its own folder and files are never touched. The agents must have stopped,
  * and the personal space stays.
  */
-export function deleteProject(store: Store, projectId: string, { attachments, docs, skills }: ProjectWatchers & { attachments: AttachmentsService }): void {
+export function deleteProject(store: Store, projectId: string, { attachments, skills }: ProjectWatchers & { attachments: AttachmentsService }): void {
     store.tx(() => {
         const project = requireProject(store, projectId);
 
@@ -428,10 +422,7 @@ export function deleteProject(store: Store, projectId: string, { attachments, do
         attachments.removeOfProject(projectId);
         deleteProjectRow(store.db, projectId);
         store.emit(projectId, { type: 'project.deleted' });
-        store.afterCommit(() => {
-            docs.release();
-            skills.forgetProject(project);
-        });
+        store.afterCommit(() => skills.forgetProject(project));
     });
 }
 

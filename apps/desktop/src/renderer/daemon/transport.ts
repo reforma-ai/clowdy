@@ -7,7 +7,6 @@ import type {
     ClowdyEvent,
     Command,
     CommandResult,
-    DocFile,
     DocsTree,
     FolderId,
     ProjectFileMatch,
@@ -88,8 +87,6 @@ export interface Transport {
     getArchivedTasks: (projectId: ProjectId, page?: PageQuery) => Promise<TaskArchivePage>;
     /** The project's documents: one entry per folder, in the project's order, a folder that has none yet too. */
     getDocsTree: (projectId: ProjectId) => Promise<DocsTree>;
-    /** A document of one of the project's folders, by its path under that folder's `.clowdy/docs`. */
-    getDocFile: (projectId: ProjectId, folderId: FolderId, path: string) => Promise<DocFile>;
     /** Files of the project's folders whose path contains every word of `query`, best match first, each with its folder and its path relative to that folder. */
     getProjectFiles: (projectId: ProjectId, query: string, limit?: number) => Promise<ProjectFileMatch[]>;
     /** One folder of the project as a file system, for the file manager to browse and edit; the daemon checks every path against the folder. Nothing is asked until the file system is used. */

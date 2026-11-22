@@ -38,8 +38,6 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            without that docs folder has no nodes and is not given one. A missing main folder is
  *                                            `unavailable`, one whose docs folder leads out of it `invalid`; another folder whose
  *                                            documents cannot be read, missing or leading out, is left out)
- * GET  /v1/projects/:id/docs/file?folderId=&path= -> DocFile (`path` relative to that folder's docs folder; a folder the project does not
- *                                            have is `not_found`)
  * GET  /v1/projects/:id/files?query=&limit= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
  *                                            the folder's name counting as part of the path when there are several; best match first,
  *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside
@@ -78,7 +76,6 @@ export const ROUTES = {
     taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
     projectArchivedTasks: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/archived-tasks`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
-    docsFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs/file`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,

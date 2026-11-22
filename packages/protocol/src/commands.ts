@@ -193,19 +193,6 @@ export const commandSchema = z.discriminatedUnion('type', [
     /** Answers a `question` stream item of a run in `waiting_user`. */
     z.object({ ...base, type: z.literal('run.answer'), runId: z.string(), questionId: z.string(), answer: z.string() }),
 
-    /* Documents */
-    z.object({
-        ...base,
-        type: z.literal('docs.write'),
-        projectId: z.string(),
-        /** The folder of the project whose `.clowdy/docs` holds the document; the first write there makes that docs folder. */
-        folderId: z.string().min(1),
-        path: z.string().min(1),
-        content: z.string(),
-        /** Hash of the version the edit started from; `null` creates a new file. A mismatch answers `conflict`. */
-        baseHash: z.string().nullable(),
-    }),
-
     /* Agents */
     /** Adds an agent the daemon can run: any command that speaks the Agent Client Protocol on stdio. */
     z.object({ ...base, type: z.literal('agent.add'), id: z.string().min(1).max(32), name: z.string().min(1).max(80), command: z.string().min(1), args: z.array(z.string()).optional(), env: z.record(z.string(), z.string()).optional() }),
