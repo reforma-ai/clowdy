@@ -13,7 +13,8 @@ import { FileChip } from './FileChip';
 const toasts = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 
 vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
-vi.mock('../../features/files/openInFiles', () => ({ openInFiles: vi.fn(async () => true), kindOnDisk: vi.fn(async () => undefined) }));
+// A path is a file on the disk unless a test says the disk has nothing there.
+vi.mock('../../features/files/openInFiles', () => ({ openInFiles: vi.fn(async () => true), kindOnDisk: vi.fn(async () => 'file') }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -56,7 +57,7 @@ beforeEach(async () => {
     vi.mocked(openInFiles).mockClear();
     vi.mocked(openInFiles).mockResolvedValue(true);
     vi.mocked(kindOnDisk).mockReset();
-    vi.mocked(kindOnDisk).mockResolvedValue(undefined);
+    vi.mocked(kindOnDisk).mockResolvedValue('file');
     toasts.success.mockClear();
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     store = new RootStore(new FixtureTransport());
@@ -97,13 +98,38 @@ describe('FileChip', () => {
         expect(openInFiles).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, FOLDER, 'src/a.ts');
     });
 
-    it('opens the menu of the path where the pointer is when the file is not there to open', async () => {
+    it('opens the menu of the path where the pointer is when the file is there but cannot be opened', async () => {
         vi.mocked(openInFiles).mockResolvedValue(false);
-        await draw('src/gone.ts');
+        await draw('src/unreadable.ts');
         await press();
         await settle();
 
         expect(items()).toEqual(MENU);
+    });
+
+    it('says the file does not exist, with the copies of its path and nothing else, when the disk has nothing there', async () => {
+        vi.mocked(openInFiles).mockResolvedValue(false);
+        vi.mocked(kindOnDisk).mockResolvedValue(undefined);
+        await draw('src/gone.ts');
+        await press();
+        await settle();
+
+        expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe('This file doesn\'t exist');
+        expect(items()).toEqual(['Copy path', 'Copy relative path']);
+
+        await act(async () => item('Copy relative path').click());
+
+        expect(writeText).toHaveBeenCalledExactlyOnceWith('src/gone.ts');
+    });
+
+    it('says it of a folder too, and keeps no relative copy for the project\'s own folder', async () => {
+        vi.mocked(kindOnDisk).mockResolvedValue(undefined);
+        await draw('src/missing/');
+        await rightClick();
+        await settle();
+
+        expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe('This folder doesn\'t exist');
+        expect(items()).toEqual(['Copy path', 'Copy relative path']);
     });
 
     it('opens the menu on a right-click: Files, GitHub on the branch that is checked out, and the two copies', async () => {
@@ -123,6 +149,7 @@ describe('FileChip', () => {
     });
 
     it('has Open in Terminal for a folder, and not for a file', async () => {
+        vi.mocked(kindOnDisk).mockResolvedValue('directory');
         await draw('src/booking/');
         await rightClick();
         await settle();
@@ -190,18 +217,6 @@ describe('FileChip', () => {
 
         expect(kindOnDisk).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, FOLDER, 'src/booking');
         expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental/tree/main/src/booking', '_blank', 'noopener');
-        open.mockRestore();
-    });
-
-    it('keeps a path that the disk says nothing about as a file', async () => {
-        const open = vi.spyOn(window, 'open').mockReturnValue(null);
-
-        await draw('src/gone');
-        await rightClick();
-        await settle();
-        await openGitHub();
-
-        expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental/blob/main/src/gone', '_blank', 'noopener');
         open.mockRestore();
     });
 

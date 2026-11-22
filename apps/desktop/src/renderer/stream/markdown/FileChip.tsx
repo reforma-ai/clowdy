@@ -1,5 +1,5 @@
 import { FileIcon } from '@clowdy/components/FileIcon';
-import { Menu, MenuItem } from '@clowdy/components/List';
+import { Menu, MenuHeader, MenuItem, MenuSection } from '@clowdy/components/List';
 import { Popover, PopoverScroll, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { Copy } from '@clowdy/icons/14';
@@ -27,12 +27,37 @@ export interface FileChipProps {
 /**
  * The menu of a path that is in a folder of the project: the same as everywhere (`OpenWithMenu`), with the git facts of its folder read when it opens. A path
  * written with no trailing slash is taken for a file until the disk says it is a folder (the terminal, `Open in Finder` and the `/tree/` page of GitHub follow).
+ * When the disk says the path is not there, nothing in that menu could work on it, so it gives way to `AbsentMenu`.
  */
 function TargetMenu({ target, onClose }: { target: OpenTarget; onClose: () => void }) {
     const git = useFolderGit(target.projectId, target.folder.id);
     const kind = useKindOnDisk(target.projectId, target.folder, target.relative);
 
+    if (kind === null) return <AbsentMenu target={ target } onClose={ onClose } />;
+
     return <OpenWithMenu target={ kind ? { ...target, kind } : target } git={ git } onClose={ onClose } aria-label="File actions" />;
+}
+
+/** The menu of a path that is not on the disk (an agent named a file it has not made, or one that was moved): it says so, and keeps the copies of the path, the one thing that still works. */
+function AbsentMenu({ target, onClose }: { target: OpenTarget; onClose: () => void }) {
+    return (
+        <PopoverScroll>
+            <Menu
+                aria-label="File actions"
+                size="sm"
+                onAction={ (key) => {
+                    onClose();
+                    openEffects.copy(key === 'copyRelative' ? target.relative : target.path);
+                } }
+            >
+                <MenuSection aria-label="Path">
+                    <MenuHeader>{ `This ${ target.kind === 'directory' ? 'folder' : 'file' } doesn't exist` }</MenuHeader>
+                    <MenuItem id="copyPath" icon={ <Copy aria-hidden="true" /> } textValue="Copy path">Copy path</MenuItem>
+                    { target.relative !== '' && <MenuItem id="copyRelative" icon={ <Copy aria-hidden="true" /> } textValue="Copy relative path">Copy relative path</MenuItem> }
+                </MenuSection>
+            </Menu>
+        </PopoverScroll>
+    );
 }
 
 /** The menu of a path that is in no folder of the project: only what does not need a folder, the copy of the path as it was written. */
@@ -57,7 +82,7 @@ function OutsideMenu({ path, onClose }: { path: string; onClose: () => void }) {
  * A file or folder named in a message: its icon and name, the whole path on hover. A press opens it in the Files tab of the side panel; a right-click, a click with
  * ⌘ or Ctrl held, and a long touch (`installLongPressContextMenu`) open the menu of the path (`OpenWithMenu`: Open in Files, the editor, the file manager, GitHub, the copies of the path). A press
  * that has nothing to open (the file is not on the disk, the path is in a folder the window is not on, or in none of the project's) opens the same menu where the
- * pointer is, so there is always something to do with it.
+ * pointer is, so there is always something to do with it; for a path that is not on the disk the menu says so and has only the copies of the path.
  */
 export function FileChip({ path, lines, className }: FileChipProps) {
     const root = useRootStore();
