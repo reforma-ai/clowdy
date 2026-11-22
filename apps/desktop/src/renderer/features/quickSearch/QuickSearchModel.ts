@@ -21,7 +21,7 @@ export interface FoundChat {
     chat: Chat;
     /** The run that answers the chat, for the icon of its row. */
     run: Run | undefined;
-    /** What the row says at its right: the folder of the chat when the project has several, or that it is in the archive. */
+    /** What the row says at its right: the folder of the chat, when the project has several. */
     note?: string;
 }
 
@@ -46,7 +46,7 @@ export interface FoundLine {
 export type Found = FoundChat | FoundFile | FoundLine;
 
 export interface FoundSection {
-    id: 'chats' | 'files' | 'text';
+    id: 'chats' | 'archived' | 'files' | 'text';
     title: string;
     items: Found[];
 }
@@ -74,6 +74,7 @@ export const CHAT_ROWS = 50;
 export const FILE_ROWS = 50;
 export const LINE_ROWS = 200;
 export const ALL_CHAT_ROWS = 4;
+export const ALL_ARCHIVED_ROWS = 3;
 /** With nothing typed the All tab lists the latest chats and nothing else, so it has room for more of them. */
 export const ALL_RECENT_CHAT_ROWS = 8;
 export const ALL_FILE_ROWS = 6;
@@ -139,9 +140,14 @@ export class QuickSearchModel {
         const sections: FoundSection[] = [];
 
         if (this.#wantsChats) {
-            const chats = this.source.chats(this.query).slice(0, all ? (this.blank ? ALL_RECENT_CHAT_ROWS : ALL_CHAT_ROWS) : CHAT_ROWS);
+            // The archive is a list of its own, after the chats in use.
+            const found = this.source.chats(this.query);
+            const chats = found.filter(({ chat }) => chat.archivedAt === undefined).slice(0, all ? (this.blank ? ALL_RECENT_CHAT_ROWS : ALL_CHAT_ROWS) : CHAT_ROWS);
+            const archived = found.filter(({ chat }) => chat.archivedAt !== undefined).slice(0, all ? ALL_ARCHIVED_ROWS : CHAT_ROWS);
 
             if (chats.length > 0) sections.push({ id: 'chats', title: this.blank ? 'Recent chats' : 'Chats', items: chats });
+
+            if (archived.length > 0) sections.push({ id: 'archived', title: 'Archived chats', items: archived });
         }
 
         if (this.#wantsFiles && this.files) {

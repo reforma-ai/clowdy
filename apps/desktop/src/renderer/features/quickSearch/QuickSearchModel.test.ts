@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ALL_CHAT_ROWS, ALL_FILE_ROWS, ALL_LINE_ROWS, ALL_RECENT_CHAT_ROWS, CHAT_ROWS, FILE_ROWS, QuickSearchModel, TYPING_DELAY, type Found, type FoundChat, type QuickSearchSource } from './QuickSearchModel';
+import { ALL_ARCHIVED_ROWS, ALL_CHAT_ROWS, ALL_FILE_ROWS, ALL_LINE_ROWS, ALL_RECENT_CHAT_ROWS, CHAT_ROWS, FILE_ROWS, QuickSearchModel, TYPING_DELAY, type Found, type FoundChat, type QuickSearchSource } from './QuickSearchModel';
 
 import type { SearchResult } from '@clowdy/file-manager/provider';
 
@@ -21,7 +21,7 @@ function deferred<T>(): Deferred<T> {
     return out;
 }
 
-const chat = (id: string, title: string): FoundChat => ({ kind: 'chat', id: `chat:${ id }`, chatId: id, chat: { id, title } as FoundChat['chat'], run: undefined });
+const chat = (id: string, title: string, archivedAt?: number): FoundChat => ({ kind: 'chat', id: `chat:${ id }`, chatId: id, chat: { id, title, archivedAt } as FoundChat['chat'], run: undefined });
 
 /** The path of a result, or the id of a chat. */
 const pathOf = (found: Found | undefined) => (found === undefined ? undefined : found.kind === 'chat' ? found.chatId : found.path);
@@ -293,6 +293,33 @@ describe('the chats', () => {
 
         model.setTab('chats');
         expect(model.rows).toHaveLength(CHAT_ROWS);
+    });
+
+    it('list the archived ones under a heading of their own, after the ones in use, on the All tab and on the Chats tab', () => {
+        const quick = source({ chats: () => [chat('a', 'Plan', undefined), chat('b', 'Planning', undefined), chat('c', 'Old plan', 5), chat('d', 'Older plan', 4)] });
+        const model = new QuickSearchModel(quick, 'chats', 'plan');
+
+        expect(model.sections.map(({ id, title, items }) => [id, title, items.length])).toEqual([['chats', 'Chats', 2], ['archived', 'Archived chats', 2]]);
+        expect(titles(model)).toEqual(['Plan', 'Planning', 'Old plan', 'Older plan']);
+
+        model.setTab('all');
+        expect(model.sections.map(({ id }) => id)).toEqual(['chats', 'archived']);
+    });
+
+    it('have no archive heading while nothing is typed or nothing in it answers', () => {
+        const model = new QuickSearchModel(source({ chats: () => [chat('a', 'Plan')] }), 'chats');
+
+        expect(model.sections.map(({ id }) => id)).toEqual(['chats']);
+    });
+
+    it('cap the archive on the All tab below the chats, and not on their own', () => {
+        const archived = Array.from({ length: 10 }, (_, index) => chat(`x${ index }`, `Old ${ index }`, index + 1));
+        const model = new QuickSearchModel(source({ chats: () => archived }), 'all', 'old');
+
+        expect(model.sections.map(({ id, items }) => [id, items.length])).toEqual([['archived', ALL_ARCHIVED_ROWS]]);
+
+        model.setTab('chats');
+        expect(model.rows).toHaveLength(10);
     });
 
     it('start the row the keys are on at the first again when the query changes', () => {

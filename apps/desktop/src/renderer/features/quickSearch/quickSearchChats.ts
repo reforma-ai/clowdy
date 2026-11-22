@@ -9,7 +9,8 @@ export type ChatsOfProject = Pick<ProjectState, 'chats' | 'runs'> & { project: P
 
 /**
  * The chats of a project that answer the words typed: every word is in the title, ignoring case. The ones whose title starts with the first word come first, then the
- * rest, and in each the latest first; the chats in the archive after those in use, since opening one brings it back but the person is mostly looking for the others.
+ * rest, and in each the latest first; the chats in the archive after those in use (the palette lists them under a heading of their own), since the person is mostly looking
+ * for the others, and opening one brings it back.
  * Threads are found like any chat. With nothing typed it is the latest chats the person made, in use: a thread of an agent is not what they come back to.
  */
 export function foundChats({ chats, runs, project }: ChatsOfProject, query: string): FoundChat[] {
@@ -33,6 +34,6 @@ export function foundChats({ chats, runs, project }: ChatsOfProject, query: stri
             chatId: chat.id,
             chat,
             run: chat.orchestratorRunId === undefined ? undefined : runs.get(chat.orchestratorRunId),
-            note: chat.archivedAt === undefined ? (several ? chatFolder(chats, project.folders, chat.id)?.name : undefined) : 'Archived',
+            note: several ? chatFolder(chats, project.folders, chat.id)?.name : undefined,
         }));
 }

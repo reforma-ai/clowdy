@@ -140,6 +140,20 @@ describe('the quick search palette', () => {
         expect(note()).toBe('No chats found');
     });
 
+    it('lists an archived chat that answers under its own heading, after the chats in use, with no note on its row', async () => {
+        const project = store.selectedProject!;
+        const archived = [...project.chats.values()].find(chat => chat.title === 'First version')!;
+
+        act(() => void project.chats.set(archived.id, { ...archived, title: 'Booking first version', archivedAt: Date.now() }));
+        await open('chats');
+        await search('booking');
+
+        const groups = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')];
+
+        expect(groups.map(group => group.getAttribute('aria-label'))).toEqual(['Chats', 'Archived chats']);
+        expect([...groups[1]!.querySelectorAll('[role="option"]')].map(row => row.textContent)).toEqual(['Booking first version']);
+    });
+
     it('shows the latest chats on the All tab while nothing is typed, and nothing of the files', async () => {
         await open('all');
 

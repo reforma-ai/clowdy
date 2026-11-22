@@ -139,6 +139,8 @@ export const QuickSearch = observer(function QuickSearch({ model, folder }: Quic
         }
     };
 
+    // A heading says which list is which: on the All tab always, and on a tab that has two lists (the chats and the archive).
+    const headed = tab === 'all' || sections.length > 1;
     let at = 0;
 
     return (
@@ -169,7 +171,7 @@ export const QuickSearch = observer(function QuickSearch({ model, folder }: Quic
                         <div id={ list } role="listbox" aria-label="Results" className={ styles.list }>
                             { sections.map(section => (
                                 <div key={ section.id } role="group" aria-label={ section.title } className={ styles.section }>
-                                    { tab === 'all' && <Text variant="sm" color="secondary" className={ styles.title }>{ section.title }</Text> }
+                                    { headed && <Text variant="sm" color="secondary" className={ styles.title }>{ section.title }</Text> }
                                     { section.items.map((found) => {
                                         const index = at++;
 

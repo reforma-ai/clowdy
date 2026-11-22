@@ -42,13 +42,13 @@ describe('the chats a search finds', () => {
         expect(titles(foundChats(project, '   '))).toHaveLength(3);
     });
 
-    it('say that a chat is in the archive, and name the folder only when the project has several', () => {
-        expect(foundChats(project, 'old')[0]).toMatchObject({ kind: 'chat', chatId: 'd', note: 'Archived' });
+    it('name the folder of a chat, archived or not, only when the project has several', () => {
+        expect(foundChats(project, 'old')[0]).toMatchObject({ kind: 'chat', chatId: 'd', note: undefined });
         expect(foundChats(project, 'architecture')[0]!.note).toBeUndefined();
 
-        const several = projectWith([chatOf('a', 'In the api', { folderId: 'f2' }), chatOf('b', 'In the main one')], FOLDERS);
+        const several = projectWith([chatOf('a', 'In the api', { folderId: 'f2' }), chatOf('b', 'In the main one'), chatOf('c', 'In the archived one', { folderId: 'f2', archivedAt: 5 })], FOLDERS);
 
-        expect(foundChats(several, 'in the').map(({ note }) => note).toSorted()).toEqual(['api', 'web']);
+        expect(foundChats(several, 'in the').map(({ note }) => note).toSorted()).toEqual(['api', 'api', 'web']);
     });
 
     it('carry the run of the chat for its icon', () => {

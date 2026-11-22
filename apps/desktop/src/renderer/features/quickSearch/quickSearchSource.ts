@@ -1,5 +1,6 @@
 import { openChat } from '../chats/archiveChat';
 import { isHiddenPath, treeLayout } from '../files';
+import { filesManagerOf as managerOf, showFilesTab } from '../files/openInFiles';
 import { foundChats } from './quickSearchChats';
 
 import type { FileManager } from '@clowdy/file-manager';
@@ -39,23 +40,12 @@ export function mergeFiles(query: string, ...lists: ReadonlyArray<readonly strin
     return [...new Set(lists.flat())].toSorted((a, b) => scoreOf(a, first) - scoreOf(b, first) || a.length - b.length);
 }
 
-/** The file manager of a folder, which the palette loads when it needs it: the manager and the editor behind it are a chunk of their own, kept out of the window's first load. */
-async function managerOf(root: RootStore, projectId: ProjectId, folder: ProjectFolder): Promise<FileManager> {
-    const { filesStoreOf } = await import('../files/useFilesStore');
-
-    return filesStoreOf(root.transport).startedManagerOf(projectId, folder.id);
-}
-
 /**
  * Opens a result in the side panel's Files tab: the panel shows, the tab is the Files one, and the file is in a tab of the editor, with the match selected
  * when the result is a line. The tab shows the folder the window is working in, which is the one the palette searched.
  */
 export async function openFound(root: RootStore, projectId: ProjectId, folder: ProjectFolder, found: Exclude<Found, FoundChat>): Promise<void> {
-    const ui = root.ui.forProject(projectId);
-
-    if (!ui.sidePanelOpen) ui.toggleSidePanel();
-
-    ui.showSidePanelTab('files');
+    showFilesTab(root, projectId);
 
     const manager = await managerOf(root, projectId, folder);
 
