@@ -161,6 +161,24 @@ describe('FileManager', () => {
         expect(host.pasted.mock.calls[0]?.[1].map(item => item.name)).toEqual(['report copy.pdf', 'notes copy 2.md', 'photos copy']);
     });
 
+    it('should treat a name that differs only in case as taken, as the disk does, and paste files of both kinds in one go', async () => {
+        const fs = new MemoryFileSystem({ 'docs/README.md': '', 'app/page.tsx': 'page' });
+        const host = hostClipboard(fs, { '/Users/dev/readme.md': 'other' });
+        const manager = new FileManager({ provider: fs, clipboard: host.clipboard });
+
+        await manager.start();
+        host.copyOutside(
+            { path: '/Users/dev/readme.md', name: 'readme.md', kind: 'file' },
+            { path: '/disk/app/page.tsx', name: 'page.tsx', kind: 'file', local: 'app/page.tsx' }
+        );
+        await manager.paste('docs');
+
+        // The provider copied the file it lists, the host the other one, under a name the disk would not refuse.
+        expect(host.pasted).toHaveBeenCalledWith('docs', [{ path: '/Users/dev/readme.md', name: 'readme copy.md' }]);
+        await expect(fs.read('docs/page.tsx')).resolves.toMatchObject({ text: 'page' });
+        await expect(fs.read('docs/readme copy.md')).resolves.toMatchObject({ text: 'other' });
+    });
+
     it('should paste a file of the root that the tree does not list as an outside one, and keep the tree when the host refuses', async () => {
         const fs = new MemoryFileSystem({ 'a.ts': 'a' });
         const notify = vi.fn();

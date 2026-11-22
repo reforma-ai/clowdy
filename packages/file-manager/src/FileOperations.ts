@@ -42,6 +42,22 @@ function copyName(name: string, kind: FileKind, taken: (name: string) => boolean
     }
 }
 
+/**
+ * Which names in `folder` are taken: the ones the tree lists, and the ones `claim` is given for the items being made. A name that differs only in case is taken
+ * too, as the disks the app runs on (APFS, NTFS) see it, so a paste does not meet a refusal for `readme.md` beside `README.md`.
+ */
+function takenNames(tree: FileTree, folder: string): { taken: (name: string) => boolean; claim: (name: string) => void } {
+    const used = new Set<string>();
+
+    for (const path of tree.entries.keys()) {
+        if (dirname(path) === folder) {
+            used.add(basename(path).toLowerCase());
+        }
+    }
+
+    return { taken: name => used.has(name.toLowerCase()), claim: name => void used.add(name.toLowerCase()) };
+}
+
 /** Tree changes that move or copy `from` and everything inside it to `to`, replacing `to`. None when `from` is not listed. */
 function transferChanges(tree: FileTree, from: string, to: string, copy: boolean): FileChange[] {
     const moved = [...tree.entries.values()].filter(entry => isPathWithin(entry.path, from));
@@ -236,13 +252,12 @@ export class FileOperations {
             return [];
         }
 
-        const names = new Set<string>();
-        const taken = (name: string) => names.has(name) || tree.get(joinPath(folder, name)) !== undefined;
+        const { taken, claim } = takenNames(tree, folder);
         const copies = sources.map(from => {
             const name = basename(from);
             const free = taken(name) ? copyName(name, tree.get(from)!.kind, taken) : name;
 
-            names.add(free);
+            claim(free);
 
             return { from, to: joinPath(folder, free) };
         });
@@ -279,11 +294,13 @@ export class FileOperations {
         }
 
         const names = new Map<string, string>();
-        const taken = (name: string) =>
-            [...names.values()].includes(name) || tree.get(joinPath(folder, name)) !== undefined;
+        const { taken, claim } = takenNames(tree, folder);
 
         for (const { path, file } of items.filter(item => !item.path.includes('/'))) {
-            names.set(path, taken(path) ? copyName(path, file ? 'file' : 'directory', taken) : path);
+            const free = taken(path) ? copyName(path, file ? 'file' : 'directory', taken) : path;
+
+            names.set(path, free);
+            claim(free);
         }
 
         const writes = items.map(({ path, file }) => {
@@ -339,12 +356,11 @@ export class FileOperations {
             return [];
         }
 
-        const names = new Set<string>();
-        const taken = (name: string) => names.has(name) || tree.get(joinPath(folder, name)) !== undefined;
+        const { taken, claim } = takenNames(tree, folder);
         const copies = entries.map((entry) => {
             const name = taken(entry.name) ? copyName(entry.name, entry.kind, taken) : entry.name;
 
-            names.add(name);
+            claim(name);
 
             return { entry, name, path: joinPath(folder, name) };
         });
