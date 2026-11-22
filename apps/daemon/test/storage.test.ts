@@ -8,12 +8,13 @@ import { openDatabase } from '../src/db/connection';
 import { getItem, itemRef, setItemRef } from '../src/db/items';
 import { MIGRATIONS } from '../src/db/migrations';
 import { getRun, getRunWork } from '../src/db/runs';
+import { countTaskComments, getTaskComment, insertTaskComment, latestTaskComments, listTaskComments, updateTaskCommentBody } from '../src/db/taskComments';
 import { childIdsOf, deleteTask, getTask, upsertTask } from '../src/db/tasks';
 import { newId } from '../src/ids';
 import { Store } from '../src/store';
 import { cleanTempDirs, tempDir } from './helpers';
 
-import type { Task } from '@clowdy/protocol';
+import type { Task, TaskComment } from '@clowdy/protocol';
 import type { Migration } from '../src/db/migrations';
 
 afterAll(cleanTempDirs);
@@ -328,6 +329,57 @@ describe('migrations', () => {
         deleteTask(db, 'tsk_a');
         expect(getTask(db, 'tsk_b')).toBeDefined();
         expect(getTask(db, 'tsk_b')).not.toHaveProperty('parentId');
+        db.close();
+    });
+
+    test('version 21 adds the comments table to an older database, leaves its tasks as they were, and a task that goes takes its comments', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 21));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_1', 'prj_1', 'To do', 'todo', 0);
+
+        for (const number of [1, 2]) {
+            before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(`tsk_${ number }`, 'prj_1', number, `Task ${ number }`, 'sts_1', '{"kind":"user"}', 10, 20);
+        }
+
+        expect((before.query('SELECT name FROM sqlite_master WHERE name = \'task_comments\'').all())).toEqual([]);
+        before.close();
+
+        const db = openDatabase(path);
+        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+        const columns = (db.query('PRAGMA table_info(task_comments)').all() as { name: string; notnull: number }[]).map(column => [column.name, column.notnull]);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(MIGRATIONS.length).toBeGreaterThanOrEqual(21);
+        expect(indexes).toContain('task_comments_task');
+        expect(columns).toEqual([['id', 0], ['task_id', 1], ['author', 1], ['body', 1], ['created_at', 1], ['edited_at', 0]]);
+        expect((db.query('PRAGMA index_info(task_comments_task)').all() as { name: string }[]).map(column => column.name)).toEqual(['task_id', 'created_at']);
+        expect(getTask(db, 'tsk_1')).toMatchObject({ title: 'Task 1', updatedAt: 20 });
+        expect(db.query('SELECT COUNT(*) AS n FROM task_comments').get()).toEqual({ n: 0 });
+
+        const comment: TaskComment = { id: 'cmt_1', taskId: 'tsk_1', author: { kind: 'run', runId: 'run_1' }, body: '**Markdown**', createdAt: 30 };
+
+        insertTaskComment(db, comment);
+        insertTaskComment(db, { ...comment, id: 'cmt_2', author: { kind: 'user' }, createdAt: 31 });
+        insertTaskComment(db, { ...comment, id: 'cmt_3', taskId: 'tsk_2' });
+
+        expect(getTaskComment(db, 'cmt_1')).toEqual(comment);
+        expect(getTaskComment(db, 'cmt_1')).not.toHaveProperty('editedAt');
+        expect(db.query('SELECT edited_at FROM task_comments WHERE id = ?').get('cmt_1')).toEqual({ edited_at: null });
+
+        updateTaskCommentBody(db, 'cmt_1', 'Changed', 40);
+        expect(getTaskComment(db, 'cmt_1')).toEqual({ ...comment, body: 'Changed', editedAt: 40 });
+        expect(listTaskComments(db, 'tsk_1', 10).map(row => row.id)).toEqual(['cmt_1', 'cmt_2']);
+        expect(latestTaskComments(db, 'tsk_1', 1).map(row => row.id)).toEqual(['cmt_2']);
+        expect(countTaskComments(db, 'tsk_1')).toBe(2);
+
+        // A comment needs its task, and the task takes the comments along when its row goes.
+        expect(() => insertTaskComment(db, { ...comment, id: 'cmt_4', taskId: 'tsk_nope' })).toThrow();
+        deleteTask(db, 'tsk_1');
+        expect(getTaskComment(db, 'cmt_1')).toBeUndefined();
+        expect(getTaskComment(db, 'cmt_2')).toBeUndefined();
+        expect(getTaskComment(db, 'cmt_3')).toBeDefined();
         db.close();
     });
 

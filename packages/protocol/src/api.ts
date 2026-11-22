@@ -1,4 +1,4 @@
-import type { FolderId } from './domain';
+import type { FolderId, TaskComment } from './domain';
 
 /** Version of this contract. The daemon refuses clients that send a different major in `x-clowdy-protocol`. */
 export const PROTOCOL_VERSION = 1;
@@ -22,6 +22,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/runs/:id/items?after=SEQ       -> StreamItem[] (a run's stream, also an orchestrator's chat)
  * GET  /v1/chats/:id/items?after=SEQ      -> StreamItem[] (the chat's orchestrator stream)
  * GET  /v1/tasks/:id/detail               -> TaskDetail
+ * GET  /v1/tasks/:id/comments?limit=&cursor= -> TaskCommentsPage (the task's comments, oldest first; `limit` 1 to 100, default 25; `cursor` is the
+ *                                            `nextCursor` of the page before, which is absent on the last page. Comments are not in the snapshot)
  * GET  /v1/projects/:id/docs              -> DocsTree (one entry per folder in the project's order, its documents under `.clowdy/docs`; a folder
  *                                            without that docs folder has no nodes and is not given one. A missing main folder is
  *                                            `unavailable`, one whose docs folder leads out of it `invalid`; another folder whose
@@ -60,6 +62,7 @@ export const ROUTES = {
     taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
     docsFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs/file`,
+    taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
@@ -111,4 +114,13 @@ export interface TaskDetail {
     chatIds: string[];
     runIds: string[];
     artifacts: import('./domain').Artifact[];
+}
+
+/** One page of a task's comments, oldest first. */
+export interface TaskCommentsPage {
+    comments: TaskComment[];
+    /** How many comments the task has, whatever the page holds. */
+    total: number;
+    /** Passed as `cursor` it gives the next page; absent on the last one. */
+    nextCursor?: string;
 }

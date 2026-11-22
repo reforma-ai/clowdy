@@ -46,7 +46,7 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
         'clowdy task list --query "csv export"               # a text query searches closed tasks too: check before you create a duplicate',
         'clowdy task list --cursor <nextCursor>              # the next page of a long answer',
     ],
-    task_get: ['clowdy task get CLW-3                                   # also names its parent, the tasks inside it and its checklist count'],
+    task_get: ['clowdy task get CLW-3                                   # also names its parent, the tasks inside it, its checklist count and its latest comments'],
     task_create: [
         'clowdy task create "CSV export endpoint" --depends-on CLW-1,CLW-2 --description-file - <<\'EOF\'',
         '<Outcome, Owns, Needs, Check, Out of scope>',
@@ -59,6 +59,16 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
         'clowdy task update CLW-3 --add-depends-on CLW-5 --remove-depends-on CLW-2',
         'clowdy task update CLW-7 --parent CLW-3     # moves CLW-7, with the tasks inside it, under CLW-3',
         'clowdy task update CLW-7 --clear-parent     # makes it a top-level task again',
+    ],
+    task_comment: [
+        'clowdy task comment CLW-3 "The cache key ignores the locale: fixed in the next commit"   # a note on the task, in Markdown',
+        'clowdy task comment CLW-3 --body-file - <<\'EOF\'',
+        '<a longer note: what you did, how it was checked, what is left>',
+        'EOF',
+    ],
+    task_comments: [
+        'clowdy task comments CLW-3                          # oldest first; task get shows only the last three, cut short',
+        'clowdy task comments CLW-3 --cursor <nextCursor>    # the next page of a long thread',
     ],
     thread_spawn: [
         'clowdy thread spawn --title "Fix the login bug" --prompt-file - <<\'EOF\'',

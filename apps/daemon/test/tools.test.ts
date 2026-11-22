@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { getProject } from '../src/db/projects';
+import { taskCommentsPage } from '../src/domain/taskComments';
 import { ToolBridge } from '../src/engine/acp/bridge';
 import { toolsFor } from '../src/runs/tools';
 import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
@@ -60,11 +61,11 @@ describe('the tool vocabulary', () => {
         const names = (run: Run) => toolsOf(run).map(tool => tool.name);
         const threads = ['thread_spawn', 'thread_tell', 'thread_stop', 'thread_wait', 'thread_output', 'thread_log', 'thread_list'];
 
-        expect(names(orchestrator)).toEqual(['task_get', 'task_list', 'task_create', 'task_update', ...threads]);
+        expect(names(orchestrator)).toEqual(['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment', ...threads]);
 
         const semi = await setup(undefined, {}, 'semi');
 
-        expect(semi.toolsOf(semi.orchestrator).map(tool => tool.name)).toEqual(['task_get', 'task_list', 'task_create', 'task_update', ...threads, 'ask_user']);
+        expect(semi.toolsOf(semi.orchestrator).map(tool => tool.name)).toEqual(['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment', ...threads, 'ask_user']);
 
         // Every tool brings its schema in both forms and says how to use it.
         for (const tool of toolsOf(orchestrator)) {
@@ -79,7 +80,7 @@ describe('the tool vocabulary', () => {
         const { store, runs, threads } = h.daemon.services;
         const tools = (channel?: 'cli' | 'mcp') => toolsFor({ store, runs, threads }, orchestrator, 'semi', channel);
         const shell = (channel?: 'cli' | 'mcp') => tools(channel).filter(tool => tool.cli).map(tool => tool.name);
-        const taskTools = ['task_get', 'task_list', 'task_create', 'task_update'];
+        const taskTools = ['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment'];
         const threadTools = ['thread_spawn', 'thread_tell', 'thread_stop', 'thread_wait', 'thread_output', 'thread_log', 'thread_list'];
 
         expect(shell()).toEqual([...taskTools, ...threadTools]);
@@ -437,6 +438,182 @@ describe('tasks inside tasks', () => {
         expect(Object.keys(properties('task_list'))).toEqual(expect.arrayContaining(['parent', 'under', 'roots']));
         expect(properties('task_update').clearParent.description).toContain('top-level');
         await expect(tool('task_update').execute({ taskId: 'REP-1', parentId: 'REP-2' }, new AbortController().signal)).rejects.toThrow(/Invalid input for task_update.*parentId/s);
+    });
+});
+
+describe('task comments', () => {
+    const iso = expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+
+    test('task_comment writes the comment as the run, and the person\'s comments from the app read as user', async () => {
+        const { exec, orchestrator, task, h } = await setup();
+        const epic = await task('Epic');
+        const answer = await exec(orchestrator, 'task_comment', { taskId: epic.key, body: 'Found the cause.\n\n- the cache key' });
+
+        expect(answer).toEqual({ comment: { id: expect.stringMatching(/^cmt_/), author: 'agent', createdAt: iso, body: 'Found the cause.\n\n- the cache key' }, total: 1 });
+        expect(answer.comment).not.toHaveProperty('editedAt');
+
+        const stored = taskCommentsPage(h.store, epic.id).comments;
+
+        expect(stored).toEqual([expect.objectContaining({ id: answer.comment.id, taskId: epic.id, author: { kind: 'run', runId: orchestrator.id }, body: 'Found the cause.\n\n- the cache key' })]);
+        expect(h.events().filter(event => event.data.type === 'task.comment.upserted').map(event => event.data)).toEqual([{ type: 'task.comment.upserted', comment: stored[0] }]);
+
+        h.ok('task.comment.add', { taskId: epic.id, body: 'Thanks' });
+
+        const { comments } = await exec(orchestrator, 'task_comments', { taskId: epic.key });
+
+        expect(comments.map((comment: { author: string; body: string }) => [comment.author, comment.body])).toEqual([['agent', 'Found the cause.\n\n- the cache key'], ['user', 'Thanks']]);
+        expect(taskCommentsPage(h.store, epic.id).comments.map(comment => comment.author)).toEqual([{ kind: 'run', runId: orchestrator.id }, { kind: 'user' }]);
+    });
+
+    test('task_comment takes a key or an id, refuses an empty body, a task that does not exist, a task of another project and a field it does not have', async () => {
+        const { exec, orchestrator, task, h, toolsOf } = await setup();
+        const epic = await task('Epic');
+        const elsewhere = h.openRepo('elsewhere');
+        const foreign = h.ok('task.create', { projectId: elsewhere.id, title: 'Foreign' }).task;
+
+        expect((await exec(orchestrator, 'task_comment', { taskId: epic.id, body: 'By id' })).total).toBe(1);
+        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key, body: '' })).rejects.toThrow('A comment cannot be empty');
+        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key, body: '  \n ' })).rejects.toThrow('A comment cannot be empty');
+        await expect(exec(orchestrator, 'task_comment', { taskId: 'REP-99', body: 'x' })).rejects.toThrow(/does not exist/);
+        await expect(exec(orchestrator, 'task_comment', { taskId: foreign.id, body: 'x' })).rejects.toThrow(/belongs to another project/);
+        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key, text: 'x', body: 'y' })).rejects.toThrow(/Invalid input for task_comment.*text/s);
+        await expect(exec(orchestrator, 'task_comment', { taskId: epic.key })).rejects.toThrow(/Invalid input for task_comment/);
+        expect(taskCommentsPage(h.store, epic.id).total).toBe(1);
+
+        // Agents write and read; the person edits and deletes.
+        expect(toolsOf(orchestrator).map(tool => tool.name).filter(name => name.includes('comment'))).toEqual(['task_comments', 'task_comment']);
+    });
+
+    test('task_get names no comments for a task without any, and with some gives their count and the last three, oldest first', async () => {
+        const { exec, orchestrator, task, h } = await setup();
+        const epic = await task('Epic');
+
+        expect((await exec(orchestrator, 'task_get', { taskId: epic.key })).task).not.toHaveProperty('commentCount');
+        expect((await exec(orchestrator, 'task_get', { taskId: epic.key })).task).not.toHaveProperty('latestComments');
+
+        for (const body of ['One', 'Two', 'Three', 'Four', 'Five']) {
+            await exec(orchestrator, 'task_comment', { taskId: epic.key, body });
+        }
+
+        const { task: got } = await exec(orchestrator, 'task_get', { taskId: epic.key });
+
+        expect(got.commentCount).toBe(5);
+        expect(got.latestComments).toEqual([
+            { id: expect.stringMatching(/^cmt_/), author: 'agent', createdAt: iso, body: 'Three' },
+            { id: expect.stringMatching(/^cmt_/), author: 'agent', createdAt: iso, body: 'Four' },
+            { id: expect.stringMatching(/^cmt_/), author: 'agent', createdAt: iso, body: 'Five' },
+        ]);
+
+        // A body edited by the person shows its edit time; one deleted is not counted.
+        const [, , three] = taskCommentsPage(h.store, epic.id).comments;
+
+        h.ok('task.comment.edit', { taskId: epic.id, commentId: three.id, body: 'Three, edited' });
+        h.ok('task.comment.delete', { taskId: epic.id, commentId: taskCommentsPage(h.store, epic.id).comments[4].id });
+
+        const after = (await exec(orchestrator, 'task_get', { taskId: epic.key })).task;
+
+        expect(after.commentCount).toBe(4);
+        expect(after.latestComments.map((comment: { body: string }) => comment.body)).toEqual(['Two', 'Three, edited', 'Four']);
+        expect(after.latestComments[1]).toEqual({ id: three.id, author: 'agent', createdAt: iso, editedAt: iso, body: 'Three, edited' });
+    });
+
+    test('task_get cuts a long comment to a short preview with an ellipsis and task_comments gives it whole', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic');
+        const long = `${ 'word '.repeat(200) }end`;
+        const short = 'y'.repeat(300);
+
+        await exec(orchestrator, 'task_comment', { taskId: epic.key, body: long });
+        await exec(orchestrator, 'task_comment', { taskId: epic.key, body: short });
+
+        const { latestComments } = (await exec(orchestrator, 'task_get', { taskId: epic.key })).task;
+
+        expect(latestComments[0].body).toHaveLength(300);
+        expect(latestComments[0].body.endsWith('…')).toBe(true);
+        expect(long.startsWith(latestComments[0].body.slice(0, -1))).toBe(true);
+        // A body of exactly the preview's length is whole.
+        expect(latestComments[1].body).toBe(short);
+
+        const { comments } = await exec(orchestrator, 'task_comments', { taskId: epic.key });
+
+        expect(comments.map((comment: { body: string }) => comment.body)).toEqual([long, short]);
+    });
+
+    test('task_get leaves out an emoji that the cut of the preview would split, so the preview stays valid text', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic');
+
+        // The emoji is two UTF-16 units at 298 and 299; the preview keeps 299 units less the ellipsis.
+        await exec(orchestrator, 'task_comment', { taskId: epic.key, body: `${ 'x'.repeat(298) }\u{1F600} and more` });
+
+        const [preview] = (await exec(orchestrator, 'task_get', { taskId: epic.key })).task.latestComments;
+
+        expect(preview.body).toBe(`${ 'x'.repeat(298) }…`);
+        expect(preview.body.isWellFormed()).toBe(true);
+    });
+
+    test('task_get of a parent with comments and children keeps every field it had', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic');
+
+        await task('Stage', { parent: epic.key });
+
+        const plain = (await exec(orchestrator, 'task_get', { taskId: epic.key })).task;
+
+        await exec(orchestrator, 'task_comment', { taskId: epic.key, body: 'Note' });
+
+        const { commentCount, latestComments, ...rest } = (await exec(orchestrator, 'task_get', { taskId: epic.key })).task;
+
+        expect(commentCount).toBe(1);
+        expect(latestComments).toHaveLength(1);
+        expect(rest).toEqual(plain);
+
+        // The answers of the tools that change a task do not carry comments: only a read does.
+        expect((await exec(orchestrator, 'task_update', { taskId: epic.key, title: 'Epic 2' })).task).not.toHaveProperty('commentCount');
+    });
+
+    test('task_comments pages oldest first with total, shown and a cursor, the body whole, 25 a page unless limit says otherwise, at most 100', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic');
+        const other = await task('Other');
+        const long = 'z'.repeat(5000);
+
+        for (let index = 1; index <= 30; index++) {
+            await exec(orchestrator, 'task_comment', { taskId: epic.key, body: index === 1 ? long : `Comment ${ index }` });
+        }
+
+        await exec(orchestrator, 'task_comment', { taskId: other.key, body: 'Elsewhere' });
+
+        const first = await exec(orchestrator, 'task_comments', { taskId: epic.key });
+
+        expect(Object.keys(first)).toEqual(['comments', 'total', 'shown', 'nextCursor']);
+        expect(first).toMatchObject({ total: 30, shown: 25 });
+        expect(first.comments[0]).toEqual({ id: expect.stringMatching(/^cmt_/), author: 'agent', createdAt: iso, body: long });
+        expect(first.comments.at(-1).body).toBe('Comment 25');
+
+        const rest = await exec(orchestrator, 'task_comments', { taskId: epic.key, cursor: first.nextCursor });
+
+        expect(Object.keys(rest)).toEqual(['comments', 'total', 'shown']);
+        expect(rest).toMatchObject({ total: 30, shown: 5 });
+        expect(rest.comments.map((comment: { body: string }) => comment.body)).toEqual(['Comment 26', 'Comment 27', 'Comment 28', 'Comment 29', 'Comment 30']);
+
+        const small = await exec(orchestrator, 'task_comments', { taskId: epic.key, limit: 2 });
+
+        expect(small).toMatchObject({ total: 30, shown: 2, nextCursor: expect.any(String) });
+        expect((await exec(orchestrator, 'task_comments', { taskId: epic.key, limit: 100 }))).toMatchObject({ shown: 30 });
+        expect(await exec(orchestrator, 'task_comments', { taskId: other.key })).toEqual({ comments: [expect.objectContaining({ body: 'Elsewhere' })], total: 1, shown: 1 });
+
+        await expect(exec(orchestrator, 'task_comments', { taskId: epic.key, limit: 101 })).rejects.toThrow(/Invalid input for task_comments/);
+        await expect(exec(orchestrator, 'task_comments', { taskId: epic.key, limit: 0 })).rejects.toThrow(/Invalid input for task_comments/);
+        await expect(exec(orchestrator, 'task_comments', { taskId: epic.key, cursor: 'nope' })).rejects.toThrow('is not a cursor');
+        await expect(exec(orchestrator, 'task_comments', { taskId: 'REP-99' })).rejects.toThrow(/does not exist/);
+    });
+
+    test('a task without comments reads as an empty page', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic');
+
+        expect(await exec(orchestrator, 'task_comments', { taskId: epic.key })).toEqual({ comments: [], total: 0, shown: 0 });
     });
 });
 

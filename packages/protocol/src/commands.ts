@@ -146,6 +146,15 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('task.delete'), taskId: z.string() }),
     /** Opens a new chat bound to the task, with an orchestrator run that starts on it now; answers `{ runId, chatId }`. One active run per task unless `force`. */
     z.object({ ...base, type: z.literal('task.start'), taskId: z.string(), engine: engine.optional(), force: z.boolean().optional() }),
+    /** Adds a Markdown comment from the person to the task; answers `{ comment }`. Refused (`invalid`) for a body with nothing in it but whitespace. */
+    z.object({ ...base, type: z.literal('task.comment.add'), taskId: z.string(), body: z.string() }),
+    /**
+     * Replaces the body of one of the task's comments and sets its `editedAt`; a body that is the same changes nothing. Answers `{ comment }`. Refused
+     * (`invalid`) for a body with nothing in it, `not_found` for a comment the task does not have. Any comment may be edited, an agent's included.
+     */
+    z.object({ ...base, type: z.literal('task.comment.edit'), taskId: z.string(), commentId: z.string(), body: z.string() }),
+    /** Deletes one of the task's comments (`not_found` when the task has no such one); answers `{ taskId, commentId }`. */
+    z.object({ ...base, type: z.literal('task.comment.delete'), taskId: z.string(), commentId: z.string() }),
 
     /* Runs */
     z.object({ ...base, type: z.literal('run.cancel'), runId: z.string() }),

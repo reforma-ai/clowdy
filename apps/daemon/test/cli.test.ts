@@ -7,6 +7,7 @@ import { EXAMPLES } from '../src/cli/clowdy';
 import { CLI_ENTRY, installShim } from '../src/cli/shim';
 import { getChat } from '../src/db/chats';
 import { listItems } from '../src/db/items';
+import { taskCommentsPage } from '../src/domain/taskComments';
 import { ToolBridge } from '../src/engine/acp/bridge';
 import { toolsFor } from '../src/runs/tools';
 import { collect, FAKE_AGENT, PROTOCOLS, rig, textOf, tool } from './acp-helpers';
@@ -380,6 +381,86 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect((await shell('clowdy task list --help')).stdout).toMatch(/--under <text>\s+Only the tasks anywhere below this task/);
     });
 
+    test('leaves a comment from words, --body, a heredoc or a pipe, reads them back page by page, and shows the latest in task get', async () => {
+        const { h, json } = await setup();
+        const note = 'Found the cause.\nIt\'s "the cache"; $HOME and `date` stay as written.\n\n- [x] checked';
+
+        await json('clowdy task create Epic');
+
+        const words = await json('clowdy task comment REP-1 The cache key ignores the locale');
+
+        expect(words).toMatchObject({ comment: { author: 'agent', body: 'The cache key ignores the locale' }, total: 1 });
+        expect((await json('clowdy task comment REP-1 --body "Via the option"')).comment.body).toBe('Via the option');
+
+        // A heredoc as --body-file -, and as a bare - in the body's place (the convention thread tell has): the text arrives as written, without the line break the heredoc ends with.
+        expect((await json(`clowdy task comment REP-1 --body-file - <<'EOF'\n${ note }\nEOF`)).comment.body).toBe(note);
+        expect((await json(`clowdy task comment REP-1 - <<'EOF'\n${ note }\nEOF`)).comment.body).toBe(note);
+        expect((await json('printf \'From a pipe\\n\' | clowdy task comment REP-1 -')).comment.body).toBe('From a pipe');
+
+        const stored = taskCommentsPage(h.store, (await json('clowdy task get REP-1')).task.id).comments;
+
+        expect(stored).toHaveLength(5);
+        expect(stored.every(comment => comment.author.kind === 'run')).toBe(true);
+        expect(stored.map(comment => comment.body)).toEqual(['The cache key ignores the locale', 'Via the option', note, note, 'From a pipe']);
+
+        const got = (await json('clowdy task get REP-1')).task;
+
+        expect(got.commentCount).toBe(5);
+        expect(got.latestComments.map((comment: { body: string }) => comment.body)).toEqual([note, note, 'From a pipe']);
+
+        const first = await json('clowdy task comments REP-1 --limit 2');
+
+        expect(first).toMatchObject({ total: 5, shown: 2, comments: [{ body: 'The cache key ignores the locale' }, { body: 'Via the option' }] });
+        expect(first.nextCursor).toBeDefined();
+
+        const next = await json(`clowdy task comments REP-1 --limit 2 --cursor '${ first.nextCursor }'`);
+
+        expect(next.comments.map((comment: { body: string }) => comment.body)).toEqual([note, note]);
+        expect((await json(`clowdy task comments REP-1 --cursor '${ next.nextCursor }'`)).comments.map((comment: { body: string }) => comment.body)).toEqual(['From a pipe']);
+        expect((await json('clowdy task comments REP-1 --json')).result).toMatchObject({ total: 5, shown: 5 });
+        expect((await json('clowdy task create Quiet')).task).not.toHaveProperty('comments');
+        expect(await json('clowdy task comments REP-2')).toEqual({ comments: [], total: 0, shown: 0 });
+    });
+
+    test('refuses an empty comment, one for a task that does not exist, and a body given twice, and says how to give one in the help', async () => {
+        const { shell, json } = await setup();
+
+        await json('clowdy task create Epic');
+
+        const empty = await shell('clowdy task comment REP-1 --body ""');
+
+        expect(empty.code).toBe(1);
+        expect(empty.stderr).toContain('A comment cannot be empty');
+
+        const blank = await shell('clowdy task comment REP-1 --body-file -', { stdin: '  \n' });
+
+        expect(blank.code).toBe(2);
+        expect(blank.stderr).toContain('stdin was empty');
+        expect((await shell('clowdy task comment REP-1 -', { stdin: 'ignore' })).code).toBe(2);
+        expect((await shell('clowdy task comment REP-99 Hello')).code).toBe(1);
+
+        const twice = await shell('clowdy task comment REP-1 Hello --body World');
+
+        expect(twice.code).toBe(2);
+        expect(twice.stderr).toContain('body is given twice');
+
+        const missing = await shell('clowdy task comment REP-1');
+
+        expect(missing.code).toBe(2);
+        expect(missing.stderr).toContain('Missing <body>');
+        expect((await shell('clowdy task comments REP-1 --limit 101')).code).toBe(1);
+        expect((await shell('clowdy task comment REP-1 Hello --parent REP-2')).stderr).toContain('Unknown option --parent');
+
+        const help = (await shell('clowdy task comment --help')).stdout;
+
+        expect(help).toContain('Usage: clowdy task comment <task-id> <body> [options]');
+        expect(help).toMatch(/<body>\s+The comment, in Markdown \(- reads it from stdin\)/);
+        expect(help).toContain('clowdy task comment CLW-3 --body-file - <<\'EOF\'');
+        expect((await shell('clowdy task comments --help')).stdout).toContain('clowdy task comments CLW-3 --cursor <nextCursor>');
+        expect((await shell('clowdy task --help')).stdout).toMatch(/task comment\s+Adds a comment to a task/);
+        expect((await shell('clowdy task --help')).stdout).toMatch(/task comments\s+Lists the comments on a task/);
+    });
+
     test('a refused call exits 1 with the daemon\'s message, a bad command line 2, and stdin with nothing in it 2 without hanging', async () => {
         const { chat, shell } = await setup();
 
@@ -435,7 +516,7 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         const { tools } = await setup();
         const commands = new Map(tools.filter(candidate => candidate.cli).map(candidate => [candidate.name, candidate as unknown as CliTool]));
 
-        expect([...commands.keys()].sort()).toEqual(['task_create', 'task_get', 'task_list', 'task_update', 'thread_list', 'thread_log', 'thread_output', 'thread_spawn', 'thread_stop', 'thread_tell', 'thread_wait']);
+        expect([...commands.keys()].sort()).toEqual(['task_comment', 'task_comments', 'task_create', 'task_get', 'task_list', 'task_update', 'thread_list', 'thread_log', 'thread_output', 'thread_spawn', 'thread_stop', 'thread_tell', 'thread_wait']);
 
         for (const [name, lines] of Object.entries(EXAMPLES)) {
             const known = commands.get(name);

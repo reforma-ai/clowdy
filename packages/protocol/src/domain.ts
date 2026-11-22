@@ -298,6 +298,22 @@ export interface Task {
 
 export type Actor = { kind: 'user' } | { kind: 'run'; runId: RunId } | { kind: 'provider'; provider: string };
 
+/**
+ * A Markdown note on a task, from the person or from a run. Comments are not in the project snapshot (a task may collect any number): a client reads
+ * them from `GET /v1/tasks/:id/comments` when it shows a task, and follows `task.comment.upserted` and `task.comment.deleted` after that.
+ */
+export interface TaskComment {
+    id: string;
+    taskId: TaskId;
+    /** Who wrote it: the person for a command of the app, the run for a comment an agent left. */
+    author: Actor;
+    /** Markdown, never empty. */
+    body: string;
+    createdAt: number;
+    /** When the body was last changed; absent until it is. */
+    editedAt?: number;
+}
+
 /** A chat discusses a task, many-to-many. */
 export interface ChatTaskLink {
     chatId: ChatId;

@@ -3,15 +3,17 @@ import { z } from 'zod';
 
 import { taskIdsOfChat } from '../db/chats';
 import { listStatuses } from '../db/projects';
+import { countTaskComments, latestTaskComments } from '../db/taskComments';
 import { childIdsOf, dependentsOf, getTask, listTasks } from '../db/tasks';
 import { parseChecklist } from '../domain/checklist';
+import { addTaskComment, taskCommentsPage } from '../domain/taskComments';
 import { countByCategory, DEFAULT_LIMIT, isoTime, MAX_LIMIT, parseSince, queryTasks } from '../domain/taskQuery';
 import { categoryOf, createTask, linkRunTask, resolveTask, updateTask } from '../domain/tasks';
 import { TaskTree } from '../domain/taskTree';
 import { invalid } from '../errors';
-import { defineTool, taskRef } from './tool-kit';
+import { clip, defineTool, taskRef } from './tool-kit';
 
-import type { Actor, Run, Task, TaskStatus } from '@clowdy/protocol';
+import type { Actor, Run, Task, TaskComment, TaskStatus } from '@clowdy/protocol';
 import type { ToolDefinition } from '../engine/types';
 import type { Store } from '../store';
 import type { ToolDeps } from './tool-kit';
@@ -20,6 +22,10 @@ const CATEGORIES = 'backlog, todo, active, review, done, canceled';
 
 /** The most children `task_get` names: an epic with hundreds of them would fill the model's context, and `childrenTotal` says how many there are. */
 const MAX_CHILDREN = 50;
+
+/** How many comments `task_get` shows, the newest ones, and how many characters of each: `task_comments` reads the rest, whole. */
+const LATEST_COMMENTS = 3;
+const COMMENT_PREVIEW_CHARS = 300;
 
 const statusField = z.string().optional().describe(`A status: its id, its name ("In progress") or its category (${ CATEGORIES }). task_list shows the project's statuses`);
 
@@ -47,6 +53,24 @@ function statusesNamed(store: Store, projectId: string, value: string): TaskStat
 }
 
 const authorOf = (actor: Actor) => (actor.kind === 'user' ? 'user' : actor.kind === 'run' ? 'agent' : actor.provider);
+
+/** A comment as the models read it; `preview` cuts a long body short, for the few `task_get` shows beside the task. */
+function describeComment(comment: TaskComment, preview = false) {
+    return {
+        id: comment.id,
+        author: authorOf(comment.author),
+        createdAt: isoTime(comment.createdAt),
+        ...(comment.editedAt !== undefined && { editedAt: isoTime(comment.editedAt) }),
+        body: preview ? clip(comment.body, COMMENT_PREVIEW_CHARS) : comment.body,
+    };
+}
+
+/** How many comments the task has and the latest ones, cut short; nothing for a task with none, so it reads as before. */
+function commentsOf(store: Store, task: Task) {
+    const total = countTaskComments(store.db, task.id);
+
+    return total === 0 ? {} : { commentCount: total, latestComments: latestTaskComments(store.db, task.id, LATEST_COMMENTS).map(comment => describeComment(comment, true)) };
+}
 
 /**
  * What a task holds, as `describeTask` tells it: the tasks directly inside it as key, title and status (at most `MAX_CHILDREN`, with their total), and
@@ -103,9 +127,11 @@ function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
     const { store, runs } = deps;
 
     return [
-        defineTool('task_get', 'Reads one task: key, title, full description (with its checklist count), status, the task it is inside, the tasks inside it (key, title, status; at most 50, with the total, and the tasks below it counted by category), the tasks it depends on and the tasks waiting for it (key, title, status), the runs working on it now, who created it and when it last changed.', z.strictObject({ taskId: taskRef }), input => ({
-            task: describeTask(deps, resolveTask(store, run.projectId, input.taskId)),
-        }), { cli: { positional: ['taskId'] } }),
+        defineTool('task_get', 'Reads one task: key, title, full description (with its checklist count), status, the task it is inside, the tasks inside it (key, title, status; at most 50, with the total, and the tasks below it counted by category), the tasks it depends on and the tasks waiting for it (key, title, status), the runs working on it now, who created it and when it last changed, and its comments (how many, and the last three cut short: task_comments reads them whole).', z.strictObject({ taskId: taskRef }), (input) => {
+            const task = resolveTask(store, run.projectId, input.taskId);
+
+            return { task: { ...describeTask(deps, task), ...commentsOf(store, task) } };
+        }, { cli: { positional: ['taskId'] } }),
 
         defineTool('task_list', `Lists the project's tasks, one short row each (key, title, status, the task it is inside, dependencies, what blocks it, how many tasks are inside it by category, its checklist count, whether a run works on it); task_get has the description. parent, under and roots each list one part of the tree (give only one of them), and the counts then describe that part. By default it shows the work in flight (todo, active and review), not the backlog and not closed (done, canceled) work: the counts of every category come with the answer, so ask for the rest when you need it. A text query searches every task, closed ones too: use it to find tasks about one thing before you create duplicates. Pages hold ${ DEFAULT_LIMIT } rows unless limit says otherwise (at most ${ MAX_LIMIT }); the answer carries nextCursor while more are left. Newest change first. The first page also lists the project's statuses with their ids.`, z.strictObject({
             query: z.string().optional().describe('Only tasks whose key, title or description contain this text; searches closed tasks too'),
@@ -141,6 +167,16 @@ function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
 
             return { ...page, ...(input.cursor === undefined && { statuses }) };
         }, { cli: {} }),
+
+        defineTool('task_comments', `Lists the comments on a task, oldest first: each has its id, who wrote it, when it was written (and edited), and its full text. task_get shows only the last three, cut short. Pages hold ${ DEFAULT_LIMIT } comments unless limit says otherwise (at most ${ MAX_LIMIT }); the answer carries total, and nextCursor while more are left.`, z.strictObject({
+            taskId: taskRef,
+            limit: z.number().int().min(1).max(MAX_LIMIT).optional().describe(`How many comments, 1 to ${ MAX_LIMIT }; default ${ DEFAULT_LIMIT }`),
+            cursor: z.string().optional().describe('The nextCursor of the previous page, to get the next one'),
+        }), (input) => {
+            const page = taskCommentsPage(store, resolveTask(store, run.projectId, input.taskId).id, input);
+
+            return { comments: page.comments.map(comment => describeComment(comment)), total: page.total, shown: page.shown, ...(page.nextCursor !== undefined && { nextCursor: page.nextCursor }) };
+        }, { cli: { positional: ['taskId'] } }),
     ];
 }
 
@@ -237,5 +273,15 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
 
             return { task: describeTask(deps, updated) };
         }), { cli: { positional: ['taskId'] } }),
+
+        defineTool('task_comment', 'Adds a comment to a task: a note for whoever reads the task next, the person included, such as what you found, what you decided or how a check went. Markdown. A comment keeps its place and its author; the description is not touched. task_comments reads them back. Returns the comment and how many the task has now.', z.strictObject({
+            taskId: taskRef,
+            body: z.string().describe('The comment, in Markdown'),
+        }), (input) => {
+            const task = resolveTask(store, run.projectId, input.taskId);
+            const comment = addTaskComment(store, { taskId: task.id, author: { kind: 'run', runId: run.id }, body: input.body });
+
+            return { comment: describeComment(comment), total: countTaskComments(store.db, task.id) };
+        }, { cli: { positional: ['taskId', 'body'], stdin: 'body' } }),
     ];
 }

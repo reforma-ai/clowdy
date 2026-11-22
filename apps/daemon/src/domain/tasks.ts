@@ -252,7 +252,8 @@ export function categoryOf(store: Store, task: Task): TaskStatusCategory {
 
 /**
  * Removes the task with its links; tasks that depended on it lose that dependency, and the tasks inside it move up to its own parent (a root's become
- * roots), so the structure stays and no tree gets deeper.
+ * roots), so the structure stays and no tree gets deeper. Its comments go with the row (foreign key cascade) and are announced by `task.deleted`
+ * alone: they are not in the snapshot, so a client holds them only as the task's, and drops them with it.
  */
 export function deleteTask(store: Store, taskId: string): void {
     store.tx(() => {

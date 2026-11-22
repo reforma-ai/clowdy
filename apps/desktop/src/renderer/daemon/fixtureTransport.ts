@@ -925,6 +925,10 @@ export class FixtureTransport implements Transport {
                 if (skill.enabled !== command.enabled) {
                     skill.enabled = command.enabled;
                     data.projects.forEach(project => this.#emit(project.id, { type: 'skills.changed' }));
+            case 'task.comment.add':
+            case 'task.comment.edit':
+            case 'task.comment.delete':
+                return fail('unavailable', 'The demo data has no comments');
                 }
 
                 return ok({ name: command.name, enabled: command.enabled });

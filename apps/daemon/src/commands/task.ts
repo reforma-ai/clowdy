@@ -3,6 +3,7 @@ import { projectChatMode } from '@clowdy/protocol';
 import { choiceOf, createChat, saveChat, titleFrom } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
+import { addTaskComment, deleteTaskComment, editTaskComment } from '../domain/taskComments';
 import { createTask, deleteTask, linkChatTask, requireTask, updateTask } from '../domain/tasks';
 import { CommandError } from '../errors';
 import { requireEnabled } from '../runs/messages';
@@ -10,7 +11,7 @@ import { firstMessage, taskMessage } from '../runs/prompts';
 
 import type { Handlers } from './context';
 
-export const taskHandlers: Pick<Handlers, 'task.create' | 'task.update' | 'task.delete' | 'task.start'> = {
+export const taskHandlers: Pick<Handlers, 'task.create' | 'task.update' | 'task.delete' | 'task.start' | 'task.comment.add' | 'task.comment.edit' | 'task.comment.delete'> = {
     'task.create': ({ store }, command) => ({ task: createTask(store, { ...command, createdBy: { kind: 'user' } }) }),
 
     'task.update': ({ store }, command) => ({ task: updateTask(store, command.taskId, command) }),
@@ -55,5 +56,16 @@ export const taskHandlers: Pick<Handlers, 'task.create' | 'task.update' | 'task.
         driver.launch(run.id);
 
         return { runId: run.id, chatId: chat.id };
+    },
+
+    // A command comes from the person's app, so the comment is the person's; an agent leaves its own through the `task_comment` tool.
+    'task.comment.add': ({ store }, command) => ({ comment: addTaskComment(store, { taskId: command.taskId, author: { kind: 'user' }, body: command.body }) }),
+
+    'task.comment.edit': ({ store }, command) => ({ comment: editTaskComment(store, command.taskId, command.commentId, command.body) }),
+
+    'task.comment.delete': ({ store }, command) => {
+        deleteTaskComment(store, command.taskId, command.commentId);
+
+        return { taskId: command.taskId, commentId: command.commentId };
     },
 };

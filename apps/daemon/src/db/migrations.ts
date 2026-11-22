@@ -433,4 +433,22 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 21,
+        up(db) {
+            // The comments on a task (see `TaskComment`); a task that goes takes them along. `author` is an `Actor` as JSON, `edited_at` stays NULL until a
+            // body is changed. The index serves the paged read, which goes by `created_at` (the id settles a tie).
+            db.run(`
+                CREATE TABLE task_comments (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                    author TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    edited_at INTEGER
+                );
+                CREATE INDEX task_comments_task ON task_comments(task_id, created_at);
+            `);
+        },
+    },
 ];
