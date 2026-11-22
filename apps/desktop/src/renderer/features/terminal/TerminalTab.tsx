@@ -2,8 +2,9 @@ import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
 import { PanelEmptyState, PanelLoadingState } from '@clowdy/components/Panel';
 import { Show } from '@clowdy/components/Show';
+import { Tab, TabStrip } from '@clowdy/components/TabStrip';
 import { Text } from '@clowdy/components/Text';
-import { Close } from '@clowdy/icons/14';
+import { Terminal } from '@clowdy/icons/14';
 import { Plus } from '@clowdy/icons/16';
 import { useEffect, useRef } from 'react';
 
@@ -77,21 +78,28 @@ function TerminalBar({ projectId, folderId }: { projectId: ProjectId; folderId: 
     const labels = terminalLabels(sessions.map(session => session.info));
 
     return (
-        <div className={ styles.bar } role="group" aria-label="Terminals">
+        <TabStrip
+            aria-label="Terminals"
+            end={
+                <Button className={ styles.add } size="sm" variant="filling" color="secondary" iconOnly tooltip="New terminal" tooltipPlacement="bottom" aria-label="New terminal" onPress={ () => void store.start(projectId, folderId) }>
+                    <Plus aria-hidden="true" />
+                </Button>
+            }
+        >
             <For each={ sessions }>
                 { (session, index) => (
-                    <div key={ session.id } className={ styles.tab } data-active={ session === active ? '' : undefined }>
-                        <Button size="xs" variant="filling" isPressed={ session === active } onPress={ () => store.select(session) }>{ labels[index] }</Button>
-                        <Button className={ styles.close } size="xs" variant="filling" iconOnly tooltip="Close terminal" aria-label={ `Close ${ labels[index] }` } onPress={ () => void store.close(session) }>
-                            <Close aria-hidden="true" />
-                        </Button>
-                    </div>
+                    <Tab
+                        key={ session.id }
+                        label={ labels[index] }
+                        icon={ <Terminal aria-hidden="true" /> }
+                        active={ session === active }
+                        closeLabel={ `Close ${ labels[index] }` }
+                        onSelect={ () => store.select(session) }
+                        onClose={ () => void store.close(session) }
+                    />
                 ) }
             </For>
-            <Button size="xs" variant="filling" iconOnly tooltip="New terminal" aria-label="New terminal" onPress={ () => void store.start(projectId, folderId) }>
-                <Plus aria-hidden="true" />
-            </Button>
-        </div>
+        </TabStrip>
     );
 }
 

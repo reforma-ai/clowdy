@@ -8,34 +8,10 @@
     min-height: 0;
 }
 
-/* The shells of the folder, as a row of small tabs that scrolls sideways before it wraps. */
-.bar {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: var(--spacing-xs);
-    padding: var(--spacing-xs) var(--spacing-md);
-    border-bottom: 1px solid var(--color-surface-border);
-    overflow-x: auto;
-    scrollbar-width: none;
-}
-
-.tab {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-}
-
-/* The close button of a tab is there for the tab that is chosen and for the one the pointer is over. */
-.close {
-    margin-left: calc(var(--spacing-xs) * -1);
-    opacity: 0;
-}
-
-.tab:hover .close,
-.tab:focus-within .close,
-.tab[data-active] .close {
-    opacity: 1;
+/* The same distance from the right edge as the file manager's button at the end of its tab strip. */
+.add {
+    flex: none;
+    margin-inline-end: var(--spacing-6);
 }
 
 .stage {
@@ -76,15 +52,4 @@
     gap: var(--spacing-md);
     padding: var(--spacing-sm) var(--spacing-md) var(--spacing-sm) 0;
     border-top: 1px solid var(--color-surface-border);
-}
-
-.state {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-md);
-    padding: var(--spacing-lg);
-    text-align: center;
 }

@@ -4,13 +4,12 @@ import { Button } from '@clowdy/components/Button';
 import { FileIcon } from '@clowdy/components/FileIcon';
 import { For } from '@clowdy/components/For';
 import { PanelEmptyState, PanelLoadingState } from '@clowdy/components/Panel';
-import { Scrollable } from '@clowdy/components/Scrollable';
 import { Show } from '@clowdy/components/Show';
-import { Text } from '@clowdy/components/Text';
+import { Tab, TabStrip } from '@clowdy/components/TabStrip';
 import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/ToggleButtonGroup';
-import { Close, CodeSlash, EditPen, Eye, Page } from '@clowdy/icons/14';
+import { CodeSlash, EditPen, Eye, Page } from '@clowdy/icons/14';
 import { observer } from 'mobx-react-lite';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 
 import { sizeLimit } from '../../documents/TextDocument';
 import { basename, mediaKind } from '../../paths';
@@ -24,60 +23,20 @@ import type { ReactNode } from 'react';
 import type { TextDocument } from '../../documents/TextDocument';
 import type { FileManager } from '../../FileManager';
 
-const Tab = observer(function Tab({ manager, document }: { manager: FileManager; document: TextDocument }) {
+const DocumentTab = observer(function DocumentTab({ manager, document }: { manager: FileManager; document: TextDocument }) {
     const name = basename(document.path);
-    const active = manager.tabs.active === document;
-    const tab = useRef<HTMLDivElement>(null);
-
-    // An opened or activated tab scrolls into the strip.
-    useEffect(() => {
-        if (active) {
-            tab.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-        }
-    }, [active]);
 
     return (
-        <div
-            ref={tab}
-            className={styles.tab}
-            data-active={active || undefined}
-            data-dirty={document.dirty || undefined}
-            data-deleted={document.deleted || undefined}
-            onMouseDown={event => {
-                // Middle click closes instead of starting autoscroll.
-                if (event.button === 1) {
-                    event.preventDefault();
-                }
-            }}
-            onAuxClick={event => {
-                if (event.button === 1) {
-                    void closeTab(manager, document);
-                }
-            }}
-        >
-            <button
-                type="button"
-                role="tab"
-                aria-selected={active}
-                className={styles.tabName}
-                onClick={() => manager.tabs.activate(document.path)}
-            >
-                <FileIcon path={document.path} kind="file" />
-                <Text truncate>{name}</Text>
-            </button>
-            <Button
-                variant="filling"
-                color="secondary"
-                size="xs"
-                iconOnly
-                className={styles.close}
-                aria-label={`Close ${name}`}
-                onPress={() => void closeTab(manager, document)}
-            >
-                <Close className={styles.closeIcon} />
-                <span className={styles.dirtyDot} />
-            </Button>
-        </div>
+        <Tab
+            label={name}
+            icon={<FileIcon path={document.path} kind="file" />}
+            active={manager.tabs.active === document}
+            dirty={document.dirty}
+            deleted={document.deleted}
+            closeLabel={`Close ${name}`}
+            onSelect={() => manager.tabs.activate(document.path)}
+            onClose={() => void closeTab(manager, document)}
+        />
     );
 });
 
@@ -109,30 +68,26 @@ const ViewToggle = observer(function ViewToggle({ document }: { document: TextDo
     );
 });
 
-const TabStrip = observer(function TabStrip({ manager, toolbar }: { manager: FileManager; toolbar?: ReactNode }) {
+const EditorTabs = observer(function EditorTabs({ manager, toolbar }: { manager: FileManager; toolbar?: ReactNode }) {
     // Copy so this component tracks the tab list itself.
     const documents = manager.tabs.documents.slice();
     const active = manager.tabs.active;
 
     return (
-        <div className={styles.tabBar}>
-            <Scrollable
-                vertical={false}
-                horizontal
-                edgeFade
-                className={styles.tabStrip}
-                contentClass={styles.tabList}
-                role="tablist"
-            >
-                <For each={documents}>
-                    {document => <Tab key={document.path} manager={manager} document={document} />}
-                </For>
-            </Scrollable>
-            <Show when={active?.status === 'text' && active.renderedView && active}>
-                {document => <ViewToggle document={document} />}
-            </Show>
-            {toolbar}
-        </div>
+        <TabStrip
+            end={
+                <>
+                    <Show when={active?.status === 'text' && active.renderedView && active}>
+                        {document => <ViewToggle document={document} />}
+                    </Show>
+                    {toolbar}
+                </>
+            }
+        >
+            <For each={documents}>
+                {document => <DocumentTab key={document.path} manager={manager} document={document} />}
+            </For>
+        </TabStrip>
     );
 });
 
@@ -263,7 +218,7 @@ export const EditorArea = observer(function EditorArea({ manager, editorExtensio
 
     return (
         <Box className={styles.area}>
-            <TabStrip manager={manager} toolbar={toolbar} />
+            <EditorTabs manager={manager} toolbar={toolbar} />
             <Show
                 when={manager.tabs.documents.length > 0}
                 fallback={

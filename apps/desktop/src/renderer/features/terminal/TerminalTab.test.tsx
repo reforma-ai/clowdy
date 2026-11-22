@@ -67,10 +67,10 @@ const press = (target: Element | null | undefined) => act(async () => {
     target?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
     (target as HTMLElement | null | undefined)?.click();
 });
-const bar = () => container.querySelector('[aria-label="Terminals"]');
-const tabs = () => [...(bar()?.querySelectorAll<HTMLButtonElement>('button:not([aria-label])') ?? [])];
+const bar = () => container.querySelector('[role="tablist"][aria-label="Terminals"]');
+const tabs = () => [...(bar()?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])];
 const labels = () => tabs().map(button => button.textContent);
-const chosen = () => tabs().find(button => button.getAttribute('aria-pressed') === 'true')?.textContent;
+const chosen = () => tabs().find(button => button.getAttribute('aria-selected') === 'true')?.textContent;
 const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${ label }"]`);
 const textButton = (text: string) => [...container.querySelectorAll('button')].find(candidate => candidate.textContent === text);
 

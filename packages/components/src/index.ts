@@ -63,6 +63,7 @@ export * from './Spinner';
 export * from './Swatch';
 export * from './Switch';
 export * from './Table';
+export * from './TabStrip';
 export * from './Tag';
 export * from './Terminal';
 export * from './Text';

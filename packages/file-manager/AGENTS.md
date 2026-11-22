@@ -11,7 +11,7 @@ src/documents/           TextDocument (load, edit, save with a version check, co
 src/FileOperations.ts    Create, rename, move, copy, paste, delete, upload, with confirmations and the tree's bookkeeping
 src/search/              Text search through a provider (or a host's SearchService)
 src/memory/              MemoryFileSystem: a whole provider in memory, with versions, errors and watch events
-src/react/               FileManagerView (the editor at the left, the sidebar with the file tree at the right on an edge to drag), Explorer (react-arborist), EditorArea (tab strip, CodeMirror, Markdown pane)
+src/react/               FileManagerView (the editor at the left, the sidebar with the file tree at the right on an edge to drag), Explorer (react-arborist), EditorArea (tabs from `TabStrip` of `@clowdy/components`, which the desktop's Terminal tab uses too, CodeMirror, Markdown pane)
 specs/                   Vitest, in Node (`bun run test`): the manager, the tree, the documents, the operations, the search, the memory provider
 ```
 
