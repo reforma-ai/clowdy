@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { installLongPressContextMenu } from '@clowdy/components/Popover';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -126,13 +127,16 @@ describe('FileChip', () => {
 
     it('opens the menu on a long touch, and the release does not open the file', async () => {
         await draw('src/booking/price.ts');
+        // What the window installs once: a long touch is sent to the chip as a right-click.
+        const uninstall = installLongPressContextMenu(document);
+
         vi.useFakeTimers();
 
         try {
             const touch = (type: string) => act(() => {
                 const event = new Event(type, { bubbles: true, cancelable: true });
 
-                Object.assign(event, { pointerType: 'touch', clientX: 12, clientY: 8 });
+                Object.assign(event, { pointerType: 'touch', isPrimary: true, pointerId: 1, clientX: 12, clientY: 8 });
                 chip().dispatchEvent(event);
             });
 
@@ -144,8 +148,11 @@ describe('FileChip', () => {
             vi.useRealTimers();
         }
 
+        // The click that comes with the release is swallowed: the file is not opened.
         await press();
         await settle();
+
+        uninstall();
 
         expect(openInFiles).not.toHaveBeenCalled();
         expect(items()).toEqual(['Open in Files', 'Open in GitHub', 'Copy path', 'Copy relative path']);

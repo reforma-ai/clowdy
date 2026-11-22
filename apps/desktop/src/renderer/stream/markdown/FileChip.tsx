@@ -55,7 +55,7 @@ function OutsideMenu({ path, onClose }: { path: string; onClose: () => void }) {
 
 /**
  * A file or folder named in a message: its icon and name, the whole path on hover. A press opens it in the Files tab of the side panel; a right-click, a click with
- * ⌘ or Ctrl held, and a long touch open the menu of the path (`OpenWithMenu`: Open in Files, the editor, the file manager, GitHub, the copies of the path). A press
+ * ⌘ or Ctrl held, and a long touch (`installLongPressContextMenu`) open the menu of the path (`OpenWithMenu`: Open in Files, the editor, the file manager, GitHub, the copies of the path). A press
  * that has nothing to open (the file is not on the disk, the path is in a folder the window is not on, or in none of the project's) opens the same menu where the
  * pointer is, so there is always something to do with it.
  */
@@ -63,7 +63,7 @@ export function FileChip({ path, lines, className }: FileChipProps) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
-    const contextMenu = useContextMenu({ longPress: true });
+    const contextMenu = useContextMenu();
     const clean = normalizeChipPath(path);
     const label = lines ? `${ chipLabelFromPath(clean) } (${ lines })` : chipLabelFromPath(clean);
     const current = currentFolder(project, ui);
