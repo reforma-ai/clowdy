@@ -78,7 +78,8 @@
     .button[data-size='xs'] {
         --clowdy-button-size: var(--spacing-24);
         --clowdy-button-radius: var(--radius-sm);
-        padding: var(--spacing-4) var(--spacing-8);
+        --clowdy-button-padding-inline: var(--spacing-8);
+        padding: var(--spacing-4) var(--clowdy-button-padding-inline);
 
         @ruleset typography-button-sm;
     }
@@ -86,7 +87,8 @@
     .button[data-size='sm'] {
         --clowdy-button-size: var(--spacing-30);
         --clowdy-button-radius: var(--radius-md);
-        padding: var(--spacing-4) var(--spacing-10);
+        --clowdy-button-padding-inline: var(--spacing-10);
+        padding: var(--spacing-4) var(--clowdy-button-padding-inline);
 
         @ruleset typography-button-sm;
     }
@@ -94,7 +96,8 @@
     .button[data-size='md'] {
         --clowdy-button-size: var(--spacing-36);
         --clowdy-button-radius: var(--radius-lg);
-        padding: var(--spacing-6) var(--spacing-14);
+        --clowdy-button-padding-inline: var(--spacing-14);
+        padding: var(--spacing-6) var(--clowdy-button-padding-inline);
 
         @ruleset typography-button-md;
     }
@@ -102,7 +105,8 @@
     .button[data-size='lg'] {
         --clowdy-button-size: var(--spacing-56);
         --clowdy-button-radius: var(--radius-xl);
-        padding: var(--spacing-10) var(--spacing-30);
+        --clowdy-button-padding-inline: var(--spacing-30);
+        padding: var(--spacing-10) var(--clowdy-button-padding-inline);
 
         @ruleset typography-button-lg;
     }
@@ -113,6 +117,13 @@
     .button[data-size='lg'] {
         border-radius: calc(var(--clowdy-button-radius) * var(--squircle-radius-factor));
         corner-shape: superellipse(var(--squircle-value));
+    }
+
+    /* A key hint (`Hotkey`, a capsule or a sequence of them) that ends a button sits as far from its right edge as from its top and bottom: the room the button's height leaves
+       around it, in place of the button's own side padding. The capsule says its height itself (`--hotkey-height`). */
+    .button > .content > [data-hotkey]:last-child,
+    .button > .content > [data-hotkey-sequence]:last-child {
+        margin-inline-end: calc((var(--clowdy-button-size) - var(--hotkey-height)) / 2 - var(--clowdy-button-padding-inline) - var(--clowdy-button-border-width));
     }
 
     .button[data-icon-only] {

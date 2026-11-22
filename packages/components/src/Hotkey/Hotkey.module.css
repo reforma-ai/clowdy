@@ -23,24 +23,41 @@
         corner-shape: superellipse(var(--squircle-value));
     }
 
+    /* `--hotkey-height` is the height of a capsule of each size, on the capsule and on a sequence of them, for whatever holds one to place it by (a button gives its end the same
+       room as its top and bottom). */
+    .hotkey[data-size='xs'],
+    .sequence[data-size='xs'] {
+        --hotkey-height: calc(var(--leading-xs) + 2 * var(--spacing-2));
+    }
+
+    .hotkey[data-size='sm'],
+    .sequence[data-size='sm'] {
+        --hotkey-height: calc(var(--leading-sm) + 2 * var(--spacing-4));
+    }
+
+    .hotkey[data-size='md'],
+    .sequence[data-size='md'] {
+        --hotkey-height: calc(var(--leading-md) + 2 * var(--spacing-6));
+    }
+
     .hotkey[data-size='xs'] {
         --clowdy-hotkey-radius: var(--radius-xs);
-        min-width: calc(var(--leading-xs) + 2 * var(--spacing-2));
-        min-height: calc(var(--leading-xs) + 2 * var(--spacing-2));
+        min-width: var(--hotkey-height);
+        min-height: var(--hotkey-height);
         padding: var(--spacing-2) var(--spacing-4);
     }
 
     .hotkey[data-size='sm'] {
         --clowdy-hotkey-radius: var(--radius-sm);
-        min-width: calc(var(--leading-sm) + 2 * var(--spacing-4));
-        min-height: calc(var(--leading-sm) + 2 * var(--spacing-4));
+        min-width: var(--hotkey-height);
+        min-height: var(--hotkey-height);
         padding: var(--spacing-4) var(--spacing-6);
     }
 
     .hotkey[data-size='md'] {
         --clowdy-hotkey-radius: var(--radius-sm);
-        min-width: calc(var(--leading-md) + 2 * var(--spacing-6));
-        min-height: calc(var(--leading-md) + 2 * var(--spacing-6));
+        min-width: var(--hotkey-height);
+        min-height: var(--hotkey-height);
         padding: var(--spacing-6) var(--spacing-8);
     }
 
