@@ -1,0 +1,416 @@
+import { Minimatch } from 'minimatch';
+import { action, computed, observable, observableShallow, runInAction } from 'mobx';
+
+import { basename, dirname, normalizePath } from '../paths';
+
+import type { FileChange, FileEntry, FileSystemProvider } from '../provider';
+
+export type FileTreeStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+/** Globs over provider-relative paths, dotfiles included. A match also hides everything inside it. */
+export interface FileTreeFilters {
+    /** Never shown, e.g. build output. */
+    exclude?: readonly string[];
+    /** Shown only while `showHidden` is on, e.g. dotfiles. */
+    hidden?: readonly string[];
+}
+
+type Visibility = 'shown' | 'hidden' | 'excluded';
+
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+/** The first listing. `src/app/foo` is included; `src/app/foo/bar.ts` waits until `foo` is opened. */
+const INITIAL_DEPTH = 3;
+
+function compareEntries(a: FileEntry, b: FileEntry): number {
+    if (a.kind !== b.kind) {
+        return a.kind === 'directory' ? -1 : 1;
+    }
+
+    const nameA = basename(a.path);
+    const nameB = basename(b.path);
+
+    // Siblings have distinct names, so a case-only tie still gets a stable order.
+    return collator.compare(nameA, nameB) || (nameA < nameB ? -1 : 1);
+}
+
+function addEntry(entries: Map<string, FileEntry>, entry: FileEntry): void {
+    entries.set(entry.path, entry);
+
+    for (let dir = dirname(entry.path); dir !== '' && !entries.has(dir); dir = dirname(dir)) {
+        entries.set(dir, { path: dir, kind: 'directory' });
+    }
+}
+
+function removeEntry(entries: Map<string, FileEntry>, path: string): void {
+    const kind = entries.get(path)?.kind;
+
+    entries.delete(path);
+
+    if (kind === 'file') {
+        return;
+    }
+
+    const prefix = `${path}/`;
+
+    for (const key of [...entries.keys()]) {
+        if (key.startsWith(prefix)) {
+            entries.delete(key);
+        }
+    }
+}
+
+function applyChange(entries: Map<string, FileEntry>, change: FileChange): void {
+    if (change.type === 'deleted') {
+        removeEntry(entries, change.path);
+
+        return;
+    }
+
+    const existing = entries.get(change.path);
+    const kind = change.type === 'created' ? change.kind : (existing?.kind ?? 'file');
+
+    addEntry(entries, {
+        path: change.path,
+        kind,
+        size: change.size ?? existing?.size,
+        ...(kind === 'directory' && existing?.hasChildren !== undefined ? { hasChildren: existing.hasChildren } : {}),
+    });
+}
+
+/** The provider's listing as an index, patched by watch changes, with the globs that hide paths. */
+export class FileTree {
+    /** Every listed path, files and directories, keyed by path; hidden and excluded ones included. */
+    @observableShallow accessor entries: Map<string, FileEntry> = new Map();
+    @observable accessor status: FileTreeStatus = 'idle';
+    /** Paths matching the hidden globs are shown too. */
+    @observable accessor showHidden = false;
+
+    readonly #provider: FileSystemProvider;
+    readonly #exclude: Minimatch[];
+    readonly #hidden: Minimatch[];
+    /** How each path matches the globs by itself; its folders are checked on their own. */
+    readonly #visibility = new Map<string, Visibility>();
+    /** Changes seen while a listing is in flight, replayed on top of it. */
+    #pending: FileChange[] | null = null;
+    #generation = 0;
+    /** How deep the root listing reached. A path with at most this many segments is in the window. */
+    #rootDepth = 0;
+    /** Folders opened past the root window. A resync lists these again, not the rest of the project. */
+    #opened = new Set<string>();
+    /** Creates under a folder this tab has not listed. They are not rows; they give that folder a chevron. */
+    #below = new Set<string>();
+
+    /** Shown entries by parent, sorted. Kept alive so reads outside a reaction reuse it. */
+    readonly #byParent = computed(
+        () => {
+            const byParent = new Map<string, FileEntry[]>();
+
+            for (const entry of this.entries.values()) {
+                if (!this.#shows(entry.path)) {
+                    continue;
+                }
+
+                const parent = dirname(entry.path);
+                const siblings = byParent.get(parent);
+
+                if (siblings) {
+                    siblings.push(entry);
+                }
+                else {
+                    byParent.set(parent, [entry]);
+                }
+            }
+
+            for (const siblings of byParent.values()) {
+                siblings.sort(compareEntries);
+            }
+
+            return byParent;
+        },
+        { keepAlive: true }
+    );
+
+    constructor(provider: FileSystemProvider, { exclude = [], hidden = [] }: FileTreeFilters = {}) {
+        this.#provider = provider;
+        this.#exclude = exclude.map(glob => new Minimatch(glob, { dot: true }));
+        this.#hidden = hidden.map(glob => new Minimatch(glob, { dot: true }));
+    }
+
+    get(path: string): FileEntry | undefined {
+        return this.entries.get(path);
+    }
+
+    /** Shown children of a shown directory (`''` is the root): folders first, then natural name order. */
+    children(path = ''): readonly FileEntry[] {
+        return this.#byParent.get().get(path) ?? [];
+    }
+
+    /** The path and every folder above it are shown. */
+    isVisible(path: string): boolean {
+        for (let current = normalizePath(path); current !== ''; current = dirname(current)) {
+            if (!this.#shows(current)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Globs of the paths it does not show: the excluded ones, and the hidden ones unless `showHidden`. */
+    get unshownGlobs(): string[] {
+        return [...this.#exclude, ...(this.showHidden ? [] : this.#hidden)].map(glob => glob.pattern);
+    }
+
+    @action
+    setShowHidden(show: boolean): void {
+        this.showHidden = show;
+    }
+
+    /** Lists the root at depth 3 and each folder this tab has opened. Changes that arrive meanwhile are applied on top. */
+    async refresh(): Promise<void> {
+        const generation = ++this.#generation;
+
+        this.#pending ??= [];
+
+        if (this.status !== 'ready') {
+            runInAction(() => {
+                this.status = 'loading';
+            });
+        }
+
+        const openedAtStart = new Set(this.#opened);
+
+        try {
+            const listed: FileEntry[] = [];
+            const covered = new Set<string>();
+
+            // A folder opened while this listing is in flight is listed before the tree is replaced.
+            for (;;) {
+                const extra = [...this.#opened].filter(dir => !covered.has(dir));
+
+                if (covered.size > 0 && extra.length === 0) {
+                    break;
+                }
+
+                const includeRoot = covered.size === 0;
+                const [root, nested] = await Promise.all([
+                    includeRoot ? this.#provider.list('', INITIAL_DEPTH) : Promise.resolve([]),
+                    Promise.all(extra.map(dir => this.#provider.list(dir, 1))).then(groups => groups.flat()),
+                ]);
+
+                if (generation !== this.#generation) {
+                    return;
+                }
+
+                covered.add('');
+
+                for (const dir of extra) {
+                    covered.add(dir);
+                }
+                listed.push(...root, ...nested);
+            }
+
+            runInAction(() => {
+                const entries = new Map<string, FileEntry>();
+
+                for (const entry of listed) {
+                    addEntry(entries, entry);
+                }
+
+                const queued = this.#pending ?? [];
+
+                this.entries = entries;
+                this.#rootDepth = INITIAL_DEPTH;
+                this.#below.clear();
+                this.#pending = null;
+
+                for (const change of queued) {
+                    this.#apply(change);
+                }
+
+                this.status = 'ready';
+            });
+        }
+        catch (error) {
+            if (generation === this.#generation) {
+                this.#pending = null;
+
+                for (const dir of this.#opened) {
+                    if (!openedAtStart.has(dir)) {
+                        this.#opened.delete(dir);
+                    }
+                }
+
+                runInAction(() => {
+                    this.status = 'error';
+                });
+            }
+
+            throw error;
+        }
+    }
+
+    /**
+     * Lists one folder the root window did not include. A folder already inside that window is a no-op.
+     * Opening it is what a resync will list again.
+     */
+    async load(path: string): Promise<void> {
+        const dir = normalizePath(path);
+
+        if (!dir || this.#opened.has(dir)) {
+            return;
+        }
+
+        const segments = dir.split('/').filter(Boolean).length;
+
+        if (this.#rootDepth > 0 && segments < this.#rootDepth) {
+            return;
+        }
+
+        const generation = this.#generation;
+
+        this.#opened.add(dir);
+
+        // A refresh in flight lists `#opened` before it commits. Listing here would race that replace.
+        if (this.#pending) {
+            return;
+        }
+
+        try {
+            const listed = await this.#provider.list(dir, 1);
+
+            if (generation !== this.#generation || this.#pending) {
+                return;
+            }
+
+            runInAction(() => {
+                for (const entry of listed) {
+                    addEntry(this.entries, entry);
+                }
+
+                const self = this.entries.get(dir);
+
+                if (self) {
+                    this.entries.set(dir, { ...self, hasChildren: listed.length > 0 });
+                }
+            });
+        }
+        catch (error) {
+            if (generation === this.#generation && !this.#pending) {
+                this.#opened.delete(dir);
+            }
+
+            throw error;
+        }
+    }
+
+    @action
+    applyChanges(changes: readonly FileChange[]): void {
+        if (this.#pending) {
+            this.#pending.push(...changes);
+
+            return;
+        }
+
+        for (const change of changes) {
+            this.#apply(change);
+        }
+    }
+
+    /**
+     * The tree has listed this path's folder: the path is inside the root window or a direct child of
+     * a folder this tab opened. A covered path the tree lacks is gone; below that, only a read can tell.
+     */
+    covers(path: string): boolean {
+        const segments = path.split('/').filter(Boolean).length;
+
+        if (this.#rootDepth > 0 && segments <= this.#rootDepth) {
+            return true;
+        }
+
+        return this.#opened.has(dirname(path));
+    }
+
+    #apply(change: FileChange): void {
+        if (change.type !== 'deleted' && !this.covers(change.path)) {
+            this.#noteBelow(change.path);
+
+            return;
+        }
+
+        applyChange(this.entries, change);
+
+        const entry = this.entries.get(change.path);
+
+        if (entry?.kind === 'directory') {
+            this.#chevronFor(change.path);
+        }
+
+        if (change.type !== 'deleted') {
+            return;
+        }
+
+        this.#dropBelow(change.path);
+        this.#opened.delete(change.path);
+
+        for (const dir of [...this.#opened]) {
+            if (dir.startsWith(`${change.path}/`)) {
+                this.#opened.delete(dir);
+            }
+        }
+    }
+
+    /** A create under a folder the tree has not listed. The row waits for that folder to open. */
+    #noteBelow(path: string): void {
+        this.#below.add(path);
+
+        for (let dir = dirname(path); dir !== ''; dir = dirname(dir)) {
+            const entry = this.entries.get(dir);
+
+            if (entry?.kind === 'directory') {
+                this.#chevronFor(dir);
+
+                return;
+            }
+        }
+    }
+
+    #chevronFor(path: string): void {
+        const prefix = `${path}/`;
+
+        if (![...this.#below].some(child => child.startsWith(prefix))) {
+            return;
+        }
+
+        const entry = this.entries.get(path);
+
+        if (entry?.kind === 'directory' && entry.hasChildren !== true) {
+            this.entries.set(path, { ...entry, hasChildren: true });
+        }
+    }
+
+    #dropBelow(path: string): void {
+        const prefix = `${path}/`;
+
+        for (const child of this.#below) {
+            if (child === path || child.startsWith(prefix)) {
+                this.#below.delete(child);
+            }
+        }
+    }
+
+    #shows(path: string): boolean {
+        let visibility = this.#visibility.get(path);
+
+        if (visibility === undefined) {
+            visibility = this.#exclude.some(glob => glob.match(path))
+                ? 'excluded'
+                : this.#hidden.some(glob => glob.match(path))
+                    ? 'hidden'
+                    : 'shown';
+            this.#visibility.set(path, visibility);
+        }
+
+        return visibility === 'shown' || (visibility === 'hidden' && this.showHidden);
+    }
+}

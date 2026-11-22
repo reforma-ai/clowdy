@@ -22,6 +22,7 @@
     "dependencies": {
         "@clowdy/components": "workspace:*",
         "@clowdy/constants": "workspace:*",
+        "@clowdy/file-manager": "workspace:*",
         "@clowdy/icons": "workspace:*",
         "@clowdy/lib": "workspace:*",
         "@clowdy/protocol": "workspace:*",

@@ -1,0 +1,92 @@
+@reference '@clowdy/styles/rulesets';
+
+.root {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.query {
+    flex: none;
+    border-bottom: 1px solid var(--color-surface-border);
+}
+
+/* The same side gutter as the query field, so rows line up under it. */
+.results {
+    display: flex;
+    flex-direction: column;
+    padding: var(--spacing-8) var(--spacing-lg);
+}
+
+/* Fills the results, so the note sits in the middle. */
+.empty {
+    flex: 1;
+}
+
+.summary {
+    padding: 0 var(--spacing-8) var(--spacing-4);
+}
+
+.errorDetail {
+    @ruleset typography-text-code-xs;
+
+    white-space: pre-wrap;
+}
+
+/* Code lines sit tight, as in an editor; row text starts under the query's icon. */
+.list {
+    --clowdy-listbox-gap: 0px;
+    --clowdy-listbox-item-height: var(--spacing-24);
+    --clowdy-listbox-item-padding-inline: var(--spacing-8);
+    --clowdy-listbox-item-padding: 0 var(--clowdy-listbox-item-padding-inline);
+}
+
+.file {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-6);
+}
+
+.file .fileIcon {
+    width: var(--spacing-14);
+    height: var(--spacing-14);
+}
+
+.fileName {
+    flex: none;
+    max-width: 70%;
+}
+
+.folder {
+    min-width: 0;
+}
+
+.count {
+    flex: none;
+    min-width: var(--spacing-18);
+    margin-inline-start: auto;
+    padding-inline: var(--spacing-4);
+    border-radius: var(--radius-full);
+    background-color: var(--color-secondary-muted);
+    color: var(--color-secondary-content);
+    font-size: 0.625rem;
+    text-align: center;
+}
+
+/* Under its file's name. */
+.match {
+    padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) + var(--spacing-14) + var(--spacing-6));
+}
+
+.preview {
+    @ruleset typography-text-code-xs;
+
+    white-space: pre;
+}
+
+.preview mark {
+    border-radius: var(--radius-xs);
+    background-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+    color: var(--color-text);
+}

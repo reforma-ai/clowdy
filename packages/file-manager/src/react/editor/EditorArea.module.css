@@ -1,0 +1,142 @@
+.area {
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* Tab strip, with the markdown view toggle at its end */
+
+.tabBar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    min-width: 0;
+    border-bottom: 1px solid var(--color-surface-border);
+}
+
+.tabStrip {
+    flex: 1;
+    min-width: 0;
+}
+
+.viewToggle {
+    flex: none;
+    margin-inline-end: var(--spacing-4);
+}
+
+.tabList {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-4);
+    /* As wide as its tabs, so the end padding stays after the last one when the strip scrolls. */
+    width: max-content;
+    min-width: 100%;
+    /* With the strip's border, as tall as the 40px panel header beside it. */
+    height: calc(var(--spacing-40) - 1px);
+    padding-inline: var(--spacing-4);
+}
+
+/* Shaped like a small kit button. */
+.tab {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--spacing-4);
+    max-width: 240px;
+    height: var(--spacing-30);
+    /* The 24px close button sits 3px in on every side. */
+    padding-inline-end: 3px;
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    color: var(--color-secondary-muted-text);
+    font-size: var(--text-sm);
+    line-height: var(--leading-md);
+    user-select: none;
+}
+
+.tab:hover,
+.tab:has(.tabName:focus-visible),
+.tab[data-active] {
+    color: var(--color-text);
+    background-color: var(--color-secondary-muted-light);
+}
+
+/* The whole tab up to the close button opens it, not only the name. */
+.tabName {
+    display: flex;
+    align-self: stretch;
+    align-items: center;
+    gap: var(--spacing-6);
+    min-width: 0;
+    padding: 0 0 0 var(--spacing-10);
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    outline: none;
+}
+
+.tab[data-deleted] .tabName {
+    text-decoration: line-through;
+}
+
+/* Close button; a dot stands in for it while the tab has unsaved edits. */
+
+.close {
+    flex: none;
+    opacity: 0;
+}
+
+.tab:hover .close,
+.tab:focus-within .close,
+.tab[data-active] .close,
+.tab[data-dirty] .close {
+    opacity: 1;
+}
+
+.dirtyDot {
+    display: none;
+    width: var(--spacing-8);
+    height: var(--spacing-8);
+    border-radius: 50%;
+    background-color: currentColor;
+}
+
+.tab[data-dirty]:not(:hover) .closeIcon {
+    display: none;
+}
+
+.tab[data-dirty]:not(:hover) .dirtyDot {
+    display: block;
+}
+
+/* Below the tabs */
+
+.bar {
+    flex: none;
+    margin: var(--spacing-8);
+}
+
+.content {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+}
+
+.pane {
+    position: absolute;
+    inset: 0;
+}
+
+.media {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+/* A faint watermark over the empty editor. */
+.emptyLogo {
+    margin-bottom: var(--spacing-16);
+    color: var(--color-secondary-muted);
+}
