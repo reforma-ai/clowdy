@@ -1,0 +1,189 @@
+@reference '@clowdy/styles/rulesets';
+
+/* What the screen says in place of the board while the archive loads, fails or is empty. */
+.center {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-xxl);
+    text-align: center;
+}
+
+.alert {
+    max-width: 36rem;
+}
+
+.view {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-xxl);
+    min-height: 0;
+    padding: 0 var(--spacing-xxl) var(--spacing-xxl);
+    overflow-y: auto;
+}
+
+.batches {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxl);
+}
+
+.batch {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.head {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding-inline: var(--spacing-xs);
+}
+
+.count {
+    @ruleset typography-text-xs;
+
+    color: var(--color-secondary-muted-text);
+    font-weight: 500;
+}
+
+.rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* A row is its own plate: the open task has a primary outline, as in the list; the others a tint on hover. */
+.row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+    padding: var(--spacing-xs) var(--spacing-md);
+    padding-inline-start: calc(var(--spacing-md) + var(--depth, 0) * var(--spacing-xxl));
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    transition: background-color 150ms ease-out;
+}
+
+.row:hover,
+.row:focus-within {
+    background-color: var(--color-secondary-muted-light);
+}
+
+.row[data-open] {
+    outline: 1px solid var(--color-primary);
+    outline-offset: -1px;
+}
+
+/* The room of the chevron, there or not, so the keys of one level line up. */
+.fold {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-16);
+    height: var(--spacing-16);
+}
+
+.chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-16);
+    height: var(--spacing-16);
+    padding: 0;
+    border: 0;
+    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background: none;
+    color: var(--color-secondary-muted-text);
+    cursor: pointer;
+}
+
+.chevron:hover {
+    background-color: var(--color-secondary-muted);
+    color: var(--color-text);
+}
+
+.chevron:focus-visible,
+.open:focus-visible {
+    outline: var(--spacing-2) solid var(--color-primary-muted-border);
+}
+
+.chevron svg path {
+    fill: currentColor;
+}
+
+/* The press that opens the task: its key and title, filling the row up to the status. */
+.open {
+    display: flex;
+    flex: 1;
+    align-items: baseline;
+    gap: var(--spacing-md);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-xs);
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    font-weight: 500;
+    text-align: start;
+    cursor: pointer;
+}
+
+.key {
+    @ruleset typography-text-xs;
+
+    flex-shrink: 0;
+    min-width: 3.5rem;
+    color: var(--color-secondary-muted-text);
+    font-weight: 500;
+}
+
+.title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status {
+    flex-shrink: 0;
+    width: 9.5rem;
+}
+
+/* The room of Restore, there or not: only the top of a batch has it. */
+.action {
+    display: flex;
+    flex-shrink: 0;
+    justify-content: flex-end;
+    width: 6rem;
+}
+
+.restore {
+    opacity: 0;
+}
+
+.row:hover .restore,
+.row:focus-within .restore,
+.restore:focus-visible {
+    opacity: 1;
+}
+
+.foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-lg);
+}

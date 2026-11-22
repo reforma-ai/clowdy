@@ -5,14 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
-import { openInFiles } from '../../features/files/openInFiles';
+import { kindOnDisk, openInFiles } from '../../features/files/openInFiles';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { FileChip } from './FileChip';
 
 const toasts = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 
 vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
-vi.mock('../../features/files/openInFiles', () => ({ openInFiles: vi.fn(async () => true) }));
+vi.mock('../../features/files/openInFiles', () => ({ openInFiles: vi.fn(async () => true), kindOnDisk: vi.fn(async () => undefined) }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -41,6 +41,8 @@ beforeEach(async () => {
     writeText.mockClear();
     vi.mocked(openInFiles).mockClear();
     vi.mocked(openInFiles).mockResolvedValue(true);
+    vi.mocked(kindOnDisk).mockReset();
+    vi.mocked(kindOnDisk).mockResolvedValue(undefined);
     toasts.success.mockClear();
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     store = new RootStore(new FixtureTransport());
@@ -103,6 +105,32 @@ describe('FileChip', () => {
         await act(async () => item('Open in GitHub').click());
 
         expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental/blob/main/src/booking/price.ts', '_blank', 'noopener');
+        open.mockRestore();
+    });
+
+    it('takes a path with no trailing slash for the folder it is on the disk: the page of GitHub is its tree', async () => {
+        const open = vi.spyOn(window, 'open').mockReturnValue(null);
+
+        vi.mocked(kindOnDisk).mockResolvedValue('directory');
+        await draw('src/booking');
+        await rightClick();
+        await settle();
+        await act(async () => item('Open in GitHub').click());
+
+        expect(kindOnDisk).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, FOLDER, 'src/booking');
+        expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental/tree/main/src/booking', '_blank', 'noopener');
+        open.mockRestore();
+    });
+
+    it('keeps a path that the disk says nothing about as a file', async () => {
+        const open = vi.spyOn(window, 'open').mockReturnValue(null);
+
+        await draw('src/gone');
+        await rightClick();
+        await settle();
+        await act(async () => item('Open in GitHub').click());
+
+        expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental/blob/main/src/gone', '_blank', 'noopener');
         open.mockRestore();
     });
 

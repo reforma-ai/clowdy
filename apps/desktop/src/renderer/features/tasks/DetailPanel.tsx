@@ -1,14 +1,17 @@
 import { Button } from '@clowdy/components/Button';
 import { ConfirmButton } from '@clowdy/components/ConfirmButton';
 import { ListBoxItem } from '@clowdy/components/List';
+import { openConfirmModal } from '@clowdy/components/modals';
 import { Select } from '@clowdy/components/Select';
 import { Text } from '@clowdy/components/Text';
-import { ArrowUpRight, Box, Close, Layers } from '@clowdy/icons/14';
+import { Archive, ArrowUpRight, Box, Close, Layers } from '@clowdy/icons/14';
 import { useState, type Ref } from 'react';
 
 import { commandTooltip } from '../../hotkeys';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openChat, openRun as openRunInAgents } from '../chats/archiveChat';
+import { archiveTasks } from './archiveActions';
+import { archiveWording, openWork } from './archiveRules';
 import { sendCommand, startTask } from './commands';
 import { CommentsSection } from './CommentsSection';
 import { DependencyList } from './DependencyList';
@@ -24,6 +27,7 @@ import { settledUi, settleScope } from './tasksScope';
 import { checklistOf, parentCandidates, type TaskTree } from './taskTree';
 import { sendWithUndo } from './taskUndo';
 import { activeExecutors, dependencyCandidates, externalLink, startBlockedReason, taskActivity } from './taskView';
+import { useTaskReadings } from './useTaskReadings';
 
 import type { Run, Task } from '@clowdy/protocol';
 import type { CommandInput } from '../../daemon/transport';
@@ -46,7 +50,7 @@ type TaskChanges = Partial<Pick<Extract<CommandInput, { type: 'task.update' }>, 
 
 /**
  * The selected task, on the right of the section: edit it, see where it sits (its parent and the tasks inside it), who works on it and what came out, read and write
- * its comments, start or delete it. This only puts the pieces together and gives each its commands.
+ * its comments, start, archive or delete it. This only puts the pieces together and gives each its commands.
  */
 export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, onCreateSubtask }: DetailPanelProps) {
     const root = useRootStore();
@@ -55,6 +59,8 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
     // What the panel opens makes a place in the history, which must not carry a scope that is gone.
     const nav = settledUi(root, project, ui, { reveal: true });
     const [isStarting, setIsStarting] = useState(false);
+    // A dependency that is archived is not on the board: it is read, and shown as one that is done.
+    const { readings: dependencies } = useTaskReadings(task.dependsOn);
 
     const status = project.statuses.find(candidate => candidate.id === task.statusId);
     const blocked = startBlockedReason(taskRuns);
@@ -74,6 +80,10 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
         settleScope(root, project, ui);
         void openRunInAgents(root, project, ui, runId);
     };
+
+    // A closed task goes to the archive with everything inside it; one with open work asks first, and says how many open tasks it cancels.
+    const { action: archiveLabel } = archiveWording([task], openWork(task, tree, project.statuses).length > 0);
+    const archive = () => archiveTasks({ root, project, ui: nav, confirm: options => openConfirmModal(options) }, [task]);
 
     const remove = async () => {
         const result = await sendCommand(root, { type: 'task.delete', taskId: task.id });
@@ -155,6 +165,7 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
                     <DependencyList
                         ids={ task.dependsOn }
                         tasks={ project.tasks }
+                        readings={ dependencies }
                         statuses={ project.statuses }
                         candidates={ dependencyCandidates(project.taskList, { taskId: task.id, taken: task.dependsOn }) }
                         onAdd={ id => void update({ dependsOn: [...task.dependsOn, id] }) }
@@ -190,6 +201,10 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
                         </Button>
                     ) }
                     <span className={ styles.spacer } />
+                    <Button variant="bordered" size="sm" tooltip={ commandTooltip(archiveLabel, 'tasks.archive') } onPress={ archive }>
+                        <Archive />
+                        { archiveLabel }
+                    </Button>
                     <ConfirmButton variant="filling" color="danger" size="sm" confirmColor="danger" confirmVariant="filled" tooltip={ commandTooltip('Delete task', 'tasks.delete') } onConfirm={ remove }>Delete</ConfirmButton>
                 </div>
             </div>

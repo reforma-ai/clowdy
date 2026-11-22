@@ -20,24 +20,22 @@ const itemsOf = (targets: readonly FileEntry[], options: Partial<Parameters<type
 const labels = (items: ReturnType<typeof itemsOf>) => items.map(item => [item.label, item.children?.map(child => child.label)]);
 
 describe('what the Files tree\'s row menu is given to open a row in', () => {
-    it('is an Open in… submenu of the editor, the file manager showing the file and GitHub, then the two copies, for a file', () => {
+    it('is a Copy path submenu of the two paths, then an Open in… submenu of the editor, the file manager showing the file and GitHub, for a file', () => {
         expect(labels(itemsOf([FILE]))).toEqual([
+            ['Copy path', ['Absolute path', 'Relative path']],
             ['Open in…', ['Open in Cursor', 'Show in Finder', 'Open in GitHub']],
-            ['Copy path', undefined],
-            ['Copy relative path', undefined],
         ]);
     });
 
     it('adds the terminal for a folder, which the file manager opens', () => {
         expect(labels(itemsOf([DIRECTORY]))).toEqual([
+            ['Copy path', ['Absolute path', 'Relative path']],
             ['Open in…', ['Open in Cursor', 'Open in Finder', 'Open in Ghostty', 'Open in GitHub']],
-            ['Copy path', undefined],
-            ['Copy relative path', undefined],
         ]);
     });
 
     it('has no Open in Files, since the tree is the built-in file manager', () => {
-        const [submenu] = itemsOf([FILE]);
+        const [, submenu] = itemsOf([FILE]);
 
         expect(submenu!.children!.map(child => child.id)).not.toContain('files');
     });
@@ -47,14 +45,19 @@ describe('what the Files tree\'s row menu is given to open a row in', () => {
         expect(itemsOf([])).toEqual([]);
     });
 
-    it('leaves out the submenu when nothing opens the row (no program and no GitHub page), and keeps the copies', () => {
-        expect(labels(itemsOf([FILE], { programs: {}, git: undefined }))).toEqual([['Copy path', undefined], ['Copy relative path', undefined]]);
+    it('gives both submenus an icon, since every row of the menu has one', () => {
+        expect(itemsOf([FILE]).map(item => item.icon)).not.toContain(undefined);
+    });
+
+    it('leaves out Open in… when nothing opens the row (no program and no GitHub page), and keeps Copy path', () => {
+        expect(labels(itemsOf([FILE], { programs: {}, git: undefined }))).toEqual([['Copy path', ['Absolute path', 'Relative path']]]);
     });
 
     it('runs each item against the row\'s path inside the folder the tree shows', () => {
         const done = effects();
-        const [submenu, copyPath, copyRelative] = itemsOf([FILE], { effects: done });
-        const [editor, manager, github] = submenu!.children!;
+        const [copying, opening] = itemsOf([FILE], { effects: done });
+        const [editor, manager, github] = opening!.children!;
+        const [copyPath, copyRelative] = copying!.children!;
 
         editor!.onAction();
         manager!.onAction();

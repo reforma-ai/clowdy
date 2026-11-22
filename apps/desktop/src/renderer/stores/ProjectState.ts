@@ -1,5 +1,7 @@
 import { makeAutoObservable, observableRef, observableShallow, runInAction } from 'mobx';
 
+import { TransportError } from '../daemon/transport';
+
 import type {
     Chat,
     ChatId,
@@ -20,6 +22,9 @@ import type {
 import type { Transport } from '../daemon/transport';
 
 export type LoadStatus = 'loading' | 'ready' | 'failed';
+
+/** The most archived tasks a project remembers (`ProjectState.archivedKnown`): the ones read longest ago are let go first. */
+export const ARCHIVED_MEMORY_LIMIT = 500;
 
 const chatLinkKey = (link: ChatTaskLink) => `${ link.chatId }:${ link.taskId }`;
 const runLinkKey = (link: RunTaskLink) => `${ link.runId }:${ link.taskId }:${ link.relation }`;
@@ -67,9 +72,22 @@ export class ProjectState {
     commentsRevisions = new Map<TaskId, number>();
     /** Counts the snapshots taken in: after a reload the event feed may have missed comment events, so every task's comments are read again. */
     commentsReload = 0;
+    /**
+     * The archived tasks this window has read or seen archived, by id, in memory only: the snapshot leaves the archive out, and a mention, a dependency or the history
+     * names an archived task by its id or its key. The ones read longest ago are let go past `ARCHIVED_MEMORY_LIMIT`, and a task that is restored or deleted is dropped
+     * at once, so it holds archived tasks only. A task that is not here may still be archived: `readTask` asks the daemon.
+     */
+    archivedKnown = new Map<TaskId, Task>();
+    /**
+     * Counts what may have changed the archive: a task archived, restored or deleted, a snapshot taken in again (the feed may have missed events). A view of the archive
+     * reads the archive again when it changes. It only grows, and its value means nothing else. A task made on the board counts too (it cannot be told from a restored one).
+     */
+    archiveRevision = 0;
     /** Events that arrived while the first snapshot was loading. */
     readonly #queue: ClowdyEvent[] = [];
     #loadId = 0;
+    /** The reads of tasks the project does not hold that are on their way, so two parts of the screen asking for one task make one request. */
+    readonly #reading = new Map<TaskId, Promise<Task | undefined>>();
 
     constructor(private readonly transport: Transport, project: Project) {
         this.id = project.id;
@@ -84,6 +102,7 @@ export class ProjectState {
             chatTaskLinks: observableShallow,
             runTaskLinks: observableShallow,
             commentsRevisions: observableShallow,
+            archivedKnown: observableShallow,
             lastDocsChange: observableRef,
         });
     }
@@ -124,6 +143,9 @@ export class ProjectState {
         this.statuses = snapshot.statuses;
         this.chats = new Map(snapshot.chats.map(chat => [chat.id, chat]));
         this.tasks = new Map(snapshot.tasks.map(task => [task.id, task]));
+        // A task that is on the board is not archived any more, whatever the memory says: it was restored while the feed was away.
+        snapshot.tasks.forEach(task => this.archivedKnown.delete(task.id));
+        this.archiveRevision++;
         this.runs = new Map(snapshot.runs.map(run => [run.id, run]));
         this.chatTaskLinks = new Map(snapshot.chatTaskLinks.map(link => [chatLinkKey(link), link]));
         this.runTaskLinks = new Map(snapshot.runTaskLinks.map(link => [runLinkKey(link), link]));
@@ -178,11 +200,24 @@ export class ProjectState {
             case 'task.upserted':
                 // The snapshot has no archived tasks, so an archived one is off the board here too; restoring it sends the task again without `archivedAt`.
                 // Its chat and run links stay (a restore sends no link events); the derived lists ignore the links of a task the map does not hold.
-                if (data.task.archivedAt === undefined) this.tasks.set(data.task.id, data.task);
-                else this.tasks.delete(data.task.id);
+                if (data.task.archivedAt === undefined) {
+                    // Back on the board, or new: either way the archive may have lost it.
+                    if (this.archivedKnown.delete(data.task.id) || !this.tasks.has(data.task.id)) this.archiveRevision++;
+
+                    this.tasks.set(data.task.id, data.task);
+                }
+                else {
+                    this.tasks.delete(data.task.id);
+                    this.rememberArchived([data.task]);
+                    this.archiveRevision++;
+                }
 
                 break;
             case 'task.deleted':
+                // A task that is not on the board is in the archive, or nowhere.
+                if (!this.tasks.has(data.taskId)) this.archiveRevision++;
+
+                this.archivedKnown.delete(data.taskId);
                 this.tasks.delete(data.taskId);
                 this.#dropLinks(link => link.taskId === data.taskId);
                 this.#bumpComments(data.taskId);
@@ -279,6 +314,75 @@ export class ProjectState {
 
     get taskList(): Task[] {
         return [...this.tasks.values()].sort(byNumber);
+    }
+
+    /**
+     * Remembers archived tasks the window has read (`archivedKnown`), the latest read last, and lets the ones read longest ago go past `ARCHIVED_MEMORY_LIMIT`.
+     * A task without `archivedAt`, or one the board holds, is not archived and is left out.
+     */
+    rememberArchived(tasks: readonly Task[]): void {
+        for (const task of tasks) {
+            if (task.archivedAt === undefined || this.tasks.has(task.id)) continue;
+
+            // Deleted first, so a task read again moves to the end of the order the oldest are dropped in.
+            this.archivedKnown.delete(task.id);
+            this.archivedKnown.set(task.id, task);
+        }
+
+        const excess = this.archivedKnown.size - ARCHIVED_MEMORY_LIMIT;
+
+        if (excess > 0) [...this.archivedKnown.keys()].slice(0, excess).forEach(id => this.archivedKnown.delete(id));
+    }
+
+    /** The task on the board, else the archived one the window knows. Not the daemon's: `readTask` is. */
+    taskById(taskId: TaskId): Task | undefined {
+        return this.tasks.get(taskId) ?? this.archivedKnown.get(taskId);
+    }
+
+    /** The task a key like `CAR-24` names, on the board or among the archived tasks the window knows: what a mention or a chip resolves a key with. */
+    taskOfKey(key: string): Task | undefined {
+        for (const task of this.tasks.values()) if (task.key === key) return task;
+
+        for (const task of this.archivedKnown.values()) if (task.key === key) return task;
+
+        return undefined;
+    }
+
+    /**
+     * The task for an id the board does not hold: an archived one, read from the daemon (`getTaskDetail`) and remembered, or the one the window knows. Resolves to
+     * `undefined` when the daemon has no such task, or it belongs to another project, and rejects for any other failure. A task the daemon has that is not archived
+     * is returned and not remembered: the board has it, or is about to (the event can come after the reply that made it).
+     */
+    readTask(taskId: TaskId): Promise<Task | undefined> {
+        const held = this.taskById(taskId);
+
+        if (held) return Promise.resolve(held);
+
+        let reading = this.#reading.get(taskId);
+
+        if (!reading) {
+            reading = this.#fetchTask(taskId).finally(() => this.#reading.delete(taskId));
+            this.#reading.set(taskId, reading);
+        }
+
+        return reading;
+    }
+
+    async #fetchTask(taskId: TaskId): Promise<Task | undefined> {
+        try {
+            const { task } = await this.transport.getTaskDetail(taskId);
+
+            if (task.projectId !== this.id) return undefined;
+
+            this.rememberArchived([task]);
+
+            return task;
+        }
+        catch (error) {
+            if (error instanceof TransportError && error.status === 404) return undefined;
+
+            throw error;
+        }
     }
 
     /**

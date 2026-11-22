@@ -13,8 +13,8 @@ import { useFilesStore } from './useFilesStore';
 
 /**
  * The side panel's Files tab: the editor with the files that are open in tabs, and at its right the tree of the folder the window is working in (the same
- * folder the Info tab names). Each folder keeps its own tabs, so the tree and the tabs change with the folder, and come back with it. A row's menu has Open in…
- * (the editor, the file manager, the terminal, GitHub) and the copies of its path.
+ * folder the Info tab names). Each folder keeps its own tabs, so the tree and the tabs change with the folder, and come back with it. A row's menu has Copy path
+ * (absolute or relative) and Open in… (the editor, the file manager, the terminal, GitHub) after its own items.
  */
 export default function FilesTab() {
     const project = useProjectState();

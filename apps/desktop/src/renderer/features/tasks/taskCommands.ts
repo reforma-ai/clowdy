@@ -57,6 +57,8 @@ export interface TaskCommandDeps {
     setView: (view: TasksView) => void;
     /** The scope the screen shows: the task whose insides it draws, or `null` for the project's roots. */
     scope: () => TaskId | null;
+    /** The screen shows the archive in place of the scope, which has no view, search, filter or new-task button then: their keys are off, as the controls are. */
+    isArchive: () => boolean;
     /** The rows of the tree list as drawn, folded ones' insides left out. Read when a key is pressed. Nothing while the screen shows a board. */
     rows: () => readonly TreeRow[];
     /** Folds the insides of a task in the tree list, or opens them. */
@@ -87,6 +89,11 @@ export interface TaskCommandDeps {
     undo: { canUndo: () => boolean; undoLatest: () => Promise<boolean> };
     /** Starts the task with an agent, as the panel's Start button does. */
     start: (taskId: TaskId) => Promise<unknown>;
+    /**
+     * Archives the tasks, each with the tasks inside it: a closed one goes at once, and open work is canceled first after a question that says how many open tasks
+     * that cancels. The daemon's refusals and the undo are its own (`archiveTasks`).
+     */
+    archive: (tasks: readonly Task[]) => void;
     /** Opens a picker beside the cursor task. */
     openPicker: (request: PickerRequest) => void;
     /** Asks before something that cannot be undone. `onConfirm` runs when the person agrees, and the dialog stays until it settles. */
@@ -404,9 +411,13 @@ function startTarget(deps: TaskCommandDeps): TaskId | null {
     return isPanelOpen(deps) ? deps.ui.taskId : deps.cursor.cursorId;
 }
 
-/** Rename, start and delete. Rename is for the cursor task only, start for the open task or else the cursor task. Delete takes the selection, after one question. */
+/**
+ * Rename, start, archive and delete. Rename is for the cursor task only, start for the open task or else the cursor task. Archive and delete take the selection, delete
+ * after one question and archive after one only when it would cancel open work. `E` is Archive, as in Gmail and Linear's lists: a letter no other command of the
+ * screen uses, a step away from `S` and `X`, and not the delete chord, which is for what cannot be taken back.
+ */
 function actionCommands(deps: TaskCommandDeps): Command[] {
-    const { cursor, ui, hasTask, send, start, confirm, focusTitle, startBlocked } = deps;
+    const { cursor, ui, hasTask, send, start, confirm, focusTitle, startBlocked, archive } = deps;
 
     return [
         {
@@ -450,6 +461,19 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
             },
         },
         {
+            id: 'tasks.archive',
+            title: 'Archive tasks',
+            group: GROUP,
+            keys: 'e',
+            scope: TASKS_SCOPE,
+            ...onTheList(deps),
+            handler: () => onTargets(deps, () => {
+                const targets = targetTasks(deps);
+
+                if (targets.length > 0) archive(targets);
+            }),
+        },
+        {
             id: 'tasks.delete',
             title: 'Delete tasks…',
             group: GROUP,
@@ -485,7 +509,10 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
  * so they work wherever the key is not a character of a text field, which the dispatcher already keeps out.
  * Inside a task `C` makes a sub-task of it, as the "+ Sub-task" button does, and at the last level it says why it cannot, as that button does when it is off.
  */
-function screenCommands({ view, setView, scope, canHaveChildren, create, notify, openFilter, focusSearch }: TaskCommandDeps): Command[] {
+function screenCommands({ view, setView, scope, isArchive, canHaveChildren, create, notify, openFilter, focusSearch }: TaskCommandDeps): Command[] {
+    // The controls these keys stand for leave the header while the archive shows, so a key must not act on what is not there (`F` would open the filter for later).
+    const inScope = () => !isArchive();
+
     return [
         {
             id: 'tasks.create',
@@ -493,6 +520,7 @@ function screenCommands({ view, setView, scope, canHaveChildren, create, notify,
             group: GROUP,
             keys: 'c',
             scope: TASKS_SCOPE,
+            when: inScope,
             handler: () => {
                 const inside = scope();
 
@@ -500,9 +528,9 @@ function screenCommands({ view, setView, scope, canHaveChildren, create, notify,
                 else create();
             },
         },
-        { id: 'tasks.view.toggle', title: 'Switch between board and list', group: GROUP, keys: '$mod+b', scope: TASKS_SCOPE, handler: () => setView(view() === 'board' ? 'list' : 'board') },
-        { id: 'tasks.filter', title: 'Filter tasks', group: GROUP, keys: 'f', scope: TASKS_SCOPE, handler: () => openFilter() },
-        { id: 'tasks.search', title: 'Search tasks', group: GROUP, keys: '/', scope: TASKS_SCOPE, handler: () => focusSearch() },
+        { id: 'tasks.view.toggle', title: 'Switch between board and list', group: GROUP, keys: '$mod+b', scope: TASKS_SCOPE, when: inScope, handler: () => setView(view() === 'board' ? 'list' : 'board') },
+        { id: 'tasks.filter', title: 'Filter tasks', group: GROUP, keys: 'f', scope: TASKS_SCOPE, when: inScope, handler: () => openFilter() },
+        { id: 'tasks.search', title: 'Search tasks', group: GROUP, keys: '/', scope: TASKS_SCOPE, when: inScope, handler: () => focusSearch() },
     ];
 }
 

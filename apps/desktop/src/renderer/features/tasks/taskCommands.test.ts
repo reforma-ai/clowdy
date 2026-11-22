@@ -68,6 +68,8 @@ interface Harness {
         view: TasksView;
         /** The scope the screen shows: a task id, or `null` for the roots. */
         scope: string | null;
+        /** The archive is shown in place of the scope. */
+        archive: boolean;
         /** The rows of the tree list as drawn. Empty while the screen shows a board. */
         rows: TreeRow[];
         /** Tasks that cannot hold tasks (the last level). */
@@ -91,6 +93,8 @@ interface Harness {
     sent: CommandInput[][];
     pickers: PickerRequest[];
     confirms: OpenConfirmModalOptions[];
+    /** The tasks the commands asked the screen to archive, one array per call. */
+    archived: string[][];
     started: string[];
     titles: string[];
     registry: HotkeyRegistry;
@@ -135,11 +139,12 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
     const scoped: Harness['scoped'] = { opened: [], up: 0 };
     const folds: Harness['folds'] = [];
     const known = new Set(grid.flat());
-    const state: Harness['state'] = { view, scope: null, rows: [], full: new Set(), zone: 'list', focused: true, tasks, refused: new Set(), blocked: new Map(), chats: new Map(), docs: new Map(), docsFail: false };
+    const state: Harness['state'] = { view, scope: null, archive: false, rows: [], full: new Set(), zone: 'list', focused: true, tasks, refused: new Set(), blocked: new Map(), chats: new Map(), docs: new Map(), docsFail: false };
     const reveal = vi.fn<() => void>();
     const sent: CommandInput[][] = [];
     const pickers: PickerRequest[] = [];
     const confirms: OpenConfirmModalOptions[] = [];
+    const archived: string[][] = [];
     const started: string[] = [];
     const titles: string[] = [];
     const asked = { created: 0, filter: 0, search: 0 };
@@ -153,6 +158,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
         view: () => state.view,
         setView,
         scope: () => state.scope,
+        isArchive: () => state.archive,
         rows: () => state.rows,
         setFolded: (taskId, folded) => void folds.push([taskId, folded]),
         openScope: taskId => void scoped.opened.push(taskId),
@@ -172,6 +178,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
                 : { ok: true, requestId: 'r', data: {} }));
         },
         undo: { canUndo: () => undo.canUndo(UNDO_SCOPE), undoLatest: () => undo.undoLatest(UNDO_SCOPE) },
+        archive: tasks => void archived.push(tasks.map(task => task.id)),
         start: async (id) => {
             started.push(id);
         },
@@ -209,7 +216,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
 
     uninstall = installDispatcher(registry);
 
-    return { cursor, ui, setView, scoped, folds, reveal, known, state, sent, pickers, confirms, started, titles, registry, undo, asked, copied, notices, replaced, deps };
+    return { cursor, ui, setView, scoped, folds, reveal, known, state, sent, pickers, confirms, archived, started, titles, registry, undo, asked, copied, notices, replaced, deps };
 }
 
 /** Returns whether a command took the key (the dispatcher calls `preventDefault`). */
@@ -1264,6 +1271,81 @@ describe('Start', () => {
     });
 });
 
+describe('Archive', () => {
+    it('hands the cursor task to the screen, which archives it with what is inside it', () => {
+        const harness = setup(list, 'list');
+
+        press('j');
+
+        expect(press('e')).toBe(true);
+        expect(harness.archived).toEqual([['a2']]);
+        // The screen asks and sends: the command only says which tasks.
+        expect(harness.sent).toEqual([]);
+        expect(harness.confirms).toEqual([]);
+    });
+
+    it('takes the whole selection, in the order of the list, and not the cursor alone', () => {
+        const harness = setup(list, 'list');
+
+        press('x');
+        press('j');
+        press('j');
+        press('x');
+        press('j');
+
+        press('e');
+
+        expect(harness.archived).toEqual([['a1', 'a3']]);
+    });
+
+    it('leaves out a task the project does not hold any more', () => {
+        const harness = setup(list, 'list');
+
+        press('x');
+        harness.state.tasks = harness.state.tasks.filter(task => task.id !== 'a1');
+
+        expect(press('e')).toBe(true);
+        expect(harness.archived).toEqual([]);
+    });
+
+    it('shows the cursor first when the keyboard is not on a task, and archives on the next press', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.focused = false;
+        press('e');
+
+        expect(harness.archived).toEqual([]);
+        expect(harness.reveal).toHaveBeenCalled();
+
+        harness.state.focused = true;
+        press('e');
+
+        expect(harness.archived).toEqual([['a1']]);
+    });
+
+    it('is off while another widget has the keyboard, and with no task under the cursor', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.zone = 'other';
+
+        expect(press('e')).toBe(false);
+
+        harness.state.zone = 'list';
+        harness.cursor.setGrid([]);
+
+        expect(press('e')).toBe(false);
+        expect(harness.archived).toEqual([]);
+    });
+
+    it('does not take a modified E', () => {
+        const harness = setup(list, 'list');
+
+        expect(press('e', { metaKey: true })).toBe(false);
+        expect(press('e', { altKey: true })).toBe(false);
+        expect(harness.archived).toEqual([]);
+    });
+});
+
 describe('Delete', () => {
     it('asks once for the whole selection, with the count, before sending anything', () => {
         const harness = setup(list, 'list');
@@ -1375,6 +1457,7 @@ describe('Delete', () => {
 describe('while a picker or a dialog is open, or a text field has focus', () => {
     const keys: [string, KeyboardEventInit][] = [
         ['s', {}],
+        ['e', {}],
         ['ArrowRight', { altKey: true }],
         ['m', {}],
         ['R', { shiftKey: true }],
@@ -1390,7 +1473,7 @@ describe('while a picker or a dialog is open, or a text field has focus', () => 
 
         for (const [key, init] of keys) expect(press(key, init, input)).toBe(false);
 
-        expect([harness.sent, harness.pickers, harness.confirms, harness.started, harness.titles]).toEqual([[], [], [], [], []]);
+        expect([harness.sent, harness.pickers, harness.confirms, harness.archived, harness.started, harness.titles]).toEqual([[], [], [], [], [], []]);
     });
 
     it('leaves every key of Stage 5 alone, because the dispatcher treats them as an overlay', () => {
@@ -1415,6 +1498,7 @@ describe('while a picker or a dialog is open, or a text field has focus', () => 
         expect(harness.pickers).toEqual([]);
         expect(harness.confirms).toEqual([]);
         expect(harness.sent).toEqual([]);
+        expect(harness.archived).toEqual([]);
         expect(harness.started).toEqual([]);
         expect(harness.titles).toEqual([]);
     });
@@ -1485,6 +1569,24 @@ describe('New task, view, filter and search', () => {
         press('/');
 
         expect(harness.asked).toEqual({ created: 1, filter: 1, search: 1 });
+    });
+
+    it('C, F, / and the view switch are off while the archive shows, since the controls they stand for are not there', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.archive = true;
+
+        expect(press('c')).toBe(false);
+        expect(press('f')).toBe(false);
+        expect(press('/')).toBe(false);
+        expect(press('b', { metaKey: true })).toBe(false);
+        expect(harness.asked).toEqual({ created: 0, filter: 0, search: 0 });
+        expect(harness.setView).not.toHaveBeenCalled();
+
+        harness.state.archive = false;
+
+        expect(press('f')).toBe(true);
+        expect(harness.asked.filter).toBe(1);
     });
 
     it('F opens the filter and / puts the keyboard in the search field', () => {
@@ -1981,6 +2083,7 @@ describe('the keymap', () => {
             'tasks.deps.blocking',
             'tasks.rename',
             'tasks.start',
+            'tasks.archive',
             'tasks.delete',
             'tasks.create',
             'tasks.view.toggle',

@@ -151,6 +151,11 @@ export class ProjectUi {
     taskPageView: TasksView = 'board';
     /** Tasks: the tasks whose insides are folded in the tree list, the newest folds last. A task that is not here is open, which is how every task starts. */
     tasksCollapsed: readonly TaskId[] = [];
+    /**
+     * Tasks: the screen shows the project's archive in place of the scope (the scope and the view stay as they were, and come back when it is left). Not kept between
+     * sessions, and not a place in the history: it is an option of the screen, as the view is.
+     */
+    tasksArchive = false;
     /** Agents: files that a hand-off from another chat left for the new-chat page, which takes them once it is open. Not kept between sessions. */
     pendingFiles: readonly File[] = [];
 
@@ -302,6 +307,8 @@ export class ProjectUi {
 
         if (!reveal) return;
 
+        // A task of the board, opened from elsewhere, is not in the archive: the screen goes where it shows.
+        this.tasksArchive = false;
         this.tasksScope = reveal.scope;
         this.expandTasks(reveal.unfold);
     }
@@ -393,6 +400,11 @@ export class ProjectUi {
         const task = this.tasksScope === null ? undefined : tasks.get(this.tasksScope);
 
         return task && task.archivedAt === undefined ? this.tasksScope : null;
+    }
+
+    /** Shows the project's archive in place of the scope, or the scope again. */
+    setTasksArchive(show: boolean): void {
+        this.tasksArchive = show;
     }
 
     /** Shows the sub-tasks of the scope flattened onto the board, or only the tasks directly inside it. */

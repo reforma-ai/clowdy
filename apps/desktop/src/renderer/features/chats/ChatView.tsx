@@ -39,9 +39,9 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
-    // A task key in a message is a chip that opens the task; a thread's card opens that thread.
+    // A task key in a message is a chip that opens the task, an archived one the window knows too (`ProjectState.taskOfKey`); a thread's card opens that thread.
     const links = useMemo(() => ({
-        taskOfKey: (key: string) => project.taskList.find(task => task.key === key),
+        taskOfKey: (key: string) => project.taskOfKey(key),
         onOpenTask: (taskId: string) => ui.openTask(taskId),
         attachmentBlob: (attachment: Attachment) => root.transport.getAttachment(project.id, attachment.id),
         hasChat: (chatId: string) => project.chats.has(chatId),

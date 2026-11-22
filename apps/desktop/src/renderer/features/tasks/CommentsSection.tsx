@@ -21,14 +21,16 @@ export interface CommentsSectionProps {
     onOpenRun: (runId: string) => void;
     /** Opens a task a comment names by its key. */
     onOpenTask: (taskId: TaskId) => void;
+    /** The task is archived: its comments are read and nothing more, with no composer and no Edit or Delete on the person's own. */
+    isReadOnly?: boolean;
 }
 
 /**
  * The task's comments, oldest first, with a composer under them. They are read when the panel opens and again when anyone changes them (`useTaskComments`).
  * The list does not move when a comment arrives, since it grows at its end; the person's own comment brings the composer back into view once it is in the list,
- * and nothing else scrolls. The person edits and deletes their own comments, and an agent's are read only.
+ * and nothing else scrolls. The person edits and deletes their own comments, and an agent's are read only; those of an archived task are all read only.
  */
-export function CommentsSection({ taskId, onOpenRun, onOpenTask }: CommentsSectionProps) {
+export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = false }: CommentsSectionProps) {
     const root = useRootStore();
     const project = useProjectState();
     const { state, retry } = useTaskComments(taskId);
@@ -36,10 +38,10 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask }: CommentsSecti
     // The comment the person has just sent, which the composer is brought into view for once it is in the list, and the one it was done for.
     const [sentId, setSentId] = useState<string>();
     const broughtIntoView = useRef<string>(undefined);
-    // A key in a comment is a chip that opens the task, as in a chat. One object for the section's life, which reads the latest project and handler when asked.
+    // A key in a comment is a chip that opens the task, as in a chat, an archived one the window knows too. One object for the section's life, which reads the latest project and handler when asked.
     const latest = useRef({ project, onOpenTask });
     const [links] = useState<StreamLinks>(() => ({
-        taskOfKey: key => latest.current.project.taskList.find(task => task.key === key),
+        taskOfKey: key => latest.current.project.taskOfKey(key),
         onOpenTask: id => latest.current.onOpenTask(id),
     }));
 
@@ -106,7 +108,7 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask }: CommentsSecti
                                 key={ comment.id }
                                 comment={ comment }
                                 author={ authorOf(comment.author) }
-                                isOwn={ comment.author.kind === 'user' }
+                                isOwn={ !isReadOnly && comment.author.kind === 'user' }
                                 onEdit={ body => edit(comment, body) }
                                 onDelete={ () => remove(comment) }
                             />
@@ -117,9 +119,11 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask }: CommentsSecti
 
             { state.status === 'ready' && state.isCut && <None>{ `Showing the first ${ MAX_COMMENTS } comments` }</None> }
 
-            <div ref={ composer }>
-                <CommentEditor aria-label="Write a comment" submitLabel="Send" onSubmit={ send } />
-            </div>
+            { !isReadOnly && (
+                <div ref={ composer }>
+                    <CommentEditor aria-label="Write a comment" submitLabel="Send" onSubmit={ send } />
+                </div>
+            ) }
         </Section>
     );
 }
