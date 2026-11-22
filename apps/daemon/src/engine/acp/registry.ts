@@ -41,7 +41,10 @@ export interface ResolvedAgent {
     sessionMeta?: Record<string, unknown>;
     /** The `_meta` of the client capabilities in `initialize` (see `AgentSpec.clientMeta`). */
     clientMeta?: Record<string, unknown>;
-    /** The permission preset the agent runs on and what it means for this start; absent while the person has not chosen one (today's behaviour: no mode sent, every request answered by the daemon's policy). */
+    /**
+     * The permission preset the agent runs on and what it means for this start: the person's choice, else the provider's default. Every agent the registry
+     * resolves has one; it is absent only on an agent a test builds without one, which the engine's own policy then answers (`CLOWDY_AGENT_PERMISSIONS`).
+     */
     permission?: { preset: PermissionPresetId; mode?: string; answer: 'ask' | 'allow' };
 }
 
@@ -280,17 +283,12 @@ export class AgentRegistry {
     }
 
     /**
-     * What the person's chosen preset does to the agent's next start, or `undefined` when they chose none (the agent then runs as it did before presets) or
-     * chose one the agent no longer offers.
+     * What the preset the agent runs on does to its next start: the person's choice, or the provider's default when they chose none or chose one the agent no
+     * longer offers.
      */
-    private permissionPlan(id: string, override: AgentOverride): { permission: NonNullable<ResolvedAgent['permission']>; effect: SettingEffect } | undefined {
+    private permissionPlan(id: string, override: AgentOverride): { permission: NonNullable<ResolvedAgent['permission']>; effect: SettingEffect } {
         const support = this.permissionsOf(id);
-        const preset = override.permission;
-
-        if (!preset || !support.presets.some(candidate => candidate.id === preset)) {
-            return undefined;
-        }
-
+        const preset = chosenPreset(support, override) ?? support.default;
         const { mode, effect, answer } = support.apply(preset);
 
         return { permission: { preset, ...(mode !== undefined && { mode }), answer }, effect: effect ?? {} };
@@ -366,7 +364,7 @@ export class AgentRegistry {
         const permit = this.permissionPlan(entry.id, override);
 
         if (entry.custom) {
-            return { ok: true, agent: { id: entry.id, name: entry.name, program, command: program, args: entry.agent.args, env: { ...entry.agent.env, ...override.env }, scrub: [], protocol: 'v1', ...(permit && { permission: permit.permission }) } };
+            return { ok: true, agent: { id: entry.id, name: entry.name, program, command: program, args: entry.agent.args, env: { ...entry.agent.env, ...override.env }, scrub: [], protocol: 'v1', permission: permit.permission } };
         }
 
         const { spec } = entry;
@@ -376,8 +374,8 @@ export class AgentRegistry {
             return { ok: false, message: apart.message };
         }
 
-        const applied = appliedSettings(spec, override, permit?.effect);
-        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, protocol: spec.protocol ?? 'v1', ...(spec.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), sessionMeta: withToolRules(spec.sessionMeta, applied), ...(spec.clientMeta && { clientMeta: spec.clientMeta }), ...(permit && { permission: permit.permission }) };
+        const applied = appliedSettings(spec, override, permit.effect);
+        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, protocol: spec.protocol ?? 'v1', ...(spec.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), sessionMeta: withToolRules(spec.sessionMeta, applied), ...(spec.clientMeta && { clientMeta: spec.clientMeta }), permission: permit.permission };
 
         if (spec.launch.kind === 'binary') {
             return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: withoutRemoved({ ...spec.env, ...apart?.env, ...applied.env, ...codexConfigEnv(applied.codexConfig), ...override.env }) } };
@@ -532,9 +530,12 @@ function settingsOf(spec: AgentSpec, override: AgentOverride): AgentSetting[] {
     return (spec.settings ?? []).map(setting => ({ id: setting.id, label: setting.label, description: setting.description, value: settingValue(setting, override), default: setting.default }));
 }
 
+/** The person's choice of permission preset, unless the agent no longer offers it (written by hand, or left from a provider that offered more). */
+const chosenPreset = (support: PermissionSupport, override: AgentOverride): PermissionPresetId | undefined => (support.presets.some(preset => preset.id === override.permission) ? override.permission : undefined);
+
 /** The permission presets of an agent for a person to see and pick from: the names are the same for every agent, the descriptions are the agent's own. A chosen preset the agent no longer offers is not shown as chosen. */
 function permissionsInfo(support: PermissionSupport, override: AgentOverride): AgentPermissions {
-    const chosen = support.presets.some(preset => preset.id === override.permission) ? override.permission : undefined;
+    const chosen = chosenPreset(support, override);
 
     return {
         presets: support.presets.map(({ id, description }) => ({ id, name: PERMISSION_PRESET_NAMES[id], description })),

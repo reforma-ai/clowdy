@@ -1,10 +1,18 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 
+import { ToolBridge } from '../src/engine/acp/bridge';
 import { applyChoices } from '../src/engine/acp/conversation';
-import { collect, PROTOCOLS, rig, textOf } from './acp-helpers';
+import { AcpEngine } from '../src/engine/acp/engine';
+import { AgentRegistry } from '../src/engine/acp/registry';
+import { claude } from '../src/providers/claude';
+import { collect, FAKE_AGENT, FAKE_AGENT_V2, PROTOCOLS, quietDiscovery, rig, textOf } from './acp-helpers';
+import { testSpec } from './helpers';
 
 import type { ConfigChange, SelectOption } from '../src/engine/acp/conversation';
 import type { ResolvedAgent } from '../src/engine/acp/registry';
+import type { PermissionPolicy } from '../src/engine/acp/session';
+import type { ApprovalRequest } from '../src/engine/types';
+import type { Provider } from '../src/providers/types';
 import type { Rig } from './acp-helpers';
 
 const MODES = ['default', 'acceptEdits', 'auto', 'bypassPermissions'];
@@ -73,7 +81,7 @@ describe.each(PROTOCOLS)('the permission mode through a session over %s', (proto
         current = undefined;
     });
 
-    /** Starts the fake agent as the registry would resolve it for a chosen preset (`permission` undefined: none chosen), and reads what the session ended up on. */
+    /** Starts the fake agent as a registry would resolve it for `permission` (undefined: an agent a test builds with no preset at all), and reads what the session ended up on. */
     async function chosen(permission: ResolvedAgent['permission'], start: Parameters<Rig['start']>[1] = {}): Promise<{ model: string; effort: string; sets: number; mode?: string }> {
         current = rig({ protocol, agentEnv: { FAKE_ACP_MODES: '1' } });
 
@@ -101,8 +109,84 @@ describe.each(PROTOCOLS)('the permission mode through a session over %s', (proto
         expect(await chosen({ preset: 'auto', mode: 'auto', answer: 'ask' }, { resumeSessionId: 'earlier-7' })).toMatchObject({ mode: 'auto', sets: 1 });
     });
 
-    test('is not sent for a preset that sets none, nor when no preset was chosen', async () => {
+    test('is not sent for a preset that sets none, nor for an agent with no preset at all', async () => {
         expect(await chosen({ preset: 'ask', answer: 'ask' })).toEqual({ model: 'fast', effort: 'high', sets: 0 });
         expect(await chosen(undefined)).toEqual({ model: 'fast', effort: 'high', sets: 0 });
+    });
+});
+
+describe.each(PROTOCOLS)('an agent the person has not chosen a preset for, through a session over %s', (protocol) => {
+    let bridge: ToolBridge | undefined;
+
+    afterEach(() => {
+        bridge?.stop();
+        bridge = undefined;
+    });
+
+    /** The real provider's `permissions` (or none) on the fake agent, which offers the modes of Claude's adapter; the registry resolves it as it does for a run. */
+    function agentOn(provider: Pick<Provider, 'permissions'>, policy?: PermissionPolicy): { registry: AgentRegistry; run: (prompt: string) => Promise<{ text: string; asked: ApprovalRequest[] }> } {
+        const registry = new AgentRegistry({
+            discovery: quietDiscovery(),
+            providers: [{ ...provider, spec: { ...testSpec('stub').spec, launch: { kind: 'binary', args: [protocol === 'v2' ? FAKE_AGENT_V2 : FAKE_AGENT] }, env: { FAKE_ACP_MODES: '1' }, protocol } }],
+        });
+
+        registry.update('stub', { path: process.execPath });
+        bridge = new ToolBridge();
+
+        const engine = new AcpEngine('stub', { registry, bridge, env: process.env, permissions: policy, backgroundHandoffMs: 400 });
+
+        return {
+            registry,
+            async run(prompt) {
+                const asked: ApprovalRequest[] = [];
+                const { signal } = new AbortController();
+                const session = engine.start({ cwd: process.cwd(), prompt, tools: [], signal, approve: async (request) => {
+                    asked.push(request);
+
+                    return 'allow_once';
+                } });
+                const events = await collect(session);
+
+                await session.close();
+
+                return { text: textOf(events), asked };
+            },
+        };
+    }
+
+    /** The agent's `choice` line (a JSON object) and what its permission request was answered with. */
+    const read = (text: string) => {
+        const end = text.indexOf('}') + 1;
+
+        return { choice: JSON.parse(text.slice(0, end)) as Record<string, unknown>, answer: text.slice(end) };
+    };
+
+    const REQUEST = 'choice\nperm execute {"title":"Run ls","rawInput":{"command":"ls"}}';
+
+    test('Claude Code starts in Approve for me and has its requests put to the person', async () => {
+        const { run } = agentOn({ permissions: claude.permissions });
+        const { text, asked } = await run(REQUEST);
+
+        expect(read(text)).toEqual({ choice: { model: 'fast', effort: 'high', sets: 1, mode: 'auto' }, answer: 'permission: once' });
+        expect(asked).toHaveLength(1);
+    });
+
+    test('an agent whose provider declares none starts on the client\'s Full access: no mode, every request allowed, nobody asked, whatever the daemon\'s policy says', async () => {
+        const { run } = agentOn({}, 'reject');
+        const { text, asked } = await run(REQUEST);
+
+        expect(read(text)).toEqual({ choice: { model: 'fast', effort: 'high', sets: 0 }, answer: 'permission: once' });
+        expect(asked).toEqual([]);
+    });
+
+    test('the person\'s choice wins over the default', async () => {
+        const full = agentOn({ permissions: claude.permissions }, 'reject');
+
+        full.registry.update('stub', { permission: 'full' });
+
+        const { text, asked } = await full.run(REQUEST);
+
+        expect(read(text)).toEqual({ choice: { model: 'fast', effort: 'high', sets: 1, mode: 'bypassPermissions' }, answer: 'permission: once' });
+        expect(asked).toEqual([]);
     });
 });

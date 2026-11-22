@@ -1,11 +1,15 @@
+import { PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
+
 import type {
     AgentInfo,
     AgentModels,
+    AgentPermissions,
     Artifact,
     Attachment,
     Chat,
     ChatTaskLink,
     DocNode,
+    PermissionPresetId,
     Project,
     ProjectId,
     Run,
@@ -168,6 +172,22 @@ function fixtureAgentModels(now: number): Record<string, AgentModels> {
     };
 }
 
+/** The presets of an agent whose provider has modes of its own, in the words of the real Claude Code and Codex providers; none chosen, `auto` is the default. */
+function modePresets(descriptions: Record<PermissionPresetId, string>): AgentPermissions {
+    return { presets: PERMISSION_PRESETS.map(id => ({ id, name: PERMISSION_PRESET_NAMES[id], description: descriptions[id] })), default: 'auto' };
+}
+
+/** The pair of an agent whose provider declares none: Clowdy asks, or allows everything; `full` is the default, as such an agent has always run. */
+function clientPresets(): AgentPermissions {
+    return {
+        presets: [
+            { id: 'ask', name: PERMISSION_PRESET_NAMES.ask, description: 'Clowdy asks you before the agent does anything it asks permission for' },
+            { id: 'full', name: PERMISSION_PRESET_NAMES.full, description: 'Clowdy allows everything the agent asks permission for' },
+        ],
+        default: 'full',
+    };
+}
+
 /** The three built-in agents as a daemon on a developer's machine would list them: installed, signed in, with their plan limits. */
 function fixtureAgents(now: number): AgentInfo[] {
     const inMinutes = (minutes: number) => now + minutes * MINUTE;
@@ -203,6 +223,12 @@ function fixtureAgents(now: number): AgentInfo[] {
                 { id: 'subagents', label: 'Claude Code sub-agents', description: 'Let Claude Code start sub-agents of its own. Clowdy\'s agents are the better way to delegate work.', value: true, default: true },
                 { id: 'longContext', label: '1M context window', description: 'Use the 1M-token context window on the models that have one', value: true, default: true },
             ],
+            permissions: modePresets({
+                'ask': 'Asks before every edit and command',
+                'accept-edits': 'Applies file edits, asks before commands and anything else',
+                'auto': 'Approves what its own check finds safe, asks about the rest',
+                'full': 'Never asks, edits any file and runs any command',
+            }),
         },
         {
             id: 'codex',
@@ -227,6 +253,12 @@ function fixtureAgents(now: number): AgentInfo[] {
                 ],
             },
             settings: [],
+            permissions: modePresets({
+                'ask': 'Asks before editing files or using the network',
+                'accept-edits': 'Edits workspace files, asks before going outside them or using the network',
+                'auto': 'Reviews risky actions itself, asks about the rest',
+                'full': 'No sandbox, never asks',
+            }),
         },
         {
             id: 'cursor',
@@ -246,6 +278,7 @@ function fixtureAgents(now: number): AgentInfo[] {
                 windows: [{ id: 'plan', label: 'Plan usage', usedPercent: 5, resetsAt: inMinutes(26 * 24 * 60) }],
             },
             settings: [],
+            permissions: clientPresets(),
         },
     ];
 }

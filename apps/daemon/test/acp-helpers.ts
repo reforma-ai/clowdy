@@ -54,7 +54,7 @@ export interface RigOptions {
     sessionMeta?: Record<string, unknown>;
     /** What the agent is told it can do in `initialize`, as the built-in catalog gives it to Cursor. */
     clientMeta?: Record<string, unknown>;
-    /** The permission preset the agent runs on (`ResolvedAgent.permission`): what its permission requests are answered with, and the mode sent. Without it the agent runs as before any preset existed. */
+    /** The permission preset the agent runs on (`ResolvedAgent.permission`): what its permission requests are answered with, and the mode sent. Without it the agent has none, and the engine's own policy (`permissions`) answers its permission requests. */
     permission?: ResolvedAgent['permission'];
     /** Where the `clowdy` command is, as `installShim` wrote it: a session with shell commands gives its agent the command. */
     shim?: Shim;
@@ -65,15 +65,20 @@ export function rig(options: RigOptions = {}): Rig {
     const registry = new AgentRegistry({ discovery: quietDiscovery(env) });
     const bridge = new ToolBridge();
 
-    if (options.sessionMeta || options.clientMeta || options.protocol || options.wakesOnBackgroundEnd || options.permission) {
-        const resolve = registry.resolve.bind(registry);
+    const resolve = registry.resolve.bind(registry);
 
-        registry.resolve = async (id) => {
-            const found = await resolve(id);
+    registry.resolve = async (id) => {
+        const found = await resolve(id);
 
-            return found.ok ? { ok: true, agent: { ...found.agent, ...(options.protocol && { protocol: options.protocol }), ...(options.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), ...(options.sessionMeta && { sessionMeta: options.sessionMeta }), ...(options.clientMeta && { clientMeta: options.clientMeta }), ...(options.permission && { permission: options.permission }) } } : found;
-        };
-    }
+        if (!found.ok) {
+            return found;
+        }
+
+        // The registry gives every agent a permission preset. An engine test starts without one unless it names one, so that the daemon's own policy answers.
+        const { permission: _resolved, ...agent } = found.agent;
+
+        return { ok: true, agent: { ...agent, ...(options.protocol && { protocol: options.protocol }), ...(options.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), ...(options.sessionMeta && { sessionMeta: options.sessionMeta }), ...(options.clientMeta && { clientMeta: options.clientMeta }), ...(options.permission && { permission: options.permission }) } };
+    };
 
     registry.add({ id: 'fake-acp', name: 'Fake ACP', command: options.command ?? process.execPath, args: options.args ?? [options.protocol === 'v2' ? FAKE_AGENT_V2 : FAKE_AGENT], env: options.agentEnv });
 

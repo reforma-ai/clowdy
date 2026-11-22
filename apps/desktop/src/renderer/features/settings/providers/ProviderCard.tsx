@@ -6,7 +6,7 @@ import { SettingsCard } from '../ui/SettingsCard';
 import { AccountLine, SignInAction, SignInPanel } from './Account';
 import styles from './ProviderCard.module.css';
 import { ProviderIcon } from './ProviderIcon';
-import { ProviderAdvanced, ProviderSettings } from './ProviderSettings';
+import { PermissionPresets, ProviderAdvanced, ProviderSettings } from './ProviderSettings';
 import { isSignInRunning } from './providerView';
 import { UsageBlock } from './UsageBlock';
 import { RefreshUsageButton } from './UsageRows';
@@ -17,7 +17,7 @@ import type { AgentInfo } from '@clowdy/protocol';
 /**
  * One provider. Its first block is one row: the mark; the name over who is signed in; and at the end the button that reads the usage
  * again (not while a sign-in runs), the sign-in button and the switch. A running sign-in is a plate under that row, with Cancel.
- * Then what is left of its plan, its settings, and Advanced, each in a block of its own. A provider that is off or not installed shows
+ * Then what is left of its plan, its permission presets, its settings, and Advanced, each in a block of its own. A provider that is off or not installed shows
  * less, because there is nothing to sign in to or to read.
  */
 export function ProviderCard({ agent }: { agent: AgentInfo }) {
@@ -59,6 +59,12 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
             { usage && (
                 <SettingsBlock>
                     <UsageBlock usage={ usage } />
+                </SettingsBlock>
+            ) }
+
+            { (agent.permissions?.presets.length ?? 0) > 0 && (
+                <SettingsBlock data-dim={ !isOn || undefined } className={ styles.settings }>
+                    <PermissionPresets agent={ agent } commands={ commands } />
                 </SettingsBlock>
             ) }
 

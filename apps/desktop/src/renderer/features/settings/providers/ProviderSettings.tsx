@@ -1,6 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, useCollapsible } from '@clowdy/components/Collapsible';
 import { Input } from '@clowdy/components/Input';
+import { Radio, RadioGroup } from '@clowdy/components/Radio';
 import { Show } from '@clowdy/components/Show';
 import { Switch } from '@clowdy/components/Switch';
 import { Text } from '@clowdy/components/Text';
@@ -12,7 +13,7 @@ import { useState } from 'react';
 import styles from './ProviderSettings.module.css';
 import { formatEnv, parseEnv } from './providerView';
 
-import type { AgentInfo, AgentSetting } from '@clowdy/protocol';
+import type { AgentInfo, AgentSetting, PermissionPresetId } from '@clowdy/protocol';
 import type { useAgentCommands } from './useAgentCommands';
 
 interface SettingsProps {
@@ -193,5 +194,49 @@ export function ProviderSettings({ agent, commands }: SettingsProps) {
                 />
             )) }
         </ul>
+    );
+}
+
+/**
+ * The permission presets the agent's provider offers, as radios: each preset's name and the provider's own words for what it does, the chosen one
+ * selected (the person's choice, else the provider's default, which carries a quiet tag). The page knows nothing of any agent: the list is whatever
+ * `AgentInfo.permissions` says. The group is read only while a choice is saved (not disabled, which would take the keyboard focus off the
+ * radio), and the choice shows when the agents have been fetched again.
+ */
+export function PermissionPresets({ agent, commands }: SettingsProps) {
+    const { permissions } = agent;
+
+    if (!permissions || permissions.presets.length === 0) return null;
+
+    const selected = permissions.value ?? permissions.default;
+    const isPending = commands.pending.has('permission');
+
+    return (
+        <div className={ styles.permissions } aria-busy={ isPending || undefined }>
+            <div className={ styles.text }>
+                <Text variant="sm" weight="medium">Permissions</Text>
+                <Text variant="sm" color="secondary">What the agent may do without asking</Text>
+            </div>
+
+            <RadioGroup
+                aria-label={ `${ agent.name } permissions` }
+                value={ selected }
+                isReadOnly={ isPending }
+                className={ styles.presets }
+                onChange={ value => void commands.setPermission(value as PermissionPresetId) }
+            >
+                { permissions.presets.map(preset => (
+                    <Radio key={ preset.id } value={ preset.id } className={ styles.preset }>
+                        <span className={ styles.presetText }>
+                            <span className={ styles.presetName }>
+                                <Text variant="sm" weight="medium" color={ preset.id === 'full' ? 'warning' : undefined }>{ preset.name }</Text>
+                                { preset.id === permissions.default && <span className={ styles.defaultTag }>Default</span> }
+                            </span>
+                            <Text variant="sm" color="secondary">{ preset.description }</Text>
+                        </span>
+                    </Radio>
+                )) }
+            </RadioGroup>
+        </div>
     );
 }

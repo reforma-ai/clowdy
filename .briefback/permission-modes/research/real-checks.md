@@ -47,3 +47,14 @@ So "Allow for session" answered that way is neither for the session nor limited 
 - Codex printed `Codex could not continue session ...: This Codex session is in use by another Codex client` once, on the second turn, and the daemon started a new session as it does for any session it cannot continue; the person's own Codex app may have been open. It did not affect the check.
 - The model, not the daemon, chooses the exact command text, so a card shows what the agent decided to run, which can be longer than what the person asked.
 - Not checked: Windows, a permission request for a file edit or an MCP tool (only commands were asked for), `accept-edits` and `full` on real agents (their `mode` values are the adapters' own, listed by the probe on 2026-11-22), and whether Codex sends `$/cancel_request` for a withdrawn request.
+
+## The default (Stage 4), checked the same day
+
+An agent whose preset the person never chose (`agent.update` not called) on the code of Stage 4, scenario S7 of the same script:
+
+| Agent | `resolve()` | A command that writes a file in the folder | `clowdy task list` |
+| --- | --- | --- | --- |
+| Claude Code (`haiku`) | `{ preset: 'auto', mode: 'auto', answer: 'ask' }` | Runs, no card | Runs, no card |
+| Codex | `{ preset: 'auto', mode: 'agent', answer: 'ask' }` | Runs, no card | Runs, no card |
+
+So on the default the person is asked only for what the agent's own check does not approve (a plain `echo > file` in the project and Clowdy's own command pass); the cards of the earlier scenarios appear in Ask for approval and Accept edits. Nothing was written to `~/.codex/rules` or to the project's `.claude`. Not checked: an action the agents' own check really refuses (a write outside the project, the network) to see a card on the default, and Claude on an account or model with no Auto mode (see the review notes of Stage 4 in the plan).
