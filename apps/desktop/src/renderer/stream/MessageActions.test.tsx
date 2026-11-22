@@ -132,14 +132,14 @@ describe('MessageActions', () => {
             expect(container.querySelector('time')).not.toBeNull();
         });
 
-        it('sits after Copy, with the time first on the person\'s side and last on an agent\'s, so the tab order is the reading order', async () => {
+        it('sits before Copy, with the time first on the person\'s side and last on an agent\'s, so the tab order is the reading order', async () => {
             await act(async () => root.render(<MessageActions text="Hello" at={ at } align="end" actions={ { show: 'hover', onReply: vi.fn() } } />));
 
-            expect(order()).toEqual(['time', 'Copy message', 'Reply']);
+            expect(order()).toEqual(['time', 'Reply', 'Copy message']);
 
             await act(async () => root.render(<MessageActions text="Hello" at={ at } align="start" actions={ { show: 'hover', onReply: vi.fn() } } />));
 
-            expect(order()).toEqual(['Copy message', 'Reply', 'time']);
+            expect(order()).toEqual(['Reply', 'Copy message', 'time']);
         });
 
         it('keeps the message root marked for the selection toolbar, with the row inside it', async () => {
@@ -170,10 +170,10 @@ describe('MessageActions', () => {
             expect(onFork).toHaveBeenCalledOnce();
         });
 
-        it('sits after Reply and before the time on an answer, so the tab order is the reading order', async () => {
+        it('sits after Copy and before the time on an answer, so the tab order is the reading order', async () => {
             await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onReply: vi.fn(), onFork: vi.fn() } } />));
 
-            expect(order()).toEqual(['Copy message', 'Reply', 'Fork into new chat', 'time']);
+            expect(order()).toEqual(['Reply', 'Copy message', 'Fork into new chat', 'time']);
         });
 
         it('spins and takes no press while its fork is being made', async () => {
@@ -225,10 +225,10 @@ describe('MessageActions', () => {
             expect(onEdit).toHaveBeenCalledOnce();
         });
 
-        it('sits between Copy and Reply, with the time first on the person\'s side, so the tab order is the reading order', async () => {
+        it('sits between Reply and Copy, with the time first on the person\'s side, so the tab order is the reading order', async () => {
             await act(async () => root.render(<MessageActions text="Hello" at={ at } align="end" actions={ { show: 'hover', onEdit: vi.fn(), onReply: vi.fn() } } />));
 
-            expect(order()).toEqual(['time', 'Copy message', 'Edit message', 'Reply']);
+            expect(order()).toEqual(['time', 'Reply', 'Edit message', 'Copy message']);
         });
 
         it('stays for a message of files alone, which can be given words: only Copy and Reply have nothing to work on', async () => {

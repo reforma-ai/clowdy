@@ -704,8 +704,8 @@ describe('Fork in a chat', () => {
         const row = forkButtons()[0].closest('[data-message]')!;
 
         expect(row.textContent).toContain(ANSWER);
-        // Reply stays before it.
-        expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Copy message', 'Reply', 'Fork into new chat']);
+        // Reply and Copy stay before it.
+        expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Reply', 'Copy message', 'Fork into new chat']);
     });
 
     it('draws none in a chat whose answers carry no flag', async () => {
@@ -1007,7 +1007,7 @@ describe('Edit in a chat', () => {
     });
 
     describe('the button', () => {
-        it('is drawn under the person\'s messages the daemon marked, between Copy and Reply, and under no other', async () => {
+        it('is drawn under the person\'s messages the daemon marked, between Reply and Copy, and under no other', async () => {
             await start(undefined, withTurns());
             await draw('c-2');
 
@@ -1016,7 +1016,7 @@ describe('Edit in a chat', () => {
             const row = editButtons()[0].closest('[data-message]')!;
 
             expect(row.textContent).toContain(FIRST);
-            expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Copy message', 'Edit message', 'Reply']);
+            expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Reply', 'Edit message', 'Copy message']);
             // The steer has a row and no flag.
             expect([...container.querySelectorAll('[data-message]')].find(message => message.textContent?.includes(STEER))?.querySelector('button[aria-label="Edit message"]')).toBeNull();
         });

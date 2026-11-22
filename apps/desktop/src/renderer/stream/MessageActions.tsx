@@ -46,7 +46,7 @@ export interface MessageActionsProps {
 
 /**
  * The row under a message: what can be done with it and when it was written. The buttons are in the order they are read and tabbed in, and the time
- * sits on the outside: first on the person's side (`22:54`, Copy, Edit, Reply), last on an agent's (Copy, Reply, Fork, `22:54`). It keeps its height whether it shows
+ * sits on the outside: first on the person's side (`22:54`, Reply, Edit, Copy), last on an agent's (Reply, Copy, Fork, `22:54`). It keeps its height whether it shows
  * or not, so showing it never moves the messages around it. Put it as the last child of the element that holds the message: that element is what the
  * pointer or the focus has to be on (see the stylesheet).
  */
@@ -61,8 +61,12 @@ export function MessageActions({ text, at, align, actions }: MessageActionsProps
             { /* A message of files alone has nothing to copy or quote, so no group of those: its empty box would still move the time. Edit stays, since it can be given words. */ }
             <Show when={ hasText || onEdit }>
                 <div className={ styles.buttons }>
-                    <Show when={ hasText }>
-                        <CopyButton value={ text } variant="filling" size="xs" tooltip="Copy message" tooltipPlacement="bottom" aria-label="Copy message" />
+                    <Show when={ hasText && onReply }>
+                        { reply => (
+                            <Button variant="filling" size="xs" iconOnly tooltip="Reply" tooltipPlacement="bottom" aria-label="Reply" onPress={ () => reply(text) }>
+                                <Reply />
+                            </Button>
+                        ) }
                     </Show>
                     <Show when={ onEdit }>
                         { edit => (
@@ -71,12 +75,8 @@ export function MessageActions({ text, at, align, actions }: MessageActionsProps
                             </Button>
                         ) }
                     </Show>
-                    <Show when={ hasText && onReply }>
-                        { reply => (
-                            <Button variant="filling" size="xs" iconOnly tooltip="Reply" tooltipPlacement="bottom" aria-label="Reply" onPress={ () => reply(text) }>
-                                <Reply />
-                            </Button>
-                        ) }
+                    <Show when={ hasText }>
+                        <CopyButton value={ text } variant="filling" size="xs" tooltip="Copy message" tooltipPlacement="bottom" aria-label="Copy message" />
                     </Show>
                     <Show when={ onFork }>
                         { fork => (
