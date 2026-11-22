@@ -47,6 +47,20 @@ describe('HttpTransport.getFolderGit', () => {
         expect(await transport.getFolderGit('prj a', 'fld/b')).toEqual({ isRepository: false });
         expect(urls).toEqual(['http://127.0.0.1:4310/v1/projects/prj%20a/git?folderId=fld%2Fb']);
     });
+
+    it('rejects with the daemon\'s own reason when it cannot read the folder, for the page to say why', async () => {
+        const fetchImpl = (async () => new Response(JSON.stringify({ error: { code: 'unavailable', message: 'git did not answer' } }), { status: 503 })) as unknown as typeof fetch;
+        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
+
+        await expect(transport.getFolderGit('prj_a', 'fld_b')).rejects.toMatchObject({ message: 'git did not answer', status: 503 });
+    });
+
+    it('rejects with the status when the daemon gives no reason', async () => {
+        const fetchImpl = (async () => new Response('Bad gateway', { status: 502 })) as unknown as typeof fetch;
+        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
+
+        await expect(transport.getFolderGit('prj_a', 'fld_b')).rejects.toMatchObject({ message: expect.stringContaining('502'), status: 502 });
+    });
 });
 
 describe('FixtureTransport.getFolderGit', () => {

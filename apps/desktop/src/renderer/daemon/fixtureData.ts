@@ -8,11 +8,14 @@ import type {
     Attachment,
     Chat,
     ChatTaskLink,
+    ChatWorkspace,
+    ChatWorkspaceChoice,
     DocNode,
     DocsSource,
     FolderGit,
     PermissionPresetId,
     Project,
+    ProjectFolder,
     ProjectId,
     Run,
     RunTaskLink,
@@ -370,6 +373,50 @@ export function fixtureFolderGit(path: string, head: { branch?: string; detached
     };
 }
 
+/** Where the fixture's Clowdy-made worktrees are: `~/Clowdy/workspaces`, as the daemon lays them out (`<project>/<chat id>/<folder>`). */
+export const FIXTURE_WORKSPACES_ROOT = '/Users/dev/Clowdy/workspaces';
+
+const kebab = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+/**
+ * What `chat.create` makes of a workspace choice, as the daemon does (the refusals are its `invalid`): a worktree of a folder that is no repository, a base that is no ref of it
+ * and a path that is no worktree of it are refused. A new worktree gets the daemon's layout and branch (`<root>/<project>/<chat id's end>/<folder>`, `clowdy/<chat id's end>`) and is
+ * not made yet (`ready` false: the chat's first turn makes it); an existing one is ready, and a chat that has it already shares its row.
+ */
+export function fixtureChatWorkspace(
+    choice: ChatWorkspaceChoice,
+    { projectName, folder, chatId, head, known }: { projectName: string; folder: ProjectFolder; chatId: string; head: FixtureData['git'][string] | undefined; known: readonly ChatWorkspace[] }
+): { workspace: ChatWorkspace } | { error: string } {
+    const repository = fixtureFolderGit(folder.path, head);
+
+    if (!repository.isRepository) return { error: `${ folder.path } is not a git repository` };
+
+    if (choice.mode === 'new') {
+        if (choice.base !== undefined && choice.base !== repository.defaultBranch && !repository.branches.some(branch => branch.name === choice.base)) return { error: `${ choice.base } is not a branch of ${ folder.path }` };
+
+        const end = chatId.slice(-8);
+        const name = folder.path.split('/').filter(Boolean).at(-1) ?? 'folder';
+
+        return { workspace: { id: `wks_${ end }`, folderId: folder.id, path: `${ FIXTURE_WORKSPACES_ROOT }/${ kebab(projectName) }/${ end }/${ name }`, branch: `clowdy/${ end }`, managed: true, ready: false } };
+    }
+
+    const worktree = repository.worktrees.find(candidate => !candidate.main && candidate.path === choice.path);
+
+    if (!worktree) return { error: `${ choice.path } is not a worktree of ${ folder.path }` };
+
+    return {
+        workspace: known.find(workspace => workspace.path === worktree.path)
+            ?? { id: `wks_${ worktree.head }`, folderId: folder.id, path: worktree.path, ...(worktree.branch && { branch: worktree.branch }), managed: worktree.path.startsWith(`${ FIXTURE_WORKSPACES_ROOT }/`), ready: true },
+    };
+}
+
+/** The lines `Prepare workspace` logs while it makes a worktree: the fetch of the base and what the checkout says, in the tool's own words. */
+export const fixtureWorkspaceLog = (workspace: Pick<ChatWorkspace, 'branch'>, base: string) => [
+    `Fetching ${ base }`,
+    `Preparing worktree (new branch '${ workspace.branch }')`,
+    'HEAD is now at 3f2a9c1 Price a booking by the day',
+].join('\n');
+
 /**
  * The document sources of a folder as the daemon lists them: those of the registry that have files here, in its order, each with its tree. `files` is by the id of the
  * source, then by the path under its root.
@@ -536,6 +583,64 @@ export function withFixtureApprovals(data: FixtureData, now = Date.now()): Fixtu
         orchestratorRunId: FIXTURE_APPROVALS_RUN_ID,
         createdAt: ago(20),
         updatedAt: ago(3),
+    });
+
+    return data;
+}
+
+export const FIXTURE_WORKSPACE_CHAT_ID = 'c-9';
+export const FIXTURE_WORKSPACE_RUN_ID = 'r-orch-9';
+
+/**
+ * Adds to `data` a chat that works in a worktree and gives it back: Clowdy made it for the chat (the one `fixtureFolderGit` lists as a second worktree of Car Rental, with
+ * changes in it), so the chat's stream starts with the `Prepare workspace` step and its log. Not in `createFixtureData`, for the reason `withFixtureFork` gives: a chat more in the car
+ * project moves the counts and the order other screens' tests read.
+ */
+export function withFixtureWorkspace(data: FixtureData, now = Date.now()): FixtureData {
+    const ago = (minutes: number) => now - minutes * MINUTE;
+    const orchestrator = data.runs.find(run => run.id === 'r-orch-3') as Run;
+    const workspace: ChatWorkspace = {
+        id: 'wks_ab12cd34',
+        folderId: 'fld_car_rental',
+        path: `${ FIXTURE_WORKSPACES_ROOT }/car-rental/ab12cd34/car-rental`,
+        branch: 'clowdy/ab12cd34',
+        managed: true,
+        ready: true,
+    };
+    const entries: Array<[number, StreamItemBody]> = [
+        [30, { kind: 'user', text: 'Add the weekend surcharge to the price, on a branch of its own.' }],
+        [29, { kind: 'tool', toolCallId: 'tc-o9-ws', name: 'workspace', state: 'done', input: { path: workspace.path, branch: workspace.branch, base: 'origin/main' }, output: fixtureWorkspaceLog(workspace, 'origin/main') }],
+        [28, { kind: 'assistant', done: true, text: 'The surcharge is in `src/booking/price.ts`, committed on `clowdy/ab12cd34`.' }],
+    ];
+
+    data.items[FIXTURE_WORKSPACE_RUN_ID] = entries.map(([minutes, body], index): StreamItem => ({ id: `${ FIXTURE_WORKSPACE_RUN_ID }-${ index + 1 }`, runId: FIXTURE_WORKSPACE_RUN_ID, seq: index + 1, at: ago(minutes), body }));
+    data.runs.push({
+        id: FIXTURE_WORKSPACE_RUN_ID,
+        projectId: orchestrator.projectId,
+        rootRunId: FIXTURE_WORKSPACE_RUN_ID,
+        chatId: FIXTURE_WORKSPACE_CHAT_ID,
+        role: 'orchestrator',
+        name: 'Orchestrator 09',
+        summary: 'Weekend surcharge in a worktree',
+        status: 'succeeded',
+        engine: orchestrator.engine,
+        ...(orchestrator.model && { model: orchestrator.model }),
+        result: 'The surcharge is in `src/booking/price.ts`, committed on `clowdy/ab12cd34`.',
+        createdAt: ago(30),
+        startedAt: ago(30),
+        finishedAt: ago(28),
+    });
+    data.chats.push({
+        id: FIXTURE_WORKSPACE_CHAT_ID,
+        projectId: orchestrator.projectId,
+        title: 'Weekend surcharge in a worktree',
+        mode: 'autopilot',
+        engine: orchestrator.engine,
+        ...(orchestrator.model && { model: orchestrator.model }),
+        orchestratorRunId: FIXTURE_WORKSPACE_RUN_ID,
+        workspace,
+        createdAt: ago(30),
+        updatedAt: ago(28),
     });
 
     return data;

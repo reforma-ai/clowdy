@@ -9,7 +9,9 @@ import {
     FIXTURE_LIVE_RUN_ID,
     FIXTURE_LIVE_TEXT_ID,
     FIXTURE_LIVE_TOOL_ID,
+    fixtureChatWorkspace,
     fixtureFolderGit,
+    fixtureWorkspaceLog,
     type FixtureData,
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
@@ -36,6 +38,7 @@ import type {
     ProjectId,
     ProjectInfo,
     ProjectSnapshot,
+    ProjectWorkspaceInfo,
     QueuedMessage,
     QueuedMessageMode,
     RootSnapshot,
@@ -171,6 +174,8 @@ export class FixtureTransport implements Transport {
     readonly #fileSystems = new Map<string, MemoryFileSystem>();
     /** The turn each run is on, so the end of an older turn does not end a newer one. */
     readonly #turns = new Map<RunId, number>();
+    /** The ref each worktree that is not made yet starts from, by the workspace's id: what the step that makes it logs. */
+    readonly #bases = new Map<string, string>();
     /** How many times an edit rewrote each run's stream: an item written after one gets an id of its own, as the daemon's items do, though it takes the freed number. */
     readonly #rewrites = new Map<RunId, number>();
     /** The daemon's rules for tasks, their archive and their comments. */
@@ -195,13 +200,23 @@ export class FixtureTransport implements Transport {
     async getProjectsInfo(projectId?: ProjectId): Promise<ProjectInfo[]> {
         const { chats, tasks, git } = this.#data;
 
-        return structuredClone(this.#listed().filter(project => projectId === undefined || project.id === projectId).map(project => ({
-            projectId: project.id,
-            folders: project.folders.map(folder => ({ folderId: folder.id, exists: true, ...git[folder.path], chats: chats.filter(chat => chat.projectId === project.id && chat.folderId === folder.id).length })),
-            chats: chats.filter(chat => chat.projectId === project.id).length,
-            tasks: tasks.filter(task => task.projectId === project.id).length,
-            activeRuns: this.#activeRuns(project.id),
-        })));
+        return structuredClone(this.#listed().filter(project => projectId === undefined || project.id === projectId).map((project) => {
+            // The worktrees the project's chats work in, as the daemon reads them: whether each is made, and the branch it has (the fixture's worktrees keep the branch they were made with).
+            const workspaces = new Map<string, ProjectWorkspaceInfo>();
+
+            for (const { workspace } of chats.filter(chat => chat.projectId === project.id)) {
+                if (workspace) workspaces.set(workspace.id, { workspaceId: workspace.id, exists: workspace.ready, ...(workspace.ready && workspace.branch !== undefined && { branch: workspace.branch }) });
+            }
+
+            return {
+                projectId: project.id,
+                folders: project.folders.map(folder => ({ folderId: folder.id, exists: true, ...git[folder.path], chats: chats.filter(chat => chat.projectId === project.id && chat.folderId === folder.id).length })),
+                chats: chats.filter(chat => chat.projectId === project.id).length,
+                tasks: tasks.filter(task => task.projectId === project.id).length,
+                activeRuns: this.#activeRuns(project.id),
+                ...(workspaces.size > 0 && { workspaces: [...workspaces.values()] }),
+            };
+        }));
     }
 
     async getFolderGit(projectId: ProjectId, folderId: FolderId): Promise<FolderGit> {
@@ -759,9 +774,31 @@ export class FixtureTransport implements Transport {
                     return fail('invalid', `Folder ${ command.folderId } does not belong to project ${ command.projectId }`);
                 }
 
+                const project = data.projects.find(candidate => candidate.id === command.projectId);
+                const id = this.#id('c');
+                let workspace: Chat['workspace'];
+
+                // Like the daemon: a worktree of the chat's folder (the main one when none is named), refused where the folder is no repository, the base is no ref or the path is no worktree.
+                if (command.workspace && project) {
+                    const folder = project.folders.find(candidate => candidate.id === command.folderId) ?? mainFolder(project);
+                    const made = fixtureChatWorkspace(command.workspace, {
+                        projectName: project.name,
+                        folder,
+                        chatId: id,
+                        head: data.git[folder.path],
+                        known: data.chats.flatMap(chat => (chat.workspace ? [chat.workspace] : [])),
+                    });
+
+                    if ('error' in made) return fail('invalid', made.error);
+
+                    workspace = structuredClone(made.workspace);
+
+                    if (command.workspace.mode === 'new') this.#bases.set(workspace.id, command.workspace.base ?? 'origin/main');
+                }
+
                 const now = Date.now();
                 const chat: Chat = {
-                    id: this.#id('c'),
+                    id,
                     projectId: command.projectId,
                     title: command.title ?? 'New chat',
                     mode: command.mode ?? 'autopilot',
@@ -769,6 +806,7 @@ export class FixtureTransport implements Transport {
                     ...(command.model && { model: command.model }),
                     ...(command.effort && { effort: command.effort }),
                     ...(command.folderId && { folderId: command.folderId }),
+                    ...(workspace && { workspace }),
                     createdAt: now,
                     updatedAt: now,
                 };
@@ -1344,12 +1382,36 @@ export class FixtureTransport implements Transport {
         }
 
         this.#appendItem(run, body);
+        this.#prepareWorkspace(chat, run);
         this.#later(400, () => this.#streamReply(run, reply));
         this.#later(TURN_MS, () => {
             if (this.#turns.get(run.id) !== turn || run.status !== 'running') return;
 
             this.#endTurn(chat, run);
         });
+    }
+
+    /**
+     * The first turn of a chat that works in a worktree makes it, as the daemon's `Prepare workspace` does: a step of the chat's stream with git's lines as its log, and the
+     * worktree is ready once it is over. At once here: the fixture has no time for a step that takes seconds. Nothing for a worktree that is made, or a chat in the folder itself.
+     */
+    #prepareWorkspace(chat: Chat, run: Run): void {
+        const { workspace } = chat;
+
+        if (!workspace || workspace.ready) return;
+
+        const base = this.#bases.get(workspace.id) ?? 'origin/main';
+
+        this.#appendItem(run, {
+            kind: 'tool',
+            toolCallId: this.#id('tc-workspace'),
+            name: 'workspace',
+            state: 'done',
+            input: { path: workspace.path, ...(workspace.branch && { branch: workspace.branch }), base },
+            output: fixtureWorkspaceLog(workspace, base),
+        });
+        workspace.ready = true;
+        this.#emit(chat.projectId, { type: 'chat.upserted', chat });
     }
 
     /**

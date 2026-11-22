@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_FORK_CHAT_ID, FIXTURE_LIVE_RUN_ID, FIXTURE_LIVE_TEXT_ID, FIXTURE_LIVE_TOOL_ID, FIXTURE_PROJECT_ID, withFixtureApprovals, withFixtureFork } from './fixtureData';
+import { createFixtureData, FIXTURE_FORK_CHAT_ID, FIXTURE_LIVE_RUN_ID, FIXTURE_LIVE_TEXT_ID, FIXTURE_LIVE_TOOL_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureApprovals, withFixtureFork, withFixtureWorkspace } from './fixtureData';
 import { FixtureTransport } from './fixtureTransport';
 
-import type { ClowdyEvent, StreamItemBody } from '@clowdy/protocol';
+import type { Chat, ChatWorkspaceChoice, ClowdyEvent, StreamItemBody } from '@clowdy/protocol';
 
 beforeEach(() => {
     vi.useFakeTimers();
@@ -407,6 +407,97 @@ describe('FixtureTransport', () => {
             [['documents', ['decisions', 'endpoints.md']]],
             [],
         ]);
+    });
+
+    describe('chats in a worktree', () => {
+        const create = async (transport: FixtureTransport, fields: { workspace?: ChatWorkspaceChoice; folderId?: string; projectId?: string }) => {
+            const made = await transport.command({ type: 'chat.create', projectId: fields.projectId ?? FIXTURE_PROJECT_ID, ...fields });
+
+            return made as { ok: true; data: { chat: Chat } } | { ok: false; error: { code: string; message: string } };
+        };
+
+        it('keeps the workspace a new worktree makes in the daemon\'s layout, not made yet, and lists it in what the daemon reads of the project only once it is', async () => {
+            const { transport } = await connected();
+            const made = await create(transport, { workspace: { mode: 'new', base: 'dev' } });
+
+            if (!made.ok) throw new Error(made.error.message);
+
+            const { chat } = made.data;
+            const end = chat.id.slice(-8);
+
+            expect(chat.workspace).toEqual({ id: `wks_${ end }`, folderId: 'fld_car_rental', path: `/Users/dev/Clowdy/workspaces/car-rental/${ end }/car-rental`, branch: `clowdy/${ end }`, managed: true, ready: false });
+
+            // A worktree that is not made yet is in the read, and is not there.
+            const [info] = await transport.getProjectsInfo(FIXTURE_PROJECT_ID);
+
+            expect(info.workspaces).toEqual([{ workspaceId: `wks_${ end }`, exists: false }]);
+        });
+
+        it('makes the worktree at the chat\'s first message: a Prepare workspace step with git\'s lines, from the base asked for, and the worktree is ready', async () => {
+            const { transport, events } = await connected();
+            const made = await create(transport, { workspace: { mode: 'new', base: 'dev' } });
+
+            if (!made.ok) throw new Error(made.error.message);
+
+            events.length = 0;
+            await transport.command({ type: 'chat.send', chatId: made.data.chat.id, text: 'Add the surcharge' });
+            await vi.advanceTimersByTimeAsync(0);
+
+            const [, step] = await transport.getItems({ chatId: made.data.chat.id });
+
+            expect(step?.body).toMatchObject({ kind: 'tool', name: 'workspace', state: 'done', input: { branch: made.data.chat.workspace!.branch, base: 'dev' } });
+            expect((step?.body as { output: string }).output).toContain('Fetching dev');
+            expect(events.some(event => event.data.type === 'chat.upserted' && event.data.chat.workspace?.ready === true)).toBe(true);
+
+            const [info] = await transport.getProjectsInfo(FIXTURE_PROJECT_ID);
+
+            expect(info.workspaces).toEqual([{ workspaceId: made.data.chat.workspace!.id, exists: true, branch: made.data.chat.workspace!.branch }]);
+
+            // The second message finds it made: no second step.
+            await vi.advanceTimersByTimeAsync(20_000);
+            await transport.command({ type: 'chat.send', chatId: made.data.chat.id, text: 'And the tests' });
+
+            expect((await transport.getItems({ chatId: made.data.chat.id })).filter(item => item.body.kind === 'tool' && item.body.name === 'workspace')).toHaveLength(1);
+        });
+
+        it('uses an existing worktree of the folder as it is, ready, with no step, and shares its row with a chat that has it', async () => {
+            const { transport } = await connected();
+            const path = '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental';
+            const first = await create(transport, { workspace: { mode: 'existing', path } });
+            const second = await create(transport, { workspace: { mode: 'existing', path } });
+
+            if (!first.ok || !second.ok) throw new Error('refused');
+
+            expect(first.data.chat.workspace).toMatchObject({ path, branch: 'clowdy/ab12cd34', managed: true, ready: true });
+            expect(second.data.chat.workspace?.id).toBe(first.data.chat.workspace?.id);
+
+            await transport.command({ type: 'chat.send', chatId: first.data.chat.id, text: 'Go' });
+
+            expect((await transport.getItems({ chatId: first.data.chat.id })).some(item => item.body.kind === 'tool')).toBe(false);
+            expect((await transport.getProjectsInfo(FIXTURE_PROJECT_ID))[0].workspaces).toHaveLength(1);
+        });
+
+        it('refuses what the daemon refuses: a folder that is no repository, a base that is no ref, and a path that is no worktree of the folder, the folder\'s own checkout included', async () => {
+            const { transport } = await connected();
+            const personal = (await transport.getRootSnapshot()).projects.find(project => project.id === FIXTURE_PERSONAL_PROJECT_ID)!;
+
+            expect(await create(transport, { projectId: FIXTURE_PERSONAL_PROJECT_ID, workspace: { mode: 'new' } })).toMatchObject({ ok: false, error: { code: 'invalid', message: `${ personal.folders[0].path } is not a git repository` } });
+            expect(await create(transport, { workspace: { mode: 'new', base: 'nowhere' } })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+            expect(await create(transport, { workspace: { mode: 'existing', path: '/Users/dev/elsewhere' } })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+            expect(await create(transport, { workspace: { mode: 'existing', path: '/Users/dev/car-rental' } })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+            // Nothing was made by the refusals.
+            expect((await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.some(chat => chat.workspace)).toBe(false);
+        });
+
+        it('has a fixture chat that works in a worktree, which the daemon read lists as made', async () => {
+            const transport = new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
+            const chat = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(candidate => candidate.id === FIXTURE_WORKSPACE_CHAT_ID);
+            const items = await transport.getItems({ chatId: FIXTURE_WORKSPACE_CHAT_ID });
+
+            expect(chat?.workspace).toMatchObject({ ready: true, managed: true, branch: 'clowdy/ab12cd34' });
+            expect(items.map(item => item.body.kind === 'tool' ? item.body.name : item.body.kind)).toEqual(['user', 'workspace', 'assistant']);
+            expect((await transport.getProjectsInfo(FIXTURE_PROJECT_ID))[0].workspaces).toEqual([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'clowdy/ab12cd34' }]);
+        });
     });
 
     it('keeps the folder a chat is made in, refuses one the project does not have, and hands the chats of a removed folder back to the main folder', async () => {
