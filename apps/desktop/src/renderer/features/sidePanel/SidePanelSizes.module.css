@@ -1,4 +1,4 @@
-/* The title, the row of sizes and the hint under it: the two lines of text start where the first picture does. */
+/* The title, the hint under it and the row of sizes: the two lines of text start where the first picture does. */
 .menu {
     display: flex;
     flex-direction: column;
@@ -7,15 +7,15 @@
 .title,
 .hint {
     padding-inline: var(--spacing-md);
-    color: var(--color-secondary-muted-text);
-    font-size: var(--spacing-12);
-    line-height: var(--spacing-16);
+    cursor: default;
 }
 
 .title {
-    padding-block: var(--spacing-xs) var(--spacing-xxs);
+    padding-block: var(--spacing-xs) 0;
+    color: var(--color-text);
+    font-size: var(--spacing-14);
     font-weight: 500;
-    cursor: default;
+    line-height: var(--spacing-20);
 }
 
 .hint {
@@ -23,8 +23,9 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--spacing-xs);
-    padding-block: var(--spacing-xxs) var(--spacing-xs);
-    cursor: default;
+    color: var(--color-secondary-muted-text);
+    font-size: var(--spacing-12);
+    line-height: var(--spacing-16);
 }
 
 .sizes {

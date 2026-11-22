@@ -48,13 +48,18 @@ export interface SidePanelSizesProps {
 }
 
 /**
- * The menu of the rail's corner button: a title that says what the pictures are for (the side panel), the sizes in a row, each a picture of the window with the panel in that size
- * and its name under it, and under them the key that opens and shuts the panel (left out while that command has no key to show).
+ * The menu of the rail's corner button: a title that says what the pictures are for (the side panel), under it the key that opens and shuts the panel (left out while that
+ * command has no key to show), and then the sizes in a row, each a picture of the window with the panel in that size and its name under it.
  */
 export function SidePanelSizes({ size, sizes, onSelect, ref }: SidePanelSizesProps) {
     return (
         <div className={ styles.menu }>
             <div className={ styles.title }>Side panel</div>
+            { commandHint(SIDE_PANEL_COMMAND) && (
+                <div className={ styles.hint }>
+                    Use <CommandHotkey id={ SIDE_PANEL_COMMAND } size="xs" /> to toggle the panel
+                </div>
+            ) }
             <div ref={ ref } className={ styles.sizes } role="group" aria-label="Side panel size">
                 { sizes.map(option => (
                     <button
@@ -69,11 +74,6 @@ export function SidePanelSizes({ size, sizes, onSelect, ref }: SidePanelSizesPro
                     </button>
                 )) }
             </div>
-            { commandHint(SIDE_PANEL_COMMAND) && (
-                <div className={ styles.hint }>
-                    Use <CommandHotkey id={ SIDE_PANEL_COMMAND } size="xs" /> to toggle the panel
-                </div>
-            ) }
         </div>
     );
 }
