@@ -1,6 +1,6 @@
 # Clowdy Daemon (`@clowdy/daemon`)
 
-The standalone Bun process that owns projects, chats, tasks, runs, documents and the SQLite store, and serves the loopback HTTP + SSE contract in `packages/protocol`. It never imports Electron or React. The contract is the source of truth: read `packages/protocol/src/api.ts` for the routes.
+The standalone Bun process that owns projects, chats, tasks, runs, documents and the SQLite store, and serves the loopback HTTP + SSE contract in `packages/protocol`. It never imports Electron or React. It imports `@clowdy/lib` only by subpath (`@clowdy/lib/checklist`): the root pulls in React and DOM code, and ESLint refuses it (`eslint.config.mjs`). The contract is the source of truth: read `packages/protocol/src/api.ts` for the routes.
 
 ## Run and test
 

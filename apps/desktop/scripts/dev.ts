@@ -40,8 +40,9 @@ const env = {
     CLOWDY_ENGINE: process.env.CLOWDY_ENGINE || 'claude',
     CLOWDY_BUN: process.execPath,
     CLOWDY_DAEMON_ENTRY: path.join(repoRoot, 'apps/daemon/src/main.ts'),
-    // The app replaces the daemon when these change and it has no runs in progress.
-    CLOWDY_DAEMON_WATCH: [path.join(repoRoot, 'apps/daemon/src'), path.join(repoRoot, 'packages/protocol/src')].join(path.delimiter),
+    // The app replaces the daemon when these change and it has no runs in progress. The daemon imports `@clowdy/lib/checklist` from `packages/lib` (only by subpath:
+    // its lint refuses the root, which pulls in React), and the watch is by folder, so the package is watched whole.
+    CLOWDY_DAEMON_WATCH: ['apps/daemon/src', 'packages/protocol/src', 'packages/lib/src'].map(folder => path.join(repoRoot, folder)).join(path.delimiter),
 };
 // Vite's own script, run with Node: a `bunx` wrapper would be the process a stop kills on Windows, leaving Vite behind.
 const viteBin = path.join(path.dirname(Bun.resolveSync('vite/package.json', desktopRoot)), 'bin/vite.js');
