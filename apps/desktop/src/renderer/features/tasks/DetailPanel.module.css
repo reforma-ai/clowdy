@@ -80,3 +80,8 @@
 .spacer {
     flex: 1;
 }
+
+/* Under the title: what the description says about the work, as the cards say it. */
+.chips {
+    display: flex;
+}

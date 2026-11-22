@@ -118,8 +118,21 @@ export class NavHistory {
             return;
         }
 
+        // The window is leaving this place. Whatever caused it (the rail, a shortcut) may not have settled a scope that is gone, and Back skips an entry whose
+        // scope is gone, so the place is kept as the roots the screen was showing.
+        if (current) this.entries[this.index] = this.#withoutGoneScope(current);
+
         this.entries.splice(this.index + 1);
         this.#push(snapshot);
+    }
+
+    /** The entry with the roots of the Tasks screen in place of a scope that has left the board; the entry itself when the scope is there, or the entry is not a Tasks one. */
+    #withoutGoneScope(entry: NavSnapshot): NavSnapshot {
+        if (entry.section !== 'tasks' || entry.tasksScope === null || entry.settingsOpen) return entry;
+
+        const state = this.host.projectState(entry.projectId);
+
+        return state?.status === 'ready' && !state.tasks.has(entry.tasksScope) ? { ...entry, tasksScope: null } : entry;
     }
 
     #push(snapshot: NavSnapshot): void {

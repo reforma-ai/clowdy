@@ -1,0 +1,46 @@
+@reference '@clowdy/styles/rulesets';
+
+.comment {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    min-width: 0;
+}
+
+.head {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+    min-height: var(--spacing-20);
+}
+
+.author {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.time {
+    @ruleset typography-text-xs;
+
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+/* Edit and Delete are at the end of the line and show with the pointer on the comment, or with the keyboard on one of them. */
+.actions {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: var(--spacing-xs);
+    margin-inline-start: auto;
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+}
+
+.comment:hover .actions,
+.comment:has(:focus-visible) .actions {
+    opacity: 1;
+}

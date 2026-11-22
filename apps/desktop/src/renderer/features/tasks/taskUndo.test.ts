@@ -356,3 +356,140 @@ describe('what an undo checks', () => {
         expect(stack.entries.map(entry => entry.label)).toEqual(['Description of CAR-27 changed']);
     });
 });
+
+describe('a run of description edits', () => {
+    const description = (text: string) => update('t-35', { description: text });
+    const original = () => task('t-35').description;
+
+    it('is one entry while the offer to undo is on screen: the later edits join the first, which keeps what the description was before it', async () => {
+        const was = original();
+        const ticked = was.replace('- [ ] Refund part of a booking', '- [x] Refund part of a booking');
+        const both = ticked.replace('- [ ] Tell the person by email', '- [x] Tell the person by email');
+
+        await edit(description(ticked));
+        await vi.advanceTimersByTimeAsync(2000);
+        await edit(description(both));
+
+        expect(task('t-35').description).toBe(both);
+        expect(stack.entries.map(entry => entry.label)).toEqual(['Description of CAR-35 changed']);
+
+        // The offer is made again, and the one it replaces is closed.
+        expect(toasts.show).toHaveBeenCalledTimes(2);
+        expect(toasts.queue.close).toHaveBeenCalledWith(toasts.show.mock.results[0].value);
+
+        sent.length = 0;
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe(was);
+        expect(sent).toEqual([{ type: 'task.update', taskId: 't-35', description: was }]);
+        expect(stack.entries).toEqual([]);
+        expect(toasts.queue.close).toHaveBeenCalledWith(toasts.show.mock.results[1].value);
+    });
+
+    it('stays joined for as long as each edit comes within the window of the one before it', async () => {
+        const was = original();
+
+        for (const step of ['one', 'two', 'three', 'four']) {
+            await edit(description(`${ was }\n\n${ step }`));
+            await vi.advanceTimersByTimeAsync(3000);
+        }
+
+        expect(stack.entries).toHaveLength(1);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe(was);
+    });
+
+    it('starts a new entry once the window has passed', async () => {
+        await edit(description('First.'));
+        await vi.advanceTimersByTimeAsync(5000);
+        await edit(description('Second.'));
+
+        expect(stack.entries).toHaveLength(2);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe('First.');
+    });
+
+    it('does not join the description of another task, nor an edit after another change', async () => {
+        await edit(description('First.'));
+        await edit(update('t-27', { description: 'Other task.' }));
+        await edit(description('Second.'));
+
+        expect(stack.entries).toHaveLength(3);
+
+        await edit(update('t-35', { title: 'Refunds' }));
+        await edit(description('Third.'));
+
+        expect(stack.entries).toHaveLength(5);
+    });
+
+    it('does not join an entry that was undone already', async () => {
+        await edit(description('First.'));
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+        await edit(description('Second.'));
+
+        expect(stack.entries).toHaveLength(1);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe(original());
+        expect(task('t-35').description).not.toBe('First.');
+    });
+
+    it('does not join an edit that starts from a text someone else wrote in between, so one undo does not take their text away', async () => {
+        const was = original();
+
+        await edit(description('First.'));
+        await daemon.command({ type: 'task.update', taskId: 't-35', description: 'An agent wrote this.' });
+        await settle();
+        await edit(description('Second.'));
+
+        expect(stack.entries).toHaveLength(2);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        // The agent's text is what the edit started from, and what it comes back to; the person's first edit is still its own step.
+        expect(task('t-35').description).toBe('An agent wrote this.');
+        expect(task('t-35').description).not.toBe(was);
+        expect(stack.entries).toHaveLength(1);
+    });
+
+    it('joins an edit that was sent before the project showed the one before it, which still starts from a text the entry has held', async () => {
+        const was = original();
+
+        // Both read the description as it is now, as two saves in a row do when the daemon's event comes after its reply.
+        await Promise.all([edit(description('First.')), edit(description('Second.'))]);
+
+        expect(stack.entries).toHaveLength(1);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe(was);
+    });
+
+    it('refuses to put back a description that was changed by someone else since, and says so', async () => {
+        const was = original();
+
+        await edit(description('First.'));
+        await edit(description('Second.'));
+        await daemon.command({ type: 'task.update', taskId: 't-35', description: 'An agent wrote this.' });
+        await settle();
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe('An agent wrote this.');
+        expect(task('t-35').description).not.toBe(was);
+        expect(toasts.error).toHaveBeenCalledWith({ message: 'CAR-35 changed since, so this cannot be undone' });
+    });
+});

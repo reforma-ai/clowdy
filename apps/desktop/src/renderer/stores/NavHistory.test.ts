@@ -324,6 +324,38 @@ describe('NavHistory recording', () => {
         expect(root.history.canGoBack).toBe(false);
     });
 
+    it('keeps the place of the Tasks screen as the roots when the window leaves it by the rail while its scope is gone, so back returns to Tasks', async () => {
+        root.ui.showSection(ui(), 'tasks');
+        ui().setTasksScope('t-31');
+        root.ui.showSection(ui(), 'agents');
+
+        // Payments is archived while the person is away. They come back by the rail: the screen shows the roots, and the remembered scope is left as it is.
+        await root.command({ type: 'task.archive', taskId: 't-31', cancel: true });
+        await settle();
+        root.ui.showSection(ui(), 'tasks');
+        expect(ui().resolveTasksScope(root.selectedProject!.tasks)).toBeNull();
+        expect(ui().tasksScope).toBe('t-31');
+
+        // Nothing has settled the scope when they leave by the rail again.
+        root.ui.showSection(ui(), 'docs');
+        root.history.back();
+
+        expect([ui().section, ui().tasksScope]).toEqual(['tasks', null]);
+
+        root.history.forward();
+        expect(ui().section).toBe('docs');
+    });
+
+    it('leaves the scope of an entry alone while it is on the board when the window moves on', async () => {
+        root.ui.showSection(ui(), 'tasks');
+        ui().setTasksScope('t-31');
+        root.ui.showSection(ui(), 'agents');
+
+        root.history.back();
+
+        expect([ui().section, ui().tasksScope]).toEqual(['tasks', 't-31']);
+    });
+
     it('does not record a change that leaves the place as it was', () => {
         root.ui.showSection(ui(), 'agents');
         ui().openChat(null);

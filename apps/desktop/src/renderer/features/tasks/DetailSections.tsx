@@ -13,19 +13,30 @@ import { useTaskArtifacts } from './useTaskArtifacts';
 
 import type { Artifact, Chat, Run, TaskId } from '@clowdy/protocol';
 
-export function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+export interface SectionProps {
+    title: string;
+    /** Shown after the title when it is above zero. */
+    count?: number;
+    /** What else the header says, after the title and the count: a roll-up chip. */
+    aside?: ReactNode;
+    children: ReactNode;
+}
+
+export function Section({ title, count, aside, children }: SectionProps) {
     return (
         <section className={ styles.section }>
             <div className={ styles.head }>
                 <Text variant="heading-6">{ title }</Text>
                 { count !== undefined && count > 0 && <span className={ styles.badge }>{ count }</span> }
+                { aside }
             </div>
             { children }
         </section>
     );
 }
 
-const None = ({ children }: { children: ReactNode }) => <span className={ styles.none }>{ children }</span>;
+/** The line a section says when it has nothing to list. */
+export const None = ({ children }: { children: ReactNode }) => <span className={ styles.none }>{ children }</span>;
 
 /** The agents on the task, each with its status. A press selects the run in Agents. */
 export function Executors({ taskRuns, onOpen }: { taskRuns: readonly Run[]; onOpen: (runId: string) => void }) {

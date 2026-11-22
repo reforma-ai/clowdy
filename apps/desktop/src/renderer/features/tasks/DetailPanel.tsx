@@ -8,14 +8,20 @@ import { useState, type Ref } from 'react';
 
 import { commandTooltip } from '../../hotkeys';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { openChat, openRun } from '../chats/archiveChat';
+import { openChat, openRun as openRunInAgents } from '../chats/archiveChat';
 import { sendCommand, startTask } from './commands';
+import { CommentsSection } from './CommentsSection';
 import { DependencyList } from './DependencyList';
+import { DescriptionField } from './DescriptionField';
 import styles from './DetailPanel.module.css';
 import { Executors, LatestActivity, RelatedChats, Results, Section } from './DetailSections';
 import { EditableText } from './EditableText';
+import { ParentRow } from './ParentRow';
 import { StatusIcon } from './status';
+import { SubtasksSection } from './SubtasksSection';
+import { ChecklistChip } from './TaskChips';
 import { settledUi, settleScope } from './tasksScope';
+import { checklistOf, parentCandidates, type TaskTree } from './taskTree';
 import { sendWithUndo } from './taskUndo';
 import { activeExecutors, dependencyCandidates, externalLink, startBlockedReason, taskActivity } from './taskView';
 
@@ -30,12 +36,19 @@ export interface DetailPanelProps {
     titleRef?: Ref<HTMLTextAreaElement | null>;
     /** Shows the task's own scope. Given only for a task that has tasks inside it, and then the panel offers "Open sub-tasks". */
     onOpenSubtasks?: () => void;
+    /** The project's tasks as a tree: the task's parent and the tasks directly inside it, and how far the work inside it has come. */
+    tree: TaskTree;
+    /** Opens the "New task" dialog for a task inside this one. */
+    onCreateSubtask: () => void;
 }
 
-type TaskChanges = Partial<Pick<Extract<CommandInput, { type: 'task.update' }>, 'title' | 'description' | 'statusId' | 'dependsOn'>>;
+type TaskChanges = Partial<Pick<Extract<CommandInput, { type: 'task.update' }>, 'title' | 'description' | 'statusId' | 'dependsOn' | 'parentId'>>;
 
-/** The selected task, on the right of the section: edit it, see who works on it and what came out, start or delete it. */
-export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks }: DetailPanelProps) {
+/**
+ * The selected task, on the right of the section: edit it, see where it sits (its parent and the tasks inside it), who works on it and what came out, read and write
+ * its comments, start or delete it. This only puts the pieces together and gives each its commands.
+ */
+export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, onCreateSubtask }: DetailPanelProps) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -46,14 +59,20 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks }: Detail
     const status = project.statuses.find(candidate => candidate.id === task.statusId);
     const blocked = startBlockedReason(taskRuns);
     const link = externalLink(task.external);
+    const checklist = checklistOf(task);
 
-    // The panel's edits (title, description, status, dependencies) are the ones the person can take back.
+    // The panel's edits (title, description, status, dependencies, parent) are the ones the person can take back.
     const update = async (changes: TaskChanges) => (await sendWithUndo(root, project, [{ type: 'task.update', taskId: task.id, ...changes }]))[0].ok;
 
     const start = async () => {
         setIsStarting(true);
         await startTask(root, task.id);
         setIsStarting(false);
+    };
+
+    const openRun = (runId: string) => {
+        settleScope(root, project, ui);
+        void openRunInAgents(root, project, ui, runId);
     };
 
     const remove = async () => {
@@ -84,6 +103,11 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks }: Detail
                         value={ task.title }
                         onCommit={ title => update({ title }) }
                     />
+                    { checklist && (
+                        <div className={ styles.chips }>
+                            <ChecklistChip checklist={ checklist } />
+                        </div>
+                    ) }
                     <Select
                         aria-label="Status"
                         size="sm"
@@ -97,13 +121,7 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks }: Detail
                     >
                         { item => <ListBoxItem id={ item.id } text={ item.name } icon={ <StatusIcon category={ item.category } /> } /> }
                     </Select>
-                    <EditableText
-                        variant="body"
-                        aria-label="Description"
-                        placeholder="Add a description…"
-                        value={ task.description }
-                        onCommit={ description => update({ description }) }
-                    />
+                    <DescriptionField value={ task.description } onSave={ description => update({ description }) } />
                     { onOpenSubtasks && (
                         <Button variant="bordered" size="sm" className={ styles.subtasks } tooltip={ commandTooltip('Open sub-tasks', 'tasks.subtasks.open') } onPress={ onOpenSubtasks }>
                             <Layers />
@@ -112,13 +130,26 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks }: Detail
                     ) }
                 </div>
 
-                <Executors
-                    taskRuns={ taskRuns }
-                    onOpen={ (runId) => {
-                        settleScope(root, project, ui);
-                        void openRun(root, project, ui, runId);
-                    } }
+                <ParentRow
+                    task={ task }
+                    parent={ tree.parentOf(task) }
+                    candidates={ parentCandidates(project.taskList, task) }
+                    statuses={ project.statuses }
+                    onOpen={ id => nav.openTask(id) }
+                    onChange={ parentId => void update({ parentId }) }
                 />
+
+                <SubtasksSection
+                    task={ task }
+                    subtasks={ tree.childrenOf(task.id) }
+                    rollUp={ tree.rollUp(task) }
+                    statuses={ project.statuses }
+                    canHaveChildren={ tree.canHaveChildren(task) }
+                    onOpen={ id => nav.openTask(id) }
+                    onCreate={ onCreateSubtask }
+                />
+
+                <Executors taskRuns={ taskRuns } onOpen={ openRun } />
 
                 <Section title="Dependencies" count={ task.dependsOn.length }>
                     <DependencyList
@@ -143,6 +174,8 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks }: Detail
                 <Results taskId={ task.id } expectChecks={ activeExecutors(taskRuns).length > 0 } onOpenDoc={ path => nav.openDoc(path) } />
 
                 <LatestActivity activity={ taskActivity(task, taskRuns, project.runs) } />
+
+                <CommentsSection taskId={ task.id } onOpenRun={ openRun } onOpenTask={ id => nav.openTask(id) } />
             </div>
 
             <div className={ styles.foot }>

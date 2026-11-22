@@ -10,7 +10,9 @@ import { useId, useState, type FormEvent } from 'react';
 
 import styles from './CreateTaskDialog.module.css';
 import { DependencyList } from './DependencyList';
+import { NO_PARENT, parentOptions } from './pickerOptions';
 import { StatusIcon } from './status';
+import { parentCandidates } from './taskTree';
 import { createdTaskId, dependencyCandidates } from './taskView';
 
 import type { TaskId } from '@clowdy/protocol';
@@ -20,13 +22,15 @@ export interface CreateTaskDialogProps {
     root: RootStore;
     project: ProjectState;
     ui: ProjectUi;
-    /** Makes the new task a sub-task of this one, and says so in the dialog. The parent picker for any task is part of the task's details, not of this dialog. */
+    /** Where the dialog starts: the new task is a sub-task of this one, and says so. The person may pick another parent, or none. */
     parentId?: TaskId;
 }
 
 /**
- * "New task": title, description, status and dependencies. The new task opens in the detail panel, and the Tasks screen shows it where it is: with a `parentId` the task goes
+ * "New task": title, description, status, parent and dependencies. The new task opens in the detail panel, and the Tasks screen shows it where it is: with a parent the task goes
  * inside that one, and a muted line under the heading names it; the screen keeps its scope when the task is inside it and moves to the task's parent when it is not.
+ * The parent starts as `parentId`, and the field changes it or clears it ("No parent" makes a task of the roots); it lists the tasks a new task may go under, which are
+ * those with room for another level (`parentCandidates` with no task, since none is being moved).
  * `onClose` runs when the dialog is closed, however it was: the window hands focus back after it, so a caller that wants it elsewhere acts a tick later.
  */
 export function openCreateTask(props: CreateTaskDialogProps, { onClose }: { onClose?: () => void } = {}): void {
@@ -49,11 +53,13 @@ function CreateTaskForm({ root, project, ui, parentId }: CreateTaskDialogProps) 
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [statusId, setStatusId] = useState(() => (project.statuses.find(status => status.category === 'todo') ?? project.statuses[0])?.id);
+    const [chosenParentId, setChosenParentId] = useState<TaskId | null>(parentId ?? null);
     const [dependsOn, setDependsOn] = useState<string[]>([]);
     const [error, setError] = useState('');
     const [isPending, setIsPending] = useState(false);
     const canSubmit = title.trim() !== '';
-    const parent = parentId === undefined ? undefined : project.tasks.get(parentId);
+    const parent = chosenParentId === null ? undefined : project.tasks.get(chosenParentId);
+    const parentStatus = parent && project.statuses.find(status => status.id === parent.statusId);
 
     const submit = async (event: FormEvent) => {
         event.preventDefault();
@@ -70,7 +76,7 @@ function CreateTaskForm({ root, project, ui, parentId }: CreateTaskDialogProps) 
             description: description.trim() || undefined,
             statusId,
             dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
-            parentId,
+            parentId: chosenParentId ?? undefined,
         });
 
         if (result.ok) {
@@ -79,7 +85,7 @@ function CreateTaskForm({ root, project, ui, parentId }: CreateTaskDialogProps) 
             const taskId = createdTaskId(result.data);
 
             // The daemon's event may come after this reply, so the new task is not always in the project yet: `madeIn` puts the screen where it will show.
-            if (taskId) ui.openTask(taskId, { madeIn: parentId ?? null });
+            if (taskId) ui.openTask(taskId, { madeIn: chosenParentId });
         }
         else {
             setError(result.error.message);
@@ -115,6 +121,21 @@ function CreateTaskForm({ root, project, ui, parentId }: CreateTaskDialogProps) 
                     onSelectionChange={ (key: unknown) => typeof key === 'string' && setStatusId(key) }
                 >
                     { item => <ListBoxItem id={ item.id } text={ item.name } icon={ <StatusIcon category={ item.category } /> } /> }
+                </Select>
+            </FormField>
+
+            <FormField layout="vertical">
+                <FormField.Label>Parent</FormField.Label>
+                <Select
+                    aria-label="Parent"
+                    icon={ parentStatus && <StatusIcon category={ parentStatus.category } /> }
+                    showSearch
+                    searchPlaceholder="Find a task…"
+                    items={ parentOptions(parentCandidates(project.taskList), project.statuses) }
+                    selectedKey={ chosenParentId ?? NO_PARENT }
+                    onSelectionChange={ (key: unknown) => typeof key === 'string' && setChosenParentId(key === NO_PARENT ? null : key) }
+                >
+                    { option => <ListBoxItem id={ option.id } text={ option.label } icon={ option.icon } /> }
                 </Select>
             </FormField>
 

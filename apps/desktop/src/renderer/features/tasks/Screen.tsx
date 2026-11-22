@@ -339,6 +339,8 @@ export function Screen() {
                     titleRef={ titleField }
                     // Not for the task the screen is inside already: its sub-tasks are what is drawn.
                     onOpenSubtasks={ selected.id !== scope?.id && tree.childrenOf(selected.id).length > 0 ? () => open(selected.id) : undefined }
+                    tree={ tree }
+                    onCreateSubtask={ () => createIn(selected.id) }
                 />
             ) }
 

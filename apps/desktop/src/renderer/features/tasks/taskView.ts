@@ -360,6 +360,13 @@ export function newestChat<T extends Pick<Chat, 'updatedAt'>>(chats: readonly T[
     return chats.reduce<T | undefined>((newest, chat) => (newest === undefined || chat.updatedAt > newest.updatedAt ? chat : newest), undefined);
 }
 
+/** The id of the comment a `task.comment.add` answered with: `{ comment }`. */
+export function createdCommentId(data: unknown): string | undefined {
+    const comment = data && typeof data === 'object' && 'comment' in data ? data.comment : undefined;
+
+    return comment && typeof comment === 'object' && 'id' in comment && typeof comment.id === 'string' ? comment.id : undefined;
+}
+
 /** The id of the task a `task.create` answered with: the daemon and the fixture daemon answer `{ task }`. */
 export function createdTaskId(data: unknown): TaskId | undefined {
     const task = data && typeof data === 'object' && 'task' in data ? data.task : undefined;
