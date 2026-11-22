@@ -9,7 +9,7 @@ import { commandHint } from '../hotkeys/react';
 import { commandPresses, createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
 import { UiStore } from '../stores';
 import { findCommands } from './findCommands';
-import { navCommandId, NEW_CHAT_COMMAND, shellCommands, type ShellCommandsRoot } from './shellCommands';
+import { NEW_CHAT_COMMAND, shellCommands, type ShellCommandsRoot } from './shellCommands';
 
 let registry: HotkeyRegistry;
 let uninstall: () => void;
@@ -28,7 +28,6 @@ const press = (init: KeyboardEventInit & { key: string }, target: EventTarget = 
 
     return event;
 };
-const sectionOf = () => ui.forProject('p').section;
 
 beforeEach(() => {
     registry = createRegistry('darwin');
@@ -62,113 +61,17 @@ afterEach(() => {
     uninstall();
 });
 
-describe('section chords', () => {
-    it('G then A shows the Agents section of the selected project', () => {
-        press({ key: 'g' });
-        press({ key: 'a' });
-
-        expect(sectionOf()).toBe('agents');
-        expect(registry.pending).toBeNull();
-    });
-
-    it('has no chord for Tasks, which is a tab of the side panel with a key of its own', () => {
-        press({ key: 'g' });
-        press({ key: 't' });
-
-        expect(registry.pending).toBeNull();
-        expect(ui.forProject('p').sidePanelOpen).toBe(false);
-    });
-
-    it('does nothing after a G alone, and leaves a chord after its timeout', () => {
-        vi.useFakeTimers();
-
-        try {
-            press({ key: 'g' });
-
-            expect(registry.pending?.candidates.map(({ command }) => command.id).sort()).toEqual(['nav.agents']);
-            expect(sectionOf()).toBe('agents');
-
-            vi.advanceTimersByTime(1000);
-
-            expect(registry.pending).toBeNull();
-
-            press({ key: 't' });
-
-            expect(sectionOf()).toBe('agents');
-        }
-        finally {
-            vi.useRealTimers();
-        }
-    });
-
-    it('is cancelled by Escape', () => {
-        press({ key: 'g' });
-        press({ key: 'Escape' });
-        press({ key: 't' });
-
-        expect(registry.pending).toBeNull();
-        expect(sectionOf()).toBe('agents');
-    });
-
-    it('also leaves Settings', () => {
-        ui.openSettings('providers');
-
-        press({ key: 'g' });
-        press({ key: 'a' });
-
-        expect(ui.settingsOpen).toBe(false);
-        expect(sectionOf()).toBe('agents');
-    });
-
-    it('needs a selected project, and does not even start the chord without one', () => {
-        runInAction(() => {
-            root.selectedProjectId = null;
-        });
-
+describe('the keys that went with the sections', () => {
+    it('has no G chord: Tasks is a tab of the side panel with Cmd+4, and there is one screen to go to', () => {
         const event = press({ key: 'g' });
 
         expect(registry.pending).toBeNull();
         expect(event.defaultPrevented).toBe(false);
 
         press({ key: 't' });
+        press({ key: 'a' });
 
-        expect(sectionOf()).toBe('agents');
-    });
-
-    it('is a plain letter while a text field has focus', () => {
-        const input = document.createElement('input');
-
-        document.body.append(input);
-
-        try {
-            const first = press({ key: 'g' }, input);
-
-            press({ key: 't' }, input);
-
-            expect(first.defaultPrevented).toBe(false);
-            expect(registry.pending).toBeNull();
-            expect(sectionOf()).toBe('agents');
-        }
-        finally {
-            input.remove();
-        }
-    });
-
-    it('stays off while a dialog is open', () => {
-        const overlay = document.createElement('div');
-
-        overlay.dataset.modalOverlay = '';
-        document.body.append(overlay);
-
-        try {
-            press({ key: 'g' });
-            press({ key: 't' });
-
-            expect(sectionOf()).toBe('agents');
-        }
-        finally {
-            overlay.remove();
-        }
+        expect(ui.forProject('p').sidePanelOpen).toBe(false);
     });
 });
 
@@ -392,16 +295,13 @@ describe('the keymap', () => {
         for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'settings.open', 'nav.agents', 'chats.new', 'sidePanel.toggle', 'sidePanel.expand', 'sidePanel.terminal', 'sidePanel.tab.info', 'sidePanel.tab.files', 'sidePanel.tab.docs', 'sidePanel.tab.terminal', 'sidePanel.tab.tasks', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
-        expect(navCommandId('agents')).toBe('nav.agents');
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'settings.open', 'chats.new', 'sidePanel.toggle', 'sidePanel.expand', 'sidePanel.terminal', 'sidePanel.tab.info', 'sidePanel.tab.files', 'sidePanel.tab.docs', 'sidePanel.tab.terminal', 'sidePanel.tab.tasks', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
     });
 });
 
 describe('new chat', () => {
     it('shows the new-chat page of the Agents section on Cmd+N', () => {
         const event = press({ key: 'n', code: 'KeyN', metaKey: true });
-
-        expect(sectionOf()).toBe('agents');
         expect(ui.forProject('p').draft).toBe(true);
         expect(event.defaultPrevented).toBe(true);
     });

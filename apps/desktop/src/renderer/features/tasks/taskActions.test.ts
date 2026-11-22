@@ -514,7 +514,6 @@ describe('Open the linked chat', () => {
         press('c');
 
         expect(project().chatsOfTask('t-28').map(chat => chat.id).sort()).toEqual(['c-2', 'c-4']);
-        expect(ui().section).toBe('agents');
         expect(ui().chatId).toBe('c-4');
     });
 

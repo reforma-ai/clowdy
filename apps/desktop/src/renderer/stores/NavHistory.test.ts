@@ -33,9 +33,9 @@ const ui = () => root.ui.forProject(root.selectedProjectId!);
 
 /** Where the window is, in one comparable string: the project and the place. */
 function place(): string {
-    const { section, chatId, runId, draft } = ui();
+    const { chatId, runId, draft } = ui();
 
-    return `${ root.selectedProjectId }/${ section }:${ draft ? '@new-chat' : (runId ?? chatId) }`;
+    return `${ root.selectedProjectId }/${ draft ? '@new-chat' : (runId ?? chatId) }`;
 }
 
 /** Goes back until the start and returns how many steps it took. */
@@ -80,10 +80,10 @@ describe('NavHistory recording', () => {
         }
 
         expect(stops).toEqual([
-            'p-car/agents:c-2',
-            'p-car/agents:r-na-02',
-            'p-car/agents:c-1',
-            'p-car/agents:null',
+            'p-car/c-2',
+            'p-car/r-na-02',
+            'p-car/c-1',
+            'p-car/null',
         ]);
 
         const forward = [place()];
@@ -100,17 +100,17 @@ describe('NavHistory recording', () => {
         ui().openChat('c-1');
         ui().openDraft();
 
-        expect(place()).toBe('p-car/agents:@new-chat');
+        expect(place()).toBe('p-car/@new-chat');
 
         ui().openRun('r-na-02');
 
-        expect(place()).toBe('p-car/agents:r-na-02');
+        expect(place()).toBe('p-car/r-na-02');
         expect(ui().draft).toBe(false);
 
         root.history.back();
-        expect(place()).toBe('p-car/agents:@new-chat');
+        expect(place()).toBe('p-car/@new-chat');
         root.history.back();
-        expect(place()).toBe('p-car/agents:c-1');
+        expect(place()).toBe('p-car/c-1');
     });
 
     it('records the new-chat row of each folder as a place of its own, and brings its folder back', () => {
@@ -138,19 +138,19 @@ describe('NavHistory recording', () => {
 
         ui().openChat('c-1');
 
-        expect(place()).toBe('p-car/agents:c-1');
+        expect(place()).toBe('p-car/c-1');
 
         root.history.back();
-        expect(place()).toBe('p-car/agents:null');
+        expect(place()).toBe('p-car/null');
         expect(root.history.canGoBack).toBe(false);
 
         root.history.forward();
-        expect(place()).toBe('p-car/agents:c-1');
+        expect(place()).toBe('p-car/c-1');
 
         root.ui.openSettings('skills');
         root.history.back();
         expect(root.ui.settingsOpen).toBe(false);
-        expect(place()).toBe('p-car/agents:null');
+        expect(place()).toBe('p-car/null');
     });
 
     it('records the selected project, and the place each project was left on comes back with it', () => {
@@ -160,7 +160,7 @@ describe('NavHistory recording', () => {
         ui().openDraft();
         root.selectProject(FIXTURE_PROJECT_ID);
 
-        expect(place()).toBe('p-car/agents:c-1');
+        expect(place()).toBe('p-car/c-1');
 
         const stops = [place()];
 
@@ -170,17 +170,17 @@ describe('NavHistory recording', () => {
         }
 
         expect(stops).toEqual([
-            'p-car/agents:c-1',
-            'p-clowdy/agents:@new-chat',
-            'p-clowdy/agents:null',
-            'p-car/agents:c-1',
-            'p-car/agents:null',
+            'p-car/c-1',
+            'p-clowdy/@new-chat',
+            'p-clowdy/null',
+            'p-car/c-1',
+            'p-car/null',
         ]);
         expect(root.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
 
         while (root.history.canGoForward) root.history.forward();
 
-        expect(place()).toBe('p-car/agents:c-1');
+        expect(place()).toBe('p-car/c-1');
     });
 
     it('records nothing for going back or forward, so the way the other way stays open', () => {
@@ -190,7 +190,7 @@ describe('NavHistory recording', () => {
         root.history.back();
         root.history.forward();
 
-        expect(place()).toBe('p-car/agents:c-1');
+        expect(place()).toBe('p-car/c-1');
         expect(root.history.canGoBack).toBe(true);
         expect(root.history.canGoForward).toBe(true);
 
@@ -198,7 +198,7 @@ describe('NavHistory recording', () => {
         root.history.forward();
         root.selectProject(FIXTURE_EMPTY_PROJECT_ID);
         root.history.back();
-        expect(place()).toBe('p-car/agents:c-2');
+        expect(place()).toBe('p-car/c-2');
         expect(root.history.canGoForward).toBe(true);
         expect(stepsBack()).toBe(2);
     });
@@ -214,7 +214,7 @@ describe('NavHistory recording', () => {
 
         expect(root.history.canGoForward).toBe(false);
         root.history.back();
-        expect(place()).toBe('p-car/agents:null');
+        expect(place()).toBe('p-car/null');
     });
 
     it('does not record the view options: the Tasks view', () => {
@@ -241,7 +241,6 @@ describe('NavHistory recording', () => {
     });
 
     it('does not record a change that leaves the place as it was', () => {
-        root.ui.showSection(ui(), 'agents');
         ui().openChat(null);
         root.ui.showSettingsPage('skills');
 
@@ -253,7 +252,7 @@ describe('NavHistory recording', () => {
 
         expect(stepsBack()).toBe(HISTORY_LIMIT - 1);
         // 150 changes ended on c-2; the oldest 51 entries fell off, so the start is the 51st change: c-1.
-        expect(place()).toBe('p-car/agents:c-1');
+        expect(place()).toBe('p-car/c-1');
     });
 });
 
@@ -265,10 +264,10 @@ describe('NavHistory.replacing', () => {
 
         // One entry for the three, over the place it came from.
         expect(stepsBack()).toBe(1);
-        expect(place()).toBe('p-car/agents:null');
+        expect(place()).toBe('p-car/null');
 
         root.history.forward();
-        expect(place()).toBe('p-car/agents:c-3');
+        expect(place()).toBe('p-car/c-3');
 
         ui().openChat('c-4');
         expect(stepsBack()).toBe(2);
@@ -290,16 +289,16 @@ describe('NavHistory.replacing', () => {
         root.history.back();
         root.history.replacing(() => ui().openChat('c-3'));
 
-        expect(place()).toBe('p-car/agents:c-3');
+        expect(place()).toBe('p-car/c-3');
         root.history.forward();
-        expect(place()).toBe('p-car/agents:c-2');
+        expect(place()).toBe('p-car/c-2');
     });
 
     it('does not make back stand still when the replacement repeats the entry before it', () => {
         ui().openChat('c-1');
         root.history.replacing(() => ui().openChat(null));
 
-        expect(place()).toBe('p-car/agents:null');
+        expect(place()).toBe('p-car/null');
         expect(root.history.canGoBack).toBe(false);
     });
 });
@@ -322,10 +321,10 @@ describe('NavHistory entries that are gone', () => {
         expect(root.selectedProject?.runs.has('r-orch-2')).toBe(false);
 
         root.history.back();
-        expect(place()).toBe('p-car/agents:null');
+        expect(place()).toBe('p-car/null');
         expect(root.history.canGoBack).toBe(false);
         root.history.forward();
-        expect(place()).toBe('p-car/agents:c-1');
+        expect(place()).toBe('p-car/c-1');
     });
 
     it('stays put when nothing ahead can be shown, and says so', async () => {
@@ -338,7 +337,7 @@ describe('NavHistory entries that are gone', () => {
 
         expect(root.history.canGoForward).toBe(false);
         root.history.forward();
-        expect(place()).toBe('p-car/agents:null');
+        expect(place()).toBe('p-car/null');
     });
 
     it('cannot tell what a project holds before its snapshot has arrived, and does not skip', async () => {
@@ -354,7 +353,7 @@ describe('NavHistory entries that are gone', () => {
         ui().openChat('c-9');
         root.history.back();
 
-        expect(place()).toBe('p-car/agents:c-1');
+        expect(place()).toBe('p-car/c-1');
     });
 
     it('skips a project that is gone', () => {

@@ -11,7 +11,6 @@ import { ChordHud, hotkeys, installDispatcher, useCommands } from '../hotkeys';
 import { useRootStore } from '../stores';
 import { FindBar } from './FindBar';
 import { NoProject } from './NoProject';
-import { Rail } from './Rail';
 import styles from './Shell.module.css';
 import { shellCommands } from './shellCommands';
 import { SyncBanner } from './SyncBanner';
@@ -19,7 +18,7 @@ import { TitleBand } from './TitleBand';
 import { Unreachable } from './Unreachable';
 
 /**
- * The window: one title band across the top, and under it the rail on the left, the Agents screen, the side panel beside it while a project's panel
+ * The window: one title band across the top, and under it the Agents screen (the list of chats and the chat beside it), the side panel beside it while a project's panel
  * is open, and the rail at the right edge (the panel's tabs, Info and Settings), which is there whether the panel is open or not. Settings is a window over all this.
  */
 export function Shell() {
@@ -34,7 +33,6 @@ export function Shell() {
         <div className={ styles.shell }>
             <TitleBand />
             <div className={ styles.body }>
-                { root.phase === 'ready' && <Rail /> }
                 <SidePanelLayout>
                     <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare, panel.railShown && !panel.open && styles.railed) }>
                         <Outlet />

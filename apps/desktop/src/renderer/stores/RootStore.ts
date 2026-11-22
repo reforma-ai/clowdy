@@ -40,7 +40,7 @@ export interface RootStoreOptions {
     storage?: KeyValueStorage;
     /** Shows a daemon notice to the person. */
     notify?: (notice: Notice) => void;
-    /** Section and selections every project's window starts with (fixtures mode reads them from the page URL). */
+    /** Selections every project's window starts with (fixtures mode reads them from the page URL). */
     initialUi?: InitialProjectUi;
 }
 

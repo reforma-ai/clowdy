@@ -5,11 +5,6 @@ import { revealTask, type RevealTasks } from './taskReveal';
 
 import type { ChatId, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
 
-/** Agents is the one section left: Tasks is a tab of the side panel. It goes with the left rail, which had nothing else to choose. */
-export const SECTIONS = ['agents'] as const;
-
-export type Section = typeof SECTIONS[number];
-
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
 export const SETTINGS_PAGES = ['appearance', 'chat', 'files', 'shortcuts', 'projects', 'providers', 'skills'] as const;
 
@@ -24,9 +19,8 @@ export type SidePanelTab = typeof SIDE_PANEL_TABS[number];
 /** The tabs whose view is always the size of the chat's place, whatever the project chose for the others (`ProjectUi.sidePanelIsFull`). */
 const FULL_TABS: readonly SidePanelTab[] = ['tasks'];
 
-/** Where a project's window is: the section and the chat or run open in it. History walks these; the view options of a section, the side panel and what it shows are not places. */
+/** Where a project's window is: the chat or run open in it. History walks these; the view options of the Tasks tab, the side panel and what it shows are not places. */
 export interface ProjectView {
-    section: Section;
     chatId: ChatId | null;
     runId: RunId | null;
     /** Agents: the new-chat row is selected, and no chat exists yet. */
@@ -36,7 +30,6 @@ export interface ProjectView {
 }
 
 interface StoredProjectUi {
-    section: Section;
     chatId: ChatId | null;
     taskId: TaskId | null;
     runId: RunId | null;
@@ -65,15 +58,12 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?panel=open&panelTab=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'sidePanelOpen' | 'sidePanelTab' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'chatId' | 'taskId' | 'runId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'sidePanelOpen' | 'sidePanelTab' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
-    const section = SECTIONS.find(candidate => candidate === params.get('section'));
     const view = params.get('view');
     const initial: InitialProjectUi = {};
-
-    if (section) initial.section = section;
 
     if (params.has('chat')) initial.chatId = params.get('chat');
 
@@ -100,9 +90,8 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
     return initial;
 }
 
-/** What a project's window shows, remembered per project. The `open*` actions are how one section links to another. */
+/** What a project's window shows, remembered per project. The `open*` actions are how one place links to another. */
 export class ProjectUi {
-    section: Section = 'agents';
     chatId: ChatId | null = null;
     taskId: TaskId | null = null;
     runId: RunId | null = null;
@@ -122,7 +111,7 @@ export class ProjectUi {
     collapsedFolders: readonly FolderId[] = [];
     /** Chats: the strip of running agents over the message box shows its line only, with the rows folded away. Kept for every chat of the project. */
     agentsFolded = false;
-    /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat or section is on show. */
+    /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat is on show. */
     sidePanelOpen = false;
     /** The tab the side panel shows, kept for the project: the one it was left on. */
     sidePanelTab: SidePanelTab = 'info';
@@ -163,7 +152,6 @@ export class ProjectUi {
         const stored = readStored(storage, key) as Partial<Record<keyof StoredProjectUi, unknown>> | undefined;
 
         if (stored && typeof stored === 'object') {
-            this.section = SECTIONS.find(section => section === stored.section) ?? this.section;
             this.chatId = idOrNull(stored.chatId);
             this.taskId = idOrNull(stored.taskId);
             this.runId = idOrNull(stored.runId);
@@ -185,7 +173,6 @@ export class ProjectUi {
         makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, expandedChats: observableRef, collapsedFolders: observableRef, tasksCollapsed: observableRef });
         reaction(
             (): StoredProjectUi => ({
-                section: this.section,
                 chatId: this.chatId,
                 taskId: this.taskId,
                 runId: this.runId,
@@ -209,7 +196,6 @@ export class ProjectUi {
     /** The place the window shows, as a value that can be kept and shown again with `show`. */
     get view(): ProjectView {
         return {
-            section: this.section,
             chatId: this.chatId,
             runId: this.runId,
             draft: this.draft,
@@ -218,20 +204,18 @@ export class ProjectUi {
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ section, chatId, runId, draft, draftFolderId }: ProjectView): void {
+    show({ chatId, runId, draft, draftFolderId }: ProjectView): void {
         if (chatId !== this.chatId || runId !== this.runId || draft !== this.draft) this.showChat();
 
-        this.section = section;
         this.chatId = chatId;
         this.runId = runId;
         this.draft = draft;
         this.draftFolderId = draftFolderId;
     }
 
-    /** Shows the chat, in the Agents section; `null` leaves none selected. */
+    /** Shows the chat; `null` leaves none selected. */
     openChat(chatId: ChatId | null): void {
         this.showChat();
-        this.section = 'agents';
         this.chatId = chatId;
         this.runId = null;
         this.draft = false;
@@ -239,13 +223,12 @@ export class ProjectUi {
     }
 
     /**
-     * Shows the new-chat row of the Agents section: a chat that is only made when its first message is sent. `attach` are files for
+     * Shows the new-chat row: a chat that is only made when its first message is sent. `attach` are files for
      * its message box (a hand-off brings the old conversation this way): the page picks them up with `takePendingFiles`. `folderId` is the folder
      * of the project the chat is made for, `null` for the main folder.
      */
     openDraft(attach: readonly File[] = [], folderId: FolderId | null = null): void {
         this.showChat();
-        this.section = 'agents';
         this.runId = null;
         this.draft = true;
         this.draftFolderId = folderId;
@@ -302,10 +285,9 @@ export class ProjectUi {
         this.expandTasks(reveal.unfold);
     }
 
-    /** Shows the run in the Agents section, below its chat; a root run is its chat. */
+    /** Shows the run, below its chat; a root run is its chat. */
     openRun(runId: RunId | null): void {
         this.showChat();
-        this.section = 'agents';
         this.runId = runId;
         this.draft = false;
         this.draftFolderId = null;
@@ -528,13 +510,7 @@ export class UiStore {
         this.settingsOpen = false;
     }
 
-    /** Rail navigation: shows a section of the project and shuts Settings. */
-    showSection(ui: ProjectUi, section: Section): void {
-        this.settingsOpen = false;
-        ui.section = section;
-    }
-
-    /** Shuts the Settings window, which shows the section that is under it again. */
+    /** Shuts the Settings window, which shows the page that is under it again. */
     closeSettings(): void {
         this.settingsOpen = false;
     }

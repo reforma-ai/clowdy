@@ -15,20 +15,18 @@ describe('UiStore', () => {
         const ui = new UiStore().forProject('p1');
 
         ui.openTask('t1');
-        expect([ui.section, ui.taskId, ui.sidePanelOpen, ui.sidePanelTab]).toEqual(['agents', 't1', true, 'tasks']);
+        expect([ui.taskId, ui.sidePanelOpen, ui.sidePanelTab]).toEqual(['t1', true, 'tasks']);
         ui.openTask(null);
         expect([ui.taskId, ui.sidePanelOpen, ui.sidePanelTab]).toEqual([null, true, 'tasks']);
         ui.openRun('r1');
-        expect([ui.section, ui.runId]).toEqual(['agents', 'r1']);
+        expect([ui.runId]).toEqual(['r1']);
         ui.openChat('c1');
-        expect([ui.section, ui.chatId, ui.runId]).toEqual(['agents', 'c1', null]);
+        expect([ui.chatId, ui.runId]).toEqual(['c1', null]);
     });
 
-    it('forgets what an older version kept of the open document, and the Docs section: they fall back to the Agents section', () => {
+    it('forgets what an older version kept of the open document, and the Docs section', () => {
         const storage = memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","docPath":"decisions/pricing.md","docFolderId":"fld_api"}' });
         const ui = new UiStore(storage).forProject('p1');
-
-        expect(ui.section).toBe('agents');
         expect(ui).not.toHaveProperty('docPath');
         expect(Object.keys(ui.view)).not.toContain('docPath');
     });
@@ -41,7 +39,7 @@ describe('UiStore', () => {
         expect([ui.chatId, ui.runId, ui.draft]).toEqual(['c1', 'r1', false]);
 
         ui.openDraft();
-        expect([ui.section, ui.runId, ui.draft]).toEqual(['agents', null, true]);
+        expect([ui.runId, ui.draft]).toEqual([null, true]);
 
         ui.openRun('r1');
         expect(ui.draft).toBe(false);
@@ -95,9 +93,9 @@ describe('UiStore', () => {
 
         const second = new UiStore(storage);
 
-        expect(second.forProject('p1')).toMatchObject({ section: 'agents', taskId: 't7', tasksView: 'list', sidePanelOpen: true, sidePanelTab: 'tasks' });
-        expect(second.forProject('p2')).toMatchObject({ section: 'agents', chatId: 'c3', tasksView: 'board' });
-        expect(second.forProject('p3').section).toBe('agents');
+        expect(second.forProject('p1')).toMatchObject({ taskId: 't7', tasksView: 'list', sidePanelOpen: true, sidePanelTab: 'tasks' });
+        expect(second.forProject('p2')).toMatchObject({ chatId: 'c3', tasksView: 'board' });
+        expect(second.forProject('p3').chatId).toBeNull();
     });
 
     describe('the scope of the Tasks screen and its options', () => {
@@ -130,8 +128,8 @@ describe('UiStore', () => {
         it('reads a project stored before they existed: the defaults, and the rest as it was', () => {
             const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"tasks","taskId":"t7","tasksView":"list"}' })).forProject('p1');
 
-            // The Tasks section of an older version is the Agents section now.
-            expect(ui).toMatchObject({ section: 'agents', taskId: 't7', tasksView: 'list', tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+            // The section an older version stored is ignored: there is one screen.
+            expect(ui).toMatchObject({ taskId: 't7', tasksView: 'list', tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
         });
 
         it('takes what it can from a stored value of a shape it does not know, and the defaults for the rest', () => {
@@ -174,11 +172,11 @@ describe('UiStore', () => {
             ui.openChat('c1');
             ui.setTasksScope('t-31');
 
-            expect([ui.section, ui.chatId, ui.taskId]).toEqual(['agents', 'c1', null]);
+            expect([ui.chatId, ui.taskId]).toEqual(['c1', null]);
 
             ui.openTask('t-33');
             ui.setTasksScope('t-32');
-            expect([ui.section, ui.taskId, ui.tasksScope]).toEqual(['agents', 't-33', 't-32']);
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-33', 't-32']);
 
             ui.openTask('t-24');
             expect(ui.tasksScope).toBe('t-32');
@@ -328,7 +326,7 @@ describe('UiStore', () => {
             ui.setTasksSubtasks(true);
             ui.openTask('t-33');
 
-            expect([ui.section, ui.taskId, ui.tasksScope]).toEqual(['agents', 't-33', 't-31']);
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-33', 't-31']);
             expect(ui.tasksCollapsed).toEqual(['t-35']);
         });
 
@@ -418,7 +416,7 @@ describe('UiStore', () => {
 
             ui.openTask('t-33', { reveal: false });
 
-            expect([ui.taskId, ui.tasksScope, ui.section]).toEqual(['t-33', null, 'agents']);
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-33', null]);
         });
 
         it('leaves the scope alone for a task the project does not hold, and for the one that closes the panel', () => {
@@ -481,8 +479,8 @@ describe('UiStore', () => {
     it('starts from defaults when the stored value is damaged', () => {
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"nope","taskId":5,"tasksView":"cards"}' })).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'agents', taskId: null, tasksView: 'board' });
-        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': 'not json' })).forProject('p1').section).toBe('agents');
+        expect(ui).toMatchObject({ taskId: null, tasksView: 'board' });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': 'not json' })).forProject('p1').chatId).toBeNull();
     });
 
     it('keeps working when storage throws', () => {
@@ -498,16 +496,6 @@ describe('UiStore', () => {
 
         expect(() => ui.openTask('t1')).not.toThrow();
         expect(ui.taskId).toBe('t1');
-    });
-
-    it('leaves Settings when a section is chosen', () => {
-        const store = new UiStore();
-        const ui = store.forProject('p1');
-
-        store.openSettings();
-        expect(store.settingsOpen).toBe(true);
-        store.showSection(ui, 'agents');
-        expect([store.settingsOpen, ui.section]).toEqual([false, 'agents']);
     });
 
     it('shuts Settings when a place is shown, as back and forward show one: Settings is a window over a place, not a place', () => {
@@ -532,17 +520,17 @@ describe('UiStore', () => {
         expect([store.settingsOpen, store.settingsPage]).toEqual([true, 'providers']);
     });
 
-    it('shows the Agents section for a section an older version stored under the name Chats', () => {
+    it('ignores a section an older version stored under the name Chats, and keeps the chat', () => {
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"chats","chatId":"c-1"}' })).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'agents', chatId: 'c-1' });
+        expect(ui).toMatchObject({ chatId: 'c-1' });
     });
 
     it('starts from what the page URL preselects, ahead of the stored state', () => {
         const initial = initialUiFromSearch('?fixtures=1&panel=open&panelTab=tasks&task=t-24&view=list&chat=c-1&run=r-1');
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"agents","tasksView":"board"}' }), initial).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'agents', taskId: 't-24', tasksView: 'list', chatId: 'c-1', runId: 'r-1', sidePanelOpen: true, sidePanelTab: 'tasks' });
+        expect(ui).toMatchObject({ taskId: 't-24', tasksView: 'list', chatId: 'c-1', runId: 'r-1', sidePanelOpen: true, sidePanelTab: 'tasks' });
     });
 
     it('folds every chat until its threads are opened, and keeps what the person opened per project across a restart', () => {
@@ -929,8 +917,8 @@ describe('UiStore', () => {
         expect([ui.draft, ui.draftFolderId]).toEqual([false, null]);
     });
 
-    it('ignores URL values that name no section or view', () => {
-        expect(initialUiFromSearch('?section=nope&view=cards')).toEqual({});
+    it('ignores URL values that name no view, and a section, which is gone', () => {
+        expect(initialUiFromSearch('?section=tasks&view=cards')).toEqual({});
         expect(initialUiFromSearch('')).toEqual({});
     });
 

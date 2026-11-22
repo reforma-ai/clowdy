@@ -3,18 +3,10 @@ import { SIDE_PANEL_COMMAND, SIDE_PANEL_EXPAND_COMMAND, SIDE_PANEL_EXPAND_KEYS, 
 import { SIDE_PANEL_TABS } from '../stores';
 
 import type { ScopedCommand } from '../hotkeys';
-import type { NavHistory, RootStore, Section } from '../stores';
-
-/** The id of the command that switches to the section, which the Rail asks for the hint of its button. */
-export const navCommandId = (section: Section) => `nav.${ section }`;
+import type { NavHistory, RootStore } from '../stores';
 
 /** The id of the command that starts a chat, which the New chat row asks for its hint. */
 export const NEW_CHAT_COMMAND = 'chats.new';
-
-/** `G` then a letter, the way Linear goes places: A for Agents (the chats and the runs below them). Tasks is a tab of the side panel and has a key of its own. */
-const SECTION_CHORDS: Record<Section, { title: string; keys: string }> = {
-    agents: { title: 'Go to Agents', keys: 'g a' },
-};
 
 /** The brackets by their physical keys: on a Cyrillic layout the key at `[` types a letter, and the key event names no bracket. */
 const BACK_KEYS = '$mod+BracketLeft';
@@ -26,25 +18,14 @@ export interface ShellCommandsRoot extends Pick<RootStore, 'phase' | 'selectedPr
 }
 
 /**
- * The commands that work in every section, for `useCommands('app', …)`: the shortcuts page of Settings, the `G` chord that goes to Agents, `Cmd+,` for the Settings window, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
+ * The commands that work in the whole window, for `useCommands('app', …)`: the shortcuts page of Settings, `Cmd+,` for the Settings window, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
  * the side panel, `Cmd+Shift+Enter` (`Ctrl+Shift+Enter`) for its expanded view, `Ctrl+`` for its terminal, `Cmd+0` to `Cmd+4` for its tabs, and back and forward.
  * `?` opens Settings on its Shortcuts page, once the window shows anything to open it over: while the app loads or cannot reach its daemon, the key reaches the page.
- * A section chord and a new chat need a selected project, as the Rail's buttons do, and also leave Settings.
- * `Cmd+N` shows the new-chat page of the Agents section whichever section is open, and works from a text field too: the message box is the place it is most wanted.
+ * A new chat needs a selected project, and also leaves Settings.
+ * `Cmd+N` shows the new-chat page, and works from a text field too: the message box is the place it is most wanted.
  * Back and forward are off while there is nowhere to go, so the key reaches the page and the hint is not shown. Text fields keep `Cmd+[` for outdenting.
  */
 export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
-    const sections = (Object.keys(SECTION_CHORDS) as Section[]).map((section): ScopedCommand => ({
-        id: navCommandId(section),
-        title: SECTION_CHORDS[section].title,
-        group: 'Navigation',
-        keys: SECTION_CHORDS[section].keys,
-        when: () => root.selectedProjectId !== null,
-        handler: () => {
-            if (root.selectedProjectId) root.ui.showSection(root.ui.forProject(root.selectedProjectId), section);
-        },
-    }));
-
     return [
         {
             id: 'help.open',
@@ -64,7 +45,6 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
             when: () => root.phase === 'ready',
             handler: () => root.ui.openSettings(),
         },
-        ...sections,
         {
             id: NEW_CHAT_COMMAND,
             title: 'New chat',
@@ -75,10 +55,8 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
             handler: () => {
                 if (!root.selectedProjectId) return;
 
-                const projectUi = root.ui.forProject(root.selectedProjectId);
-
-                root.ui.showSection(projectUi, 'agents');
-                projectUi.openDraft();
+                root.ui.closeSettings();
+                root.ui.forProject(root.selectedProjectId).openDraft();
             },
         },
         {

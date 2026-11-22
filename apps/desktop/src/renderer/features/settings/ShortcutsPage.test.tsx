@@ -43,7 +43,7 @@ describe('ShortcutsPage', () => {
 
     it('lists the commands of the sections that are not mounted, which the registry does not hold while Settings is open', () => {
         expect(sectionNamed('Tasks').textContent).toContain('New task');
-        expect(sectionNamed('Navigation').textContent).toContain('Go to Agents');
+        expect(sectionNamed('Navigation').textContent).toContain('Go back');
     });
 
     it('shows the way to ask for these shortcuts among the general ones', () => {
@@ -57,10 +57,10 @@ describe('ShortcutsPage', () => {
     });
 
     it('writes a chord as its presses in a row', () => {
-        const row = rowOf('Go to Agents');
+        const row = rowOf('Open sub-tasks');
 
-        expect(keysOf(row)).toEqual(['G', 'A']);
-        expect(row.querySelector('[data-hotkey-sequence]')?.textContent).toBe('GthenA');
+        expect(keysOf(row)).toEqual(['O', 'S']);
+        expect(row.querySelector('[data-hotkey-sequence]')?.textContent).toBe('OthenS');
     });
 
     it('only informs: it has no field, switch or button', () => {

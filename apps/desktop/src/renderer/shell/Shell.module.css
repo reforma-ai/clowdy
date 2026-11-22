@@ -19,20 +19,18 @@
     min-width: 0;
     min-height: 0;
     border-top: 1px solid var(--color-surface-border);
-    border-left: 1px solid var(--color-surface-border);
-    border-top-left-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
     corner-shape: superellipse(var(--squircle-value));
     background-color: var(--color-surface);
     overflow: hidden;
 }
 
-/* With the side panel's rail at the plate's right edge, and no panel between, the plate rounds off against it as it does against the left rail. */
+/* The plate starts at the window's left edge. With the side panel's rail at its right edge, and no panel between, the plate rounds off against the rail. */
 .railed {
     border-right: 1px solid var(--color-surface-border);
     border-top-right-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
 }
 
-/* Without the rail there is no edge for the plate to round off against. */
+/* Without the rail there is no edge for the plate to round off against, and no top edge to draw. */
 .bare {
     border: 0;
     border-radius: 0;

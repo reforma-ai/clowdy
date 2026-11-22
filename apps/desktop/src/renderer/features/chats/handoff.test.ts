@@ -337,7 +337,6 @@ describe('startHandoff', () => {
         expect(await handOff('c-1')).toBe(true);
 
         expect(ui().draft).toBe(true);
-        expect(ui().section).toBe('agents');
 
         const [attached, ...others] = ui().pendingFiles;
 

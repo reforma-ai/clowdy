@@ -81,7 +81,6 @@ describe('the card of an agent\'s own sub-agent', () => {
         await act(async () => opener()!.click());
 
         expect(ui().runId).toBe('r-na-01');
-        expect(ui().section).toBe('agents');
     });
 
     it('shimmers its verb while the call runs, with what the child does now as its one live line', async () => {

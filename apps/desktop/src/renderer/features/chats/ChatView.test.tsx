@@ -741,7 +741,6 @@ describe('Fork in a chat', () => {
         expect(opened).not.toBe('c-2');
         expect(opened).not.toBe(FIXTURE_FORK_CHAT_ID);
         expect(chatOf(opened)).toMatchObject({ title: '(1) First version', forkedFrom: { chatId: 'c-2', atSeq: answer.seq } });
-        expect(ui().section).toBe('agents');
         expect(toast.error).not.toHaveBeenCalled();
     });
 

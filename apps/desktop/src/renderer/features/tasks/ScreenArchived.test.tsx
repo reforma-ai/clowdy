@@ -323,8 +323,6 @@ describe('the panel of an archived task', () => {
         expect(link.textContent).toBe('Orchestrator 01');
 
         await click(link);
-
-        expect(ui().section).toBe('agents');
         expect(ui().runId).toBe('r-orch-1');
     });
 

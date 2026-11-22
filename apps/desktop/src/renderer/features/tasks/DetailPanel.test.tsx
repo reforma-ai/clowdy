@@ -530,7 +530,6 @@ describe('the Comments section', () => {
         await click(link);
 
         // A chat's orchestrator is its chat: the Agents section opens on it.
-        expect(ui().section).toBe('agents');
         expect(ui().runId).toBe('r-orch-1');
     });
 
