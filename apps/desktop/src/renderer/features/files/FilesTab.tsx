@@ -45,7 +45,7 @@ export default function FilesTab({ variant = 'files' }: { variant?: 'files' | 'd
             manager={ manager }
             scope={ variant === 'docs' ? docsScopeOf(manager) : undefined }
             filterPlaceholder={ variant === 'docs' ? 'Filter documents' : undefined }
-            emptyText={ variant === 'docs' ? 'No documents found' : undefined }
+            emptyText={ variant === 'docs' ? 'No documents found' : 'No files found' }
             menuItems={ openInMenuItems({ projectId: project.id, folder, programs: chosenPrograms(apps), git, inTerminal: relative => void openInTerminal(root, project.id, folder, relative) }) }
             sidebarOpen={ treeLayout.open }
             sidebarWidth={ treeLayout.width }

@@ -94,6 +94,24 @@ describe('the rows of the tree', () => {
     });
 });
 
+describe('the empty text of the tree', () => {
+    it('is shown while the folder holds nothing, and not while it holds a file', async () => {
+        draw({ emptyText: 'No files found' });
+        await settle();
+
+        expect(container.textContent).not.toContain('No files found');
+
+        manager.dispose();
+        manager = new FileManager({ provider: new MemoryFileSystem({}) });
+        await manager.start();
+        draw({ emptyText: 'No files found' });
+        await settle();
+
+        expect(container.querySelectorAll('[role="treeitem"]').length).toBe(0);
+        expect(container.textContent).toContain('No files found');
+    });
+});
+
 describe('the file tree\'s drag and drop', () => {
     it('is on the tree, which has its rows to drag', () => {
         expect(container.querySelectorAll('[role="treeitem"]').length).toBe(2);
