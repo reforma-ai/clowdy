@@ -34,7 +34,7 @@ export function Shell() {
             <TitleBand />
             <div className={ styles.body }>
                 <SidePanelLayout>
-                    <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare, panel.open && styles.beside) }>
+                    <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare, panel.open && styles.beside, panel.expanded && styles.covered) }>
                         <Outlet />
                     </main>
                 </SidePanelLayout>

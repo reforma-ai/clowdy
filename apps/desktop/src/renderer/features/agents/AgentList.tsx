@@ -67,7 +67,7 @@ interface ChatActions {
  * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), in a project of several folders, the
  * chats stand in a group for the folder they work in, under a heading that folds the group and has a button for a chat in that folder.
  */
-export function AgentList({ selection, chats, missing }: { selection: AgentSelection; chats: readonly Chat[]; missing: ReadonlySet<FolderId> }) {
+export function AgentList({ selection, chats, missing, isCovered }: { selection: AgentSelection; chats: readonly Chat[]; missing: ReadonlySet<FolderId>; /** The side panel is in the place of the chat, so the list is a plate of its own. */ isCovered: boolean }) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -294,7 +294,7 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
     };
 
     return (
-        <Panel side="left">
+        <Panel side="left" className={ isCovered ? styles.covered : undefined }>
             <SidebarHeading ref={ heading } title="Agents" className={ styles.heading }>
                 <ArchiveButton anchor={ heading } />
                 <FilterMenu />

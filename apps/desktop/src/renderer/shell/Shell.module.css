@@ -1,7 +1,7 @@
 .shell {
     /* The plates float on the window's chrome, as Reforma's do: this far from the window's left edge and bottom, and this far from each other. */
-    --plate-inset: var(--spacing-8);
-    --plate-gap: var(--spacing-6);
+    --plate-inset: var(--spacing-6);
+    --plate-gap: var(--spacing-4);
     --plate-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
 
     display: flex;
@@ -35,6 +35,15 @@
 /* The side panel's plate is beside it: the edge between them to drag is in the middle of the gap, half of it on each plate. */
 .beside {
     margin-right: calc(var(--plate-gap) / 2);
+}
+
+/*
+ * Expanded, the page's plate is the list of chats alone, an island of its own (`AgentList.module.css` draws it), and the panel's plate is the other, with the gap between.
+ * What is left of the page's plate is clear, so the window shows through the gap.
+ */
+.covered {
+    border-width: 0;
+    background-color: transparent;
 }
 
 /* Before the projects are loaded there is no rail and no plate to draw: the message fills the window. */

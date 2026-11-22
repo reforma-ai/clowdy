@@ -33,7 +33,7 @@ export function Screen() {
     const where = chat ? chatFolder(project.chats, project.project.folders, chat.id) : undefined;
 
     return (
-        <SidebarLayout screen="agents" defaultWidth={ 270 } sidebar={ <AgentList selection={ selection } chats={ chats } missing={ missing } /> }>
+        <SidebarLayout screen="agents" defaultWidth={ 270 } sidebar={ <AgentList selection={ selection } chats={ chats } missing={ missing } isCovered={ expanded } /> }>
             <section className={ styles.main } aria-label={ run ? 'Sub-agent' : 'Chat' } data-covered={ expanded || undefined }>
                 { run
                     ? <RunDetail key={ run.id } run={ run } />
