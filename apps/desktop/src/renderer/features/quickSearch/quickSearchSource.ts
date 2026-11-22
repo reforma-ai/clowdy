@@ -1,13 +1,14 @@
 import { openChat } from '../chats/archiveChat';
+import { docPaths } from '../chats/mentionItems';
 import { isHiddenPath, treeLayout } from '../files';
-import { isDocumentPath } from '../files/docsScope';
+import { DOCS_ROOT, isDocumentPath } from '../files/docsScope';
 import { filesManagerOf as managerOf, showFilesTab } from '../files/openInFiles';
 import { foundChats } from './quickSearchChats';
 
 import type { FileManager } from '@clowdy/file-manager';
 import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
 import type { ProjectState, RootStore } from '../../stores';
-import type { Found, FoundChat, QuickSearchSource } from './QuickSearchModel';
+import type { Found, FoundChat, FoundDoc, QuickSearchSource } from './QuickSearchModel';
 
 /** The most files the daemon is asked for by the project's list: its own cap. */
 const FILE_LIMIT = 100;
@@ -30,11 +31,22 @@ export function mergeFiles(query: string, ...lists: ReadonlyArray<readonly strin
     return [...new Set(lists.flat())].toSorted((a, b) => scoreOf(a, first) - scoreOf(b, first) || a.length - b.length);
 }
 
+/** The documents whose path has every word of `query` (any case), ranked as file names are. The paths are below the docs folder: the folder's own name is not part of them. */
+export function matchDocs(query: string, paths: readonly string[]): string[] {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+
+    return mergeFiles(query, paths.filter((path) => {
+        const lower = path.toLowerCase();
+
+        return words.every(word => lower.includes(word));
+    }));
+}
+
 /**
  * Opens a result in the side panel's Files tab: the panel shows, the tab is the Files one, and the file is in a tab of the editor, with the match selected
  * when the result is a line. The tab shows the folder the window is working in, which is the one the palette searched.
  */
-export async function openFound(root: RootStore, projectId: ProjectId, folder: ProjectFolder, found: Exclude<Found, FoundChat>): Promise<void> {
+export async function openFound(root: RootStore, projectId: ProjectId, folder: ProjectFolder, found: Exclude<Found, FoundChat | FoundDoc>): Promise<void> {
     showFilesTab(root, projectId, isDocumentPath(found.path) ? 'docs' : 'files');
 
     const manager = await managerOf(root, projectId, folder);
@@ -91,6 +103,13 @@ export function quickSearchSource(root: RootStore, project: ProjectState, folder
 
             return treeLayout.showHidden ? files : files.filter(path => !isHiddenPath(path));
         },
+        docs: async (query) => {
+            // The daemon reads the folder's `.clowdy/docs` from the disk, which the file names leave out: the Docs tab's own tree is the same files.
+            const tree = await root.transport.getDocsTree(projectId);
+            const mine = tree.find(entry => entry.folderId === folder.id);
+
+            return matchDocs(query, mine ? docPaths(mine.nodes) : []);
+        },
         text: async (query) => {
             manager = await managerOf(root, projectId, folder);
 
@@ -106,6 +125,7 @@ export function quickSearchSource(root: RootStore, project: ProjectState, folder
         },
         open: (found) => {
             if (found.kind === 'chat') void openChat(root, project, root.ui.forProject(projectId), found.chatId);
+            else if (found.kind === 'doc') void openFound(root, projectId, folder, { kind: 'file', id: found.id, path: `${ DOCS_ROOT }/${ found.path }` });
             else void openFound(root, projectId, folder, found);
         },
         dispose: () => manager?.search.dispose(),

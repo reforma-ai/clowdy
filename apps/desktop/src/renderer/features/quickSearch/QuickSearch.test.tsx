@@ -118,7 +118,7 @@ describe('the quick search palette', () => {
 
         const headings = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'));
 
-        expect(headings).toEqual(['Chats', 'Files', 'Text']);
+        expect(headings).toEqual(['Chats', 'Docs', 'Files', 'Text']);
     });
 
     it('lists the latest chats of the project before anything is typed, and finds the ones whose title has the words', async () => {
@@ -231,10 +231,16 @@ describe('the quick search palette', () => {
         press('Tab');
         await settle();
 
+        expect(field().placeholder).toBe('Search documents by name');
+
+        press('Tab');
+        await settle();
+
         expect(field().placeholder).toBe('Search files by name');
         expect(document.activeElement).toBe(field());
         expect(document.body.querySelectorAll('[role="listbox"] [role="group"]')).toHaveLength(1);
 
+        press('Tab', { shiftKey: true });
         press('Tab', { shiftKey: true });
         press('Tab', { shiftKey: true });
         press('Tab', { shiftKey: true });
@@ -246,6 +252,32 @@ describe('the quick search palette', () => {
 
         expect(field().placeholder).toBe('Search files by name');
         expect(document.body.querySelectorAll('input[role="combobox"]')).toHaveLength(1);
+    });
+
+    it('finds the documents below .clowdy/docs, which the file names leave out, and opens one in the Docs tab', async () => {
+        await open('files');
+        await search('pricing');
+
+        expect(rows()).toEqual([]);
+
+        await open('docs');
+
+        expect(field().placeholder).toBe('Search documents by name');
+
+        await search('pricing');
+
+        expect(names()).toEqual(['pricing.mddecisions']);
+        expect(rows()[0]!.querySelector('mark')?.textContent).toBe('pricing');
+
+        const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
+
+        press('Enter');
+        await settle(200);
+
+        expect(document.body.querySelector('[role="combobox"]')).toBeNull();
+        expect(ui.sidePanelOpen).toBe(true);
+        expect(ui.sidePanelTab).toBe('docs');
+        expect(manager().tabs.active?.path).toBe('.clowdy/docs/decisions/pricing.md');
     });
 
     it('finds a file the tree shows although the project\'s list of files leaves it out, as it does one that git ignores', async () => {
