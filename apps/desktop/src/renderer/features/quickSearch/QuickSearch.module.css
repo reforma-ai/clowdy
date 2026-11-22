@@ -3,8 +3,8 @@
 /* A fixed size whatever is listed, so the window keeps its place as the results come and go. The width is its own and not the window's: a window that sizes itself to what is in it
    would grow with the longest line found, and the rows would no longer fit in it. */
 .palette {
-    /* The field's bar and the tabs' bar are as high as a button and the same space above and below it, and that space is also what is left of it: the search icon, the
-       plate of a pressed tab and the plate of the row the keys are on all start the same distance from the window's edge. */
+    /* The field's bar and the tabs' bar are as high as a button and the same space above and below it, and that space is also what is left of it: the plate of a pressed tab
+       and the plate of the row the keys are on start the same distance from the window's edge. The search icon keeps the wider gutter of a field. */
     --palette-gap: var(--spacing-8);
     --palette-bar: calc(var(--spacing-30) + 2 * var(--palette-gap));
 
@@ -20,7 +20,7 @@
     align-items: center;
     gap: var(--spacing-10);
     height: var(--palette-bar);
-    padding-inline: var(--palette-gap);
+    padding-inline: var(--spacing-lg);
     border-bottom: 1px solid var(--color-surface-border);
 }
 
