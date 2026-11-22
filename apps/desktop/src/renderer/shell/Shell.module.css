@@ -1,4 +1,9 @@
 .shell {
+    /* The plates float on the window's chrome, as Reforma's do: this far from the window's left edge and bottom, and this far from each other. */
+    --plate-inset: var(--spacing-8);
+    --plate-gap: var(--spacing-6);
+    --plate-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -11,27 +16,30 @@
     min-height: 0;
 }
 
-/* The content plate: paper over the window's translucent chrome. */
+/* The content plate: paper over the window's translucent chrome, rounded at every corner, with room at the window's left edge and bottom. Its right edge is the rail's. */
 .outlet {
     display: flex;
     flex: 1;
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    border-top: 1px solid var(--color-surface-border);
+    margin-bottom: var(--plate-inset);
+    margin-left: var(--plate-inset);
+    border: 1px solid var(--color-surface-border);
+    border-radius: var(--plate-radius);
     corner-shape: superellipse(var(--squircle-value));
     background-color: var(--color-surface);
     overflow: hidden;
 }
 
-/* The plate starts at the window's left edge. With the side panel's rail at its right edge, and no panel between, the plate rounds off against the rail. */
-.railed {
-    border-right: 1px solid var(--color-surface-border);
-    border-top-right-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+/* The side panel's plate is beside it: the edge between them to drag is in the middle of the gap, half of it on each plate. */
+.beside {
+    margin-right: calc(var(--plate-gap) / 2);
 }
 
-/* Without the rail there is no edge for the plate to round off against, and no top edge to draw. */
+/* Before the projects are loaded there is no rail and no plate to draw: the message fills the window. */
 .bare {
+    margin: 0;
     border: 0;
     border-radius: 0;
 }
