@@ -538,7 +538,10 @@ export class AcpSession implements EngineSession {
         try {
             const decision = await approve(classify(request), ended);
 
-            return decision && optionFor(request.options, decision);
+            // Allow for session is Clowdy's own grant (`RunService.askApproval`), so the agent gets its one-time allow. Its own lasting option writes a rule that
+            // outlives the run: Claude Code's goes to `.claude/settings.local.json` of the project, Codex's to `~/.codex/rules/default.rules` and holds for every project
+            // (checked on 2026-11-22), which "for the session" does not promise. An agent with no one-time allow gets the lasting one, the only way to say yes.
+            return decision && optionFor(request.options, decision === 'allow_always' ? 'allow_once' : decision);
         }
         catch (error) {
             console.warn(`[clowdy] a permission request of ${ agent.name } was not put to the person: ${ errorMessage(error) }`);

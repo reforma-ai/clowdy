@@ -193,7 +193,7 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('run.stopBackground'), runId: z.string(), itemId: z.string() }),
     /** Answers a `question` stream item of a run in `waiting_user`. */
     z.object({ ...base, type: z.literal('run.answer'), runId: z.string(), questionId: z.string(), answer: z.string() }),
-    /** Decides an `approval` stream item that is `open`: the run goes on when none is left. `allow_always` also makes Clowdy answer the same request for the rest of the run without asking. */
+    /** Decides an `approval` stream item that is `open`: the run goes on when none is left. `allow_always` makes Clowdy answer the same request for the rest of the run without asking; the agent itself is told to allow it once. */
     z.object({ ...base, type: z.literal('run.decide'), runId: z.string(), approvalId: z.string(), decision: z.enum(['allow_once', 'allow_always', 'reject']) }),
 
     /* Documents */

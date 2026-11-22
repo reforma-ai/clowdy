@@ -133,13 +133,17 @@ function keyOf(subject: ApprovalSubject, title: string): string {
     }
 }
 
-/** The answers an agent's options allow, by kind: `reject` stands for both of its refusals. */
+/**
+ * The answers a request can be given: `reject` stands for both of the agent's refusals, and `allow_always` (Allow for session) is Clowdy's own grant, so
+ * it is offered whenever the agent offers any allow option, whether or not it has a lasting one of its own.
+ */
 function decisionsOf(options: readonly PermissionOption[]): ApprovalDecision[] {
     const kinds = new Set(options.map(option => option.kind));
+    const allows = kinds.has('allow_once') || kinds.has('allow_always');
 
     return [
         ...(kinds.has('allow_once') ? ['allow_once' as const] : []),
-        ...(kinds.has('allow_always') ? ['allow_always' as const] : []),
+        ...(allows ? ['allow_always' as const] : []),
         ...(kinds.has('reject_once') || kinds.has('reject_always') ? ['reject' as const] : []),
     ];
 }

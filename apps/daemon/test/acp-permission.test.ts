@@ -77,13 +77,14 @@ describe('classify', () => {
         expect(subject).toEqual({ kind: 'tool_use', tool: 'Big' });
     });
 
-    test('the decisions are the kinds the agent\'s options have, a refusal of either kind being one', () => {
+    test('the decisions are what the agent\'s options allow: Allow for session whenever it offers an allow, a refusal of either kind being one', () => {
         const only = (...kinds: string[]) => classify({ toolCall: { title: 'T' }, options: kinds.map((kind, index) => ({ optionId: `o${ index }`, kind })) }).decisions;
 
-        expect(only('allow_once', 'reject_once')).toEqual(['allow_once', 'reject']);
+        expect(only('allow_once', 'reject_once')).toEqual(['allow_once', 'allow_always', 'reject']);
         expect(only('reject_always', 'allow_always')).toEqual(['allow_always', 'reject']);
         expect(only('allow_once', 'allow_always', 'reject_once', 'reject_always')).toEqual(['allow_once', 'allow_always', 'reject']);
-        expect(only('allow_once')).toEqual(['allow_once']);
+        expect(only('allow_once')).toEqual(['allow_once', 'allow_always']);
+        expect(only('reject_once')).toEqual(['reject']);
     });
 
     test('a request with no title is titled by what it asks', () => {

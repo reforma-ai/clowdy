@@ -109,7 +109,8 @@ eachProtocol('a turn on an ACP agent', (protocol) => {
             };
 
             expect(await decide('allow_once')).toBe('permission: once');
-            expect(await decide('allow_always')).toBe('permission: always');
+            // Allow for session is Clowdy's grant: the agent gets its one-time allow, never its own lasting option.
+            expect(await decide('allow_always')).toBe('permission: once');
             expect(await decide('reject')).toBe('permission: reject');
             expect(seen[0]).toMatchObject({ toolCallId: expect.any(String), title: 'Run ls', subject: { kind: 'command', command: 'ls -la', cwd: '/work' }, decisions: ['allow_once', 'allow_always', 'reject'], key: 'command:ls -la' });
         });

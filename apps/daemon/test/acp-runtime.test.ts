@@ -104,7 +104,7 @@ describe('an ACP agent on the preset that asks, through the real runtime', () =>
         await waitFor(() => h.run(runId).status === 'succeeded', 'the first turn', 15_000);
 
         h.ok('chat.send', { chatId: chat.id, text: 'perm execute {"rawInput":{"command":"make"}}' });
-        await waitFor(() => listItems(h.store.db, runId, 0).filter(item => item.body.kind === 'assistant' && item.body.text === 'permission: once').length === 1, 'the answer without a card', 15_000);
+        await waitFor(() => listItems(h.store.db, runId, 0).filter(item => item.body.kind === 'assistant' && item.body.text === 'permission: once').length === 2, 'the answer without a card', 15_000);
 
         expect(approvals(h, runId)).toHaveLength(1);
     });

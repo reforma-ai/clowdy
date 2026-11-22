@@ -537,7 +537,7 @@ export type ApprovalSubject =
     | { kind: 'file_change'; paths: string[] }
     | { kind: 'tool_use'; tool: string; detail?: string };
 
-/** The three answers, by the kind of the agent's option: once (`allow_once`), for the rest of the run (`allow_always`, which Clowdy also remembers itself), no (`reject_once` and `reject_always`). */
+/** The three answers: once (`allow_once`), for the rest of the run (`allow_always`: Clowdy remembers the request and answers the agent with its one-time allow, so no lasting rule of the agent's is written), no (`reject`, for the agent's `reject_once` and `reject_always`). */
 export type ApprovalDecision = 'allow_once' | 'allow_always' | 'reject';
 
 export type ApprovalState = 'open' | 'decided' | 'cancelled' | 'expired';
