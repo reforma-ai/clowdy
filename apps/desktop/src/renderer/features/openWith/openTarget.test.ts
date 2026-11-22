@@ -54,17 +54,17 @@ describe('the items of the menu', () => {
     const ids = (actions: ReturnType<typeof openActions>) => actions.map(action => action.id);
     const labels = (actions: ReturnType<typeof openActions>) => actions.map(action => action.label);
 
-    it('goes, for a folder, Files, editor, file manager, terminal, GitHub, then the copies', () => {
-        const actions = openActions({ target: target('', 'directory'), programs: PROGRAMS, git: GIT, inFiles: vi.fn(), effects: effects() });
+    it('goes, for a folder, Files, Terminal and the copy, which the app does itself, then what leaves the app: editor, file manager, terminal program, GitHub', () => {
+        const actions = openActions({ target: target('', 'directory'), programs: PROGRAMS, git: GIT, inFiles: vi.fn(), inTerminal: vi.fn(), effects: effects() });
 
-        expect(labels(actions)).toEqual(['Open in Files', 'Open in Cursor', 'Open in Finder', 'Open in Ghostty', 'Open in GitHub', 'Copy path']);
-        expect(actions.map(action => action.group)).toEqual(['open', 'open', 'open', 'open', 'open', 'copy']);
+        expect(labels(actions)).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in Cursor', 'Open in Finder', 'Open in Ghostty', 'Open in GitHub']);
+        expect(actions.map(action => action.group)).toEqual(['inside', 'inside', 'copy', 'outside', 'outside', 'outside', 'outside']);
     });
 
-    it('shows a file in its file manager, has no terminal for it, and has both copies', () => {
-        const actions = openActions({ target: target('src/index.ts', 'file'), programs: PROGRAMS, git: GIT, effects: effects() });
+    it('shows a file in its file manager, has no terminal of either kind for it, and has both copies', () => {
+        const actions = openActions({ target: target('src/index.ts', 'file'), programs: PROGRAMS, git: GIT, inFiles: vi.fn(), inTerminal: vi.fn(), effects: effects() });
 
-        expect(labels(actions)).toEqual(['Open in Cursor', 'Show in Finder', 'Open in GitHub', 'Copy path', 'Copy relative path']);
+        expect(labels(actions)).toEqual(['Open in Files', 'Copy path', 'Copy relative path', 'Open in Cursor', 'Show in Finder', 'Open in GitHub']);
     });
 
     it('has no relative path for the folder itself, and one for a folder inside it', () => {
@@ -72,43 +72,49 @@ describe('the items of the menu', () => {
         expect(ids(openActions({ target: target('src', 'directory'), programs: {}, effects: effects() }))).toEqual(['copyPath', 'copyRelative']);
     });
 
-    it('has no item for a program that was not found, for Files unless the window can show it, and for GitHub without a page', () => {
+    it('has no item for a program that was not found, for Files or Terminal unless the window can show them, and for GitHub without a page', () => {
         const actions = openActions({ target: target('src', 'directory'), programs: { fileManager: PROGRAMS.fileManager }, git: { remoteUrl: 'git@gitlab.com:acme/app.git', branch: 'main' }, effects: effects() });
 
-        expect(ids(actions)).toEqual(['fileManager', 'copyPath', 'copyRelative']);
+        expect(ids(actions)).toEqual(['copyPath', 'copyRelative', 'fileManager']);
     });
 
     it('turns off what needs the disk when the folder is gone, and keeps the link and the copies', () => {
-        const actions = openActions({ target: target('', 'directory'), programs: PROGRAMS, git: GIT, missing: true, inFiles: vi.fn(), effects: effects() });
+        const actions = openActions({ target: target('', 'directory'), programs: PROGRAMS, git: GIT, missing: true, inFiles: vi.fn(), inTerminal: vi.fn(), effects: effects() });
 
         expect(actions.map(action => [action.id, action.isDisabled])).toEqual([
             ['files', true],
+            ['terminal', true],
+            ['copyPath', false],
             ['editor', true],
             ['fileManager', true],
-            ['terminal', true],
+            ['terminalApp', true],
             ['github', false],
-            ['copyPath', false],
         ]);
     });
 
     it('runs each item against the path, the program and the address it belongs to', () => {
         const done = effects();
         const inFiles = vi.fn();
-        const actions = openActions({ target: target('src/index.ts', 'file'), programs: PROGRAMS, git: GIT, inFiles, effects: done });
+        const inTerminal = vi.fn();
+        const actions = openActions({ target: target('src', 'directory'), programs: PROGRAMS, git: GIT, inFiles, inTerminal, effects: done });
         const run = (id: string) => actions.find(action => action.id === id)!.run();
 
         run('files');
+        run('terminal');
         run('editor');
         run('fileManager');
+        run('terminalApp');
         run('github');
         run('copyPath');
         run('copyRelative');
 
         expect(inFiles).toHaveBeenCalledOnce();
-        expect(done.openPath).toHaveBeenNthCalledWith(1, '/Users/dev/app/src/index.ts', 'editor', PROGRAMS.editor);
-        expect(done.openPath).toHaveBeenNthCalledWith(2, '/Users/dev/app/src/index.ts', 'fileManager', PROGRAMS.fileManager);
-        expect(done.openUrl).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/app/blob/feature/new-menu/src/index.ts');
-        expect(done.copy).toHaveBeenNthCalledWith(1, '/Users/dev/app/src/index.ts');
-        expect(done.copy).toHaveBeenNthCalledWith(2, 'src/index.ts');
+        expect(inTerminal).toHaveBeenCalledOnce();
+        expect(done.openPath).toHaveBeenNthCalledWith(1, '/Users/dev/app/src', 'editor', PROGRAMS.editor);
+        expect(done.openPath).toHaveBeenNthCalledWith(2, '/Users/dev/app/src', 'fileManager', PROGRAMS.fileManager);
+        expect(done.openPath).toHaveBeenNthCalledWith(3, '/Users/dev/app/src', 'terminal', PROGRAMS.terminal);
+        expect(done.openUrl).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/app/tree/feature/new-menu/src');
+        expect(done.copy).toHaveBeenNthCalledWith(1, '/Users/dev/app/src');
+        expect(done.copy).toHaveBeenNthCalledWith(2, 'src');
     });
 });

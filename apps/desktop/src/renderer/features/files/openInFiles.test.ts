@@ -42,6 +42,18 @@ describe('opening a path in the Files tab', () => {
         expect(ui().sidePanelTab).toBe('files');
     });
 
+    it('shows a document on the Docs tab, which has the same tabs, and any other file on the Files tab', async () => {
+        expect(await open('.clowdy/docs/decisions/pricing.md')).toBe(true);
+
+        expect((await manager()).tabs.active?.path).toBe('.clowdy/docs/decisions/pricing.md');
+        expect(ui().sidePanelOpen).toBe(true);
+        expect(ui().sidePanelTab).toBe('docs');
+
+        expect(await open('README.md')).toBe(true);
+        expect(ui().sidePanelTab).toBe('files');
+        expect(await tabs()).toEqual(['.clowdy/docs/decisions/pricing.md', 'README.md']);
+    });
+
     it('shows a folder of the tree, with no tab for it, and the folder itself by showing the tab', async () => {
         expect(await open('src/booking')).toBe(true);
         expect((await manager()).revealed?.path).toBe('src/booking');

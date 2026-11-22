@@ -1,3 +1,5 @@
+import { isDocumentPath } from './docsScope';
+
 import type { FileEntry, FileKind, FileManager } from '@clowdy/file-manager';
 import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
 import type { RootStore } from '../../stores';
@@ -9,11 +11,9 @@ export async function filesManagerOf(root: RootStore, projectId: ProjectId, fold
     return filesStoreOf(root).startedManagerOf(projectId, folder.id);
 }
 
-/** Shows the side panel on its Files tab. The tab shows the folder the window is working in. */
-export function showFilesTab(root: RootStore, projectId: ProjectId): void {
-    const ui = root.ui.forProject(projectId);
-
-    ui.openSidePanelTab('files');
+/** Shows the side panel on its Files tab, or on the Docs tab, which is the same view with the folder's documents for its tree. The tab shows the folder the window is working in. */
+export function showFilesTab(root: RootStore, projectId: ProjectId, tab: 'files' | 'docs' = 'files'): void {
+    root.ui.forProject(projectId).openSidePanelTab(tab);
 }
 
 /**
@@ -62,7 +62,8 @@ export async function openInFiles(root: RootStore, projectId: ProjectId, folder:
         return false;
     }
 
-    showFilesTab(root, projectId);
+    // A document is shown beside the tree of documents, any other file beside the tree of files; the editor and its tabs are the same.
+    showFilesTab(root, projectId, isDocumentPath(relative) ? 'docs' : 'files');
 
     return true;
 }

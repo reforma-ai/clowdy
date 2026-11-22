@@ -72,6 +72,20 @@ describe('ProvidersService', () => {
         expect(calls).toBe(2);
     });
 
+    test('leaves an agent whose provider is only a spec as the registry found it, and reads nothing for it', async () => {
+        let probed = 0;
+        const plain = { ...registry(['plain']), probeTarget: async () => void probed++, nameOf: () => 'Plain' } as unknown as AgentRegistry;
+        const service = new ProvidersService({ registry: plain, providers: [testSpec('plain')], announce: () => undefined, cwd: '/tmp' });
+
+        expect(service.decorate([info('plain')])).toEqual([info('plain')]);
+        expect(() => service.signIn('plain')).toThrow('cannot sign in');
+
+        service.refresh();
+        await settle();
+
+        expect(probed).toBe(0);
+    });
+
     test('answers at once without the account, reads it in the background, and announces what it found', async () => {
         const { service, announced, calls } = rig([ok(8)]);
         const first = service.decorate([info('claude')]);

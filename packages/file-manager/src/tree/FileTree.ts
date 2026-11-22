@@ -2,6 +2,7 @@ import { Minimatch } from 'minimatch';
 import { action, computed, observable, observableShallow, runInAction } from 'mobx';
 
 import { basename, dirname, normalizePath } from '../paths';
+import { FileSystemError } from '../provider';
 
 import type { FileChange, FileEntry, FileSystemProvider } from '../provider';
 
@@ -130,6 +131,32 @@ export class FileTree {
         { keepAlive: true }
     );
 
+    /** Every entry by parent, sorted, with no rule of hiding or excluding: for a view of the tree that has rules of its own. */
+    readonly #allByParent = computed(
+        () => {
+            const byParent = new Map<string, FileEntry[]>();
+
+            for (const entry of this.entries.values()) {
+                const parent = dirname(entry.path);
+                const siblings = byParent.get(parent);
+
+                if (siblings) {
+                    siblings.push(entry);
+                }
+                else {
+                    byParent.set(parent, [entry]);
+                }
+            }
+
+            for (const siblings of byParent.values()) {
+                siblings.sort(compareEntries);
+            }
+
+            return byParent;
+        },
+        { keepAlive: true }
+    );
+
     constructor(provider: FileSystemProvider, { exclude = [], hidden = [] }: FileTreeFilters = {}) {
         this.#provider = provider;
         this.#exclude = exclude.map(glob => new Minimatch(glob, { dot: true }));
@@ -143,6 +170,14 @@ export class FileTree {
     /** Shown children of a shown directory (`''` is the root): folders first, then natural name order. */
     children(path = ''): readonly FileEntry[] {
         return this.#byParent.get().get(path) ?? [];
+    }
+
+    /**
+     * The listed children of a folder (`''` is the root), whatever the hidden and excluded globs say, folders first, then natural name order. For a view that draws a
+     * part of the tree by rules of its own, such as a folder of documents inside a hidden one.
+     */
+    entriesOf(path = ''): readonly FileEntry[] {
+        return this.#allByParent.get().get(path) ?? [];
     }
 
     /** The path and every folder above it are shown. */
@@ -302,6 +337,46 @@ export class FileTree {
 
             throw error;
         }
+    }
+
+    /**
+     * Lists a folder and everything below it, for a view that needs the whole of a small part of the tree (a folder of documents), and counts every folder it
+     * listed as opened, so a resync lists them again and the changes below them show. A folder that is not there lists nothing. Not while a listing is in flight:
+     * that one is the whole tree's, and asks again for the folders opened by then.
+     */
+    async loadDeep(path: string): Promise<void> {
+        const dir = normalizePath(path);
+        const generation = this.#generation;
+        let listed: FileEntry[];
+
+        try {
+            listed = await this.#provider.list(dir);
+        }
+        catch (error) {
+            if (FileSystemError.is(error, 'NotFound')) {
+                return;
+            }
+
+            throw error;
+        }
+
+        if (generation !== this.#generation || this.#pending) {
+            return;
+        }
+
+        runInAction(() => {
+            for (const entry of listed) {
+                addEntry(this.entries, entry);
+
+                if (entry.kind === 'directory') {
+                    this.#opened.add(entry.path);
+                }
+            }
+
+            if (dir !== '') {
+                this.#opened.add(dir);
+            }
+        });
     }
 
     @action

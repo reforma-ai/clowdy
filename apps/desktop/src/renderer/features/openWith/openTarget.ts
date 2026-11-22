@@ -29,13 +29,16 @@ export interface OpenPrograms {
     terminal?: OpenApp;
 }
 
-export type OpenActionId = 'files' | 'editor' | 'fileManager' | 'terminal' | 'github' | 'copyPath' | 'copyRelative';
+export type OpenActionId = 'files' | 'terminal' | 'copyPath' | 'copyRelative' | 'editor' | 'fileManager' | 'terminalApp' | 'github';
 
 export interface OpenAction {
     id: OpenActionId;
     label: string;
-    /** `open` goes first in the menu, `copy` after a separator. */
-    group: 'open' | 'copy';
+    /**
+     * `inside` is what the app does itself (the Files tab, the Terminal tab), `copy` the copies of the path, both at the top of the menu; `outside` is what leaves the
+     * app (another program, the browser), kept in a submenu `Open in…` after a separator.
+     */
+    group: 'inside' | 'copy' | 'outside';
     /** The program the item opens the target in, whose own icon it has. */
     program?: { app: OpenApp; kind: OpenPathApp['kind'] };
     /** Gone from the disk: what needs the disk is off, and what does not (the link, the copies) stays. */
@@ -58,6 +61,8 @@ export interface OpenActionsInput {
     missing?: boolean;
     /** Opens the target in the built-in file manager; without it there is no such item. */
     inFiles?: () => void;
+    /** Starts a shell of the built-in Terminal tab in the target (a folder only); without it there is no such item. */
+    inTerminal?: () => void;
     effects: OpenEffects;
 }
 
@@ -91,34 +96,36 @@ export function githubLink(git: FolderGit | undefined, target: Pick<OpenTarget, 
 }
 
 /**
- * The items of the menu for a target, in their order: Open in Files, the editor, the file manager (shows a file, opens a folder), the terminal (a folder only),
- * GitHub, and the two copies of the path (the second not for the folder itself). A program that was not found has no item. What needs the disk is off while the
- * folder is gone.
+ * The items of the menu for a target, in the order the menu draws them: what the app does itself (Open in Files, Open in Terminal for a folder), the two copies of
+ * the path (the second not for the folder itself), then what leaves the app, which the menu keeps in a submenu: the editor, the file manager (shows a file, opens
+ * a folder), the terminal program (a folder only) and GitHub. A program that was not found has no item. What needs the disk is off while the folder is gone.
  */
-export function openActions({ target, programs, git, missing = false, inFiles, effects }: OpenActionsInput): OpenAction[] {
+export function openActions({ target, programs, git, missing = false, inFiles, inTerminal, effects }: OpenActionsInput): OpenAction[] {
     const { path, relative, kind } = target;
     const actions: OpenAction[] = [];
-    const open = (id: OpenActionId, label: string, run: () => void, program?: OpenAction['program'], isDisabled = missing) => actions.push({ id, label, group: 'open', program, isDisabled, run });
+    const add = (group: OpenAction['group'], id: OpenActionId, label: string, run: () => void, program?: OpenAction['program'], isDisabled = missing) => actions.push({ id, label, group, program, isDisabled, run });
 
-    if (inFiles) open('files', 'Open in Files', inFiles);
+    if (inFiles) add('inside', 'files', 'Open in Files', inFiles);
 
-    if (programs.editor) open('editor', `Open in ${ programs.editor.name }`, () => effects.openPath(path, 'editor', programs.editor!), { app: programs.editor, kind: 'editor' });
+    if (inTerminal && kind === 'directory') add('inside', 'terminal', 'Open in Terminal', inTerminal);
+
+    add('copy', 'copyPath', 'Copy path', () => effects.copy(path), undefined, false);
+
+    if (relative !== '') add('copy', 'copyRelative', 'Copy relative path', () => effects.copy(relative), undefined, false);
+
+    if (programs.editor) add('outside', 'editor', `Open in ${ programs.editor.name }`, () => effects.openPath(path, 'editor', programs.editor!), { app: programs.editor, kind: 'editor' });
 
     if (programs.fileManager) {
         const manager = programs.fileManager;
 
-        open('fileManager', `${ kind === 'file' ? 'Show' : 'Open' } in ${ manager.name }`, () => effects.openPath(path, 'fileManager', manager), { app: manager, kind: 'fileManager' });
+        add('outside', 'fileManager', `${ kind === 'file' ? 'Show' : 'Open' } in ${ manager.name }`, () => effects.openPath(path, 'fileManager', manager), { app: manager, kind: 'fileManager' });
     }
 
-    if (programs.terminal && kind === 'directory') open('terminal', `Open in ${ programs.terminal.name }`, () => effects.openPath(path, 'terminal', programs.terminal!), { app: programs.terminal, kind: 'terminal' });
+    if (programs.terminal && kind === 'directory') add('outside', 'terminalApp', `Open in ${ programs.terminal.name }`, () => effects.openPath(path, 'terminal', programs.terminal!), { app: programs.terminal, kind: 'terminal' });
 
     const link = githubLink(git, target);
 
-    if (link) open('github', 'Open in GitHub', () => effects.openUrl(link), undefined, false);
-
-    actions.push({ id: 'copyPath', label: 'Copy path', group: 'copy', isDisabled: false, run: () => effects.copy(path) });
-
-    if (relative !== '') actions.push({ id: 'copyRelative', label: 'Copy relative path', group: 'copy', isDisabled: false, run: () => effects.copy(relative) });
+    if (link) add('outside', 'github', 'Open in GitHub', () => effects.openUrl(link), undefined, false);
 
     return actions;
 }

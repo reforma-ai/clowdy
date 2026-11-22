@@ -47,7 +47,7 @@ function isScopedWindow(agent: AgentInfo, window: AgentUsageWindow): boolean {
 }
 
 /**
- * Whether a window is money spent past the plan, not a quota of it: Cursor's `on-demand` (`apps/daemon/src/providers/cursor.ts`), the
+ * Whether a window is money spent past the plan, not a quota of it: Cursor's `on-demand` (`apps/daemon/src/providers/cursor/account.ts`), the
  * spend against a limit the person set. It is a figure worth showing in the popover, but not the one a badge sums the plan up by.
  */
 function isSpendWindow(window: AgentUsageWindow): boolean {

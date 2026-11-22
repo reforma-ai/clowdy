@@ -179,3 +179,7 @@ Left as follow-ups, none blocking:
 - Done in 482b510: a chip for a folder written without a trailing slash (`src/booking`) was taken for a file, so its menu said `Show in` and its GitHub link was a `/blob/`. `useKindOnDisk` now reads the kind from the tree or the listing of the folder when the menu opens. The chip's icon still follows the written path, since reading the disk for every chip would load the file manager for each one.
 - Done in 482b510: in the Files tree's row menu, Copy path is a submenu (Absolute path, Relative path) and Open in… has an icon; both go after the row's own items, before Delete. The folder pill's and the chip's menus keep their flat Copy path and Copy relative path.
 - Not checked on a real machine: launching Finder, an editor and a terminal on macOS and Windows, and the menus in the running app.
+
+## Terminal tab (after the plan)
+
+The Terminal tab landed after this plan, so the menus changed: what the app does itself (Open in Files, Open in Terminal) and the copies stay at the top, and what leaves the app (editor, file manager, terminal program, GitHub) moved into an `Open in…` submenu under a separator, as in the Files tree. Open in Terminal starts a new shell of the tab in a folder (`features/terminal/openInTerminal.ts`); a file has none. The tree's row menu got Open in Terminal for a folder row too. GitHub went into the submenu since it leaves the app; the labels inside it kept their verbs (`Open in Cursor`, `Show in Finder`).

@@ -16,12 +16,35 @@ export interface ExplorerItem {
     children: ExplorerItem[] | null;
 }
 
+/**
+ * A part of the tree the explorer draws in place of the whole: the rows are the entries below `root`, with `root` itself as the folder a new row, a paste and a drop
+ * default to. The hidden and excluded globs do not apply to it.
+ */
+export interface ExplorerScope {
+    /** The folder whose children are the top rows (`.clowdy/docs`). */
+    root: string;
+    /** What the tree is called to a screen reader, in place of `Files`. */
+    label?: string;
+    /** Which entries are rows; folders are asked too. Without it every entry is. */
+    include?: (path: string, kind: FileKind) => boolean;
+    /** The name a file gets from the one that was typed for it (a document gets `.md` when it has none). */
+    fileName?: (name: string) => string;
+}
+
+/** A name filter a host draws in place of the manager's: the query and the paths of the files that have it. */
+export interface ExplorerFilter {
+    query: string;
+    paths: ReadonlySet<string>;
+}
+
 /** The id of the inline new row; no listed path starts with a slash. */
 export const DRAFT_ID = '/new';
 
 /** What rows and menus can do; the explorer provides it, since react-arborist renders rows itself. */
 export interface ExplorerActions {
     manager: FileManager;
+    /** The folder the top rows are in: `''` for the whole tree, the scope's root for a part of it. */
+    root: string;
     /** Folder the inline new row creates in, while it shows. */
     draftParent: string | null;
     /** Folder that files dragged in from outside would go in, while they are over the tree. */

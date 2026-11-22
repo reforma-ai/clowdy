@@ -1,5 +1,6 @@
 import { openChat } from '../chats/archiveChat';
 import { isHiddenPath, treeLayout } from '../files';
+import { isDocumentPath } from '../files/docsScope';
 import { filesManagerOf as managerOf, showFilesTab } from '../files/openInFiles';
 import { foundChats } from './quickSearchChats';
 
@@ -34,7 +35,7 @@ export function mergeFiles(query: string, ...lists: ReadonlyArray<readonly strin
  * when the result is a line. The tab shows the folder the window is working in, which is the one the palette searched.
  */
 export async function openFound(root: RootStore, projectId: ProjectId, folder: ProjectFolder, found: Exclude<Found, FoundChat>): Promise<void> {
-    showFilesTab(root, projectId);
+    showFilesTab(root, projectId, isDocumentPath(found.path) ? 'docs' : 'files');
 
     const manager = await managerOf(root, projectId, folder);
 
@@ -54,7 +55,8 @@ export async function openFound(root: RootStore, projectId: ProjectId, folder: P
 export async function selectedText(root: RootStore, projectId: ProjectId, folder: ProjectFolder): Promise<string | undefined> {
     const ui = root.ui.forProject(projectId);
 
-    if (!ui.sidePanelOpen || ui.sidePanelTab !== 'files') return undefined;
+    // The Docs tab is the same editor.
+    if (!ui.sidePanelOpen || (ui.sidePanelTab !== 'files' && ui.sidePanelTab !== 'docs')) return undefined;
 
     return (await managerOf(root, projectId, folder)).selectedText();
 }

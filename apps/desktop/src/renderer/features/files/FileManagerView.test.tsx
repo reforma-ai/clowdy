@@ -260,3 +260,69 @@ describe('the filter in the header of the file tree', () => {
         expect(manager.tabs.active?.path).toBe('b.ts');
     });
 });
+
+describe('a part of the tree, drawn by rules of its own', () => {
+    const scope = {
+        root: '.clowdy/docs',
+        include: (path: string, kind: string) => kind === 'directory' || /\.md$/i.test(path),
+        fileName: (name: string) => (/\.md$/i.test(name) ? name : `${ name }.md`),
+    };
+    const field = () => container.querySelector<HTMLInputElement>('input[aria-label="Filter documents"]')!;
+    const rows = () => [...container.querySelectorAll('[role="treeitem"]')].map(row => row.textContent);
+
+    function type(value: string) {
+        act(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field(), value);
+            field().dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
+    beforeEach(async () => {
+        manager.dispose();
+        manager = new FileManager({
+            provider: new MemoryFileSystem({ '.clowdy/docs/a.md': '# A', '.clowdy/docs/plans/b.md': '# B', '.clowdy/docs/x.png': '', 'src/a.ts': '' }),
+            hidden: ['**/.*'],
+        });
+        await manager.start();
+        draw({ scope, filterPlaceholder: 'Filter documents', emptyText: 'No documents yet' });
+        await settle();
+    });
+
+    it('shows the documents below its root, a folder first, and leaves out the rest, though the folder it is in is a hidden one', () => {
+        expect(rows()).toEqual(['plans', 'a.md']);
+        expect(field().placeholder).toBe('Filter documents');
+    });
+
+    it('filters its own rows by name, the folders below its root included, and opens the first on Enter in the manager\'s tabs', async () => {
+        type('b');
+        await settle();
+
+        // The document is inside a folder that was never opened: the scope listed it whole.
+        expect(rows()).toEqual(['plans', 'b.md']);
+
+        type('a.m');
+        await settle();
+        act(() => void field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+        await settle();
+
+        expect(manager.tabs.active?.path).toBe('.clowdy/docs/a.md');
+    });
+
+    it('says what it holds while it holds nothing, and the whole tree is not drawn in its place', async () => {
+        manager.dispose();
+        manager = new FileManager({ provider: new MemoryFileSystem({ 'src/a.ts': '' }), hidden: ['**/.*'] });
+        await manager.start();
+        draw({ scope: { ...scope }, emptyText: 'No documents yet' });
+        await settle();
+
+        expect(rows()).toEqual([]);
+        expect(container.textContent).toContain('No documents yet');
+    });
+
+    it('is the tree as it was without a scope: the hidden folder is not in it', async () => {
+        draw({ scope: undefined });
+        await settle();
+
+        expect(rows()).toEqual(['src']);
+    });
+});

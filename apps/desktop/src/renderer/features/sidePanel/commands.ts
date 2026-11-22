@@ -9,11 +9,11 @@ export const SIDE_PANEL_KEYS = { mac: 'Meta+Escape', win: '$mod+Shift+b' } as co
 /** The command that opens the panel on a tab, or shuts the panel when that tab is already shown: it does what a click on the tab's item in the rail does. */
 export const sidePanelTabCommand = (tab: SidePanelTab) => `sidePanel.tab.${ tab }`;
 
-/** `Cmd+0`, `Cmd+1`, `Cmd+2` (`Ctrl+` off a Mac): the tabs, Files and Terminal on the digits that are easy to reach and Info on 0. A second press shuts the panel, as `Cmd+1` shuts the Project tool window of JetBrains, and a second click on the tab's item does the same. */
-export const SIDE_PANEL_TAB_KEYS: Record<SidePanelTab, string> = { info: '$mod+0', files: '$mod+1', terminal: '$mod+2' };
+/** `Cmd+0`, `Cmd+1`, `Cmd+2`, `Cmd+3` (`Ctrl+` off a Mac): the tabs, Files, Terminal and Docs on the digits that are easy to reach and Info on 0 (Terminal kept `Cmd+2` when Docs came between it and Files). A second press shuts the panel, as `Cmd+1` shuts the Project tool window of JetBrains, and a second click on the tab's item does the same. */
+export const SIDE_PANEL_TAB_KEYS: Record<SidePanelTab, string> = { info: '$mod+0', files: '$mod+1', docs: '$mod+3', terminal: '$mod+2' };
 
 /** The tabs' names, on the rail, the tooltips and the shortcuts page. */
-export const SIDE_PANEL_TAB_LABELS: Record<SidePanelTab, string> = { info: 'Info', files: 'Files', terminal: 'Terminal' };
+export const SIDE_PANEL_TAB_LABELS: Record<SidePanelTab, string> = { info: 'Info', files: 'Files', docs: 'Docs', terminal: 'Terminal' };
 
 /** The command that opens the panel on its Terminal tab, or shuts the panel when that tab is already there. */
 export const TERMINAL_COMMAND = 'sidePanel.terminal';

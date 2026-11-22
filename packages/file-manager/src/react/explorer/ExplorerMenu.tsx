@@ -205,16 +205,16 @@ export function ExplorerMenu({ node, isOpen, onOpenChange, contextMenu }: Explor
 
 /** The right-click menu of the empty area below the rows: new items and Paste in the root folder. */
 export function ExplorerAreaMenu({ contextMenu }: { contextMenu: UseContextMenuResult }) {
-    const { manager, create } = useExplorer();
+    const { manager, root, create } = useExplorer();
 
     const handleAction = (key: string) => {
         contextMenu.close();
 
         if (key === 'paste') {
-            void manager.paste('');
+            void manager.paste(root);
         }
         else {
-            create('', key === 'new-file' ? 'file' : 'directory');
+            create(root, key === 'new-file' ? 'file' : 'directory');
         }
     };
 

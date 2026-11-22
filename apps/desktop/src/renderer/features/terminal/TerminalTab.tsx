@@ -1,12 +1,13 @@
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
-import { PanelEmptyState, PanelLoadingState } from '@clowdy/components/Panel';
+import { PanelLoadingState } from '@clowdy/components/Panel';
 import { Show } from '@clowdy/components/Show';
 import { Tab, TabStrip } from '@clowdy/components/TabStrip';
 import { Text } from '@clowdy/components/Text';
+import { toast } from '@clowdy/components/Toast';
 import { Terminal } from '@clowdy/icons/14';
 import { Plus } from '@clowdy/icons/16';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { currentFolder } from '../sidePanel/currentFolder';
@@ -22,9 +23,9 @@ import type { TerminalSession } from './TerminalsStore';
 
 /**
  * The shell that is chosen, with its banners. The xterm lives in the session's view and only moves between hosts here, so what was on the screen, and the scrollback,
- * are there when the tab comes back.
+ * are there when the tab comes back. `onEmptied` is told when the daemon takes the shell away and it was the folder's last.
  */
-export function TerminalShell({ session }: { session: TerminalSession }) {
+export function TerminalShell({ session, onEmptied }: { session: TerminalSession; onEmptied?: () => void }) {
     const { transport } = useRootStore();
     const store = useTerminalsStore();
     const hostRef = useRef<HTMLDivElement>(null);
@@ -34,7 +35,14 @@ export function TerminalShell({ session }: { session: TerminalSession }) {
 
         if (!host) return;
 
-        const view = session.view instanceof TerminalView ? session.view : new TerminalView(session, { transport, onGone: () => store.forget(session) });
+        const view = session.view instanceof TerminalView ? session.view : new TerminalView(session, {
+            transport,
+            onGone: () => {
+                store.forget(session);
+
+                if (store.sessionsOf(session.info.projectId, session.info.folderId).length === 0) onEmptied?.();
+            },
+        });
 
         session.view = view;
         view.mount(host);
@@ -51,7 +59,7 @@ export function TerminalShell({ session }: { session: TerminalSession }) {
             theme.disconnect();
             view.unmount();
         };
-    }, [session, store, transport]);
+    }, [session, store, transport, onEmptied]);
 
     return (
         <>
@@ -71,7 +79,8 @@ export function TerminalShell({ session }: { session: TerminalSession }) {
     );
 }
 
-function TerminalBar({ projectId, folderId }: { projectId: ProjectId; folderId: FolderId }) {
+/** The tabs of the folder's shells; `onEmptied` is told when closing a shell left the folder with none. */
+function TerminalBar({ projectId, folderId, onEmptied }: { projectId: ProjectId; folderId: FolderId; onEmptied: () => void }) {
     const store = useTerminalsStore();
     const sessions = store.sessionsOf(projectId, folderId);
     const active = store.activeOf(projectId, folderId);
@@ -95,7 +104,12 @@ function TerminalBar({ projectId, folderId }: { projectId: ProjectId; folderId: 
                         active={ session === active }
                         closeLabel={ `Close ${ labels[index] }` }
                         onSelect={ () => store.select(session) }
-                        onClose={ () => void store.close(session) }
+                        onClose={ () => {
+                            // The shell is gone from the list at once; the daemon is told meanwhile.
+                            void store.close(session);
+
+                            if (store.sessionsOf(projectId, folderId).length === 0) onEmptied();
+                        } }
                     />
                 ) }
             </For>
@@ -106,7 +120,8 @@ function TerminalBar({ projectId, folderId }: { projectId: ProjectId; folderId: 
 /**
  * The side panel's Terminal tab: the shells the daemon runs in the folder the window is working in (the same folder the Info and Files tabs name), a tab for each,
  * and the one that is chosen drawn below. The shells belong to the daemon, so they outlive the tab, a reload of the window and, when the daemon is on another
- * machine, the connection; the first look at a folder starts one so that the tab opens on a prompt.
+ * machine, the connection. The tab is never open on nothing: looking at a folder that has no shell starts one, and closing the last one shuts the panel. When no
+ * shell can be started, a toast says why and the panel shuts.
  */
 export default function TerminalTab() {
     const project = useProjectState();
@@ -115,28 +130,34 @@ export default function TerminalTab() {
     const projectId = project.project.id;
     const folder = currentFolder(project, ui);
     const active = store.activeOf(projectId, folder.id);
+    const shutIfEmpty = useCallback(() => {
+        if (store.sessionsOf(projectId, folder.id).length === 0) ui.closeSidePanel();
+    }, [store, ui, projectId, folder.id]);
 
     useEffect(() => {
-        void store.load(projectId).then(() => store.ensureOne(projectId, folder.id));
-    }, [store, projectId, folder.id]);
+        // A tab that went before the shells were read has nothing to start for.
+        let current = true;
+
+        void store.load(projectId)
+            .then(() => (current ? store.ensureOne(projectId, folder.id) : undefined))
+            .then((session) => {
+                if (!current || session) return;
+
+                toast.error({ title: 'Couldn’t start a terminal', message: store.error || undefined });
+                ui.closeSidePanel();
+            });
+
+        return () => {
+            current = false;
+        };
+    }, [store, ui, projectId, folder.id]);
 
     return (
         <div className={ styles.root }>
-            <TerminalBar projectId={ projectId } folderId={ folder.id } />
+            <TerminalBar projectId={ projectId } folderId={ folder.id } onEmptied={ shutIfEmpty } />
             <div className={ styles.stage }>
-                <Show
-                    when={ active }
-                    fallback={
-                        <Show when={ store.isLoaded(projectId) } fallback={ <PanelLoadingState /> }>
-                            <PanelEmptyState
-                                title="No terminals"
-                                description={ store.error || undefined }
-                                action={ <Button size="sm" variant="filled" color="secondary" onPress={ () => void store.start(projectId, folder.id) }>New terminal</Button> }
-                            />
-                        </Show>
-                    }
-                >
-                    { session => <TerminalShell key={ session.id } session={ session } /> }
+                <Show when={ active } fallback={ <PanelLoadingState /> }>
+                    { session => <TerminalShell key={ session.id } session={ session } onEmptied={ shutIfEmpty } /> }
                 </Show>
             </div>
         </div>

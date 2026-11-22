@@ -630,6 +630,17 @@ describe('UiStore', () => {
         expect(new UiStore(storage).forProject('p1').sidePanelTab).toBe('files');
     });
 
+    it('shuts the side panel, and does nothing to a shut one', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.closeSidePanel();
+        expect(ui.sidePanelOpen).toBe(false);
+
+        ui.toggleSidePanel();
+        ui.closeSidePanel();
+        expect(ui.sidePanelOpen).toBe(false);
+    });
+
     it('opens the side panel on a tab from a shut panel or another tab, and never shuts it', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 
@@ -667,6 +678,8 @@ describe('UiStore', () => {
     it('reads the side panel tab from the page URL, and drops a tab that is not one', () => {
         expect(initialUiFromSearch('?panel=open&panelTab=files')).toEqual({ sidePanelOpen: true, sidePanelTab: 'files' });
         expect(initialUiFromSearch('?panelTab=terminal')).toEqual({ sidePanelTab: 'terminal' });
+        expect(initialUiFromSearch('?panelTab=docs')).toEqual({ sidePanelTab: 'docs' });
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"docs"}' })).forProject('p1').sidePanelTab).toBe('docs');
         expect(initialUiFromSearch('?panelTab=changes')).toEqual({});
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"terminal"}' })).forProject('p1').sidePanelTab).toBe('terminal');
         expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"changes"}' })).forProject('p1').sidePanelTab).toBe('info');

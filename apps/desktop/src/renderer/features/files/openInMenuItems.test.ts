@@ -34,6 +34,26 @@ describe('what the Files tree\'s row menu is given to open a row in', () => {
         ]);
     });
 
+    it('starts a shell of the Terminal tab for a folder row, before the copies, and for no file row', () => {
+        const inTerminal = vi.fn();
+        const [terminal, ...rest] = itemsOf([DIRECTORY], { inTerminal });
+
+        expect(labels([terminal!, ...rest])).toEqual([
+            ['Open in Terminal', undefined],
+            ['Copy path', ['Absolute path', 'Relative path']],
+            ['Open in…', ['Open in Cursor', 'Open in Finder', 'Open in Ghostty', 'Open in GitHub']],
+        ]);
+        expect(terminal!.icon).not.toBeUndefined();
+
+        terminal!.onAction();
+
+        expect(inTerminal).toHaveBeenCalledExactlyOnceWith('src');
+        expect(labels(itemsOf([FILE], { inTerminal }))).toEqual([
+            ['Copy path', ['Absolute path', 'Relative path']],
+            ['Open in…', ['Open in Cursor', 'Show in Finder', 'Open in GitHub']],
+        ]);
+    });
+
     it('has no Open in Files, since the tree is the built-in file manager', () => {
         const [, submenu] = itemsOf([FILE]);
 

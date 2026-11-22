@@ -74,18 +74,38 @@ describe('TerminalsStore', () => {
         expect(session.view).toBeUndefined();
     });
 
-    it('gives an empty folder its first shell once, and does not start another when the last is closed', async () => {
+    it('gives a folder with no shell one whenever it is asked, the folder whose last shell was closed too, and one for two asks at once', async () => {
         const { transport, store, projectId, folderId } = await setup();
         const create = vi.spyOn(transport, 'createTerminal');
 
-        await store.ensureOne(projectId, folderId);
-        await store.ensureOne(projectId, folderId);
+        const [first, second] = await Promise.all([store.ensureOne(projectId, folderId), store.ensureOne(projectId, folderId)]);
+
+        expect(create).toHaveBeenCalledOnce();
+        expect(first).toBe(second);
+        expect(store.sessionsOf(projectId, folderId)).toHaveLength(1);
+
+        // Asked again while it has one: the same shell, none made.
+        expect(await store.ensureOne(projectId, folderId)).toBe(first);
         expect(create).toHaveBeenCalledOnce();
 
-        await store.close(store.sessionsOf(projectId, folderId)[0]);
-        await store.ensureOne(projectId, folderId);
-        expect(create).toHaveBeenCalledOnce();
+        await store.close(first!);
         expect(store.sessionsOf(projectId, folderId)).toEqual([]);
+
+        const again = await store.ensureOne(projectId, folderId);
+
+        expect(create).toHaveBeenCalledTimes(2);
+        expect(again).toBeDefined();
+        expect(again).not.toBe(first);
+        expect(store.sessionsOf(projectId, folderId)).toEqual([again]);
+    });
+
+    it('resolves nothing, and keeps the reason, when no shell can be made, and asks again the next time', async () => {
+        const { transport, projectId, folderId } = await setup();
+        const refusing = new TerminalsStore(overrideTransport(transport, { createTerminal: () => Promise.reject(new TransportError('The folder /p is missing', 503)) }));
+
+        expect(await refusing.ensureOne(projectId, folderId)).toBeUndefined();
+        expect(refusing.error).toBe('The folder /p is missing');
+        expect(await refusing.ensureOne(projectId, folderId)).toBeUndefined();
     });
 
     it('does not start one in a folder that already has some', async () => {

@@ -169,6 +169,45 @@ describe('FileTree', () => {
         expect(names(tree, 'src/app/foo')).toEqual(['src/app/foo/bar.ts']);
     });
 
+    it('should say the children of a folder whatever the hidden and excluded globs say', async () => {
+        const tree = new FileTree(
+            new MemoryFileSystem({ '.clowdy/docs/a.md': '', '.clowdy/docs/plans/b.md': '', 'node_modules/x/index.js': '', 'src/a.ts': '' }),
+            { exclude: ['**/node_modules'], hidden: ['**/.*'] }
+        );
+
+        await tree.refresh();
+
+        // The folder is hidden, so the tree's own rows leave it out; the entries below it are listed all the same.
+        expect(names(tree)).toEqual(['src']);
+        expect(tree.isVisible('.clowdy/docs/a.md')).toBe(false);
+        expect(tree.entriesOf('.clowdy/docs').map(entry => entry.path)).toEqual(['.clowdy/docs/plans', '.clowdy/docs/a.md']);
+        expect(tree.entriesOf('').map(entry => entry.path)).toEqual(['.clowdy', 'node_modules', 'src']);
+        expect(tree.entriesOf('missing')).toEqual([]);
+    });
+
+    it('should list a folder with everything below it, count the folders as opened, and take a folder that is not there for empty', async () => {
+        const fs = new MemoryFileSystem({ 'a.ts': '', 'docs/deep/er/x.md': '', 'docs/top.md': '' });
+        const tree = new FileTree(fs);
+
+        await tree.refresh();
+
+        expect(tree.get('docs/deep/er/x.md')).toBeUndefined();
+
+        await tree.loadDeep('docs');
+
+        expect(tree.get('docs/deep/er/x.md')?.kind).toBe('file');
+
+        // A change below a folder it listed shows, and a resync lists those folders again.
+        tree.applyChanges([{ type: 'created', path: 'docs/deep/er/y.md', kind: 'file' }]);
+        expect(tree.get('docs/deep/er/y.md')?.kind).toBe('file');
+
+        await fs.write('docs/deep/er/z.md', '');
+        await tree.refresh();
+        expect(tree.get('docs/deep/er/z.md')?.kind).toBe('file');
+
+        await expect(tree.loadDeep('nothing/here')).resolves.toBeUndefined();
+    });
+
     it('should list an opened folder again on refresh and leave an unloaded one out', async () => {
         const calls: string[] = [];
         const provider = {

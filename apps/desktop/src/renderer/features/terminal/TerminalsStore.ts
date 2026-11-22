@@ -54,8 +54,8 @@ export class TerminalsStore {
     chosen = new Map<string, string>();
     error = '';
     readonly #loaded = new Map<ProjectId, Promise<void>>();
-    /** The folders whose empty tab already got its first shell: closing the last one leaves the tab empty rather than starting another. */
-    readonly #started = new Set<string>();
+    /** The shells being made for a folder with none, by `projectId/folderId`, so two asks at once make one. */
+    readonly #starting = new Map<string, Promise<TerminalSession | undefined>>();
 
     constructor(readonly transport: Pick<Transport, 'listTerminals' | 'createTerminal' | 'closeTerminal' | 'openTerminal'>) {
         makeAutoObservable<TerminalsStore, 'transport'>(this, { transport: false });
@@ -98,15 +98,24 @@ export class TerminalsStore {
         return loading;
     }
 
-    /** Makes the folder's first shell when it has none and never had one in this window: opening the tab gives a prompt. */
-    async ensureOne(projectId: ProjectId, folderId: FolderId): Promise<void> {
+    /**
+     * The folder's shell, made when it has none, however it came to have none (the last one was closed, say): opening the tab always gives a prompt, so a tab is
+     * never shown without a shell. Two asks at once make one. Resolves `undefined` when none could be made (`error` says why).
+     */
+    ensureOne(projectId: ProjectId, folderId: FolderId): Promise<TerminalSession | undefined> {
+        const held = this.activeOf(projectId, folderId);
+
+        if (held) return Promise.resolve(held);
+
         const key = keyOf(projectId, folderId);
+        let starting = this.#starting.get(key);
 
-        if (this.#started.has(key)) return;
+        if (!starting) {
+            starting = this.start(projectId, folderId).finally(() => this.#starting.delete(key));
+            this.#starting.set(key, starting);
+        }
 
-        this.#started.add(key);
-
-        if (this.sessionsOf(projectId, folderId).length === 0) await this.start(projectId, folderId);
+        return starting;
     }
 
     /** Starts a shell in the folder, or in a folder below it, and chooses it. */
@@ -161,7 +170,7 @@ export class TerminalsStore {
         this.sessions = [];
         this.chosen.clear();
         this.#loaded.clear();
-        this.#started.clear();
+        this.#starting.clear();
     }
 
     async #read(projectId: ProjectId): Promise<void> {

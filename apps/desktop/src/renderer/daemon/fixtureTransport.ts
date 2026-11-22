@@ -319,7 +319,10 @@ export class FixtureTransport implements Transport {
         let fileSystem = this.#fileSystems.get(folderId);
 
         if (!fileSystem) {
-            fileSystem = new MemoryFileSystem(fixtureFileContents(this.#data.files[folder.path] ?? []));
+            // The folder's documents are files like the others, below its `.clowdy/docs`.
+            const documents = Object.fromEntries(Object.entries(this.#data.docs[folder.path] ?? {}).map(([path, text]) => [`.clowdy/docs/${ path }`, text]));
+
+            fileSystem = new MemoryFileSystem({ ...fixtureFileContents(this.#data.files[folder.path] ?? []), ...documents });
             this.#fileSystems.set(folderId, fileSystem);
         }
 

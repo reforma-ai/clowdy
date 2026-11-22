@@ -45,13 +45,13 @@
 
 **This stage:** a behaviour-preserving refactor, so that adding a provider (this feature's presets, and the twenty after it) means writing one module and naming it in one list. Today the daemon's knowledge of one vendor is in four places; afterwards it is one `Provider` object. The existing tests are the proof that nothing changed, apart from the lines that named the old tables.
 
-- [ ] Complete
-  - [ ] `Provider` in `providers/types.ts` is `{ spec, read?, login?, freshMs?, models? }`; `id` is `spec.id`
-  - [ ] Each built-in agent is a provider module: Claude, Codex and Cursor as folders that hold their spec, account read and model listing (code moved, not rewritten); OpenCode, Gemini, Copilot, Grok, omp and Hermes as small files of data
-  - [ ] `providers/builtin.ts` holds `PROVIDERS` in the catalog's order; `KNOWN_AGENTS` and `MODEL_ROUTES` are gone; the registry, the providers service and the model catalog read the list and accept another in tests
-  - [ ] `providers/models.ts` keeps `ModelCatalog` and what is shared, and no vendor's parser
-  - [ ] A test provider with only a `spec` is a working agent in the registry, and one with a `models` method is listed by the model catalog, with no change to the core
-  - [ ] Docs: daemon `AGENTS.md` names the new places wherever it named `catalog.ts`'s array, `MODEL_ROUTES` or the providers' files
+- [x] Complete
+  - [x] `Provider` in `providers/types.ts` is `{ spec, read?, login?, freshMs?, models? }`; `id` is `spec.id`
+  - [x] Each built-in agent is a provider module: Claude, Codex and Cursor as folders that hold their spec, account read and model listing (code moved, not rewritten); OpenCode, Gemini, Copilot, Grok, omp and Hermes as small files of data
+  - [x] `providers/builtin.ts` holds `PROVIDERS` in the catalog's order; `KNOWN_AGENTS` and `MODEL_ROUTES` are gone; the registry, the providers service and the model catalog read the list and accept another in tests
+  - [x] `providers/models.ts` keeps `ModelCatalog` and what is shared, and no vendor's parser
+  - [x] A test provider with only a `spec` is a working agent in the registry, and one with a `models` method is listed by the model catalog, with no change to the core
+  - [x] Docs: daemon `AGENTS.md` names the new places wherever it named `catalog.ts`'s array, `MODEL_ROUTES` or the providers' files
 
 **Files**
 
@@ -69,9 +69,16 @@
 
 **Done when:** the daemon's tests pass as before with each provider in one module and `KNOWN_AGENTS` and `MODEL_ROUTES` gone, and a provider added in a test needs no change to the core.
 **Verify:** `bun test` in `apps/daemon` (compared with the failures it had before the stage); `bun run lint` in `apps/daemon`
-**Commits:** None yet. Landed by the worker (the parent records them): `8a4bc0d` refactor(daemon): make each provider one module; `486c211` docs(daemon): say where each provider's code lives now.
+**Commits:**
+
+- `8a4bc0d` refactor(daemon): make each provider one module
+- `486c211` docs(daemon): say where each provider's code lives now
+- `dc072c6` docs(daemon): fix the names the move left stale (review)
+- `79a67f9` test(daemon): cover a spec-only provider in the service, and tidy test helpers (review)
 
 **Implementation notes (deviations, from the worker):** `providers/parse.ts` is one more file than listed: `jsonObject`, `planLabel` and `text` were shared by Claude's account and models and by Codex's account, and lived in `claude.ts`/`models.ts`. The account part of each vendor is exported as an object typed with `satisfies Pick<Provider, ...>` (`claudeAccount`, `codexAccount`, `cursorAccount`) and spread into the provider in `index.ts`, so its code is moved, not rewritten. `chatTitleSetting` is now exported from `catalog.ts` for the Claude and Codex specs. `daemon.ts`, `commands/context.ts` and `probe.ts` are unchanged: the registry, the service and the model catalog default to `PROVIDERS`. `ProvidersService.decorate` adds nothing for a provider with neither `read` nor `login`, so a data-only agent's `AgentInfo` is what it was. Tests build providers with `testSpec(id)` (in `test/helpers.ts`) and their local `SPECS` list. Daemon tests: 1683 pass before, 1685 after (the two new tests), 0 fail, 8 skip; typecheck errors are the same seven pre-existing ones.
+
+**Review (2026-11-22):** no behaviour change found. The nine specs of the old `KNOWN_AGENTS` and the new `PROVIDERS` were compared field by field in one script (the `effect` functions called with true and false, `scrub` by source, key and agent order); the model code is a verbatim move; no import cycle goes through the registry, `builtin.ts` or the providers. Daemon tests after the review: 1686 pass, 8 skip, 0 fail.
 
 ## Stage 2 — Presets and approvals in the daemon
 
