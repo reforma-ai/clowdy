@@ -34,6 +34,17 @@ import type { FolderId } from './domain';
  *                                            long as the client reads it. Changes of one burst come as one batch (about 100 ms). Nothing under
  *                                            `.git` or `node_modules` is reported. `{ type: 'resync' }` when changes may have been missed.
  *
+ * POST   fs/search                       -> FsSearchResult. Body `{ folderId, query, matchCase?, wholeWord?, exclude? }`: a search of the folder's file
+ *                                            contents for the literal text `query` (never a pattern; at most `MAX_FS_QUERY_LENGTH`
+ *                                            characters), case-insensitive unless `matchCase`, `wholeWord` as ripgrep's `-w`. `exclude` are
+ *                                            globs of paths the person's file tree does not show, left out too. Dotfiles are searched;
+ *                                            `.git`, `node_modules`, the project's own `.clowdy`, lock files and minified or map files
+ *                                            are not; files over 1 MB and files that are not UTF-8 text are skipped. At most
+ *                                            `MAX_FS_SEARCH_MATCHES` matches and `MAX_FS_SEARCH_LINES_PER_FILE` matching lines of a file are
+ *                                            returned, and a cut sets `truncated`; files are in path order, lines in file order. It runs
+ *                                            ripgrep (`CLOWDY_RG`, else `rg` on the PATH) and, where there is none, a scan of its own that
+ *                                            returns the same. The daemon stops searching when the client drops the request.
+ *
  * A `version` is opaque and only compared for equality: the file's size and its modification time with its sub-millisecond part.
  */
 
@@ -71,6 +82,32 @@ export const MAX_FS_FILE_BYTES = 64 * 1024 * 1024;
 export const MAX_FS_FIND = 50;
 /** The header that carries a file's version on a read. */
 export const FS_VERSION_HEADER = 'x-clowdy-version';
+
+/** One matching line of a search. `line` and `column` (of the first match) are 1-based; `ranges` are offsets into `preview`, which is the line or, for a long line, the part around its first match. */
+export interface FsSearchMatch {
+    line: number;
+    column: number;
+    preview: string;
+    ranges: Array<{ start: number; end: number }>;
+}
+
+/** The matching lines of a search, by file. */
+export interface FsSearchResult {
+    files: Array<{ path: string; matches: FsSearchMatch[] }>;
+    truncated: boolean;
+}
+
+export interface FsSearchRequest {
+    folderId: FolderId;
+    query: string;
+    matchCase?: boolean;
+    wholeWord?: boolean;
+    exclude?: string[];
+}
+
+export const MAX_FS_SEARCH_MATCHES = 2000;
+export const MAX_FS_SEARCH_LINES_PER_FILE = 100;
+export const MAX_FS_QUERY_LENGTH = 1000;
 
 export interface FsLocation {
     folderId: FolderId;
