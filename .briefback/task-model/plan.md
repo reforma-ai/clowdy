@@ -99,14 +99,16 @@ Also from the data: a "completed in the last N days" view option from `closedAt`
 
 **Depends on:** Stages 1 to 3.
 
-- [ ] `packages/system-skills`: the orchestrate skill splits work with `--parent` (not `--add-depends-on` on the bound task), says when a checklist beats a child task, leaves notes as comments (`task comment`) instead of `--append`, and says when to archive (when the manager says the work is finished and will not be revisited; never open work without `--cancel` and a reason). The other skills that mention `--append` follow, and so does the README (it lists only four task commands and says `--ready` means dependencies Done). Validator `TASK_COMMANDS`, the vocabulary test.
-- [ ] Remove `append` from `task_update` (strict schema, so a stale call errors) once nothing in skills or prompts uses it; its tests and help go with it.
-- [ ] `Tasks:` prompt line and `taskMessage` if they need a word about parents, comments or archive; prompt length caps.
-- [ ] `apps/daemon/AGENTS.md`: read the Tools, task model, comments and archive paragraphs as one piece and make them consistent (Stages 1 to 3 each added a bullet), and the depth limit.
-- [ ] Stage 4b, for the desktop: `TaskDetail` (`GET /v1/tasks/:id/detail`) carries the `task` itself, archived tasks included, so a client can open one it does not hold; the checklist parser (`apps/daemon/src/domain/checklist.ts` with its test) moves to `packages/lib` (consumed as source) and the daemon imports it from there, so the daemon and the desktop share one.
-- [ ] `.briefback/task-cli/plan.md` stays as history; this plan records the commits.
+- [x] `packages/system-skills`: the orchestrate skill splits work with `--parent` (not `--add-depends-on` on the bound task), says when a checklist beats a child task, leaves notes as comments (`task comment`) instead of `--append`, and says when to archive (when the manager says the work is finished and will not be revisited; never open work without `--cancel` and a reason). The other skills that mention `--append` follow, and so does the README (it lists only four task commands and says `--ready` means dependencies Done). Validator `TASK_COMMANDS`, the vocabulary test.
+- [x] Remove `append` from `task_update` (strict schema, so a stale call errors) once nothing in skills or prompts uses it; its tests and help go with it.
+- [x] `Tasks:` prompt line and `taskMessage` if they need a word about parents, comments or archive; prompt length caps.
+- [x] `apps/daemon/AGENTS.md`: read the Tools, task model, comments and archive paragraphs as one piece and make them consistent (Stages 1 to 3 each added a bullet), and the depth limit.
+- [x] Stage 4b, for the desktop: `TaskDetail` (`GET /v1/tasks/:id/detail`) carries the `task` itself, archived tasks included, so a client can open one it does not hold; the checklist parser (`apps/daemon/src/domain/checklist.ts` with its test) moves to `packages/lib` (consumed as source) and the daemon imports it from there, so the daemon and the desktop share one.
+- [x] `.briefback/task-cli/plan.md` stays as history; this plan records the commits.
 
 **Done when:** no skill, prompt or doc names a removed or replaced command; the skills vocabulary test passes against the real tools; `TaskDetail.task` and the shared parser are tested; the daemon tests pass.
+
+**Landed:** `f40368f` feat(skills): teach the task hierarchy, comments and archive, and drop task append (reviewed by a separate agent: five wording defects fixed, bundle and lockfile checked). Choices made in the stage: `--append` is also forbidden by the skills validator; `taskMessage` unchanged (`task get` carries the parent, children and latest comments); the `TASKS` prompt line grew by 46 characters inside the caps; the daemon imports `@clowdy/lib/checklist` by subpath only (the root index pulls in React and DOM code) through a new `workspace:*` dependency; the fixture's `getTaskDetail` answers 404 for an unknown task like the daemon; the autopilot blocker still goes at the top of the description. Open small items: `apps/desktop/scripts/dev.ts` watches whole folders, so an edit to `packages/lib/src/checklist.ts` does not restart a dev daemon; a lint rule against importing the `@clowdy/lib` root in the daemon would catch a bundling mistake early; an agent ticks a checklist line by sending the whole description, which can race a person's edit once the UI toggles checkboxes (revisit if it shows up).
 
 ## Stage 5 — Desktop UI
 
