@@ -1,3 +1,5 @@
+import { Close } from '@clowdy/icons/14';
+
 import { StatusIcon } from './status';
 
 import type { Task, TaskStatus } from '@clowdy/protocol';
@@ -15,4 +17,12 @@ export function taskOptions(tasks: readonly Task[], statuses: readonly TaskStatu
 
         return { id: task.id, label: `${ task.key }  ${ task.title }`, icon: status && <StatusIcon category={ status.category } /> };
     });
+}
+
+/** The id of the "No parent" row of a parent picker. It is no task's id, so it cannot be mistaken for a parent. */
+export const NO_PARENT = '@no-parent';
+
+/** The rows of a parent picker: "No parent" first, then the tasks that may be the parent (`parentCandidates`), each by its key and title. */
+export function parentOptions(candidates: readonly Task[], statuses: readonly TaskStatus[]): PickerOption[] {
+    return [{ id: NO_PARENT, label: 'No parent', icon: <Close aria-hidden /> }, ...taskOptions(candidates, statuses)];
 }

@@ -8,6 +8,7 @@ import {
     blockingCandidates,
     blockingOptions,
     boardColumns,
+    createdCommentId,
     createdTaskId,
     dependencyCandidates,
     dependencyState,
@@ -432,6 +433,16 @@ describe('createdTaskId', () => {
         expect(createdTaskId({ id: 't-9' })).toBeUndefined();
         expect(createdTaskId(undefined)).toBeUndefined();
         expect(createdTaskId({ task: {} })).toBeUndefined();
+    });
+});
+
+describe('createdCommentId', () => {
+    it('reads the id from the { comment } answer of the daemon and of the fixture daemon, and from nothing else', () => {
+        expect(createdCommentId({ comment: { id: 'cmt_A001' } })).toBe('cmt_A001');
+        expect(createdCommentId({ task: { id: 't-9' } })).toBeUndefined();
+        expect(createdCommentId({ id: 'cmt_A001' })).toBeUndefined();
+        expect(createdCommentId(undefined)).toBeUndefined();
+        expect(createdCommentId({ comment: {} })).toBeUndefined();
     });
 });
 

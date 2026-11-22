@@ -1,8 +1,12 @@
 @layer components {
+    /*
+     * A caller that puts the editor in a panel instead of a page sets these on its `className`: the height (`auto` lets the text decide, with a
+     * `max-height` of its own to scroll inside), the room around the text, and how wide the column grows. Unset, the editor fills its parent as a page.
+     */
     .root {
         display: flex;
         flex-direction: column;
-        height: 100%;
+        height: var(--clowdy-markdown-height, 100%);
         min-width: 0;
         min-height: 0;
     }
@@ -38,9 +42,9 @@
     .page {
         box-sizing: border-box;
         width: 100%;
-        max-width: 800px;
+        max-width: var(--clowdy-markdown-page-width, 800px);
         margin-inline: auto;
-        padding: var(--spacing-24) var(--spacing-32) var(--spacing-48);
+        padding: var(--clowdy-markdown-page-padding, var(--spacing-24) var(--spacing-32) var(--spacing-48));
     }
 
     /* Front matter */

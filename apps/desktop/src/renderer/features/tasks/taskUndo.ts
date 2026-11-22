@@ -134,23 +134,90 @@ async function restore(root: RootStore, project: ProjectState, changes: readonly
     return restored > 0;
 }
 
-/** Records one entry for the changes and offers the undo in a toast. The toast and the stack run the same entry. */
+/**
+ * How long after a description edit the next one of the same task still counts as part of it: as long as the offer to undo stays on screen. A person who ticks
+ * five boxes one after another, each saved at once, takes them back with one Undo; an edit made later, or after anything else, is a step of its own, and so is
+ * one that starts from a text the entry never had (`Joinable.texts`).
+ */
+const JOIN_WINDOW_MS = UNDO_TOAST_MS;
+
+/** The latest entry that is only a change of one task's description, which the next change of that description joins while the window is open. */
+interface Joinable {
+    stack: UndoStack;
+    entry: UndoEntry;
+    change: Change;
+    /**
+     * The descriptions the task held while the entry was made: the one before its first change and the one each change gave it. An edit that starts from another
+     * text means someone else (an agent, another window) wrote in between, and undoing both together would take their text away, so it is an entry of its own.
+     * The text before an edit is what the store showed when it was sent, which may be one change behind (the daemon's event comes after its reply), hence all of them.
+     */
+    texts: Set<string>;
+    /** The key of the toast that offers this entry's undo, the one the entry closes when it runs. */
+    offer: { key?: string };
+    at: number;
+}
+
+let joinable: Joinable | undefined;
+
+/** Whether the changes are one task's description and nothing else. */
+const isDescriptionEdit = (changes: readonly Change[]): boolean => changes.length === 1 && Object.keys(changes[0].after).join() === 'description';
+
+const descriptionOf = (fields: Fields): string => fields.description ?? '';
+
+/** The entry a change of a description joins: the latest of its project, a description change of the same task, made inside the window, from a text the entry knows. */
+function joinTarget(stack: UndoStack, project: ProjectState, changes: readonly Change[]): Joinable | undefined {
+    const latest = stack.entries.findLast(entry => entry.scope === project.id);
+
+    return joinable
+        && isDescriptionEdit(changes)
+        && joinable.stack === stack
+        && joinable.entry === latest
+        && joinable.change.taskId === changes[0].taskId
+        && joinable.texts.has(descriptionOf(changes[0].before))
+        && Date.now() - joinable.at < JOIN_WINDOW_MS
+        ? joinable
+        : undefined;
+}
+
+function offerUndo(stack: UndoStack, entry: UndoEntry): string {
+    return showToast('show', { message: entry.label, timeout: UNDO_TOAST_MS, action: { label: 'Undo', onPress: () => void stack.undoEntry(entry) } });
+}
+
+/**
+ * Records one entry for the changes and offers the undo in a toast. The toast and the stack run the same entry. A change of a description that follows another
+ * one of the same task inside `JOIN_WINDOW_MS`, with nothing recorded in between and starting from a text that entry has held, is part of that entry: it keeps
+ * what the description was before the first and takes the new text as its result, and the offer is shown again.
+ */
 function record(root: RootStore, project: ProjectState, stack: UndoStack, changes: readonly Change[]): void {
+    const joining = joinTarget(stack, project, changes);
+
+    if (joining) {
+        joining.change.after = changes[0].after;
+        joining.texts.add(descriptionOf(changes[0].after));
+        joining.at = Date.now();
+        joining.offer.key = offerUndo(stack, joining.entry);
+
+        return;
+    }
+
     const label = describeChanges(project, changes);
-    let offer: string | undefined;
+    const offer: Joinable['offer'] = {};
     const entry: UndoEntry = {
         scope: project.id,
         label,
         undo: async () => {
             // Out of the way before anything it says about the undo.
-            if (offer) toast.queue.close(offer);
+            if (offer.key) toast.queue.close(offer.key);
 
             return restore(root, project, changes, label);
         },
     };
 
     stack.push(entry);
-    offer = showToast('show', { message: label, timeout: UNDO_TOAST_MS, action: { label: 'Undo', onPress: () => void stack.undoEntry(entry) } });
+    offer.key = offerUndo(stack, entry);
+    joinable = isDescriptionEdit(changes)
+        ? { stack, entry, change: changes[0], texts: new Set([descriptionOf(changes[0].before), descriptionOf(changes[0].after)]), offer, at: Date.now() }
+        : undefined;
 }
 
 /**

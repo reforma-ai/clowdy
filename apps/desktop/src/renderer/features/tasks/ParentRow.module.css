@@ -1,0 +1,56 @@
+@reference '@clowdy/styles/rulesets';
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+/* The parent opens the same way a dependency does: the plate reaches into the panel's padding on hover, and the contents line up with the heading. Only at its start: its end meets the button. */
+.open {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+    margin-inline-start: calc(var(--spacing-md) * -1);
+    padding: var(--spacing-xs) var(--spacing-md);
+    border: 0;
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition: background-color 150ms ease-out;
+}
+
+.open:hover {
+    background-color: var(--color-secondary-muted-light);
+}
+
+.open:focus-visible {
+    outline: var(--spacing-2) solid var(--color-primary-muted-border);
+}
+
+.key {
+    @ruleset typography-text-xs;
+
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+    font-weight: 500;
+}
+
+.title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.none {
+    flex: 1;
+    color: var(--color-secondary-muted-text);
+}

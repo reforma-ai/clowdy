@@ -1,0 +1,22 @@
+.plate {
+    overflow: hidden;
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    transition: border-color var(--transition-duration-fast) var(--ease-in-out);
+}
+
+.plate:focus-within {
+    border-color: var(--color-primary);
+}
+
+/* The editor fills a page by default: here the text decides the height and the column is as wide as the plate. */
+.editor {
+    --clowdy-markdown-height: auto;
+    --clowdy-markdown-page-padding: var(--spacing-md) var(--spacing-lg);
+    --clowdy-markdown-page-width: none;
+}
+
+.plate[data-bounded] .editor {
+    max-height: 16rem;
+}

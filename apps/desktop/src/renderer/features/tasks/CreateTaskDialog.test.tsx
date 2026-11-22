@@ -61,6 +61,8 @@ async function open(parentId?: string) {
 
     openCreateTask({ root, project, ui: root.ui.forProject(FIXTURE_PROJECT_ID), parentId });
 
+    // A dialog is built new each time it opens, so the one before it is gone and keeps no state.
+    await act(async () => reactRoot.render(null));
     await act(async () => reactRoot.render(modal.create.mock.calls[0][0].component as never));
 }
 
@@ -189,5 +191,125 @@ describe('the New task dialog', () => {
             expect(made('Deeper, and late')!.parentId).toBe('t-32');
             expect(window.tasksScope).toBe('t-32');
         });
+    });
+});
+
+describe('the Parent field of the New task dialog', () => {
+    const pointer = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, width: 1, height: 1, pressure: 0.5, detail: 1 };
+
+    /** A press on a control of the page, as React Aria listens for it. */
+    const press = (element: Element) => act(async () => {
+        element.dispatchEvent(new PointerEvent('pointerdown', pointer));
+        element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        element.dispatchEvent(new PointerEvent('pointerup', pointer));
+        element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
+    });
+
+    const settle = () => act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 60));
+    });
+    const field = () => container.querySelector<HTMLButtonElement>('button[aria-label="Parent"]')!;
+    const options = () => [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+    const option = (name: string) => options().find(candidate => candidate.textContent?.includes(name))!;
+    const heading = () => container.querySelector('form')!.firstElementChild!.textContent;
+
+    async function pickParent(name: string) {
+        await press(field());
+        await settle();
+        await press(option(name));
+        await settle();
+    }
+
+    afterEach(() => {
+        document.body.querySelectorAll('[data-modal-clickout-layer], [role="listbox"]').forEach(layer => layer.remove());
+    });
+
+    it('starts on the parent the dialog was opened for, and on "No parent" for a task of the roots', async () => {
+        await open('t-31');
+
+        expect(field().textContent).toContain('CAR-31');
+        expect(field().textContent).toContain('Payments');
+
+        modal.create.mockClear();
+        await open();
+
+        expect(field().textContent).toContain('No parent');
+    });
+
+    it('lists "No parent" first and then every task that has room for another level, whichever level it is on', async () => {
+        await open();
+        await press(field());
+        await settle();
+
+        expect(options()[0].textContent).toBe('No parent');
+        // CAR-33 is level 3: a new task goes under it at level 4.
+        expect(options().some(candidate => candidate.textContent?.includes('CAR-33'))).toBe(true);
+        expect(options().some(candidate => candidate.textContent?.includes('CAR-24'))).toBe(true);
+    });
+
+    it('does not list a task at the last level, which has no room for another', async () => {
+        // CAR-33 is level 3; five more under it make Level 8, the last level the daemon allows.
+        let parentId = 't-33';
+
+        for (let level = 4; level <= 8; level++) {
+            const result = await root.command({ type: 'task.create', projectId: FIXTURE_PROJECT_ID, title: `Level ${ level }`, parentId });
+
+            parentId = (result as { ok: true; data: { task: { id: string } } }).data.task.id;
+        }
+
+        await open();
+        await press(field());
+        await settle();
+
+        expect(options().some(candidate => candidate.textContent?.includes('Level 7'))).toBe(true);
+        expect(options().some(candidate => candidate.textContent?.includes('Level 8'))).toBe(false);
+    });
+
+    it('changes the parent: the line under the heading follows it, and the task is made there, in a screen that moves to show it', async () => {
+        const window = root.ui.forProject(FIXTURE_PROJECT_ID);
+
+        await open('t-31');
+        await pickParent('CAR-24');
+
+        expect(field().textContent).toContain('CAR-24');
+        expect(heading()).toContain('Sub-task of CAR-24 Update the booking form');
+
+        await submit('Moved over');
+
+        expect(sent[0]).toMatchObject({ type: 'task.create', title: 'Moved over', parentId: 't-24' });
+        expect(root.selectedProject!.taskList.find(task => task.title === 'Moved over')?.parentId).toBe('t-24');
+        // At the roots, a board of one level has no card for it, so the screen goes to the task it is in.
+        expect(window.tasksScope).toBe('t-24');
+    });
+
+    it('clears the parent with "No parent", which makes a task of the roots and says nothing of a parent', async () => {
+        const window = root.ui.forProject(FIXTURE_PROJECT_ID);
+
+        window.setTasksScope('t-31');
+        await open('t-31');
+        await pickParent('No parent');
+
+        expect(field().textContent).toContain('No parent');
+        expect(heading()).toBe('New task');
+
+        await submit('Made a root');
+
+        expect(sent[0]).toMatchObject({ type: 'task.create', title: 'Made a root' });
+        expect(sent[0]).not.toHaveProperty('parentId', expect.anything());
+        expect(root.selectedProject!.taskList.find(task => task.title === 'Made a root')?.parentId).toBeUndefined();
+        expect(window.tasksScope).toBeNull();
+    });
+
+    it('gives a task of the roots a parent', async () => {
+        await open();
+        await pickParent('CAR-31');
+
+        expect(heading()).toContain('Sub-task of CAR-31 Payments');
+
+        await submit('Under Payments');
+
+        expect(sent[0]).toMatchObject({ type: 'task.create', title: 'Under Payments', parentId: 't-31' });
+        expect(root.selectedProject!.taskList.find(task => task.title === 'Under Payments')?.parentId).toBe('t-31');
     });
 });
