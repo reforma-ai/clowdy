@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { SettingsBlock } from './SettingsBlock';
 import { SettingsCard } from './SettingsCard';
@@ -29,45 +29,21 @@ afterEach(() => {
 });
 
 describe('SettingsPage', () => {
-    it('is a title that stays, an action, and then what the page is for and its blocks', () => {
-        draw(<SettingsPage title="Providers" description="Who is signed in." actions={ <button type="button">Add</button> }><p>block</p></SettingsPage>);
+    it('is what the page is for, under a hairline, and then its blocks: the window draws the title and the action above it', () => {
+        draw(<SettingsPage description="Who is signed in."><p>block</p><p>another</p></SettingsPage>);
 
-        const heading = container.querySelector('[role="heading"]')!;
-
-        expect([heading.textContent, heading.getAttribute('aria-level')]).toEqual(['Providers', '1']);
-        expect(container.querySelector('nav[aria-label="Settings path"] button')).toBeNull();
-        expect(container.querySelector('nav + div button')?.textContent).toBe('Add');
         expect(container.textContent).toContain('Who is signed in.');
-        expect(container.querySelector('p')?.textContent).toBe('block');
-        // Nothing is open over the page, so the page itself is in reach.
-        expect(container.querySelector('[inert]')).toBeNull();
+        expect(container.querySelector('[role="heading"]')).toBeNull();
+        expect([...container.querySelectorAll('p')].map(item => item.textContent)).toEqual(['block', 'another']);
+        // What it is for comes first.
+        expect(container.textContent!.indexOf('Who is signed in.')).toBeLessThan(container.textContent!.indexOf('block'));
     });
 
-    it('reads as a path once a page is open over it, each page above the last being a link back', () => {
-        const navigate = vi.fn();
+    it('has no line on what it is for when it has no description', () => {
+        draw(<SettingsPage><p>block</p></SettingsPage>);
 
-        draw(
-            <SettingsPage
-                title="Projects"
-                description="The list."
-                layers={ [{ id: 'car', title: 'Car Rental', description: 'Four chats.', content: <p>detail</p> }] }
-                onNavigate={ navigate }
-            >
-                <p>list</p>
-            </SettingsPage>
-        );
-
-        const nav = container.querySelector('nav[aria-label="Settings path"]')!;
-
-        expect(nav.querySelector('[aria-current="page"]')?.textContent).toBe('Car Rental');
-        expect(nav.querySelector('button')?.textContent).toBe('Projects');
-        // The page opened over the other has its own line on what it is, and the one under it is out of reach, still there.
-        expect(container.textContent).toContain('Four chats.');
-        expect(container.querySelector('[inert]')?.textContent).toContain('The list.');
-        expect(container.querySelector('[inert] p')?.textContent).toBe('list');
-
-        act(() => nav.querySelector<HTMLButtonElement>('button')!.click());
-        expect(navigate).toHaveBeenCalledWith(0);
+        expect(container.querySelector('[class*="intro"]')).toBeNull();
+        expect(container.querySelector('p')?.textContent).toBe('block');
     });
 });
 

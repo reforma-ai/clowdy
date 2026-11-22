@@ -864,6 +864,17 @@ describe('UiStore', () => {
         expect(ui.settingsProjectId).toBeNull();
     });
 
+    it('shows the page of a project over Settings > Projects, or the list again, without changing the page of Settings', () => {
+        const ui = new UiStore();
+
+        ui.openSettings('providers');
+        ui.setSettingsProject('p1');
+        expect([ui.settingsPage, ui.settingsProjectId]).toEqual(['providers', 'p1']);
+
+        ui.setSettingsProject(null);
+        expect([ui.settingsPage, ui.settingsProjectId]).toEqual(['providers', null]);
+    });
+
     it('forgets a removed project: its window state, its stored copy, and its page in Settings', () => {
         const storage = memoryStorage({ 'clowdy:ui:p1': JSON.stringify({ section: 'tasks' }) });
         const ui = new UiStore(storage as KeyValueStorage);

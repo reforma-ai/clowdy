@@ -29,8 +29,8 @@ afterEach(() => {
 });
 
 describe('ShortcutsPage', () => {
-    it('is titled Shortcuts, in the title line of a Settings page', () => {
-        expect(container.querySelector('[role="heading"]')?.textContent).toBe('Shortcuts');
+    it('says what it is for, at the top of the page: the window draws its title', () => {
+        expect(container.textContent).toContain('The keys that run commands in Clowdy');
     });
 
     it('has a section for each group, General and Navigation first', () => {

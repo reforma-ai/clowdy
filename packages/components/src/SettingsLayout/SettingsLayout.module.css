@@ -97,7 +97,9 @@
         flex: 1;
     }
 
+    /* Pulled up under the title it belongs to: the header and the scrolling content each leave 20px, which would set it apart from the title as if it were a block of the page. */
     .intro {
+        margin-top: calc(var(--spacing-12) * -1);
         padding-bottom: var(--spacing-xl);
         border-bottom: 1px solid var(--color-secondary-muted-border);
     }
