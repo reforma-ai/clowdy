@@ -157,6 +157,26 @@ describe('ApprovalCard', () => {
             expect(button('Deny')!.disabled).toBe(false);
         });
 
+        it('shows what another window decided while this one still waits for its own answer', async () => {
+            let finish: () => void = () => undefined;
+            const onDecide = vi.fn(() => new Promise<void>((resolve) => {
+                finish = resolve;
+            }));
+
+            await draw({}, onDecide);
+            await act(async () => button('Allow once')!.click());
+            // The item is updated in place, as the feed does when the decision came from elsewhere.
+            await draw({ state: 'decided', decision: 'reject' }, onDecide);
+
+            expect(buttons()).toHaveLength(0);
+            expect(container.textContent).toContain('Denied');
+
+            await act(async () => finish());
+
+            expect(buttons()).toHaveLength(0);
+            expect(container.textContent).toContain('Denied');
+        });
+
         it('is only to be read when nobody can answer it', async () => {
             await draw({});
 
