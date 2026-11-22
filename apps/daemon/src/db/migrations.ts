@@ -471,4 +471,12 @@ export const MIGRATIONS: Migration[] = [
             db.run('ALTER TABLE runs ADD COLUMN awaiting_user INTEGER');
         },
     },
+    {
+        version: 24,
+        up(db) {
+            // What the worktrees made from a folder need (see `ProjectFolder.settings`): `FolderSettings` as JSON, NULL while the folder has none, which is every folder of
+            // an older database. It sits on the project's row of the folder, not on the path: the same folder in two projects has two sets.
+            db.run('ALTER TABLE project_folders ADD COLUMN settings TEXT');
+        },
+    },
 ];

@@ -8,7 +8,11 @@ import { newMainMessage, removalMessage, removedFolderMessage } from './projectV
 import { MAX_ICON_SOURCE_BYTES, squareIcon } from './squareIcon';
 
 import type { Project, ProjectFolder, ProjectInfo, ProjectSettings } from '@clowdy/protocol';
+import type { CommandInput } from '../../../daemon/transport';
 import type { RootStore } from '../../../stores';
+
+/** What `project.updateFolder` changes: a field left out stays, `null` clears it. */
+export type FolderSettingsPatch = Extract<CommandInput, { type: 'project.updateFolder' }>['settings'];
 
 /** Shows the project in the window, with Settings closed: one step for back and forward, not two. */
 export function openProject(root: RootStore, project: Project): void {
@@ -158,6 +162,27 @@ export async function removeFolder(root: RootStore, project: Project, folder: Pr
         : removedFolderMessage(chats, name, names[0] ?? mainFolder(project).path);
 
     return confirmNewMain(root, project, change, { title: `Remove ${ name }?`, message, confirmLabel: 'Remove folder' });
+}
+
+/**
+ * Saves what the worktrees made from one folder of the project start from and need (the Workspace dialog); `null` in a field clears it. The daemon's refusal is a toast.
+ * Resolves to whether it was saved.
+ */
+export async function setFolderSettings(root: RootStore, project: Pick<Project, 'id'>, folder: Pick<ProjectFolder, 'id'>, settings: FolderSettingsPatch): Promise<boolean> {
+    return (await perform(root, { type: 'project.updateFolder', projectId: project.id, folderId: folder.id, settings })).ok;
+}
+
+/**
+ * Puts a folder of the project at another place on the disk, for a folder that was moved or renamed outside Clowdy: the folder stays the same folder of the project, in
+ * the same order, so the chats that work in it stay with it (an agent that worked there starts over from the record on its next turn). The daemon checks the path as
+ * it does a new folder's, and the main folder waits for the agents; a refusal is a toast. Resolves to whether it was saved.
+ */
+export async function locateFolder(root: RootStore, project: Project, folder: ProjectFolder, path: string): Promise<boolean> {
+    // The list as it is now, since `project.update` replaces the whole of it and another window may have changed it.
+    const current = root.projects.find(candidate => candidate.id === project.id) ?? project;
+    const folders = current.folders.map(other => (other.id === folder.id ? { id: other.id, path } : { id: other.id }));
+
+    return (await perform(root, { type: 'project.update', projectId: project.id, folders })).ok;
 }
 
 /** Asks, then removes the project from Clowdy. Its folders are never touched. */

@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { openInFiles } from '../files/openInFiles';
@@ -189,6 +189,35 @@ describe('the folder of a chat', () => {
         await press(outside('Open in Finder'));
 
         expect(openPath).not.toHaveBeenCalled();
+    });
+
+    it('offers Locate… for a folder that is gone, which moves the folder where the person picks; no Remove for the only folder of a project, nothing at all for the personal space', async () => {
+        const choose = vi.fn(async () => ['/Users/dev/car-rental-moved']);
+        const bridge = { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined), chooseDirectories: choose };
+
+        // The Clowdy project: no agent at work in it, so its main folder can move.
+        const clowdy = { id: 'fld_clowdy', path: '/Users/dev/clowdy' };
+
+        await draw({ bridge, missing: true, project: FIXTURE_EMPTY_PROJECT_ID, folder: clowdy });
+        await press(pill()!);
+
+        expect(items().map(row => row.textContent)).toEqual(['Locate…', 'Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
+
+        await press(item('Locate…'));
+
+        expect(choose).toHaveBeenCalledOnce();
+        await vi.waitFor(() => expect(store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)?.folders).toEqual([{ id: clowdy.id, path: '/Users/dev/car-rental-moved' }]));
+
+        // A folder that is there has no repair.
+        await draw({ bridge });
+        await press(pill()!);
+
+        expect(items().map(row => row.textContent)).not.toContain('Locate…');
+
+        await draw({ project: FIXTURE_PERSONAL_PROJECT_ID, folder: { id: 'fld_personal', path: '/Users/dev/Clowdy/Personal' }, bridge, missing: true });
+        await press(pill()!);
+
+        expect(items().map(row => row.textContent)).not.toContain('Locate…');
     });
 
     it('draws each program with its own icon, and a plain one of its kind for a program that has none', async () => {

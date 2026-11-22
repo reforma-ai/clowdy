@@ -6,7 +6,7 @@ import { Folder } from '@clowdy/icons/14';
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { useProjectState } from '../../stores';
-import { canOpenPaths, OpenWithMenu, useFolderGit, type FolderGit, type OpenTarget } from '../openWith';
+import { canOpenPaths, OpenWithMenu, useFolderGit, useFolderRepair, type FolderGit, type OpenTarget } from '../openWith';
 import styles from './ChatFolder.module.css';
 import { FolderTrigger } from './DraftFolderSelect';
 import { WorkspaceLabels } from './WorkspaceChips';
@@ -34,6 +34,8 @@ export interface FolderPillProps {
 export function FolderPill({ name, folder, missing, git, worktree }: FolderPillProps) {
     const project = useProjectState();
     const path = worktree ?? folder.path;
+    // A worktree that is gone is not what Locate and Remove from project put right: they act on the folder, which is there.
+    const repair = useFolderRepair(folder, missing && worktree === undefined);
     const title = missing ? 'This folder no longer exists' : tildePath(path, homeFolder.path);
 
     if (!canOpenPaths()) {
@@ -51,7 +53,7 @@ export function FolderPill({ name, folder, missing, git, worktree }: FolderPillP
         <MenuTrigger>
             <FolderTrigger name={ name } tooltip={ title } missing={ missing } />
             <Popover placement="bottom start" spacing="xs">
-                <OpenWithMenu target={ target } missing={ missing } git={ git } aria-label="Open folder" />
+                <OpenWithMenu target={ target } missing={ missing } repair={ repair } git={ git } aria-label="Open folder" />
             </Popover>
         </MenuTrigger>
     );

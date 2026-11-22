@@ -31,17 +31,19 @@ export const commandSchema = z.discriminatedUnion('type', [
      */
     z.object({ ...base, type: z.literal('project.add'), name: z.string().min(1).optional(), folders: z.array(z.string().min(1)).max(MAX_PROJECT_FOLDERS).optional() }),
     /**
-     * `folders` is the project's whole new list, in order: `{ id }` keeps a folder it has, `{ path }` adds one (the checks of `project.add`).
-     * A new main folder waits until no run of the project is unfinished. `name`, `folders` and an icon are refused for the personal space. A
-     * settings field set to `null` is cleared, so the project follows the daemon's own choice again (and `icon: null` shows the found icon or the
-     * folder icon again; `NO_PROJECT_ICON` shows the folder icon).
+     * `folders` is the project's whole new list, in order: `{ id }` keeps a folder it has, `{ path }` adds one (the checks of `project.add`), and
+     * `{ id, path }` moves a folder it has to another place on the disk (the same checks), for a folder that was moved or renamed outside
+     * Clowdy: the folder keeps its id, so its chats stay with it, and a session that cannot be resumed from the new place starts again from
+     * the record of the conversation. A new main folder, and a move of the main folder, wait until no run of the project is unfinished. `name`,
+     * `folders` and an icon are refused for the personal space. A settings field set to `null` is cleared, so the project follows the daemon's own
+     * choice again (and `icon: null` shows the found icon or the folder icon again; `NO_PROJECT_ICON` shows the folder icon).
      */
     z.object({
         ...base,
         type: z.literal('project.update'),
         projectId: z.string(),
         name: z.string().min(1).optional(),
-        folders: z.array(z.union([z.object({ id: z.string().min(1) }).strict(), z.object({ path: z.string().min(1) }).strict()])).min(1).max(MAX_PROJECT_FOLDERS).optional(),
+        folders: z.array(z.union([z.object({ id: z.string().min(1) }).strict(), z.object({ path: z.string().min(1) }).strict(), z.object({ id: z.string().min(1), path: z.string().min(1) }).strict()])).min(1).max(MAX_PROJECT_FOLDERS).optional(),
         settings: z.object({
             maxParallelRuns: z.number().int().min(1).max(1000).nullable().optional(),
             engine: engine.nullable().optional(),
@@ -50,6 +52,25 @@ export const commandSchema = z.discriminatedUnion('type', [
             targetBranch: z.string().nullable().optional(),
             icon: z.union([z.literal(NO_PROJECT_ICON), z.string().max(MAX_PROJECT_ICON_LENGTH).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/, 'The icon must be a PNG data URL')]).nullable().optional(),
         }).optional(),
+    }),
+    /**
+     * Sets what the worktrees made from one folder of the project need (`FolderSettings`): the branch they start from and a setup. The settings belong to this folder of this
+     * project, so the same path in another project has its own. A field that is left out stays, one set to `null` is cleared (the folder's default branch and no setup again);
+     * `setup` is replaced whole. `setup.files` are paths below the folder written with `/`, or with a `*` in the last segment (`.env*`): none absolute, with a drive, a `\`,
+     * a `.` or `..` or `.git` segment or an empty one, at most `MAX_SETUP_FILES` of at most 500 characters; a setup with no files and no command is no setup. `command` is at
+     * most `MAX_SETUP_COMMAND_LENGTH` characters, `baseBranch` a name of at most `MAX_BASE_BRANCH_LENGTH` that does not start with `-`. The daemon trims the text and then checks
+     * these limits, so the schema holds the shapes only and the refusal (`invalid`) says which limit it is; `not_found` for a folder the project does not have and `conflict` for
+     * the personal space. Answers `{ project }`.
+     */
+    z.object({
+        ...base,
+        type: z.literal('project.updateFolder'),
+        projectId: z.string(),
+        folderId: z.string().min(1),
+        settings: z.object({
+            baseBranch: z.string().nullable().optional(),
+            setup: z.object({ files: z.array(z.string()), command: z.string().optional() }).nullable().optional(),
+        }),
     }),
     /** Removes the project with its chats, tasks, runs, streams and attachments; its folder and the files in it stay. Refused for the personal space and while any run of the project is unfinished. */
     z.object({ ...base, type: z.literal('project.delete'), projectId: z.string() }),

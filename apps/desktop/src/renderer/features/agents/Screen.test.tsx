@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { openConfirmModal } from '@clowdy/components/modals';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -433,6 +434,48 @@ describe('grouped by folder', () => {
             expect(menuItems()).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
             // It folds nothing.
             expect(ui().collapsedFolders).toEqual([]);
+        }
+        finally {
+            window.desktop = undefined;
+        }
+    });
+
+    it('puts right a folder that is gone from the disk from the menu of its group: Locate… moves the folder, Remove from project takes it out', async () => {
+        const transport = new FixtureTransport({ data: twoFolders() });
+        const info = await transport.getProjectsInfo();
+        const choose = vi.fn(async () => ['/Users/dev/api-moved']);
+
+        vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(info.map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })) } : entry)));
+        window.desktop = { getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }), openPath: vi.fn(async () => undefined), chooseDirectories: choose } as never;
+
+        try {
+            const name = (folderId: string) => rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]')!;
+            const menuItems = () => [...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].map(row => row.textContent);
+            const item = (text: string) => [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].find(row => row.textContent === text)!;
+
+            await restart({ transport });
+            await press(name(API.id));
+
+            // The folder is there, and the page is not taken from the chat: nothing to start in a folder that is gone.
+            expect(ui().draft).toBe(false);
+            expect(menuItems()).toEqual(['Locate…', 'Remove from project', 'Copy path', 'Open in…']);
+
+            await press(item('Locate…'));
+            await vi.waitFor(() => expect(store.projects.find(project => project.id === FIXTURE_PROJECT_ID)?.folders[1]).toEqual({ id: API.id, path: '/Users/dev/api-moved' }));
+            expect(store.projects.find(project => project.id === FIXTURE_PROJECT_ID)?.folders[0].id).toBe(MAIN);
+
+            // A chat works in the folder, so taking it out asks first (it is named by its new place now).
+            await restart({ transport });
+            await press(name(API.id));
+            await press(item('Remove from project'));
+
+            expect(openConfirmModal).toHaveBeenCalledWith(expect.objectContaining({ title: 'Remove api-moved?', message: expect.stringContaining('1 chat works in api-moved') }), expect.anything());
+
+            // A folder that is there has none of it.
+            await restart();
+            await press(name(API.id));
+
+            expect(menuItems()).not.toContain('Locate…');
         }
         finally {
             window.desktop = undefined;

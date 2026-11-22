@@ -15,6 +15,7 @@ import {
     type FixtureData,
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
+import { applyFolderSettings } from './fixtureFolderSettings';
 import { fail, ok, type Outcome } from './fixtureOutcome';
 import { FixtureTasks } from './fixtureTasks';
 import { FixtureTerminals } from './fixtureTerminals';
@@ -224,7 +225,7 @@ export class FixtureTransport implements Transport {
 
         if (!folder) throw new TransportError(`No such folder: ${ folderId }`, 404);
 
-        return structuredClone(fixtureFolderGit(folder.path, this.#data.git[folder.path]));
+        return structuredClone(fixtureFolderGit(folder.path, this.#data.git[folder.path], folder.settings?.baseBranch));
     }
 
     async getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {
@@ -674,7 +675,14 @@ export class FixtureTransport implements Transport {
 
                 if (command.folders?.length === 0) return fail('invalid', 'A project needs at least one folder');
 
-                const folders = command.folders?.map(entry => ('id' in entry ? project.folders.find(folder => folder.id === entry.id) : (project.folders.find(folder => folder.path === entry.path) ?? { id: this.#id('fld'), path: entry.path })));
+                // `{ id }` keeps a folder, `{ id, path }` keeps it at another place (its chats stay with it), `{ path }` adds one.
+                const folders = command.folders?.map((entry) => {
+                    if (!('id' in entry)) return project.folders.find(folder => folder.path === entry.path) ?? { id: this.#id('fld'), path: entry.path };
+
+                    const kept = project.folders.find(folder => folder.id === entry.id);
+
+                    return kept && 'path' in entry ? { id: kept.id, path: entry.path } : kept;
+                });
 
                 if (folders?.some(folder => folder === undefined)) return fail('invalid', 'A folder is not one of the project\'s');
 
@@ -689,7 +697,7 @@ export class FixtureTransport implements Transport {
 
                 if (project.personal && command.settings?.icon !== undefined) return fail('conflict', 'The personal space has no icon of its own');
 
-                if (mainFolder({ folders: nextFolders }).id !== mainFolder(project).id && this.#activeRuns(project.id) > 0) return fail('conflict', 'The agents of this project are still working. Stop them first.');
+                if ((mainFolder({ folders: nextFolders }).id !== mainFolder(project).id || mainFolder({ folders: nextFolders }).path !== mainFolder(project).path) && this.#activeRuns(project.id) > 0) return fail('conflict', 'The agents of this project are still working. Stop them first.');
 
                 const settings: Project['settings'] = { ...project.settings };
 
@@ -716,6 +724,14 @@ export class FixtureTransport implements Transport {
 
                 // Like the daemon: `{ project }`.
                 return ok({ project: structuredClone(project) });
+            }
+            case 'project.updateFolder': {
+                const project = data.projects.find(candidate => candidate.id === command.projectId);
+                const outcome = applyFolderSettings(project, command.folderId, command.settings);
+
+                if (project && outcome.ok) this.#emit(project.id, { type: 'project.upserted', project, statuses: data.statuses[project.id] ?? DEFAULT_STATUSES });
+
+                return outcome;
             }
             case 'project.delete': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);

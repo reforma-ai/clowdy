@@ -352,20 +352,22 @@ const API_FILES = [
 
 /**
  * What `GET git` answers for a fixture folder: no repository when `git` says nothing of it, else the branch it has checked out, a few more branches (local and
- * `origin`'s), `origin/main` as the default one, and two worktrees: the folder itself and one Clowdy made for a chat, with changes in it.
+ * `origin`'s), `origin/main` as the default one, and two worktrees: the folder itself and one Clowdy made for a chat, with changes in it. The folder's own
+ * `baseBranch` is the default one when the repository has it, as the daemon answers.
  */
-export function fixtureFolderGit(path: string, head: { branch?: string; detached?: true } | undefined): FolderGit {
+export function fixtureFolderGit(path: string, head: { branch?: string; detached?: true } | undefined, baseBranch?: string): FolderGit {
     if (!head?.branch) return { isRepository: false };
 
     const name = path.split('/').filter(Boolean).at(-1) ?? 'folder';
     const locals = [...new Set([...(head.detached ? [] : [head.branch]), 'main', 'dev', 'feature/payments'])];
+    const branches = [...locals.map(branch => ({ name: branch, remote: false })), ...['origin/main', 'origin/dev'].map(branch => ({ name: branch, remote: true }))];
 
     return {
         isRepository: true,
         branch: head.branch,
         ...(head.detached && { detached: true as const }),
-        defaultBranch: 'origin/main',
-        branches: [...locals.map(branch => ({ name: branch, remote: false })), ...['origin/main', 'origin/dev'].map(branch => ({ name: branch, remote: true }))],
+        defaultBranch: baseBranch !== undefined && branches.some(branch => branch.name === baseBranch) ? baseBranch : 'origin/main',
+        branches,
         worktrees: [
             { path, ...(!head.detached && { branch: head.branch }), head: 'a1b2c3d', main: true, dirty: false },
             { path: `/Users/dev/Clowdy/workspaces/${ name }/ab12cd34/${ name }`, branch: 'clowdy/ab12cd34', head: '9f8e7d6', main: false, dirty: true },

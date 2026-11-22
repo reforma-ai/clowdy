@@ -14,7 +14,7 @@ import { SettingsWindow } from '../SettingsWindow';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
 import type { SortableList as SortableListComponent, SortableListDropContext } from '@clowdy/components/SortableList';
-import type { ProjectId } from '@clowdy/protocol';
+import type { FolderSettings, ProjectId } from '@clowdy/protocol';
 import type { Transport } from '../../../daemon/transport';
 
 const confirm = vi.hoisted(() => vi.fn());
@@ -80,8 +80,11 @@ async function flush() {
     });
 }
 
-async function open(projectId: string | null = null, overrides: Partial<Transport> = {}, data: FixtureData = createFixtureData()) {
-    store = new RootStore(overrideTransport(new FixtureTransport({ data }), overrides), { storage: memoryStorage() });
+/** `overrides` may be made from the transport it overrides, to pass a call on after looking at it. */
+async function open(projectId: string | null = null, overrides: Partial<Transport> | ((base: Transport) => Partial<Transport>) = {}, data: FixtureData = createFixtureData()) {
+    const base = new FixtureTransport({ data });
+
+    store = new RootStore(overrideTransport(base, typeof overrides === 'function' ? overrides(base) : overrides), { storage: memoryStorage() });
     await store.load();
     store.ui.openProjectSettings(projectId);
     // The page is drawn in the Settings window, whose layout holds the project's page as its stack.
@@ -682,5 +685,221 @@ describe('ProjectsPage icon', () => {
         await pick(new File(['x'], 'notes.txt'));
         expect(toasts.error).toHaveBeenLastCalledWith({ message: 'Couldn\'t read notes.txt as a picture' });
         expect(settingsOf(FIXTURE_EMPTY_PROJECT_ID).icon).toBeUndefined();
+    });
+});
+
+describe('ProjectsPage workspace', () => {
+    const API = 'fld_added_1';
+    const NOTES = 'fld_added_2';
+    const SETTINGS = { baseBranch: 'dev', setup: { files: ['.env', '.env*'], command: 'bun install\nbun run build' } };
+
+    /** Car Rental with two more folders: `car-rental-api` (a repository) and `notes` (no repository), the first with settings when it is given any. */
+    function folders(settings?: FolderSettings): FixtureData {
+        const data = withFolders(FIXTURE_PROJECT_ID, '/Users/dev/car-rental-api', '/Users/dev/notes');
+
+        if (settings) data.projects.find(project => project.id === FIXTURE_PROJECT_ID)!.folders[1]!.settings = settings;
+
+        return data;
+    }
+
+    const settingsOf = (projectId: ProjectId, folderId: string) => store.projects.find(project => project.id === projectId)?.folders.find(folder => folder.id === folderId)?.settings;
+    const openButton = (name: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="Workspace of ${ name }"]`);
+    const form = () => document.body.querySelector<HTMLInputElement>('input[aria-label="Base branch"]')?.closest('form') ?? null;
+    const field = (label: string) => document.getElementById([...form()!.querySelectorAll('label')].find(candidate => candidate.textContent === label)!.htmlFor) as HTMLTextAreaElement;
+    const baseBranch = () => form()!.querySelector<HTMLInputElement>('input[aria-label="Base branch"]')!;
+    const save = () => [...form()!.querySelectorAll<HTMLButtonElement>('button[type="submit"]')].find(candidate => candidate.textContent === 'Save')!;
+
+    function typeInto(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
+        const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+
+        act(() => {
+            element.focus();
+            Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value);
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
+    /** Opens the page of Car Rental, and the Workspace dialog of one of its folders. */
+    async function openDialog(name: string, overrides: Parameters<typeof open>[1] = {}, data: FixtureData = folders()) {
+        await open(FIXTURE_PROJECT_ID, overrides, data);
+        await click(openButton(name)!);
+        await flush();
+    }
+
+    /** The commands the page sent, passed on to the fixture daemon. */
+    function recording(sent: unknown[]) {
+        return (base: Transport): Partial<Transport> => ({
+            command: async (input) => {
+                sent.push(input);
+
+                return base.command(input);
+            },
+        });
+    }
+
+    it('gives each folder of a project a Workspace button, and the personal space none', async () => {
+        await open(FIXTURE_PROJECT_ID, {}, folders());
+
+        expect(rows().map(item => item.querySelector('button[aria-label^="Workspace of"]')?.getAttribute('aria-label'))).toEqual(['Workspace of car-rental', 'Workspace of car-rental-api', 'Workspace of notes']);
+        // Beside Open in GitHub, which a folder with a remote has.
+        expect(rows()[0]!.querySelector('a[href="https://github.com/acme/car-rental"]')).not.toBeNull();
+
+        await open(FIXTURE_PERSONAL_PROJECT_ID);
+
+        expect(container.querySelector('button[aria-label^="Workspace of"]')).toBeNull();
+    });
+
+    it('opens with what the folder has set, and with the repository\'s default branch as the placeholder of the base branch', async () => {
+        await openDialog('car-rental-api', {}, folders(SETTINGS));
+
+        expect(form()!.textContent).toContain('Workspace of car-rental-api');
+        expect(baseBranch().value).toBe('dev');
+        expect(field('Files to copy').value).toBe('.env\n.env*');
+        expect(field('Command').value).toBe('bun install\nbun run build');
+        expect(form()!.textContent).toContain('One path per line, such as .env or .env*');
+
+        // A folder with nothing set shows the default the repository has.
+        await act(async () => Modal.opened[0]!.close(false));
+        await click(openButton('car-rental')!);
+        await flush();
+
+        expect(baseBranch().value).toBe('');
+        expect(baseBranch().placeholder).toBe('origin/main');
+        expect(field('Files to copy').value).toBe('');
+        expect(field('Command').value).toBe('');
+    });
+
+    it('saves the three fields for that folder with one command, closes, and the folder keeps them', async () => {
+        const sent: unknown[] = [];
+
+        await openDialog('car-rental-api', recording(sent));
+        expect(save().disabled).toBe(true);
+
+        typeInto(baseBranch(), '  origin/dev ');
+        typeInto(field('Files to copy'), '.env\n\n  .npmrc  \n');
+        typeInto(field('Command'), 'bun install\nbun run build:shared\n');
+        expect(save().disabled).toBe(false);
+
+        await act(async () => form()!.requestSubmit());
+        await flush();
+
+        expect(sent).toEqual([{
+            type: 'project.updateFolder',
+            projectId: FIXTURE_PROJECT_ID,
+            folderId: API,
+            settings: { baseBranch: 'origin/dev', setup: { files: ['.env', '.npmrc'], command: 'bun install\nbun run build:shared' } },
+        }]);
+        expect(settingsOf(FIXTURE_PROJECT_ID, API)).toEqual({ baseBranch: 'origin/dev', setup: { files: ['.env', '.npmrc'], command: 'bun install\nbun run build:shared' } });
+        expect(settingsOf(FIXTURE_PROJECT_ID, 'fld_car_rental')).toBeUndefined();
+        expect(settingsOf(FIXTURE_PROJECT_ID, NOTES)).toBeUndefined();
+        expect(form()).toBeNull();
+    });
+
+    it('sends null for what was emptied, and a folder with nothing left has no settings', async () => {
+        const sent: unknown[] = [];
+
+        await openDialog('car-rental-api', recording(sent), folders(SETTINGS));
+        typeInto(baseBranch(), '');
+        typeInto(field('Files to copy'), ' \n');
+        typeInto(field('Command'), '');
+        await act(async () => form()!.requestSubmit());
+        await flush();
+
+        expect(sent).toEqual([{ type: 'project.updateFolder', projectId: FIXTURE_PROJECT_ID, folderId: API, settings: { baseBranch: null, setup: null } }]);
+        expect(settingsOf(FIXTURE_PROJECT_ID, API)).toBeUndefined();
+        expect(form()).toBeNull();
+    });
+
+    it('sends a field that changed with the others as they were, and nothing at all while nothing changed', async () => {
+        const sent: unknown[] = [];
+
+        await openDialog('car-rental-api', recording(sent), folders(SETTINGS));
+        expect(save().disabled).toBe(true);
+
+        // Spaces round the same text are no change.
+        typeInto(baseBranch(), ' dev ');
+        expect(save().disabled).toBe(true);
+        await act(async () => form()!.requestSubmit());
+        expect(sent).toEqual([]);
+
+        typeInto(field('Command'), 'make');
+        await act(async () => form()!.requestSubmit());
+        await flush();
+
+        expect(sent).toEqual([{ type: 'project.updateFolder', projectId: FIXTURE_PROJECT_ID, folderId: API, settings: { baseBranch: 'dev', setup: { files: ['.env', '.env*'], command: 'make' } } }]);
+        expect(settingsOf(FIXTURE_PROJECT_ID, API)).toEqual({ baseBranch: 'dev', setup: { files: ['.env', '.env*'], command: 'make' } });
+    });
+
+    it('keeps the dialog and what was typed when the daemon refuses, with its reason as a toast', async () => {
+        const refusal = { ok: false as const, requestId: 'r', error: { code: 'invalid' as const, message: 'The file "../x" must not have a . or .. part' } };
+
+        await openDialog('car-rental-api', { command: async () => refusal });
+        typeInto(field('Files to copy'), '../x');
+        await act(async () => form()!.requestSubmit());
+        await flush();
+
+        expect(toasts.error).toHaveBeenCalledWith({ message: 'The file "../x" must not have a . or .. part' });
+        expect(form()).not.toBeNull();
+        expect(field('Files to copy').value).toBe('../x');
+        expect(settingsOf(FIXTURE_PROJECT_ID, API)).toBeUndefined();
+        expect(save().disabled).toBe(false);
+    });
+
+    it('says when the repository has no branch of the typed name, and when the folder is no repository', async () => {
+        await openDialog('car-rental-api');
+        typeInto(baseBranch(), 'origin/dev');
+        expect(form()!.textContent).not.toContain('has no branch');
+
+        typeInto(baseBranch(), 'release');
+        expect(form()!.textContent).toContain('The repository has no branch called release, so the default branch is used');
+        expect(form()!.textContent).not.toContain('is not one');
+
+        await act(async () => Modal.opened[0]!.close(false));
+        await click(openButton('notes')!);
+        await flush();
+
+        expect(form()!.textContent).toContain('Worktrees need a git repository, and this folder is not one');
+        typeInto(baseBranch(), 'release');
+        expect(form()!.textContent).not.toContain('has no branch');
+    });
+
+    it('shows a configured base branch the repository has as its own value, and the generic placeholder once it is emptied', async () => {
+        await openDialog('car-rental-api', {}, folders({ baseBranch: 'dev' }));
+
+        expect(baseBranch().value).toBe('dev');
+        // The answer for this folder is its own base: the repository's default is not known from it.
+        expect(baseBranch().placeholder).toBe('Default branch');
+
+        typeInto(baseBranch(), '');
+        expect(baseBranch().placeholder).toBe('Default branch');
+    });
+
+    it('says that a folder that left the project is gone, and saves nothing for it', async () => {
+        const sent: unknown[] = [];
+
+        await openDialog('car-rental-api', recording(sent));
+        await store.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { id: NOTES }] });
+        await flush();
+        // The form is drawn again with the next change to a field.
+        typeInto(baseBranch(), 'dev');
+
+        expect(form()!.textContent).toContain('This folder is no longer in the project');
+        expect(save().disabled).toBe(true);
+        await act(async () => form()!.requestSubmit());
+        expect(sent).toEqual([{ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { id: NOTES }] }]);
+    });
+
+    it('keeps the settings of a folder when the folders are dragged into another order', async () => {
+        await open(FIXTURE_PROJECT_ID, {}, folders(SETTINGS));
+        await move(2, 1);
+
+        expect(rowPaths()).toEqual(['/Users/dev/car-rental', '/Users/dev/notes', '/Users/dev/car-rental-api']);
+        expect(settingsOf(FIXTURE_PROJECT_ID, API)).toEqual(SETTINGS);
+
+        // The dialog of the folder in its new place has them.
+        await click(openButton('car-rental-api')!);
+        await flush();
+        expect(baseBranch().value).toBe('dev');
+        expect(field('Files to copy').value).toBe('.env\n.env*');
     });
 });

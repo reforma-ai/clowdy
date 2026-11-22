@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { FolderList } from '../../../shell/FolderList';
 import { useRootStore } from '../../../stores';
 import { SettingsSection } from '../ui/SettingsSection';
+import { openFolderWorkspace } from './FolderWorkspaceDialog';
 import { addFolders, removeFolder, reorderFolders } from './projectActions';
 import styles from './ProjectDetail.module.css';
 import { folderViews, missingFolderNote, siteName, type FolderView, type RemoteLink } from './projectView';
@@ -31,8 +32,9 @@ interface DraggedOrder {
 /**
  * The Folders block of a project's page, in the `FolderList` the Add project form has too: the folders in order, the first marked Main,
  * dragged into another order, removed one by one, and more added with Add folders…. Each shows that it is missing, and opens its git
- * remote's page (Open in GitHub). A new main folder asks first and waits while agents of the project work; anything else applies at once.
- * The personal space shows its one folder, which nobody changes.
+ * remote's page (Open in GitHub). Its Workspace button opens the dialog of what the worktrees made from the folder start from and need
+ * (`FolderWorkspaceDialog`). A new main folder asks first and waits while agents of the project work; anything else applies at once.
+ * The personal space shows its one folder, which nobody changes, and has no worktrees to set up.
  */
 export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProps) {
     const root = useRootStore();
@@ -79,7 +81,12 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
                 getPath={ view => view.folder.path }
                 getName={ view => view.name }
                 renderDetails={ view => <FolderState project={ project } view={ view } /> }
-                renderActions={ view => view.remote && <RemoteButton remote={ view.remote } /> }
+                renderActions={ view => (
+                    <>
+                        { view.remote && <RemoteButton remote={ view.remote } /> }
+                        <WorkspaceButton project={ project } view={ view } />
+                    </>
+                ) }
                 // A project has at least one folder.
                 onRemove={ views.length > 1 ? view => removeFolder(root, project, view.folder, view.chats) : undefined }
                 isRemoveDisabled={ view => view.isMain && working }
@@ -115,6 +122,25 @@ function FolderState({ project, view }: { project: Project; view: FolderView }) 
     if (view.missing) return <Text variant="sm" color="warning">{ missingFolderNote(project, view.isMain) }</Text>;
 
     return view.remote && !view.remote.href ? <Text variant="sm" color="secondary" className={ styles.value }>{ view.remote.text }</Text> : null;
+}
+
+/** Opens the dialog of the base branch and the setup the worktrees made from this folder get. */
+function WorkspaceButton({ project, view }: { project: Project; view: FolderView }) {
+    const root = useRootStore();
+
+    return (
+        <Tooltip content="Base branch and setup of new worktrees">
+            <Button
+                variant="filling"
+                color="secondary"
+                size="sm"
+                aria-label={ `Workspace of ${ view.name }` }
+                onPress={ () => openFolderWorkspace({ root, projectId: project.id, folderId: view.folder.id, name: view.name }) }
+            >
+                Workspace
+            </Button>
+        </Tooltip>
+    );
 }
 
 /** The `origin` remote's page, when it names a repository on a web host: Open in GitHub, with the repository on hover. */
