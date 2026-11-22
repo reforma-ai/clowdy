@@ -130,11 +130,11 @@
 
 **Depends on:** Stage 2.
 
-**This stage:** draws the `approval` item and sends the person's decision. The card sits in the stream after the tool call it is about and is built like `QuestionCard`: what the agent wants to do by subject kind, three buttons by decision, a decided line afterwards. It stays out of the folded "Worked for" group like a question, and is read-only once its run no longer waits. Behaviour is still unchanged for a person who has not chosen a preset, so this stage is checked on the fixture daemon and on a real run with a preset set by command.
+**This stage:** draws the `approval` item and sends the person's decision. The card sits in the stream after the tool call it is about and is built like `QuestionCard`: what the agent wants to do by subject kind, three buttons by decision, a decided line afterwards. It stays out of the folded "Worked for" group like a question, and is read-only once the item is no longer `open`. Behaviour is still unchanged for a person who has not chosen a preset, so this stage is checked on the fixture daemon and on a real run with a preset set by command.
 
 - [ ] Complete
-  - [ ] Card: a body per subject (`$ command` clipped at four lines with "Show N more lines", the paths, the tool and its detail), Deny on the left, Allow for session where the agent offered it, Allow once as the main button, pending state on the pressed button, a decided line with the choice, lines for cancelled and expired, read-only when the run does not wait
-  - [ ] Stream: the `approval` item rendered and kept out of the fold, wired to `run.decide` in the chat view only while the run is `waiting_user`
+  - [ ] Card: a body per subject (`$ command` clipped at four lines with "Show N more lines", the paths, the tool and its detail), Deny on the left, Allow for session where the agent offered it, Allow once as the main button, pending state on the pressed button, a decided line with the choice, lines for cancelled and expired, read-only unless the item's own `state` is `open`
+  - [ ] Stream: the `approval` item rendered and kept out of the fold, wired to `run.decide` for an `open` item (gate on the item's `state`, not on `run.status`: while an approval waits the run can rest in another status, `waiting_background` for one, and the daemon decides in any of them)
   - [ ] The reason text of a run that waits on an approval reads `Waiting for your approval`
   - [ ] Fixture daemon: a script that raises an approval and keeps a session grant
   - [ ] Checked by hand in the running app with Claude and Codex (a preset set by command): the card appears under the tool call, each button does what it says, Stop with one waiting, a thread's approval shows in its chat and its parent sees it as asking
@@ -144,7 +144,7 @@
 - `apps/desktop/src/renderer/stream/ApprovalCard.tsx`, `ApprovalCard.module.css` — create: cannot join `QuestionCard.tsx`, whose body is a radio group with a free-text field, where this is a subject and a row of decision buttons
 - `apps/desktop/src/renderer/stream/StreamView.tsx` — `StreamViewProps` and the `switch` on `body.kind`: the `approval` case and `onDecide`
 - `apps/desktop/src/renderer/stream/turns.ts` — `needsAttention`: an open approval is attention; `index.ts`: export
-- `apps/desktop/src/renderer/features/chats/ChatView.tsx` — the `onAnswer` neighbour: `onDecide` sends `run.decide` only while `run?.status === 'waiting_user'`
+- `apps/desktop/src/renderer/features/chats/ChatView.tsx` — the `onAnswer` neighbour: `onDecide` sends `run.decide` for an item whose `state` is `open`
 - `apps/desktop/src/renderer/shared/runStatus.ts`, `apps/daemon/src/runs/service.ts` — the reason text of `waiting_user` for approvals
 - `apps/desktop/src/renderer/daemon/fixtureTransport.ts`, `fixtureData.ts`, `fixtureTransport.test.ts` — a scripted approval
 - `apps/desktop/src/renderer/stream/ApprovalCard.test.tsx` (create, beside `ToolCard.test.tsx`), `StreamView.test.tsx`, `turns.test.ts`
