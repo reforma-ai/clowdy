@@ -31,7 +31,7 @@ const PAGES: readonly PageView[] = [
 ];
 
 /**
- * Global settings, drawn by the shared `SettingsLayout`: a sidebar of the pages in their groups, the page chosen in it under its title, and, over Projects, the page of
+ * Global settings, drawn by the shared `SettingsLayout`: a sidebar of the pages in their groups (no title over it), the page chosen in it under its title, and, over Projects, the page of
  * one project with a path back in the title. The window state keeps both (`UiStore.settingsPage`, `settingsProjectId`), and the layout only asks to change them.
  * Nothing here belongs to a project.
  */
@@ -48,7 +48,8 @@ export const SettingsWindow = observer(function SettingsWindow() {
             stack={ project ? [{ id: project.id, label: project.name }] : [] }
             onStackChange={ stack => ui.setSettingsProject(stack[0]?.id ?? null) }
         >
-            <SettingsLayout.Sidebar title="Settings" aria-label="Settings pages" />
+            {/* No title over the groups: the first group's heading is right there, and the window is called Settings by where it opens from. */}
+            <SettingsLayout.Sidebar aria-label="Settings pages" />
             {/* The page's own main action, at the end of the title's line: Projects has Add project, and not while a project's page is open over it. */}
             <SettingsLayout.Content headerRight={ page.id === 'projects' && !project ? <AddProjectButton /> : undefined }>
                 { page.render() }
