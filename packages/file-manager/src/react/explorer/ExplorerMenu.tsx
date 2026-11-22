@@ -132,10 +132,12 @@ function RowMenuContent({ targets, onClose }: { targets: readonly FileEntry[]; o
                             Rename
                         </MenuItem>
                     </Show>
-                    <MenuItem id="copy" icon={<Copy />} textValue="Copy" endAffix={<Hotkey hotkey={['mod', 'c']} />}>
-                        Copy
-                    </MenuItem>
-                    <Show when={!manager.readonly && single && manager.clipboard.length > 0}>
+                    <Show when={manager.canCopy}>
+                        <MenuItem id="copy" icon={<Copy />} textValue="Copy" endAffix={<Hotkey hotkey={['mod', 'c']} />}>
+                            Copy
+                        </MenuItem>
+                    </Show>
+                    <Show when={manager.canPaste && single}>
                         <MenuItem
                             id="paste"
                             icon={<Paste />}
@@ -227,7 +229,7 @@ export function ExplorerAreaMenu({ contextMenu }: { contextMenu: UseContextMenuR
                         <MenuItem id="new-folder" icon={<Folder />}>
                             New folder
                         </MenuItem>
-                        <Show when={manager.clipboard.length > 0}>
+                        <Show when={manager.canPaste}>
                             <MenuItem
                                 id="paste"
                                 icon={<Paste />}
@@ -297,7 +299,7 @@ export const ExplorerPanelMenu = observer(function ExplorerPanelMenu({
                                 <MenuItem id="new-folder" icon={<Folder />}>
                                     New folder
                                 </MenuItem>
-                                <Show when={manager.clipboard.length > 0}>
+                                <Show when={manager.canPaste}>
                                     <MenuItem
                                         id="paste"
                                         icon={<Paste />}

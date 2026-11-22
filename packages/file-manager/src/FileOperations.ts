@@ -5,7 +5,7 @@ import { FileSystemError } from './provider';
 
 import type { TextDocument } from './documents/TextDocument';
 import type { FileManager } from './FileManager';
-import type { FileChange, FileKind, MoveOperation } from './provider';
+import type { ClipboardEntry, FileChange, FileKind, MoveOperation } from './provider';
 import type { FileTree } from './tree/FileTree';
 
 /** A file, or a folder (`file: null`), from outside the project; `path` is relative to the folder it goes in. */
@@ -20,7 +20,7 @@ export interface MoveOptions {
 }
 
 /** Paths without the root, duplicates, and paths inside another one of them. */
-function topmost(paths: readonly string[]): string[] {
+export function topmost(paths: readonly string[]): string[] {
     const sorted = [...new Set(paths.map(normalizePath))].filter(path => path !== '').sort();
 
     return sorted.filter((path, index) => !sorted.slice(0, index).some(other => isPathWithin(path, other)));
@@ -314,6 +314,58 @@ export class FileOperations {
         );
 
         return uploaded ? uploads : [];
+    }
+
+    /**
+     * Copies files and folders the host's clipboard names, from outside the provider (copied in the host's file manager, or inside the root where the tree has not
+     * listed them), into the folder `target`: the host makes the copies on its disk. A top-level name already taken there gets “ copy”, as with `copy`. The tree shows
+     * the copies at once, a folder's contents when it is opened. Resolves the copies' paths, none when the paste failed.
+     */
+    async import(entries: readonly ClipboardEntry[], target: string): Promise<string[]> {
+        const { clipboard, tree } = this.#manager;
+
+        if (!clipboard || entries.length === 0 || this.#manager.readonly) {
+            return [];
+        }
+
+        const folder = normalizePath(target);
+
+        try {
+            await tree.load(folder);
+        }
+        catch (error) {
+            this.#manager.notify('Couldn’t list the folder', error);
+
+            return [];
+        }
+
+        const names = new Set<string>();
+        const taken = (name: string) => names.has(name) || tree.get(joinPath(folder, name)) !== undefined;
+        const copies = entries.map((entry) => {
+            const name = taken(entry.name) ? copyName(entry.name, entry.kind, taken) : entry.name;
+
+            names.add(name);
+
+            return { entry, name, path: joinPath(folder, name) };
+        });
+        const pasted = await this.#run(
+            copies.map(({ entry, path }) => ({ type: 'created', path, kind: entry.kind })),
+            () => clipboard.paste(folder, copies.map(({ entry, name }) => ({ path: entry.path, name }))),
+            `Couldn’t paste ${describe(copies.map(copy => copy.path))}`
+        );
+
+        if (!pasted) {
+            return [];
+        }
+
+        // A pasted folder is shown empty until it is listed: the host's copy is done, so its contents are there to list.
+        for (const { entry, path } of copies) {
+            if (entry.kind === 'directory') {
+                tree.load(path).catch(() => undefined);
+            }
+        }
+
+        return copies.map(copy => copy.path);
     }
 
     /** Deletes files and folders; tabs inside them close unless they hold unsaved edits. Resolves `true` when they are gone. */

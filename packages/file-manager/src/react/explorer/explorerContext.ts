@@ -31,7 +31,7 @@ export interface ExplorerActions {
     create: (parent: string, kind: FileKind) => void;
     /** Shows the inline rename input on a row. */
     rename: (path: string) => void;
-    /** Puts the items on the file clipboard for Paste, and their `@path` cites on the system clipboard. */
+    /** Puts the items on the system clipboard as files, for Paste here and in the host's file manager. */
     copy: (paths: readonly string[]) => void;
     /** Asks first, then deletes. */
     delete: (targets: readonly FileEntry[]) => void;

@@ -14,7 +14,9 @@ export type {
 export type { ActiveEditor, FileManagerOptions } from './FileManager';
 export type { FileOperations, MoveOptions } from './FileOperations';
 export type {
+    ClipboardEntry,
     FileChange,
+    FileClipboard,
     FileContent,
     FileEntry,
     FileKind,

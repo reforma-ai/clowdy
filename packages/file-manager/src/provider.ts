@@ -117,6 +117,34 @@ export type SaveParticipant = (path: string, text: string) => Promise<string | u
 /** Reports an error to the person, e.g. as a toast. */
 export type Notify = (message: string, error?: unknown) => void;
 
+/** A file or a folder on the system clipboard, copied in the host's file manager or in this one. */
+export interface ClipboardEntry {
+    /** Where it is, as the host names a path: opaque to the manager, which only hands it back to `FileClipboard.paste`. */
+    path: string;
+    /** The last part of the path: the name its copy has. */
+    name: string;
+    kind: FileKind;
+    /** Its path in this provider (from the root), when it is one of the provider's own files. */
+    local?: string;
+}
+
+/**
+ * The system clipboard as far as files go, for a host that has the disk the provider shows, so a file copied here pastes into the system's file manager and
+ * one copied there pastes here. The manager knows nothing of where files are on the host: it names items of the provider by their paths from its root, and
+ * the host knows the root.
+ */
+export interface FileClipboard {
+    /** Replaces the clipboard with these items of the provider (paths from its root). */
+    write(paths: readonly string[]): Promise<void>;
+    /** The files and folders the clipboard holds, in the order they were copied; none when it holds something else. */
+    read(): Promise<readonly ClipboardEntry[]>;
+    /**
+     * Copies what `read` gave (named by its `path`) into the provider's folder `folder`, each under its `name`. The host makes the copies on its disk,
+     * the provider's watch then reports them; a name that is taken is refused, never replaced.
+     */
+    paste(folder: string, items: ReadonlyArray<{ path: string; name: string }>): Promise<void>;
+}
+
 /** A content search: literal text, case-insensitive unless asked otherwise. */
 export interface SearchQuery {
     query: string;

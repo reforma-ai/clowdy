@@ -2,14 +2,14 @@ import { action, computed, observable, observableRef, runInAction } from 'mobx';
 
 import { Tabs } from './documents/Tabs';
 import { TextDocument } from './documents/TextDocument';
-import { FileOperations } from './FileOperations';
+import { FileOperations, topmost } from './FileOperations';
 import { dirname, isPathWithin, normalizePath } from './paths';
 import { TextSearch } from './search/TextSearch';
 import { FileTree } from './tree/FileTree';
 
 import type { TabsSnapshot } from './documents/Tabs';
 import type { TextSelection } from './documents/TextDocument';
-import type { FileSystemProvider, Notify, SaveParticipant, SearchService, WatchEvent } from './provider';
+import type { ClipboardEntry, FileClipboard, FileSystemProvider, Notify, SaveParticipant, SearchService, WatchEvent } from './provider';
 
 /** Most tabs open at once. Opening another closes the least recently used ones that have no unsaved edits. */
 export const MAX_TABS = 6;
@@ -26,6 +26,8 @@ export interface FileManagerOptions {
     hidden?: readonly string[];
     /** Searches file contents, e.g. with ripgrep on a server. Without it, search reads the shown text files through the provider. */
     search?: SearchService;
+    /** The system clipboard's files. Without it the tree has no Copy and no Paste: there is nowhere to copy to. */
+    clipboard?: FileClipboard;
 }
 
 /** The active tab, as a host reports it (e.g. to chat). */
@@ -55,8 +57,8 @@ export class FileManager {
     @observableRef accessor filterResult: { query: string; paths: ReadonlySet<string> } | null = null;
     /** Folders open in the Files tree, so they open again when the tree mounts again (e.g. back from the Search tab). */
     readonly openFolders = new Set<string>();
-    /** The paths Copy put on the file clipboard, for Paste. */
-    @observableRef accessor clipboard: readonly string[] = [];
+    /** The system clipboard's files, when the host gave it. */
+    readonly clipboard: FileClipboard | undefined;
 
     readonly #notify: Notify;
     #unwatch: (() => void) | null = null;
@@ -64,12 +66,13 @@ export class FileManager {
     #disposed = false;
     #filterGeneration = 0;
 
-    constructor({ provider, saveParticipants = [], notify, exclude, hidden, search }: FileManagerOptions) {
+    constructor({ provider, saveParticipants = [], notify, exclude, hidden, search, clipboard }: FileManagerOptions) {
         this.provider = provider;
         this.tree = new FileTree(provider, { exclude, hidden });
         this.search = new TextSearch(this, search);
         this.saveParticipants = saveParticipants;
         this.readonly = provider.capabilities?.readonly ?? false;
+        this.clipboard = clipboard;
         this.#notify = notify ?? ((message, error) => console.error(message, error));
     }
 
@@ -168,22 +171,68 @@ export class FileManager {
         return document;
     }
 
-    /** Puts files and folders on the file clipboard. Paste reads them then, so later edits are copied too. */
-    @action
-    copy(paths: readonly string[]): void {
-        this.clipboard = paths.map(normalizePath);
+    /** Whether Copy has somewhere to put files: the host gave the system clipboard. */
+    get canCopy(): boolean {
+        return this.clipboard !== undefined;
+    }
+
+    /** Whether Paste has something to read and may write: the host gave the system clipboard, and the provider can be edited. */
+    get canPaste(): boolean {
+        return this.clipboard !== undefined && !this.readonly;
+    }
+
+    /** Puts files and folders on the system clipboard, where the host's file manager and other programs paste them from too. */
+    async copy(paths: readonly string[]): Promise<void> {
+        const targets = topmost(paths);
+
+        if (!this.clipboard || targets.length === 0) {
+            return;
+        }
+
+        try {
+            await this.clipboard.write(targets);
+        }
+        catch (error) {
+            this.notify(`Couldn’t copy ${targets.length === 1 ? targets[0] : `${targets.length} items`}`, error);
+        }
     }
 
     /**
-     * Copies the clipboard's items into `folder` and reveals the first copy. A copied folder pasted
-     * on itself is copied next to itself, as in Finder.
+     * Copies what the system clipboard holds into `folder` and reveals the first copy. What is the provider's own is copied by the provider (a copied folder
+     * pasted on itself is copied next to itself, as in Finder), and the rest, copied in the host's file manager, by the host.
      */
     async paste(folder: string): Promise<void> {
+        const { clipboard } = this;
+
+        if (!clipboard || this.readonly) {
+            return;
+        }
+
+        let entries: readonly ClipboardEntry[];
+
+        try {
+            entries = await clipboard.read();
+        }
+        catch (error) {
+            this.notify('Couldn’t read the clipboard', error);
+
+            return;
+        }
+
+        if (entries.length === 0) {
+            this.notify('Nothing to paste');
+
+            return;
+        }
+
         const target = normalizePath(folder);
-        const [first] = await this.operations.copy(
-            this.clipboard,
-            this.clipboard.includes(target) ? dirname(target) : target
-        );
+        // The provider copies what its tree lists; whatever else is in its root, the tree does not know and the host copies.
+        const known = (entry: ClipboardEntry) => entry.local !== undefined && this.tree.get(normalizePath(entry.local)) !== undefined;
+        const own = entries.filter(known).map(entry => normalizePath(entry.local!));
+        const into = own.includes(target) ? dirname(target) : target;
+        const copied = await this.operations.copy(own, into);
+        const imported = await this.operations.import(entries.filter(entry => !known(entry)), into);
+        const [first] = [...copied, ...imported];
 
         if (first) {
             this.reveal(first);

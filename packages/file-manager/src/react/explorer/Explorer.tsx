@@ -1,4 +1,3 @@
-import { copyText } from '@clowdy/components/CopyButton';
 import { useListHoverHighlight } from '@clowdy/components/List';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { PanelEmptyRow } from '@clowdy/components/Panel';
@@ -310,15 +309,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
             // After the menu that asked for it closes, as react-arborist does for Enter.
             setTimeout(() => void treeApi.current?.edit(path));
         },
-        copy: paths => {
-            manager.copy(paths);
-            // `@path`, as the chat cites files.
-            void copyText(paths.map(path => `@${path}`).join(' ')).then(copied => {
-                if (!copied) {
-                    manager.notify('Couldn’t copy the path');
-                }
-            });
-        },
+        copy: paths => void manager.copy(paths),
         delete: targets => confirmDelete(manager, targets),
     };
 
@@ -368,11 +359,11 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
         // ⌘ on macOS and Ctrl elsewhere, by physical key, as the view's own shortcuts.
         const mod = (isMac ? event.metaKey : event.ctrlKey) && !event.altKey && !event.shiftKey;
 
-        if (mod && event.code === 'KeyC') {
+        if (mod && event.code === 'KeyC' && manager.canCopy) {
             event.preventDefault();
             actions.copy(targetsOf(node).map(target => target.path));
         }
-        else if (mod && event.code === 'KeyV' && !manager.readonly) {
+        else if (mod && event.code === 'KeyV' && manager.canPaste) {
             event.preventDefault();
             void manager.paste(folderOf(node.id, node.data.kind));
         }
