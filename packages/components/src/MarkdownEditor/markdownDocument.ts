@@ -1,3 +1,4 @@
+import { Extension } from '@tiptap/core';
 import { Image } from '@tiptap/extension-image';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { TableKit } from '@tiptap/extension-table';
@@ -26,9 +27,29 @@ export function markdownExtensions(resolveImageSrc?: ResolveImageSrc): Extension
         TableKit,
         (resolveImageSrc ? resolvedImage(resolveImageSrc) : Image).configure({ inline: true }),
         CodeHighlight,
+        QuoteShortcut,
         Markdown.configure(markdownOptions()),
     ];
 }
+
+/** The key that makes a quote, and the one TipTap's Blockquote has by default that this editor gives up. */
+const QUOTE_KEY = 'Mod-Shift-.';
+const TIPTAP_QUOTE_KEY = 'Mod-Shift-b';
+
+/**
+ * Quote on `Cmd+Shift+.` (`Ctrl+Shift+.`), as GitHub's editor has it. TipTap's own `Cmd+Shift+B` is the desktop app's key for its side panel, so the
+ * editor gives it up: it is taken here, before Blockquote's own binding, and does nothing, so a window that does not claim the key does not make a quote either.
+ */
+const QuoteShortcut = Extension.create({
+    name: 'quoteShortcut',
+    priority: 1000,
+    addKeyboardShortcuts() {
+        return {
+            [QUOTE_KEY]: ({ editor }) => editor.commands.toggleBlockquote(),
+            [TIPTAP_QUOTE_KEY]: () => true,
+        };
+    },
+});
 
 const taskListTokenizer = TaskList.config.markdownTokenizer!;
 

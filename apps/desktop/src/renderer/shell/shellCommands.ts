@@ -71,8 +71,6 @@ export function shellCommands(root: ShellCommandsRoot, openHelp: () => void): Sc
             inInputs: true,
             // Only where the panel and its button are: a window that shows no project has none, and the key then reaches the page.
             when: () => root.showsProjectScreen,
-            // The Docs editor's Quote is on the same keys (its toolbar says so), and it was there first: the key stays with the editor while it has the focus.
-            focus: () => !document.activeElement?.closest('[data-slot="markdown-editor"]'),
             handler: () => {
                 if (root.selectedProjectId) root.ui.forProject(root.selectedProjectId).toggleSidePanel();
             },

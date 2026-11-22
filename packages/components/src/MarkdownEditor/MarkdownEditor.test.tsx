@@ -133,6 +133,43 @@ describe('MarkdownEditor', () => {
         expect(onChange).toHaveBeenLastCalledWith('## **Title**');
     });
 
+    it('should make a quote on Cmd+Shift+. and leave Cmd+Shift+B alone, which the desktop app keeps for its side panel', async() => {
+        const onChange = vi.fn();
+
+        await render({ value: 'quoted', onChange });
+
+        const editor = mountedEditor();
+        const mac = /Mac|iP(hone|[oa]d)/.test(navigator.platform);
+        const key = (init: KeyboardEventInit & { keyCode: number }) => {
+            const event = new KeyboardEvent('keydown', { shiftKey: true, metaKey: mac, ctrlKey: !mac, bubbles: true, cancelable: true, ...init });
+
+            // A key event of a real browser has its `keyCode`, which the editor's keymap falls back on when a modifier changes what the key types.
+            Object.defineProperty(event, 'keyCode', { value: init.keyCode });
+            editor.view.someProp('handleKeyDown', handle => handle(editor.view, event));
+        };
+
+        await act(async() => {
+            editor.commands.focus('end');
+            key({ key: 'B', code: 'KeyB', keyCode: 66 });
+        });
+
+        expect(editor.isActive('blockquote')).toBe(false);
+        expect(onChange).not.toHaveBeenCalled();
+
+        await act(async() => {
+            key({ key: '>', code: 'Period', keyCode: 190 });
+        });
+
+        expect(editor.isActive('blockquote')).toBe(true);
+        expect(onChange).toHaveBeenLastCalledWith('> quoted');
+
+        await act(async() => {
+            key({ key: '>', code: 'Period', keyCode: 190 });
+        });
+
+        expect(editor.isActive('blockquote')).toBe(false);
+    });
+
     it('should never emit or add an undo step on load or when the value is replaced', async() => {
         const onChange = vi.fn();
 

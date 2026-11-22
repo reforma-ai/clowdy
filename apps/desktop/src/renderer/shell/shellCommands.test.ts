@@ -414,34 +414,6 @@ describe('the side panel', () => {
         }
     });
 
-    it('leaves the key to the Docs editor while it has the focus, where it is Quote, and takes it back outside', () => {
-        const editor = document.createElement('div');
-        const text = document.createElement('div');
-
-        editor.dataset.slot = 'markdown-editor';
-        text.contentEditable = 'true';
-        text.tabIndex = 0;
-        editor.append(text);
-        document.body.append(editor);
-
-        try {
-            text.focus();
-
-            const inside = press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true }, text);
-
-            expect(panelOpen()).toBe(false);
-            expect(inside.defaultPrevented).toBe(false);
-
-            text.blur();
-            press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true });
-
-            expect(panelOpen()).toBe(true);
-        }
-        finally {
-            editor.remove();
-        }
-    });
-
     it('does nothing, and leaves the key to the page, where the window shows no project (Settings, loading), and does not take Cmd+B alone', () => {
         runInAction(() => {
             screen.shown = false;
