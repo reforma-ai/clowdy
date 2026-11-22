@@ -160,6 +160,19 @@ export async function removeFolder(root: RootStore, project: Project, folder: Pr
     return confirmNewMain(root, project, change, { title: `Remove ${ name }?`, message, confirmLabel: 'Remove folder' });
 }
 
+/**
+ * Puts a folder of the project at another place on the disk, for a folder that was moved or renamed outside Clowdy: the folder stays the same folder of the project, in
+ * the same order, so the chats that work in it stay with it (an agent that worked there starts over from the record on its next turn). The daemon checks the path as
+ * it does a new folder's, and the main folder waits for the agents; a refusal is a toast. Resolves to whether it was saved.
+ */
+export async function locateFolder(root: RootStore, project: Project, folder: ProjectFolder, path: string): Promise<boolean> {
+    // The list as it is now, since `project.update` replaces the whole of it and another window may have changed it.
+    const current = root.projects.find(candidate => candidate.id === project.id) ?? project;
+    const folders = current.folders.map(other => (other.id === folder.id ? { id: other.id, path } : { id: other.id }));
+
+    return (await perform(root, { type: 'project.update', projectId: project.id, folders })).ok;
+}
+
 /** Asks, then removes the project from Clowdy. Its folders are never touched. */
 export function removeProject(root: RootStore, project: Project, info: ProjectInfo | undefined): void {
     openConfirmModal({

@@ -432,6 +432,25 @@ describe('FixtureTransport', () => {
         expect(events.map(event => event.data.type)).toEqual(['project.upserted', 'chat.upserted', 'skills.changed']);
     });
 
+    it('moves a folder to another path by its id, and its chats stay with it', async () => {
+        const { transport, events } = await connected();
+
+        await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/car-rental-api' }] });
+
+        const [, api] = (await transport.getDocsTree(FIXTURE_PROJECT_ID)).map(folder => folder.folderId);
+        const made = await transport.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, folderId: api });
+        const chat = (made as { data: { chat: { id: string } } }).data.chat;
+
+        events.length = 0;
+
+        const moved = await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { id: api, path: '/Users/dev/api-moved' }] });
+
+        expect(moved).toMatchObject({ ok: true, data: { project: { folders: [{ id: 'fld_car_rental' }, { id: api, path: '/Users/dev/api-moved' }] } } });
+        expect((await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(candidate => candidate.id === chat.id)).toMatchObject({ folderId: api });
+        expect(events.map(event => event.data.type)).toEqual(['project.upserted', 'skills.changed']);
+        expect(await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_nobody', path: '/Users/dev/x' }] })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    });
+
     it('lists the documents of a folder two projects have in both', async () => {
         const { transport } = await connected();
         const added = await transport.command({ type: 'project.add', folders: ['/Users/dev/web', '/Users/dev/car-rental'] });
