@@ -224,13 +224,15 @@ describe('the permission presets', () => {
         expect(presetsOf(card('Claude Code')).filter(preset => preset.checked).map(preset => preset.value)).toEqual(['auto']);
     });
 
-    it('holds the radios while the choice is saved, with the old one still selected', async () => {
+    it('holds the group read only while the choice is saved, keeping the radios enabled so the keyboard stays on one, and the old choice selected', async () => {
         let release = () => undefined as void;
         const held = new Promise<void>((resolve) => {
             release = resolve;
         });
+        const sent = vi.fn();
 
         await start(overrideTransport(transport, { command: async (input) => {
+            sent(input);
             await held;
 
             return transport.command(input);
@@ -240,16 +242,24 @@ describe('the permission presets', () => {
 
         const claude = card('Claude Code');
 
+        expect(claude.querySelector('[role="radiogroup"]')?.getAttribute('aria-readonly')).toBe('true');
         expect(claude.querySelector('[aria-busy="true"]')).not.toBeNull();
-        expect(presetsOf(claude).every(preset => preset.disabled)).toBe(true);
+        expect(presetsOf(claude).some(preset => preset.disabled)).toBe(false);
         expect(presetsOf(claude).filter(preset => preset.checked).map(preset => preset.value)).toEqual(['auto']);
+
+        // Another press while the first is on its way changes nothing and sends nothing.
+        await press(radio(claude, 'ask'));
+        await draw();
+
+        expect(sent).toHaveBeenCalledTimes(1);
+        expect(presetsOf(card('Claude Code')).filter(preset => preset.checked).map(preset => preset.value)).toEqual(['auto']);
 
         release();
         await vi.waitFor(() => expect(store.agents.find(agent => agent.id === 'claude')?.permissions?.value).toBe('full'));
         await draw();
 
         expect(card('Claude Code').querySelector('[aria-busy="true"]')).toBeNull();
-        expect(presetsOf(card('Claude Code')).some(preset => preset.disabled)).toBe(false);
+        expect(card('Claude Code').querySelector('[role="radiogroup"]')?.getAttribute('aria-readonly')).toBeNull();
         expect(presetsOf(card('Claude Code')).filter(preset => preset.checked).map(preset => preset.value)).toEqual(['full']);
     });
 

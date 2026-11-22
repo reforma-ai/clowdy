@@ -200,7 +200,8 @@ export function ProviderSettings({ agent, commands }: SettingsProps) {
 /**
  * The permission presets the agent's provider offers, as radios: each preset's name and the provider's own words for what it does, the chosen one
  * selected (the person's choice, else the provider's default, which carries a quiet tag). The page knows nothing of any agent: the list is whatever
- * `AgentInfo.permissions` says. The radios wait while a choice is saved, and the choice shows when the agents have been fetched again.
+ * `AgentInfo.permissions` says. The group is read only while a choice is saved (not disabled, which would take the keyboard focus off the
+ * radio), and the choice shows when the agents have been fetched again.
  */
 export function PermissionPresets({ agent, commands }: SettingsProps) {
     const { permissions } = agent;
@@ -220,7 +221,7 @@ export function PermissionPresets({ agent, commands }: SettingsProps) {
             <RadioGroup
                 aria-label={ `${ agent.name } permissions` }
                 value={ selected }
-                isDisabled={ isPending }
+                isReadOnly={ isPending }
                 className={ styles.presets }
                 onChange={ value => void commands.setPermission(value as PermissionPresetId) }
             >
