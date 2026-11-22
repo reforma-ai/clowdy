@@ -2732,9 +2732,15 @@
                 },
                 "16554:129138": {
                     "file": "large-panel.svg",
-                    "fingerprint": "4d392f56807d91193544c01e0e7159a3ad6b0d470b719d05a85848df6e1b6b3f",
+                    "fingerprint": "9e3a9190823c60d101dd206270e28e14660488a703c067fb4c3ea5cb56b84f9e",
                     "name": "large-panel",
-                    "sourceHash": "9db8ed68351e7d08bf1b4b6d340e4afb0bb5d1d9cdac767b5168f68c53eb895e"
+                    "sourceHash": "d085b1482586270647817504dbc46443e1bc94051d4cdb101fbfccd250cfc9af"
+                },
+                "16555:129142": {
+                    "file": "no-panel.svg",
+                    "fingerprint": "e8af934c71e4f970ea4fb1a25a68937be86c64671938dcdc347772758996102d",
+                    "name": "no-panel",
+                    "sourceHash": "26b89b07a4ae9ebe60414f7737385597d7074bd91fc3deef58f1331fd7e32a4b"
                 }
             },
             "nodeId": "12522:118247"
