@@ -68,7 +68,7 @@ export class AgentRegistryError extends Error {
 }
 
 /**
- * The agents the daemon can run: the built-in catalog plus the ones the user added, with what the user changed about
+ * The agents the daemon can run: the built-in providers' specs plus the ones the user added, with what the user changed about
  * each. It finds their programs on this machine and says what is missing; it starts nothing itself.
  */
 export class AgentRegistry {
@@ -513,7 +513,7 @@ function withoutRemoved(env: Record<string, string | null>): Record<string, stri
     return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== null));
 }
 
-/** The agent's `_meta` for `session/new`, with the tools its settings take away added to the ones the catalog already withholds. */
+/** The agent's `_meta` for `session/new`, with the tools its settings take away added to the ones the spec already withholds. */
 function withDisallowedTools(meta: Record<string, unknown> | undefined, extra: string[]): Record<string, unknown> | undefined {
     if (extra.length === 0) {
         return meta;
