@@ -159,7 +159,7 @@ export class NavHistory {
     /**
      * Whether what the entry shows is still there: its project, and the chat, task or run of its section, and for the Tasks screen the task whose insides it
      * showed (a scope that is gone or archived is not a place to go back to), and a task it had open, which may be an archived one the window has read
-     * (`ProjectState.archivedKnown`, bounded: one let go of is no longer a place). Documents are always there, the tree may list them again.
+     * (`ProjectState.archivedKnown`, bounded: one let go of is no longer a place).
      */
     #exists({ projectId, section, chatId, taskId, runId, tasksScope, settingsOpen }: NavSnapshot): boolean {
         if (!this.host.projects.some(project => project.id === projectId)) return false;
@@ -173,7 +173,6 @@ export class NavHistory {
             case 'agents': return (chatId === null || state.chats.has(chatId)) && (runId === null || state.runs.has(runId));
             // An archived task the window has read is a place too, and a scope is never one (the screen shows the roots for it).
             case 'tasks': return (taskId === null || state.tasks.has(taskId) || state.archivedKnown.has(taskId)) && (tasksScope === null || state.tasks.has(tasksScope));
-            case 'docs': return true;
         }
     }
 

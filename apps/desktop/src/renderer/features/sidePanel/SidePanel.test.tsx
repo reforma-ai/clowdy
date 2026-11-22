@@ -351,6 +351,6 @@ describe('the folder the Info tab names', () => {
     it('is the main folder when no chat is open, and in the sections that belong to the project and not to a folder', () => {
         expect(currentFolder(project, idle).path).toBe('/Users/dev/web');
         expect(currentFolder(project, { ...idle, section: 'tasks', chatId: 'c1' }).path).toBe('/Users/dev/web');
-        expect(currentFolder(project, { ...idle, section: 'docs', draft: true, draftFolderId: 'f2' }).path).toBe('/Users/dev/web');
+        expect(currentFolder(project, { ...idle, section: 'tasks', draft: true, draftFolderId: 'f2' }).path).toBe('/Users/dev/web');
     });
 });

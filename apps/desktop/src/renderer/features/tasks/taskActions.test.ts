@@ -10,6 +10,8 @@ import { ListCursor } from '../../hotkeys/listCursor';
 import { createRegistry } from '../../hotkeys/registry';
 import { createUndoStack, type UndoStack } from '../../hotkeys/undo';
 import { RootStore } from '../../stores';
+import { openDocument } from '../files/openDocument';
+import { filesStoreOf } from '../files/useFilesStore';
 import { archiveTasks } from './archiveActions';
 import { startTask } from './commands';
 import { taskCommands, TASKS_SCOPE, type TaskCommandDeps } from './taskCommands';
@@ -105,9 +107,17 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
     // `Screen` gives the cursor the grid again whenever the tasks change.
     stopFollowing = reaction(() => taskGrid('list', project().taskList, project().statuses), grid => cursor.setGrid(grid));
 
+    // The window's state the commands navigate with: the real task selection, and a document opened where the real window opens it.
+    const taskUi: TaskCommandDeps['ui'] = {
+        get taskId() {
+            return ui().taskId;
+        },
+        openTask: (...args) => ui().openTask(...args),
+        openDoc: path => void openDocument(root, project(), path),
+    };
     const deps: TaskCommandDeps = {
         cursor,
-        ui: ui(),
+        ui: taskUi,
         hasTask: id => project().tasks.has(id),
         view: () => 'list',
         setView: view => ui().setTasksView(view),
@@ -175,6 +185,7 @@ beforeEach(() => {
 afterEach(() => {
     uninstall();
     stopFollowing();
+    filesStoreOf(root).dispose();
     root.dispose();
     vi.useRealTimers();
 });
@@ -521,7 +532,10 @@ describe('Open the linked chat', () => {
 });
 
 describe('Open the latest document', () => {
-    it('opens the newest document the daemon lists for the task, in Documents', async () => {
+    /** The paths open in the tabs of the main folder's file manager, which the Files and Docs tabs share. */
+    const tabsOfFolder = () => filesStoreOf(root).managerOf(FIXTURE_PROJECT_ID, project().project.folders[0].id).tabs.documents.map(document => document.path);
+
+    it('opens the newest document the daemon lists for the task, on the Docs tab', async () => {
         await mount();
         artifactsOf['t-23'] = [docArtifact('old', 'notes/old.md', 1), docArtifact('new', 'decisions/pricing.md', 9)];
         goTo('t-23');
@@ -529,8 +543,8 @@ describe('Open the latest document', () => {
         press('d');
         await settle();
 
-        expect(ui().section).toBe('docs');
-        expect(ui().docPath).toBe('decisions/pricing.md');
+        expect([ui().sidePanelOpen, ui().sidePanelTab]).toEqual([true, 'docs']);
+        expect(tabsOfFolder()).toEqual(['.clowdy/docs/decisions/pricing.md']);
         expect(notices).toEqual([]);
     });
 
@@ -541,7 +555,7 @@ describe('Open the latest document', () => {
         press('d');
         await settle();
 
-        expect(ui().docPath).toBeNull();
+        expect(ui().sidePanelOpen).toBe(false);
         expect(notices).toEqual([{ message: 'CAR-23 has no document yet', tone: undefined }]);
     });
 
@@ -553,7 +567,7 @@ describe('Open the latest document', () => {
         press('d');
         await settle();
 
-        expect(ui().docPath).toBeNull();
+        expect(ui().sidePanelOpen).toBe(false);
         expect(notices).toEqual([{ message: 'Could not load the results of CAR-23: The daemon is not answering', tone: 'error' }]);
     });
 
@@ -566,7 +580,7 @@ describe('Open the latest document', () => {
         goTo('t-24');
         await settle();
 
-        expect(ui().docPath).toBe('decisions/pricing.md');
+        expect(tabsOfFolder()).toEqual(['.clowdy/docs/decisions/pricing.md']);
     });
 });
 

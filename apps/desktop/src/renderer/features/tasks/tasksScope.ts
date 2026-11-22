@@ -1,4 +1,6 @@
-import type { TaskId } from '@clowdy/protocol';
+import { openDocument } from '../files/openDocument';
+
+import type { FolderId, TaskId } from '@clowdy/protocol';
 import type { ProjectState, ProjectUi, RootStore } from '../../stores';
 
 /**
@@ -20,8 +22,10 @@ export function openScope(root: RootStore, project: ProjectState, ui: ProjectUi,
 }
 
 /** What `settledUi` gives: `openTask` takes no options, since `reveal` is its own. */
-export interface SettledUi extends Pick<ProjectUi, 'taskId' | 'openDoc'> {
+export interface SettledUi extends Pick<ProjectUi, 'taskId'> {
     openTask: (taskId: TaskId | null) => void;
+    /** Opens a document of the project on the Docs tab (a path under the docs folder of `folderId`, the main folder's by default). */
+    openDoc: (path: string, folderId?: FolderId | null) => void;
 }
 
 /**
@@ -38,9 +42,9 @@ export function settledUi(root: RootStore, project: ProjectState, ui: ProjectUi,
             settleScope(root, project, ui);
             ui.openTask(taskId, { reveal });
         },
-        openDoc: (path, folderId) => {
+        openDoc: (path, folderId = null) => {
             settleScope(root, project, ui);
-            ui.openDoc(path, folderId);
+            void openDocument(root, project, path, folderId);
         },
     };
 }

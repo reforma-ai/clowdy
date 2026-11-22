@@ -5,7 +5,7 @@ import { revealTask, type RevealTasks } from './taskReveal';
 
 import type { ChatId, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
 
-export const SECTIONS = ['agents', 'tasks', 'docs'] as const;
+export const SECTIONS = ['agents', 'tasks'] as const;
 
 export type Section = typeof SECTIONS[number];
 
@@ -26,9 +26,6 @@ export interface ProjectView {
     chatId: ChatId | null;
     taskId: TaskId | null;
     runId: RunId | null;
-    docPath: string | null;
-    /** The folder of the project whose docs folder holds `docPath`; `null` is the main folder. */
-    docFolderId: FolderId | null;
     /** Agents: the new-chat row is selected, and no chat exists yet. */
     draft: boolean;
     /** Agents: the folder the new chat is for, `null` for the main folder. Meaningful only with `draft`. */
@@ -48,8 +45,6 @@ interface StoredProjectUi {
     chatId: ChatId | null;
     taskId: TaskId | null;
     runId: RunId | null;
-    docPath: string | null;
-    docFolderId: FolderId | null;
     expandedChats: ChatId[];
     groupByFolder: boolean;
     collapsedFolders: FolderId[];
@@ -74,7 +69,7 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'sidePanelOpen' | 'sidePanelTab' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'sidePanelOpen' | 'sidePanelTab' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -89,10 +84,6 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
     if (params.has('task')) initial.taskId = params.get('task');
 
     if (params.has('run')) initial.runId = params.get('run');
-
-    if (params.has('doc')) initial.docPath = params.get('doc');
-
-    if (params.has('docFolder')) initial.docFolderId = params.get('docFolder');
 
     if (params.get('expand')) initial.expandedChats = params.get('expand')!.split(',').filter(Boolean);
 
@@ -119,9 +110,6 @@ export class ProjectUi {
     chatId: ChatId | null = null;
     taskId: TaskId | null = null;
     runId: RunId | null = null;
-    docPath: string | null = null;
-    /** The folder whose docs folder holds `docPath`; `null` is the main folder, which is also where a document opened by its path alone is. */
-    docFolderId: FolderId | null = null;
     /** Agents: the new-chat row is selected, and the chat it starts does not exist until its first message is sent. Not kept between sessions. */
     draft = false;
     /** Agents: the folder the new-chat page is for, `null` for the main folder. Not kept between sessions. */
@@ -178,8 +166,6 @@ export class ProjectUi {
             this.chatId = idOrNull(stored.chatId);
             this.taskId = idOrNull(stored.taskId);
             this.runId = idOrNull(stored.runId);
-            this.docPath = idOrNull(stored.docPath);
-            this.docFolderId = idOrNull(stored.docFolderId);
             this.expandedChats = Array.isArray(stored.expandedChats) ? stored.expandedChats.filter(id => typeof id === 'string') : [];
             this.groupByFolder = stored.groupByFolder !== false;
             this.collapsedFolders = Array.isArray(stored.collapsedFolders) ? stored.collapsedFolders.filter(id => typeof id === 'string') : [];
@@ -201,8 +187,6 @@ export class ProjectUi {
                 chatId: this.chatId,
                 taskId: this.taskId,
                 runId: this.runId,
-                docPath: this.docPath,
-                docFolderId: this.docFolderId,
                 expandedChats: [...this.expandedChats],
                 groupByFolder: this.groupByFolder,
                 collapsedFolders: [...this.collapsedFolders],
@@ -226,8 +210,6 @@ export class ProjectUi {
             chatId: this.chatId,
             taskId: this.taskId,
             runId: this.runId,
-            docPath: this.docPath,
-            docFolderId: this.docFolderId,
             draft: this.draft,
             draftFolderId: this.draftFolderId,
             tasksScope: this.tasksScope,
@@ -235,13 +217,11 @@ export class ProjectUi {
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ section, chatId, taskId, runId, docPath, docFolderId, draft, draftFolderId, tasksScope }: ProjectView): void {
+    show({ section, chatId, taskId, runId, draft, draftFolderId, tasksScope }: ProjectView): void {
         this.section = section;
         this.chatId = chatId;
         this.taskId = taskId;
         this.runId = runId;
-        this.docPath = docPath;
-        this.docFolderId = docFolderId;
         this.draft = draft;
         this.draftFolderId = draftFolderId;
         this.tasksScope = tasksScope;
@@ -324,13 +304,6 @@ export class ProjectUi {
         this.runId = runId;
         this.draft = false;
         this.draftFolderId = null;
-    }
-
-    /** Shows a document in the Documents section: its path under the docs folder of `folderId`, the main folder's when none is named. */
-    openDoc(path: string | null, folderId: FolderId | null = null): void {
-        this.section = 'docs';
-        this.docPath = path;
-        this.docFolderId = folderId;
     }
 
     /** Opens or folds the threads of a chat in the list. */

@@ -10,11 +10,10 @@ export const navCommandId = (section: Section) => `nav.${ section }`;
 /** The id of the command that starts a chat, which the New chat row asks for its hint. */
 export const NEW_CHAT_COMMAND = 'chats.new';
 
-/** `G` then a letter, the way Linear goes places: A for Agents (the chats and the runs below them), T for Tasks, D for Docs. */
+/** `G` then a letter, the way Linear goes places: A for Agents (the chats and the runs below them) and T for Tasks. */
 const SECTION_CHORDS: Record<Section, { title: string; keys: string }> = {
     agents: { title: 'Go to Agents', keys: 'g a' },
     tasks: { title: 'Go to Tasks', keys: 'g t' },
-    docs: { title: 'Go to Docs', keys: 'g d' },
 };
 
 /** The brackets by their physical keys: on a Cyrillic layout the key at `[` types a letter, and the key event names no bracket. */

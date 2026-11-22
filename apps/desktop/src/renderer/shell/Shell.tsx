@@ -4,7 +4,6 @@ import { cn } from '@clowdy/lib';
 import { useEffect } from 'react';
 
 import { Screen as AgentsScreen } from '../features/agents';
-import { Screen as DocsScreen } from '../features/docs';
 import { openQuickSearch, quickSearchCommands } from '../features/quickSearch';
 import { Screen as SettingsScreen } from '../features/settings';
 import { SidePanelLayout, SidePanelRail, useSidePanel } from '../features/sidePanel';
@@ -26,7 +25,6 @@ import type { Section } from '../stores';
 const SCREENS: Record<Section, ComponentType> = {
     agents: AgentsScreen,
     tasks: TasksScreen,
-    docs: DocsScreen,
 };
 
 /**
