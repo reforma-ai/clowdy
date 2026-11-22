@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { folderViews, holdingMarks, holdingsLine, missingFolderNote, newMainMessage, remoteLink, removalMessage, siteName } from './projectView';
+import { folderViews, holdingMarks, holdingsLine, isWorkspaceSaved, missingFolderNote, newMainMessage, remoteLink, removalMessage, siteName, workspaceFields, workspaceFileLines, workspacePatch } from './projectView';
 
 describe('siteName', () => {
     it('names the sites it knows and gives the host of the others', () => {
@@ -123,5 +123,38 @@ describe('newMainMessage', () => {
         expect(newMainMessage('Car Rental', '/work/api', '/work/app')).toBe(
             'Car Rental will work in /work/api from now on, and /work/app leaves the project. Nothing is moved, copied or deleted. An agent that worked in the old main folder starts a new conversation, so what it remembered may not carry over.'
         );
+    });
+});
+
+describe('the Workspace fields of a folder', () => {
+    it('shows no settings as empty fields and a setup as its lines', () => {
+        expect(workspaceFields(undefined)).toEqual({ baseBranch: '', files: '', command: '' });
+        expect(workspaceFields({ baseBranch: 'origin/next', setup: { files: ['.env', '.env*'], command: 'bun install\nbun run build' } })).toEqual({ baseBranch: 'origin/next', files: '.env\n.env*', command: 'bun install\nbun run build' });
+        expect(workspaceFields({ setup: { files: [] } })).toEqual({ baseBranch: '', files: '', command: '' });
+    });
+
+    it('reads the files field line by line: trimmed, with the empty lines and the line endings of a pasted list left out', () => {
+        expect(workspaceFileLines('  .env \r\n\n.env.local\n   \n')).toEqual(['.env', '.env.local']);
+        expect(workspaceFileLines('')).toEqual([]);
+    });
+
+    it('sends what is typed, trimmed, and null for a field with nothing in it', () => {
+        expect(workspacePatch({ baseBranch: '  next ', files: '.env\n', command: ' bun install ' })).toEqual({ baseBranch: 'next', setup: { files: ['.env'], command: 'bun install' } });
+        expect(workspacePatch({ baseBranch: '', files: '', command: '' })).toEqual({ baseBranch: null, setup: null });
+        expect(workspacePatch({ baseBranch: ' ', files: ' \n ', command: '\n' })).toEqual({ baseBranch: null, setup: null });
+        expect(workspacePatch({ baseBranch: '', files: '', command: 'make' })).toEqual({ baseBranch: null, setup: { files: [], command: 'make' } });
+        expect(workspacePatch({ baseBranch: '', files: '.env', command: '' })).toEqual({ baseBranch: null, setup: { files: ['.env'] } });
+    });
+
+    it('tells whether saving the fields would change anything', () => {
+        const settings = { baseBranch: 'next', setup: { files: ['.env'], command: 'make' } };
+
+        expect(isWorkspaceSaved(workspaceFields(settings), settings)).toBe(true);
+        expect(isWorkspaceSaved({ baseBranch: ' next', files: '.env\n\n', command: 'make ' }, settings)).toBe(true);
+        expect(isWorkspaceSaved({ baseBranch: '', files: '', command: '' }, undefined)).toBe(true);
+        expect(isWorkspaceSaved({ baseBranch: 'dev', files: '.env', command: 'make' }, settings)).toBe(false);
+        expect(isWorkspaceSaved({ baseBranch: 'next', files: '.env\n.npmrc', command: 'make' }, settings)).toBe(false);
+        expect(isWorkspaceSaved({ baseBranch: 'next', files: '.env', command: '' }, settings)).toBe(false);
+        expect(isWorkspaceSaved({ baseBranch: 'next', files: '', command: '' }, undefined)).toBe(false);
     });
 });

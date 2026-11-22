@@ -1,6 +1,6 @@
 import { folderNames } from '@clowdy/protocol';
 
-import type { Project, ProjectFolder, ProjectInfo } from '@clowdy/protocol';
+import type { FolderSettings, Project, ProjectFolder, ProjectInfo, WorkspaceSetup } from '@clowdy/protocol';
 
 export interface RemoteLink {
     /** The address as a person reads it, without the credentials it may carry. */
@@ -151,3 +151,36 @@ export function removalMessage(name: string, paths: readonly string[], info: Pic
 
     return `"${ name }" leaves Clowdy together with ${ holds }and the work of its agents, for good. ${ stays } on your computer.`;
 }
+
+/** What the Workspace dialog of a folder edits, as the text of its three fields. */
+export interface WorkspaceFields {
+    baseBranch: string;
+    /** One path per line. */
+    files: string;
+    command: string;
+}
+
+/** What saving the fields sends: `null` clears a field, so the folder follows its repository's default branch and has no setup again. */
+export interface WorkspacePatch {
+    baseBranch: string | null;
+    setup: WorkspaceSetup | null;
+}
+
+/** The fields' text for a folder's settings. */
+export function workspaceFields(settings: FolderSettings | undefined): WorkspaceFields {
+    return { baseBranch: settings?.baseBranch ?? '', files: (settings?.setup?.files ?? []).join('\n'), command: settings?.setup?.command ?? '' };
+}
+
+/** The lines of a files field: each trimmed, the empty ones left out. */
+export const workspaceFileLines = (text: string): string[] => text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+
+/** What saving the fields sends. A field with nothing in it clears, and a setup with no files and no command is none. */
+export function workspacePatch(fields: WorkspaceFields): WorkspacePatch {
+    const files = workspaceFileLines(fields.files);
+    const command = fields.command.trim();
+
+    return { baseBranch: fields.baseBranch.trim() || null, setup: files.length > 0 || command ? { files, ...(command && { command }) } : null };
+}
+
+/** Whether saving `fields` would leave the folder's `settings` as they are. */
+export const isWorkspaceSaved = (fields: WorkspaceFields, settings: FolderSettings | undefined): boolean => JSON.stringify(workspacePatch(fields)) === JSON.stringify(workspacePatch(workspaceFields(settings)));

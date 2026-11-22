@@ -124,6 +124,59 @@ describe('FixtureTransport projects', () => {
         expect((result as { data: { project: { settings: object } } }).data.project.settings).not.toHaveProperty('engine');
     });
 
+    it('sets the settings of one folder, clears a field set to null, announces the project, and leaves the other folders and projects alone', async () => {
+        const { transport, events } = await connected();
+        const settings = { baseBranch: 'origin/dev', setup: { files: ['.env', '.env*'], command: 'bun install' } };
+        const sharing = await transport.command({ type: 'project.update', projectId: FIXTURE_EMPTY_PROJECT_ID, folders: [{ id: 'fld_clowdy' }, { path: '/Users/dev/car-rental' }] });
+
+        expect(sharing).toMatchObject({ ok: true });
+
+        const set = await transport.command({ type: 'project.updateFolder', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', settings });
+
+        expect(set).toMatchObject({ ok: true, data: { project: { id: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental', settings }] } } });
+        expect(events.filter(event => event.data.type === 'project.upserted' && event.projectId === FIXTURE_PROJECT_ID)).toHaveLength(1);
+
+        // The same path in another project has its own settings.
+        const { projects } = await transport.getRootSnapshot();
+
+        expect(projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.folders.map(folder => folder.settings)).toEqual([undefined, undefined]);
+
+        await transport.command({ type: 'project.updateFolder', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', settings: { baseBranch: null } });
+
+        const cleared = await transport.command({ type: 'project.updateFolder', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', settings: { setup: null } });
+        const folder = (cleared as { data: { project: { folders: object[] } } }).data.project.folders[0]!;
+
+        expect(folder).not.toHaveProperty('settings');
+    });
+
+    it('keeps a folder\'s settings through a project update that reorders or renames, and the folder\'s base branch answers as its default', async () => {
+        const { transport } = await connected();
+        const settings = { baseBranch: 'dev' };
+
+        await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/api' }, { path: '/Users/dev/notes' }] });
+        await transport.command({ type: 'project.updateFolder', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', settings });
+
+        const reordered = await transport.command({ type: 'project.update', projectId: FIXTURE_PROJECT_ID, name: 'Rental', folders: [{ id: 'fld_car_rental' }, { path: '/Users/dev/notes' }, { path: '/Users/dev/api' }] });
+
+        expect(reordered).toMatchObject({ ok: true, data: { project: { name: 'Rental', folders: [{ id: 'fld_car_rental', settings }, { path: '/Users/dev/notes' }, { path: '/Users/dev/api' }] } } });
+        expect(await transport.getFolderGit(FIXTURE_PROJECT_ID, 'fld_car_rental')).toMatchObject({ defaultBranch: 'dev' });
+
+        // A base branch the repository does not have is skipped.
+        await transport.command({ type: 'project.updateFolder', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', settings: { baseBranch: 'nope' } });
+        expect(await transport.getFolderGit(FIXTURE_PROJECT_ID, 'fld_car_rental')).toMatchObject({ defaultBranch: 'origin/main' });
+    });
+
+    it('refuses settings for the personal space, a folder the project does not have, a project that is not there, and a file outside the folder', async () => {
+        const { transport } = await connected();
+        const update = (projectId: string, folderId: string, settings: object) => transport.command({ type: 'project.updateFolder', projectId, folderId, settings });
+
+        expect(await update(FIXTURE_PERSONAL_PROJECT_ID, 'fld_personal', { baseBranch: 'main' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(await update(FIXTURE_PROJECT_ID, 'fld_clowdy', { baseBranch: 'main' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(await update('p-none', 'fld_car_rental', { baseBranch: 'main' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(await update(FIXTURE_PROJECT_ID, 'fld_car_rental', { setup: { files: ['../x'] } })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(await update(FIXTURE_PROJECT_ID, 'fld_car_rental', { baseBranch: ' ' })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    });
+
     it('takes a new main folder only when nothing runs, adds others at any time, and lets two projects share a folder', async () => {
         const { transport } = await connected();
 

@@ -13,6 +13,7 @@ import {
     type FixtureData,
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
+import { applyFolderSettings } from './fixtureFolderSettings';
 import { fail, ok, type Outcome } from './fixtureOutcome';
 import { FixtureTasks } from './fixtureTasks';
 import { FixtureTerminals } from './fixtureTerminals';
@@ -209,7 +210,7 @@ export class FixtureTransport implements Transport {
 
         if (!folder) throw new TransportError(`No such folder: ${ folderId }`, 404);
 
-        return structuredClone(fixtureFolderGit(folder.path, this.#data.git[folder.path]));
+        return structuredClone(fixtureFolderGit(folder.path, this.#data.git[folder.path], folder.settings?.baseBranch));
     }
 
     async getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {
@@ -701,6 +702,14 @@ export class FixtureTransport implements Transport {
 
                 // Like the daemon: `{ project }`.
                 return ok({ project: structuredClone(project) });
+            }
+            case 'project.updateFolder': {
+                const project = data.projects.find(candidate => candidate.id === command.projectId);
+                const outcome = applyFolderSettings(project, command.folderId, command.settings);
+
+                if (project && outcome.ok) this.#emit(project.id, { type: 'project.upserted', project, statuses: data.statuses[project.id] ?? DEFAULT_STATUSES });
+
+                return outcome;
             }
             case 'project.delete': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
