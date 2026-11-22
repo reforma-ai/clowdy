@@ -1,7 +1,7 @@
 import { ACTIVE_RUN_STATUSES, isClosedCategory, isTerminalRunStatus, projectEngine, STOPPED_TOOL } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
-import { findQuestion, listOpenThoughts, listRunningTools } from '../db/items';
+import { findApproval, findQuestion, listOpenApprovals, listOpenThoughts, listRunningTools } from '../db/items';
 import { getProject } from '../db/projects';
 import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
 import { getTask } from '../db/tasks';
@@ -14,10 +14,10 @@ import { killSurvivor, signalProcess } from './processes';
 import { QUEUE_REASON, Scheduler } from './scheduler';
 import { canTransition, NEEDS_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 
-import type { BackgroundItem, ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunStatus, RunUsage, Task } from '@clowdy/protocol';
+import type { ApprovalDecision, BackgroundItem, ChatMode, EngineId, Project, QuestionOption, Run, RunContext, RunStatus, RunUsage, Task } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunProcess } from '../db/runs';
-import type { EngineRegistry } from '../engine/types';
+import type { ApprovalRequest, EngineRegistry } from '../engine/types';
 import type { Store } from '../store';
 
 const CANCEL_REASON = 'Cancelled by user';
@@ -76,6 +76,15 @@ export class RunService {
     private answers = new Map<string, (answer: string) => void>();
     /** Runs with a question card open: a run asks one question at a time, because a reply wakes the run and a second open card could no longer be answered. */
     private asking = new Set<string>();
+    /**
+     * What each run waits on the person for: how many questions and approvals are open, and whether the run is parked (`waiting_user`, which frees its
+     * slot) on their account. The run goes back to work, taking a slot again, when the last one ends.
+     */
+    private waits = new Map<string, { open: number; parked: boolean }>();
+    /** The approvals waiting for a decision, by id: what their grant is keyed by and how to hand the decision to the agent's request. */
+    private approvals = new Map<string, { key: string; resolve: (decision: ApprovalDecision | undefined) => void }>();
+    /** The requests the person allowed for the rest of the run (`allow_always`), by run: the same request is answered at once, with no card. Kept in memory, so a restart forgets them. */
+    private grants = new Map<string, Set<string>>();
     private ladders = new Set<ReturnType<typeof setTimeout>>();
 
     constructor(private store: Store, private config: Config, private engines: EngineRegistry) {
@@ -416,28 +425,93 @@ export class RunService {
         }
 
         const questionId = newId('qst');
+        let counted = false;
+        let parked = false;
+        let answer: string;
 
         this.asking.add(runId);
 
         try {
-            this.store.tx(() => {
-                appendItem(this.store, runId, { kind: 'question', questionId, ...question });
-                this.setStatus(runId, 'waiting_user', { reason: 'Waiting for your answer' });
-            });
+            // A question parks the run for certain: a run that cannot be parked has no business asking, so the change of status is not skipped as an approval's is.
+            this.waitForPerson(runId, 'Waiting for your answer', () => appendItem(this.store, runId, { kind: 'question', questionId, ...question }), true);
+            counted = true;
 
-            const answer = await new Promise<string>((resolve, reject) => {
+            answer = await new Promise<string>((resolve, reject) => {
                 this.answers.set(questionId, resolve);
                 signal.addEventListener('abort', () => reject(signal.reason), { once: true });
             });
-
-            await this.acquireSlot(runId, signal);
-
-            return answer;
         }
         finally {
             this.answers.delete(questionId);
             this.asking.delete(runId);
+
+            if (counted) {
+                parked = this.endWait(runId);
+            }
         }
+
+        if (parked) {
+            await this.acquireSlot(runId, signal);
+        }
+
+        return answer;
+    }
+
+    /**
+     * Puts an agent's permission request to the person: an `approval` item in the run's stream, the run parked in `waiting_user` while it waits (several
+     * can be open at once, and a question beside them), and the decision as the answer. A request the person allowed for the rest of the run (`allow_always`
+     * of an earlier one with the same key) is answered `allow_once` at once, with no item. `undefined` when the request was withdrawn: `signal` ended
+     * (a Stop, the session closing), and its item is marked `cancelled`. Never rejects.
+     */
+    async askApproval(runId: string, request: ApprovalRequest, signal: AbortSignal): Promise<ApprovalDecision | undefined> {
+        if (signal.aborted) {
+            return undefined;
+        }
+
+        if (this.grants.get(runId)?.has(request.key)) {
+            return 'allow_once';
+        }
+
+        const approvalId = newId('apv');
+        const { key, decisions, ...shown } = request;
+        const decided = new Promise<ApprovalDecision | undefined>((resolve) => {
+            this.approvals.set(approvalId, { key, resolve });
+            signal.addEventListener('abort', () => resolve(undefined), { once: true });
+        });
+
+        try {
+            this.waitForPerson(runId, 'Waiting for your approval', () => appendItem(this.store, runId, {
+                kind: 'approval',
+                approvalId,
+                ...(shown.toolCallId && { toolCallId: shown.toolCallId }),
+                title: shown.title,
+                subject: shown.subject,
+                decisions,
+                state: 'open',
+            }));
+        }
+        catch (error) {
+            this.approvals.delete(approvalId);
+            console.warn(`[clowdy] an approval of run ${ runId } could not be put to the person: ${ error instanceof Error ? error.message : String(error) }`);
+
+            return undefined;
+        }
+
+        const decision = await decided;
+
+        this.approvals.delete(approvalId);
+
+        if (decision === undefined) {
+            this.settleApproval(runId, approvalId, 'cancelled');
+        }
+
+        const parked = this.endWait(runId);
+
+        if (parked && !signal.aborted) {
+            await this.acquireSlot(runId, signal).catch(() => undefined);
+        }
+
+        return decision;
     }
 
     /** Records the user's answer on the question item and wakes the run. */
@@ -463,6 +537,104 @@ export class RunService {
             updateItem(this.store, runId, item.seq, { ...item.body, answer });
             this.store.afterCommit(() => resolve(answer));
         });
+    }
+
+    /**
+     * Records the person's decision on an approval item and lets the agent's request go on. The decision must be one the agent offered (`decisions`), and
+     * the request must still be waiting (not withdrawn by a Stop, not lost with the session). `allow_always` also makes later requests with the same key
+     * be answered at once for the rest of the run.
+     */
+    decide(runId: string, approvalId: string, decision: ApprovalDecision): void {
+        this.store.tx(() => {
+            this.require(runId);
+
+            const item = findApproval(this.store.db, runId, approvalId);
+
+            if (!item || item.body.kind !== 'approval') {
+                throw notFound('Approval', approvalId);
+            }
+
+            if (item.body.state !== 'open') {
+                throw conflict('This approval has already been decided or withdrawn');
+            }
+
+            if (!item.body.decisions.includes(decision)) {
+                throw invalid('The agent did not offer that answer');
+            }
+
+            const waiting = this.approvals.get(approvalId);
+
+            if (!waiting) {
+                throw conflict('The agent is no longer waiting for this approval');
+            }
+
+            updateItem(this.store, runId, item.seq, { ...item.body, state: 'decided', decision });
+
+            if (decision === 'allow_always') {
+                this.grants.set(runId, (this.grants.get(runId) ?? new Set()).add(waiting.key));
+            }
+
+            this.store.afterCommit(() => waiting.resolve(decision));
+        });
+    }
+
+    /** Marks an approval item that is still open as `state`, for a request that ended without a decision. The store may be gone already when the daemon stops. */
+    private settleApproval(runId: string, approvalId: string, state: 'cancelled' | 'expired'): void {
+        try {
+            this.store.tx(() => {
+                const item = findApproval(this.store.db, runId, approvalId);
+
+                if (item?.body.kind === 'approval' && item.body.state === 'open') {
+                    updateItem(this.store, runId, item.seq, { ...item.body, state });
+                }
+            });
+        }
+        catch (error) {
+            console.warn(`[clowdy] approval ${ approvalId } of run ${ runId } could not be marked ${ state }: ${ error instanceof Error ? error.message : String(error) }`);
+        }
+    }
+
+    /**
+     * Writes what the run waits on (`write`, in the same transaction) and counts it: the run is parked in `waiting_user` when it is `running`, which frees
+     * its slot. A run in any other state (an agent's own turn while the run waits for background work) keeps its state and still shows the card, unless `strict`.
+     */
+    private waitForPerson(runId: string, reason: string, write: () => void, strict = false): void {
+        const parked = this.store.tx(() => {
+            write();
+
+            const { status } = this.require(runId);
+
+            // Already parked by another card of the run: it stays so. Otherwise a running run is parked, and a run in any other state is only parked by a caller that insists.
+            if (status !== 'waiting_user' && (status === 'running' || strict)) {
+                this.setStatus(runId, 'waiting_user', { reason });
+            }
+
+            return this.require(runId).status === 'waiting_user';
+        });
+        const entry = this.waits.get(runId) ?? { open: 0, parked: false };
+
+        entry.open++;
+        entry.parked ||= parked;
+        this.waits.set(runId, entry);
+    }
+
+    /** One thing the run waited on ended. Whether the run is parked for it and nothing else is open, so the caller takes its slot again. */
+    private endWait(runId: string): boolean {
+        const entry = this.waits.get(runId);
+
+        if (!entry) {
+            return false;
+        }
+
+        entry.open--;
+
+        if (entry.open > 0) {
+            return false;
+        }
+
+        this.waits.delete(runId);
+
+        return entry.parked && getRun(this.store.db, runId)?.status === 'waiting_user';
     }
 
     /* --------------------------------- Cancel --------------------------------- */
@@ -661,6 +833,13 @@ export class RunService {
                 for (const { seq, body } of listOpenThoughts(this.store.db, run.id)) {
                     if (body.kind === 'reasoning') {
                         updateItem(this.store, run.id, seq, { ...body, done: true });
+                    }
+                }
+
+                // An approval the agent was waiting on is lost with its process: the card says so instead of offering buttons that do nothing.
+                for (const { seq, body } of listOpenApprovals(this.store.db, run.id)) {
+                    if (body.kind === 'approval') {
+                        updateItem(this.store, run.id, seq, { ...body, state: 'expired' });
                     }
                 }
             }

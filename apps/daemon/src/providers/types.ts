@@ -1,5 +1,5 @@
-import type { AgentAccount, AgentModels, AgentUsage, SignInStatus } from '@clowdy/protocol';
-import type { AgentSpec } from '../engine/acp/catalog';
+import type { AgentAccount, AgentModels, AgentUsage, PermissionPresetId, SignInStatus } from '@clowdy/protocol';
+import type { AgentSpec, SettingEffect } from '../engine/acp/catalog';
 
 /** What a probe needs to look at one agent: the user's program and the environment a run of it would get. */
 export interface ProbeContext {
@@ -30,6 +30,28 @@ export interface ProviderRead {
     usage: AgentUsage;
 }
 
+/** What choosing a preset does to one agent. */
+export interface PermissionPlan {
+    /** The value to set on the agent's `mode` config option (category `mode`) when the preset is a mode of the agent. Absent when the agent has no mode for it. */
+    mode?: string;
+    /** What the agent is started with for the preset: environment, tools it is given or refused, Codex config, the same shape a setting's effect has. */
+    effect?: SettingEffect;
+    /** What Clowdy does with the agent's permission requests: `ask` puts them to the person, `allow` answers every one with its allow option. */
+    answer: 'ask' | 'allow';
+}
+
+/**
+ * The permission presets a provider can honour and what each does to its agent. The core never branches on an agent id: it reads this. An agent
+ * whose provider has no `permissions` gets the generic pair (`providers/permissions.ts`).
+ */
+export interface PermissionSupport {
+    /** In menu order; each with this agent's own words for what the preset does. */
+    presets: readonly { id: PermissionPresetId; description: string }[];
+    /** The preset the agent runs on when the person has not chosen. */
+    default: PermissionPresetId;
+    apply(preset: PermissionPresetId): PermissionPlan;
+}
+
 /**
  * Everything the daemon knows about one agent and everything it asks of the agent's vendor, in one object in one module (`providers/<id>.ts`, or
  * `providers/<id>/index.ts` when it has parts), named in `PROVIDERS` (`builtin.ts`), the only registration. An agent whose vendor has nothing to
@@ -46,4 +68,6 @@ export interface Provider {
     freshMs?: number;
     /** The models the agent offers on this machine and account. An agent without it has no list Clowdy can read. */
     models?(context: ProbeContext): Promise<AgentModels>;
+    /** The permission presets of the agent. Without it the agent offers the generic pair (`ask`, `full`). */
+    permissions?: PermissionSupport;
 }

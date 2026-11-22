@@ -114,8 +114,8 @@ export class V1Layer implements ProtocolLayer {
                     channel.push({ kind: 'update', update: params.update });
                 }
             })
-            .onRequest(methods.client.session.requestPermission, ({ params }) => {
-                const optionId = host.pickPermission(params.options);
+            .onRequest(methods.client.session.requestPermission, async ({ params }) => {
+                const optionId = await host.pickPermission(params);
 
                 return { outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId } };
             });
@@ -218,6 +218,7 @@ export class V1Layer implements ProtocolLayer {
                 options: selectsOf(configOptions),
                 model: options.model,
                 effort: options.effort,
+                mode: agent.permission?.mode,
                 set: async ({ configId, value }) => {
                     const answer = await request(connection.agent.request(methods.agent.session.setConfigOption, { sessionId: id, configId, value }));
 

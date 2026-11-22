@@ -107,6 +107,8 @@ export function describeItem({ body }: StreamItem): string {
             return `tool ${ body.name } (${ body.state })${ body.error ? `: ${ clip(oneLine(body.error), 200) }` : '' }`;
         case 'question':
             return `question: ${ clip(oneLine(body.text), 200) }${ body.answer === undefined ? '' : ` (answered: ${ clip(oneLine(body.answer), 100) })` }`;
+        case 'approval':
+            return `approval: ${ clip(oneLine(body.title), 200) } (${ body.state === 'decided' ? `decided: ${ body.decision }` : body.state })`;
         default:
             return `${ body.kind }: ${ clip(oneLine(body.text), 300) }`;
     }

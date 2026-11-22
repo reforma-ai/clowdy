@@ -605,6 +605,7 @@ export class RunDriver {
             model: run.model,
             effort: run.effort,
             title: sessionTitle(store, run, this.deps.namesChats(run.engine), prompt),
+            approve: (request, approvalSignal) => runs.askApproval(runId, request, approvalSignal),
             signal: ended,
         });
         let closing: Promise<void> | undefined;

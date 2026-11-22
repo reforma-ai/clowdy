@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureData, docHash, FIXTURE_FORK_CHAT_ID, FIXTURE_LIVE_RUN_ID, FIXTURE_LIVE_TEXT_ID, FIXTURE_LIVE_TOOL_ID, FIXTURE_PROJECT_ID, withFixtureFork } from './fixtureData';
 import { FixtureTransport } from './fixtureTransport';
 
-import type { ClowdyEvent } from '@clowdy/protocol';
+import type { ClowdyEvent, StreamItemBody } from '@clowdy/protocol';
 
 beforeEach(() => {
     vi.useFakeTimers();
@@ -125,6 +125,34 @@ describe('FixtureTransport', () => {
         expect(items.find(item => item.body.kind === 'question')?.body).toMatchObject({ answer: 'SQLite' });
         expect(events.some(event => event.data.type === 'run.upserted' && event.data.run.id === 'r-orch-3' && event.data.run.status === 'running')).toBe(true);
         expect(items.at(-1)?.body).toMatchObject({ kind: 'assistant', done: true });
+    });
+
+    it('decides an approval: the item keeps the decision, a second decision is refused, and the run goes on when no card is left', async () => {
+        const data = createFixtureData();
+        const body: Omit<Extract<StreamItemBody, { kind: 'approval' }>, 'approvalId' | 'state'> = { kind: 'approval', title: 'Run ls', subject: { kind: 'command', command: 'ls' }, decisions: ['allow_once', 'reject'] };
+
+        data.items['r-orch-3'].push(
+            { id: 'r-orch-3-apv-1', runId: 'r-orch-3', seq: 100, at: Date.now(), body: { ...body, approvalId: 'apv-1', state: 'open' } },
+            { id: 'r-orch-3-apv-2', runId: 'r-orch-3', seq: 101, at: Date.now(), body: { ...body, approvalId: 'apv-2', state: 'open' } }
+        );
+
+        const { transport } = await connected({ data });
+        const decide = (approvalId: string, decision: 'allow_once' | 'allow_always' | 'reject') => transport.command({ type: 'run.decide', runId: 'r-orch-3', approvalId, decision });
+        const status = async () => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs.find(run => run.id === 'r-orch-3')?.status;
+
+        expect(await decide('apv-missing', 'allow_once')).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(await decide('apv-1', 'allow_always')).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(await decide('apv-1', 'reject')).toMatchObject({ ok: true });
+        expect(await decide('apv-1', 'reject')).toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+        const items = await transport.getItems({ runId: 'r-orch-3' });
+
+        expect(items.find(item => item.id === 'r-orch-3-apv-1')?.body).toMatchObject({ state: 'decided', decision: 'reject' });
+        // One card and the question are still open.
+        expect(await status()).toBe('waiting_user');
+        expect(await decide('apv-2', 'allow_once')).toMatchObject({ ok: true });
+        expect(await status()).toBe('waiting_user');
+        expect(await transport.command({ type: 'run.answer', runId: 'r-orch-3', questionId: 'q-store', answer: 'SQLite' })).toMatchObject({ ok: true });
     });
 
     it('cancels an orchestrator together with the sub-agents below it, and leaves finished ones alone', async () => {

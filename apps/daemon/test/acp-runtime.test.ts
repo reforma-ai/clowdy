@@ -70,6 +70,60 @@ describe('a message while an ACP agent works', () => {
     });
 });
 
+describe('an ACP agent on the preset that asks, through the real runtime', () => {
+    const approvals = (h: Harness, runId: string) => listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'approval' ? [item.body] : []));
+
+    test('its permission request is a card in the stream, the run waits for the person, and their decision reaches the agent', async () => {
+        const { h, say, texts } = await setup();
+
+        h.ok('agent.update', { id: 'fake-acp', permission: 'ask' });
+
+        const runId = say('perm execute {"title":"Run ls","rawInput":{"command":"ls -la"}}\nsay after');
+
+        await waitFor(() => approvals(h, runId).length === 1, 'the approval', 15_000);
+
+        expect(h.run(runId)).toMatchObject({ status: 'waiting_user', statusReason: 'Waiting for your approval' });
+        expect(approvals(h, runId)[0]).toMatchObject({ state: 'open', title: 'Run ls', subject: { kind: 'command', command: 'ls -la' }, decisions: ['allow_once', 'allow_always', 'reject'] });
+
+        h.ok('run.decide', { runId, approvalId: approvals(h, runId)[0]!.approvalId, decision: 'reject' });
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the turn', 15_000);
+
+        expect(texts(runId)).toContain('permission: reject');
+        expect(approvals(h, runId)[0]).toMatchObject({ state: 'decided', decision: 'reject' });
+    });
+
+    test('allowing for the rest of the run spares the same request in the next turn, which is another agent process', async () => {
+        const { h, chat, say } = await setup();
+
+        h.ok('agent.update', { id: 'fake-acp', permission: 'ask' });
+
+        const runId = say('perm execute {"rawInput":{"command":"make"}}');
+
+        await waitFor(() => approvals(h, runId).length === 1, 'the approval', 15_000);
+        h.ok('run.decide', { runId, approvalId: approvals(h, runId)[0]!.approvalId, decision: 'allow_always' });
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the first turn', 15_000);
+
+        h.ok('chat.send', { chatId: chat.id, text: 'perm execute {"rawInput":{"command":"make"}}' });
+        await waitFor(() => listItems(h.store.db, runId, 0).filter(item => item.body.kind === 'assistant' && item.body.text === 'permission: once').length === 1, 'the answer without a card', 15_000);
+
+        expect(approvals(h, runId)).toHaveLength(1);
+    });
+
+    test('a Stop with a request waiting ends the run and marks the card cancelled', async () => {
+        const { h, say } = await setup();
+
+        h.ok('agent.update', { id: 'fake-acp', permission: 'ask' });
+
+        const runId = say('perm');
+
+        await waitFor(() => approvals(h, runId).length === 1, 'the approval', 15_000);
+        h.ok('run.cancel', { runId });
+        await waitFor(() => h.run(runId).status === 'cancelled' && approvals(h, runId)[0]?.state === 'cancelled', 'the stop', 15_000);
+
+        expect(approvals(h, runId)[0]).not.toHaveProperty('decision');
+    });
+});
+
 describe('runs on an ACP agent, through the real runtime', () => {
     test('a chat turn streams the agent\'s message into the stream and succeeds, and its session is kept for the next turn', async () => {
         const { h, say, texts } = await setup();

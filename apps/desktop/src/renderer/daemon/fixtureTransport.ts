@@ -22,6 +22,7 @@ import type {
     AgentInfo,
     AgentModels,
     AgentOverrides,
+    ApprovalDecision,
     Attachment,
     Chat,
     ClowdyEvent,
@@ -940,6 +941,9 @@ export class FixtureTransport implements Transport {
             case 'run.answer':
                 return this.#answerQuestion(command.runId, command.questionId, command.answer);
 
+            case 'run.decide':
+                return this.#decideApproval(command.runId, command.approvalId, command.decision);
+
             case 'skills.setEnabled': {
                 const skill = data.skills.find(candidate => candidate.name === command.name);
 
@@ -1734,5 +1738,30 @@ export class FixtureTransport implements Transport {
         this.#later(500, () => this.#streamReply(run, `Thanks. I will go with "${ answer }" and continue.`));
 
         return ok();
+    }
+
+    #decideApproval(runId: RunId, approvalId: string, decision: ApprovalDecision): Outcome {
+        const run = this.#data.runs.find(candidate => candidate.id === runId);
+        const items = this.#data.items[runId] ?? [];
+        const item = items.find(candidate => candidate.body.kind === 'approval' && candidate.body.approvalId === approvalId);
+
+        if (!run || !item || item.body.kind !== 'approval') return fail('not_found', 'No such approval');
+
+        if (item.body.state !== 'open') return fail('conflict', 'This approval has already been decided or withdrawn');
+
+        if (!item.body.decisions.includes(decision)) return fail('invalid', 'The agent did not offer that answer');
+
+        this.#saveItem(run, { ...item, body: { ...item.body, state: 'decided', decision } });
+
+        // The run goes back to work when no card is left to answer, a question's included.
+        const open = (this.#data.items[runId] ?? []).some(candidate => (candidate.body.kind === 'approval' && candidate.body.state === 'open') || (candidate.body.kind === 'question' && candidate.body.answer === undefined));
+
+        if (run.status === 'waiting_user' && !open) {
+            run.status = 'running';
+            run.statusReason = undefined;
+            this.#saveRun(run);
+        }
+
+        return ok({ runId });
     }
 }

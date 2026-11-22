@@ -6,10 +6,12 @@ import { getProject } from '../src/db/projects';
 import { listRuns, runningCounts } from '../src/db/runs';
 import { appendItem } from '../src/domain/items';
 import { QUEUE_REASON } from '../src/runs/scheduler';
+import { describeItem, threadState } from '../src/runs/threads';
 import { BACKGROUND_REASON, canTransition, NEEDS_REASON, TRANSITIONS } from '../src/runs/transitions';
 import { cleanTempDirs, GateEngine, gateEngines, Harness, restartHarness, startHarness, waitFor } from './helpers';
 
-import type { BackgroundItem, ClowdyEvent, RunStatus } from '@clowdy/protocol';
+import type { BackgroundItem, ClowdyEvent, RunStatus, StreamItemBody } from '@clowdy/protocol';
+import type { ApprovalRequest } from '../src/engine/types';
 
 afterAll(cleanTempDirs);
 
@@ -357,6 +359,179 @@ describe('waiting for background work', () => {
     });
 });
 
+describe('approvals of the agent', () => {
+    async function runningRun() {
+        const { h, project } = await setup();
+        const { runs } = h.daemon.services;
+        const create = () => {
+            const run = runs.createRun({ project: getProject(h.store.db, project.id)!, role: 'orchestrator', summary: 'Plan' });
+
+            runs.setStatus(run.id, 'running');
+
+            return run.id;
+        };
+
+        return { h, runs, create };
+    }
+
+    const request = (key: string, overrides: Partial<ApprovalRequest> = {}): ApprovalRequest => ({ toolCallId: `call-${ key }`, title: `Run ${ key }`, subject: { kind: 'command', command: key }, decisions: ['allow_once', 'allow_always', 'reject'], key: `command:${ key }`, ...overrides });
+    const approvalsOf = (h: Harness, runId: string) => listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'approval' ? [item.body] : []));
+    const live = () => new AbortController();
+
+    test('a request is put to the person as an item, the run waits for them, and their decision is the answer', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const asked = runs.askApproval(runId, request('ls'), live().signal);
+
+        expect(h.run(runId)).toMatchObject({ status: 'waiting_user', statusReason: 'Waiting for your approval' });
+
+        const [item] = approvalsOf(h, runId);
+
+        expect(item).toMatchObject({ kind: 'approval', state: 'open', toolCallId: 'call-ls', title: 'Run ls', subject: { kind: 'command', command: 'ls' }, decisions: ['allow_once', 'allow_always', 'reject'] });
+        expect(item).not.toHaveProperty('key');
+        expect(h.ok('run.decide', { runId, approvalId: item!.approvalId, decision: 'allow_once' })).toEqual({ runId });
+        expect(await asked).toBe('allow_once');
+        expect(approvalsOf(h, runId)[0]).toMatchObject({ state: 'decided', decision: 'allow_once' });
+        await waitFor(() => h.run(runId).status === 'running', 'the run to go back to work');
+    });
+
+    test('several can wait at once: the run goes on only when the last is decided', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const first = runs.askApproval(runId, request('first'), live().signal);
+        const second = runs.askApproval(runId, request('second'), live().signal);
+        const [one, two] = approvalsOf(h, runId);
+
+        expect(approvalsOf(h, runId)).toHaveLength(2);
+        h.ok('run.decide', { runId, approvalId: one!.approvalId, decision: 'reject' });
+        expect(await first).toBe('reject');
+        expect(h.run(runId).status).toBe('waiting_user');
+        h.ok('run.decide', { runId, approvalId: two!.approvalId, decision: 'allow_once' });
+        expect(await second).toBe('allow_once');
+        await waitFor(() => h.run(runId).status === 'running', 'the run to go back to work');
+    });
+
+    test('a question and an approval open together keep the run waiting until both are answered', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const asked = runs.ask(runId, { text: 'Which one?', options: [{ id: 'a', label: 'A' }] }, live().signal);
+        const approved = runs.askApproval(runId, request('ls'), live().signal);
+        const question = listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'question' ? [item.body] : []))[0]!;
+
+        expect(h.run(runId).status).toBe('waiting_user');
+        h.ok('run.answer', { runId, questionId: question.questionId, answer: 'A' });
+        expect(await asked).toBe('A');
+        expect(h.run(runId).status).toBe('waiting_user');
+        h.ok('run.decide', { runId, approvalId: approvalsOf(h, runId)[0]!.approvalId, decision: 'allow_once' });
+        expect(await approved).toBe('allow_once');
+        await waitFor(() => h.run(runId).status === 'running', 'the run to go back to work');
+    });
+
+    test('allowing for the rest of the run answers the same request at once, with no item, and only that request', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const other = create();
+        const first = runs.askApproval(runId, request('ls'), live().signal);
+
+        h.ok('run.decide', { runId, approvalId: approvalsOf(h, runId)[0]!.approvalId, decision: 'allow_always' });
+        expect(await first).toBe('allow_always');
+        await waitFor(() => h.run(runId).status === 'running', 'the run to go back to work');
+
+        expect(await runs.askApproval(runId, request('ls', { toolCallId: 'another-call' }), live().signal)).toBe('allow_once');
+        expect(approvalsOf(h, runId)).toHaveLength(1);
+        expect(h.run(runId).status).toBe('running');
+
+        // Another command is asked, and so is the same one of another run (a thread's grants are its own).
+        void runs.askApproval(runId, request('rm'), live().signal);
+        void runs.askApproval(other, request('ls'), live().signal);
+        expect(approvalsOf(h, runId)).toHaveLength(2);
+        expect(approvalsOf(h, other)).toHaveLength(1);
+    });
+
+    test('a deny is not remembered, and nor is a one-time allow', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+
+        for (const decision of ['reject', 'allow_once'] as const) {
+            const asked = runs.askApproval(runId, request('ls'), live().signal);
+
+            await waitFor(() => h.run(runId).status === 'waiting_user', 'the card');
+            h.ok('run.decide', { runId, approvalId: approvalsOf(h, runId).at(-1)!.approvalId, decision });
+            expect(await asked).toBe(decision);
+            await waitFor(() => h.run(runId).status === 'running', 'the run to go back to work');
+        }
+
+        expect(approvalsOf(h, runId)).toHaveLength(2);
+    });
+
+    test('a Stop withdraws the request: the answer is nothing, the item says cancelled, and it can no longer be decided', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const stop = live();
+        const asked = runs.askApproval(runId, request('ls'), stop.signal);
+        const approvalId = approvalsOf(h, runId)[0]!.approvalId;
+
+        stop.abort();
+        expect(await asked).toBeUndefined();
+        expect(approvalsOf(h, runId)[0]).toMatchObject({ state: 'cancelled' });
+        expect(approvalsOf(h, runId)[0]).not.toHaveProperty('decision');
+        expect(h.send('run.decide', { runId, approvalId, decision: 'allow_once' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    });
+
+    test('a request that comes after the stop is not put to anyone', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const stop = live();
+
+        stop.abort();
+        expect(await runs.askApproval(runId, request('ls'), stop.signal)).toBeUndefined();
+        expect(approvalsOf(h, runId)).toHaveLength(0);
+        expect(h.run(runId).status).toBe('running');
+    });
+
+    test('refuses a decision that cannot be taken, in words a person can read', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const asked = runs.askApproval(runId, request('ls', { decisions: ['allow_once', 'reject'] }), live().signal);
+        const approvalId = approvalsOf(h, runId)[0]!.approvalId;
+
+        expect(h.send('run.decide', { runId, approvalId: 'apv_missing', decision: 'allow_once' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(h.send('run.decide', { runId: 'run_missing', approvalId, decision: 'allow_once' })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+        expect(h.send('run.decide', { runId, approvalId, decision: 'allow_always' })).toMatchObject({ ok: false, error: { code: 'invalid', message: 'The agent did not offer that answer' } });
+        expect(approvalsOf(h, runId)[0]!.state).toBe('open');
+
+        h.ok('run.decide', { runId, approvalId, decision: 'reject' });
+        await asked;
+
+        expect(h.send('run.decide', { runId, approvalId, decision: 'reject' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    });
+
+    test('a run that waits for background work keeps its state while its agent asks, and the card can still be decided', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+
+        runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
+
+        const asked = runs.askApproval(runId, request('ls'), live().signal);
+
+        expect(h.run(runId).status).toBe('waiting_background');
+        expect(approvalsOf(h, runId)[0]).toMatchObject({ state: 'open' });
+        h.ok('run.decide', { runId, approvalId: approvalsOf(h, runId)[0]!.approvalId, decision: 'allow_once' });
+        expect(await asked).toBe('allow_once');
+        expect(h.run(runId).status).toBe('waiting_background');
+    });
+
+    test('a thread whose agent waits on an approval reads asking to its parent, and the log line says what it is', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+
+        void runs.askApproval(runId, request('ls'), live().signal);
+
+        expect(threadState(h.run(runId))).toBe('asking');
+        expect(describeItem(listItems(h.store.db, runId, 0)[0]!)).toBe('approval: Run ls (open)');
+    });
+});
+
 describe('scheduler', () => {
     test('never runs more than the global cap, queues the rest with a reason, and drains in order', async () => {
         const { h, gate, task, start } = await setup({ maxRuns: 2 });
@@ -492,6 +667,29 @@ describe('cancellation', () => {
 });
 
 describe('restart recovery', () => {
+    test('an approval the agent was waiting on comes back expired, with its run interrupted, so the card offers no button that does nothing', async () => {
+        const gate = new GateEngine();
+        const first = await startHarness({}, { engines: gateEngines(gate) });
+        const project = first.openRepo();
+        const task = first.ok('task.create', { projectId: project.id, title: 'Asking' }).task;
+        const runId = first.ok('task.start', { taskId: task.id }).runId as string;
+        const body: Omit<Extract<StreamItemBody, { kind: 'approval' }>, 'approvalId' | 'state'> = { kind: 'approval', title: 'Run ls', subject: { kind: 'command', command: 'ls' }, decisions: ['allow_once', 'reject'] };
+
+        await waitFor(() => first.run(runId).status === 'running', 'the run to start');
+        appendItem(first.store, runId, { ...body, approvalId: 'apv_open', state: 'open' });
+        appendItem(first.store, runId, { ...body, approvalId: 'apv_done', state: 'decided', decision: 'allow_once' });
+        await first.stop();
+
+        const second = await restartHarness(first, { engines: gateEngines(new GateEngine()) });
+
+        harnesses.push(second);
+
+        const approvals = listItems(second.store.db, runId, 0).flatMap(item => (item.body.kind === 'approval' ? [item.body] : []));
+
+        expect(second.run(runId).status).toBe('interrupted');
+        expect(approvals.map(approval => [approval.approvalId, approval.state])).toEqual([['apv_open', 'expired'], ['apv_done', 'decided']]);
+    });
+
     test('a thought the crash cut short comes back done, so the app does not show it as going on', async () => {
         const gate = new GateEngine();
         const first = await startHarness({}, { engines: gateEngines(gate) });

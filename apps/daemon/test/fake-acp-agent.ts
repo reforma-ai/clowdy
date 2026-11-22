@@ -52,6 +52,8 @@ interface FakeSession {
     model: string;
     /** The reasoning level, when `FAKE_ACP_EFFORT` gives the agent a reasoning option. */
     effort: string;
+    /** The permission mode `session/set_config_option` set (`FAKE_ACP_MODES=1`); absent until one was. */
+    mode?: string;
     /** How many `session/set_config_option` requests the session took. */
     sets: number;
     cancel: AbortController;
@@ -100,7 +102,7 @@ const LEVEL_NAMES: Record<string, string> = { xhigh: 'Extra high' };
  * The options an agent reports: the model, and with `FAKE_ACP_EFFORT=1` a reasoning level that follows the model (as Claude's and Codex's do).
  * `FAKE_ACP_EFFORT=thinking` puts another `thought_level` option, with values of its own, in front of it (as Cursor's `thinking` is).
  */
-const modelOptions = (model: string, effort = 'high') => [
+const modelOptions = (model: string, effort = 'high', mode = 'default') => [
     {
         id: 'model',
         name: 'Model',
@@ -127,6 +129,17 @@ const modelOptions = (model: string, effort = 'high') => [
             type: 'select' as const,
             currentValue: effort,
             options: (LEVELS[model] ?? LEVELS.fast).map(value => ({ value, name: LEVEL_NAMES[value] ?? value })),
+        }]
+        : []),
+    // `FAKE_ACP_MODES=1`: the permission modes Claude's adapter offers, as one option of category `mode`.
+    ...(process.env.FAKE_ACP_MODES === '1'
+        ? [{
+            id: 'mode',
+            name: 'Mode',
+            category: 'mode',
+            type: 'select' as const,
+            currentValue: mode,
+            options: ['default', 'acceptEdits', 'auto', 'bypassPermissions'].map(value => ({ value, name: value })),
         }]
         : []),
 ];
@@ -217,9 +230,12 @@ const app = agent({ name: 'fake-acp-agent' })
                 // A model keeps the level when it has it, and goes back to its own default when it has not.
                 session.effort = (LEVELS[session.model] ?? LEVELS.fast).includes(session.effort) ? session.effort : 'high';
             }
+            else if (params.configId === 'mode') {
+                session.mode = params.value;
+            }
         }
 
-        return { configOptions: modelOptions(session?.model ?? 'fast', session?.effort) };
+        return { configOptions: modelOptions(session?.model ?? 'fast', session?.effort, session?.mode) };
     })
     .onRequest(methods.agent.session.setTitle, async ({ params, client }) => {
         const session = sessions.get(params.sessionId);
@@ -340,9 +356,11 @@ const app = agent({ name: 'fake-acp-agent' })
                         break;
                     }
                     case 'perm': {
+                        // `perm [kind [json]]`: the optional kind of the call it asks about, and extra fields of it (title, rawInput, locations, content) as JSON.
+                        const [kind, ...extra] = rest;
                         const answer = await client.request(methods.client.session.requestPermission, {
                             sessionId,
-                            toolCall: { toolCallId: `p${ ++calls }`, title: 'Run a command' },
+                            toolCall: { toolCallId: `p${ ++calls }`, title: 'Run a command', ...(kind && { kind: kind as 'execute' }), ...(extra.length > 0 ? JSON.parse(extra.join(' ')) as Record<string, unknown> : {}) },
                             options: [
                                 { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
                                 { optionId: 'always', name: 'Always allow', kind: 'allow_always' },
@@ -351,6 +369,21 @@ const app = agent({ name: 'fake-acp-agent' })
                         });
 
                         await say(`permission: ${ answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome }`);
+                        break;
+                    }
+                    case 'perm2': {
+                        // Two requests at once, as an agent that runs two tools in parallel sends them.
+                        const ask = (title: string) => client.request(methods.client.session.requestPermission, {
+                            sessionId,
+                            toolCall: { toolCallId: `p${ ++calls }`, title, kind: 'execute', rawInput: { command: title } },
+                            options: [
+                                { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+                                { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+                            ],
+                        });
+                        const answers = await Promise.all([ask('first'), ask('second')]) as { outcome: { outcome: string; optionId?: string } }[];
+
+                        await say(`permissions: ${ answers.map(answer => (answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome)).join(',') }`);
                         break;
                     }
                     case 'usage': {
@@ -403,7 +436,7 @@ const app = agent({ name: 'fake-acp-agent' })
                         await say(JSON.stringify(clientCapabilities));
                         break;
                     case 'choice':
-                        await say(JSON.stringify({ model: session.model, effort: session.effort, sets: session.sets }));
+                        await say(JSON.stringify({ model: session.model, effort: session.effort, sets: session.sets, ...(session.mode && { mode: session.mode }) }));
                         break;
                     case 'prompt':
                         await say(JSON.stringify(text));

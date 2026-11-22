@@ -3,6 +3,7 @@ import { spawnInOwnGroup } from '../process';
 import { buildAgentEnv, withCli } from './env';
 import { classifyThrown, failureEvent } from './failure';
 import { wait } from './layer';
+import { classify, optionFor } from './permission';
 import { noFork, V1Layer } from './v1';
 import { V2Layer } from './v2';
 
@@ -12,6 +13,7 @@ import type { EngineEvent, EngineFork, EngineSession, EngineStartOptions } from 
 import type { BridgeAccess, ToolBridge } from './bridge';
 import type { AgentProtocol } from './catalog';
 import type { LayerHost, PromptState, ProtocolLayer } from './layer';
+import type { PermissionOption, PermissionParams } from './permission';
 import type { AgentRegistry, ResolvedAgent } from './registry';
 
 /** How long `close()` waits for the agent's process to be gone. */
@@ -501,7 +503,7 @@ export class AcpSession implements EngineSession {
             deps,
             openBridge: () => this.access,
             offerTitle: title => this.offerTitle(title),
-            pickPermission: choices => this.pickPermission(choices),
+            pickPermission: request => this.pickPermission(agent, request),
             promptIs: state => this.promptIs(state),
             promptRunning: () => this.prompt === 'running',
             record: () => this.record(),
@@ -512,18 +514,38 @@ export class AcpSession implements EngineSession {
         return layer;
     }
 
-    /** What the daemon answers when the agent asks for permission: the first option of the kinds its policy takes. */
-    private pickPermission(choices: readonly { optionId: string; kind: string }[]): string | undefined {
-        const wanted = this.deps.permissions === 'allow' ? ['allow_once', 'allow_always'] : ['reject_once', 'reject_always'];
+    /**
+     * What the agent is answered when it asks for permission. An agent on a preset that asks (`ResolvedAgent.permission.answer`) has the request put to
+     * the person through the run (`EngineStartOptions.approve`) and is answered with the option of what they decided; any other agent, and one run with
+     * no `approve` (an engine used without the run runtime), is answered by the daemon's policy: the first option of the kinds it takes. A request that
+     * comes while the session is ending, or is withdrawn, is answered with nothing, which the layer turns into `cancelled`.
+     */
+    private async pickPermission(agent: ResolvedAgent, request: PermissionParams): Promise<string | undefined> {
+        const { approve } = this.options;
+        const answer = agent.permission?.answer;
 
-        for (const kind of wanted) {
-            const option = choices.find(candidate => candidate.kind === kind);
-
-            if (option) {
-                return option.optionId;
-            }
+        if (answer !== 'ask' || !approve) {
+            return this.policyOption(request.options, answer === 'allow' ? 'allow' : this.deps.permissions);
         }
 
-        return undefined;
+        if (this.signal.aborted) {
+            return undefined;
+        }
+
+        try {
+            const decision = await approve(classify(request), this.signal);
+
+            return decision && optionFor(request.options, decision);
+        }
+        catch (error) {
+            console.warn(`[clowdy] a permission request of ${ agent.name } was not put to the person: ${ errorMessage(error) }`);
+
+            return undefined;
+        }
+    }
+
+    /** The first option of the kinds a policy takes: the one-time allow (then the lasting one), or the one-time refusal (then the lasting one). */
+    private policyOption(options: readonly PermissionOption[], policy: PermissionPolicy): string | undefined {
+        return optionFor(options, policy === 'allow' ? 'allow_once' : 'reject');
     }
 }

@@ -96,6 +96,35 @@ describe('agent commands', () => {
         expect((await list()).find(agent => agent.id === 'opencode')).toMatchObject({ status: 'disabled', enabled: false, path: process.execPath });
     });
 
+    test('a permission preset is picked, listed as the choice, cleared with null, and refused when the agent does not offer it', async () => {
+        const { h, list, add } = await setup();
+        const presets = async (id: string) => (await list()).find(agent => agent.id === id)?.permissions;
+
+        add();
+
+        expect(await presets('claude')).toMatchObject({ default: 'auto' });
+        expect((await presets('claude'))?.value).toBeUndefined();
+        expect((await presets('mine'))?.presets.map(preset => preset.id)).toEqual(['ask', 'full']);
+
+        h.ok('agent.update', { id: 'claude', permission: 'full' });
+        h.ok('agent.update', { id: 'mine', permission: 'ask' });
+
+        expect((await presets('claude'))?.value).toBe('full');
+        expect((await presets('mine'))?.value).toBe('ask');
+
+        // The choice is kept when something else changes, and cleared by `null`.
+        h.ok('agent.update', { id: 'claude', enabled: true });
+        expect((await presets('claude'))?.value).toBe('full');
+
+        h.ok('agent.update', { id: 'claude', permission: null });
+        expect((await presets('claude'))?.value).toBeUndefined();
+
+        const refused = h.send('agent.update', { id: 'opencode', permission: 'auto' });
+
+        expect(refused.ok ? 'ok' : refused.error.code).toBe('invalid');
+        expect(h.send('agent.update', { id: 'claude', permission: 'sandbox' as 'auto' }).ok).toBe(false);
+    });
+
     test('refusals are command errors: a bad id, a clash, an unknown agent, a built-in one removed', async () => {
         const { h, add } = await setup();
 

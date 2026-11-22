@@ -109,6 +109,8 @@ interface FakeSession {
     model: string;
     /** The reasoning level, when `FAKE_ACP_EFFORT` gives the agent a reasoning option. */
     effort: string;
+    /** The permission mode `session/set_config_option` set (`FAKE_ACP_MODES=1`); absent until one was. */
+    mode?: string;
     /** How many `session/set_config_option` requests the session took. */
     sets: number;
     cancel: AbortController;
@@ -204,7 +206,7 @@ const LEVELS: Record<string, string[]> = { fast: ['low', 'high'], smart: ['low',
 const LEVEL_NAMES: Record<string, string> = { xhigh: 'Extra high' };
 
 /** The options an agent reports: the model, and with `FAKE_ACP_EFFORT=1` a reasoning level that follows the model (as Claude's and Codex's do). */
-const modelOptions = (model: string, effort = 'high') => [
+const modelOptions = (model: string, effort = 'high', mode = 'default') => [
     {
         configId: 'model',
         name: 'Model',
@@ -231,6 +233,17 @@ const modelOptions = (model: string, effort = 'high') => [
             type: 'select' as const,
             currentValue: effort,
             options: (LEVELS[model] ?? LEVELS.fast).map(value => ({ value, name: LEVEL_NAMES[value] ?? value })),
+        }]
+        : []),
+    // `FAKE_ACP_MODES=1`: the permission modes Claude's adapter offers, as one option of category `mode`.
+    ...(process.env.FAKE_ACP_MODES === '1'
+        ? [{
+            configId: 'mode',
+            name: 'Mode',
+            category: 'mode',
+            type: 'select' as const,
+            currentValue: mode,
+            options: ['default', 'acceptEdits', 'auto', 'bypassPermissions'].map(value => ({ value, name: value })),
         }]
         : []),
 ];
@@ -822,13 +835,15 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     break;
                 }
                 case 'perm': {
-                    // The foreground work waits on a person until the client answers.
+                    // The foreground work waits on a person until the client answers. `perm [kind [json]]`: the optional kind of the call it asks about, and extra fields of it (title, rawInput, locations, content) as JSON.
+                    const [kind, ...extra] = rest;
+
                     await send(state(session, { state: 'requires_action' }));
 
                     const answer = await client.request(methods.client.session.requestPermission, {
                         sessionId,
                         title: 'Run a command',
-                        subject: { type: 'tool_call', toolCall: { toolCallId: `p${ ++calls }`, title: 'Run a command' } },
+                        subject: { type: 'tool_call', toolCall: { toolCallId: `p${ ++calls }`, title: 'Run a command', ...(kind && { kind: kind as 'execute' }), ...(extra.length > 0 ? JSON.parse(extra.join(' ')) as Record<string, unknown> : {}) } },
                         options: [
                             { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
                             { optionId: 'always', name: 'Always allow', kind: 'allow_always' },
@@ -838,6 +853,24 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
 
                     await send(state(session, { state: 'running' }));
                     await say(`permission: ${ answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome }`);
+                    break;
+                }
+                case 'perm2': {
+                    // Two requests at once, as an agent that runs two tools in parallel sends them; the second is a command subject, the other kind a v2 request carries.
+                    const options = [
+                        { optionId: 'reject', name: 'Reject', kind: 'reject_once' as const },
+                        { optionId: 'once', name: 'Allow once', kind: 'allow_once' as const },
+                    ];
+
+                    await send(state(session, { state: 'requires_action' }));
+
+                    const answers = await Promise.all([
+                        client.request(methods.client.session.requestPermission, { sessionId, title: 'first', subject: { type: 'tool_call', toolCall: { toolCallId: `p${ ++calls }`, title: 'first', kind: 'execute', rawInput: { command: 'first' } } }, options }),
+                        client.request(methods.client.session.requestPermission, { sessionId, title: 'second', subject: { type: 'command', command: 'second', cwd: '/work' }, options }),
+                    ]);
+
+                    await send(state(session, { state: 'running' }));
+                    await say(`permissions: ${ answers.map(answer => (answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome)).join(',') }`);
                     break;
                 }
                 case 'pause':
@@ -971,7 +1004,7 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     await say(JSON.stringify(clientCapabilities));
                     break;
                 case 'choice':
-                    await say(JSON.stringify({ model: session.model, effort: session.effort, sets: session.sets }));
+                    await say(JSON.stringify({ model: session.model, effort: session.effort, sets: session.sets, ...(session.mode && { mode: session.mode }) }));
                     break;
                 case 'prompt':
                     await say(JSON.stringify(text));
@@ -1196,9 +1229,12 @@ const app = agent({ name: 'fake-acp-agent-v2' })
                 // A model keeps the level when it has it, and goes back to its own default when it has not.
                 session.effort = (LEVELS[session.model] ?? LEVELS.fast).includes(session.effort) ? session.effort : 'high';
             }
+            else if (params.configId === 'mode') {
+                session.mode = params.value;
+            }
         }
 
-        return { configOptions: modelOptions(session?.model ?? 'fast', session?.effort) };
+        return { configOptions: modelOptions(session?.model ?? 'fast', session?.effort, session?.mode) };
     })
     .onRequest(methods.agent.session.setTitle, async ({ params, client }) => {
         const session = sessions.get(params.sessionId);
