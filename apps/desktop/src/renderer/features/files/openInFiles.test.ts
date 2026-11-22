@@ -57,6 +57,14 @@ describe('opening a path in the Files tab', () => {
         expect(await tabs('files')).toEqual(['README.md']);
     });
 
+    it('opens a plan of .briefback on the Docs tab as it does a document, in the tabs of that tab', async () => {
+        expect(await open('.briefback/weekend-pricing/plan.md')).toBe(true);
+
+        expect(ui().sidePanelTab).toBe('docs');
+        expect(await tabs('docs')).toEqual(['.briefback/weekend-pricing/plan.md']);
+        expect(await tabs('files')).toEqual([]);
+    });
+
     it('shows a folder of the tree, with no tab for it, and the folder itself by showing the tab', async () => {
         expect(await open('src/booking')).toBe(true);
         expect((await manager()).revealed?.path).toBe('src/booking');

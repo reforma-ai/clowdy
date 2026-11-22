@@ -6,7 +6,7 @@ import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { chosenPrograms, useFolderGit, useOpenApps } from '../openWith';
 import { currentFolder } from '../sidePanel/currentFolder';
 import { openInTerminal } from '../terminal/openInTerminal';
-import { DOCS_SCOPE } from './docsScope';
+import { docsScopeOf } from './docsScope';
 import { FILES_SCOPE, filesCommands } from './filesCommands';
 import styles from './FilesTab.module.css';
 import { openInMenuItems } from './openInMenuItems';
@@ -19,7 +19,7 @@ import { useFilesStore } from './useFilesStore';
  * Open in Terminal (a folder), Copy path (absolute or relative) and Open in… (the editor, the file manager, the terminal program, GitHub).
  *
  * The Docs tab is this same view over a file manager of its own for the folder: the tabs, the editor and the buffers are the Docs tab's, so the documents open there
- * are not the files open in the Files tab, and the tree at the right draws the folder's documents (`DOCS_SCOPE`) in place of every file. The component stays mounted when
+ * are not the files open in the Files tab, and the tree at the right draws the folder's document sources (`docsScopeOf`: Briefback, `.clowdy/docs`, Spec Kit, OpenSpec, Kiro) in place of every file. The component stays mounted when
  * the panel moves between the two tabs, and the view is made again for the manager of the one that comes on show.
  */
 export default function FilesTab({ variant = 'files' }: { variant?: 'files' | 'docs' }) {
@@ -43,9 +43,9 @@ export default function FilesTab({ variant = 'files' }: { variant?: 'files' | 'd
             className={ styles.view }
             key={ `${ project.project.id }/${ folder.id }/${ variant }` }
             manager={ manager }
-            scope={ variant === 'docs' ? DOCS_SCOPE : undefined }
+            scope={ variant === 'docs' ? docsScopeOf(manager) : undefined }
             filterPlaceholder={ variant === 'docs' ? 'Filter documents' : undefined }
-            emptyText={ variant === 'docs' ? 'No documents yet' : undefined }
+            emptyText={ variant === 'docs' ? 'No documents found' : undefined }
             menuItems={ openInMenuItems({ projectId: project.id, folder, programs: chosenPrograms(apps), git, inTerminal: relative => void openInTerminal(root, project.id, folder, relative) }) }
             sidebarOpen={ treeLayout.open }
             sidebarWidth={ treeLayout.width }

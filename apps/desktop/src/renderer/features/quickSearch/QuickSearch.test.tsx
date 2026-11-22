@@ -292,6 +292,31 @@ describe('the quick search palette', () => {
         expect(note()).toBe('No documents found');
     });
 
+    it('finds a plan of .briefback by its path, typed nearly as written, on the Docs tab and on the All tab before the files, and opens it in the Docs tab', async () => {
+        await open('docs');
+        await search('weekend-pricing/plan');
+
+        expect(names()).toEqual(['plan.md.briefback/weekend-pricing']);
+
+        await open('all');
+        await search('plan');
+
+        const groups = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'));
+
+        expect(groups.indexOf('Docs')).toBeGreaterThanOrEqual(0);
+        expect(groups.indexOf('Docs')).toBeLessThan(groups.includes('Files') ? groups.indexOf('Files') : Infinity);
+
+        await open('docs');
+        await search('weekend-pricing/plan');
+        press('Enter');
+        await settle(200);
+
+        const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
+
+        expect(ui.sidePanelTab).toBe('docs');
+        expect(manager('docs').tabs.active?.path).toBe('.briefback/weekend-pricing/plan.md');
+    });
+
     it('finds a file the tree shows although the project\'s list of files leaves it out, as it does one that git ignores', async () => {
         // The fixture's list has no tsconfig.json, its folder has.
         await open('files');

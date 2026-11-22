@@ -73,10 +73,11 @@
 
 **This stage:** the Docs tab's scope is built from the tree it holds (`docSourcesOf` over `manager.tree`), live; `isDocumentPath` and `tabOf` use the registry's static rule; `openDocument`, chips, task results and the palette open a path in the Docs tab by it; the empty state and the labels.
 
-- [ ] Complete
-  - [ ] the scope from the tree, observed (a root that appears through the watch shows up)
-  - [ ] `docsScope.ts`, `openInFiles`, `openDocument`, `tasksScope`, the palette's `matchDocs` source
-  - [ ] a fixture with a `.briefback` tree, a screenshot of the Docs tab
+- [x] Complete
+  - [x] the scope from the tree, observed (`docsScopeOf(manager)`: a `roots` getter over `docSourcesOf` and the tree's entries; a root that appears through the watch shows up, tested with a mobx reaction)
+  - [x] `docsScope.ts` (the static `isDocumentPath` of the protocol, `DOCS_ROOT` kept for a task's document result), `openInFiles` and the palette follow by `tabOf`; `openDocument` and `tasksScope` unchanged (they name `.clowdy/docs`)
+  - [x] the fixture's `.briefback` tree (Stage 1), a screenshot of the Docs tab: Briefback and Documents as two gray labels with their trees
+  - Known, left: a root that holds only empty or non-Markdown folders is still drawn (the tree cannot tell before it lists the root); the empty text is `No documents found`
 
 **Done when:** in the fixtures page the Docs tab shows Briefback and Documents as two gray labels with their trees, a plan opened from it is a tab of the Docs tab only, and Cmd+K's Docs tab finds a file of `.briefback`.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/features && bun run typecheck`, and a screenshot.
