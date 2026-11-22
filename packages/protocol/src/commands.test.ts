@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { MAX_ATTACHMENTS_PER_MESSAGE } from './api';
+import { MAX_ATTACHMENTS_PER_MESSAGE, MAX_BASE_BRANCH_LENGTH, MAX_SETUP_COMMAND_LENGTH, MAX_SETUP_FILES } from './api';
 import { commandSchema } from './commands';
 
 const base = { requestId: 'req-00000001' };
@@ -83,5 +83,40 @@ describe('task.archive and task.unarchive', () => {
         expect(commandSchema.safeParse({ ...base, type: 'task.unarchive' }).success).toBe(false);
         // What it restores is the batch of the task, not something a client picks: a field that is not part of the command is dropped on parsing.
         expect(commandSchema.parse({ ...base, type: 'task.unarchive', taskId: 't1', cancel: true })).not.toHaveProperty('cancel');
+    });
+});
+
+describe('project.updateFolder', () => {
+    const update = (settings: unknown) => ({ ...base, type: 'project.updateFolder', projectId: 'p1', folderId: 'f1', settings });
+
+    test('takes a base branch and a setup, each of which may be cleared with null or left out', () => {
+        expect(commandSchema.safeParse(update({ baseBranch: 'origin/next', setup: { files: ['.env', '.env*'], command: 'bun install' } })).success).toBe(true);
+        expect(commandSchema.safeParse(update({ baseBranch: null, setup: null })).success).toBe(true);
+        expect(commandSchema.safeParse(update({ setup: { files: [] } })).success).toBe(true);
+        expect(commandSchema.safeParse(update({})).success).toBe(true);
+    });
+
+    test('needs the project, the folder and the settings', () => {
+        expect(commandSchema.safeParse({ ...base, type: 'project.updateFolder', folderId: 'f1', settings: {} }).success).toBe(false);
+        expect(commandSchema.safeParse({ ...base, type: 'project.updateFolder', projectId: 'p1', settings: {} }).success).toBe(false);
+        expect(commandSchema.safeParse({ ...base, type: 'project.updateFolder', projectId: 'p1', folderId: '', settings: {} }).success).toBe(false);
+        expect(commandSchema.safeParse({ ...base, type: 'project.updateFolder', projectId: 'p1', folderId: 'f1' }).success).toBe(false);
+    });
+
+    test('holds the limits: a branch name, the number of files and the length of a command', () => {
+        expect(commandSchema.safeParse(update({ baseBranch: '' })).success).toBe(false);
+        expect(commandSchema.safeParse(update({ baseBranch: 'b'.repeat(MAX_BASE_BRANCH_LENGTH) })).success).toBe(true);
+        expect(commandSchema.safeParse(update({ baseBranch: 'b'.repeat(MAX_BASE_BRANCH_LENGTH + 1) })).success).toBe(false);
+        expect(commandSchema.safeParse(update({ setup: { files: Array.from({ length: MAX_SETUP_FILES }, (_, index) => `f${ index }`) } })).success).toBe(true);
+        expect(commandSchema.safeParse(update({ setup: { files: Array.from({ length: MAX_SETUP_FILES + 1 }, (_, index) => `f${ index }`) } })).success).toBe(false);
+        expect(commandSchema.safeParse(update({ setup: { files: [''] } })).success).toBe(false);
+        expect(commandSchema.safeParse(update({ setup: { files: [], command: 'x'.repeat(MAX_SETUP_COMMAND_LENGTH) } })).success).toBe(true);
+        expect(commandSchema.safeParse(update({ setup: { files: [], command: 'x'.repeat(MAX_SETUP_COMMAND_LENGTH + 1) } })).success).toBe(false);
+    });
+
+    test('the files are a list of strings, and a setup has to name them', () => {
+        expect(commandSchema.safeParse(update({ setup: { command: 'bun install' } })).success).toBe(false);
+        expect(commandSchema.safeParse(update({ setup: { files: '.env' } })).success).toBe(false);
+        expect(commandSchema.safeParse(update({ baseBranch: 3 })).success).toBe(false);
     });
 });

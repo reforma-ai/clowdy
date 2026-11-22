@@ -1,8 +1,8 @@
 import { TERMINAL_RUN_STATUSES } from '@clowdy/protocol';
 
-import { parseJson } from './json';
+import { parseJson, toJson } from './json';
 
-import type { Project, ProjectFolder, ProjectSettings, TaskStatus } from '@clowdy/protocol';
+import type { FolderSettings, Project, ProjectFolder, ProjectSettings, TaskStatus } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
 
 interface ProjectRow {
@@ -25,6 +25,7 @@ interface FolderRow {
     id: string;
     project_id: string;
     path: string;
+    settings: string | null;
 }
 
 const toProject = (row: ProjectRow, folders: ProjectFolder[]): Project => ({
@@ -47,7 +48,11 @@ export interface ProjectCounts {
     activeRuns: number;
 }
 
-const toFolder = (row: FolderRow): ProjectFolder => ({ id: row.id, path: row.path });
+function toFolder(row: FolderRow): ProjectFolder {
+    const settings = parseJson<FolderSettings>(row.settings);
+
+    return { id: row.id, path: row.path, ...(settings && { settings }) };
+}
 
 function foldersOf(db: Database, projectId: string): ProjectFolder[] {
     return (db.query('SELECT * FROM project_folders WHERE project_id = ? ORDER BY position').all(projectId) as FolderRow[]).map(toFolder);
@@ -89,7 +94,7 @@ export function listProjects(db: Database): Project[] {
     return rows.map(row => toProject(row, folders.get(row.id) ?? []));
 }
 
-/** Writes the project and its folders, which replace the ones it had. `personal` is set when the row is made and never changes. */
+/** Writes the project and its folders, which replace the ones it had (with their settings: a folder written without its `settings` loses them). `personal` is set when the row is made and never changes. */
 export function upsertProject(db: Database, project: Project): void {
     db.query(`
         INSERT INTO projects (id, name, task_prefix, settings, created_at, personal, position) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -97,9 +102,9 @@ export function upsertProject(db: Database, project: Project): void {
     `).run(project.id, project.name, project.taskPrefix, JSON.stringify(project.settings), project.createdAt, project.personal ? 1 : 0, project.position);
     db.query('DELETE FROM project_folders WHERE project_id = ?').run(project.id);
 
-    const insert = db.query('INSERT INTO project_folders (id, project_id, path, position) VALUES (?, ?, ?, ?)');
+    const insert = db.query('INSERT INTO project_folders (id, project_id, path, position, settings) VALUES (?, ?, ?, ?, ?)');
 
-    project.folders.forEach((folder, position) => insert.run(folder.id, project.id, folder.path, position));
+    project.folders.forEach((folder, position) => insert.run(folder.id, project.id, folder.path, position, toJson(folder.settings)));
 }
 
 /** The place after the last project the person ordered; the personal space is not in the line. */

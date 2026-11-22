@@ -5,10 +5,10 @@ import { join } from 'node:path';
 
 import { gitRead } from '../src/domain/git';
 import { CommandError } from '../src/errors';
-import { defaultBranchOf, folderGit, parseWorktrees, projectFolderGit } from '../src/git/state';
+import { baseOf, defaultBranchOf, folderGit, parseWorktrees, projectFolderGit } from '../src/git/state';
 import { cleanTempDirs, git, Harness, makeRepo, startHarness, tempDir } from './helpers';
 
-import type { FolderGit, Project } from '@clowdy/protocol';
+import type { FolderGit, FolderSettings, Project, ProjectFolder } from '@clowdy/protocol';
 
 afterAll(cleanTempDirs);
 
@@ -241,6 +241,67 @@ describe('defaultBranchOf', () => {
     });
 });
 
+describe('baseOf', () => {
+    const folderOf = (path: string, settings?: FolderSettings): ProjectFolder => ({ id: 'fld_base', path, ...(settings && { settings }) });
+
+    test('is the default branch for a folder with no settings or no base branch', async () => {
+        const { work } = clone('next');
+
+        expect(await baseOf(folderOf(work))).toBe('origin/next');
+        expect(await baseOf(folderOf(work, {}))).toBe('origin/next');
+        expect(await baseOf(folderOf(work, { setup: { files: ['.env'] } }))).toBe('origin/next');
+        expect(await baseOf(folderOf(work))).toBe(await defaultBranchOf(work));
+    });
+
+    test('is the configured branch when the repository has it as a local branch', async () => {
+        const { work } = clone();
+
+        git(work, 'branch', 'develop');
+        expect(await baseOf(folderOf(work, { baseBranch: 'develop' }))).toBe('develop');
+        expect(await baseOf(folderOf(work, { baseBranch: 'main' }))).toBe('main');
+    });
+
+    test('accepts a branch of a remote, written with the remote\'s name, and a branch with a slash in it', async () => {
+        const { work } = clone();
+
+        git(work, 'branch', 'team/next');
+        expect(await baseOf(folderOf(work, { baseBranch: 'origin/dev' }))).toBe('origin/dev');
+        expect(await baseOf(folderOf(work, { baseBranch: 'team/next' }))).toBe('team/next');
+    });
+
+    test('skips a configured branch the repository does not have, so the default stands', async () => {
+        const { work } = clone();
+
+        // `dev` exists on the remote only: a bare name is a local branch.
+        for (const baseBranch of ['nope', 'dev', 'origin/nope', 'refs/heads/main', 'MAIN', 'origin']) {
+            expect(await baseOf(folderOf(work, { baseBranch })), baseBranch).toBe('origin/main');
+        }
+
+        const plain = makeRepo(tempDir('git-state'), 'plain');
+
+        expect(await baseOf(folderOf(plain, { baseBranch: 'develop' }))).toBe('main');
+    });
+
+    test('does not take a tag or a deleted branch for a branch', async () => {
+        const repo = makeRepo(tempDir('git-state'), 'app');
+
+        git(repo, 'tag', 'v1');
+        git(repo, 'branch', 'gone');
+        git(repo, 'branch', '-D', 'gone');
+        expect(await baseOf(folderOf(repo, { baseBranch: 'v1' }))).toBe('main');
+        expect(await baseOf(folderOf(repo, { baseBranch: 'gone' }))).toBe('main');
+    });
+
+    test('is nothing for a repository with no commit or a folder that is no repository, whatever is configured', async () => {
+        const empty = tempDir('git-state');
+
+        expect(await baseOf(folderOf(empty, { baseBranch: 'main' }))).toBeUndefined();
+
+        git(empty, 'init', '-q', '-b', 'main');
+        expect(await baseOf(folderOf(empty, { baseBranch: 'main' }))).toBeUndefined();
+    });
+});
+
 describe('gitRead', () => {
     test('tells git\'s own no from a git that could not be asked', async () => {
         expect(await gitRead(tempDir('git-state'), ['rev-parse', '--show-toplevel'])).toEqual({ ok: false, reason: 'failed' });
@@ -307,6 +368,21 @@ describe('projectFolderGit', () => {
         expect((await failure(projectFolderGit(project, 'fld_other'))).code).toBe('not_found');
         expect((await failure(projectFolderGit(project, 'fld_gone'))).code).toBe('unavailable');
     });
+
+    test('answers the folder\'s own base as the default branch when its repository has it, and the default otherwise', async () => {
+        const { work } = clone();
+        const other = makeRepo(tempDir('git-state'), 'other');
+        const project = projectOf([
+            { id: 'fld_dev', path: work, settings: { baseBranch: 'origin/dev' } },
+            { id: 'fld_missing', path: other, settings: { baseBranch: 'origin/dev' } },
+            { id: 'fld_plain', path: work },
+        ]);
+
+        // The same folder answers each entry by its own settings, as the same path in two projects would.
+        expect(await projectFolderGit(project, 'fld_dev')).toMatchObject({ isRepository: true, defaultBranch: 'origin/dev' });
+        expect(await projectFolderGit(project, 'fld_plain')).toMatchObject({ isRepository: true, defaultBranch: 'origin/main' });
+        expect(await projectFolderGit(project, 'fld_missing')).toMatchObject({ isRepository: true, defaultBranch: 'main' });
+    });
 });
 
 describe('GET /v1/projects/:id/git', () => {
@@ -338,5 +414,25 @@ describe('GET /v1/projects/:id/git', () => {
         expect((await h.fetch(`${ route }?folderId=${ second.id }`)).status).toBe(503);
         expect((await fetch(`${ h.url }${ route }?folderId=${ first.id }`)).status).toBe(401);
         expect((await h.fetch(`/v1/projects/prj_unknown/git?folderId=${ first.id }`)).status).toBe(404);
+    });
+
+    test('answers the folder\'s base branch as its default once the person sets one, and the repository\'s own again once it is cleared or gone', async () => {
+        const repo = realpathSync(makeRepo(tempDir('git-state'), 'app'));
+        const { project } = h.ok('project.add', { folders: [repo] });
+        const folderId = project.folders[0].id as string;
+        const defaultOf = async () => (await (await h.fetch(`/v1/projects/${ project.id }/git?folderId=${ folderId }`)).json() as Repository).defaultBranch;
+
+        git(repo, 'branch', 'develop');
+        expect(await defaultOf()).toBe('main');
+
+        h.ok('project.updateFolder', { projectId: project.id, folderId, settings: { baseBranch: 'develop' } });
+        expect(await defaultOf()).toBe('develop');
+
+        git(repo, 'branch', '-D', 'develop');
+        expect(await defaultOf()).toBe('main');
+
+        git(repo, 'branch', 'develop');
+        h.ok('project.updateFolder', { projectId: project.id, folderId, settings: { baseBranch: null } });
+        expect(await defaultOf()).toBe('main');
     });
 });

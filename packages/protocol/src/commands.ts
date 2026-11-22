@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { PERMISSION_PRESETS } from './agents';
-import { MAX_ATTACHMENTS_PER_MESSAGE, MAX_PROJECT_FOLDERS, MAX_PROJECT_ICON_LENGTH } from './api';
+import { MAX_ATTACHMENTS_PER_MESSAGE, MAX_BASE_BRANCH_LENGTH, MAX_PROJECT_FOLDERS, MAX_PROJECT_ICON_LENGTH, MAX_SETUP_COMMAND_LENGTH, MAX_SETUP_FILES } from './api';
 import { LAST_USED, NO_PROJECT_ICON } from './domain';
 
 /**
@@ -50,6 +50,27 @@ export const commandSchema = z.discriminatedUnion('type', [
             targetBranch: z.string().nullable().optional(),
             icon: z.union([z.literal(NO_PROJECT_ICON), z.string().max(MAX_PROJECT_ICON_LENGTH).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/, 'The icon must be a PNG data URL')]).nullable().optional(),
         }).optional(),
+    }),
+    /**
+     * Sets what the worktrees made from one folder of the project need (`FolderSettings`): the branch they start from and a setup. The settings belong to this folder of this
+     * project, so the same path in another project has its own. A field that is left out stays, one set to `null` is cleared (the folder's default branch and no setup again);
+     * `setup` is replaced whole. `setup.files` are paths below the folder written with `/`, or with a `*` in the last segment (`.env*`): none absolute, with a drive, a `\`,
+     * a `.` or `..` segment or an empty one, at most `MAX_SETUP_FILES`; a setup with no files and no command is no setup. `command` is at most `MAX_SETUP_COMMAND_LENGTH` characters,
+     * `baseBranch` a name of at most `MAX_BASE_BRANCH_LENGTH`. Refused (`invalid`) otherwise, and with `not_found` for a folder the project does not have and `conflict` for the
+     * personal space. Answers `{ project }`.
+     */
+    z.object({
+        ...base,
+        type: z.literal('project.updateFolder'),
+        projectId: z.string(),
+        folderId: z.string().min(1),
+        settings: z.object({
+            baseBranch: z.string().min(1).max(MAX_BASE_BRANCH_LENGTH).nullable().optional(),
+            setup: z.object({
+                files: z.array(z.string().min(1).max(500)).max(MAX_SETUP_FILES),
+                command: z.string().max(MAX_SETUP_COMMAND_LENGTH).optional(),
+            }).nullable().optional(),
+        }),
     }),
     /** Removes the project with its chats, tasks, runs, streams and attachments; its folder and the files in it stay. Refused for the personal space and while any run of the project is unfinished. */
     z.object({ ...base, type: z.literal('project.delete'), projectId: z.string() }),

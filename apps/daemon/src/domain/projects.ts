@@ -20,6 +20,7 @@ import {
 import { conflict, invalid, notFound, unavailable } from '../errors';
 import { folderHead } from '../git/state';
 import { newId } from '../ids';
+import { mergeFolderSettings } from './folderSettings';
 import { git, gitLine } from './git';
 
 import type { Project, ProjectFolder, ProjectFolderInfo, ProjectInfo, ProjectSettings, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
@@ -27,6 +28,7 @@ import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
 import type { SkillsService } from '../skills/service';
 import type { Store } from '../store';
+import type { FolderSettingsPatch } from './folderSettings';
 
 /** The folder of the personal space inside the daemon's data folder. */
 const PERSONAL_NAME = 'Personal';
@@ -398,6 +400,36 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
             // The skills watchers hold the old folders; the next request for skills watches the new ones.
             store.afterCommit(() => skills.forgetProject(current));
         }
+
+        return next;
+    });
+}
+
+/**
+ * Changes the settings of one folder of the project (see `FolderSettings`; a field set to `null` is cleared). The settings belong to the project's row of the folder, so
+ * the same path in another project is not touched. `conflict` for the personal space, `not_found` for a folder the project does not have, `invalid` for a branch or a
+ * setup that is refused. The agents need not be stopped: a worktree reads the settings when it is made.
+ */
+export function updateProjectFolder(store: Store, projectId: string, folderId: string, patch: FolderSettingsPatch): Project {
+    return store.tx(() => {
+        const current = requireProject(store, projectId);
+
+        if (current.personal) {
+            throw conflict('The personal space has no worktrees to set up');
+        }
+
+        const folder = current.folders.find(candidate => candidate.id === folderId);
+
+        if (!folder) {
+            throw notFound('Folder', folderId);
+        }
+
+        const { settings: _, ...bare } = folder;
+        const settings = mergeFolderSettings(folder.settings, patch);
+        const next: Project = { ...current, folders: current.folders.map(candidate => (candidate.id === folderId ? { ...bare, ...(settings && { settings }) } : candidate)) };
+
+        upsertProject(store.db, next);
+        publishProject(store, next);
 
         return next;
     });

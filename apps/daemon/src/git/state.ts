@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { gitLine, gitOutput, gitRead } from '../domain/git';
 import { CommandError, invalid, notFound, unavailable } from '../errors';
 
-import type { FolderGit, GitBranch, GitWorktree, Project, ProjectFolderInfo } from '@clowdy/protocol';
+import type { FolderGit, GitBranch, GitWorktree, Project, ProjectFolder, ProjectFolderInfo } from '@clowdy/protocol';
 
 /** How much of a commit's hash a worktree's `head` keeps. */
 const SHORT_HASH_LENGTH = 7;
@@ -128,6 +128,26 @@ export async function defaultBranchOf(folder: string): Promise<string | undefine
     return pickDefaultBranch(remoteHead, branches, head);
 }
 
+/**
+ * `configured` (a folder's own `baseBranch`) when the repository has it as a branch, written as `readBranches` writes it: `main` for a local one, `origin/next` for a remote's.
+ * A configured branch the repository does not have is skipped, so the default is the answer: a setting that went stale (the branch was deleted, the folder is another
+ * repository now) must not stop a worktree from being made.
+ */
+function pickBase(configured: string | undefined, branches: readonly GitBranch[], pickDefault: () => string | undefined): string | undefined {
+    return configured !== undefined && branches.some(branch => branch.name === configured) ? configured : pickDefault();
+}
+
+/**
+ * The ref a new worktree of the project's folder starts from: the folder's own `settings.baseBranch` when its repository has that branch (local or a remote's), else
+ * `defaultBranchOf`. Like it, a short name that whoever starts a worktree spells `refs/heads/<name>` or `refs/remotes/<name>`, nothing in a repository with no commit, and
+ * no network.
+ */
+export async function baseOf(folder: ProjectFolder): Promise<string | undefined> {
+    const [remoteHead, branches, head] = await Promise.all([originHead(folder.path), readBranches(folder.path), folderHead(folder.path)]);
+
+    return pickBase(folder.settings?.baseBranch, branches, () => pickDefaultBranch(remoteHead, branches, head));
+}
+
 /** Whether something is there on the disk, a folder or a file. */
 async function isThere(path: string): Promise<boolean> {
     try {
@@ -194,8 +214,9 @@ function shortHash(hash: string): string {
  * What git says about a folder (`GET /v1/projects/:id/git`). A folder counts as a repository only when it is the root of a working tree: a worktree is made of the whole
  * repository, so a folder inside one has none of its own. A git that does not answer (not there, too slow, too much to say) is `unavailable`, never an empty answer or "no
  * repository", which a caller would take for the truth. The reads of each worktree's status run one after another, so a repository with many worktrees does not start a crowd of processes.
+ * `baseBranch` is the folder's configured base (`pickBase`): `defaultBranch` is that branch when the repository has it.
  */
-export async function folderGit(folder: string): Promise<FolderGit> {
+export async function folderGit(folder: string, baseBranch?: string): Promise<FolderGit> {
     const root = await placeOf(folder);
     const top = await gitRead(folder, ['rev-parse', '--show-toplevel']);
 
@@ -204,7 +225,7 @@ export async function folderGit(folder: string): Promise<FolderGit> {
     if (!top.ok || !root || await placeOf(top.stdout.trim()) !== root) return { isRepository: false };
 
     const [head, remoteHead, all] = await Promise.all([folderHead(folder), originHead(folder), readBranches(folder)]);
-    const defaultBranch = pickDefaultBranch(remoteHead, all, head);
+    const defaultBranch = pickBase(baseBranch, all, () => pickDefaultBranch(remoteHead, all, head));
     const worktrees = await worktreesOf(folder, root, head);
 
     return {
@@ -217,7 +238,10 @@ export async function folderGit(folder: string): Promise<FolderGit> {
     };
 }
 
-/** `folderGit` for one folder of a project, by its id: `invalid` for none, `not_found` for a folder the project does not have, `unavailable` for one gone from the disk. */
+/**
+ * `folderGit` for one folder of a project, by its id: `invalid` for none, `not_found` for a folder the project does not have, `unavailable` for one gone from the disk. The
+ * `defaultBranch` is the folder's base, `baseOf`: its configured base branch when the repository has it (read from the one list of branches, not a second time).
+ */
 export async function projectFolderGit(project: Project, folderId: string): Promise<FolderGit> {
     if (!folderId) throw invalid('The folder is not given');
 
@@ -226,7 +250,7 @@ export async function projectFolderGit(project: Project, folderId: string): Prom
     if (!folder) throw notFound('Folder', folderId);
 
     try {
-        if ((await stat(folder.path)).isDirectory()) return await folderGit(folder.path);
+        if ((await stat(folder.path)).isDirectory()) return await folderGit(folder.path, folder.settings?.baseBranch);
     }
     catch (error) {
         // A git that did not answer is its own failure; the rest is a folder that is not there, or cannot be read.
