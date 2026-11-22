@@ -78,7 +78,6 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
         maxRuns: 8,
         engineCaps: { claude: 6, codex: 4, fake: 1000 },
         defaultEngineCap: 4,
-        agentPermissions: 'allow',
         maxProcesses: 24,
         maxThreadDepth: 3,
         maxActiveThreads: 30,

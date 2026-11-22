@@ -96,7 +96,7 @@ export interface EngineStartOptions {
     title?: SessionTitle;
     /** Tools the runtime executes itself. The engine exposes them to the model and calls `execute`. */
     tools: ToolDefinition[];
-    /** Where an agent's permission request goes when the agent's preset asks (`ResolvedAgent.permission.answer`); without it every request is answered by the daemon's own policy. */
+    /** Where an agent's permission request goes when the agent's preset asks (`ResolvedAgent.permission.answer`); without it a request that must be asked is refused. */
     approve?: Approver;
     /** Aborted when the run is cancelled or the daemon stops. The session must end promptly. */
     signal: AbortSignal;

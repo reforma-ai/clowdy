@@ -10,7 +10,6 @@ import { testSpec } from './helpers';
 
 import type { ConfigChange, SelectOption } from '../src/engine/acp/conversation';
 import type { ResolvedAgent } from '../src/engine/acp/registry';
-import type { PermissionPolicy } from '../src/engine/acp/session';
 import type { ApprovalRequest } from '../src/engine/types';
 import type { Provider } from '../src/providers/types';
 import type { Rig } from './acp-helpers';
@@ -90,7 +89,7 @@ describe.each(PROTOCOLS)('the permission mode through a session over %s', (proto
         current.registry.resolve = async (id) => {
             const found = await resolve(id);
 
-            return found.ok ? { ok: true, agent: { ...found.agent, ...(permission && { permission }) } } : found;
+            return found.ok ? { ok: true, agent: { ...found.agent, permission } } : found;
         };
 
         const { session } = current.start('choice', start);
@@ -109,9 +108,8 @@ describe.each(PROTOCOLS)('the permission mode through a session over %s', (proto
         expect(await chosen({ preset: 'auto', mode: 'auto', answer: 'ask' }, { resumeSessionId: 'earlier-7' })).toMatchObject({ mode: 'auto', sets: 1 });
     });
 
-    test('is not sent for a preset that sets none, nor for an agent with no preset at all', async () => {
+    test('is not sent for a preset that sets none', async () => {
         expect(await chosen({ preset: 'ask', answer: 'ask' })).toEqual({ model: 'fast', effort: 'high', sets: 0 });
-        expect(await chosen(undefined)).toEqual({ model: 'fast', effort: 'high', sets: 0 });
     });
 });
 
@@ -124,7 +122,7 @@ describe.each(PROTOCOLS)('an agent the person has not chosen a preset for, throu
     });
 
     /** The real provider's `permissions` (or none) on the fake agent, which offers the modes of Claude's adapter; the registry resolves it as it does for a run. */
-    function agentOn(provider: Pick<Provider, 'permissions'>, policy?: PermissionPolicy): { registry: AgentRegistry; run: (prompt: string) => Promise<{ text: string; asked: ApprovalRequest[] }> } {
+    function agentOn(provider: Pick<Provider, 'permissions'>): { registry: AgentRegistry; run: (prompt: string) => Promise<{ text: string; asked: ApprovalRequest[] }> } {
         const registry = new AgentRegistry({
             discovery: quietDiscovery(),
             providers: [{ ...provider, spec: { ...testSpec('stub').spec, launch: { kind: 'binary', args: [protocol === 'v2' ? FAKE_AGENT_V2 : FAKE_AGENT] }, env: { FAKE_ACP_MODES: '1' }, protocol } }],
@@ -133,7 +131,7 @@ describe.each(PROTOCOLS)('an agent the person has not chosen a preset for, throu
         registry.update('stub', { path: process.execPath });
         bridge = new ToolBridge();
 
-        const engine = new AcpEngine('stub', { registry, bridge, env: process.env, permissions: policy, backgroundHandoffMs: 400 });
+        const engine = new AcpEngine('stub', { registry, bridge, env: process.env, backgroundHandoffMs: 400 });
 
         return {
             registry,
@@ -171,8 +169,8 @@ describe.each(PROTOCOLS)('an agent the person has not chosen a preset for, throu
         expect(asked).toHaveLength(1);
     });
 
-    test('an agent whose provider declares none starts on the client\'s Full access: no mode, every request allowed, nobody asked, whatever the daemon\'s policy says', async () => {
-        const { run } = agentOn({}, 'reject');
+    test('an agent whose provider declares none starts on the client\'s Full access: no mode, every request allowed, nobody asked', async () => {
+        const { run } = agentOn({});
         const { text, asked } = await run(REQUEST);
 
         expect(read(text)).toEqual({ choice: { model: 'fast', effort: 'high', sets: 0 }, answer: 'permission: once' });
@@ -180,7 +178,7 @@ describe.each(PROTOCOLS)('an agent the person has not chosen a preset for, throu
     });
 
     test('the person\'s choice wins over the default', async () => {
-        const full = agentOn({ permissions: claude.permissions }, 'reject');
+        const full = agentOn({ permissions: claude.permissions });
 
         full.registry.update('stub', { permission: 'full' });
 

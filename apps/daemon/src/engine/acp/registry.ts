@@ -41,11 +41,8 @@ export interface ResolvedAgent {
     sessionMeta?: Record<string, unknown>;
     /** The `_meta` of the client capabilities in `initialize` (see `AgentSpec.clientMeta`). */
     clientMeta?: Record<string, unknown>;
-    /**
-     * The permission preset the agent runs on and what it means for this start: the person's choice, else the provider's default. Every agent the registry
-     * resolves has one; it is absent only on an agent a test builds without one, which the engine's own policy then answers (`CLOWDY_AGENT_PERMISSIONS`).
-     */
-    permission?: { preset: PermissionPresetId; mode?: string; answer: 'ask' | 'allow' };
+    /** The permission preset the agent runs on and what it means for this start: the person's choice, else the provider's default. */
+    permission: { preset: PermissionPresetId; mode?: string; answer: 'ask' | 'allow' };
 }
 
 export type Resolution = { ok: true; agent: ResolvedAgent } | { ok: false; message: string };
@@ -286,7 +283,7 @@ export class AgentRegistry {
      * What the preset the agent runs on does to its next start: the person's choice, or the provider's default when they chose none or chose one the agent no
      * longer offers.
      */
-    private permissionPlan(id: string, override: AgentOverride): { permission: NonNullable<ResolvedAgent['permission']>; effect: SettingEffect } {
+    private permissionPlan(id: string, override: AgentOverride): { permission: ResolvedAgent['permission']; effect: SettingEffect } {
         const support = this.permissionsOf(id);
         const preset = chosenPreset(support, override) ?? support.default;
         const { mode, effect, answer } = support.apply(preset);

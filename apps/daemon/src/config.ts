@@ -30,8 +30,6 @@ export interface Config {
     /** Threads one chat may start over its life (its direct ones), finished ones included. */
     maxThreads: number;
     timings: Timings;
-    /** How the daemon answers an agent's permission requests: nobody is at a terminal, so it decides, the same for every agent. */
-    agentPermissions: 'allow' | 'reject';
     /** Multiplier of the fake engine's delays; 0 removes them (tests). */
     fakeSpeed: number;
     /**
@@ -91,16 +89,6 @@ function numberFrom(env: Env, name: string, fallback: number, check: (value: num
 
 const isCap = (value: number) => Number.isInteger(value) && value >= 1;
 
-function permissions(env: Env): Config['agentPermissions'] {
-    const raw = env.CLOWDY_AGENT_PERMISSIONS || 'allow';
-
-    if (raw !== 'allow' && raw !== 'reject') {
-        throw new ConfigError(`CLOWDY_AGENT_PERMISSIONS must be allow or reject, got "${ raw }"`);
-    }
-
-    return raw;
-}
-
 function ripgrepFrom(env: Env): Config['ripgrep'] {
     const raw = env.CLOWDY_RG?.trim();
 
@@ -146,7 +134,6 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
             ...DEFAULT_TIMINGS,
             noticeWindowMs: numberFrom(env, 'CLOWDY_THREAD_NOTICE_WINDOW_MS', DEFAULT_TIMINGS.noticeWindowMs, v => Number.isInteger(v) && v >= 0, 'a whole number of milliseconds, 0 or more'),
         },
-        agentPermissions: permissions(env),
         fakeSpeed: numberFrom(env, 'CLOWDY_FAKE_SPEED', 1, v => v >= 0, 'a number of at least 0'),
         ripgrep: ripgrepFrom(env),
         systemSkillsSource: env.CLOWDY_SYSTEM_SKILLS_DIR || undefined,

@@ -218,7 +218,7 @@ export class V1Layer implements ProtocolLayer {
                 options: selectsOf(configOptions),
                 model: options.model,
                 effort: options.effort,
-                mode: agent.permission?.mode,
+                mode: agent.permission.mode,
                 set: async ({ configId, value }) => {
                     const answer = await request(connection.agent.request(methods.agent.session.setConfigOption, { sessionId: id, configId, value }));
 

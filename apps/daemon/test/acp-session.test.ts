@@ -73,20 +73,13 @@ eachProtocol('a turn on an ACP agent', (protocol) => {
         expect(events.at(-1)).toEqual({ type: 'done', result: 'done' });
     });
 
-    test('permission requests are answered by the daemon: allow takes the one-time option, reject refuses', async () => {
+    test('on Full access every request is allowed with the one-time option', async () => {
         const allow = use().start('perm');
         const allowed = await collect(allow.session);
 
         await allow.session.close();
-        current?.stop();
-
-        const reject = use({ permissions: 'reject' }).start('perm');
-        const rejected = await collect(reject.session);
-
-        await reject.session.close();
 
         expect(textOf(allowed)).toBe('permission: once');
-        expect(textOf(rejected)).toBe('permission: reject');
     });
 
     describe('on a preset that asks', () => {
@@ -124,20 +117,13 @@ eachProtocol('a turn on an ACP agent', (protocol) => {
             expect(textOf(events)).toBe('permission: cancelled');
         });
 
-        test('with no one to ask, the daemon\'s own policy answers, as before any preset existed', async () => {
-            const allowed = use({ permission: ask }).start('perm');
-            const allowedEvents = await collect(allowed.session);
+        test('with no one to ask, the request is refused', async () => {
+            const { session } = use({ permission: ask }).start('perm');
+            const events = await collect(session);
 
-            await allowed.session.close();
-            current?.stop();
+            await session.close();
 
-            const rejected = use({ permission: ask, permissions: 'reject' }).start('perm');
-            const rejectedEvents = await collect(rejected.session);
-
-            await rejected.session.close();
-
-            expect(textOf(allowedEvents)).toBe('permission: once');
-            expect(textOf(rejectedEvents)).toBe('permission: reject');
+            expect(textOf(events)).toBe('permission: reject');
         });
 
         test('two requests at once are both put to the run, and each gets its own answer', async () => {
@@ -208,8 +194,8 @@ eachProtocol('a turn on an ACP agent', (protocol) => {
             expect(ended).toBe(true);
         });
 
-        test('an `allow` answer needs no one to ask, whatever the daemon\'s policy says', async () => {
-            const { session } = use({ permission: { preset: 'full', answer: 'allow' }, permissions: 'reject' }).start('perm', { approve: async () => 'reject' });
+        test('an `allow` answer needs no one to ask', async () => {
+            const { session } = use({ permission: { preset: 'full', answer: 'allow' } }).start('perm', { approve: async () => 'reject' });
             const events = await collect(session);
 
             await session.close();

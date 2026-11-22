@@ -13,7 +13,7 @@ import type { EngineEvent, EngineFork, EngineSession, EngineStartOptions } from 
 import type { BridgeAccess, ToolBridge } from './bridge';
 import type { AgentProtocol } from './catalog';
 import type { LayerHost, PromptState, ProtocolLayer } from './layer';
-import type { PermissionOption, PermissionParams } from './permission';
+import type { PermissionParams } from './permission';
 import type { AgentRegistry, ResolvedAgent } from './registry';
 
 /** How long `close()` waits for the agent's process to be gone. */
@@ -30,9 +30,6 @@ const CANCEL_GRACE_MS = 1000;
 
 type Env = Record<string, string | undefined>;
 
-/** How the daemon answers `session/request_permission`: nobody is at a terminal, so it decides for every agent alike. */
-export type PermissionPolicy = 'allow' | 'reject';
-
 export interface SessionDeps {
     agentId: string;
     registry: AgentRegistry;
@@ -44,7 +41,6 @@ export interface SessionDeps {
     shim?: Shim;
     /** The daemon's own environment, which the agent's is built from. */
     env: Env;
-    permissions: PermissionPolicy;
     /** The session's cumulative cost in USD as of its last prompt, kept in memory per session id (the agent reports totals). */
     costs: Map<string, number>;
     clientVersion: string;
@@ -515,18 +511,21 @@ export class AcpSession implements EngineSession {
     }
 
     /**
-     * What the agent is answered when it asks for permission. An agent on a preset that asks (`ResolvedAgent.permission.answer`) has the request put to
-     * the person through the run (`EngineStartOptions.approve`) and is answered with the option of what they decided; any other agent, and one run with
-     * no `approve` (an engine used without the run runtime), is answered by the daemon's policy: the first option of the kinds it takes. A request that
+     * What the agent is answered when it asks for permission, by the preset it runs on (`ResolvedAgent.permission.answer`). `allow` is answered with the
+     * agent's one-time allow. `ask` has the request put to the person through the run (`EngineStartOptions.approve`) and is answered with the option of
+     * what they decided; with no `approve` (an engine used without the run runtime) there is nobody to ask, so the request is refused. A request that
      * comes while the session is ending, or is withdrawn (by the end of the session, or by the agent: `withdrawn`), is answered with nothing, which the
      * layer turns into `cancelled`.
      */
     private async pickPermission(agent: ResolvedAgent, request: PermissionParams, withdrawn: AbortSignal): Promise<string | undefined> {
         const { approve } = this.options;
-        const answer = agent.permission?.answer;
 
-        if (answer !== 'ask' || !approve) {
-            return this.policyOption(request.options, answer === 'allow' ? 'allow' : this.deps.permissions);
+        if (agent.permission.answer === 'allow') {
+            return optionFor(request.options, 'allow_once');
+        }
+
+        if (!approve) {
+            return optionFor(request.options, 'reject');
         }
 
         const ended = AbortSignal.any([this.signal, withdrawn]);
@@ -548,10 +547,5 @@ export class AcpSession implements EngineSession {
 
             return undefined;
         }
-    }
-
-    /** The first option of the kinds a policy takes: the one-time allow (then the lasting one), or the one-time refusal (then the lasting one). */
-    private policyOption(options: readonly PermissionOption[], policy: PermissionPolicy): string | undefined {
-        return optionFor(options, policy === 'allow' ? 'allow_once' : 'reject');
     }
 }
