@@ -26,7 +26,6 @@ import {
     startBlockedReason,
     taskActivity,
     taskGrid,
-    tasksSource,
     toggleDependency,
 } from './taskView';
 
@@ -284,13 +283,6 @@ describe('adjacentStatus', () => {
 
 describe('sources', () => {
     const linear = { provider: 'linear', externalId: 'ENG-1', url: 'https://linear.app/x/issue/ENG-1' };
-
-    it('names the source of the list', () => {
-        expect(tasksSource([])).toBe('Internal');
-        expect(tasksSource([{}, {}])).toBe('Internal');
-        expect(tasksSource([{}, { external: linear }])).toBe('Internal + Linear');
-        expect(tasksSource([{ external: linear }, { external: { provider: 'jira', externalId: '1' } }])).toBe('Linear + Jira');
-    });
 
     it('links to the provider only for a web address', () => {
         expect(externalLink(linear)).toEqual({ label: 'Linear', url: linear.url });

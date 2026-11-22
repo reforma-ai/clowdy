@@ -20,8 +20,6 @@ import type { TaskFilter } from './taskView';
 export type TaskCrumb = Pick<Task, 'id' | 'key'>;
 
 export interface TasksHeaderProps {
-    /** Where the tasks come from: `Internal`, `Internal + Linear`. Only the project's own page says it. */
-    subtitle: string;
     /** The place of a scope: the tasks above it, the root first, and the task itself. Without it the screen is at the project's roots and the title says `Tasks`. */
     path?: { ancestors: readonly TaskCrumb[]; task: TaskCrumb };
     /** A press on a crumb: show the insides of that task, or the project's roots with `null`. */
@@ -52,10 +50,10 @@ export interface TasksHeaderProps {
 }
 
 /**
- * The screen's header: title and source on the left, or the path of the scope in their place; view switch, the sub-tasks toggle of the board, search, filter,
+ * The screen's header: the title on the left (`Archived tasks` while the archive is shown), or the path of the scope in its place; view switch, the sub-tasks toggle of the board, search, filter,
  * the Archive toggle and "+ Task" on the right, which is "+ Sub-task" inside a task. With the archive on, the title and the Archive toggle are all that is left.
  */
-export function TasksHeader({ subtitle, path, onOpenScope, view, onViewChange, showSubtasks, onSubtasksChange, inTask, createHint, onCreate, filter, onFilterChange, statuses, agents, searchRef, onSearchExit, isFilterOpen, onFilterOpenChange, isArchive, onArchiveChange }: TasksHeaderProps) {
+export function TasksHeader({ path, onOpenScope, view, onViewChange, showSubtasks, onSubtasksChange, inTask, createHint, onCreate, filter, onFilterChange, statuses, agents, searchRef, onSearchExit, isFilterOpen, onFilterOpenChange, isArchive, onArchiveChange }: TasksHeaderProps) {
     // One key switches the view, so both items carry its hint. A hint on the other item alone would move between them on every switch and rebuild the button that was just pressed.
     const switchView = commandTooltip('Switch view', 'tasks.view.toggle');
     const createLabel = inTask ? 'New sub-task' : 'New task';
@@ -80,10 +78,7 @@ export function TasksHeader({ subtitle, path, onOpenScope, view, onViewChange, s
                         </Breadcrumb>
                     )
                     : (
-                        <>
-                            <Text variant={ SCREEN_TITLE }>Tasks</Text>
-                            <Text color="secondary" truncate>{ subtitle }</Text>
-                        </>
+                        <Text variant={ SCREEN_TITLE }>{ isArchive ? 'Archived tasks' : 'Tasks' }</Text>
                     ) }
             </div>
 

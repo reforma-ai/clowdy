@@ -5,7 +5,11 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-lg);
-    padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-lg);
+    /*
+     * The title is one line, so the toolbar's buttons, which are taller, set the row's height and the title is centred on them. The row starts less than the title's top
+     * margin by what the buttons overhang the line, which puts the title's line where the title of the list of chats stands: 16px from the top (`AgentList.module.css`).
+     */
+    padding: calc(var(--spacing-xl) + (var(--leading-xl) - var(--spacing-30)) / 2) var(--spacing-xl) var(--spacing-lg);
 }
 
 .titles {

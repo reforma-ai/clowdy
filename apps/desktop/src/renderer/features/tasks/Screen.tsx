@@ -24,7 +24,7 @@ import { TaskList } from './TaskList';
 import { TasksHeader } from './TasksHeader';
 import { DEPTH_LIMIT_HINT } from './taskTree';
 import { sendWithUndo } from './taskUndo';
-import { agentOptions, isFiltering, newestDocPath, NO_FILTER, runsByTask, startBlockedReason, tasksSource } from './taskView';
+import { agentOptions, isFiltering, newestDocPath, NO_FILTER, runsByTask, startBlockedReason } from './taskView';
 import { useArchiveMenu } from './useArchiveMenu';
 import { useTaskById } from './useTaskReadings';
 import { useTasksScope } from './useTasksScope';
@@ -306,7 +306,6 @@ export function Screen() {
         <div ref={ screen } className={ styles.screen } onKeyDownCapture={ onKeyDownCapture } onBlur={ onBlur }>
             <div className={ styles.main }>
                 <TasksHeader
-                    subtitle={ isArchive ? 'Archived tasks' : tasksSource(tasks) }
                     path={ scope && { ancestors, task: scope } }
                     onOpenScope={ open }
                     view={ view }
