@@ -1,4 +1,6 @@
 .trigger {
+    /* A button keeps its size (`flex-shrink: 0`); this one gives way to the buttons at the right of the heading, and its name is cut short with an ellipsis. */
+    flex-shrink: 1;
     gap: var(--spacing-md);
     min-width: 0;
     max-width: 100%;
@@ -18,4 +20,9 @@
 
 .more {
     flex-shrink: 0;
+}
+
+/* The button's content is a flex item that would not shrink under its own text. */
+.trigger > span {
+    min-width: 0;
 }
