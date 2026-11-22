@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { PERMISSION_PRESETS } from './agents';
 import { MAX_ATTACHMENTS_PER_MESSAGE, MAX_PROJECT_FOLDERS, MAX_PROJECT_ICON_LENGTH } from './api';
 import { LAST_USED, NO_PROJECT_ICON } from './domain';
 
@@ -192,6 +193,8 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('run.stopBackground'), runId: z.string(), itemId: z.string() }),
     /** Answers a `question` stream item of a run in `waiting_user`. */
     z.object({ ...base, type: z.literal('run.answer'), runId: z.string(), questionId: z.string(), answer: z.string() }),
+    /** Decides an `approval` stream item that is `open`: the run goes on when none is left. `allow_always` makes Clowdy answer the same request for the rest of the run without asking; the agent itself is told to allow it once. */
+    z.object({ ...base, type: z.literal('run.decide'), runId: z.string(), approvalId: z.string(), decision: z.enum(['allow_once', 'allow_always', 'reject']) }),
 
     /* Agents */
     /** Adds an agent the daemon can run: any command that speaks the Agent Client Protocol on stdio. */
@@ -209,6 +212,8 @@ export const commandSchema = z.discriminatedUnion('type', [
         args: z.array(z.string()).optional(),
         /** Turns the agent's own settings (`AgentInfo.settings`) on or off by id; settings left out keep their value. */
         settings: z.record(z.string(), z.boolean()).optional(),
+        /** Picks one of the agent's permission presets (`AgentInfo.permissions`); `null` goes back to the agent's default. Left out, the choice stays. */
+        permission: z.enum(PERMISSION_PRESETS).nullable().optional(),
     }),
     /** Starts the agent's own login for the person (also to sign in again as someone else). Answers at once; the progress is `AgentInfo.signInSession`. Refused when one is running. */
     z.object({ ...base, type: z.literal('agent.signIn'), id: z.string().min(1) }),

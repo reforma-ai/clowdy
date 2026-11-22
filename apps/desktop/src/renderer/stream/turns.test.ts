@@ -13,6 +13,7 @@ const thought = (at: number, done = true) => item({ kind: 'reasoning', text: 'Hm
 const note = (at: number) => item({ kind: 'note', text: 'started' }, at);
 const failure = (at: number) => item({ kind: 'error', text: 'It failed' }, at);
 const asking = (at: number) => item({ kind: 'question', questionId: `q-${ at }`, text: 'Which one?', options: [] }, at);
+const permission = (at: number, state: 'open' | 'decided' | 'cancelled' | 'expired' = 'open') => item({ kind: 'approval', approvalId: `a-${ at }`, title: 'ls', subject: { kind: 'command', command: 'ls' }, decisions: ['allow_once', 'reject'], state, ...(state === 'decided' && { decision: 'allow_once' as const }) }, at);
 
 const shape = (blocks: StreamBlock[]) => blocks.map((block) => {
     if (block.kind === 'worked') return `worked(${ block.items.length }): ${ block.label }`;
@@ -74,6 +75,15 @@ describe('foldFinishedWork', () => {
         const items = [user(0), tool(1000), failure(2000), tool(3000), said(4000, 'Could not.'), note(5000)];
 
         expect(shape(foldFinishedWork(items, false))).toEqual(['user', 'worked(2): Worked for 4s', 'error', 'assistant', 'note']);
+    });
+
+    it('does not fold away a request for permission that waits, and folds one that is settled with the work', () => {
+        // The turn is over (the person wrote past it), and the open card must still be seen.
+        expect(shape(foldFinishedWork([user(0), said(1000, 'Looking.'), permission(2000), tool(3000), said(4000)], false))).toEqual(['user', 'worked(2): Worked for 4s', 'approval', 'assistant']);
+
+        for (const state of ['decided', 'cancelled', 'expired'] as const) {
+            expect(shape(foldFinishedWork([user(0), said(1000, 'Looking.'), permission(2000, state), tool(3000), said(4000)], false))).toEqual(['user', 'worked(3): Worked for 4s', 'assistant']);
+        }
     });
 
     it('does not fold a question away', () => {

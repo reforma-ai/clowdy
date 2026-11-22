@@ -26,7 +26,7 @@ export interface ConfigChange {
     unchanged: boolean;
 }
 
-/** The select options of one category: `model` picks the model, `thought_level` the reasoning level. */
+/** The select options of one category: `model` picks the model, `thought_level` the reasoning level, `mode` the permission mode. */
 const selectsOf = (options: SelectOption[], category: string): SelectOption[] => options.filter(option => option.category === category);
 
 /** The choice of `option` called `wanted`, by value or by name, case-insensitive. */
@@ -42,6 +42,13 @@ function modelChoice(options: SelectOption[], model: string): ConfigChange | und
     const [option] = selectsOf(options, 'model');
 
     return option && changeTo(option, model);
+}
+
+/** The id of the option that sets the permission mode, and the value of `mode` among its choices. */
+function modeChoice(options: SelectOption[], mode: string): ConfigChange | undefined {
+    const [option] = selectsOf(options, 'mode');
+
+    return option && changeTo(option, mode);
 }
 
 /**
@@ -67,15 +74,18 @@ export interface Choices {
     options: SelectOption[];
     model?: string;
     effort?: string;
+    /** The agent's own id of the permission mode the person's preset asks for (`ResolvedAgent.permission.mode`); absent when the preset sets none. */
+    mode?: string;
     /** Sends one change; gives back the options as they are now, or nothing when the answer lists none. */
     set(change: ConfigChange): Promise<SelectOption[] | undefined>;
 }
 
 /**
- * Puts the session on the model and the reasoning level the run asked for, where the agent offers them. The model goes first: it decides which
- * levels the agent offers, and the answer to a change lists the options as they are now. A choice the agent does not offer is logged and left to it.
+ * Puts the session on the model, the reasoning level and the permission mode the run asked for, where the agent offers them. The model goes first: it
+ * decides which levels (and, for Claude, which modes) the agent offers, and the answer to a change lists the options as they are now. A choice the
+ * agent does not offer is logged and left to it.
  */
-export async function applyChoices({ agent, options, model, effort, set }: Choices): Promise<void> {
+export async function applyChoices({ agent, options, model, effort, mode, set }: Choices): Promise<void> {
     let current = options;
 
     if (model) {
@@ -94,6 +104,17 @@ export async function applyChoices({ agent, options, model, effort, set }: Choic
 
         if (!choice) {
             console.warn(`[clowdy] ${ agent } offers no reasoning level called "${ effort }"${ model ? ` for ${ model }` : '' }; it keeps its own choice`);
+        }
+        else if (!choice.unchanged) {
+            await set(choice);
+        }
+    }
+
+    if (mode) {
+        const choice = modeChoice(current, mode);
+
+        if (!choice) {
+            console.warn(`[clowdy] ${ agent } offers no permission mode called "${ mode }"; it keeps its own choice`);
         }
         else if (!choice.unchanged) {
             await set(choice);

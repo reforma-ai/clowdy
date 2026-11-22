@@ -1,3 +1,5 @@
+import type { PermissionPresetId } from '@clowdy/protocol';
+
 /** How an agent is started over ACP. */
 export type Launch =
     /** The agent's own program speaks ACP when given these arguments (`cursor-agent acp`). */
@@ -13,6 +15,8 @@ export interface SettingEffect {
     env?: Record<string, string | null>;
     /** Tools the agent is not given (Claude's adapter reads them from `_meta.claudeCode.options.disallowedTools`). */
     disallowedTools?: string[];
+    /** Tools the agent may use without asking (Claude's adapter reads them from `_meta.claudeCode.options.allowedTools`, rules such as `Bash(clowdy:*)`). */
+    allowedTools?: string[];
     /** Codex config keys (dotted, as in `-c key=value`) for the session. They reach Codex's adapter in `CODEX_CONFIG`, one JSON object that every setting adds its keys to. */
     codexConfig?: Record<string, boolean | number | string>;
 }
@@ -120,6 +124,8 @@ export interface AgentOverride {
     env?: Record<string, string>;
     /** The values the person chose for the agent's settings (`AgentSettingSpec.id`); one not named has its default. */
     settings?: Record<string, boolean>;
+    /** The permission preset the person chose for the agent (`AgentPermissions`); absent when they have not, and the agent then runs as it did before presets. */
+    permission?: PermissionPresetId;
 }
 
 export const AGENT_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;

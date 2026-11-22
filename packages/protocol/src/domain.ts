@@ -523,7 +523,24 @@ export type StreamItemBody =
     | { kind: 'note'; text: string }
     /** A question the run is waiting on (semi-manual mode); `answer` is set once the user replied. */
     | { kind: 'question'; questionId: string; text: string; options: QuestionOption[]; recommended?: string; answer?: string }
+    /**
+     * A request of the agent for permission to do something, put to the person (an agent on a preset that asks). The run waits in `waiting_user` while any
+     * is `open`. `decisions` are the answers the agent's options allow, by kind; `decision` is set once the person answered (`run.decide`) or Clowdy
+     * answered from a grant. `cancelled`: the agent withdrew it or the run was stopped; `expired`: the daemon restarted and the agent is gone.
+     */
+    | { kind: 'approval'; approvalId: string; toolCallId?: string; title: string; subject: ApprovalSubject; decisions: ApprovalDecision[]; state: ApprovalState; decision?: ApprovalDecision }
     | { kind: 'error'; text: string };
+
+/** What an agent asks to do: a command, a change to files, or any other tool. The daemon classifies the request, so a client draws it with no knowledge of the agent. */
+export type ApprovalSubject =
+    | { kind: 'command'; command: string; cwd?: string }
+    | { kind: 'file_change'; paths: string[] }
+    | { kind: 'tool_use'; tool: string; detail?: string };
+
+/** The three answers: once (`allow_once`), for the rest of the run (`allow_always`: Clowdy remembers the request and answers the agent with its one-time allow, so no lasting rule of the agent's is written), no (`reject`, for the agent's `reject_once` and `reject_always`). */
+export type ApprovalDecision = 'allow_once' | 'allow_always' | 'reject';
+
+export type ApprovalState = 'open' | 'decided' | 'cancelled' | 'expired';
 
 export type ToolState = 'running' | 'done' | 'error';
 

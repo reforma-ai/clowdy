@@ -1,4 +1,5 @@
 import { chatTitleSetting } from '../../engine/acp/catalog';
+import { modePermissions } from '../permissions';
 import { codexAccount } from './account';
 import { codexModels } from './models';
 
@@ -50,4 +51,12 @@ export const codex: Provider = {
     },
     ...codexAccount,
     models: codexModels,
+    // The modes of `codex-acp@2.8.0` (`AgentMode`). Codex's permission profiles come from the person's own config and stay out. Only `agent-full-access` opens the
+    // sandbox and the network; the others keep the workspace sandbox with the network off.
+    permissions: modePermissions([
+        { id: 'ask', mode: 'read-only', description: 'Asks before editing files or using the network' },
+        { id: 'accept-edits', mode: 'workspace-write', description: 'Edits workspace files, asks before going outside them or using the network' },
+        { id: 'auto', mode: 'agent', description: 'Reviews risky actions itself, asks about the rest' },
+        { id: 'full', mode: 'agent-full-access', description: 'No sandbox, never asks' },
+    ], 'auto'),
 };

@@ -7,6 +7,7 @@ import { advertisesSteering, applyChoices, isResumeWarning, keepTitle, prefaceOf
 import { classifyThrown, failureEvent, processEnded } from './failure';
 import { BACKGROUND_HANDOFF_MS, BACKGROUND_REPORT_MS } from './layer';
 import { UpdateMapperV2 } from './mapper-v2';
+import { paramsOfV2 } from './permission';
 import { Turns } from './turns';
 
 import type { BackgroundWork, ClientCapabilities, ClientConnection, NewSessionRequest, SessionCapabilities } from '@agentclientprotocol/sdk/experimental/v2/unstable';
@@ -569,8 +570,8 @@ export class V2Layer implements ProtocolLayer {
                     channel.push({ kind: 'update', update: params.update, from: params.sessionId });
                 }
             })
-            .onRequest(methods.client.session.requestPermission, ({ params }) => {
-                const optionId = host.pickPermission(params.options);
+            .onRequest(methods.client.session.requestPermission, async ({ params, signal }) => {
+                const optionId = await host.pickPermission(paramsOfV2(params), signal);
 
                 return { outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId } };
             });
@@ -662,6 +663,7 @@ export class V2Layer implements ProtocolLayer {
                 options: selectsOf(configOptions),
                 model: options.model,
                 effort: options.effort,
+                mode: agent.permission?.mode,
                 set: async ({ configId, value }) => {
                     const answer = await request(connection.agent.request(methods.agent.session.setConfigOption, { sessionId: id, configId, type: 'id', value }));
 

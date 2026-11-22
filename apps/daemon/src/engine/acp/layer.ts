@@ -2,6 +2,7 @@ import type { AgentProcess } from '../process';
 import type { EngineEvent, EngineFork, EngineStartOptions } from '../types';
 import type { BridgeAccess } from './bridge';
 import type { AgentProtocol } from './catalog';
+import type { PermissionParams } from './permission';
 import type { ResolvedAgent } from './registry';
 import type { SessionDeps } from './session';
 
@@ -49,8 +50,12 @@ export interface LayerHost {
     openBridge(): BridgeAccess | undefined;
     /** Passes a title the agent gave to the runtime, which says whether it took it. */
     offerTitle(title: string): void;
-    /** The option of a permission request the daemon answers with, or `undefined` to cancel the request. */
-    pickPermission(options: readonly { optionId: string; kind: string }[]): string | undefined;
+    /**
+     * The option of a permission request the agent is answered with, or `undefined` to cancel the request. It may wait for the person (an agent on a preset that
+     * asks), and ends when the session does (whatever the agent asked while it was being stopped is answered `undefined`) or when `withdrawn` aborts: the
+     * agent took the request back with `$/cancel_request`, and ACP has the client answer it `cancelled`.
+     */
+    pickPermission(request: PermissionParams, withdrawn: AbortSignal): Promise<string | undefined>;
     /** Moves the prompt along and wakes the steers that wait for it. A turn that begins after the last one ended moves it to `running` again. */
     promptIs(state: Exclude<PromptState, 'before'>): void;
     /** Whether the prompt is with the agent. */

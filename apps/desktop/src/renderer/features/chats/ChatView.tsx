@@ -124,6 +124,12 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                             await perform(root, { type: 'run.answer', runId: run.id, questionId, answer });
                         }
                         : undefined }
+                    // A request for permission is decided while its own item is open, whatever the run is doing, so the card gates itself and the handler only needs a run to name.
+                    onDecide={ run
+                        ? async (approvalId, decision) => {
+                            await perform(root, { type: 'run.decide', runId: run.id, approvalId, decision });
+                        }
+                        : undefined }
                 />
             ) }
 

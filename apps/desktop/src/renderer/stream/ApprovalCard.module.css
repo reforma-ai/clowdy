@@ -1,0 +1,114 @@
+@reference '@clowdy/styles/rulesets';
+
+/* The same card as a question: a request is something the run waits on, so it stands out of the line of tool calls. */
+.card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    min-width: 0;
+    padding: var(--spacing-lg) var(--spacing-xl);
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+}
+
+/* Once it is answered it is history: the same frame, without the plate. */
+.card[data-settled] {
+    gap: var(--spacing-md);
+    background-color: transparent;
+}
+
+.heading {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.headingIcon {
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+/* The command as a shell shows it. */
+.block {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-secondary-muted-light);
+    overflow: hidden;
+}
+
+.code {
+    @ruleset typography-text-code-sm;
+
+    max-height: var(--spacing-256);
+    margin: 0;
+    padding: var(--spacing-md) var(--spacing-lg);
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.more {
+    align-self: flex-start;
+    gap: var(--spacing-xxs);
+    margin: 0 var(--spacing-lg) var(--spacing-md);
+}
+
+.cwd {
+    padding: 0 var(--spacing-lg) var(--spacing-md);
+    overflow-wrap: anywhere;
+}
+
+.paths {
+    @ruleset typography-text-code-sm;
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    min-width: 0;
+    margin: 0;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-secondary-muted-light);
+    list-style: none;
+}
+
+.path {
+    overflow-wrap: anywhere;
+}
+
+.detail {
+    overflow-wrap: anywhere;
+}
+
+.outcome {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.outcome[data-tone='allowed'] {
+    color: var(--color-success-text);
+}
+
+.outcome[data-tone='denied'] {
+    color: var(--color-secondary-muted-text);
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--spacing-md);
+}
+
+/* Deny is the one that stops the agent: it keeps its distance from the buttons that let it go on. */
+.deny {
+    margin-right: auto;
+}

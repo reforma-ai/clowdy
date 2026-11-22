@@ -7,9 +7,9 @@ import { dirname, join } from 'node:path';
 import { probeAgent } from '../src/engine/acp/probe';
 import { alive, collect, PROTOCOLS, rig, textOf, tool, types, until } from './acp-helpers';
 
-import type { BackgroundItem } from '@clowdy/protocol';
+import type { ApprovalDecision, BackgroundItem } from '@clowdy/protocol';
 import type { AgentProtocol } from '../src/engine/acp/catalog';
-import type { EngineEvent, EngineSession } from '../src/engine/types';
+import type { ApprovalRequest, Approver, EngineEvent, EngineSession } from '../src/engine/types';
 import type { Rig } from './acp-helpers';
 
 let current: Rig | undefined;
@@ -87,6 +87,135 @@ eachProtocol('a turn on an ACP agent', (protocol) => {
 
         expect(textOf(allowed)).toBe('permission: once');
         expect(textOf(rejected)).toBe('permission: reject');
+    });
+
+    describe('on a preset that asks', () => {
+        const ask = { preset: 'ask', answer: 'ask' } as const;
+
+        test('the request is put to the run, classified, and the agent gets the option of the decision', async () => {
+            const seen: ApprovalRequest[] = [];
+            const decide = async (decision: ApprovalDecision) => {
+                const { session } = use({ permission: ask }).start('perm execute {"title":"Run ls","rawInput":{"command":"ls -la","cwd":"/work"}}', { approve: async (request) => {
+                    seen.push(request);
+
+                    return decision;
+                } });
+                const events = await collect(session);
+
+                await session.close();
+                current?.stop();
+
+                return textOf(events);
+            };
+
+            expect(await decide('allow_once')).toBe('permission: once');
+            // Allow for session is Clowdy's grant: the agent gets its one-time allow, never its own lasting option.
+            expect(await decide('allow_always')).toBe('permission: once');
+            expect(await decide('reject')).toBe('permission: reject');
+            expect(seen[0]).toMatchObject({ toolCallId: expect.any(String), title: 'Run ls', subject: { kind: 'command', command: 'ls -la', cwd: '/work' }, decisions: ['allow_once', 'allow_always', 'reject'], key: 'command:ls -la' });
+        });
+
+        test('a request that was withdrawn is answered cancelled', async () => {
+            const { session } = use({ permission: ask }).start('perm', { approve: async () => undefined });
+            const events = await collect(session);
+
+            await session.close();
+
+            expect(textOf(events)).toBe('permission: cancelled');
+        });
+
+        test('with no one to ask, the daemon\'s own policy answers, as before any preset existed', async () => {
+            const allowed = use({ permission: ask }).start('perm');
+            const allowedEvents = await collect(allowed.session);
+
+            await allowed.session.close();
+            current?.stop();
+
+            const rejected = use({ permission: ask, permissions: 'reject' }).start('perm');
+            const rejectedEvents = await collect(rejected.session);
+
+            await rejected.session.close();
+
+            expect(textOf(allowedEvents)).toBe('permission: once');
+            expect(textOf(rejectedEvents)).toBe('permission: reject');
+        });
+
+        test('two requests at once are both put to the run, and each gets its own answer', async () => {
+            const seen: ApprovalRequest[] = [];
+            let release: () => void = () => undefined;
+            const both = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            const approve: Approver = async (request) => {
+                seen.push(request);
+
+                if (seen.length === 2) {
+                    release();
+                }
+
+                // Neither is answered before both were asked: they really are open together.
+                await both;
+
+                return request.subject.kind === 'command' && request.subject.command === 'first' ? 'allow_once' : 'reject';
+            };
+            const { session } = use({ permission: ask }).start('perm2', { approve });
+            const events = await collect(session);
+
+            await session.close();
+
+            expect(textOf(events)).toBe('permissions: once,reject');
+            expect(seen.map(request => request.subject)).toEqual([{ kind: 'command', command: 'first' }, { kind: 'command', command: 'second', ...(protocol === 'v2' && { cwd: '/work' }) }]);
+        });
+
+        test('a request the agent takes back is answered cancelled, and the asker is told through its signal', async () => {
+            let ended = false;
+            const approve: Approver = (_request, signal) => new Promise((resolve) => {
+                signal.addEventListener('abort', () => {
+                    ended = true;
+                    resolve(undefined);
+                }, { once: true });
+            });
+            const { session } = use({ permission: ask }).start('permcancel', { approve });
+            const events = await collect(session);
+
+            await session.close();
+
+            expect(ended).toBe(true);
+            expect(textOf(events)).toBe('permission: cancelled');
+        });
+
+        test('a Stop answers the waiting request cancelled and the asker is told through its signal, so nothing is left hanging', async () => {
+            let asked: () => void = () => undefined;
+            const waiting = new Promise<void>((resolve) => {
+                asked = resolve;
+            });
+            let ended = false;
+            const approve: Approver = (_request, signal) => new Promise((resolve) => {
+                asked();
+                signal.addEventListener('abort', () => {
+                    ended = true;
+                    resolve(undefined);
+                }, { once: true });
+            });
+            const { session, abort } = use({ permission: ask }).start('perm\nsay after', { approve });
+            const reading = collect(session);
+
+            await waiting;
+            abort.abort();
+            await reading;
+            await session.close();
+
+            expect(ended).toBe(true);
+        });
+
+        test('an `allow` answer needs no one to ask, whatever the daemon\'s policy says', async () => {
+            const { session } = use({ permission: { preset: 'full', answer: 'allow' }, permissions: 'reject' }).start('perm', { approve: async () => 'reject' });
+            const events = await collect(session);
+
+            await session.close();
+
+            expect(textOf(events)).toBe('permission: once');
+        });
     });
 
     test('usage reports the prompt tokens and the cost of the turn, not the running total', async () => {

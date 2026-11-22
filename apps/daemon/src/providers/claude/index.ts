@@ -1,8 +1,16 @@
 import { chatTitleSetting } from '../../engine/acp/catalog';
+import { modePermissions } from '../permissions';
 import { claudeAccount } from './account';
 import { claudeModels } from './models';
 
+import type { SettingEffect } from '../../engine/acp/catalog';
 import type { Provider } from '../types';
+
+/**
+ * Clowdy's own command, which the agent runs in its shell for tasks and threads: a preset that asks lets it through, so the person is not asked
+ * about the runtime's own calls (the adapter hands `_meta.claudeCode.options.allowedTools` to the SDK as permission rules).
+ */
+const CLOWDY_COMMAND: SettingEffect = { allowedTools: ['Bash(clowdy:*)'] };
 
 export const claude: Provider = {
     spec: {
@@ -77,4 +85,12 @@ export const claude: Provider = {
     },
     ...claudeAccount,
     models: claudeModels,
+    // The modes of `claude-agent-acp@0.107.0` (`session-mode.js`). `plan` is a way of working, not a permission, and stays out. `auto` is offered unless the
+    // account or the model cannot use it; a start on one it does not offer is logged and left to the agent.
+    permissions: modePermissions([
+        { id: 'ask', mode: 'default', description: 'Asks before every edit and command', effect: CLOWDY_COMMAND },
+        { id: 'accept-edits', mode: 'acceptEdits', description: 'Applies file edits, asks before commands and anything else', effect: CLOWDY_COMMAND },
+        { id: 'auto', mode: 'auto', description: 'Approves what its own check finds safe, asks about the rest', effect: CLOWDY_COMMAND },
+        { id: 'full', mode: 'bypassPermissions', description: 'Never asks, edits any file and runs any command' },
+    ], 'auto'),
 };

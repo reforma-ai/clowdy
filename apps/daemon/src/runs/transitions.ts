@@ -10,13 +10,15 @@ import type { RunStatus } from '@clowdy/protocol';
  *   leaves by `queued` when a message is delivered to the live session, and by a terminal state when the session ends or the person stops it. A session
  *   that fails for a moment while the run waits is retried like a running one's: both go `blocked`.
  * - A running run goes `blocked` when its engine is at a subscription limit or failed for a moment, and comes back through `queued`.
+ * - A run parked in `waiting_user` holds no slot, but its session goes on: an agent's turn can end, or its engine fail for a moment, while a permission
+ *   request is open (one for work in the background, say), so those moves are allowed from it too.
  * - A finished chat orchestrator is resumed by the user's next message: terminal states lead back to `queued`.
  */
 export const TRANSITIONS: Record<RunStatus, readonly RunStatus[]> = {
     queued: ['queued', 'running', 'failed', 'cancelled', 'interrupted'],
     running: ['waiting_background', 'waiting_user', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted'],
     waiting_background: ['waiting_background', 'queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted'],
-    waiting_user: ['queued', 'failed', 'cancelled', 'interrupted'],
+    waiting_user: ['queued', 'waiting_background', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted'],
     blocked: ['blocked', 'queued', 'failed', 'cancelled', 'interrupted'],
     succeeded: ['queued'],
     failed: ['queued'],

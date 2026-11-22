@@ -40,6 +40,15 @@ function rig(reads: ProviderRead[], { login = true }: { login?: boolean } = {}) 
 const settle = () => new Promise(resolve => setTimeout(resolve, 20));
 
 describe('ProvidersService', () => {
+    test('keeps the permission presets the registry listed, for an agent with an account and for one with none to read', async () => {
+        const { service } = rig([ok(8)]);
+        const permissions = { presets: [{ id: 'ask' as const, name: 'Ask for approval', description: 'x' }], default: 'ask' as const };
+        const plain = { ...testSpec('plain') };
+
+        expect(service.decorate([{ ...info('claude'), permissions }])[0]?.permissions).toEqual(permissions);
+        expect(new ProvidersService({ registry: registry(['plain']), providers: [plain], announce: () => undefined, cwd: '/tmp' }).decorate([{ ...info('plain'), permissions }])[0]?.permissions).toEqual(permissions);
+    });
+
     test('reuses a read as long as its provider says, not as long as the default', async () => {
         let time = 1_000_000;
         let calls = 0;

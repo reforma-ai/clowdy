@@ -29,8 +29,8 @@ export const agentsHandlers: Pick<Handlers, 'agent.add' | 'agent.update' | 'agen
 
         return { id };
     }),
-    'agent.update': (services, { id, enabled, path, env, name, command, args, settings }) => change(services, id, () => {
-        services.agents.update(id, { enabled, path, env, name, command, args, settings });
+    'agent.update': (services, { id, enabled, path, env, name, command, args, settings, permission }) => change(services, id, () => {
+        services.agents.update(id, { enabled, path, env, name, command, args, settings, permission });
         // Another program, environment or switch can mean another account: read it again. A setting cannot, but it can change the models on offer.
         if (enabled !== undefined || path !== undefined || env !== undefined) {
             services.providers.forget(id);

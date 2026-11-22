@@ -5,7 +5,7 @@ import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { StopBold } from '@clowdy/icons/16';
-import { isTerminalRunStatus, type Run, type RunRole } from '@clowdy/protocol';
+import { isTerminalRunStatus, type ApprovalDecision, type Run, type RunRole } from '@clowdy/protocol';
 import { useState } from 'react';
 
 import { AgentChip, RunStatusPill, TaskChip } from '../../shared';
@@ -127,12 +127,20 @@ function RunStream({ run }: { run: Run }) {
         if (!result.ok) toast.error({ message: `Could not send the answer: ${ result.error.message }` });
     };
 
+    // The card of a request for permission is decided while its own item is open, whatever the run is doing.
+    const decide = async (approvalId: string, decision: ApprovalDecision) => {
+        const result = await root.command({ type: 'run.decide', runId: run.id, approvalId, decision });
+
+        if (!result.ok) toast.error({ message: `Could not send the decision: ${ result.error.message }` });
+    };
+
     return (
         <StreamView
             items={ stream.items }
             active={ !isTerminalRunStatus(run.status) }
             working={ run.status === 'running' || (run.status === 'waiting_background' && 'Waiting for background work…') }
             onAnswer={ run.status === 'waiting_user' ? answer : undefined }
+            onDecide={ decide }
             emptyState={ <Text color="secondary">This run has not written anything yet.</Text> }
         />
     );

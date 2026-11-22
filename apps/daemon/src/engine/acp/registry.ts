@@ -1,14 +1,16 @@
+import { PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 
 import { errorMessage } from '../../errors';
 import { PROVIDERS } from '../../providers/builtin';
+import { clientPermissions } from '../../providers/permissions';
 import { AGENT_ID } from './catalog';
 import { Discovery } from './discovery';
 import { buildAgentEnv } from './env';
 
-import type { AgentInfo, AgentSetting } from '@clowdy/protocol';
-import type { Provider } from '../../providers/types';
+import type { AgentInfo, AgentPermissions, AgentSetting, PermissionPresetId } from '@clowdy/protocol';
+import type { PermissionSupport, Provider } from '../../providers/types';
 import type { AgentOverride, AgentProtocol, AgentSettingSpec, AgentSpec, CustomAgent, SettingEffect, TaskChannel } from './catalog';
 
 /** Detection results are reused this long, so a settings screen can poll without spawning a probe each time. */
@@ -39,6 +41,8 @@ export interface ResolvedAgent {
     sessionMeta?: Record<string, unknown>;
     /** The `_meta` of the client capabilities in `initialize` (see `AgentSpec.clientMeta`). */
     clientMeta?: Record<string, unknown>;
+    /** The permission preset the agent runs on and what it means for this start; absent while the person has not chosen one (today's behaviour: no mode sent, every request answered by the daemon's policy). */
+    permission?: { preset: PermissionPresetId; mode?: string; answer: 'ask' | 'allow' };
 }
 
 export type Resolution = { ok: true; agent: ResolvedAgent } | { ok: false; message: string };
@@ -80,10 +84,12 @@ export class AgentRegistry {
     private file?: string;
     private dataDir?: string;
     private platform: NodeJS.Platform;
+    private providers: readonly Provider[];
     private specs: readonly AgentSpec[];
 
     constructor(options: AgentRegistryOptions = {}) {
-        this.specs = (options.providers ?? PROVIDERS).map(provider => provider.spec);
+        this.providers = options.providers ?? PROVIDERS;
+        this.specs = this.providers.map(provider => provider.spec);
         this.discovery = options.discovery ?? new Discovery();
         this.now = options.now ?? Date.now;
         this.platform = options.platform ?? process.platform;
@@ -193,19 +199,23 @@ export class AgentRegistry {
         this.change(() => this.stored.agents.push({ ...agent, name: agent.name.trim(), command: agent.command.trim() }));
     }
 
-    update(id: string, patch: Omit<AgentOverride, 'path'> & { path?: string | null; name?: string; command?: string; args?: string[] }): void {
+    update(id: string, patch: Omit<AgentOverride, 'path' | 'permission'> & { path?: string | null; permission?: PermissionPresetId | null; name?: string; command?: string; args?: string[] }): void {
         const custom = this.stored.agents.find(agent => agent.id === id);
 
         if (!custom && !this.spec(id)) {
             throw new AgentRegistryError('not_found', `There is no agent called "${ id }"`);
         }
 
-        const { name, command, args, path, enabled, env, settings } = patch;
+        const { name, command, args, path, enabled, env, settings, permission } = patch;
 
         for (const settingId of Object.keys(settings ?? {})) {
             if (!this.spec(id)?.settings?.some(setting => setting.id === settingId)) {
                 throw new AgentRegistryError('invalid', `${ this.nameOf(id) } has no setting called "${ settingId }"`);
             }
+        }
+
+        if (permission && !this.permissionsOf(id).presets.some(preset => preset.id === permission)) {
+            throw new AgentRegistryError('invalid', `${ this.nameOf(id) } has no preset called "${ permission }"`);
         }
 
         if (path) {
@@ -236,6 +246,13 @@ export class AgentRegistry {
                 next.path = path;
             }
 
+            if (permission === null) {
+                delete next.permission;
+            }
+            else if (permission !== undefined) {
+                next.permission = permission;
+            }
+
             this.stored.overrides[id] = next;
         });
     }
@@ -255,6 +272,28 @@ export class AgentRegistry {
 
     private spec(id: string): AgentSpec | undefined {
         return this.specs.find(spec => spec.id === id);
+    }
+
+    /** The permission presets the agent offers: its provider's own, else the client's pair (which every custom agent has). */
+    private permissionsOf(id: string): PermissionSupport {
+        return this.providers.find(provider => provider.spec.id === id)?.permissions ?? clientPermissions;
+    }
+
+    /**
+     * What the person's chosen preset does to the agent's next start, or `undefined` when they chose none (the agent then runs as it did before presets) or
+     * chose one the agent no longer offers.
+     */
+    private permissionPlan(id: string, override: AgentOverride): { permission: NonNullable<ResolvedAgent['permission']>; effect: SettingEffect } | undefined {
+        const support = this.permissionsOf(id);
+        const preset = override.permission;
+
+        if (!preset || !support.presets.some(candidate => candidate.id === preset)) {
+            return undefined;
+        }
+
+        const { mode, effect, answer } = support.apply(preset);
+
+        return { permission: { preset, ...(mode !== undefined && { mode }), answer }, effect: effect ?? {} };
     }
 
     private entries(): Entry[] {
@@ -324,8 +363,10 @@ export class AgentRegistry {
             return { ok: false, message: entry.custom ? `The command "${ entry.agent.command }" of ${ entry.name } was not found` : `${ entry.name } is not installed: no \`${ entry.spec.programs[0] }\` command was found. Install it, then try again` };
         }
 
+        const permit = this.permissionPlan(entry.id, override);
+
         if (entry.custom) {
-            return { ok: true, agent: { id: entry.id, name: entry.name, program, command: program, args: entry.agent.args, env: { ...entry.agent.env, ...override.env }, scrub: [], protocol: 'v1' } };
+            return { ok: true, agent: { id: entry.id, name: entry.name, program, command: program, args: entry.agent.args, env: { ...entry.agent.env, ...override.env }, scrub: [], protocol: 'v1', ...(permit && { permission: permit.permission }) } };
         }
 
         const { spec } = entry;
@@ -335,8 +376,8 @@ export class AgentRegistry {
             return { ok: false, message: apart.message };
         }
 
-        const applied = appliedSettings(spec, override);
-        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, protocol: spec.protocol ?? 'v1', ...(spec.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), sessionMeta: withDisallowedTools(spec.sessionMeta, applied.disallowedTools), ...(spec.clientMeta && { clientMeta: spec.clientMeta }) };
+        const applied = appliedSettings(spec, override, permit?.effect);
+        const base = { id: spec.id, name: spec.name, scrub: spec.scrub ?? [], login: spec.login, protocol: spec.protocol ?? 'v1', ...(spec.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }), sessionMeta: withToolRules(spec.sessionMeta, applied), ...(spec.clientMeta && { clientMeta: spec.clientMeta }), ...(permit && { permission: permit.permission }) };
 
         if (spec.launch.kind === 'binary') {
             return { ok: true, agent: { ...base, program, command: program, args: spec.launch.args, env: withoutRemoved({ ...spec.env, ...apart?.env, ...applied.env, ...codexConfigEnv(applied.codexConfig), ...override.env }) } };
@@ -378,6 +419,7 @@ export class AgentRegistry {
             ...(spec?.login && { login: spec.login }),
             ...(spec?.compact && { canCompact: true }),
             ...(spec?.settings?.length && { settings: settingsOf(spec, override) }),
+            permissions: permissionsInfo(this.permissionsOf(entry.id), override),
             ...((override.path || override.env) && { overrides: { ...(override.path && { path: override.path }), ...(override.env && { env: override.env }) } }),
         };
     }
@@ -428,6 +470,7 @@ export class AgentRegistry {
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isPreset = (value: unknown): value is PermissionPresetId => PERMISSION_PRESETS.some(preset => preset === value);
 const isStrings = (value: unknown): value is Record<string, string> => isRecord(value) && Object.values(value).every(item => typeof item === 'string');
 
 /**
@@ -474,6 +517,7 @@ function parseStored(data: unknown, specs: readonly AgentSpec[]): Stored {
                 ...(typeof value.path === 'string' && value.path !== '' && { path: value.path }),
                 ...(isStrings(value.env) && { env: value.env }),
                 ...(isRecord(value.settings) && { settings: Object.fromEntries(Object.entries(value.settings).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean')) }),
+                ...(isPreset(value.permission) && { permission: value.permission }),
             };
         }
     }
@@ -488,16 +532,27 @@ function settingsOf(spec: AgentSpec, override: AgentOverride): AgentSetting[] {
     return (spec.settings ?? []).map(setting => ({ id: setting.id, label: setting.label, description: setting.description, value: settingValue(setting, override), default: setting.default }));
 }
 
-/** What the settings, at their values, do to the environment and the tools of the agent. A later setting wins over an earlier one. */
-function appliedSettings(spec: AgentSpec, override: AgentOverride): Required<SettingEffect> {
-    const applied: Required<SettingEffect> = { env: {}, disallowedTools: [], codexConfig: {} };
+/** The permission presets of an agent for a person to see and pick from: the names are the same for every agent, the descriptions are the agent's own. A chosen preset the agent no longer offers is not shown as chosen. */
+function permissionsInfo(support: PermissionSupport, override: AgentOverride): AgentPermissions {
+    const chosen = support.presets.some(preset => preset.id === override.permission) ? override.permission : undefined;
 
-    for (const setting of spec.settings ?? []) {
-        const effect = setting.effect?.(settingValue(setting, override)) ?? {};
+    return {
+        presets: support.presets.map(({ id, description }) => ({ id, name: PERMISSION_PRESET_NAMES[id], description })),
+        ...(chosen && { value: chosen }),
+        default: support.default,
+    };
+}
 
+/** What the settings, at their values, do to the environment and the tools of the agent, then what the chosen permission preset does. A later one wins over an earlier one. */
+function appliedSettings(spec: AgentSpec, override: AgentOverride, permission: SettingEffect = {}): Required<SettingEffect> {
+    const applied: Required<SettingEffect> = { env: {}, disallowedTools: [], allowedTools: [], codexConfig: {} };
+    const effects = [...(spec.settings ?? []).map(setting => setting.effect?.(settingValue(setting, override)) ?? {}), permission];
+
+    for (const effect of effects) {
         Object.assign(applied.env, effect.env);
         Object.assign(applied.codexConfig, effect.codexConfig);
         applied.disallowedTools.push(...effect.disallowedTools ?? []);
+        applied.allowedTools.push(...effect.allowedTools ?? []);
     }
 
     return applied;
@@ -513,17 +568,17 @@ function withoutRemoved(env: Record<string, string | null>): Record<string, stri
     return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== null));
 }
 
-/** The agent's `_meta` for `session/new`, with the tools its settings take away added to the ones the spec already withholds. */
-function withDisallowedTools(meta: Record<string, unknown> | undefined, extra: string[]): Record<string, unknown> | undefined {
-    if (extra.length === 0) {
+/** The agent's `_meta` for `session/new`, with the tools its settings take away added to the ones the spec already withholds, and the tools a preset lets it use without asking. */
+function withToolRules(meta: Record<string, unknown> | undefined, { disallowedTools, allowedTools }: Pick<Required<SettingEffect>, 'disallowedTools' | 'allowedTools'>): Record<string, unknown> | undefined {
+    if (disallowedTools.length === 0 && allowedTools.length === 0) {
         return meta;
     }
 
     const claudeCode = isRecord(meta?.claudeCode) ? meta.claudeCode : {};
     const options = isRecord(claudeCode.options) ? claudeCode.options : {};
-    const already = Array.isArray(options.disallowedTools) ? options.disallowedTools as string[] : [];
+    const union = (key: 'disallowedTools' | 'allowedTools', extra: string[]) => (extra.length > 0 ? { [key]: [...new Set([...(Array.isArray(options[key]) ? options[key] as string[] : []), ...extra])] } : {});
 
-    return { ...meta, claudeCode: { ...claudeCode, options: { ...options, disallowedTools: [...new Set([...already, ...extra])] } } };
+    return { ...meta, claudeCode: { ...claudeCode, options: { ...options, ...union('disallowedTools', disallowedTools), ...union('allowedTools', allowedTools) } } };
 }
 
 /** How an agent starts, as a person would type it. */
