@@ -85,25 +85,28 @@ Also from the data: a "completed in the last N days" view option from `closedAt`
 
 **Depends on:** Stage 1 (parents and subtrees), Stage 2 only for the shared files.
 
-- [ ] Migration: `tasks.archived_at` (nullable). `listTasks` excludes archived rows; a function pages the archived ones.
-- [ ] Protocol: `Task.archivedAt?`, commands `task.archive` (`taskId`, `cancel?`) and `task.unarchive` (`taskId`), a read route for archived tasks (paged). A change reaches clients as `task.upserted` carrying `archivedAt`; a client treats a task with `archivedAt` as off the board.
-- [ ] Domain: archive and unarchive with the rules above (closed only, `cancel`, active runs refuse, subtree with one `archivedAt`, restore with the same `archivedAt`, refuse under an archived parent); `task.start` refuses an archived task; archived tasks do not count in `children`, `descendants` or `counts`, and an archived dependency is resolved.
-- [ ] Tools and CLI: `task_archive` (`taskId` list, `cancel`) and `task_unarchive`; `task_list --archived` and the `archived` number in the answer; `task_get` works on an archived task and says so.
-- [ ] Tests: each rule, the batch restore, a refused unarchive, `cancel` over a subtree, the active-run refusal, exclusion from snapshot, list and counts, a dependency on an archived task, `--archived`.
+- [x] Migration: `tasks.archived_at` (nullable). `listTasks` excludes archived rows; a function pages the archived ones.
+- [x] Protocol: `Task.archivedAt?`, commands `task.archive` (`taskId`, `cancel?`) and `task.unarchive` (`taskId`), a read route for archived tasks (paged). A change reaches clients as `task.upserted` carrying `archivedAt`; a client treats a task with `archivedAt` as off the board.
+- [x] Domain: archive and unarchive with the rules above (closed only, `cancel`, active runs refuse, subtree with one `archivedAt`, restore with the same `archivedAt`, refuse under an archived parent); `task.start` refuses an archived task; archived tasks do not count in `children`, `descendants` or `counts`, and an archived dependency is resolved.
+- [x] Tools and CLI: `task_archive` (`taskId` list, `cancel`) and `task_unarchive`; `task_list --archived` and the `archived` number in the answer; `task_get` works on an archived task and says so.
+- [x] Tests: each rule, the batch restore, a refused unarchive, `cancel` over a subtree, the active-run refusal, exclusion from snapshot, list and counts, a dependency on an archived task, `--archived`.
 
 **Done when:** a finished tree can be archived and restored through the commands and the shell, with the exclusions above verified; checks as in Stage 1.
 
-## Stage 4 — Skills, prompt and docs
+**Landed:** `0747ba3` feat(daemon): archive finished task trees, and restore them (reviewed by a separate agent: one defect fixed, a restore reached a task that had been moved under another archived task; weak tests rewritten). Choices made in the stage: `--archived` swaps the base set to archived tasks, shows every status by default, and `parent`/`under`/`roots` pick among archived tasks (`roots` there is the top of an archived piece: no parent, or a parent that stayed on the board); the route is `GET /v1/projects/:id/archived-tasks` newest archived first, `TaskArchivePage { tasks, total, nextCursor? }`, cursor `<archivedAt>.<number>`; `task.archive` answers `{ task, archived, canceled }`, `task.unarchive` `{ task, restored }`, both idempotent; `archivedAt = max(now, latest in the project + 1)` so no two batches share a value, and a restore follows only tasks that carry the batch value, reached through batch members; the tools exempt the calling run from the active-run refusal (an orchestrator cannot stop its own run first), the person's command has no exemption; several keys in one tool call run in one transaction, nearest the root first; a board task cannot be created or moved under an archived parent, an archived task cannot be reopened by `task.update`, and `thread_spawn` refuses an archived task; archive and unarchive keep `updatedAt` (except tasks `cancel` changes); roll-ups count the same side (board tasks count board descendants); a positional field of array type in the CLI takes all remaining bare words; `task_get` on an archived task says `archived: true`. For Stage 5: the snapshot still carries chat and run links to archived tasks (ids with no task row), `ProjectInfo.tasks` still counts archived tasks (right for "what deleting the project removes"), and a client has no way yet to read one archived task by id: Stage 4b adds `task` to `TaskDetail`.
+
+## Stage 4 — Skills, prompt, docs, and what the desktop needs from the daemon
 
 **Depends on:** Stages 1 to 3.
 
-- [ ] `packages/system-skills`: the orchestrate skill splits work with `--parent` (not `--add-depends-on` on the bound task), says when a checklist beats a child task, leaves notes as comments (`task comment`) instead of `--append`, and says when to archive (when the manager says the work is finished and will not be revisited; never open work without `--cancel` and a reason). The other skills that mention `--append` follow. Validator `TASK_COMMANDS`, the vocabulary test and the README.
-- [ ] Remove `append` from `task_update` (strict schema, so a stale call errors) once nothing in skills or prompts uses it.
-- [ ] `Tasks:` prompt line and `taskMessage` if they need a word about parents; prompt length caps.
-- [ ] `apps/daemon/AGENTS.md`: Tools, task model, comments, archive, the depth limit.
+- [ ] `packages/system-skills`: the orchestrate skill splits work with `--parent` (not `--add-depends-on` on the bound task), says when a checklist beats a child task, leaves notes as comments (`task comment`) instead of `--append`, and says when to archive (when the manager says the work is finished and will not be revisited; never open work without `--cancel` and a reason). The other skills that mention `--append` follow, and so does the README (it lists only four task commands and says `--ready` means dependencies Done). Validator `TASK_COMMANDS`, the vocabulary test.
+- [ ] Remove `append` from `task_update` (strict schema, so a stale call errors) once nothing in skills or prompts uses it; its tests and help go with it.
+- [ ] `Tasks:` prompt line and `taskMessage` if they need a word about parents, comments or archive; prompt length caps.
+- [ ] `apps/daemon/AGENTS.md`: read the Tools, task model, comments and archive paragraphs as one piece and make them consistent (Stages 1 to 3 each added a bullet), and the depth limit.
+- [ ] Stage 4b, for the desktop: `TaskDetail` (`GET /v1/tasks/:id/detail`) carries the `task` itself, archived tasks included, so a client can open one it does not hold; the checklist parser (`apps/daemon/src/domain/checklist.ts` with its test) moves to `packages/lib` (consumed as source) and the daemon imports it from there, so the daemon and the desktop share one.
 - [ ] `.briefback/task-cli/plan.md` stays as history; this plan records the commits.
 
-**Done when:** no skill, prompt or doc names a removed or replaced command; the skills vocabulary test passes against the real tools; the daemon tests pass.
+**Done when:** no skill, prompt or doc names a removed or replaced command; the skills vocabulary test passes against the real tools; `TaskDetail.task` and the shared parser are tested; the daemon tests pass.
 
 ## Stage 5 — Desktop UI
 
@@ -113,7 +116,7 @@ Facts about the desktop that shape the work (mapped 2026-11-21; `R` = `apps/desk
 
 ### Stage 5a — Data layer and view logic
 
-- [ ] Move the checklist parser to `packages/lib` (source-consumed, tests move with it) so the daemon and the desktop share one; the daemon imports it from there.
+- [ ] Use the shared checklist parser of `packages/lib` and `TaskDetail.task` (Stage 4b); the store ignores chat and run links whose task it does not hold (archived tasks).
 - [ ] `ProjectState`: a task with `archivedAt` leaves the `tasks` map (the snapshot has none); transport methods for a task's comments and for archived tasks in `HttpTransport`, `FixtureTransport` and the test override helper; comment events reach whoever shows them (the revision pattern of `useTaskArtifacts`).
 - [ ] `FixtureTransport` parity with the daemon: `parentId` on create and update (same-project, self, descendant, depth) with `null` detaching, `closedAt` set and cleared, delete re-attaching children, archive and unarchive with the subtree rules, comment commands and the read route; demo data with a parent, children and a grandchild (`fixtureData.ts`).
 - [ ] `taskView.ts`: pure functions for a scope (a task id or none): direct children, all descendants, the visible rows of a tree (collapsed ids, children sorted by workflow status order then number), roll-up of descendants (`done` counts as done, `canceled` is left out of the total, as `chats/progress.ts` does), checklist progress of a task, depth-aware parent candidates (not itself, not a descendant, `MAX_TASK_DEPTH`), the ancestors of a task for breadcrumbs; the filter applies in every view.
