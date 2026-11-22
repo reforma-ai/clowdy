@@ -2,7 +2,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup, usePanelRef } fro
 import { useId, useState } from 'react';
 
 import { browserStorage } from '../../stores/storage';
-import { readSidePanelWidth, SIDE_PANEL_MAX_WIDTH, SIDE_PANEL_MIN_WIDTH, writeSidePanelWidth } from './panelWidth';
+import { readSidePanelWidth, SIDE_PANEL_MIN_WIDTH, writeSidePanelWidth } from './panelWidth';
 import { SidePanel } from './SidePanel';
 import styles from './SidePanelLayout.module.css';
 import { useSidePanel } from './useSidePanel';
@@ -63,7 +63,6 @@ function SideColumn({ panel }: { panel: ReturnType<typeof usePanelRef> }) {
                 className={ styles.side }
                 defaultSize={ width }
                 minSize={ SIDE_PANEL_MIN_WIDTH }
-                maxSize={ SIDE_PANEL_MAX_WIDTH }
                 groupResizeBehavior="preserve-pixel-size"
             >
                 <SidePanel />

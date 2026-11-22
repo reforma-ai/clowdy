@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { readSidePanelWidth, SIDE_PANEL_DEFAULT_WIDTH, SIDE_PANEL_MAX_WIDTH, SIDE_PANEL_MIN_WIDTH, writeSidePanelWidth } from './panelWidth';
+import { readSidePanelWidth, SIDE_PANEL_DEFAULT_WIDTH, SIDE_PANEL_MIN_WIDTH, writeSidePanelWidth } from './panelWidth';
 
 import type { KeyValueStorage } from '../../stores/storage';
 
@@ -24,8 +24,8 @@ describe('side panel width', () => {
         expect(readSidePanelWidth(storage)).toBe(500);
     });
 
-    it('keeps a stored width inside the range', () => {
-        expect(readSidePanelWidth(memory({ 'clowdy:side-panel-width': '2000' }))).toBe(SIDE_PANEL_MAX_WIDTH);
+    it('has no widest, so a wide window can give the panel what it was left at, and keeps it from being narrower than its least', () => {
+        expect(readSidePanelWidth(memory({ 'clowdy:side-panel-width': '2000' }))).toBe(2000);
         expect(readSidePanelWidth(memory({ 'clowdy:side-panel-width': '10' }))).toBe(SIDE_PANEL_MIN_WIDTH);
     });
 

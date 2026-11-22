@@ -1,15 +1,17 @@
 import { readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
 
-/** How narrow and how wide the side panel can be dragged, in pixels, and the width it opens at until the person drags it. */
+/**
+ * How narrow the side panel can be dragged, in pixels, and the width it opens at until the person drags it. There is no widest: the panel can take all that the
+ * left part of the window does not need (`SidePanelLayout` keeps that part at its least), so a wide window can give it as much as the person wants.
+ */
 export const SIDE_PANEL_MIN_WIDTH = 280;
-export const SIDE_PANEL_MAX_WIDTH = 720;
 export const SIDE_PANEL_DEFAULT_WIDTH = 420;
 
 const STORAGE_KEY = 'clowdy:side-panel-width';
 
-const clamp = (width: number) => Math.min(SIDE_PANEL_MAX_WIDTH, Math.max(SIDE_PANEL_MIN_WIDTH, width));
+const clamp = (width: number) => Math.max(SIDE_PANEL_MIN_WIDTH, width);
 
-/** The width the person left the panel at, one for the whole window, or the default. A stored value from before the range changed is brought into it. */
+/** The width the person left the panel at, one for the whole window, or the default. A window too narrow for it gives the panel less, and the width is kept for a wider one. */
 export function readSidePanelWidth(storage: KeyValueStorage | undefined): number {
     const stored = readStored(storage, STORAGE_KEY);
 
