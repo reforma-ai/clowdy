@@ -61,8 +61,10 @@ export class FilesStore {
     }
 
     #open(key: string, projectId: ProjectId, folderId: FolderId): FileManager {
+        const files = this.transport.fileSystem(projectId, folderId);
         const manager = new FileManager({
-            provider: this.transport.fileSystem(projectId, folderId),
+            provider: files,
+            search: files.search?.bind(files),
             exclude: EXCLUDE,
             hidden: HIDDEN,
             notify: (message, error) => void toast.error({ title: message, message: error === undefined ? undefined : errorMessage(error) }),

@@ -11,6 +11,8 @@ import type {
     FileSystemProvider,
     MoveOperation,
     OverwriteOptions,
+    SearchQuery,
+    SearchResult,
     WatchEvent,
     WriteOptions,
 } from '@clowdy/file-manager/provider';
@@ -127,6 +129,13 @@ export class HttpFileSystem implements FileSystemProvider {
         await this.#post('delete', { paths }, paths[0] ?? '');
     }
 
+    /** Searches the contents of the folder's files on the daemon, which stops when `signal` aborts the request. A rejection's message is what the Search tab shows. */
+    search = async ({ query, matchCase, wholeWord, exclude }: SearchQuery, signal: AbortSignal): Promise<SearchResult> => {
+        const response = await this.#post('search', { query, matchCase, wholeWord, exclude }, '', signal);
+
+        return await response.json() as SearchResult;
+    };
+
     watch(listener: (event: WatchEvent) => void): () => void {
         const controller = new AbortController();
 
@@ -135,11 +144,12 @@ export class HttpFileSystem implements FileSystemProvider {
         return () => controller.abort();
     }
 
-    #post(action: string, body: Record<string, unknown>, path: string): Promise<Response> {
+    #post(action: string, body: Record<string, unknown>, path: string, signal?: AbortSignal): Promise<Response> {
         return this.#request(action, undefined, path, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ folderId: this.#options.folderId, ...body }),
+            signal,
         });
     }
 
@@ -153,6 +163,9 @@ export class HttpFileSystem implements FileSystemProvider {
             response = await this.#options.fetch(`${ base }${ this.#options.route }/${ action }${ search }`, { ...init, headers: { ...headers, ...init.headers } });
         }
         catch (error) {
+            // A request the caller gave up is not a failure of the daemon.
+            if (init.signal?.aborted) throw error;
+
             throw new FileSystemError('Unavailable', 'The daemon cannot be reached', { path, cause: error });
         }
 

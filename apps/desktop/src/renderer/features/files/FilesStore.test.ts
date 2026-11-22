@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { MemoryFileSystem } from '@clowdy/file-manager/memory';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
@@ -54,6 +54,29 @@ describe('FilesStore', () => {
         expect(manager.tree.isVisible('.git')).toBe(false);
 
         store.dispose();
+    });
+
+    it('searches through the daemon when its file system has a search, and scans the files itself when it has none', async () => {
+        const found = { files: [{ path: 'a.ts', matches: [{ line: 1, column: 1, preview: 'needle', ranges: [{ start: 0, end: 6 }] }] }], truncated: false };
+        const search = vi.fn(async () => found);
+        const served = new FilesStore({ fileSystem: () => Object.assign(new MemoryFileSystem({ 'a.ts': 'needle' }), { search }) }, memory());
+        const scanned = new FilesStore({ fileSystem: () => new MemoryFileSystem({ 'a.ts': 'a needle\n', 'b.ts': 'nothing' }) }, memory());
+        const remote = served.managerOf('p', 'f');
+        const local = scanned.managerOf('p', 'f');
+
+        await settle();
+        remote.search.set({ query: 'needle' });
+        await remote.search.run();
+        local.search.set({ query: 'needle' });
+        await local.search.run();
+
+        expect(search).toHaveBeenCalledOnce();
+        expect(search).toHaveBeenCalledWith(expect.objectContaining({ query: 'needle', matchCase: false, wholeWord: false }), expect.any(AbortSignal));
+        expect(remote.search.result).toEqual(found);
+        expect(local.search.result?.files.map(file => file.path)).toEqual(['a.ts']);
+
+        served.dispose();
+        scanned.dispose();
     });
 
     it('keeps the open tabs between runs, and brings back the ones whose files are still there', async () => {

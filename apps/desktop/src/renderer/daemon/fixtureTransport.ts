@@ -13,9 +13,8 @@ import {
     type FixtureData,
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
-import { TransportError, type CommandInput, type FeedStatus, type StreamTarget, type Transport } from './transport';
+import { TransportError, type CommandInput, type FeedStatus, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
 
-import type { FileSystemProvider } from '@clowdy/file-manager/provider';
 import type {
     AgentInfo,
     AgentModels,
@@ -288,7 +287,7 @@ export class FixtureTransport implements Transport {
         return found.filter(file => words.every(word => file.searched.toLowerCase().includes(word))).slice(0, limit).map(({ folderId, path }) => ({ folderId, path }));
     }
 
-    fileSystem(projectId: ProjectId, folderId: FolderId): FileSystemProvider {
+    fileSystem(projectId: ProjectId, folderId: FolderId): ProjectFileSystem {
         const folder = this.#project(projectId).folders.find(candidate => candidate.id === folderId);
 
         if (!folder) throw new TransportError(`Folder ${ folderId } does not exist`, 404);

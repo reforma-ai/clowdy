@@ -2,9 +2,8 @@ import { FileSystemError } from '@clowdy/file-manager/provider';
 
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
-import { TransportError, type Transport } from './transport';
+import { TransportError, type ProjectFileSystem, type Transport } from './transport';
 
-import type { FileSystemProvider } from '@clowdy/file-manager/provider';
 
 export type DaemonConfig =
     | { kind: 'daemon'; url: string; token: string }
@@ -34,7 +33,7 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
 const noDaemon = () => Promise.reject(new TransportError('No daemon is configured'));
 
 /** A file system whose every request fails, as the daemon's would while it is out of reach. */
-const noFiles = (): FileSystemProvider => {
+const noFiles = (): ProjectFileSystem => {
     const fail = () => Promise.reject(new FileSystemError('Unavailable', 'No daemon is configured'));
 
     return { list: fail, read: fail, write: fail, createDirectory: fail, move: fail, copy: fail, delete: fail };

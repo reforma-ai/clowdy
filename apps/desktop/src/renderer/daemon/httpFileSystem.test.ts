@@ -113,6 +113,40 @@ describe('HttpFileSystem writes', () => {
     });
 });
 
+describe('HttpFileSystem search', () => {
+    it('sends the query and its options to the daemon, and hands the matches over as they come', async () => {
+        const found = { files: [{ path: 'src/a.ts', matches: [{ line: 3, column: 5, preview: 'let a = 1', ranges: [{ start: 4, end: 5 }] }] }], truncated: false };
+        const { calls, files } = system(json(found));
+
+        expect(await files.search({ query: 'a.b(', matchCase: true, wholeWord: false, exclude: ['**/dist'] }, new AbortController().signal)).toEqual(found);
+        expect(calls[0]).toMatchObject({ method: 'POST', url: `${ TARGET.base }${ ROUTE }/search` });
+        expect(JSON.parse(calls[0]!.body as string)).toEqual({ folderId: 'fld 1', query: 'a.b(', matchCase: true, wholeWord: false, exclude: ['**/dist'] });
+    });
+
+    it('shows the daemon\'s reason when a search is refused', async () => {
+        const { files } = system(refused(400, 'invalid', 'The glob is not valid'));
+
+        expect(await failure(() => files.search({ query: 'a', exclude: ['['] }, new AbortController().signal))).toMatchObject({ code: 'Unavailable', message: 'The glob is not valid' });
+    });
+
+    it('passes on the abort of a search as it is, not as a daemon that cannot be reached', async () => {
+        const controller = new AbortController();
+        const files = new HttpFileSystem({
+            target: () => TARGET,
+            fetch: ((_input: RequestInfo | URL, init?: RequestInit) => new Promise((_resolve, reject) => {
+                init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+            })) as typeof fetch,
+            route: ROUTE,
+            folderId: 'f',
+        });
+        const pending = files.search({ query: 'a' }, controller.signal);
+
+        controller.abort();
+
+        await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    });
+});
+
 describe('HttpFileSystem failures', () => {
     it('tells a missing file, a file that is there, a file that changed, and a path outside the folder apart by the code the file manager acts on', async () => {
         const { files } = system(

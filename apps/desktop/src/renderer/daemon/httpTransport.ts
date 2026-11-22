@@ -2,9 +2,8 @@ import { PROTOCOL_HEADER, PROTOCOL_VERSION, ROUTES, SSE_EVENT } from '@clowdy/pr
 
 import { HttpFileSystem } from './httpFileSystem';
 import { SseParser } from './sse';
-import { TransportError, type CommandInput, type FeedStatus, type StreamTarget, type Transport } from './transport';
+import { TransportError, type CommandInput, type FeedStatus, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
 
-import type { FileSystemProvider } from '@clowdy/file-manager/provider';
 import type {
     AgentInfo,
     AgentModels,
@@ -117,7 +116,7 @@ export class HttpTransport implements Transport {
         return this.#get(`${ ROUTES.projectFiles(projectId) }?${ params }`);
     }
 
-    fileSystem(projectId: ProjectId, folderId: FolderId): FileSystemProvider {
+    fileSystem(projectId: ProjectId, folderId: FolderId): ProjectFileSystem {
         return new HttpFileSystem({ target: () => ({ base: this.#base, headers: this.#headers }), fetch: this.#fetch, route: ROUTES.projectFs(projectId), folderId, sleep: this.#sleep });
     }
 

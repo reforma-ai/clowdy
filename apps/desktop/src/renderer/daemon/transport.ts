@@ -1,4 +1,4 @@
-import type { FileSystemProvider } from '@clowdy/file-manager/provider';
+import type { FileSystemProvider, SearchService } from '@clowdy/file-manager/provider';
 import type {
     AgentInfo,
     AgentModels,
@@ -39,6 +39,11 @@ export type StreamTarget = { runId: RunId } | { chatId: ChatId };
  */
 export type FeedStatus = 'connected' | 'reconnecting' | 'resync';
 
+/** One folder of a project as the file manager uses it: a file system, and the search through its contents when the daemon has one (the file manager reads the files one by one without). */
+export interface ProjectFileSystem extends FileSystemProvider {
+    search?: SearchService;
+}
+
 /** The only way the UI talks to a daemon. */
 export interface Transport {
     getRootSnapshot: () => Promise<RootSnapshot>;
@@ -61,7 +66,7 @@ export interface Transport {
     /** Files of the project's folders whose path contains every word of `query`, best match first, each with its folder and its path relative to that folder. */
     getProjectFiles: (projectId: ProjectId, query: string, limit?: number) => Promise<ProjectFileMatch[]>;
     /** One folder of the project as a file system, for the file manager to browse and edit; the daemon checks every path against the folder. Nothing is asked until the file system is used. */
-    fileSystem: (projectId: ProjectId, folderId: FolderId) => FileSystemProvider;
+    fileSystem: (projectId: ProjectId, folderId: FolderId) => ProjectFileSystem;
     /** Stores a file in the project, to go with the next message of one of its chats. Rejects with a `TransportError` that carries the daemon's reason when it refuses. */
     uploadAttachment: (projectId: ProjectId, file: File) => Promise<Attachment>;
     /** The bytes of an attachment, to show it. */
