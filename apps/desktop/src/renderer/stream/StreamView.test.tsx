@@ -782,17 +782,17 @@ describe('StreamView', () => {
                 expect(editButtons()).toHaveLength(0);
             });
 
-            it('is off, and says so, on every row while the agent works', async () => {
+            it('is not drawn on any row while the agent works', async () => {
                 const onEdit = vi.fn();
 
                 await drawWith(editable, { active: true, messageActions: { onEdit, editBusy: true } });
 
-                expect(editButtons().map(button => button.disabled)).toEqual([true, true]);
-                expect(container.querySelectorAll('[role="button"][aria-disabled][aria-label="Edit message"]')).toHaveLength(2);
+                expect(editButtons()).toHaveLength(0);
+                expect(container.querySelector('[aria-label="Edit message"]')).toBeNull();
 
-                await act(async () => editButtons().forEach(button => button.click()));
+                await drawWith(editable, { active: false, messageActions: { onEdit, editBusy: false } });
 
-                expect(onEdit).not.toHaveBeenCalled();
+                expect(editButtons()).toHaveLength(2);
             });
 
             it('puts the frame where the bubble stood, with the turn rail\'s mark, and keeps everything around it', async () => {

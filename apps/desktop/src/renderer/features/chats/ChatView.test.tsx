@@ -1037,26 +1037,12 @@ describe('Edit in a chat', () => {
             expect(editButtons()).toHaveLength(0);
         });
 
-        it('is off while the agent works, and says why on the stand-in that stands for it', async () => {
+        it('is not drawn while the agent works', async () => {
             await start();
             await draw('c-1');
 
-            expect(editButtons()).toHaveLength(1);
-            expect(editButtons()[0].disabled).toBe(true);
-
-            await act(async () => editButtons()[0].click());
-
-            expect(frame()).toBeNull();
-
-            const standIn = container.querySelector<HTMLElement>('[role="button"][aria-disabled][aria-label="Edit message"]')!;
-
-            await act(async () => {
-                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-                standIn.focus();
-            });
-            await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
-
-            expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Stop the agent to edit');
+            expect(editButtons()).toHaveLength(0);
+            expect(container.querySelector('[aria-label="Edit message"]')).toBeNull();
         });
     });
 
@@ -1227,8 +1213,8 @@ describe('Edit in a chat', () => {
             expect(toast.error).not.toHaveBeenCalled();
             // Nothing says the message was lost: the edit itself removed it.
             expect(toast.warning).not.toHaveBeenCalled();
-            // The agent works on the new turn, so the new message offers Edit off.
-            expect(editButtons().map(button => button.disabled)).toEqual([true]);
+            // The agent works on the new turn, so the new message offers no Edit.
+            expect(editButtons()).toHaveLength(0);
             // The session is released.
             expect(messageOf(draftOf(editDraftKey('c-2', first)))).toBe('');
         });

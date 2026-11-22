@@ -38,7 +38,7 @@ import type { MessageActionsConfig, ReplyMessage } from './MessageActions';
  * What `StreamView` is given for the row under a message: `MessageActionsConfig`, except that a reply names who wrote the message and a fork and an edit are told
  * by the item they are made at.
  */
-export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onReply' | 'onFork' | 'forkState' | 'onEdit' | 'editState'> {
+export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onReply' | 'onFork' | 'forkState' | 'onEdit'> {
     /** Reply to a whole message, from its row or by swiping it: called with who wrote it and its source Markdown. */
     onReply?: (message: ReplyMessage) => void;
     /** Quote the words selected inside one message (the floating Reply button of `SelectionReply`): called with them as they are drawn. Not drawn without it. */
@@ -49,7 +49,7 @@ export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' 
     forkingId?: string;
     /** Edit a message of the person's (the id of its item): drawn under one that the daemon marked `canEdit`, and under none while a message is being edited (`StreamView` `editing`). */
     onEdit?: (itemId: string) => void;
-    /** The agent is working: Edit is drawn off, with the reason on a tooltip, since the chat can be rewritten only at rest. */
+    /** The agent is working: Edit is not drawn at all, since the chat can be rewritten only at rest. */
     editBusy?: boolean;
 }
 
@@ -162,12 +162,8 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
             if (forkingId !== undefined) actions.forkState = forkingId === id ? 'pending' : 'blocked';
         }
 
-        // One message is edited at a time: while its frame is open the others offer no Edit.
-        if (onEdit && canEdit && body.kind === 'user' && !editing) {
-            actions.onEdit = () => onEdit(id);
-
-            if (editBusy) actions.editState = 'busy';
-        }
+        // One message is edited at a time: while its frame is open the others offer no Edit. None while the agent works either: a button that cannot be pressed is only noise.
+        if (onEdit && canEdit && body.kind === 'user' && !editing && !editBusy) actions.onEdit = () => onEdit(id);
 
         return actions;
     };

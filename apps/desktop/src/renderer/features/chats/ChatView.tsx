@@ -95,7 +95,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                     working={ isRunActive(run) && liveLine(run.status) }
                     links={ links }
                     // Reply puts a message in the message box as a card, or quotes selected words into the draft; a fork is a conversation to go on in, and an edit sends the
-                    // message again: a chat that is read only has none of them. The chat is rewritten from a message only at rest, so while the agent works Edit is drawn off.
+                    // message again: a chat that is read only has none of them. The chat is rewritten from a message only at rest, so while the agent works Edit is not drawn.
                     messageActions={ writability.writable
                         ? {
                             onReply: message => composer.current?.reply(message),
