@@ -13,6 +13,7 @@ import useResizeObserver from 'use-resize-observer';
 import { closeTab } from './editor/closeTab';
 import { EditorArea } from './editor/EditorArea';
 import { Explorer } from './explorer/Explorer';
+import { scopeFilter } from './explorer/scopeFilter';
 import styles from './FileManagerView.module.css';
 import { isMac } from './platform';
 
@@ -21,6 +22,7 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import type { FileManager } from '../FileManager';
 import type { FileEntry } from '../provider';
 import type { ExplorerHandle, ExplorerProps } from './explorer/Explorer';
+import type { ExplorerScope } from './explorer/explorerContext';
 import type { FileMenuItem } from './explorer/ExplorerMenu';
 
 export interface FileManagerViewProps {
@@ -29,6 +31,12 @@ export interface FileManagerViewProps {
     menuItems?: (targets: readonly FileEntry[]) => FileMenuItem[];
     /** CodeMirror extensions added to every text document while it is shown (host keys, a language server). Keep the value stable: a new one reconfigures the editor. */
     editorExtensions?: Extension;
+    /** Draws a part of the tree in the sidebar (a folder of documents) in place of all of it, with a name filter of its own. Keep the value stable. */
+    scope?: ExplorerScope;
+    /** What the sidebar's filter field says while it is empty. */
+    filterPlaceholder?: string;
+    /** What the sidebar says while its scope has no rows and nothing is typed. */
+    emptyText?: string;
     /** The react-dnd manager the host's other trees use, so they share one HTML5 backend. Without it the explorer makes its own. */
     dndManager?: ExplorerProps['dndManager'];
     /** The sidebar (the file tree) is shown. It is built each time it opens, at `sidebarWidth`. */
@@ -56,6 +64,9 @@ export const FileManagerView = observer(function FileManagerView({
     manager,
     menuItems,
     editorExtensions,
+    scope,
+    filterPlaceholder = 'Filter files',
+    emptyText,
     dndManager,
     sidebarOpen = true,
     sidebarWidth = SIDEBAR_DEFAULT_WIDTH,
@@ -71,6 +82,18 @@ export const FileManagerView = observer(function FileManagerView({
     // again) lays itself out at that width, which squeezes the sidebar to its narrowest and leaves it there once the box grows. So the group is built when the
     // box has a width, and stays built.
     const [sized, setSized] = useState(false);
+    // A scope is drawn from the tree's own entries, and its folders below the first level are not listed until they are opened: list the scope whole, once the tree has.
+    const ready = manager.tree.status === 'ready';
+
+    useEffect(() => {
+        if (scope && ready) {
+            manager.tree.loadDeep(scope.root).catch((error: unknown) => manager.notify('Couldn’t list the folder', error));
+        }
+    }, [manager, scope, ready]);
+
+    // A scope has a filter of its own: the manager's goes through the provider, whose search can leave the scope's folders out.
+    const [scopeQuery, setScopeQuery] = useState('');
+    const scoped = scope ? scopeFilter(manager.tree, scope, scopeQuery) : undefined;
 
     useEffect(() => {
         if (rootWidth > 0) {
@@ -132,13 +155,26 @@ export const FileManagerView = observer(function FileManagerView({
                         <Sidebar panelRef={sidebar} width={sidebarWidth}>
                             <Panel side="right" className={styles.sidebar}>
                                 <PanelHeader>
-                                    <FilterField manager={manager} onSubmit={() => explorer.current?.openFirstMatch()} />
+                                    <FilterField
+                                        manager={manager}
+                                        placeholder={filterPlaceholder}
+                                        scoped={scope ? { query: scopeQuery, onChange: setScopeQuery } : undefined}
+                                        onSubmit={() => explorer.current?.openFirstMatch()}
+                                    />
                                     <PanelHeader.Actions>
                                         {onSidebarToggle && <SidebarToggle open onPress={onSidebarToggle} />}
                                     </PanelHeader.Actions>
                                 </PanelHeader>
                                 <PanelTab>
-                                    <Explorer ref={explorer} manager={manager} menuItems={menuItems} dndManager={dndManager} />
+                                    <Explorer
+                                        ref={explorer}
+                                        manager={manager}
+                                        menuItems={menuItems}
+                                        dndManager={dndManager}
+                                        scope={scope}
+                                        filter={scope ? (scoped ?? null) : undefined}
+                                        emptyText={emptyText}
+                                    />
                                 </PanelTab>
                             </Panel>
                         </Sidebar>
@@ -149,26 +185,31 @@ export const FileManagerView = observer(function FileManagerView({
     );
 });
 
-/** The filter of the tree: the files whose name has what is typed, with the folders above them. Enter opens the first. It takes the place a title would have in the header. */
-const FilterField = observer(function FilterField({ manager, onSubmit }: { manager: FileManager; onSubmit: () => void }) {
+/**
+ * The filter of the tree: the files whose name has what is typed, with the folders above them. Enter opens the first. It takes the place a title would have in the
+ * header. A scope keeps its query in the view (`scoped`), and the manager's goes through the provider.
+ */
+const FilterField = observer(function FilterField({ manager, placeholder, scoped, onSubmit }: { manager: FileManager; placeholder: string; scoped?: { query: string; onChange: (query: string) => void }; onSubmit: () => void }) {
     const { filterQuery, filterResult } = manager;
+    const query = scoped ? scoped.query : filterQuery;
+    const pending = !scoped && filterQuery.trim() !== '' && filterResult?.query !== filterQuery;
 
     return (
         <SearchInput
             size="sm"
             variant="inline"
             className={styles.filter}
-            placeholder="Filter files"
-            aria-label="Filter files"
-            value={filterQuery}
-            onChange={(query: string) => void manager.filter(query)}
+            placeholder={placeholder}
+            aria-label={placeholder}
+            value={query}
+            onChange={(next: string) => (scoped ? scoped.onChange(next) : void manager.filter(next))}
             onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                     onSubmit();
                 }
             }}
         >
-            {filterQuery.trim() !== '' && filterResult?.query !== filterQuery ? <Spinner slot="suffix" size="xs" aria-label="Searching" /> : null}
+            {pending ? <Spinner slot="suffix" size="xs" aria-label="Searching" /> : null}
         </SearchInput>
     );
 });

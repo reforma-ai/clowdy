@@ -28,7 +28,7 @@ import type { FileManager } from '../../FileManager';
 import type { UploadItem } from '../../FileOperations';
 import type { FileEntry, FileKind } from '../../provider';
 import type { FileTree } from '../../tree/FileTree';
-import type { ExplorerActions, ExplorerItem } from './explorerContext';
+import type { ExplorerActions, ExplorerFilter, ExplorerItem, ExplorerScope } from './explorerContext';
 import type { FileMenuItem } from './ExplorerMenu';
 
 const ROW_HEIGHT = 32;
@@ -41,22 +41,31 @@ interface Draft {
     kind: FileKind;
 }
 
+/** The entries that are rows below `parent`: the shown ones, or, in a scope, the ones the scope includes, hidden or not. */
+function rowsOf(tree: FileTree, parent: string, scope: ExplorerScope | undefined): readonly FileEntry[] {
+    if (!scope) {
+        return tree.children(parent);
+    }
+
+    return tree.entriesOf(parent).filter(entry => scope.include?.(entry.path, entry.kind) ?? true);
+}
+
 /** Every shown path as nested rows. An empty cutoff folder is a leaf; an unloaded folder with children keeps a chevron. */
-function itemsOf(tree: FileTree, parent: string): ExplorerItem[] {
-    return tree.children(parent).map(entry => ({
+function itemsOf(tree: FileTree, parent: string, scope?: ExplorerScope): ExplorerItem[] {
+    return rowsOf(tree, parent, scope).map(entry => ({
         id: entry.path,
         name: basename(entry.path),
         kind: entry.kind,
-        children: folderChildren(tree, entry),
+        children: folderChildren(tree, entry, scope),
     }));
 }
 
-function folderChildren(tree: FileTree, entry: FileEntry): ExplorerItem[] | null {
+function folderChildren(tree: FileTree, entry: FileEntry, scope: ExplorerScope | undefined): ExplorerItem[] | null {
     if (entry.kind !== 'directory' || entry.hasChildren === false) {
         return null;
     }
 
-    const children = itemsOf(tree, entry.path);
+    const children = itemsOf(tree, entry.path, scope);
 
     if (children.length > 0) {
         return children;
@@ -66,7 +75,7 @@ function folderChildren(tree: FileTree, entry: FileEntry): ExplorerItem[] | null
 }
 
 /** `items` with the inline new row first among its kind in its folder. */
-function withDraft(items: ExplorerItem[], draft: Draft, parent = ''): ExplorerItem[] {
+function withDraft(items: ExplorerItem[], draft: Draft, parent: string): ExplorerItem[] {
     if (draft.parent === parent) {
         const index = draft.kind === 'directory' ? 0 : items.filter(item => item.kind === 'directory').length;
         const row = { id: DRAFT_ID, name: '', kind: draft.kind, children: null };
@@ -153,8 +162,8 @@ function NoCursor() {
 }
 
 /** The folder a drop on `target` goes in: its row's folder, or the root below the rows. */
-function dropFolderAt(target: EventTarget): string {
-    return (target as Element).closest<HTMLElement>('[data-folder]')?.dataset.folder ?? '';
+function dropFolderAt(target: EventTarget, root: string): string {
+    return (target as Element).closest<HTMLElement>('[data-folder]')?.dataset.folder ?? root;
 }
 
 /** A dropped folder's entries; `readEntries` hands them over in batches until an empty one. */
@@ -204,6 +213,12 @@ export interface ExplorerProps {
     manager: FileManager;
     menuItems?: (targets: readonly FileEntry[]) => FileMenuItem[];
     dndManager?: Parameters<typeof Tree<ExplorerItem>>[0]['dndManager'];
+    /** Draws a part of the tree: the entries below a folder, by rules of its own. Keep the value stable. */
+    scope?: ExplorerScope;
+    /** A name filter the host draws, in place of the manager's (`manager.filter`): the rows are the files it found, with their folders. */
+    filter?: ExplorerFilter | null;
+    /** What the tree says while it has no rows and no filter is typed: a scope that has nothing in it yet. */
+    emptyText?: string;
     ref?: Ref<ExplorerHandle>;
 }
 
@@ -212,7 +227,7 @@ export interface ExplorerProps {
  * create and rename, row menus, copy and paste, drag to move, files dropped from outside, and the
  * active tab revealed. Open folders are kept on the manager, so they open again when the tab shows again.
  */
-export const Explorer = observer(function Explorer({ manager, menuItems, dndManager, ref }: ExplorerProps) {
+export const Explorer = observer(function Explorer({ manager, menuItems, dndManager, scope, filter, emptyText, ref }: ExplorerProps) {
     const treeApi = useRef<TreeApi<ExplorerItem>>(null);
     const { width = 0, height = 0, ref: measure } = useResizeObserver<HTMLDivElement>();
     // The tree's own element is where react-dnd's HTML5 backend listens (see `dndRootElement`): on the window, the backend would also cancel the native drags of the
@@ -232,9 +247,12 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
     const [initialOpenState] = useState<Record<string, boolean>>(() =>
         Object.fromEntries([...manager.openFolders].map(path => [path, true]))
     );
-    const items = useMemo(() => computed(() => itemsOf(manager.tree, '')), [manager]).get();
-    const data = draft ? withDraft(items, draft) : items;
-    const { revealed, filterResult } = manager;
+    const root = scope?.root ?? '';
+    const items = useMemo(() => computed(() => itemsOf(manager.tree, root, scope)), [manager, root, scope]).get();
+    const data = draft ? withDraft(items, draft, root) : items;
+    const { revealed } = manager;
+    // The filter the host drew, or the manager's own.
+    const filterResult = filter === undefined ? manager.filterResult : filter;
     const activePath = manager.tabs.activePath;
     const shown = useRef<{ revealed: typeof revealed; activePath: string | null }>({
         revealed: null,
@@ -273,12 +291,15 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
             return;
         }
 
-        const ready = (path: string) => manager.tree.get(path) !== undefined || !manager.tree.isVisible(path);
+        // A row exists for a path the tree shows, or in a scope, for one below its root that it includes.
+        const visible = (path: string, kind: FileKind = 'file') =>
+            scope ? path !== root && isPathWithin(path, root) && (scope.include?.(path, kind) ?? true) : manager.tree.isVisible(path);
+        const ready = (path: string) => manager.tree.get(path) !== undefined || !visible(path);
 
         if (revealed !== shown.current.revealed && (!revealed || ready(revealed.path))) {
             shown.current.revealed = revealed;
 
-            if (revealed && manager.tree.isVisible(revealed.path)) {
+            if (revealed && visible(revealed.path, manager.tree.get(revealed.path)?.kind)) {
                 reveal(api, revealed.path);
             }
         }
@@ -286,11 +307,11 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
         if (activePath !== shown.current.activePath && (activePath === null || ready(activePath))) {
             shown.current.activePath = activePath;
 
-            if (activePath !== null && manager.tree.isVisible(activePath)) {
+            if (activePath !== null && visible(activePath)) {
                 reveal(api, activePath);
             }
         }
-    }, [manager, revealed, activePath, data, dndRoot, sized]);
+    }, [manager, scope, root, revealed, activePath, data, dndRoot, sized]);
 
     // The inline new row edits as soon as it shows; cancelling removes it.
     useEffect(() => {
@@ -307,11 +328,12 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
 
     const actions: ExplorerActions = {
         manager,
+        root,
         draftParent: draft?.parent ?? null,
         dropFolder,
         menuItems,
         create: (parent, kind) => {
-            if (parent !== '') {
+            if (parent !== root) {
                 treeApi.current?.openParents(parent);
                 treeApi.current?.open(parent);
             }
@@ -353,7 +375,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
             return;
         }
 
-        const created = await manager.operations.createFile(draft.parent, name);
+        const created = await manager.operations.createFile(draft.parent, scope?.fileName?.(name) ?? name);
 
         if (created) {
             await manager.open(created);
@@ -407,7 +429,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
     const selectedFolder = () => {
         const selected = treeApi.current?.selectedNodes.at(-1);
 
-        return selected ? folderOf(selected.id, selected.data.kind) : '';
+        return selected ? folderOf(selected.id, selected.data.kind) : root;
     };
 
     useImperativeHandle(ref, () => ({
@@ -459,7 +481,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
 
         event.preventDefault();
 
-        const folder = dropFolderAt(event.target);
+        const folder = dropFolderAt(event.target, root);
         // The dropped items can be read only while the event is handled.
         const entries = [...event.dataTransfer.items]
             .map(item => item.webkitGetAsEntry())
@@ -487,13 +509,13 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                     <div
                         ref={treeHost}
                         className={styles.treeHost}
-                        data-drop-target={dropFolder === '' || undefined}
+                        data-drop-target={dropFolder === root || undefined}
                         onDragOver={event => {
                             if (manager.readonly) {
                                 return;
                             }
 
-                            const folder = dropFolderAt(event.target);
+                            const folder = dropFolderAt(event.target, root);
 
                             holdOver(folder);
 
@@ -574,7 +596,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                                 }}
                                 onRename={handleRename}
                                 onMove={({ dragIds, parentId }) => {
-                                    void manager.operations.move(dragIds, parentId ?? '', {
+                                    void manager.operations.move(dragIds, parentId ?? root, {
                                         confirmReplace: names => askToReplace(manager, names),
                                     });
                                 }}
@@ -589,6 +611,9 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                         </Show>
                         <Show when={filterResult?.paths.size === 0}>
                             <PanelEmptyRow className={styles.empty}>No matches</PanelEmptyRow>
+                        </Show>
+                        <Show when={emptyText !== undefined && items.length === 0 && !draft && !filterResult}>
+                            <PanelEmptyRow className={styles.empty}>{emptyText}</PanelEmptyRow>
                         </Show>
                     </div>
                     <ScrollChromeBars
