@@ -66,7 +66,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const overflowAt = overflowed(run) && writability.writable && canCompactChat(chat, run, agents) ? items.findLast(item => item.body.kind === 'error')?.id : undefined;
 
     return (
-        <ChatDropZone disabled={ !writability.writable } onFiles={ files => composer.current?.addFiles(files) }>
+        <ChatDropZone disabled={ !writability.writable } onFiles={ files => composer.current?.addFiles(files) } onPasteFiles={ files => composer.current?.pasteFiles(files) }>
             { parent && <ThreadCrumb parent={ parent } onOpen={ () => links.onOpenChat(parent.id) } /> }
 
             { stream?.status === 'failed' && (

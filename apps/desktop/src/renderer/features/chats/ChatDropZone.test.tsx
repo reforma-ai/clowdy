@@ -144,4 +144,21 @@ describe('ChatDropZone', () => {
         expect(paste([file]).defaultPrevented).toBe(true);
         expect(onFiles).toHaveBeenCalledWith([file]);
     });
+
+    it('hands files pasted into it to the page that told where pasted ones go, and the dropped ones to the other', async () => {
+        const onFiles = vi.fn();
+        const onPasteFiles = vi.fn();
+        const file = new File(['a'], 'a.ts');
+
+        await act(async () => root.render(<ChatDropZone onFiles={ onFiles } onPasteFiles={ onPasteFiles }><p>chat</p></ChatDropZone>));
+
+        const paste = new Event('paste', { bubbles: true, cancelable: true });
+
+        Object.defineProperty(paste, 'clipboardData', { value: { files: [file], items: [], types: ['Files'] } });
+        await act(async () => void zone().dispatchEvent(paste));
+        await act(async () => void zone().dispatchEvent(dragEvent('drop', [file])));
+
+        expect(onPasteFiles.mock.calls).toEqual([[[file]]]);
+        expect(onFiles.mock.calls).toEqual([[[file]]]);
+    });
 });

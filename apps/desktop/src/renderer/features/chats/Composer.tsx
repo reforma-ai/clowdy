@@ -6,7 +6,7 @@ import { Clip } from '@clowdy/icons/14';
 import { useImperativeHandle, useLayoutEffect, useRef, useState, type MouseEvent, type Ref } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
-import { useAgents, useRootStore } from '../../stores';
+import { useAgents, useProjectState, useRootStore } from '../../stores';
 import { busyEnter, sendMode } from './busyEnter';
 import { ChatControls } from './ChatControls';
 import { readRememberedMode, startingMode, writeRememberedMode } from './chatModeMemory';
@@ -23,6 +23,7 @@ import { ContextRing } from './ContextRing';
 import { MentionChip } from './MentionChip';
 import { ModelPicker, ModelPickerOff } from './ModelPicker';
 import { ModePicker } from './ModePicker';
+import { pasteFiles } from './pastedFiles';
 import { ReplyCard } from './ReplyCard';
 import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
@@ -42,6 +43,8 @@ const LINE_HEIGHT = 20;
 export interface ComposerHandle {
     /** Adds files to the message, as if they were picked with the attach button. */
     addFiles: (files: readonly File[]) => void;
+    /** Takes files pasted on the page: the ones that are in the project's folders become chips, and the rest are added as `addFiles` does. */
+    pasteFiles: (files: readonly File[]) => void;
     /** Reply to a whole message: it becomes the card above the field (instead of the one that is there), sent as a quote in front of the words, and the field takes the focus. */
     reply: (message: ReplyMessage) => void;
     /** Quote words selected inside a message: adds `text` to the end of the draft as a quote, and puts the caret on the line below it. */
@@ -119,6 +122,7 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
     const busy = isRunBusy(run);
     const model = useModelChoice({ chat, made, run, preferredEngine: start?.defaults?.engine });
     const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
+    const { folders } = useProjectState().project;
     // The message the box replies to, shown as a card above the field. The box of an edit frame has none.
     const replyTo = useReplyQuote(key);
     const { agents } = useAgents();
@@ -164,7 +168,9 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
         field.current?.focus();
     };
 
-    useImperativeHandle(ref, () => ({ addFiles: attach.add, reply, quote }), [attach.add, reply, quote]);
+    const pasted = (files: readonly File[]) => void pasteFiles(files, { folders, mention: chip => field.current?.insertMention(chip), attach: attach.add });
+
+    useImperativeHandle(ref, () => ({ addFiles: attach.add, pasteFiles: pasted, reply, quote }), [attach.add, pasted, reply, quote]);
 
     /** Sends the message; `mod` (Cmd/Ctrl+Enter) sends it the other way than Enter while the orchestrator works. */
     const send = async (from: ComposerDoc, mod = false) => {
@@ -337,7 +343,7 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
                         onSubmit={ (next, origin) => (editMode ? submitEdit(next) : void send(next, origin?.mod === true)) }
                         onEscape={ editMode?.onCancel }
                         // Files before text, as the zone around the page does: a file copied in Finder also puts its name on the clipboard as text.
-                        onPasteFiles={ attach.add }
+                        onPasteFiles={ pasted }
                     />
 
                     <div className={ styles.row }>
