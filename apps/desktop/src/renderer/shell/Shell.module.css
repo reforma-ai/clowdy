@@ -3,11 +3,20 @@
     --plate-inset: var(--spacing-6);
     --plate-gap: var(--spacing-4);
     --plate-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    /* The rail at the window's right edge (`SidePanelRail`), which the title band stops short of. */
+    --side-rail-width: 58px;
 
     display: flex;
-    flex-direction: column;
     height: 100vh;
     color: var(--color-text);
+}
+
+/* Everything but the rail, which is as tall as the window: the title band across the top and the body under it. */
+.window {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
 }
 
 .body {

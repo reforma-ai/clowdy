@@ -1,12 +1,8 @@
-/*
- * As wide as the rail under it (`SidePanelRail.module.css`), with the button in the middle of its column, over the rail's items. The band keeps a padding at its right
- * edge, which the corner takes back, so it reaches the window's edge; on Windows the padding that stays is the caption buttons' room.
- */
+/* The top of the rail: as tall as the window's title band, with the button in the middle of the rail's column, as it was when it sat in the band. */
 .corner {
     display: flex;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    width: 58px;
-    margin-right: calc(var(--spacing-lg) * -1);
+    height: var(--spacing-48);
 }

@@ -6,6 +6,7 @@ import { RailItem } from '../../shared/RailItem';
 import { useRootStore } from '../../stores';
 import { SETTINGS_COMMAND } from '../settings/commands';
 import { SIDE_PANEL_TAB_LABELS, sidePanelTabCommand } from './commands';
+import { SidePanelCorner } from './SidePanelCorner';
 import styles from './SidePanelRail.module.css';
 import { useSidePanel } from './useSidePanel';
 
@@ -24,10 +25,12 @@ const TABS: ReadonlyArray<{ tab: SidePanelTab; icon: typeof Info; size: number }
 const AT_BOTTOM: SidePanelTab = 'info';
 
 /**
- * The rail at the right edge of the window, whether the side panel is open or not, as the sections are at the left: an item for each tab of the panel, and Settings
+ * The rail at the right edge of the window, as tall as the window and there whether the side panel is open or not: the button that steps the panel first (`SidePanelCorner`,
+ * where the title band's height is, so it is the first thing the Windows caption buttons leave room for), then an item for each tab of the panel, and Settings
  * pinned at the bottom (Info, the one tab that is not a tool, goes down with it). A click on a tab opens the panel on it, or shuts it when that tab is the one it shows,
  * and the key of the tab does the same (`ProjectUi.toggleSidePanelTab`; `Cmd+Esc` shuts or opens the panel whatever tab it shows). Only the tab the panel shows is
- * current (in the primary colour, as the open chat is in Reforma's rail), and none is while the panel is shut. The tabs are not drawn where the window shows no project; Settings, which is the window's and not a project's, always is.
+ * current (in the primary colour, as the open chat is in Reforma's rail), and none is while the panel is shut. The button and the tabs are not drawn where the window shows
+ * no project; Settings, which is the window's and not a project's, always is.
  */
 export function SidePanelRail() {
     const root = useRootStore();
@@ -37,6 +40,7 @@ export function SidePanelRail() {
 
     return (
         <div className={ styles.rail }>
+            <SidePanelCorner />
             { available && (
                 <nav className={ styles.tabs } aria-label="Panel tabs">
                     { TABS.map(({ tab, icon, size }) => (

@@ -1,12 +1,16 @@
-/* The same column as the window's left rail (`shell/Rail`): 58px, its items from the top, under the header and beside the plates. As in Reforma's editor rail, the
-   bottom has 4px more than the top: the last item ends in a label, and a glyph tile at the top has the icon's own room inside it, so the two look as far from the edges. */
+/*
+ * A column as tall as the window, at its right edge: the panel's button first, as tall as the title band is (`SidePanelCorner`), then the items, beside the plates. Where the
+ * Windows caption buttons are over its top, it starts under them (`--titlebar-trailing-height`, 0 elsewhere). As in Reforma's editor rail, the bottom has 4px more than the
+ * gap above the first item: the last item ends in a label, and a glyph tile has the icon's own room inside it, so the two look as far from the edges.
+ */
 .rail {
     display: flex;
     flex-shrink: 0;
     flex-direction: column;
     gap: var(--spacing-lg);
-    width: 58px;
-    padding-block: var(--spacing-lg) calc(var(--spacing-lg) + var(--spacing-xs));
+    width: var(--side-rail-width);
+    padding-top: var(--titlebar-trailing-height);
+    padding-bottom: calc(var(--spacing-lg) + var(--spacing-xs));
 }
 
 /* The tabs take the column's height, so Info can go to its bottom, above Settings. */

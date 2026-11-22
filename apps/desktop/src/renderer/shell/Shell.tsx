@@ -18,8 +18,9 @@ import { TitleBand } from './TitleBand';
 import { Unreachable } from './Unreachable';
 
 /**
- * The window: one title band across the top, and under it the Agents screen (the list of chats and the chat beside it), the side panel beside it while a project's panel
- * is open, and the rail at the right edge (the panel's tabs, Info and Settings), which is there whether the panel is open or not. Settings is a window over all this.
+ * The window: the rail at the right edge, as tall as the window (the panel's button, its tabs, Info and Settings), which is there whether the panel is open or not, and the rest
+ * of the window beside it: the title band across the top and under it the Agents screen (the list of chats and the chat beside it) with the side panel beside it while a
+ * project's panel is open. Settings is a window over all this.
  */
 export function Shell() {
     const root = useRootStore();
@@ -31,15 +32,17 @@ export function Shell() {
 
     return (
         <div className={ styles.shell }>
-            <TitleBand />
-            <div className={ styles.body }>
-                <SidePanelLayout>
-                    <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare, panel.open && styles.beside, panel.expanded && styles.covered) }>
-                        <Outlet />
-                    </main>
-                </SidePanelLayout>
-                <SidePanelRail />
+            <div className={ styles.window }>
+                <TitleBand />
+                <div className={ styles.body }>
+                    <SidePanelLayout>
+                        <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare, panel.open && styles.beside, panel.expanded && styles.covered) }>
+                            <Outlet />
+                        </main>
+                    </SidePanelLayout>
+                </div>
             </div>
+            <SidePanelRail />
             <SyncBanner />
             <ChordHud />
             <FindBar />

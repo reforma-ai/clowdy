@@ -1,17 +1,15 @@
 import { Button } from '@clowdy/components/Button';
 import { ChevronLeft, ChevronRight } from '@clowdy/icons/16';
 
-import { SidePanelCorner } from '../features/sidePanel';
 import { commandTooltip } from '../hotkeys';
 import { useRootStore } from '../stores';
 import styles from './TitleBand.module.css';
 import { UsageStatus } from './UsageStatus';
 
 /**
- * The 48px band over the window's top edge, one band across the whole window whether the side panel is open or not. On macOS the traffic lights sit at the left,
- * then come back and forward; on Windows the caption buttons sit at the right, and the band leaves room for them. The page draws neither.
- * The right edge holds the usage status (a badge for each provider that can be used), and after it the corner over the side panel's rail, which is free of the badges
- * and has the button that expands the panel.
+ * The 48px band over the top edge of the window, as wide as the window is up to the side panel's rail, which is as tall as the window and has the panel's button at its top.
+ * On macOS the traffic lights sit at the left, then come back and forward; on Windows the caption buttons sit at the right, over the rail and a part of the band, and the
+ * band leaves room for that part. The page draws neither. The right edge holds the usage status (a badge for each provider that can be used).
  */
 export function TitleBand() {
     const root = useRootStore();
@@ -49,7 +47,6 @@ export function TitleBand() {
                     </div>
                     <div className={ styles.end }>
                         <UsageStatus />
-                        <SidePanelCorner />
                     </div>
                 </>
             ) }

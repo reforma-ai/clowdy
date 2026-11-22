@@ -9,7 +9,6 @@ import { createFixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { currentFolder } from './currentFolder';
-import { SidePanelCorner } from './SidePanelCorner';
 import { SidePanelLayout } from './SidePanelLayout';
 import { SidePanelRail } from './SidePanelRail';
 
@@ -44,7 +43,6 @@ vi.mock('./SidePanel', async (importOriginal) => ({ SidePanel: observer((await i
 // The babel plugin that makes the app's components observers does not run under Vitest.
 const Layout = observer(SidePanelLayout);
 const Rail = observer(SidePanelRail);
-const Corner = observer(SidePanelCorner);
 /** The page with its side panel, and the rail at the window's right edge. */
 const Frame = () => (
     <>
@@ -114,13 +112,13 @@ afterEach(() => {
     store.dispose();
 });
 
-describe('the corner over the rail', () => {
+describe('the corner at the top of the rail', () => {
     // The icon is one, drawn for the state the panel is in and moving to the one a press leads to.
     const icon = () => `${ expandButton()?.querySelector('svg')?.getAttribute('data-state') } > ${ expandButton()?.querySelector('svg')?.getAttribute('data-next') }`;
     const pressed = () => expandButton()?.getAttribute('aria-pressed');
 
     it('steps the panel through shown, expanded and hidden with one button, which is pressed while the panel is shown and has an icon that draws the panel as it is and moves to what it will be', async () => {
-        await draw(<><Layout><p>The page</p></Layout><Corner /></>);
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
 
         expect(pressed()).toBe('false');
         expect(icon()).toBe('none > small');
@@ -152,7 +150,7 @@ describe('the corner over the rail', () => {
 
     it('opens a panel that was shut while expanded, by another way than the button, expanded again, with the icon moving to the wide panel', async () => {
         act(() => ui().toggleSidePanel());
-        await draw(<><Layout><p>The page</p></Layout><Corner /></>);
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
 
         act(() => ui().toggleSidePanelExpanded());
         act(() => ui().toggleSidePanel());
@@ -171,7 +169,7 @@ describe('the corner over the rail', () => {
 
     it('steps a panel on the Tasks tab through shown and hidden, and leaves the expanded choice alone', async () => {
         act(() => ui().showSidePanelTab('tasks'));
-        await draw(<><Layout><p>The page</p></Layout><Corner /></>);
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
 
         // Shut, the panel comes back full on this tab.
         expect(icon()).toBe('none > large');
@@ -187,11 +185,16 @@ describe('the corner over the rail', () => {
         expect(panel()).toBeNull();
     });
 
-    it('is as wide as the rail even with no project, and has no button there', async () => {
-        await withoutProjects();
-        await draw(<Corner />);
+    it('is the first item of the rail, and the rail keeps its top empty when there is no project, with no button there', async () => {
+        await draw(<Rail />);
 
-        expect(container.firstElementChild?.className).toMatch(/corner/);
+        expect(container.firstElementChild?.firstElementChild?.className).toMatch(/corner/);
+        expect(container.firstElementChild?.firstElementChild?.contains(expandButton())).toBe(true);
+
+        await withoutProjects();
+        await draw(<Rail />);
+
+        expect(container.firstElementChild?.firstElementChild?.className).toMatch(/corner/);
         expect(expandButton()).toBeNull();
     });
 });
@@ -448,12 +451,13 @@ describe('the rail of the side panel', () => {
         expect(ui().sidePanelOpen).toBe(true);
     });
 
-    it('has Info at the bottom beside Settings, and Settings under it', async () => {
+    it('has the panel\'s button first, then Info at the bottom beside Settings, and Settings under it', async () => {
         await draw(<Frame />);
 
         const items = [...container.querySelectorAll<HTMLButtonElement>('button')];
 
-        expect(items.map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Tasks', 'Info', 'Settings']);
+        expect(items[0]).toBe(expandButton());
+        expect(items.slice(1).map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Tasks', 'Info', 'Settings']);
         // Info is the one tab that is pushed to the bottom of the column, so that it sits above Settings.
         expect(tab('Info')!.className).toMatch(/bottom/);
         expect(tab('Files')!.className).not.toMatch(/bottom/);
