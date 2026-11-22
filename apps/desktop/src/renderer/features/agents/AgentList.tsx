@@ -4,7 +4,7 @@ import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Plus } from '@clowdy/icons/14';
+import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat } from '@clowdy/icons/14';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, type SyntheticEvent } from 'react';
 
 import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
@@ -318,7 +318,7 @@ export function AgentList({ selection, chats, missing, isCovered }: { selection:
                         <GridListItem
                             id={ NEW_CHAT_ROW }
                             text="New chat"
-                            icon={ <Plus /> }
+                            icon={ <NewChat /> }
                             className={ styles.newChat }
                             // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
                             endAffix={ (
