@@ -20,8 +20,8 @@ describe('panelSizeOptions', () => {
     });
 
     it('keeps half, with the reason it cannot be chosen, for a tab that is always wide and for a window too narrow', () => {
-        expect(panelSizeOptions('tab')).toEqual([{ size: 'wide' }, { size: 'half', unavailable: 'Always wide' }, { size: 'hide' }]);
-        expect(panelSizeOptions('window')).toEqual([{ size: 'wide' }, { size: 'half', unavailable: 'Too narrow' }, { size: 'hide' }]);
+        expect(panelSizeOptions('tab')).toEqual([{ size: 'wide' }, { size: 'half', unavailable: 'This tab is always wide' }, { size: 'hide' }]);
+        expect(panelSizeOptions('window')).toEqual([{ size: 'wide' }, { size: 'half', unavailable: 'The window is too narrow for this tab beside the chat' }, { size: 'hide' }]);
     });
 });
 

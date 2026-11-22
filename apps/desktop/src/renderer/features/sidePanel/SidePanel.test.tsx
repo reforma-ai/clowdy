@@ -217,8 +217,10 @@ describe('the corner at the top of the rail', () => {
 
         await press(expandButton()!);
 
-        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'HalfAlways wide', 'Hide']);
+        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'Half', 'Hide']);
         expect(size('Half').disabled).toBe(true);
+        // A disabled button gets no pointer, so a focusable stand-in carries the tooltip that says why.
+        expect(size('Half').parentElement?.getAttribute('aria-label')).toBe('Half');
 
         await press(size('Wide'));
 
@@ -240,7 +242,7 @@ describe('the corner at the top of the rail', () => {
         await settle();
         await press(expandButton()!);
 
-        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'HalfToo narrow', 'Hide']);
+        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'Half', 'Hide']);
         expect(size('Half').disabled).toBe(true);
     });
 

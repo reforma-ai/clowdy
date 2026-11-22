@@ -1,6 +1,7 @@
 import { cn } from '@clowdy/lib';
 
 import { commandHint, CommandHotkey } from '../../hotkeys';
+import { Unavailable } from '../../shared/Unavailable';
 import { SIDE_PANEL_COMMAND } from './commands';
 import { PANEL_SIZE_LABELS, type PanelSizeOption } from './panelSize';
 import styles from './SidePanelSizes.module.css';
@@ -47,7 +48,8 @@ export interface SidePanelSizesProps {
 /**
  * The menu of the rail's corner button: a title that says what the pictures are for (the side panel), under it the key that opens and shuts the panel (left out while that
  * command has no key to show), and then the sizes in a row, each a picture of the window with the panel in that size and its name under it. The size the panel is in has the
- * focus when the menu opens, so the keys work in it at once.
+ * focus when the menu opens, so the keys work in it at once. A size that cannot be chosen is grey, and a tooltip on it says why (`Unavailable`), where a caption under it would
+ * have made its tile taller than the others.
  */
 export function SidePanelSizes({ size, options, onSelect }: SidePanelSizesProps) {
     return (
@@ -60,19 +62,21 @@ export function SidePanelSizes({ size, options, onSelect }: SidePanelSizesProps)
             ) }
             <div className={ styles.sizes } role="group" aria-label="Side panel size">
                 { options.map(({ size: option, unavailable }) => (
-                    <button
-                        key={ option }
-                        type="button"
-                        className={ cn(styles.option, option === size && styles.current) }
-                        aria-pressed={ option === size }
-                        disabled={ unavailable !== undefined }
-                        autoFocus={ option === size }
-                        onClick={ () => onSelect(option) }
-                    >
-                        <SizePreview size={ option } />
-                        <span className={ styles.label }>{ PANEL_SIZE_LABELS[option] }</span>
-                        { unavailable !== undefined && <span className={ styles.caption }>{ unavailable }</span> }
-                    </button>
+                    <div key={ option } className={ styles.cell }>
+                        <Unavailable label={ PANEL_SIZE_LABELS[option] } hint={ unavailable } placement="bottom">
+                            <button
+                                type="button"
+                                className={ cn(styles.option, option === size && styles.current) }
+                                aria-pressed={ option === size }
+                                disabled={ unavailable !== undefined }
+                                autoFocus={ option === size }
+                                onClick={ () => onSelect(option) }
+                            >
+                                <SizePreview size={ option } />
+                                <span className={ styles.label }>{ PANEL_SIZE_LABELS[option] }</span>
+                            </button>
+                        </Unavailable>
+                    </div>
                 )) }
             </div>
         </div>

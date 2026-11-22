@@ -11,20 +11,20 @@ export function currentPanelSize({ open, expanded }: { open: boolean; expanded: 
     return expanded ? 'wide' : 'half';
 }
 
-/** One size of the menu: `unavailable` is the caption that says why it cannot be chosen, and its tile is grey. */
+/** One size of the menu: `unavailable` is the reason it cannot be chosen, which a tooltip on its grey tile says. */
 export interface PanelSizeOption {
     size: SidePanelSize;
     unavailable?: string;
 }
 
-/** What the grey tile of Half says, short enough for the tile: a tab that is always wide, and a window too narrow for the tab beside the chat. */
-const NO_HALF_CAPTIONS: Record<NoHalfReason, string> = { tab: 'Always wide', window: 'Too narrow' };
+/** What the grey tile of Half says when the pointer is over it: a tab that is always wide, and a window too narrow for the tab beside the chat. */
+const NO_HALF_HINTS: Record<NoHalfReason, string> = { tab: 'This tab is always wide', window: 'The window is too narrow for this tab beside the chat' };
 
-/** The sizes the menu draws, wide, half and hide: half stays where it is, grey with its reason, for a panel that cannot be beside the chat. */
+/** The sizes the menu draws, wide, half and hide: half stays where it is, grey and saying why on hover, for a panel that cannot be beside the chat. */
 export function panelSizeOptions(noHalf: NoHalfReason | null): PanelSizeOption[] {
     return [
         { size: 'wide' },
-        noHalf ? { size: 'half', unavailable: NO_HALF_CAPTIONS[noHalf] } : { size: 'half' },
+        noHalf ? { size: 'half', unavailable: NO_HALF_HINTS[noHalf] } : { size: 'half' },
         { size: 'hide' },
     ];
 }

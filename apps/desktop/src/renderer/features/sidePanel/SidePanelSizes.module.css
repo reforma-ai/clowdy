@@ -28,6 +28,15 @@
     line-height: var(--spacing-16);
 }
 
+/* One tile of the row, whole: the stand-in of a grey one (`Unavailable`) is a box around it. */
+.cell {
+    display: flex;
+}
+
+.cell > * {
+    flex: 1;
+}
+
 /* The row stands as far under the text as the menu's edge stands from it at the sides (the popover's own padding). The tiles are as wide as the widest. */
 .sizes {
     display: grid;
@@ -40,6 +49,7 @@
 /* A tile of a picture and a name: quiet until the pointer is over it, and in the primary colour for the size the panel is in, as the rail's current tab is. */
 .option {
     display: flex;
+    flex: 1;
     flex-direction: column;
     align-items: center;
     gap: var(--spacing-md);
@@ -71,7 +81,7 @@
     line-height: var(--spacing-16);
 }
 
-/* A size that cannot be chosen: its picture and name are grey, and the reason under them stays readable. */
+/* A size that cannot be chosen: its picture and name are grey. */
 .option:disabled {
     cursor: default;
 }
@@ -79,12 +89,6 @@
 .option:disabled .preview,
 .option:disabled .label {
     opacity: var(--opacity-disabled);
-}
-
-.caption {
-    margin-top: calc(var(--spacing-xs) * -1);
-    font-size: calc(var(--spacing-12) - 1px);
-    line-height: var(--spacing-14);
 }
 
 .preview {
