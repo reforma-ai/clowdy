@@ -509,10 +509,13 @@ export class FixtureTransport implements Transport {
         return this.#data.agents.find(agent => agent.id === id);
     }
 
-    #updateAgent({ id, enabled, settings, path, env }: Extract<CommandInput, { type: 'agent.update' }>): Outcome {
+    #updateAgent({ id, enabled, settings, path, env, permission }: Extract<CommandInput, { type: 'agent.update' }>): Outcome {
         const agent = this.#agent(id);
 
         if (!agent) return fail('not_found', `There is no agent called "${ id }"`);
+
+        // A preset the agent does not offer is refused before anything changes, as the daemon does.
+        if (permission && !agent.permissions?.presets.some(preset => preset.id === permission)) return fail('invalid', `${ agent.name } has no preset called "${ permission }"`);
 
         if (enabled !== undefined) {
             agent.enabled = enabled;
@@ -527,6 +530,12 @@ export class FixtureTransport implements Transport {
             if (!setting) return fail('invalid', `${ agent.name } has no setting called "${ settingId }"`);
 
             setting.value = value;
+        }
+
+        // `value` is the person's choice only: `null` takes it back, and the agent runs on its provider's default.
+        if (agent.permissions && permission !== undefined) {
+            if (permission === null) delete agent.permissions.value;
+            else agent.permissions.value = permission;
         }
 
         // What the person changed about how the agent starts, kept as the daemon keeps it: a path they chose (`null` goes

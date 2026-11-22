@@ -579,6 +579,35 @@ describe('FixtureTransport agents', () => {
         expect((await transport.command({ type: 'agent.update', id: 'nobody', enabled: true })).ok).toBe(false);
     });
 
+    it('lists the permission presets of each agent, none chosen, with the default the provider has', async () => {
+        const agents = await agentsOf(new FixtureTransport());
+
+        expect(agents.claude?.permissions?.presets.map(preset => preset.id)).toEqual(['ask', 'accept-edits', 'auto', 'full']);
+        expect(agents.codex?.permissions?.presets.map(preset => preset.name)).toEqual(['Ask for approval', 'Accept edits', 'Approve for me', 'Full access']);
+        expect(agents.cursor?.permissions?.presets.map(preset => preset.id)).toEqual(['ask', 'full']);
+        expect([agents.claude, agents.codex, agents.cursor].map(agent => agent?.permissions?.default)).toEqual(['auto', 'auto', 'full']);
+        expect([agents.claude, agents.codex, agents.cursor].every(agent => agent?.permissions?.value === undefined)).toBe(true);
+    });
+
+    it('takes the permission preset an agent offers, takes it back with null, and refuses one it does not offer', async () => {
+        const { transport, events } = await connected();
+
+        expect((await transport.command({ type: 'agent.update', id: 'claude', permission: 'accept-edits' })).ok).toBe(true);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(events.some(event => event.data.type === 'agents.changed')).toBe(true);
+        expect((await agentsOf(transport)).claude?.permissions).toMatchObject({ value: 'accept-edits', default: 'auto' });
+
+        expect((await transport.command({ type: 'agent.update', id: 'claude', permission: null })).ok).toBe(true);
+        expect((await agentsOf(transport)).claude?.permissions).not.toHaveProperty('value');
+
+        // Cursor has the pair only; nothing else about the agent changes when a preset is refused.
+        const refused = await transport.command({ type: 'agent.update', id: 'cursor', enabled: false, permission: 'auto' });
+
+        expect(refused).toMatchObject({ ok: false, error: { code: 'invalid', message: 'Cursor has no preset called "auto"' } });
+        expect(await agentsOf(transport)).toMatchObject({ cursor: { enabled: true } });
+    });
+
     it('takes a program path, and goes back to the one it found with null', async () => {
         const transport = new FixtureTransport();
 

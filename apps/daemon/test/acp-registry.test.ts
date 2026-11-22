@@ -282,7 +282,9 @@ describe('AgentRegistry', () => {
         expect(resolved).toMatchObject({ ok: true, agent: { command: process.execPath, args: ['x', '--bun', pinned('claude')] } });
         expect(resolved.ok && resolved.agent.env).toMatchObject({ CLAUDE_CODE_EXECUTABLE: claude, ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' });
         expect(resolved.ok && resolved.agent.scrub.some(pattern => pattern.test('ANTHROPIC_API_KEY'))).toBe(true);
-        expect(resolved.ok && resolved.agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
+        // Its provider's default preset (Approve for me) asks, so Clowdy's own command is let through.
+        expect(resolved.ok && resolved.agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] } } });
+        expect(resolved.ok && resolved.agent.permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
     });
 
     describe('settings', () => {
@@ -312,7 +314,7 @@ describe('AgentRegistry', () => {
             expect(agent.env).not.toHaveProperty('CLAUDE_CODE_DISABLE_1M_CONTEXT');
             expect(agent.env).toMatchObject({ CLAUDE_CODE_ARTIFACT: '0' });
             expect(agent.env).not.toHaveProperty('CODEX_CONFIG');
-            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
+            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] } } });
         });
 
         test('a setting turned on or off changes the environment and the tools the agent starts with', async () => {
@@ -329,7 +331,7 @@ describe('AgentRegistry', () => {
             expect(agent.env).not.toHaveProperty('CLAUDE_CODE_DISABLE_AUTO_MEMORY');
             expect(agent.env).not.toHaveProperty('ENABLE_CLAUDEAI_MCP_SERVERS');
             expect(agent.env).toMatchObject({ CLAUDE_CODE_DISABLE_1M_CONTEXT: '1', CLAUDE_CODE_ARTIFACT: '1', CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '3' });
-            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task', 'ListAgents', 'Workflow'] } } });
+            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task', 'ListAgents', 'Workflow'], allowedTools: ['Bash(clowdy:*)'] } } });
 
             // A change names only what it changes.
             reg.update('claude', { settings: { memory: false } });
@@ -442,13 +444,24 @@ describe('AgentRegistry', () => {
             expect((await byId(reg, 'mine'))?.permissions).toEqual(GENERIC_PERMISSIONS);
         });
 
-        test('with no choice an agent starts as it did before presets: no mode, no answer of its own, no pre-allowed tools', async () => {
+        test('with no choice an agent runs on its provider\'s default: Approve for me with its mode on Claude and Codex, the client\'s Full access on an agent with none of its own', async () => {
             program('claude', '2.1.325 (Claude Code)');
+            program('codex', 'codex-cli 0.166.0');
 
-            const agent = await start(registry(), 'claude');
+            const reg = registry();
 
-            expect(agent.permission).toBeUndefined();
-            expect(agent.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } } });
+            reg.add({ id: 'mine', name: 'Mine', command: program('my-agent', 'mine 1.0'), args: [] });
+
+            const claude = await start(reg, 'claude');
+
+            expect(claude.permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
+            expect(claude.sessionMeta).toEqual({ claudeCode: { options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] } } });
+            expect((await start(reg, 'codex')).permission).toEqual({ preset: 'auto', mode: 'agent', answer: 'ask' });
+            // No mode to send, and Clowdy allows what the agent asks: what such an agent has always done.
+            expect((await start(reg, 'mine')).permission).toEqual({ preset: 'full', answer: 'allow' });
+            // The person's choice is what `AgentInfo` reports; the default is the provider's.
+            expect((await byId(reg, 'claude'))?.permissions).toMatchObject({ default: 'auto' });
+            expect((await byId(reg, 'claude'))?.permissions?.value).toBeUndefined();
         });
 
         test('a chosen preset gives the start the mode and the answer of the provider\'s plan; Claude\'s presets that ask let Clowdy\'s own command through', async () => {
@@ -500,7 +513,7 @@ describe('AgentRegistry', () => {
             reg.update('claude', { permission: null });
 
             expect((await byId(reg, 'claude'))?.permissions?.value).toBeUndefined();
-            expect((await start(reg, 'claude')).permission).toBeUndefined();
+            expect((await start(reg, 'claude')).permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
         });
 
         test('are kept in agents.json; a value that is not a preset, or that the agent no longer offers, is ignored', async () => {
@@ -512,6 +525,8 @@ describe('AgentRegistry', () => {
 
             expect((await byId(registry(dir), 'claude'))?.permissions?.value).toBe('accept-edits');
 
+            program('cursor-agent', '2026.11.13');
+
             writeFileSync(join(dir, 'agents.json'), JSON.stringify({ overrides: { claude: { permission: 'sandbox' }, cursor: { permission: 'auto' } } }));
 
             const reloaded = registry(dir);
@@ -519,7 +534,8 @@ describe('AgentRegistry', () => {
             expect((await byId(reloaded, 'claude'))?.permissions?.value).toBeUndefined();
             // Written by hand, or left from a provider that offered more: shown as unchosen and not applied.
             expect((await byId(reloaded, 'cursor'))?.permissions?.value).toBeUndefined();
-            expect((await start(reloaded, 'claude')).permission).toBeUndefined();
+            expect((await start(reloaded, 'claude')).permission).toEqual({ preset: 'auto', mode: 'auto', answer: 'ask' });
+            expect((await start(reloaded, 'cursor')).permission).toEqual({ preset: 'full', answer: 'allow' });
         });
 
         test('a provider declares its own presets and what they do, and the registry, the engine and the protocol need no change for it', async () => {

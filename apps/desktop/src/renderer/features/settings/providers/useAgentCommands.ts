@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useRootStore } from '../../../stores';
 
+import type { PermissionPresetId } from '@clowdy/protocol';
 import type { CommandInput } from '../../../daemon/transport';
 import type { RootStore } from '../../../stores';
 
@@ -70,6 +71,8 @@ export function useAgentCommands(agentId: string) {
         pending,
         setEnabled: (enabled: boolean) => send('enabled', { type: 'agent.update', id: agentId, enabled }),
         setSetting: (settingId: string, value: boolean) => send(`setting:${ settingId }`, { type: 'agent.update', id: agentId, settings: { [settingId]: value } }),
+        /** Picks one of the permission presets the agent offers (`AgentInfo.permissions`). */
+        setPermission: (permission: PermissionPresetId) => send('permission', { type: 'agent.update', id: agentId, permission }),
         /** `null` goes back to looking for the program. */
         setPath: (path: string | null) => send('path', { type: 'agent.update', id: agentId, path }),
         /** Replaces the variables saved for the agent. */
