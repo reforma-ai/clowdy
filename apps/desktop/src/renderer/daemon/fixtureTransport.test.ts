@@ -61,6 +61,31 @@ describe('FixtureTransport', () => {
         await expect(transport.getTaskDetail('t-missing')).rejects.toMatchObject({ status: 404 });
     });
 
+    it('answers the detail of a task by its key, the archived ones too, and refuses what is not a key of the project like a task it does not have', async () => {
+        const transport = new FixtureTransport();
+        const [first] = (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).tasks;
+        const [prefix, number] = first.key.split('-');
+        const archived = (await transport.getArchivedTasks(FIXTURE_PROJECT_ID)).tasks[0];
+
+        expect(archived.archivedAt).toBeGreaterThan(0);
+        expect(await transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, first.key)).toEqual(await transport.getTaskDetail(first.id));
+        expect((await transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, `${ prefix.toLowerCase() }-${ number }`)).taskId).toBe(first.id);
+        expect(await transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, archived.key)).toEqual(await transport.getTaskDetail(archived.id));
+
+        const detail = await transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, first.key);
+
+        detail.task.title = 'Tampered';
+
+        expect((await transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, first.key)).task.title).toBe(first.title);
+
+        // Another project's prefix, no such number, and keys that are not keys.
+        const refused = [`${ prefix }-9999`, 'CLW-1', prefix, `${ prefix }-`, `-${ number }`, number, `${ prefix }-abc`, `${ first.key }-2`, first.id, ''];
+
+        for (const key of refused) await expect(transport.getTaskDetailByKey(FIXTURE_PROJECT_ID, key), key).rejects.toMatchObject({ status: 404 });
+
+        await expect(transport.getTaskDetailByKey('p-missing', first.key)).rejects.toMatchObject({ status: 404 });
+    });
+
     it('replays the events after a cursor to a late subscriber', async () => {
         const transport = new FixtureTransport();
         const { cursor } = await transport.getRootSnapshot();

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createFixtureData, FIXTURE_PROJECT_ID } from '../daemon/fixtureData';
 import { FixtureTransport } from '../daemon/fixtureTransport';
 import { overrideTransport } from '../daemon/testing';
-import { ARCHIVED_MEMORY_LIMIT, ProjectState, UNRESOLVED_KEYS_LIMIT } from './ProjectState';
+import { ARCHIVED_MEMORY_LIMIT, KEY_READS_AT_ONCE, ProjectState, UNRESOLVED_KEYS_LIMIT } from './ProjectState';
 
 import type { ClowdyEvent, EventData, Run, Task, TaskComment } from '@clowdy/protocol';
 import type { Transport } from '../daemon/transport';
@@ -529,6 +529,71 @@ describe('ProjectState', () => {
                 expect(state.archivedKnown.size).toBe(0);
                 expect(state.taskOfKey('CAR-38')).toBeUndefined();
                 expect(reads).toEqual(['CAR-38']);
+            });
+
+            it('reads at most KEY_READS_AT_ONCE keys at a time, the rest in the order they were asked, each once', async () => {
+                const replies: (() => void)[] = [];
+                const { state, reads, transport } = await readingKeys({
+                    getTaskDetailByKey: (projectId, key) => new Promise((resolve, reject) => {
+                        reads.push(key);
+                        replies.push(() => void transport.getTaskDetailByKey(projectId, key).then(resolve, reject));
+                    }),
+                });
+                const keys = Array.from({ length: KEY_READS_AT_ONCE * 2 + 1 }, (_, index) => `CAR-${ 2000 + index }`);
+
+                // A long chat draws all of its keys, more than once.
+                for (let draw = 0; draw < 3; draw++) keys.forEach(key => state.taskOfKey(key));
+
+                expect(reads).toEqual(keys.slice(0, KEY_READS_AT_ONCE));
+
+                // A place is free as soon as a read is over, and goes to the key that has waited longest.
+                replies.splice(0, 1).forEach(reply => reply());
+                await settle();
+                expect(reads).toEqual(keys.slice(0, KEY_READS_AT_ONCE + 1));
+
+                while (replies.length > 0) {
+                    replies.splice(0).forEach(reply => reply());
+                    await settle();
+                }
+
+                expect(reads).toEqual(keys);
+                // Every one of them was answered with a 404, so none is asked again.
+                keys.forEach(key => state.taskOfKey(key));
+                expect(reads).toEqual(keys);
+            });
+
+            it('reads a key again when the read that failed began before a snapshot was taken in, and holds a read that began after it against the key', async () => {
+                let offline = true;
+                const { state, transport, reads } = await readingKeys({
+                    getTaskDetailByKey: async (projectId, key) => {
+                        // Whether the daemon can be reached is what it is when the read begins.
+                        const failing = offline;
+
+                        reads.push(key);
+                        await settle();
+
+                        if (failing) throw new Error('offline');
+
+                        return transport.getTaskDetailByKey(projectId, key);
+                    },
+                });
+
+                state.taskOfKey('CAR-38');
+                // The snapshot comes in while the read is on its way, and the daemon is back when it is asked again.
+                state.applySnapshot(await transport.getProjectSnapshot(state.id));
+                offline = false;
+                await settle();
+                await settle();
+
+                expect(reads).toEqual(['CAR-38', 'CAR-38']);
+                expect(state.taskOfKey('CAR-38')?.id).toBe('t-38');
+
+                // A read that begins after the snapshot and fails is held against its key, as before.
+                offline = true;
+                state.taskOfKey('CAR-39');
+                await settle();
+                state.taskOfKey('CAR-39');
+                expect(reads).toEqual(['CAR-38', 'CAR-38', 'CAR-39']);
             });
 
             it('remembers at most UNRESOLVED_KEYS_LIMIT keys it asked in vain, the ones asked longest ago going first', async () => {

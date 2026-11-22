@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
+import { overrideTransport } from '../../daemon/testing';
 import { TaskChip } from '../../shared/TaskChip';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { StreamLinksContext } from '../../stream/StreamLinks';
@@ -100,23 +101,33 @@ describe('a task key in a message', () => {
         expect(project().archivedKnown.has('t-22')).toBe(true);
     });
 
-    it('is plain words for an archived task the window has not seen yet, which only the daemon can tell, until it has been read', async () => {
-        // CAR-22 was archived before the window opened.
+    it('is plain words for an archived task the window has not seen yet until the window has read its key from the daemon, then a chip', async () => {
+        // CAR-22 was archived before the window opened, and the daemon answers the read of its key when the test lets it.
         const daemon = new FixtureTransport();
+        const asked: string[] = [];
+        let answer: () => void = () => undefined;
 
         await daemon.command({ type: 'task.archive', taskId: 't-22' });
 
-        store = new RootStore(daemon, { storage: memoryStorage() });
+        store = new RootStore(overrideTransport(daemon, {
+            getTaskDetailByKey: (projectId, key) => new Promise((resolve, reject) => {
+                asked.push(key);
+                answer = () => void daemon.getTaskDetailByKey(projectId, key).then(resolve, reject);
+            }),
+        }), { storage: memoryStorage() });
         await store.load();
         await draw();
 
         expect(chips()).not.toContain('CAR-22');
         expect(chips()).toContain('CAR-24');
+        // The window asked for the key, once, and for no key of the board.
+        expect(asked).toEqual(['CAR-22']);
 
-        await project().readTask('t-22');
+        answer();
         await draw();
 
         expect(chips()).toContain('CAR-22');
+        expect(asked).toEqual(['CAR-22']);
     });
 
     it('goes back to plain words when the task is deleted', async () => {

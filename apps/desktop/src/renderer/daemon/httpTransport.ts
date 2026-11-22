@@ -121,6 +121,10 @@ export class HttpTransport implements Transport {
         return this.#get(ROUTES.taskDetail(taskId));
     }
 
+    getTaskDetailByKey(projectId: ProjectId, key: string): Promise<TaskDetail> {
+        return this.#get(ROUTES.projectTaskDetail(projectId, key));
+    }
+
     getTaskComments(taskId: TaskId, page?: PageQuery): Promise<TaskCommentsPage> {
         return this.#get(`${ ROUTES.taskComments(taskId) }${ pageQuery(page) }`);
     }

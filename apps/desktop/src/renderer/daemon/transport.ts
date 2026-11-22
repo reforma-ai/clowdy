@@ -77,6 +77,11 @@ export interface Transport {
     command: (command: CommandInput) => Promise<CommandResult>;
     getItems: (target: StreamTarget, afterSeq?: number) => Promise<StreamItem[]>;
     getTaskDetail: (taskId: TaskId) => Promise<TaskDetail>;
+    /**
+     * `getTaskDetail` for the task a key such as `CAR-12` names in the project, an archived one too: how a key met in a message is read when the window does not hold the task.
+     * Rejects with a `TransportError` of status 404 for what is not a key of that project (another prefix, no number, a number nobody has, an unknown project).
+     */
+    getTaskDetailByKey: (projectId: ProjectId, key: string) => Promise<TaskDetail>;
     /** A page of the task's comments, oldest first. Comments are not in the snapshot: read them when a task shows them, and again when `ProjectState.commentsRevision` of the task changes. */
     getTaskComments: (taskId: TaskId, page?: PageQuery) => Promise<TaskCommentsPage>;
     /** A page of the project's archived tasks, the ones the snapshot leaves out, newest archived first. */
