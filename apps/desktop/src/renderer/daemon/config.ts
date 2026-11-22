@@ -48,6 +48,8 @@ const unconfigured: Transport = {
     command: noDaemon,
     getItems: noDaemon,
     getTaskDetail: noDaemon,
+    getTaskComments: noDaemon,
+    getArchivedTasks: noDaemon,
     getDocsTree: noDaemon,
     getDocFile: noDaemon,
     getProjectFiles: noDaemon,

@@ -236,6 +236,66 @@ describe('NavHistory recording', () => {
         expect(stepsBack()).toBe(1);
     });
 
+    it('records the scope of the Tasks screen as part of the place, and back and forward bring it back', () => {
+        root.ui.showSection(ui(), 'tasks');
+        ui().setTasksScope('t-31');
+        ui().setTasksScope('t-32');
+        ui().setTasksScope(null);
+
+        expect(stepsBack()).toBe(4);
+        expect(ui().tasksScope).toBeNull();
+        expect(ui().section).toBe('agents');
+
+        root.history.forward();
+        root.history.forward();
+        expect([ui().section, ui().tasksScope]).toEqual(['tasks', 't-31']);
+
+        root.history.forward();
+        expect(ui().tasksScope).toBe('t-32');
+
+        root.history.back();
+        expect(ui().tasksScope).toBe('t-31');
+    });
+
+    it('records the scope together with the open task, as one place', () => {
+        root.ui.showSection(ui(), 'tasks');
+        ui().setTasksScope('t-31');
+        ui().openTask('t-32');
+        ui().setTasksScope('t-32');
+        root.history.back();
+
+        expect([ui().tasksScope, ui().taskId]).toEqual(['t-31', 't-32']);
+
+        root.history.back();
+        expect([ui().tasksScope, ui().taskId]).toEqual(['t-31', null]);
+    });
+
+    it('does not record the options of a scope: the sub-tasks toggle, the page view and the folds', () => {
+        root.ui.showSection(ui(), 'tasks');
+        ui().setTasksScope('t-31');
+        ui().setTasksSubtasks(true);
+        ui().setTaskPageView('list');
+        ui().toggleTaskCollapsed('t-32');
+        ui().setTasksSubtasks(false);
+
+        expect(stepsBack()).toBe(2);
+    });
+
+    it('skips an entry whose scope is no longer on the board, as it skips a task that is gone', async () => {
+        root.ui.showSection(ui(), 'tasks');
+        ui().setTasksScope('t-31');
+        ui().setTasksScope('t-32');
+        ui().setTasksScope(null);
+
+        // Payments leaves the board with everything inside it: neither of its scopes is a place to go back to.
+        await root.command({ type: 'task.archive', taskId: 't-31', cancel: true });
+        await settle();
+
+        root.history.back();
+        expect(place()).toBe('p-car/agents:null');
+        expect(root.history.canGoBack).toBe(false);
+    });
+
     it('does not record a change that leaves the place as it was', () => {
         root.ui.showSection(ui(), 'agents');
         ui().openChat(null);

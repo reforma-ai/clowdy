@@ -5,6 +5,7 @@ import { Select } from '@clowdy/components/Select';
 import { Close, Plus } from '@clowdy/icons/14';
 
 import styles from './DependencyList.module.css';
+import { dependencyState } from './taskView';
 
 import type { Task, TaskId, TaskStatus } from '@clowdy/protocol';
 
@@ -20,17 +21,17 @@ export interface DependencyListProps {
     onOpen?: (taskId: TaskId) => void;
 }
 
-/** The tasks one depends on, each with a checkbox that is ticked once that task is done, and a picker to add more. */
+/** The tasks one depends on, each with a checkbox that is ticked once that task is closed, Done or Canceled, and a picker to add more. */
 export function DependencyList({ ids, tasks, statuses, candidates, onAdd, onRemove, onOpen }: DependencyListProps) {
     return (
         <div className={ styles.list }>
             { ids.map((id) => {
                 const dependency = tasks.get(id);
-                const isDone = statuses.find(status => status.id === dependency?.statusId)?.category === 'done';
+                const { resolved, label } = dependencyState(statuses.find(status => status.id === dependency?.statusId)?.category);
 
                 return (
                     <div key={ id } className={ styles.row }>
-                        <Checkbox size="sm" isReadOnly excludeFromTabOrder isSelected={ isDone } aria-label={ isDone ? 'Done' : 'Not done' } className={ styles.check } />
+                        <Checkbox size="sm" isReadOnly excludeFromTabOrder isSelected={ resolved } aria-label={ label } className={ styles.check } />
                         { dependency
                             ? (
                                 <button type="button" className={ styles.open } disabled={ !onOpen } onClick={ () => onOpen?.(id) } title={ dependency.title }>

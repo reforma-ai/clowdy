@@ -60,6 +60,13 @@ export class ProjectState {
     lastDocsChange: { folderId: FolderId; path: string; change: 'created' | 'modified' | 'removed'; cursor: number } | null = null;
     /** Counts `artifact.added` events; a task detail that shows artifacts refetches when it changes. */
     artifactsRevision = 0;
+    /**
+     * Comments are not in the snapshot, so whatever shows a task's comments reads them from the daemon and must read them again when they change: each
+     * `task.comment.upserted`, `task.comment.deleted` and `task.deleted` of a task counts here, under that task (read it with `commentsRevision`).
+     */
+    commentsRevisions = new Map<TaskId, number>();
+    /** Counts the snapshots taken in: after a reload the event feed may have missed comment events, so every task's comments are read again. */
+    commentsReload = 0;
     /** Events that arrived while the first snapshot was loading. */
     readonly #queue: ClowdyEvent[] = [];
     #loadId = 0;
@@ -76,6 +83,7 @@ export class ProjectState {
             runs: observableShallow,
             chatTaskLinks: observableShallow,
             runTaskLinks: observableShallow,
+            commentsRevisions: observableShallow,
             lastDocsChange: observableRef,
         });
     }
@@ -122,6 +130,7 @@ export class ProjectState {
         this.cursor = snapshot.cursor;
         this.status = 'ready';
         this.error = '';
+        this.commentsReload++;
 
         const queued = this.#queue.splice(0);
 
@@ -167,11 +176,22 @@ export class ProjectState {
                 break;
             }
             case 'task.upserted':
-                this.tasks.set(data.task.id, data.task);
+                // The snapshot has no archived tasks, so an archived one is off the board here too; restoring it sends the task again without `archivedAt`.
+                // Its chat and run links stay (a restore sends no link events); the derived lists ignore the links of a task the map does not hold.
+                if (data.task.archivedAt === undefined) this.tasks.set(data.task.id, data.task);
+                else this.tasks.delete(data.task.id);
+
                 break;
             case 'task.deleted':
                 this.tasks.delete(data.taskId);
                 this.#dropLinks(link => link.taskId === data.taskId);
+                this.#bumpComments(data.taskId);
+                break;
+            case 'task.comment.upserted':
+                this.#bumpComments(data.comment.taskId);
+                break;
+            case 'task.comment.deleted':
+                this.#bumpComments(data.taskId);
                 break;
             case 'run.upserted':
                 this.runs.set(data.run.id, data.run);
@@ -208,6 +228,10 @@ export class ProjectState {
             case 'notice':
                 break;
         }
+    }
+
+    #bumpComments(taskId: TaskId): void {
+        this.commentsRevisions.set(taskId, (this.commentsRevisions.get(taskId) ?? 0) + 1);
     }
 
     #dropLinks(matches: (link: { taskId: TaskId }) => boolean): void {
@@ -267,8 +291,18 @@ export class ProjectState {
         return new Map(this.statuses.map(status => [status.id, byStatus.get(status.id) ?? []]));
     }
 
+    /**
+     * A number that differs whenever the comments of the task may have changed: put it in the dependencies of what loads them. It only grows; its value means
+     * nothing else.
+     */
+    commentsRevision(taskId: TaskId): number {
+        return this.commentsReload + (this.commentsRevisions.get(taskId) ?? 0);
+    }
+
+    // The links of a task the map does not hold (an archived one, whose links the daemon keeps) are ignored by the four lists below and by `linksOfRun`.
+
     get runsByTask(): Map<TaskId, Run[]> {
-        return this.#join(this.runTaskLinks.values(), link => link.taskId, link => this.runs.get(link.runId), byCreatedAt);
+        return this.#join(this.runTaskLinks.values(), link => link.taskId, link => (this.tasks.has(link.taskId) ? this.runs.get(link.runId) : undefined), byCreatedAt);
     }
 
     get tasksByRun(): Map<RunId, Task[]> {
@@ -280,7 +314,7 @@ export class ProjectState {
     }
 
     get chatsByTask(): Map<TaskId, Chat[]> {
-        return this.#join(this.chatTaskLinks.values(), link => link.taskId, link => this.chats.get(link.chatId), (a, b) => b.updatedAt - a.updatedAt);
+        return this.#join(this.chatTaskLinks.values(), link => link.taskId, link => (this.tasks.has(link.taskId) ? this.chats.get(link.chatId) : undefined), (a, b) => b.updatedAt - a.updatedAt);
     }
 
     /** Runs linked to the task, whatever the relation (`assigned` or `created`), by when they were made. */
@@ -302,7 +336,7 @@ export class ProjectState {
 
     /** The links of one run, for the relation (`assigned`, `created`) that a bare task list loses. */
     linksOfRun(runId: RunId): RunTaskLink[] {
-        return [...this.runTaskLinks.values()].filter(link => link.runId === runId);
+        return [...this.runTaskLinks.values()].filter(link => link.runId === runId && this.tasks.has(link.taskId));
     }
 
     #join<L, T>(links: Iterable<L>, keyOf: (link: L) => string, target: (link: L) => T | undefined, order: (a: T, b: T) => number): Map<string, T[]> {

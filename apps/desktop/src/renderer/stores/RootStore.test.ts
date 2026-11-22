@@ -77,7 +77,8 @@ describe('RootStore', () => {
         expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental', 'Clowdy']);
         expect(root.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
         expect(root.selectedProject?.status).toBe('ready');
-        expect(root.selectedProject?.tasks.size).toBe(11);
+        // The eleven tasks of the board, the seven of the tree of Payments; the three archived tasks are not in the snapshot.
+        expect(root.selectedProject?.tasks.size).toBe(18);
         root.dispose();
     });
 
@@ -121,7 +122,7 @@ describe('RootStore', () => {
         await settle();
 
         expect(result.ok).toBe(true);
-        expect([...root.selectedProject!.tasks.values()].find(task => task.title === 'Write the release notes')?.key).toBe('CAR-31');
+        expect([...root.selectedProject!.tasks.values()].find(task => task.title === 'Write the release notes')?.key).toBe('CAR-41');
         root.dispose();
     });
 

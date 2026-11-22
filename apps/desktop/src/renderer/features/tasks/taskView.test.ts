@@ -10,6 +10,7 @@ import {
     boardColumns,
     createdTaskId,
     dependencyCandidates,
+    dependencyState,
     externalLink,
     facetCount,
     filterTasks,
@@ -77,6 +78,19 @@ describe('runsByTask', () => {
 
     it('skips links to runs that are not known', () => {
         expect(runsByTask([link('gone', 't-1', 'assigned')], runMap()).size).toBe(0);
+    });
+});
+
+describe('dependencyState', () => {
+    it('resolves a dependency that is done or canceled, and names which', () => {
+        expect(dependencyState('done')).toEqual({ resolved: true, label: 'Done' });
+        expect(dependencyState('canceled')).toEqual({ resolved: true, label: 'Canceled' });
+    });
+
+    it('holds back on every open category and on a status the workflow lost', () => {
+        for (const category of ['backlog', 'todo', 'active', 'review'] as const) expect(dependencyState(category)).toEqual({ resolved: false, label: 'Not done' });
+
+        expect(dependencyState(undefined)).toEqual({ resolved: false, label: 'Not done' });
     });
 });
 
@@ -413,9 +427,9 @@ describe('newestChat', () => {
 });
 
 describe('createdTaskId', () => {
-    it('reads the id from the daemon answer and from the fixture answer', () => {
+    it('reads the id from the { task } answer of the daemon and of the fixture daemon, and from nothing else', () => {
         expect(createdTaskId({ task: { id: 't-9' } })).toBe('t-9');
-        expect(createdTaskId({ id: 't-9' })).toBe('t-9');
+        expect(createdTaskId({ id: 't-9' })).toBeUndefined();
         expect(createdTaskId(undefined)).toBeUndefined();
         expect(createdTaskId({ task: {} })).toBeUndefined();
     });

@@ -8,8 +8,8 @@ import type { ProjectView, SettingsPage, UiStore } from './UiStore';
 export const HISTORY_LIMIT = 100;
 
 /**
- * Everything the window shows, as one history entry: the selected project, its place (section and what is open in it) and Settings.
- * The options of a section (the Tasks view, finished runs, filters, the cursor and the selection) are not part of it.
+ * Everything the window shows, as one history entry: the selected project, its place (section and what is open in it, the scope of the Tasks screen
+ * among it) and Settings. The options of a section (the Tasks view and its sub-tasks toggle, finished runs, filters, the cursor and the selection) are not part of it.
  */
 interface NavSnapshot extends ProjectView {
     projectId: ProjectId;
@@ -143,8 +143,11 @@ export class NavHistory {
         return undefined;
     }
 
-    /** Whether what the entry shows is still there: its project, and the chat, task or run of its section. Documents are always there, the tree may list them again. */
-    #exists({ projectId, section, chatId, taskId, runId, settingsOpen }: NavSnapshot): boolean {
+    /**
+     * Whether what the entry shows is still there: its project, and the chat, task or run of its section, and for the Tasks screen the task whose insides it
+     * showed (a scope that is gone or archived is not a place to go back to). Documents are always there, the tree may list them again.
+     */
+    #exists({ projectId, section, chatId, taskId, runId, tasksScope, settingsOpen }: NavSnapshot): boolean {
         if (!this.host.projects.some(project => project.id === projectId)) return false;
 
         const state = this.host.projectState(projectId);
@@ -154,7 +157,7 @@ export class NavHistory {
 
         switch (section) {
             case 'agents': return (chatId === null || state.chats.has(chatId)) && (runId === null || state.runs.has(runId));
-            case 'tasks': return taskId === null || state.tasks.has(taskId);
+            case 'tasks': return (taskId === null || state.tasks.has(taskId)) && (tasksScope === null || state.tasks.has(tasksScope));
             case 'docs': return true;
         }
     }

@@ -13,7 +13,9 @@ import {
     type FixtureData,
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
-import { TransportError, type CommandInput, type FeedStatus, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
+import { fail, ok, type Outcome } from './fixtureOutcome';
+import { FixtureTasks } from './fixtureTasks';
+import { TransportError, type CommandInput, type FeedStatus, type PageQuery, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
 
 import type {
     AgentInfo,
@@ -25,7 +27,6 @@ import type {
     CommandResult,
     DocFile,
     DocsTree,
-    ErrorCode,
     EventData,
     FolderId,
     Project,
@@ -42,6 +43,8 @@ import type {
     StreamItem,
     StreamItemBody,
     Task,
+    TaskArchivePage,
+    TaskCommentsPage,
     TaskDetail,
     TaskId,
     ThreadNotice,
@@ -130,8 +133,6 @@ function withoutEmpty(overrides: AgentOverrides): AgentOverrides | undefined {
     return path === undefined && env === undefined ? undefined : { ...(path !== undefined && { path }), ...(env !== undefined && { env }) };
 }
 
-type Outcome = { ok: true; data: unknown } | { ok: false; error: { code: ErrorCode; message: string; details?: unknown } };
-
 /** The title of a fork: `foo` becomes `(1) foo` and `(1) foo` becomes `(2) foo`, as the daemon numbers it; a chat with no title of its own keeps none. */
 function forkTitle(title: string): string {
     const text = title.trim();
@@ -146,12 +147,10 @@ function forkTitle(title: string): string {
 /** What a field becomes when a command may name it: the value it names, nothing for `null`, and `kept` when the command leaves it out. */
 const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefined => (change === undefined ? kept : change ?? undefined);
 
-const ok = (data: unknown = {}): Outcome => ({ ok: true, data });
-const fail = (code: ErrorCode, message: string, details?: unknown): Outcome => ({ ok: false, error: { code, message, details } });
-
 /**
  * A daemon in memory: scripted data in the shape of the protocol, and commands that change it and announce the
- * change as events, so the UI is interactive without a daemon. Not a model of the real daemon's rules.
+ * change as events, so the UI is interactive without a daemon. Not a model of the real daemon's rules, except for the
+ * tasks, their tree, their archive and their comments, which follow the daemon's (`fixtureTasks.ts`).
  */
 export class FixtureTransport implements Transport {
     readonly #data: FixtureData;
@@ -168,10 +167,13 @@ export class FixtureTransport implements Transport {
     readonly #turns = new Map<RunId, number>();
     /** How many times an edit rewrote each run's stream: an item written after one gets an id of its own, as the daemon's items do, though it takes the freed number. */
     readonly #rewrites = new Map<RunId, number>();
+    /** The daemon's rules for tasks, their archive and their comments. */
+    readonly #tasks: FixtureTasks;
 
     constructor({ data = createFixtureData(), timeline = false }: FixtureTransportOptions = {}) {
         this.#data = data;
         this.#timeline = timeline;
+        this.#tasks = new FixtureTasks(data, { emit: (projectId, event) => this.#emit(projectId, event), id: prefix => this.#id(prefix) });
 
         for (const { projectId, attachment, content } of data.attachments) {
             this.#files.set(attachment.id, { projectId, attachment, blob: new Blob([content], { type: attachment.mediaType }), sent: true });
@@ -205,7 +207,8 @@ export class FixtureTransport implements Transport {
             project,
             statuses: data.statuses[projectId] ?? DEFAULT_STATUSES,
             chats: data.chats.filter(chat => chat.projectId === projectId),
-            tasks: data.tasks.filter(task => task.projectId === projectId),
+            // Like the daemon, which leaves the archive out: `getArchivedTasks` pages it.
+            tasks: data.tasks.filter(task => task.projectId === projectId && task.archivedAt === undefined),
             runs: data.runs.filter(run => run.projectId === projectId),
             chatTaskLinks: data.chatTaskLinks.filter(link => chatIds.has(link.chatId)),
             runTaskLinks: data.runTaskLinks.filter(link => runIds.has(link.runId)),
@@ -259,6 +262,14 @@ export class FixtureTransport implements Transport {
             runIds: data.runTaskLinks.filter(link => link.taskId === taskId).map(link => link.runId),
             artifacts: data.artifacts.filter(artifact => artifact.taskId === taskId),
         });
+    }
+
+    async getTaskComments(taskId: TaskId, page?: PageQuery): Promise<TaskCommentsPage> {
+        return this.#tasks.commentsPage(taskId, page);
+    }
+
+    async getArchivedTasks(projectId: ProjectId, page?: PageQuery): Promise<TaskArchivePage> {
+        return this.#tasks.archivedPage(projectId, page);
     }
 
     async getDocsTree(projectId: ProjectId): Promise<DocsTree> {
@@ -653,7 +664,10 @@ export class FixtureTransport implements Transport {
 
                 data.projects = data.projects.filter(candidate => candidate.id !== project.id);
                 data.chats = data.chats.filter(chat => chat.projectId !== project.id);
+                const taskIds = new Set(data.tasks.filter(task => task.projectId === project.id).map(task => task.id));
+
                 data.tasks = data.tasks.filter(task => task.projectId !== project.id);
+                data.comments = data.comments.filter(comment => !taskIds.has(comment.taskId));
                 data.runs = data.runs.filter(run => run.projectId !== project.id);
                 data.runTaskLinks = data.runTaskLinks.filter(link => !runIds.has(link.runId));
                 data.artifacts = data.artifacts.filter(artifact => artifact.projectId !== project.id);
@@ -870,72 +884,24 @@ export class FixtureTransport implements Transport {
             case 'chat.edit':
                 return this.#editMessage(command.chatId, command.itemId, command.text, command.attachmentIds ?? []);
 
-            case 'task.create': {
-                const project = data.projects.find(candidate => candidate.id === command.projectId);
-
-                if (!project) return fail('not_found', 'No such project');
-
-                const number = Math.max(0, ...data.tasks.filter(task => task.projectId === project.id).map(task => task.number)) + 1;
-                const now = Date.now();
-                const task: Task = {
-                    id: this.#id('t'),
-                    projectId: project.id,
-                    number,
-                    key: `${ project.taskPrefix }-${ number }`,
-                    title: command.title,
-                    description: command.description ?? '',
-                    statusId: command.statusId ?? 'todo',
-                    dependsOn: command.dependsOn ?? [],
-                    createdBy: { kind: 'user' },
-                    createdAt: now,
-                    updatedAt: now,
-                };
-
-                data.tasks.push(task);
-                this.#saveTask(task);
-
-                if (command.chatId) {
-                    const link = { chatId: command.chatId, taskId: task.id };
-
-                    data.chatTaskLinks.push(link);
-                    this.#emit(project.id, { type: 'link.chatTask', link, present: true });
-                }
-
-                return ok(structuredClone(task));
-            }
-            case 'task.update': {
-                const task = data.tasks.find(candidate => candidate.id === command.taskId);
-
-                if (!task) return fail('not_found', 'No such task');
-
-                const { type: _type, taskId: _taskId, ...changes } = command;
-
-                Object.assign(task, Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)), { updatedAt: Date.now() });
-                this.#saveTask(task);
-
-                return ok(structuredClone(task));
-            }
-            case 'task.delete': {
-                const task = data.tasks.find(candidate => candidate.id === command.taskId);
-
-                if (!task) return fail('not_found', 'No such task');
-
-                data.tasks = data.tasks.filter(candidate => candidate.id !== task.id);
-                data.chatTaskLinks = data.chatTaskLinks.filter(link => link.taskId !== task.id);
-                data.runTaskLinks = data.runTaskLinks.filter(link => link.taskId !== task.id);
-                this.#emit(task.projectId, { type: 'task.deleted', taskId: task.id });
-
-                return ok();
-            }
+            case 'task.create':
+                return this.#tasks.create(command);
+            case 'task.update':
+                return this.#tasks.update(command);
+            case 'task.delete':
+                return this.#tasks.delete(command);
+            case 'task.archive':
+                return this.#tasks.archive(command);
+            case 'task.unarchive':
+                return this.#tasks.unarchive(command);
             case 'task.start':
                 return this.#startTask(command.taskId, command.force === true);
             case 'task.comment.add':
+                return this.#tasks.addComment(command);
             case 'task.comment.edit':
+                return this.#tasks.editComment(command);
             case 'task.comment.delete':
-                return fail('unavailable', 'The demo data has no comments');
-            case 'task.archive':
-            case 'task.unarchive':
-                return fail('unavailable', 'The demo data has no archive');
+                return this.#tasks.deleteComment(command);
 
             case 'run.cancel':
                 return this.#cancelRun(command.runId);
@@ -1537,6 +1503,9 @@ export class FixtureTransport implements Transport {
 
         if (!task) return fail('not_found', 'No such task');
 
+        // Like the daemon: an archived task takes no new work until it is restored.
+        if (task.archivedAt !== undefined) return fail('invalid', `Task ${ task.key } is archived: restore it first`);
+
         const runIds = new Set(data.runTaskLinks.filter(link => link.taskId === taskId && link.relation === 'assigned').map(link => link.runId));
 
         if (!force && data.runs.some(run => runIds.has(run.id) && !isTerminalRunStatus(run.status))) return fail('already_running', `${ task.key } already has an active run`);
@@ -1584,6 +1553,8 @@ export class FixtureTransport implements Transport {
         if (active) {
             task.statusId = active.id;
             task.updatedAt = now;
+            // An open status: a task that was closed is not any longer.
+            delete task.closedAt;
             this.#saveTask(task);
         }
 
@@ -1600,6 +1571,7 @@ export class FixtureTransport implements Transport {
             if (review && data.tasks.includes(task)) {
                 task.statusId = review.id;
                 task.updatedAt = Date.now();
+                delete task.closedAt;
                 this.#saveTask(task);
             }
         });

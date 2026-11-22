@@ -18,6 +18,8 @@ import type {
     RunId,
     SkillCatalog,
     StreamItem,
+    TaskArchivePage,
+    TaskCommentsPage,
     TaskDetail,
     TaskId,
 } from '@clowdy/protocol';
@@ -26,6 +28,15 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 
 /** A command as the UI builds it. The transport adds the `requestId`. */
 export type CommandInput = DistributiveOmit<Command, 'requestId'>;
+
+/**
+ * Which page of a paged read: how many rows (a whole number; the daemon holds it to 1 to 100 and answers 25 without one) and where to go on, the `nextCursor`
+ * of the page before. Both absent is the first page.
+ */
+export interface PageQuery {
+    limit?: number;
+    cursor?: string;
+}
 
 /** A stream is read by its run, or by its chat (the chat's orchestrator run). */
 export type StreamTarget = { runId: RunId } | { chatId: ChatId };
@@ -59,6 +70,10 @@ export interface Transport {
     command: (command: CommandInput) => Promise<CommandResult>;
     getItems: (target: StreamTarget, afterSeq?: number) => Promise<StreamItem[]>;
     getTaskDetail: (taskId: TaskId) => Promise<TaskDetail>;
+    /** A page of the task's comments, oldest first. Comments are not in the snapshot: read them when a task shows them, and again when `ProjectState.commentsRevision` of the task changes. */
+    getTaskComments: (taskId: TaskId, page?: PageQuery) => Promise<TaskCommentsPage>;
+    /** A page of the project's archived tasks, the ones the snapshot leaves out, newest archived first. */
+    getArchivedTasks: (projectId: ProjectId, page?: PageQuery) => Promise<TaskArchivePage>;
     /** The project's documents: one entry per folder, in the project's order, a folder that has none yet too. */
     getDocsTree: (projectId: ProjectId) => Promise<DocsTree>;
     /** A document of one of the project's folders, by its path under that folder's `.clowdy/docs`. */

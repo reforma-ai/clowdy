@@ -2,7 +2,7 @@ import { PROTOCOL_HEADER, PROTOCOL_VERSION, ROUTES, SSE_EVENT } from '@clowdy/pr
 
 import { HttpFileSystem } from './httpFileSystem';
 import { SseParser } from './sse';
-import { TransportError, type CommandInput, type FeedStatus, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
+import { TransportError, type CommandInput, type FeedStatus, type PageQuery, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
 
 import type {
     AgentInfo,
@@ -20,6 +20,8 @@ import type {
     RootSnapshot,
     SkillCatalog,
     StreamItem,
+    TaskArchivePage,
+    TaskCommentsPage,
     TaskDetail,
     TaskId,
 } from '@clowdy/protocol';
@@ -45,6 +47,17 @@ const headersFor = (token: string): Record<string, string> => ({ authorization: 
 
 function isCommandResult(value: unknown): value is CommandResult {
     return typeof value === 'object' && value !== null && 'ok' in value && 'requestId' in value;
+}
+
+/** The query string of a paged read, empty for the first page with the daemon's own size. */
+function pageQuery({ limit, cursor }: PageQuery = {}): string {
+    const params = new URLSearchParams();
+
+    if (limit !== undefined) params.set('limit', String(limit));
+
+    if (cursor !== undefined) params.set('cursor', cursor);
+
+    return params.size > 0 ? `?${ params }` : '';
 }
 
 /** A refused request as an error: the daemon's own reason when it gave one, else its status. */
@@ -98,6 +111,14 @@ export class HttpTransport implements Transport {
 
     getTaskDetail(taskId: TaskId): Promise<TaskDetail> {
         return this.#get(ROUTES.taskDetail(taskId));
+    }
+
+    getTaskComments(taskId: TaskId, page?: PageQuery): Promise<TaskCommentsPage> {
+        return this.#get(`${ ROUTES.taskComments(taskId) }${ pageQuery(page) }`);
+    }
+
+    getArchivedTasks(projectId: ProjectId, page?: PageQuery): Promise<TaskArchivePage> {
+        return this.#get(`${ ROUTES.projectArchivedTasks(projectId) }${ pageQuery(page) }`);
     }
 
     getDocsTree(projectId: ProjectId): Promise<DocsTree> {

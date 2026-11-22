@@ -1,6 +1,6 @@
-import { isTerminalRunStatus } from '@clowdy/protocol';
+import { isClosedCategory, isTerminalRunStatus } from '@clowdy/protocol';
 
-import type { Actor, Artifact, Chat, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId, TaskStatus } from '@clowdy/protocol';
+import type { Actor, Artifact, Chat, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
 import type { StatusTone } from '../../shared';
 import type { TasksView } from '../../stores';
 
@@ -165,6 +165,16 @@ export function blockingOptions(tasks: readonly Task[], task: Pick<Task, 'id'>):
     const listed = new Set([...tasks.filter(({ dependsOn }) => dependsOn.includes(task.id)), ...blockingCandidates(tasks, { taskId: task.id })].map(({ id }) => id));
 
     return tasks.filter(({ id }) => listed.has(id));
+}
+
+/**
+ * Whether a dependency no longer holds its dependents back, and what to call it: a closed task is resolved, Done or Canceled alike, as the daemon counts it
+ * (`isClosedCategory`). A task whose status the workflow lost counts as not done.
+ */
+export function dependencyState(category: TaskStatusCategory | undefined): { resolved: boolean; label: 'Done' | 'Canceled' | 'Not done' } {
+    if (category === undefined || !isClosedCategory(category)) return { resolved: false, label: 'Not done' };
+
+    return { resolved: true, label: category === 'canceled' ? 'Canceled' : 'Done' };
 }
 
 /** The dependency list with `id` taken out when it is there and added at the end when it is not. `task.update` replaces the whole list, so this is what to send. */
@@ -349,9 +359,9 @@ export function newestChat<T extends Pick<Chat, 'updatedAt'>>(chats: readonly T[
     return chats.reduce<T | undefined>((newest, chat) => (newest === undefined || chat.updatedAt > newest.updatedAt ? chat : newest), undefined);
 }
 
-/** The id of the task a `task.create` answered with. The daemon answers `{ task }`, the fixture daemon the task itself. */
+/** The id of the task a `task.create` answered with: the daemon and the fixture daemon answer `{ task }`. */
 export function createdTaskId(data: unknown): TaskId | undefined {
-    const task = data && typeof data === 'object' && 'task' in data ? data.task : data;
+    const task = data && typeof data === 'object' && 'task' in data ? data.task : undefined;
 
     return task && typeof task === 'object' && 'id' in task && typeof task.id === 'string' ? task.id : undefined;
 }

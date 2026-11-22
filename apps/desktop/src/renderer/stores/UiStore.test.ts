@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { initialUiFromSearch, UiStore } from './UiStore';
+import { COLLAPSED_TASKS_LIMIT, initialUiFromSearch, UiStore } from './UiStore';
 
 import type { KeyValueStorage } from './storage';
 
@@ -101,6 +101,157 @@ describe('UiStore', () => {
         expect(second.forProject('p1')).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list' });
         expect(second.forProject('p2')).toMatchObject({ section: 'agents', chatId: 'c3', tasksView: 'board' });
         expect(second.forProject('p3').section).toBe('agents');
+    });
+
+    describe('the scope of the Tasks screen and its options', () => {
+        const held = (...ids: string[]) => new Map(ids.map(id => [id, {} as { archivedAt?: number }]));
+
+        it('starts at the roots, with the sub-tasks hidden, the board on a task\'s page and nothing folded', () => {
+            const ui = new UiStore().forProject('p1');
+
+            expect([ui.tasksScope, ui.tasksSubtasks, ui.taskPageView, ui.tasksCollapsed]).toEqual([null, false, 'board', []]);
+        });
+
+        it('keeps the scope, the sub-tasks toggle, the task page view and the folds per project across a restart', () => {
+            const storage = memoryStorage();
+            const first = new UiStore(storage);
+
+            first.forProject('p1').setTasksScope('t-31');
+            first.forProject('p1').setTasksSubtasks(true);
+            first.forProject('p1').setTaskPageView('list');
+            first.forProject('p1').toggleTaskCollapsed('t-32');
+            first.forProject('p1').toggleTaskCollapsed('t-35');
+            first.forProject('p2').setTasksScope('t-9');
+
+            const second = new UiStore(storage);
+
+            expect(second.forProject('p1')).toMatchObject({ tasksScope: 't-31', tasksSubtasks: true, taskPageView: 'list', tasksCollapsed: ['t-32', 't-35'], tasksView: 'board' });
+            expect(second.forProject('p2')).toMatchObject({ tasksScope: 't-9', tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+            expect(second.forProject('p3')).toMatchObject({ tasksScope: null, tasksSubtasks: false, tasksCollapsed: [] });
+        });
+
+        it('reads a project stored before they existed: the defaults, and the rest as it was', () => {
+            const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"tasks","taskId":"t7","tasksView":"list"}' })).forProject('p1');
+
+            expect(ui).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list', tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+        });
+
+        it('takes what it can from a stored value of a shape it does not know, and the defaults for the rest', () => {
+            const damaged = (value: object) => new UiStore(memoryStorage({ 'clowdy:ui:p1': JSON.stringify(value) })).forProject('p1');
+
+            expect(damaged({ tasksScope: 5, tasksSubtasks: 'yes', taskPageView: 'cards', tasksCollapsed: 't-1' })).toMatchObject({ tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+            expect(damaged({ tasksScope: { id: 't-1' }, tasksSubtasks: 1, taskPageView: null, tasksCollapsed: null })).toMatchObject({ tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+            // A list with something else in it keeps its ids, once each.
+            expect(damaged({ tasksCollapsed: ['t-1', 7, null, 't-2', 't-1', {}] }).tasksCollapsed).toEqual(['t-1', 't-2']);
+        });
+
+        it('keeps no more folds than the limit, the newest ones, from storage and as they are made', () => {
+            const many = Array.from({ length: COLLAPSED_TASKS_LIMIT + 50 }, (_, index) => `t-${ index }`);
+            const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': JSON.stringify({ tasksCollapsed: many }) })).forProject('p1');
+
+            expect(ui.tasksCollapsed).toHaveLength(COLLAPSED_TASKS_LIMIT);
+            expect(ui.tasksCollapsed.at(-1)).toBe(many.at(-1));
+
+            ui.toggleTaskCollapsed('t-new');
+
+            expect(ui.tasksCollapsed).toHaveLength(COLLAPSED_TASKS_LIMIT);
+            expect(ui.tasksCollapsed.at(-1)).toBe('t-new');
+            expect(ui.tasksCollapsed).not.toContain('t-50');
+        });
+
+        it('is a place of the window: the scope is in the view and a restored view brings it back; the options are not', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.setTasksScope('t-31');
+            ui.setTasksSubtasks(true);
+
+            const view = ui.view;
+
+            expect(view.tasksScope).toBe('t-31');
+            expect(view).not.toHaveProperty('tasksSubtasks');
+
+            ui.setTasksScope(null);
+            ui.setTasksSubtasks(false);
+            ui.show(view);
+
+            expect([ui.tasksScope, ui.tasksSubtasks]).toEqual(['t-31', false]);
+        });
+
+        it('sets the scope without moving the window or closing the open task', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openChat('c1');
+            ui.setTasksScope('t-31');
+
+            expect([ui.section, ui.chatId, ui.taskId]).toEqual(['agents', 'c1', null]);
+
+            ui.openTask('t-33');
+            ui.setTasksScope('t-32');
+            expect([ui.section, ui.taskId, ui.tasksScope]).toEqual(['tasks', 't-33', 't-32']);
+
+            ui.openTask('t-24');
+            expect(ui.tasksScope).toBe('t-32');
+        });
+
+        it('resolves the scope against the tasks the project holds: the roots when its task is gone, deleted or archived, without forgetting it', () => {
+            const ui = new UiStore().forProject('p1');
+
+            expect(ui.resolveTasksScope(held('t-31'))).toBeNull();
+
+            ui.setTasksScope('t-31');
+
+            expect(ui.resolveTasksScope(held('t-31', 't-32'))).toBe('t-31');
+            expect(ui.resolveTasksScope(held('t-32'))).toBeNull();
+            expect(ui.resolveTasksScope(new Map([['t-31', { archivedAt: 5000 }]]))).toBeNull();
+            // Nothing was written: the task comes back with its scope.
+            expect(ui.tasksScope).toBe('t-31');
+            expect(ui.resolveTasksScope(held('t-31'))).toBe('t-31');
+        });
+
+        it('folds and opens the insides of a task, and opens several at once', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.toggleTaskCollapsed('t-32');
+            ui.toggleTaskCollapsed('t-35');
+            expect(ui.tasksCollapsed).toEqual(['t-32', 't-35']);
+
+            ui.toggleTaskCollapsed('t-32');
+            expect(ui.tasksCollapsed).toEqual(['t-35']);
+
+            ui.toggleTaskCollapsed('t-32');
+            ui.expandTasks(['t-35', 't-99']);
+            expect(ui.tasksCollapsed).toEqual(['t-32']);
+
+            const before = ui.tasksCollapsed;
+
+            ui.expandTasks(['t-99']);
+            expect(ui.tasksCollapsed).toBe(before);
+        });
+
+        it('lets go of the folds of tasks the project no longer holds, and only of those', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.toggleTaskCollapsed('t-32');
+            ui.toggleTaskCollapsed('t-35');
+            ui.toggleTaskCollapsed('t-gone');
+            ui.forgetCollapsedTasks(held('t-32', 't-35', 't-36'));
+            expect(ui.tasksCollapsed).toEqual(['t-32', 't-35']);
+
+            const before = ui.tasksCollapsed;
+
+            ui.forgetCollapsedTasks(held('t-32', 't-35'));
+            expect(ui.tasksCollapsed).toBe(before);
+        });
+
+        it('forgets them with the project', () => {
+            const storage = memoryStorage();
+            const store = new UiStore(storage);
+
+            store.forProject('p1').setTasksScope('t-31');
+            store.forgetProject('p1');
+
+            expect(new UiStore(storage).forProject('p1').tasksScope).toBeNull();
+        });
     });
 
     it('starts from defaults when the stored value is damaged', () => {

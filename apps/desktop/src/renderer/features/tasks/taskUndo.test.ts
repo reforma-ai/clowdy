@@ -28,7 +28,7 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
 
 /*
  * What the panel sends: one `task.update` per edit, with the field it edits, through the store and the fixture daemon.
- * The fixture project (CAR-20 to CAR-30): CAR-24 In progress, CAR-26 To do and depends on CAR-24 and CAR-25.
+ * The fixture project (CAR-20 to CAR-37): CAR-24 In progress, CAR-26 To do and depends on CAR-24 and CAR-25; CAR-33 is inside CAR-32, which is inside CAR-31.
  */
 
 const memoryStorage = (): KeyValueStorage => {
@@ -148,6 +148,67 @@ describe('what is recorded', () => {
         expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-26', dependsOn: was });
     });
 
+    it('records a move under another task with the previous parent, and puts a root back as a root with null', async () => {
+        expect(task('t-26').parentId).toBeUndefined();
+
+        await edit(update('t-26', { parentId: 't-35' }));
+
+        expect(task('t-26').parentId).toBe('t-35');
+        expect(stack.entries.map(entry => entry.label)).toEqual(['Parent of CAR-26 changed']);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        // An absent parentId would leave the task where it is: the command that detaches says null.
+        expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-26', parentId: null });
+        expect('parentId' in task('t-26')).toBe(false);
+    });
+
+    it('records a detach with the parent the task left, and moves it back under that parent', async () => {
+        expect(task('t-33').parentId).toBe('t-32');
+
+        await edit(update('t-33', { parentId: null }));
+
+        expect('parentId' in task('t-33')).toBe(false);
+        expect(stack.entries.map(entry => entry.label)).toEqual(['Parent of CAR-33 changed']);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-33', parentId: 't-32' });
+        expect(task('t-33').parentId).toBe('t-32');
+    });
+
+    it('records a move from one parent to another with the first one, and calls a move with a status change an update', async () => {
+        await edit(update('t-34', { parentId: 't-35' }));
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-34', parentId: 't-32' });
+
+        await edit(update('t-34', { parentId: 't-36', statusId: 'review' }));
+
+        expect(stack.entries.map(entry => entry.label)).toEqual(['CAR-34 updated']);
+    });
+
+    it('takes a detach of a root, and a parent sent unchanged, for no change: nothing is recorded and the command is sent all the same', async () => {
+        await edit(update('t-24', { parentId: null }));
+        await edit(update('t-33', { parentId: 't-32' }));
+
+        expect(sent.map(input => input.type)).toEqual(['task.update', 'task.update']);
+        expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
+        expect(toasts.show).not.toHaveBeenCalled();
+    });
+
+    it('records nothing when the daemon refuses the move, and says why', async () => {
+        const results = await edit(update('t-31', { parentId: 't-33' }));
+
+        expect(results[0].ok).toBe(false);
+        expect(toasts.error).toHaveBeenCalledWith({ message: 'Task CAR-33 is inside CAR-31, so it cannot be its parent' });
+        expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
+        expect(task('t-31').parentId).toBeUndefined();
+    });
+
     it('records only the fields that changed: a title sent unchanged next to a new status is not part of the undo', async () => {
         const { title } = task('t-24');
 
@@ -240,6 +301,28 @@ describe('what an undo checks', () => {
         expect(await stack.undoLatest(FIXTURE_PROJECT_ID)).toBe(false);
         expect(sent).toEqual([]);
         expect(task('t-26').dependsOn).toEqual(['t-24', 't-27']);
+    });
+
+    it('refuses to put back a parent that was changed since, and does not touch the task', async () => {
+        await edit(update('t-26', { parentId: 't-35' }));
+        await daemon.command({ type: 'task.update', taskId: 't-26', parentId: 't-36' });
+        await settle();
+        sent.length = 0;
+
+        expect(await stack.undoLatest(FIXTURE_PROJECT_ID)).toBe(false);
+        expect(sent).toEqual([]);
+        expect(task('t-26').parentId).toBe('t-36');
+        expect(toasts.error).toHaveBeenCalledWith({ message: 'CAR-26 changed since, so this cannot be undone' });
+    });
+
+    it('does not put back a parent over a task that was detached since: a root is not the parent the change gave it', async () => {
+        await edit(update('t-26', { parentId: 't-35' }));
+        await daemon.command({ type: 'task.update', taskId: 't-26', parentId: null });
+        await settle();
+        sent.length = 0;
+
+        expect(await stack.undoLatest(FIXTURE_PROJECT_ID)).toBe(false);
+        expect(sent).toEqual([]);
     });
 
     it('keeps the entry\'s own toast in step: the offer is replaced by the next change\'s, and closed when its entry is undone', async () => {

@@ -81,7 +81,8 @@ describe('FixtureTransport', () => {
 
         await vi.advanceTimersByTimeAsync(0);
 
-        expect(result).toMatchObject({ ok: true, data: { key: 'CAR-31', statusId: 'todo' } });
+        // The next number after the demo tasks, the archived ones too; the daemon answers `{ task }`.
+        expect(result).toMatchObject({ ok: true, data: { task: { key: 'CAR-41', statusId: 'todo' } } });
         expect(types()).toEqual(['task.upserted', 'link.chatTask']);
     });
 
