@@ -1,7 +1,6 @@
 import { openChat } from '../chats/archiveChat';
 import { docPaths } from '../chats/mentionItems';
 import { isHiddenPath, treeLayout } from '../files';
-import { DOCS_ROOT } from '../files/docsScope';
 import { filesManagerOf as managerOf, showFilesTab, tabOf } from '../files/openInFiles';
 import { foundChats } from './quickSearchChats';
 
@@ -31,15 +30,22 @@ export function mergeFiles(query: string, ...lists: ReadonlyArray<readonly strin
     return [...new Set(lists.flat())].toSorted((a, b) => scoreOf(a, first) - scoreOf(b, first) || Number(isHiddenPath(a)) - Number(isHiddenPath(b)) || a.length - b.length);
 }
 
-/** The documents whose path has every word of `query` (any case), ranked as file names are. The paths are below the docs folder: the folder's own name is not part of them. */
+/**
+ * The documents whose path has every word of `query` (any case): the names that start with the first word first, then the ones that have it, then the ones only the path
+ * has, as file names are ranked; the order they came in is kept where they tie, which is the order of the sources and of their trees, so Briefback comes first. A path is the
+ * document's own in the project folder, so its source's root is part of it (and no document is hidden for being in a dot folder: that is where they are).
+ */
 export function matchDocs(query: string, paths: readonly string[]): string[] {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const first = words[0] ?? '';
 
-    return mergeFiles(query, paths.filter((path) => {
-        const lower = path.toLowerCase();
+    return [...new Set(paths)]
+        .filter((path) => {
+            const lower = path.toLowerCase();
 
-        return words.every(word => lower.includes(word));
-    }));
+            return words.every(word => lower.includes(word));
+        })
+        .toSorted((a, b) => scoreOf(a, first) - scoreOf(b, first));
 }
 
 /**
@@ -113,11 +119,12 @@ export function quickSearchSource(root: RootStore, project: ProjectState, folder
             return mergeFiles(query, treeLayout.showHidden ? tracked : tracked.filter(path => !isNoise(path)), shown.status === 'fulfilled' ? shown.value : []);
         },
         docs: async (query) => {
-            // The daemon reads the folder's `.clowdy/docs` from the disk, which the file names leave out: the Docs tab's own tree is the same files.
+            // The daemon reads the folder's document sources from the disk (`.briefback`, `.clowdy/docs`, the roots of Spec Kit, OpenSpec and Kiro), which the file names leave out as
+            // hidden: the Docs tab's own tree is the same files. A path is the document's own in the folder, the root of its source first.
             const tree = await root.transport.getDocsTree(projectId);
             const mine = tree.find(entry => entry.folderId === folder.id);
 
-            return matchDocs(query, mine ? docPaths(mine.nodes) : []);
+            return matchDocs(query, mine?.sources.flatMap(({ root: sourceRoot, nodes }) => docPaths(nodes).map(path => `${ sourceRoot }/${ path }`)) ?? []);
         },
         text: async (query) => {
             manager = await managerOf(root, projectId, folder);
@@ -134,7 +141,7 @@ export function quickSearchSource(root: RootStore, project: ProjectState, folder
         },
         open: (found) => {
             if (found.kind === 'chat') void openChat(root, project, root.ui.forProject(projectId), found.chatId);
-            else if (found.kind === 'doc') void openFound(root, projectId, folder, { kind: 'file', id: found.id, path: `${ DOCS_ROOT }/${ found.path }` });
+            else if (found.kind === 'doc') void openFound(root, projectId, folder, { kind: 'file', id: found.id, path: found.path });
             else void openFound(root, projectId, folder, found);
         },
         dispose: () => manager?.search.dispose(),

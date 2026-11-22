@@ -1,7 +1,6 @@
 import { FileIcon } from '@clowdy/components/FileIcon';
 import { folderNames } from '@clowdy/protocol';
 
-import { DOCS_FOLDER } from './composerMentions';
 import { mentionIcon } from './MentionChip';
 
 import type { RichInputTriggerItem } from '@clowdy/components/RichInput';
@@ -42,7 +41,7 @@ export function taskItems(tasks: readonly Task[], query: string): RichInputTrigg
         });
 }
 
-/** The paths of a docs tree's files, relative to the docs folder. */
+/** The paths of a source's files, relative to its root. */
 export function docPaths(nodes: readonly DocNode[]): string[] {
     return nodes.flatMap(node => (node.kind === 'dir' ? docPaths(node.children ?? []) : [node.path]));
 }
@@ -56,15 +55,16 @@ function underFolder(folder: string, relative: string): string {
 }
 
 /**
- * Documents whose path has every word typed, folder by folder in the order the tree lists them. A document of the main folder reaches the
- * agent as `.clowdy/docs/<path>`, relative to the folder it works in; another folder's by its absolute path, since the agent works in the main
- * folder. With several folders the suggestion names the folder, and the folder's name counts as part of the path when searching.
+ * Documents whose path has every word typed, source by source and folder by folder in the order the tree lists them. The path is the document's own in the project
+ * folder (`.briefback/acp/plan.md`, `.clowdy/docs/decisions/pricing.md`: the root of its source, then its path), which is what the words are matched in. A document of the
+ * main folder reaches the agent by that path, relative to the folder it works in; another folder's by its absolute path, since the agent works in the main folder. With
+ * several folders the suggestion names the folder, and the folder's name counts as part of the path when searching.
  */
 export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], query: string): RichInputTriggerItem[] {
     const words = wordsOf(query);
     const names = folderNames(folders);
     const several = tree.length > 1;
-    const docs = tree.flatMap(({ folderId, nodes }) => {
+    const docs = tree.flatMap(({ folderId, sources }) => {
         const index = folders.findIndex(folder => folder.id === folderId);
         const folder = folders[index];
 
@@ -72,7 +72,11 @@ export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], quer
 
         const name = names[index] ?? '';
 
-        return docPaths(nodes).map(path => ({ folderId, path, name, shown: several ? `${ name }/${ path }` : path, agentPath: index === 0 ? `${ DOCS_FOLDER }/${ path }` : underFolder(folder.path, `${ DOCS_FOLDER }/${ path }`) }));
+        return sources.flatMap(({ root, nodes }) => docPaths(nodes).map((relative) => {
+            const path = `${ root }/${ relative }`;
+
+            return { folderId, path, shown: several ? `${ name }/${ path }` : path, agentPath: index === 0 ? path : underFolder(folder.path, path) };
+        }));
     });
 
     return docs

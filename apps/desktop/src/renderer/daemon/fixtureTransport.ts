@@ -5,7 +5,7 @@ import {
     catalogTokens,
     createFixtureData,
     DEFAULT_STATUSES,
-    docsTree,
+    docsSources,
     FIXTURE_LIVE_RUN_ID,
     FIXTURE_LIVE_TEXT_ID,
     FIXTURE_LIVE_TOOL_ID,
@@ -292,8 +292,8 @@ export class FixtureTransport implements Transport {
     }
 
     async getDocsTree(projectId: ProjectId): Promise<DocsTree> {
-        // Every fixture folder exists; one without a docs folder has no documents, and reading does not make one.
-        return this.#project(projectId).folders.map(folder => ({ folderId: folder.id, nodes: docsTree(Object.keys(this.#data.docs[folder.path] ?? {})) }));
+        // Every fixture folder exists; one with no source has none, and reading does not make one.
+        return this.#project(projectId).folders.map(folder => ({ folderId: folder.id, sources: docsSources({ briefback: this.#data.briefback[folder.path], documents: this.#data.docs[folder.path] }) }));
     }
 
     async getProjectFiles(projectId: ProjectId, query: string, limit = 40): Promise<ProjectFileMatch[]> {
@@ -318,8 +318,9 @@ export class FixtureTransport implements Transport {
         let fileSystem = this.#fileSystems.get(folderId);
 
         if (!fileSystem) {
-            // The folder's documents are files like the others, below its `.clowdy/docs`.
-            const documents = Object.fromEntries(Object.entries(this.#data.docs[folder.path] ?? {}).map(([path, text]) => [`.clowdy/docs/${ path }`, text]));
+            // The folder's documents are files like the others, below the roots of their sources: `.clowdy/docs`, `.briefback`.
+            const below = (root: string, files: Record<string, string> | undefined) => Object.entries(files ?? {}).map(([path, text]) => [`${ root }/${ path }`, text] as const);
+            const documents = Object.fromEntries([...below('.clowdy/docs', this.#data.docs[folder.path]), ...below('.briefback', this.#data.briefback[folder.path])]);
 
             fileSystem = new MemoryFileSystem({ ...fixtureFileContents(this.#data.files[folder.path] ?? []), ...documents });
             this.#fileSystems.set(folderId, fileSystem);

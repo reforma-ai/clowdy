@@ -33,7 +33,7 @@ export interface FoundFile {
     path: string;
 }
 
-/** A document whose path matches: `path` is below the docs folder (`.clowdy/docs`), which the files tab does not look in. */
+/** A document whose path matches: `path` is its own in the project folder, below the root of a source (`.briefback`, `.clowdy/docs`), which the files tab does not look in. */
 export interface FoundDoc {
     kind: 'doc';
     id: string;
@@ -68,7 +68,7 @@ export interface QuickSearchSource {
     chats: (query: string) => FoundChat[];
     /** The paths of the files whose name or folder matches `query`, the best match first. */
     files: (query: string) => Promise<string[]>;
-    /** The paths, below the docs folder, of the documents whose path has `query`, the best match first. */
+    /** The paths, from the project folder, of the documents whose path has `query`, the best match first. */
     docs: (query: string) => Promise<string[]>;
     /** The lines of the files' content that have `query`. */
     text: (query: string) => Promise<SearchResult>;

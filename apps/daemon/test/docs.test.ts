@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { isDocFile } from '../src/docs/paths';
@@ -11,10 +11,13 @@ import type { DocNode, Project } from '@clowdy/protocol';
 afterAll(cleanTempDirs);
 
 const symlinks = process.platform === 'win32' ? test.skip : test;
+// A folder that is made unreadable stays readable for the super-user and has no such mode on Windows.
+const unreadable = process.platform === 'win32' || process.getuid?.() === 0 ? test.skip : test;
 
 interface Fixture {
     project: Project;
-    root: string;
+    /** The project's folder. */
+    path: string;
     outside: string;
 }
 
@@ -23,12 +26,28 @@ let fx: Fixture;
 /** A project over the folders given, in the order given. */
 const projectOf = (folders: Project['folders']): Project => ({ id: 'prj_docs', name: 'docs', folders, taskPrefix: 'DOC', settings: {}, createdAt: 1, position: 1 });
 
+/** Writes files (and the folders above them) below a folder. */
+function put(folder: string, files: Record<string, string>) {
+    for (const [path, content] of Object.entries(files)) {
+        const absolute = join(folder, path);
+
+        mkdirSync(join(absolute, '..'), { recursive: true });
+        writeFileSync(absolute, content);
+    }
+}
+
+/** A tree as nested paths, for a short expectation: a file is its path, a folder is `{ path: children }`. */
+const compact = (nodes: DocNode[]): unknown[] => nodes.map(node => (node.children ? { [node.path]: compact(node.children) } : node.path));
+
+/** The ids of a folder's sources, in order. */
+const idsOf = (project: Project, index = 0) => docsTree(project)[index]?.sources.map(source => source.id);
+
 beforeEach(() => {
     const path = tempDir('project');
     const outside = tempDir('outside');
 
     writeFileSync(join(outside, 'secret.md'), 'top secret');
-    fx = { project: projectOf([{ id: 'fld_docs', path }]), root: join(path, '.clowdy', 'docs'), outside };
+    fx = { project: projectOf([{ id: 'fld_docs', path }]), path, outside };
 });
 
 const fails = (action: () => unknown, code: string) => {
@@ -44,24 +63,79 @@ const fails = (action: () => unknown, code: string) => {
     throw new Error(`expected a ${ code } error`);
 };
 
-describe('docs tree', () => {
-    test('a read never makes the docs folder: a folder without one has no nodes', () => {
-        expect(docsTree(fx.project)).toEqual([{ folderId: 'fld_docs', nodes: [] }]);
-        expect(existsSync(join(fx.project.folders[0].path, '.clowdy'))).toBe(false);
+describe('document sources', () => {
+    test('a folder with none of the roots has an entry and no sources, and a read makes nothing', () => {
+        put(fx.path, { 'README.md': '# Readme', 'docs/guide.md': '# Guide', 'src/a.ts': '' });
+
+        expect(docsTree(fx.project)).toEqual([{ folderId: 'fld_docs', sources: [] }]);
+        expect(readdirSync(fx.path).toSorted()).toEqual(['README.md', 'docs', 'src']);
+    });
+
+    test('are the roots of the registry that have a Markdown file, in its order, each with its tree and the label of the tool', () => {
+        put(fx.path, {
+            '.kiro/steering/product.md': '# Product',
+            '.clowdy/docs/decisions/pricing.md': '# Pricing',
+            '.briefback/docs-sources/plan.md': '# Plan',
+            '.briefback/docs-sources/research/spec-formats.md': '# Formats',
+            'openspec/specs/booking/spec.md': '# Spec',
+        });
+
+        const [folder] = docsTree(fx.project);
+
+        expect(folder?.sources.map(({ id, label, root }) => [id, label, root])).toEqual([
+            ['briefback', 'Briefback', '.briefback'],
+            ['documents', 'Documents', '.clowdy/docs'],
+            ['openspec-specs', 'OpenSpec specs', 'openspec/specs'],
+            ['kiro-steering', 'Kiro steering', '.kiro/steering'],
+        ]);
+        expect(compact(folder?.sources[0]?.nodes ?? [])).toEqual([{ 'docs-sources': [{ 'docs-sources/research': ['docs-sources/research/spec-formats.md'] }, 'docs-sources/plan.md'] }]);
+        expect(compact(folder?.sources[1]?.nodes ?? [])).toEqual([{ decisions: ['decisions/pricing.md'] }]);
+    });
+
+    test('keep a path relative to the root, so the project path of a document is the root and the path', () => {
+        put(fx.path, { '.briefback/acp/plan.md': '# Plan' });
+
+        const [source] = docsTree(fx.project)[0]?.sources ?? [];
+
+        expect(source?.root).toBe('.briefback');
+        expect(source?.nodes).toEqual([{ path: 'acp', name: 'acp', kind: 'dir', children: [{ path: 'acp/plan.md', name: 'plan.md', kind: 'file' }] }]);
+    });
+
+    test('hide a root that has no Markdown file in it, however many folders and other files', () => {
+        put(fx.path, { '.briefback/config.json': '{}', '.briefback/x/probe.ts.txt': '', '.clowdy/docs/notes.txt': '', '.kiro/specs/feature/.config.kiro': '{}' });
+        mkdirSync(join(fx.path, 'openspec', 'specs'), { recursive: true });
+
+        expect(idsOf(fx.project)).toEqual([]);
+
+        put(fx.path, { '.briefback/x/plan.md': '# Plan' });
+
+        expect(idsOf(fx.project)).toEqual(['briefback']);
+    });
+
+    test('count Spec Kit\'s specs only beside .specify, and none of the rest of .specify: its templates and scripts are tool files', () => {
+        put(fx.path, { 'specs/001-chat/spec.md': '# Chat' });
+
+        // A bare specs folder is anybody's.
+        expect(idsOf(fx.project)).toEqual([]);
+
+        put(fx.path, { '.specify/templates/spec-template.md': '# T', '.specify/scripts/bash/x.md': '# S' });
+
+        // With .specify beside it the specs are Spec Kit's, and the templates and scripts of the tool are still no source.
+        expect(docsTree(fx.project)[0]?.sources.map(source => source.root)).toEqual(['specs']);
+
+        put(fx.path, { '.specify/memory/constitution.md': '# Constitution', '.specify/bugs/b1/fix.md': '# Fix' });
+
+        expect(docsTree(fx.project)[0]?.sources.map(source => source.root)).toEqual(['specs', '.specify/memory', '.specify/bugs']);
     });
 
     test('lists Markdown files and folders only, folders first, in natural order', () => {
         for (const dir of ['zeta', 'notes/deep']) {
-            mkdirSync(join(fx.root, dir), { recursive: true });
+            mkdirSync(join(fx.path, '.clowdy', 'docs', dir), { recursive: true });
         }
 
-        for (const file of ['doc10.md', 'doc2.md', 'Alpha.md', 'readme.markdown', 'image.png', 'todo.txt', 'notes/b.md', 'notes/deep/c.md', 'notes/a.txt']) {
-            writeFileSync(join(fx.root, file), 'x');
-        }
+        put(fx.path, Object.fromEntries(['doc10.md', 'doc2.md', 'Alpha.md', 'readme.markdown', 'image.png', 'todo.txt', 'notes/b.md', 'notes/deep/c.md', 'notes/a.txt'].map(file => [`.clowdy/docs/${ file }`, 'x'])));
 
-        const compact = (nodes: DocNode[]): unknown[] => nodes.map(node => (node.children ? { [node.path]: compact(node.children) } : node.path));
-
-        expect(compact(docsTree(fx.project)[0]?.nodes ?? [])).toEqual([
+        expect(compact(docsTree(fx.project)[0]?.sources[0]?.nodes ?? [])).toEqual([
             { notes: [{ 'notes/deep': ['notes/deep/c.md'] }, 'notes/b.md'] },
             { zeta: [] },
             'Alpha.md',
@@ -71,91 +145,108 @@ describe('docs tree', () => {
         ]);
     });
 
-    test('existing files are left alone', () => {
-        mkdirSync(fx.root, { recursive: true });
-        writeFileSync(join(fx.root, 'keep.md'), 'mine');
-
-        expect(docsTree(fx.project)).toEqual([{ folderId: 'fld_docs', nodes: [{ path: 'keep.md', name: 'keep.md', kind: 'file' }] }]);
-    });
-
     test('a missing main folder is unavailable and is not recreated', () => {
-        rmSync(fx.project.folders[0].path, { recursive: true });
+        rmSync(fx.path, { recursive: true });
         fails(() => docsTree(fx.project), 'unavailable');
-        expect(existsSync(fx.project.folders[0].path)).toBe(false);
+        expect(existsSync(fx.path)).toBe(false);
     });
 
-    test('a docs folder that is a file is unavailable', () => {
-        mkdirSync(join(fx.project.folders[0].path, '.clowdy'));
-        writeFileSync(fx.root, 'not a folder');
-        fails(() => docsTree(fx.project), 'unavailable');
+    test('a root that is a file is not a source', () => {
+        mkdirSync(join(fx.path, '.clowdy'));
+        writeFileSync(join(fx.path, '.clowdy', 'docs'), 'not a folder');
+        put(fx.path, { '.briefback/plan.md': '# Plan' });
+
+        expect(idsOf(fx.project)).toEqual(['briefback']);
     });
 
     test('has one entry per folder in the project\'s order, an empty folder too', () => {
         const second = tempDir('second');
-        const project = projectOf([{ id: 'fld_first', path: fx.project.folders[0].path }, { id: 'fld_second', path: second }]);
+        const project = projectOf([{ id: 'fld_first', path: fx.path }, { id: 'fld_second', path: second }]);
 
-        mkdirSync(fx.root, { recursive: true });
-        writeFileSync(join(fx.root, 'main.md'), '# Main');
-        mkdirSync(join(second, '.clowdy', 'docs', 'api'), { recursive: true });
-        writeFileSync(join(second, '.clowdy', 'docs', 'api', 'plan.md'), '# Plan');
+        put(fx.path, { '.briefback/main/plan.md': '# Main' });
+        put(second, { '.clowdy/docs/api/plan.md': '# Plan' });
 
-        expect(docsTree(project)).toEqual([
-            { folderId: 'fld_first', nodes: [{ path: 'main.md', name: 'main.md', kind: 'file' }] },
-            { folderId: 'fld_second', nodes: [{ path: 'api', name: 'api', kind: 'dir', children: [{ path: 'api/plan.md', name: 'plan.md', kind: 'file' }] }] },
-        ]);
+        expect(docsTree(project).map(folder => [folder.folderId, folder.sources.map(source => source.id)])).toEqual([['fld_first', ['briefback']], ['fld_second', ['documents']]]);
+
+        const third = projectOf([{ id: 'fld_first', path: fx.path }, { id: 'fld_empty', path: tempDir('empty') }]);
+
+        expect(docsTree(third)[1]).toEqual({ folderId: 'fld_empty', sources: [] });
     });
 
     test('a missing folder other than the main one is left out', () => {
         const second = join(tempDir('parent'), 'gone');
-        const project = projectOf([{ id: 'fld_first', path: fx.project.folders[0].path }, { id: 'fld_gone', path: second }]);
+        const project = projectOf([{ id: 'fld_first', path: fx.path }, { id: 'fld_gone', path: second }]);
 
-        expect(docsTree(project)).toEqual([{ folderId: 'fld_first', nodes: [] }]);
+        expect(docsTree(project)).toEqual([{ folderId: 'fld_first', sources: [] }]);
         expect(existsSync(second)).toBe(false);
     });
 
     symlinks('symbolic links are not listed', () => {
-        mkdirSync(fx.root, { recursive: true });
-        writeFileSync(join(fx.root, 'real.md'), 'x');
-        symlinkSync(fx.outside, join(fx.root, 'linked-dir'));
-        symlinkSync(join(fx.root, 'real.md'), join(fx.root, 'alias.md'));
+        put(fx.path, { '.clowdy/docs/real.md': 'x' });
+        symlinkSync(fx.outside, join(fx.path, '.clowdy', 'docs', 'linked-dir'));
+        symlinkSync(join(fx.path, '.clowdy', 'docs', 'real.md'), join(fx.path, '.clowdy', 'docs', 'alias.md'));
 
-        expect(docsTree(fx.project)[0]?.nodes.map(node => node.path)).toEqual(['real.md']);
+        expect(docsTree(fx.project)[0]?.sources[0]?.nodes.map(node => node.path)).toEqual(['real.md']);
     });
 
-    symlinks('a docs folder that is a link out of its folder is refused, and nothing is read through it', () => {
-        mkdirSync(join(fx.project.folders[0].path, '.clowdy'), { recursive: true });
-        symlinkSync(fx.outside, fx.root);
+    symlinks('a root that is a link out of the folder is left out, and nothing is read through it, while the other roots stay', () => {
+        put(fx.path, { '.briefback/plan.md': '# Plan' });
+        mkdirSync(join(fx.path, '.clowdy'), { recursive: true });
+        symlinkSync(fx.outside, join(fx.path, '.clowdy', 'docs'));
 
-        fails(() => docsTree(fx.project), 'invalid');
+        expect(idsOf(fx.project)).toEqual(['briefback']);
         expect(readdirSync(fx.outside)).toEqual(['secret.md']);
     });
 
-    symlinks('a .clowdy that is a link out of its folder is refused, though the docs folder is in what it leads to', () => {
+    symlinks('a .briefback that is a link out of its folder is left out, and so is a .clowdy that is one whose docs folder is in what it leads to', () => {
         mkdirSync(join(fx.outside, 'docs'));
         writeFileSync(join(fx.outside, 'docs', 'secret.md'), 'top secret');
-        symlinkSync(fx.outside, join(fx.project.folders[0].path, '.clowdy'));
+        symlinkSync(fx.outside, join(fx.path, '.clowdy'));
+        symlinkSync(fx.outside, join(fx.path, '.briefback'));
 
-        fails(() => docsTree(fx.project), 'invalid');
+        expect(docsTree(fx.project)).toEqual([{ folderId: 'fld_docs', sources: [] }]);
     });
 
-    symlinks('a docs folder that is a dangling link is not followed to make its target', () => {
+    symlinks('a specs folder that is a link to a folder inside the project is a source', () => {
+        put(fx.path, { '.specify/memory/c.md': '# C', 'shared/001/spec.md': '# Spec' });
+        symlinkSync(join(fx.path, 'shared'), join(fx.path, 'specs'));
+
+        expect(docsTree(fx.project)[0]?.sources.map(source => [source.root, source.nodes.length])).toEqual([['specs', 1], ['.specify/memory', 1]]);
+    });
+
+    symlinks('a root that is a dangling link is no source, and nothing is made to follow it', () => {
         const target = join(fx.outside, 'made-here');
 
-        mkdirSync(join(fx.project.folders[0].path, '.clowdy'));
-        symlinkSync(target, fx.root);
+        mkdirSync(join(fx.path, '.clowdy'));
+        symlinkSync(target, join(fx.path, '.clowdy', 'docs'));
 
-        expect(docsTree(fx.project)).toEqual([{ folderId: 'fld_docs', nodes: [] }]);
+        expect(docsTree(fx.project)).toEqual([{ folderId: 'fld_docs', sources: [] }]);
         expect(existsSync(target)).toBe(false);
     });
 
-    symlinks('another folder whose docs folder leads out of it is left out', () => {
+    symlinks('another folder\'s roots that lead out of it are left out of its sources', () => {
         const second = tempDir('second');
-        const project = projectOf([{ id: 'fld_first', path: fx.project.folders[0].path }, { id: 'fld_out', path: second }]);
+        const project = projectOf([{ id: 'fld_first', path: fx.path }, { id: 'fld_out', path: second }]);
 
         mkdirSync(join(second, '.clowdy'));
         symlinkSync(fx.outside, join(second, '.clowdy', 'docs'));
 
-        expect(docsTree(project)).toEqual([{ folderId: 'fld_first', nodes: [] }]);
+        expect(docsTree(project)).toEqual([{ folderId: 'fld_first', sources: [] }, { folderId: 'fld_out', sources: [] }]);
+    });
+
+    unreadable('a folder that cannot be read lists nothing and does not take the others with it', () => {
+        put(fx.path, { '.briefback/open/plan.md': '# Plan', '.briefback/shut/hidden.md': '# Hidden' });
+
+        const shut = join(fx.path, '.briefback', 'shut');
+
+        chmodSync(shut, 0o000);
+
+        try {
+            expect(compact(docsTree(fx.project)[0]?.sources[0]?.nodes ?? [])).toEqual([{ open: ['open/plan.md'] }, { shut: [] }]);
+        }
+        finally {
+            chmodSync(shut, 0o755);
+        }
     });
 });
 
@@ -167,18 +258,18 @@ describe('document files', () => {
 });
 
 describe('over the API', () => {
-    test('GET docs serves the tree and needs a project', async () => {
+    test('GET docs serves the sources of each folder and needs a project', async () => {
         const h = await startHarness();
 
         try {
             const { id, path: folder } = h.openRepo();
 
-            mkdirSync(join(folder, '.clowdy', 'docs', 'plan'), { recursive: true });
-            writeFileSync(join(folder, '.clowdy', 'docs', 'plan', 'mvp.md'), '# MVP');
+            put(folder, { '.clowdy/docs/plan/mvp.md': '# MVP', '.briefback/acp/plan.md': '# Plan' });
 
-            const [entry] = await (await h.fetch(`/v1/projects/${ id }/docs`)).json() as { folderId: string; nodes: DocNode[] }[];
+            const [entry] = await (await h.fetch(`/v1/projects/${ id }/docs`)).json() as Array<{ folderId: string; sources: Array<{ id: string; label: string; root: string; nodes: DocNode[] }> }>;
 
-            expect(entry?.nodes).toEqual([{ path: 'plan', name: 'plan', kind: 'dir', children: [{ path: 'plan/mvp.md', name: 'mvp.md', kind: 'file' }] }]);
+            expect(entry?.sources.map(source => [source.id, source.label, source.root])).toEqual([['briefback', 'Briefback', '.briefback'], ['documents', 'Documents', '.clowdy/docs']]);
+            expect(entry?.sources[1]?.nodes).toEqual([{ path: 'plan', name: 'plan', kind: 'dir', children: [{ path: 'plan/mvp.md', name: 'mvp.md', kind: 'file' }] }]);
             expect((await h.fetch('/v1/projects/prj_nope/docs')).status).toBe(404);
             expect((await h.fetch(`/v1/projects/${ id }/docs/file?path=plan/mvp.md`)).status).toBe(404);
         }

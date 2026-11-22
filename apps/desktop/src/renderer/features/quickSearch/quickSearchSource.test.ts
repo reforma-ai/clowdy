@@ -115,18 +115,29 @@ describe('the names the palette looks for', () => {
 });
 
 describe('the documents the palette looks for', () => {
-    it('need every word in the path, ranked as file names are: the name that starts with the word first', () => {
-        const paths = ['research/pricing-notes.md', 'decisions/2026-11-17-pricing.md', 'pricing.md', 'plan.md', 'decisions/Pricing/model.md'];
+    it('need every word in the path, ranked as file names are (the name that starts with the word first), and keep the order they came in where they tie', () => {
+        const paths = ['research/pricing-notes.md', 'decisions/2026-11-17-pricing.md', 'pricing.md', 'plan.md', 'decisions/Pricing/model.md', 'pricing.md'];
 
-        expect(matchDocs('pricing', paths)).toEqual(['pricing.md', 'research/pricing-notes.md', 'decisions/2026-11-17-pricing.md', 'decisions/Pricing/model.md']);
+        expect(matchDocs('pricing', paths)).toEqual(['research/pricing-notes.md', 'pricing.md', 'decisions/2026-11-17-pricing.md', 'decisions/Pricing/model.md']);
         expect(matchDocs('PRICING decisions', paths)).toEqual(['decisions/2026-11-17-pricing.md', 'decisions/Pricing/model.md']);
         expect(matchDocs('nothing here', paths)).toEqual([]);
     });
 
+    it('do not put a document in a dot folder after the others: that is where most of them are', () => {
+        expect(matchDocs('plan', ['specs/001/plan.md', '.briefback/acp/plan.md', 'openspec/changes/plan.md'])).toEqual(['specs/001/plan.md', '.briefback/acp/plan.md', 'openspec/changes/plan.md']);
+        expect(matchDocs('plan', ['.briefback/acp/plan.md', 'specs/001/plan.md'])).toEqual(['.briefback/acp/plan.md', 'specs/001/plan.md']);
+    });
+
     const FOLDER = { id: 'f1' } as ProjectFolder;
     const tree: DocsTree = [
-        { folderId: 'f1', nodes: [{ path: 'decisions', name: 'decisions', kind: 'dir', children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }] }, { path: 'plan.md', name: 'plan.md', kind: 'file' }] },
-        { folderId: 'f2', nodes: [{ path: 'pricing-api.md', name: 'pricing-api.md', kind: 'file' }] },
+        {
+            folderId: 'f1',
+            sources: [
+                { id: 'briefback', label: 'Briefback', root: '.briefback', nodes: [{ path: 'acp', name: 'acp', kind: 'dir', children: [{ path: 'acp/plan.md', name: 'plan.md', kind: 'file' }] }] },
+                { id: 'documents', label: 'Documents', root: '.clowdy/docs', nodes: [{ path: 'decisions', name: 'decisions', kind: 'dir', children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }] }, { path: 'plan.md', name: 'plan.md', kind: 'file' }] },
+            ],
+        },
+        { folderId: 'f2', sources: [{ id: 'documents', label: 'Documents', root: '.clowdy/docs', nodes: [{ path: 'pricing-api.md', name: 'pricing-api.md', kind: 'file' }] }] },
     ];
 
     function docs(read: () => Promise<DocsTree>) {
@@ -136,16 +147,19 @@ describe('the documents the palette looks for', () => {
         return { search: quickSearchSource(root, project, FOLDER).docs, getDocsTree: root.transport.getDocsTree };
     }
 
-    it('are the folder\'s own, read from the daemon\'s list of documents, and not the files of another folder of the project', async () => {
+    it('are the folder\'s own, of every source, each by its own path from the folder, and not the files of another folder of the project', async () => {
         const { search, getDocsTree } = docs(async () => tree);
 
-        expect(await search('pricing')).toEqual(['decisions/pricing.md']);
-        expect(await search('p')).toEqual(['plan.md', 'decisions/pricing.md']);
+        expect(await search('pricing')).toEqual(['.clowdy/docs/decisions/pricing.md']);
+        // Where they match alike, the sources keep their order: Briefback first.
+        expect(await search('plan')).toEqual(['.briefback/acp/plan.md', '.clowdy/docs/plan.md']);
+        expect(await search('briefback')).toEqual(['.briefback/acp/plan.md']);
         expect(getDocsTree).toHaveBeenCalledWith('p1');
     });
 
-    it('are none when the folder has no documents, and a failure to read them is the search\'s', async () => {
-        expect(await docs(async () => [{ folderId: 'f2', nodes: [] }]).search('a')).toEqual([]);
+    it('are none when the folder has no source, and a failure to read them is the search\'s', async () => {
+        expect(await docs(async () => [{ folderId: 'f1', sources: [] }]).search('a')).toEqual([]);
+        expect(await docs(async () => [{ folderId: 'f2', sources: [] }]).search('a')).toEqual([]);
         await expect(docs(async () => Promise.reject(new Error('down'))).search('a')).rejects.toThrow('down');
     });
 });

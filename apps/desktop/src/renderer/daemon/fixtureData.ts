@@ -1,4 +1,4 @@
-import { PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
+import { DOC_SOURCES, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
 
 import type {
     AgentInfo,
@@ -9,6 +9,7 @@ import type {
     Chat,
     ChatTaskLink,
     DocNode,
+    DocsSource,
     PermissionPresetId,
     Project,
     ProjectId,
@@ -44,6 +45,11 @@ export interface FixtureData {
      * docs folder yet. Keyed by folder, as on disk: a folder several projects have shares its documents with all of them.
      */
     docs: Record<string, Record<string, string>>;
+    /**
+     * Markdown files of each folder's `.briefback`, by the folder's path, then by the path under it: the plans, research pages and handoffs the work is done from. A
+     * folder that is not listed has no `.briefback`.
+     */
+    briefback: Record<string, Record<string, string>>;
     /** Paths of the files of each folder, by the folder's path, relative to it, as the file search would list them. */
     files: Record<string, string[]>;
     /** The icon the daemon finds in each folder, by the folder's path: an SVG drawing. A folder that is not listed has none. */
@@ -306,6 +312,13 @@ const REFUND_ANSWER = 'The refund tests are in `src/payments/refund.test.ts`: 14
 const MIGRATION_FAILURE = 'The migration stopped: the column amount_cents already exists in staging';
 const LOAD_ANSWER = 'The short run held 120 requests a second with no errors. The long run is still going.';
 
+/** The `.briefback` of Car Rental: one feature that has all three kinds of page, a plan, a handoff and a research page. */
+const BRIEFBACK: Record<string, string> = {
+    'weekend-pricing/plan.md': '# Weekend pricing\n\n> Keep this plan current during implementation.\n\n**Goal:** Weekend days cost 15% more, and the person sees it before they commit.\n\n## Stage 1 \u2014 The rate\n\n- [x] Complete\n  - [x] `weekendRate` in `src/booking/price.ts`\n  - [x] tests for a booking that spans a month end\n\n## Stage 2 \u2014 The form\n\n- [ ] Complete\n  - [ ] show the surcharge as its own line\n',
+    'weekend-pricing/handoff.md': '# Handoff: weekend pricing\n\nStage 1 is committed. Next: Stage 2, the surcharge line in `BookingForm.tsx`. The rate is a constant, not a setting.\n',
+    'weekend-pricing/research/competitors.md': '# How others show a weekend surcharge\n\nTwo of the five rental sites show it as a separate line; the others fold it into the daily rate.\n',
+};
+
 /** The docs folder of a folder that is in no fixture project, for a project of several folders. */
 const API_DOCS: Record<string, string> = {
     'endpoints.md': '# Endpoints\n\n| Method | Path | Does |\n| --- | --- | --- |\n| GET | /availability | free cars in a date range |\n| POST | /bookings | books a car |\n',
@@ -332,6 +345,18 @@ const API_FILES = [
     'src/booking/price.ts',
     'src/limits.ts',
 ];
+
+/**
+ * The document sources of a folder as the daemon lists them: those of the registry that have files here, in its order, each with its tree. `files` is by the id of the
+ * source, then by the path under its root.
+ */
+export function docsSources(files: Record<string, Record<string, string> | undefined>): DocsSource[] {
+    return DOC_SOURCES.flatMap(({ id, label, root }) => {
+        const paths = Object.keys(files[id] ?? {});
+
+        return paths.length > 0 ? [{ id, label, root, nodes: docsTree(paths) }] : [];
+    });
+}
 
 /** The docs tree as the daemon builds it: directories first, then files, each by name. */
 export function docsTree(paths: string[]): DocNode[] {
@@ -1010,6 +1035,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         artifacts,
         // `car-rental-api` belongs to no project yet: add it to Car Rental to see the documents, files and remotes of two folders.
         docs: { '/Users/dev/car-rental': docs, '/Users/dev/car-rental-api': API_DOCS },
+        briefback: { '/Users/dev/car-rental': BRIEFBACK },
         files: { '/Users/dev/car-rental': FIXTURE_FILES, '/Users/dev/car-rental-api': API_FILES },
         // Car Rental shows a favicon of its own; Clowdy has none, so it keeps the folder icon until one is uploaded.
         icons: { '/Users/dev/car-rental': CAR_RENTAL_ICON },

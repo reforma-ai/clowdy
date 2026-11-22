@@ -85,7 +85,7 @@ export interface Transport {
     getTaskComments: (taskId: TaskId, page?: PageQuery) => Promise<TaskCommentsPage>;
     /** A page of the project's archived tasks, the ones the snapshot leaves out, newest archived first. */
     getArchivedTasks: (projectId: ProjectId, page?: PageQuery) => Promise<TaskArchivePage>;
-    /** The project's documents: one entry per folder, in the project's order, a folder that has none yet too. */
+    /** The project's documents: one entry per folder, in the project's order, with the document sources it has (`.briefback`, `.clowdy/docs`, the roots of Spec Kit, OpenSpec and Kiro), each a Markdown tree; a folder with none has none. */
     getDocsTree: (projectId: ProjectId) => Promise<DocsTree>;
     /** Files of the project's folders whose path contains every word of `query`, best match first, each with its folder and its path relative to that folder. */
     getProjectFiles: (projectId: ProjectId, query: string, limit?: number) => Promise<ProjectFileMatch[]>;

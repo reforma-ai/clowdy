@@ -34,10 +34,10 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/projects/:id/archived-tasks?limit=&cursor= -> TaskArchivePage (the project's archived tasks, the ones the snapshot leaves out, newest archived
  *                                            first; `limit` 1 to 100, default 25; `cursor` is the `nextCursor` of the page before, which is absent on the
  *                                            last page)
- * GET  /v1/projects/:id/docs              -> DocsTree (one entry per folder in the project's order, its documents under `.clowdy/docs`; a folder
- *                                            without that docs folder has no nodes and is not given one. A missing main folder is
- *                                            `unavailable`, one whose docs folder leads out of it `invalid`; another folder whose
- *                                            documents cannot be read, missing or leading out, is left out)
+ * GET  /v1/projects/:id/docs              -> DocsTree (one entry per folder in the project's order, with the document sources it has: the roots of
+ *                                            `DOC_SOURCES` that are folders (`.briefback`, `.clowdy/docs`, Spec Kit's, OpenSpec's, Kiro's), each with its
+ *                                            Markdown tree; a source with no Markdown file, one that is a link out of the folder, and a folder with none
+ *                                            are left out, empty. A missing main folder is `unavailable`; another folder that is missing is left out)
  * GET  /v1/projects/:id/files?query=&limit= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
  *                                            the folder's name counting as part of the path when there are several; best match first,
  *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside

@@ -603,9 +603,23 @@ export interface DocNode {
 }
 
 /**
- * The documents of one folder of a project: Markdown files under its `.clowdy/docs`. A folder whose docs folder does not exist has no nodes.
+ * One source of documents in a folder of a project (see `DOC_SOURCES`): the Markdown files below a root of the folder, as a tree. `nodes` are relative to `root`, so a
+ * document's path in the project folder is `${ root }/${ node.path }`.
+ */
+export interface DocsSource {
+    /** The registry's id for the root. */
+    id: string;
+    label: string;
+    /** The root, relative to the project folder, with `/` separators. */
+    root: string;
+    nodes: DocNode[];
+}
+
+/**
+ * The documents of one folder of a project: the sources it has, in the registry's order, each with its Markdown files. A source with no Markdown file is left out, and a
+ * folder with none has no sources.
  */
 export interface DocsFolder {
     folderId: FolderId;
-    nodes: DocNode[];
+    sources: DocsSource[];
 }

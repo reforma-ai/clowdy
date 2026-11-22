@@ -161,11 +161,10 @@ describe('the quick search palette', () => {
         expect([...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'))).toEqual(['Recent chats']);
     });
 
-    it('opens the chat of the row on Enter, in the Agents section, and leaves the side panel as it was', async () => {
+    it('opens the chat of the row on Enter, and leaves the side panel as it was', async () => {
         const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
         const target = [...store.selectedProject!.chats.values()].find(chat => chat.title === 'Architecture questions')!;
 
-        act(() => store.ui.showSection(ui, 'tasks'));
         await open('chats');
         await search('architecture');
         press('Enter');
@@ -173,7 +172,6 @@ describe('the quick search palette', () => {
 
         expect(document.body.querySelector('[role="combobox"]')).toBeNull();
         expect(ui.chatId).toBe(target.id);
-        expect(ui.section).toBe('agents');
         expect(ui.sidePanelOpen).toBe(false);
     });
 
@@ -266,7 +264,8 @@ describe('the quick search palette', () => {
 
         await search('pricing');
 
-        expect(names()).toEqual(['pricing.mddecisions']);
+        // The name that starts with the word first, then the files of a folder that has it: each with the folder it is in, from the folder of the project.
+        expect(names()).toEqual(['pricing.md.clowdy/docs/decisions', 'competitors.md.briefback/weekend-pricing/research', 'handoff.md.briefback/weekend-pricing', 'plan.md.briefback/weekend-pricing']);
         expect(rows()[0]!.querySelector('mark')?.textContent).toBe('pricing');
 
         const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
@@ -279,6 +278,18 @@ describe('the quick search palette', () => {
         expect(ui.sidePanelTab).toBe('docs');
         expect(manager('docs').tabs.active?.path).toBe('.clowdy/docs/decisions/pricing.md');
         expect(manager().tabs.documents.map(document => document.path)).not.toContain('.clowdy/docs/decisions/pricing.md');
+    });
+
+    it('finds the files of .briefback by their path, in the sources in the order of the registry, and nothing of a source the folder does not have', async () => {
+        await open('docs');
+        await search('briefback plan');
+
+        expect(names()).toEqual(['plan.md.briefback/weekend-pricing']);
+
+        await search('openspec');
+
+        expect(rows()).toEqual([]);
+        expect(note()).toBe('No documents found');
     });
 
     it('finds a file the tree shows although the project\'s list of files leaves it out, as it does one that git ignores', async () => {

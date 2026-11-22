@@ -77,7 +77,7 @@ export interface RootSnapshot {
 }
 
 /**
- * The documents of a project: one entry per folder, in the project's order (the main folder first). A folder other than the main one whose
- * documents cannot be read (missing, or its docs folder leads out of it) is left out.
+ * The documents of a project: one entry per folder, in the project's order (the main folder first). A folder other than the main one that cannot be
+ * read (it is missing) is left out.
  */
 export type DocsTree = DocsFolder[];

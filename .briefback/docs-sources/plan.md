@@ -45,10 +45,10 @@
 
 **This stage:** `packages/protocol` gets `DOC_SOURCES` and `docSourcesOf(has)` (and `isDocumentPath`, the static rule); `DocsFolder` answers `sources: [{ id, label, root, nodes }]` in place of `nodes`; the daemon's `docsTree` runs the registry on the disk and lists each source whole (a root that leads out of the folder, or is a file, is left out as today's docs folder is).
 
-- [ ] Complete
-  - [ ] the registry and `docSourcesOf`, with tests (each tool's markers, `specs` only beside `.specify`, an empty root hidden)
-  - [ ] `DocsFolder.sources`, the daemon's `docsTree`, its tests (links out of the folder refused, symlinks not listed, a missing main folder `unavailable`)
-  - [ ] the consumers of `getDocsTree`: `@` mentions (a path is the real one, `.briefback/x/plan.md`), the palette's Docs list; the fixtures
+- [x] Complete
+  - [x] the registry and `docSourcesOf` (`packages/protocol/src/docSources.ts`: `DOC_SOURCES`, `docSourcesOf`, `docSourceOf`, the static `isDocumentPath`), with tests
+  - [x] `DocsFolder.sources`, the daemon's `docsTree`, its tests. Scope change: a source whose root leads out of the folder, is a file or has no Markdown is left out and does not take the others down (a symlinked `specs` to a shared folder is common, and an error would blank every `@doc` mention); only a missing main folder is `unavailable`; `listDocs` skips a folder it cannot read
+  - [x] the consumers of `getDocsTree`: `@` mentions (the real project path), the palette's Docs list (`matchDocs` keeps the tree's order on ties, so Briefback comes first), the fixtures (a `weekend-pricing` feature under `.briefback`)
 
 **Done when:** `GET docs` for a folder with `.briefback/` and `.specify/` answers both, each with its Markdown tree, and `@` offers the files of every source.
 **Verify:** `cd packages/protocol && bun run test && bun run typecheck`; `cd apps/daemon && bun test test/docs.test.ts`; `cd apps/desktop && bunx vitest run src/renderer/features/chats src/renderer/daemon`

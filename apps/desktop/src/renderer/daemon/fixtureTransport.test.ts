@@ -373,13 +373,26 @@ describe('FixtureTransport', () => {
         });
     });
 
-    it('serves each folder\'s docs as a tree, directories first', async () => {
+    it('serves each folder\'s document sources, in the registry\'s order, each as a tree, directories first', async () => {
         const transport = new FixtureTransport();
         const tree = await transport.getDocsTree(FIXTURE_PROJECT_ID);
 
         expect(tree.map(folder => folder.folderId)).toEqual(['fld_car_rental']);
-        expect(tree[0].nodes.map(node => `${ node.kind }:${ node.path }`)).toEqual(['dir:decisions', 'dir:specs', 'file:README.md']);
-        expect(tree[0].nodes[0].children?.map(node => node.path)).toEqual(['decisions/booking-flow.md', 'decisions/pricing.md']);
+        expect(tree[0].sources.map(({ id, label, root }) => [id, label, root])).toEqual([['briefback', 'Briefback', '.briefback'], ['documents', 'Documents', '.clowdy/docs']]);
+
+        const [briefback, documents] = tree[0].sources;
+
+        expect(briefback.nodes.map(node => `${ node.kind }:${ node.path }`)).toEqual(['dir:weekend-pricing']);
+        expect(briefback.nodes[0].children?.map(node => node.path)).toEqual(['weekend-pricing/research', 'weekend-pricing/handoff.md', 'weekend-pricing/plan.md']);
+        expect(documents.nodes.map(node => `${ node.kind }:${ node.path }`)).toEqual(['dir:decisions', 'dir:specs', 'file:README.md']);
+        expect(documents.nodes[0].children?.map(node => node.path)).toEqual(['decisions/booking-flow.md', 'decisions/pricing.md']);
+    });
+
+    it('has the documents of its sources as files below their roots, in the folder\'s file system', async () => {
+        const files = new FixtureTransport().fileSystem(FIXTURE_PROJECT_ID, 'fld_car_rental');
+        const paths = (await files.list('')).map(entry => entry.path);
+
+        expect(paths).toEqual(expect.arrayContaining(['.briefback/weekend-pricing/plan.md', '.briefback/weekend-pricing/research/competitors.md', '.clowdy/docs/decisions/pricing.md']));
     });
 
     it('serves the documents of every folder, an empty one too', async () => {
@@ -389,7 +402,11 @@ describe('FixtureTransport', () => {
 
         const tree = await transport.getDocsTree(FIXTURE_PROJECT_ID);
 
-        expect(tree.map(folder => folder.nodes.map(node => node.path))).toEqual([['decisions', 'specs', 'README.md'], ['decisions', 'endpoints.md'], []]);
+        expect(tree.map(folder => folder.sources.map(source => [source.id, source.nodes.map(node => node.path)]))).toEqual([
+            [['briefback', ['weekend-pricing']], ['documents', ['decisions', 'specs', 'README.md']]],
+            [['documents', ['decisions', 'endpoints.md']]],
+            [],
+        ]);
     });
 
     it('keeps the folder a chat is made in, refuses one the project does not have, and hands the chats of a removed folder back to the main folder', async () => {
@@ -420,7 +437,7 @@ describe('FixtureTransport', () => {
         const added = await transport.command({ type: 'project.add', folders: ['/Users/dev/web', '/Users/dev/car-rental'] });
         const other = (added as { data: { project: { id: string } } }).data.project;
 
-        expect((await transport.getDocsTree(other.id))[1].nodes.map(node => node.path)).toEqual(['decisions', 'specs', 'README.md']);
+        expect((await transport.getDocsTree(other.id))[1].sources.map(source => source.id)).toEqual(['briefback', 'documents']);
     });
 
     it('plays the timeline once, after the first subscription: a tool finishes and text streams in', async () => {

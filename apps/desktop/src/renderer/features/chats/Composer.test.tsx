@@ -21,7 +21,7 @@ const refused: CommandResult = { ok: false, requestId: 'request-1', error: { cod
 
 const tasks = [{ id: 't-24', number: 24, key: 'CAR-24', title: 'Rebuild the form as one view' }] as Task[];
 const FOLDERS: ProjectFolder[] = [{ id: 'fld_p', path: '/work/p' }];
-const docs: DocsTree = [{ folderId: 'fld_p', nodes: [{ path: 'decisions', name: 'decisions', kind: 'dir', children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }] }] }];
+const docs: DocsTree = [{ folderId: 'fld_p', sources: [{ id: 'documents', label: 'Documents', root: '.clowdy/docs', nodes: [{ path: 'decisions', name: 'decisions', kind: 'dir', children: [{ path: 'decisions/pricing.md', name: 'pricing.md', kind: 'file' }] }] }] }];
 const skill = (name: string, source: SkillEntry['source']): SkillEntry => ({ id: `${ source }:${ name }`, name, source, description: `${ name } skill`, enabled: true, tokens: 20, engines: [] });
 const skills = [skill('clowdy:orchestrate', 'system'), skill('user:review', 'user')];
 
@@ -263,7 +263,7 @@ describe('Composer', () => {
         });
 
         it('sends a document of another folder by its absolute path, and names the folder in the suggestion', async () => {
-            transport.getDocsTree.mockImplementation(async () => [...docs, { folderId: 'fld_api', nodes: [{ path: 'endpoints.md', name: 'endpoints.md', kind: 'file' }] }]);
+            transport.getDocsTree.mockImplementation(async () => [...docs, { folderId: 'fld_api', sources: [{ id: 'documents', label: 'Documents', root: '.clowdy/docs', nodes: [{ path: 'endpoints.md', name: 'endpoints.md', kind: 'file' }] }] }]);
             await mount(accepted, undefined, [...FOLDERS, { id: 'fld_api', path: '/work/api' }]);
             await open('Read @endpoints');
 
