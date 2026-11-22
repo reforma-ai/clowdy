@@ -1,4 +1,4 @@
-import type { FolderId, TaskComment } from './domain';
+import type { FolderId, Task, TaskComment } from './domain';
 
 /** Version of this contract. The daemon refuses clients that send a different major in `x-clowdy-protocol`. */
 export const PROTOCOL_VERSION = 1;
@@ -24,6 +24,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/tasks/:id/detail               -> TaskDetail
  * GET  /v1/tasks/:id/comments?limit=&cursor= -> TaskCommentsPage (the task's comments, oldest first; `limit` 1 to 100, default 25; `cursor` is the
  *                                            `nextCursor` of the page before, which is absent on the last page. Comments are not in the snapshot)
+ * GET  /v1/projects/:id/archived-tasks?limit=&cursor= -> TaskArchivePage (the project's archived tasks, the ones the snapshot leaves out, newest archived
+ *                                            first; `limit` 1 to 100, default 25; `cursor` is the `nextCursor` of the page before, which is absent on the
+ *                                            last page)
  * GET  /v1/projects/:id/docs              -> DocsTree (one entry per folder in the project's order, its documents under `.clowdy/docs`; a folder
  *                                            without that docs folder has no nodes and is not given one. A missing main folder is
  *                                            `unavailable`, one whose docs folder leads out of it `invalid`; another folder whose
@@ -63,6 +66,7 @@ export const ROUTES = {
     chatItems: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/items`,
     taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
     taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
+    projectArchivedTasks: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/archived-tasks`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
     docsFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs/file`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
@@ -117,6 +121,19 @@ export interface TaskDetail {
     chatIds: string[];
     runIds: string[];
     artifacts: import('./domain').Artifact[];
+}
+
+/**
+ * One page of a project's archived tasks, newest archived first (the tasks of one archive batch share their `archivedAt` and follow each other in the order
+ * of their numbers). Each is a `Task` with `archivedAt` set; the tree of a batch is rebuilt from `parentId`, whose parent may be on this page, on another,
+ * or not archived at all.
+ */
+export interface TaskArchivePage {
+    tasks: Task[];
+    /** How many tasks the project has in the archive, whatever the page holds. */
+    total: number;
+    /** Passed as `cursor` it gives the next page; absent on the last one. */
+    nextCursor?: string;
 }
 
 /** One page of a task's comments, oldest first. */

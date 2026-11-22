@@ -4,7 +4,7 @@ import { chatIdsOfTask, insertChatTaskLink } from '../db/chats';
 import { listStatuses } from '../db/projects';
 import { takeTaskNumber } from '../db/projects';
 import { insertRunTaskLink, linksOfTask } from '../db/runs';
-import { childIdsOf, deleteTask as deleteTaskRow, dependenciesOf, dependentsOf, getTask, getTaskByNumber, listTasks, upsertTask } from '../db/tasks';
+import { childIdsOf, deleteTask as deleteTaskRow, dependenciesOf, dependentsOf, getTask, getTaskByNumber, listAllTasks, upsertTask } from '../db/tasks';
 import { invalid, notFound } from '../errors';
 import { newId } from '../ids';
 import { requireChat } from './chats';
@@ -22,6 +22,13 @@ export function requireTask(store: Store, taskId: string): Task {
     }
 
     return task;
+}
+
+/** A task in the archive takes no new work: a run starts on it only after it is restored. */
+export function requireNotArchived(task: Task): void {
+    if (task.archivedAt !== undefined) {
+        throw invalid(`Task ${ task.key } is archived: restore it first`);
+    }
 }
 
 /** Accepts a task id or a key such as `CLW-12` within the project; the orchestrator sees keys. */
@@ -90,9 +97,10 @@ function checkDependencies(store: Store, projectId: string, taskId: string, refe
 /**
  * Validates the parent `parentId` for `task` (a task being made, or one being moved) and returns its id. The parent is a task of the same project, not
  * the task itself nor one of the tasks inside it (that would close a loop), and the tree stays within `MAX_TASK_DEPTH` levels counting the levels of the
- * task's own subtree, so moving an epic under a deep task is refused as one move.
+ * task's own subtree, so moving an epic under a deep task is refused as one move. An archived task is no parent for a task that is not archived (restore it
+ * first): the child would stay on the board under a parent that is off it.
  */
-function checkParent(store: Store, task: Pick<Task, 'id' | 'key' | 'projectId'>, parentId: string): string {
+function checkParent(store: Store, task: Pick<Task, 'id' | 'key' | 'projectId' | 'archivedAt'>, parentId: string): string {
     const parent = requireTask(store, parentId);
 
     if (parent.projectId !== task.projectId) {
@@ -103,7 +111,12 @@ function checkParent(store: Store, task: Pick<Task, 'id' | 'key' | 'projectId'>,
         throw invalid(`Task ${ task.key } cannot be its own parent`);
     }
 
-    const tree = new TaskTree(listTasks(store.db, task.projectId));
+    if (parent.archivedAt !== undefined && task.archivedAt === undefined) {
+        throw invalid(`Task ${ parent.key } is archived: restore it before putting tasks inside it`);
+    }
+
+    // The archived tasks are part of the tree: a task in the archive keeps its place in it and its depth.
+    const tree = new TaskTree(listAllTasks(store.db, task.projectId));
 
     if (tree.ancestorsOf(parent.id).some(ancestor => ancestor.id === task.id)) {
         throw invalid(`Task ${ parent.key } is inside ${ task.key }, so it cannot be its parent`);
@@ -221,6 +234,11 @@ export function updateTask(store: Store, taskId: string, patch: TaskPatch): Task
             return task;
         }
 
+        // An archived task is closed, and stays so until it is restored: reopening it would leave work hidden from the board.
+        if (task.archivedAt !== undefined && !isClosedCategory(categoryOf(store, next))) {
+            throw invalid(`Task ${ task.key } is archived: restore it before reopening it`);
+        }
+
         const now = Date.now();
 
         // The closing time is when the task entered a closed status; a move between two closed ones (Done to Canceled) keeps it.
@@ -253,7 +271,8 @@ export function categoryOf(store: Store, task: Task): TaskStatusCategory {
 /**
  * Removes the task with its links; tasks that depended on it lose that dependency, and the tasks inside it move up to its own parent (a root's become
  * roots), so the structure stays and no tree gets deeper. Its comments go with the row (foreign key cascade) and are announced by `task.deleted`
- * alone: they are not in the snapshot, so a client holds them only as the task's, and drops them with it.
+ * alone: they are not in the snapshot, so a client holds them only as the task's, and drops them with it. An archived task goes like any other, and a task
+ * inside it keeps its own `archivedAt` through the move (an archived child under a parent on the board is a state the archive allows).
  */
 export function deleteTask(store: Store, taskId: string): void {
     store.tx(() => {

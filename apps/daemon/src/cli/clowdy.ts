@@ -44,6 +44,7 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
         'clowdy task list --parent CLW-3                     # the open tasks inside CLW-3; --under lists every task below it, --roots the top level',
         'clowdy task list --status done --updated-since 7d   # closed work, when you need it',
         'clowdy task list --query "csv export"               # a text query searches closed tasks too: check before you create a duplicate',
+        'clowdy task list --archived                         # the archive: closed work that was put away, whatever its status (--query searches it)',
         'clowdy task list --cursor <nextCursor>              # the next page of a long answer',
     ],
     task_get: ['clowdy task get CLW-3                                   # also names its parent, the tasks inside it, its checklist count and its latest comments'],
@@ -70,6 +71,11 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
         'clowdy task comments CLW-3                          # oldest first; task get shows only the last three, cut short',
         'clowdy task comments CLW-3 --cursor <nextCursor>    # the next page of a long thread',
     ],
+    task_archive: [
+        'clowdy task archive CLW-3 CLW-4          # closed tasks, each with the tasks inside it: they leave the board and every listing',
+        'clowdy task archive CLW-3 --cancel       # an open task is refused without --cancel, which cancels the open ones in it first',
+    ],
+    task_unarchive: ['clowdy task unarchive CLW-3                          # brings it back with the tasks that were archived with it; task get still reads an archived task'],
     thread_spawn: [
         'clowdy thread spawn --title "Fix the login bug" --prompt-file - <<\'EOF\'',
         '<the whole brief: goal, what it owns, decisions made, how to check, how to report>',

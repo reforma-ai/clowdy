@@ -5,7 +5,7 @@ import { getChat, listChatDescendants, listChildChats } from '../db/chats';
 import { lastUserSeq, listItems, nextSeq } from '../db/items';
 import { getRun } from '../db/runs';
 import { chatDepth, createChat, inSameTree, isBelow, requireChat } from '../domain/chats';
-import { linkChatTask, resolveTask } from '../domain/tasks';
+import { linkChatTask, requireNotArchived, resolveTask } from '../domain/tasks';
 import { CommandError, conflict, invalid, notFound } from '../errors';
 import { isFolder } from './driver';
 import { sendMessage } from './messages';
@@ -481,13 +481,15 @@ export class ThreadService {
 
     /**
      * The tasks a new thread is assigned to, each once. A task that another run works on is refused: the caller's own run may hand its task on (a chat
-     * started from the task spawns a thread on it), but two threads on one task would do the work twice.
+     * started from the task spawns a thread on it), but two threads on one task would do the work twice. So is an archived task, as for `task.start`.
      */
     private freeTasks(caller: Run, references: readonly string[]): Task[] {
         const { store, runs } = this.deps;
         const tasks = new Map(references.map(reference => resolveTask(store, caller.projectId, reference)).map(task => [task.id, task]));
 
         for (const task of tasks.values()) {
+            requireNotArchived(task);
+
             const [active] = runs.activeRunsOfTask(task.id, caller.id);
 
             if (active) {

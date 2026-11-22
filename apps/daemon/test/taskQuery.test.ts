@@ -47,6 +47,8 @@ const list = (tasks: Task[], query: TaskQuery = {}, running: string[] = [], link
 
 const keys = (page: ReturnType<typeof list>) => page.tasks.map(row => row.key);
 
+const isoOf = (milliseconds: number) => new Date(milliseconds).toISOString().replace(/\.\d{3}Z$/, 'Z');
+
 /** 100 backlog, 500 done, and a handful in flight: the project a bare listing must not drown in. */
 function crowded(): Task[] {
     return [
@@ -214,7 +216,7 @@ describe('order and pages', () => {
     });
 
     test('an empty project answers an empty page', () => {
-        expect(list([])).toEqual({ tasks: [], total: 0, shown: 0, counts: { backlog: 0, todo: 0, active: 0, review: 0, done: 0, canceled: 0 } });
+        expect(list([])).toEqual({ tasks: [], total: 0, shown: 0, counts: { backlog: 0, todo: 0, active: 0, review: 0, done: 0, canceled: 0 }, archived: 0 });
     });
 });
 
@@ -308,5 +310,127 @@ describe('the tree', () => {
 
         expect(keys(list(loop, { underId: 'tsk_1', sort: 'number' }))).toEqual(['CLW-2']);
         expect(list(loop, { sort: 'number' }).tasks.map(row => row.parent)).toEqual(['CLW-2', 'CLW-1']);
+    });
+});
+
+describe('the archive', () => {
+    const AT = NOW - 10 * HOUR;
+    const EARLIER = NOW - 20 * HOUR;
+    // CLW-1 (epic, done, archived with CLW-2 and CLW-3 at AT)
+    //   CLW-2 done, CLW-3 canceled
+    // CLW-4 (epic, in progress)
+    //   CLW-5 done, CLW-6 done (archived on its own, earlier)
+    // CLW-7 (todo, depends on the archived CLW-2), CLW-8 (backlog)
+    const archive = [
+        task(1, 'done', { archivedAt: AT, hoursAgo: 30 }),
+        task(2, 'done', { parentId: 'tsk_1', archivedAt: AT, hoursAgo: 31 }),
+        task(3, 'canceled', { parentId: 'tsk_1', archivedAt: AT, hoursAgo: 32 }),
+        task(4, 'active'),
+        task(5, 'done', { parentId: 'tsk_4' }),
+        task(6, 'done', { parentId: 'tsk_4', archivedAt: EARLIER, hoursAgo: 40 }),
+        task(7, 'todo', { dependsOn: ['tsk_2'] }),
+        task(8, 'backlog'),
+    ];
+
+    test('an archived task is in no listing of the board: not the default, not all, not a status, not a text query', () => {
+        expect(keys(list(archive, { sort: 'number' }))).toEqual(['CLW-4', 'CLW-7']);
+        expect(keys(list(archive, { all: true, sort: 'number' }))).toEqual(['CLW-4', 'CLW-5', 'CLW-7', 'CLW-8']);
+        expect(keys(list(archive, { statusIds: new Set(['sts_done']), sort: 'number' }))).toEqual(['CLW-5']);
+        expect(keys(list(archive, { query: 'task', sort: 'number' }))).toEqual(['CLW-4', 'CLW-5', 'CLW-7', 'CLW-8']);
+        expect(keys(list(archive, { query: 'Task 1' }))).toEqual([]);
+        expect(list(archive, { all: true }).total).toBe(4);
+    });
+
+    test('the archived filter lists only archived tasks, whatever their status, and the other filters narrow that listing', () => {
+        expect(keys(list(archive, { archived: true, sort: 'number' }))).toEqual(['CLW-1', 'CLW-2', 'CLW-3', 'CLW-6']);
+        expect(keys(list(archive, { archived: true, all: true, sort: 'number' }))).toEqual(['CLW-1', 'CLW-2', 'CLW-3', 'CLW-6']);
+        expect(keys(list(archive, { archived: true, statusIds: new Set(['sts_canceled']) }))).toEqual(['CLW-3']);
+        expect(keys(list(archive, { archived: true, query: 'task 6' }))).toEqual(['CLW-6']);
+        expect(keys(list(archive, { archived: true, query: 'zzz' }))).toEqual([]);
+        expect(keys(list(archive, { archived: true, updatedSince: NOW - 31.5 * HOUR, sort: 'number' }))).toEqual(['CLW-1', 'CLW-2']);
+        // An archived task is closed, so nothing of it is ready, blocked or running.
+        expect(keys(list(archive, { archived: true, ready: true }))).toEqual([]);
+        expect(keys(list(archive, { archived: true, blocked: true }))).toEqual([]);
+        expect(keys(list(archive, { archived: true, running: true }, ['tsk_7']))).toEqual([]);
+    });
+
+    test('parent, under and roots pick that part of the tree among the archived tasks, and among the tasks of the board without the filter', () => {
+        expect(keys(list(archive, { archived: true, parentId: 'tsk_1', sort: 'number' }))).toEqual(['CLW-2', 'CLW-3']);
+        expect(keys(list(archive, { archived: true, underId: 'tsk_1', sort: 'number' }))).toEqual(['CLW-2', 'CLW-3']);
+        // The top of an archived piece: CLW-1 has no parent, CLW-6 was archived alone below the live CLW-4.
+        expect(keys(list(archive, { archived: true, roots: true, sort: 'number' }))).toEqual(['CLW-1', 'CLW-6']);
+        // The parent itself may be on the board, with only some of its children archived.
+        expect(keys(list(archive, { archived: true, parentId: 'tsk_4' }))).toEqual(['CLW-6']);
+        expect(keys(list(archive, { archived: true, underId: 'tsk_4' }))).toEqual(['CLW-6']);
+        expect(keys(list(archive, { parentId: 'tsk_4', all: true }))).toEqual(['CLW-5']);
+        expect(keys(list(archive, { underId: 'tsk_4', all: true }))).toEqual(['CLW-5']);
+        // The children of an archived task are archived: the board has none of them.
+        expect(keys(list(archive, { parentId: 'tsk_1', all: true }))).toEqual([]);
+        expect(keys(list(archive, { roots: true, all: true, sort: 'number' }))).toEqual(['CLW-4', 'CLW-7', 'CLW-8']);
+        expect(() => list(archive, { archived: true, parentId: 'tsk_1', roots: true })).toThrow(/give one of them/);
+    });
+
+    test('counts describe the structural scope on the side that was asked for, and archived is the project\'s number whatever the query', () => {
+        expect(list(archive).counts).toEqual({ backlog: 1, todo: 1, active: 1, review: 0, done: 1, canceled: 0 });
+        expect(list(archive, { archived: true }).counts).toEqual({ backlog: 0, todo: 0, active: 0, review: 0, done: 3, canceled: 1 });
+        expect(list(archive, { archived: true, parentId: 'tsk_1' }).counts).toEqual({ backlog: 0, todo: 0, active: 0, review: 0, done: 1, canceled: 1 });
+        expect(list(archive, { archived: true, parentId: 'tsk_4' }).counts).toEqual({ backlog: 0, todo: 0, active: 0, review: 0, done: 1, canceled: 0 });
+        expect(list(archive, { parentId: 'tsk_4' }).counts).toEqual({ backlog: 0, todo: 0, active: 0, review: 0, done: 1, canceled: 0 });
+        expect(list(archive, { roots: true }).counts).toEqual({ backlog: 1, todo: 1, active: 1, review: 0, done: 0, canceled: 0 });
+
+        for (const query of [{}, { all: true }, { archived: true }, { parentId: 'tsk_4' }, { query: 'zzz' }, { archived: true, query: 'zzz' }]) {
+            expect({ query, archived: list(archive, query).archived }).toEqual({ query, archived: 4 });
+        }
+
+        expect(list(archive.filter(entry => entry.archivedAt === undefined)).archived).toBe(0);
+    });
+
+    test('a roll-up counts the tasks on its own side: the board leaves the archived children out, an archived task holds its archived ones', () => {
+        const board = list(archive, { all: true, sort: 'number' }).tasks;
+        const archived = list(archive, { archived: true, sort: 'number' }).tasks;
+
+        expect(board.find(row => row.key === 'CLW-4')?.children).toEqual({ done: 1 });
+        expect(archived.find(row => row.key === 'CLW-1')?.children).toEqual({ done: 1, canceled: 1 });
+        expect(archived.find(row => row.key === 'CLW-2')).not.toHaveProperty('children');
+        expect(archived.find(row => row.key === 'CLW-6')).not.toHaveProperty('children');
+
+        // Every child archived: the parent on the board has none to count.
+        const emptied = list([task(1, 'done'), task(2, 'done', { parentId: 'tsk_1', archivedAt: AT })], { all: true }).tasks;
+
+        expect(emptied).toHaveLength(1);
+        expect(emptied[0]).not.toHaveProperty('children');
+    });
+
+    test('a dependency on an archived task is resolved and still named by its key, and a row names its parent whichever side it is on', () => {
+        const board = list(archive, { all: true, sort: 'number' }).tasks;
+        const archived = list(archive, { archived: true, sort: 'number' }).tasks;
+
+        expect(board.find(row => row.key === 'CLW-7')).toMatchObject({ dependsOn: ['CLW-2'] });
+        expect(board.find(row => row.key === 'CLW-7')).not.toHaveProperty('blockedBy');
+        expect(keys(list(archive, { ready: true, sort: 'number' }))).toEqual(['CLW-4', 'CLW-7']);
+        expect(keys(list(archive, { blocked: true }))).toEqual([]);
+        expect(archived.find(row => row.key === 'CLW-2')?.parent).toBe('CLW-1');
+        expect(archived.find(row => row.key === 'CLW-6')?.parent).toBe('CLW-4');
+        expect(board.find(row => row.key === 'CLW-5')?.parent).toBe('CLW-4');
+    });
+
+    test('only an archived task\'s row has archivedAt, as the time to the second', () => {
+        const board = list(archive, { all: true }).tasks;
+        const archived = list(archive, { archived: true, sort: 'number' }).tasks;
+
+        expect(board.every(row => !('archivedAt' in row))).toBe(true);
+        expect(archived.map(row => row.archivedAt)).toEqual([isoOf(AT), isoOf(AT), isoOf(AT), isoOf(EARLIER)]);
+        expect(archived[0].archivedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    });
+
+    test('the archive pages like any listing, with the same total and counts on every page, and a cursor that stays inside it', () => {
+        const query = { archived: true, sort: 'number', limit: 3 } as const;
+        const first = list(archive, query);
+        const second = list(archive, { ...query, cursor: first.nextCursor });
+
+        expect([keys(first), keys(second)]).toEqual([['CLW-1', 'CLW-2', 'CLW-3'], ['CLW-6']]);
+        expect(second.nextCursor).toBeUndefined();
+        expect([first.total, second.total]).toEqual([4, 4]);
+        expect(second.counts).toEqual(first.counts);
     });
 });

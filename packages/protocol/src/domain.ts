@@ -294,6 +294,12 @@ export interface Task {
     updatedAt: number;
     /** When the task entered a closed status (`isClosedCategory`); absent while it is open. Unlike `updatedAt` it does not move with every edit. */
     closedAt?: number;
+    /**
+     * When the task was archived; absent for a task that is not. An archived task is closed, is not in the project snapshot or in the roll-ups of the board,
+     * and is still found by its key or id (a dependency or a mention on it resolves). The tasks archived together, a task and what is inside it, share one
+     * `archivedAt`, and restoring the task restores exactly those. A client treats a task with `archivedAt` as off the board.
+     */
+    archivedAt?: number;
 }
 
 export type Actor = { kind: 'user' } | { kind: 'run'; runId: RunId } | { kind: 'provider'; provider: string };

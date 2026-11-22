@@ -29,6 +29,8 @@ const TASK_COMMANDS = new Set([
     'update',
     'comment',
     'comments',
+    'archive',
+    'unarchive',
 ]);
 /** The commands of `clowdy thread`, the daemon's thread tools marked as shell commands; checked against the daemon like `TASK_COMMANDS`. */
 const THREAD_COMMANDS = new Set([

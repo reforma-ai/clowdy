@@ -451,4 +451,16 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 22,
+        up(db) {
+            // When a task went into the archive (see `Task.archivedAt`): NULL for a task that is not archived, which every task of an older database is. The
+            // tasks archived together share the value. Partial, so the live tasks, which are nearly all of them, keep out of the index that serves the archive's
+            // paging and count.
+            db.run(`
+                ALTER TABLE tasks ADD COLUMN archived_at INTEGER;
+                CREATE INDEX tasks_archived ON tasks(project_id, archived_at) WHERE archived_at IS NOT NULL;
+            `);
+        },
+    },
 ];

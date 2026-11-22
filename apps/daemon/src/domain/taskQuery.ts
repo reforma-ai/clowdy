@@ -2,7 +2,7 @@ import { isClosedCategory } from '@clowdy/protocol';
 
 import { invalid } from '../errors';
 import { parseChecklist } from './checklist';
-import { TaskTree } from './taskTree';
+import { sameArchiveSide, TaskTree } from './taskTree';
 
 import type { Task, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
 import type { Checklist } from './checklist';
@@ -31,6 +31,11 @@ export interface TaskQuery {
     statusIds?: ReadonlySet<string>;
     /** Every task, closed and parked ones included. */
     all?: boolean;
+    /**
+     * The archive instead of the board: only archived tasks, whatever their status (what the other filters narrow, `status` included), where without it
+     * archived tasks are in no listing at all. `parentId`, `underId` and `roots` then pick that part of the tree among the archived tasks.
+     */
+    archived?: boolean;
     /** Not closed, and every dependency closed (done or canceled). */
     ready?: boolean;
     /** Not closed, and some dependency not closed. */
@@ -49,7 +54,7 @@ export interface TaskQuery {
 
 /** What a listing reads besides the tasks: the project's statuses and the two facts that live outside a task row. */
 export interface TaskQueryContext {
-    /** Every task of the project. */
+    /** Every task of the project, the archived ones too: a listing leaves them out itself, but a dependency or a parent on one is still named by its key. */
     tasks: readonly Task[];
     statuses: readonly TaskStatus[];
     isRunning(taskId: string): boolean;
@@ -67,13 +72,15 @@ export interface TaskRow {
     dependsOn: string[];
     /** The dependencies that are not closed yet; absent when there are none. */
     blockedBy?: string[];
-    /** The tasks directly inside it, counted by category (only the categories that have any); absent when there are none. */
+    /** The tasks directly inside it, counted by category (only the categories that have any); absent when there are none. An archived task counts its archived tasks. */
     children?: CategoryCounts;
     /** The ticked and all `- [ ]` lines of its description; absent when it has none. */
     checklist?: Checklist;
     /** Present (true) when a run works on the task now. */
     running?: true;
     updatedAt: string;
+    /** When the task was archived; only a listing of the archive has such rows. */
+    archivedAt?: string;
 }
 
 /** A count by category, with only the categories that have any task. */
@@ -88,6 +95,8 @@ export interface TaskPage {
     nextCursor?: string;
     /** Every task of the structural scope (the whole project when the query names none) by category: what a listing that hid closed or parked work did not show. */
     counts: Record<TaskStatusCategory, number>;
+    /** How many tasks the project has in the archive, whatever the query asked for and whether it asked for them. */
+    archived: number;
 }
 
 /** The ISO text of a time, to the second: a row's date is for reading. */
@@ -160,7 +169,7 @@ function decodeCursor(cursor: string): Position {
 /**
  * The scope a listing starts from, which the other filters narrow: a status filter is those statuses, the most specific ask; `all` is every task; a text
  * query is every task, so a check for duplicates finds closed work; with none of them it is the work in flight (`OPEN_CATEGORIES`), which hides the parked
- * and the closed.
+ * and the closed. The archive holds closed work only, so a listing of it shows every status unless asked for some.
  */
 function scopeOf(query: TaskQuery): (category: TaskStatusCategory, statusId: string) => boolean {
     const { statusIds } = query;
@@ -169,7 +178,7 @@ function scopeOf(query: TaskQuery): (category: TaskStatusCategory, statusId: str
         return (_category, statusId) => statusIds.has(statusId);
     }
 
-    if (query.all) {
+    if (query.all || query.archived) {
         return () => true;
     }
 
@@ -180,17 +189,26 @@ function scopeOf(query: TaskQuery): (category: TaskStatusCategory, statusId: str
     return category => OPEN_CATEGORIES.includes(category);
 }
 
-/** The tasks a listing starts from: those directly inside a task, all below it, the roots, or every task of the project. */
+/**
+ * The tasks a listing starts from: those directly inside a task, all below it, the roots, or every task of the project; on the board, or in the archive when
+ * the query asks for it. The tree is walked through every task, so a task that is on the board below an archived one (it cannot be made so, but the store
+ * would hold it) is still found.
+ */
 function structuralScope(tree: TaskTree, tasks: readonly Task[], query: TaskQuery): readonly Task[] {
+    const wanted = (task: Task) => (task.archivedAt !== undefined) === Boolean(query.archived);
+    const byId = new Map(tasks.map(task => [task.id, task]));
+    // In the archive a root is the top of an archived piece: a task with no parent, or one whose parent stays on the board (it was archived alone).
+    const isRoot = (task: Task) => task.parentId === undefined || (Boolean(query.archived) && byId.get(task.parentId)?.archivedAt === undefined);
+
     if (query.parentId !== undefined) {
-        return tree.childrenOf(query.parentId);
+        return tree.childrenOf(query.parentId).filter(wanted);
     }
 
     if (query.underId !== undefined) {
-        return tree.descendantsOf(query.underId).map(({ task }) => task);
+        return tree.descendantsOf(query.underId).map(({ task }) => task).filter(wanted);
     }
 
-    return query.roots ? tasks.filter(task => task.parentId === undefined) : tasks;
+    return tasks.filter(task => wanted(task) && (!query.roots || isRoot(task)));
 }
 
 /** The tasks a listing shows, sorted, with the page `cursor` and `limit` ask for, and the counts of its structural scope. */
@@ -222,6 +240,7 @@ export function queryTasks(context: TaskQueryContext, query: TaskQuery): TaskPag
         counts[categoryOf(task)]++;
     }
 
+    const archived = tasks.reduce((count, task) => count + (task.archivedAt === undefined ? 0 : 1), 0);
     const matching = scoped.filter((task) => {
         const category = categoryOf(task);
         const open = !isClosedCategory(category);
@@ -246,7 +265,7 @@ export function queryTasks(context: TaskQueryContext, query: TaskQuery): TaskPag
             const blockedBy = unfinished(task).map(id => (byId.get(id) as Task).key);
             const category = categoryOf(task);
             const parent = tree.parentOf(task);
-            const children = tree.childrenOf(task.id);
+            const children = tree.childrenOf(task.id).filter(child => sameArchiveSide(child, task));
             const checklist = parseChecklist(task.description);
 
             return {
@@ -261,11 +280,13 @@ export function queryTasks(context: TaskQueryContext, query: TaskQuery): TaskPag
                 ...(checklist && { checklist }),
                 ...(context.isRunning(task.id) && { running: true as const }),
                 updatedAt: isoTime(task.updatedAt),
+                ...(task.archivedAt !== undefined && { archivedAt: isoTime(task.archivedAt) }),
             };
         }),
         total: matching.length,
         shown: page.length,
         ...(last && rest.length > page.length && { nextCursor: encodeCursor(position(last)) }),
         counts,
+        archived,
     };
 }

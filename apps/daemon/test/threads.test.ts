@@ -253,6 +253,24 @@ describe('thread_spawn', () => {
     });
 });
 
+describe('thread_spawn on an archived task', () => {
+    test('refuses the task, says to restore it first, opens no thread, and takes it once it is restored', async () => {
+        const { h, exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const { task } = await exec(parent.run, 'task_create', { title: 'Finished', status: 'done' });
+
+        await exec(parent.run, 'task_archive', { taskId: [task.key] });
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Do it again', tasks: [task.key] })).rejects.toMatchObject({ code: 'invalid', message: `Task ${ task.key } is archived: restore it first` });
+        expect((await exec(parent.run, 'thread_list')).threads).toEqual([]);
+
+        h.ok('task.unarchive', { taskId: task.id });
+
+        const thread = await spawn(parent.run, 'Do it again', held(latch()), { tasks: [task.key] });
+
+        expect(thread.state).toBe('working');
+    });
+});
+
 describe('thread_tell', () => {
     test('steers a busy thread, queues for its next turn, starts a turn of one at rest, and marks every message with its sender', async () => {
         const { engine, chatOf, bodies, exec, running, root, spawn } = await setup();

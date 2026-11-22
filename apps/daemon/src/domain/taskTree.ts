@@ -1,6 +1,12 @@
 import type { Task } from '@clowdy/protocol';
 
 /**
+ * Whether `task` is on the same side of the archive as `like`: both on the board, or both in the archive. A roll-up counts the tasks on its own side, so a
+ * task on the board counts the tasks of the board inside it, and an archived one the archived tasks inside it.
+ */
+export const sameArchiveSide = (task: Task, like: Task) => (task.archivedAt === undefined) === (like.archivedAt === undefined);
+
+/**
  * The parent and child links of a project's tasks, read once and walked in memory. Every walk keeps a set of what it has seen, so a cycle in the data
  * (the domain refuses to make one, but the store would hold it) ends the walk instead of looping.
  */

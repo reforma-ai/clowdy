@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { getProject } from '../src/db/projects';
+import { getTask } from '../src/db/tasks';
 import { taskCommentsPage } from '../src/domain/taskComments';
 import { ToolBridge } from '../src/engine/acp/bridge';
 import { toolsFor } from '../src/runs/tools';
@@ -61,11 +62,11 @@ describe('the tool vocabulary', () => {
         const names = (run: Run) => toolsOf(run).map(tool => tool.name);
         const threads = ['thread_spawn', 'thread_tell', 'thread_stop', 'thread_wait', 'thread_output', 'thread_log', 'thread_list'];
 
-        expect(names(orchestrator)).toEqual(['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment', ...threads]);
+        expect(names(orchestrator)).toEqual(['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment', 'task_archive', 'task_unarchive', ...threads]);
 
         const semi = await setup(undefined, {}, 'semi');
 
-        expect(semi.toolsOf(semi.orchestrator).map(tool => tool.name)).toEqual(['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment', ...threads, 'ask_user']);
+        expect(semi.toolsOf(semi.orchestrator).map(tool => tool.name)).toEqual(['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment', 'task_archive', 'task_unarchive', ...threads, 'ask_user']);
 
         // Every tool brings its schema in both forms and says how to use it.
         for (const tool of toolsOf(orchestrator)) {
@@ -80,7 +81,7 @@ describe('the tool vocabulary', () => {
         const { store, runs, threads } = h.daemon.services;
         const tools = (channel?: 'cli' | 'mcp') => toolsFor({ store, runs, threads }, orchestrator, 'semi', channel);
         const shell = (channel?: 'cli' | 'mcp') => tools(channel).filter(tool => tool.cli).map(tool => tool.name);
-        const taskTools = ['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment'];
+        const taskTools = ['task_get', 'task_list', 'task_comments', 'task_create', 'task_update', 'task_comment', 'task_archive', 'task_unarchive'];
         const threadTools = ['thread_spawn', 'thread_tell', 'thread_stop', 'thread_wait', 'thread_output', 'thread_log', 'thread_list'];
 
         expect(shell()).toEqual([...taskTools, ...threadTools]);
@@ -614,6 +615,215 @@ describe('task comments', () => {
         const epic = await task('Epic');
 
         expect(await exec(orchestrator, 'task_comments', { taskId: epic.key })).toEqual({ comments: [], total: 0, shown: 0 });
+    });
+});
+
+describe('the archive', () => {
+    const keysOf = (rows: { key: string }[]) => rows.map(row => row.key);
+    const iso = expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+
+    test('task_archive archives closed tasks by key with everything inside them and answers the keys; task_unarchive brings them back with the same batch', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic', { status: 'done' });
+        const stage = await task('Stage', { parent: epic.key, status: 'done' });
+        const step = await task('Step', { parent: stage.key, status: 'canceled' });
+        const live = await task('Live');
+
+        expect(await exec(orchestrator, 'task_archive', { taskId: [epic.key] })).toEqual({ archived: [epic.key, stage.key, step.key] });
+        expect(keysOf((await exec(orchestrator, 'task_list', { all: true })).tasks)).toEqual([live.key]);
+        expect(await exec(orchestrator, 'task_archive', { taskId: [epic.key] })).toEqual({ archived: [] });
+        expect(await exec(orchestrator, 'task_unarchive', { taskId: [epic.key] })).toEqual({ restored: [epic.key, stage.key, step.key] });
+        expect(keysOf((await exec(orchestrator, 'task_list', { all: true, sort: 'number' })).tasks)).toEqual([epic.key, stage.key, step.key, live.key]);
+        expect(await exec(orchestrator, 'task_unarchive', { taskId: [epic.key] })).toEqual({ restored: [] });
+        // An id works as a key does.
+        expect(await exec(orchestrator, 'task_archive', { taskId: [step.id] })).toEqual({ archived: [step.key] });
+    });
+
+    test('a refusal names the open tasks and the way out; cancel closes them first and answers which it canceled', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic');
+        const stage = await task('Stage', { parent: epic.key, status: 'active' });
+
+        await expect(exec(orchestrator, 'task_archive', { taskId: [epic.key] })).rejects.toThrow(`${ epic.key } (To do), ${ stage.key } (In progress) are not closed: close them first, or archive with cancel`);
+        expect((await exec(orchestrator, 'task_list', { all: true })).total).toBe(2);
+        expect(await exec(orchestrator, 'task_archive', { taskId: [epic.key], cancel: true })).toEqual({ archived: [epic.key, stage.key], canceled: [epic.key, stage.key] });
+        expect((await exec(orchestrator, 'task_get', { taskId: stage.key })).task).toMatchObject({ status: 'Canceled', category: 'canceled', archived: true });
+        // Nothing to cancel: the answer does not mention it.
+        expect(await exec(orchestrator, 'task_archive', { taskId: [await task('Done', { status: 'done' }).then(done => done.key)], cancel: true })).not.toHaveProperty('canceled');
+    });
+
+    test('several tasks go in one call, all of them or none, and a task given with one inside it goes in one batch whatever the order of the words', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const [first, second] = [await task('First', { status: 'done' }), await task('Second', { status: 'done' })];
+        const open = await task('Open');
+
+        await expect(exec(orchestrator, 'task_archive', { taskId: [first.key, open.key, second.key] })).rejects.toThrow(`${ open.key } (To do) is not closed`);
+        expect((await exec(orchestrator, 'task_list', { archived: true })).total).toBe(0);
+        expect(await exec(orchestrator, 'task_archive', { taskId: [first.key, second.key, first.key] })).toEqual({ archived: [first.key, second.key] });
+        await expect(exec(orchestrator, 'task_archive', { taskId: ['REP-99'] })).rejects.toThrow(/does not exist/);
+
+        // The child first and the parent after: one batch, so restoring the parent brings the child along.
+        const epic = await task('Epic', { status: 'done' });
+        const stage = await task('Stage', { parent: epic.key, status: 'done' });
+
+        expect(await exec(orchestrator, 'task_archive', { taskId: [stage.key, epic.key] })).toEqual({ archived: [epic.key, stage.key] });
+        // Restoring the child first is refused by itself, but in one call the parent goes first.
+        expect(await exec(orchestrator, 'task_unarchive', { taskId: [stage.key, epic.key] })).toEqual({ restored: [epic.key, stage.key] });
+        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, sort: 'number' })).tasks)).toEqual([first.key, second.key]);
+    });
+
+    test('a task whose parent is archived is refused on its own, with the reason', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic', { status: 'done' });
+        const stage = await task('Stage', { parent: epic.key, status: 'done' });
+
+        await exec(orchestrator, 'task_archive', { taskId: [epic.key] });
+        await expect(exec(orchestrator, 'task_unarchive', { taskId: [stage.key] })).rejects.toThrow(`Task ${ stage.key } is inside ${ epic.key }, which is archived: restore ${ epic.key } first`);
+        expect((await exec(orchestrator, 'task_list', { archived: true })).total).toBe(2);
+    });
+
+    test('a run working on the task refuses the archive, one on a task inside it does too, and the run of the caller does not count', async () => {
+        const { exec, orchestrator, task, h, chat, entity } = await setup();
+        const own = await task('Own', { status: 'done' });
+        const other = await task('Other', { status: 'done' });
+        const epic = await task('Epic', { status: 'done' });
+        const inside = await task('Inside', { parent: epic.key, status: 'done' });
+        const { runs } = h.daemon.services;
+        const assign = (summary: string, ...ids: string[]) => runs.createRun({ project: entity, role: 'orchestrator', chatId: chat.id, summary, assigned: ids.map(id => getTask(h.store.db, id) as NonNullable<ReturnType<typeof getTask>>) });
+        const callerRun = assign('Own', own.id);
+        const otherRun = assign('Other', other.id, inside.id);
+
+        await expect(exec(orchestrator, 'task_archive', { taskId: [own.key] })).rejects.toThrow(`Task ${ own.key } has an active run (${ callerRun.name }): stop it first`);
+        await expect(exec(orchestrator, 'task_archive', { taskId: [other.key], cancel: true })).rejects.toThrow(`Task ${ other.key } has an active run (${ otherRun.name }): stop it first`);
+        await expect(exec(orchestrator, 'task_archive', { taskId: [epic.key] })).rejects.toThrow(`Task ${ inside.key }, inside ${ epic.key }, has an active run`);
+        expect((await exec(orchestrator, 'task_list', { archived: true })).total).toBe(0);
+        // The run that archives the task it works on is not in its own way.
+        expect(await exec(callerRun, 'task_archive', { taskId: [own.key] })).toEqual({ archived: [own.key] });
+        await expect(exec(callerRun, 'task_archive', { taskId: [other.key] })).rejects.toThrow(/has an active run/);
+    });
+
+    test('task_list leaves archived tasks out of every listing, lists only them with archived, and carries the count of the archive in every answer', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic', { status: 'done' });
+        const stage = await task('Stage', { parent: epic.key, status: 'canceled' });
+        const live = await task('Live');
+        const earlier = await task('Earlier', { status: 'done' });
+
+        expect(await exec(orchestrator, 'task_list')).toMatchObject({ archived: 0, counts: { todo: 1, done: 2, canceled: 1 } });
+        await exec(orchestrator, 'task_archive', { taskId: [earlier.key] });
+        await exec(orchestrator, 'task_archive', { taskId: [epic.key] });
+
+        const board = await exec(orchestrator, 'task_list', { all: true });
+
+        expect(keysOf(board.tasks)).toEqual([live.key]);
+        expect(board).toMatchObject({ total: 1, archived: 3, counts: { todo: 1, done: 0, canceled: 0 } });
+        expect((await exec(orchestrator, 'task_list', { status: ['done'] })).total).toBe(0);
+        expect((await exec(orchestrator, 'task_list', { query: 'stage' })).total).toBe(0);
+        expect((await exec(orchestrator, 'task_list', { roots: true, all: true })).archived).toBe(3);
+
+        const archive = await exec(orchestrator, 'task_list', { archived: true, sort: 'number' });
+
+        expect(keysOf(archive.tasks)).toEqual([epic.key, stage.key, earlier.key]);
+        expect(archive).toMatchObject({ total: 3, shown: 3, archived: 3, counts: { done: 2, canceled: 1, todo: 0 } });
+        expect(archive.tasks[1]).toMatchObject({ key: stage.key, status: 'Canceled', category: 'canceled', parent: epic.key, archivedAt: iso });
+        expect(archive.tasks[0]).toMatchObject({ children: { canceled: 1 }, archivedAt: iso });
+        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, query: 'stage' })).tasks)).toEqual([stage.key]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, status: ['canceled'] })).tasks)).toEqual([stage.key]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, parent: epic.key })).tasks)).toEqual([stage.key]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, under: epic.key })).tasks)).toEqual([stage.key]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { archived: true, roots: true, sort: 'number' })).tasks)).toEqual([epic.key, earlier.key]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { parent: epic.key, all: true })).tasks)).toEqual([]);
+
+        // The first page lists the statuses, a later one does not, and the archive pages like any listing.
+        const first = await exec(orchestrator, 'task_list', { archived: true, sort: 'number', limit: 2 });
+        const rest = await exec(orchestrator, 'task_list', { archived: true, sort: 'number', limit: 2, cursor: first.nextCursor });
+
+        expect([keysOf(first.tasks), keysOf(rest.tasks)]).toEqual([[epic.key, stage.key], [earlier.key]]);
+        expect(first.statuses).toHaveLength(5);
+        expect(rest.statuses).toBeUndefined();
+        expect(rest.nextCursor).toBeUndefined();
+    });
+
+    test('task_get reads an archived task and says so; a parent on the board does not count its archived children, an archived one holds its own', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic');
+        const kept = await task('Kept', { parent: epic.key, status: 'done' });
+        const stage = await task('Stage', { parent: epic.key, status: 'done' });
+        const step = await task('Step', { parent: stage.key, status: 'done' });
+
+        await exec(orchestrator, 'task_archive', { taskId: [stage.key] });
+
+        const got = (await exec(orchestrator, 'task_get', { taskId: stage.key })).task;
+
+        expect(got).toMatchObject({ key: stage.key, archived: true, archivedAt: iso, status: 'Done', parent: { key: epic.key, title: 'Epic' }, children: [{ key: step.key }], childrenTotal: 1, descendants: { done: 1 } });
+        expect((await exec(orchestrator, 'task_get', { taskId: epic.key })).task).toMatchObject({ children: [{ key: kept.key }], childrenTotal: 1, descendants: { done: 1 } });
+        expect((await exec(orchestrator, 'task_get', { taskId: epic.key })).task).not.toHaveProperty('archived');
+        expect((await exec(orchestrator, 'task_get', { taskId: kept.key })).task).not.toHaveProperty('archivedAt');
+        expect((await exec(orchestrator, 'task_get', { taskId: step.key })).task).toMatchObject({ archived: true });
+
+        // When every child is archived the parent has none to name.
+        await exec(orchestrator, 'task_archive', { taskId: [kept.key] });
+        for (const field of ['children', 'childrenTotal', 'descendants']) {
+            expect((await exec(orchestrator, 'task_get', { taskId: epic.key })).task).not.toHaveProperty(field);
+        }
+    });
+
+    test('a task that waited for an archived one is ready, still names it as a dependency, and the archived task still lists it as waiting', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const first = await task('First', { status: 'done' });
+        const second = await task('Second', { dependsOn: [first.key] });
+
+        await exec(orchestrator, 'task_archive', { taskId: [first.key] });
+
+        const row = (await exec(orchestrator, 'task_list', { ready: true })).tasks[0];
+
+        expect(row).toMatchObject({ key: second.key, dependsOn: [first.key] });
+        expect(row).not.toHaveProperty('blockedBy');
+        expect((await exec(orchestrator, 'task_get', { taskId: second.key })).task.dependsOn).toEqual([{ key: first.key, title: 'First', status: 'Done' }]);
+        expect((await exec(orchestrator, 'task_get', { taskId: first.key })).task.blocks).toEqual([{ key: second.key, title: 'Second', status: 'To do' }]);
+        // A new dependency on an archived task is accepted, by key.
+        expect((await exec(orchestrator, 'task_create', { title: 'Third', dependsOn: [first.key] })).task.dependsOn).toHaveLength(1);
+    });
+
+    test('an archived task stays closed: task_update refuses to reopen it and still edits its words; new tasks cannot go inside it', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic', { status: 'done' });
+
+        await exec(orchestrator, 'task_archive', { taskId: [epic.key] });
+        await expect(exec(orchestrator, 'task_update', { taskId: epic.key, status: 'todo' })).rejects.toThrow(`Task ${ epic.key } is archived: restore it before reopening it`);
+        expect((await exec(orchestrator, 'task_update', { taskId: epic.key, title: 'Renamed epic' })).task).toMatchObject({ title: 'Renamed epic', archived: true });
+        await expect(exec(orchestrator, 'task_create', { title: 'Inside', parent: epic.key })).rejects.toThrow(`Task ${ epic.key } is archived: restore it before putting tasks inside it`);
+    });
+
+    test('the tools list the tasks as bare words, say what they do, and refuse a field they do not have, an empty list and a single key', async () => {
+        const { exec, orchestrator, toolsOf, task } = await setup();
+        const tool = (name: string) => toolsOf(orchestrator).find(candidate => candidate.name === name)!;
+        const properties = (name: string) => (tool(name).inputSchema as { properties: Record<string, { type?: string; items?: { type?: string }; description?: string }> }).properties;
+        const closed = await task('Closed', { status: 'done' });
+
+        expect(tool('task_archive').cli).toEqual({ positional: ['taskId'] });
+        expect(tool('task_unarchive').cli).toEqual({ positional: ['taskId'] });
+        expect(properties('task_archive').taskId).toMatchObject({ type: 'array', items: { type: 'string' } });
+        expect(properties('task_archive').cancel).toMatchObject({ type: 'boolean' });
+        expect(Object.keys(properties('task_archive'))).toEqual(['taskId', 'cancel']);
+        expect(Object.keys(properties('task_unarchive'))).toEqual(['taskId']);
+        expect(Object.keys(properties('task_list'))).toContain('archived');
+        expect(tool('task_archive').description).toContain('cancel');
+        expect(tool('task_get').description).toContain('archived');
+
+        const refused = (name: string, input: unknown) => expect(exec(orchestrator, name, input)).rejects.toThrow(new RegExp(`Invalid input for ${ name }`));
+
+        await refused('task_archive', { taskId: closed.key });
+        await refused('task_archive', { taskId: [] });
+        await refused('task_archive', { taskId: [''] });
+        await refused('task_archive', { taskId: [closed.key], force: true });
+        await refused('task_archive', { taskIds: [closed.key] });
+        await refused('task_archive', { taskId: [closed.key], cancel: 'yes' });
+        await refused('task_archive', {});
+        await refused('task_unarchive', { taskId: closed.key });
+        await refused('task_unarchive', { taskId: [closed.key], cancel: true });
+        await refused('task_list', { archived: 'yes' });
+        expect((await exec(orchestrator, 'task_list', { all: true })).total).toBe(1);
     });
 });
 

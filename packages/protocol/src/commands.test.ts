@@ -67,3 +67,21 @@ describe('task comments', () => {
         expect(parsed).toMatchObject({ taskId: 't1', body: 'x' });
     });
 });
+
+describe('task.archive and task.unarchive', () => {
+    test('task.archive takes the task, and cancel only when the person wants open work closed with it', () => {
+        expect(commandSchema.safeParse({ ...base, type: 'task.archive', taskId: 't1' }).success).toBe(true);
+        expect(commandSchema.safeParse({ ...base, type: 'task.archive', taskId: 't1', cancel: true }).success).toBe(true);
+        expect(commandSchema.safeParse({ ...base, type: 'task.archive', taskId: 't1', cancel: false }).success).toBe(true);
+        expect(commandSchema.safeParse({ ...base, type: 'task.archive' }).success).toBe(false);
+        expect(commandSchema.safeParse({ ...base, type: 'task.archive', taskId: 't1', cancel: 'yes' }).success).toBe(false);
+        expect(commandSchema.safeParse({ ...base, type: 'task.archive', taskId: ['t1'] }).success).toBe(false);
+    });
+
+    test('task.unarchive takes the task and nothing else', () => {
+        expect(commandSchema.safeParse({ ...base, type: 'task.unarchive', taskId: 't1' }).success).toBe(true);
+        expect(commandSchema.safeParse({ ...base, type: 'task.unarchive' }).success).toBe(false);
+        // What it restores is the batch of the task, not something a client picks: a field that is not part of the command is dropped on parsing.
+        expect(commandSchema.parse({ ...base, type: 'task.unarchive', taskId: 't1', cancel: true })).not.toHaveProperty('cancel');
+    });
+});

@@ -42,6 +42,14 @@ const get: CliTool = {
     positional: ['taskId'],
 };
 
+/** A command whose bare words are a list: `clowdy task archive CLW-1 CLW-2 --cancel`. */
+const archive: CliTool = {
+    name: 'task_archive',
+    description: 'Archives closed tasks.',
+    inputSchema: { properties: { taskId: { type: 'array', items: { type: 'string' }, description: 'The tasks to archive' }, cancel: { type: 'boolean' } }, required: ['taskId'] },
+    positional: ['taskId'],
+};
+
 const list: CliTool = { name: 'thread_list', description: 'Lists your threads.', inputSchema: { properties: { all: { type: 'boolean' } } } };
 
 describe('parseCommand', () => {
@@ -71,6 +79,18 @@ describe('parseCommand', () => {
         expect(parseCommand(get, ['-'])).toMatchObject({ arguments: { taskId: '-' }, files: {} });
     });
 
+    test('a positional list takes every bare word left, each of which may hold several items with commas, and the flags go anywhere', () => {
+        expect(parseCommand(archive, ['CLW-1']).arguments).toEqual({ taskId: ['CLW-1'] });
+        expect(parseCommand(archive, ['CLW-1', 'CLW-2', 'CLW-3']).arguments).toEqual({ taskId: ['CLW-1', 'CLW-2', 'CLW-3'] });
+        expect(parseCommand(archive, ['CLW-1,CLW-2', 'CLW-3', ' , CLW-4']).arguments).toEqual({ taskId: ['CLW-1', 'CLW-2', 'CLW-3', 'CLW-4'] });
+        expect(parseCommand(archive, ['CLW-1', '--cancel', 'CLW-2']).arguments).toEqual({ taskId: ['CLW-1', 'CLW-2'], cancel: true });
+        expect(parseCommand(archive, ['--cancel', 'CLW-1', 'CLW-2']).arguments).toEqual({ taskId: ['CLW-1', 'CLW-2'], cancel: true });
+        expect(parseCommand(archive, ['--', 'CLW-1', '--cancel']).arguments).toEqual({ taskId: ['CLW-1', '--cancel'] });
+        // The same field as an option takes a list too, repeated or with commas; a stdin dash is just a word.
+        expect(parseCommand(archive, ['--task-id', 'CLW-1,CLW-2', '--task-id', 'CLW-3']).arguments).toEqual({ taskId: ['CLW-1', 'CLW-2', 'CLW-3'] });
+        expect(parseCommand(archive, ['-'])).toMatchObject({ arguments: { taskId: ['-'] }, files: {} });
+    });
+
     test('everything after -- is bare, so a message may start with dashes', () => {
         expect(parseCommand(tell, ['thr_1', '--', '--mode', 'is', 'text']).arguments).toEqual({ thread: 'thr_1', message: '--mode is text' });
     });
@@ -92,6 +112,10 @@ describe('parseCommand', () => {
         [spawn, ['--prompt', 'x', '--prompt-file', 'brief.md'], '--prompt is given twice'],
         [spawn, ['--prompt-file', '-', '--title-file', '-'], 'Only one text can come from stdin'],
         [tell, ['thr_1'], 'Missing <message>'],
+        [archive, [], 'Missing <task-id>'],
+        [archive, ['--cancel'], 'Missing <task-id>'],
+        [archive, [',', ' '], 'Missing <task-id>'],
+        [archive, ['CLW-1', '--task-id', 'CLW-2'], 'task-id is given twice'],
         [tell, ['thr_1', 'hello', '--message', 'again'], 'given twice'],
         [list, ['--all=maybe'], 'takes true or false'],
     ] as const)('a command line that cannot be understood is refused with what to fix: %#', (tool, words, message) => {
@@ -138,6 +162,16 @@ describe('commandOf, flagsOf, summaryOf, commandText and helpOf', () => {
         expect(spawnHelp).toContain('--timeout-seconds <n>');
         expect(spawnHelp).toContain('that clowdy thread list explains');
         expect(spawnHelp).toContain('Examples:\n  clowdy thread spawn --prompt-file -');
+    });
+
+    test('the help writes a positional list as one word or more, and does not list it again among the options', () => {
+        const help = helpOf(archive);
+
+        expect(help).toContain('Usage: clowdy task archive <task-id>... [options]');
+        expect(help).toMatch(/Arguments:\n {2}<task-id>\.\.\. +The tasks to archive/);
+        expect(help).toContain('--cancel');
+        expect(help).not.toContain('--task-id');
+        expect(helpOf({ ...archive, inputSchema: { properties: archive.inputSchema.properties } })).toContain('clowdy task archive [task-id] [options]');
     });
 });
 

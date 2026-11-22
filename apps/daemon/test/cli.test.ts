@@ -381,6 +381,87 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect((await shell('clowdy task list --help')).stdout).toMatch(/--under <text>\s+Only the tasks anywhere below this task/);
     });
 
+    test('archives tasks from bare words, lists the archive, reads an archived task, and brings the tasks back, each through the real command', async () => {
+        const { shell, json } = await setup();
+        const keys = (answer: { tasks: { key: string }[] }) => answer.tasks.map(row => row.key);
+
+        await json('clowdy task create Epic --status done');
+        await json('clowdy task create "Stage one" --parent REP-1 --status done');
+        await json('clowdy task create "Stage two" --parent REP-1 --status canceled');
+        await json('clowdy task create Loose --status done');
+        await json('clowdy task create Open');
+        await json('clowdy task create "In the epic" --parent REP-1');
+
+        // An open task, in the epic or by itself, is refused with the way out, and nothing is archived.
+        const refused = await shell('clowdy task archive REP-1');
+
+        expect(refused.code).toBe(1);
+        expect(refused.stderr).toContain('REP-6 (To do) is not closed: close it first, or archive with cancel');
+        expect((await json('clowdy task list --archived')).total).toBe(0);
+        await json('clowdy task update REP-6 --status done');
+
+        // Words, a comma list, and a mix of both are one list; the tasks inside go with each.
+        expect(await json('clowdy task archive REP-1 REP-4')).toEqual({ archived: ['REP-1', 'REP-2', 'REP-3', 'REP-6', 'REP-4'] });
+        expect(keys(await json('clowdy task list --all --sort number'))).toEqual(['REP-5']);
+        expect(await json('clowdy task list --all')).toMatchObject({ total: 1, archived: 5, counts: { todo: 1, done: 0 } });
+
+        const archive = await json('clowdy task list --archived --sort number');
+
+        expect(keys(archive)).toEqual(['REP-1', 'REP-2', 'REP-3', 'REP-4', 'REP-6']);
+        expect(archive).toMatchObject({ total: 5, archived: 5, counts: { done: 4, canceled: 1 } });
+        expect(archive.tasks[1]).toMatchObject({ key: 'REP-2', parent: 'REP-1', status: 'Done', archivedAt: expect.any(String) });
+        expect(keys(await json('clowdy task list --archived --parent REP-1 --sort number'))).toEqual(['REP-2', 'REP-3', 'REP-6']);
+        expect(keys(await json('clowdy task list --archived --status canceled'))).toEqual(['REP-3']);
+        expect(keys(await json('clowdy task list --archived --query "stage one"'))).toEqual(['REP-2']);
+        expect(keys(await json('clowdy task list --query "stage one"'))).toEqual([]);
+        expect((await json('clowdy task get REP-1')).task).toMatchObject({ key: 'REP-1', archived: true, archivedAt: expect.any(String), childrenTotal: 3 });
+        expect((await json('clowdy task get REP-5')).task).not.toHaveProperty('archived');
+
+        // A task of the batch cannot come back while its parent is archived; the parent brings the batch.
+        const stuck = await shell('clowdy task unarchive REP-2');
+
+        expect(stuck.code).toBe(1);
+        expect(stuck.stderr).toContain('Task REP-2 is inside REP-1, which is archived: restore REP-1 first');
+        expect(await json('clowdy task unarchive REP-2,REP-1')).toEqual({ restored: ['REP-1', 'REP-2', 'REP-3', 'REP-6'] });
+        expect(await json('clowdy task unarchive REP-1')).toEqual({ restored: [] });
+        expect(keys(await json('clowdy task list --archived'))).toEqual(['REP-4']);
+
+        // --cancel closes the open work first and says which it canceled.
+        await json('clowdy task update REP-6 --status todo');
+        expect(await json('clowdy task archive REP-1 --cancel REP-5')).toEqual({ archived: ['REP-1', 'REP-2', 'REP-3', 'REP-6', 'REP-5'], canceled: ['REP-6', 'REP-5'] });
+        expect(keys(await json('clowdy task list --archived --status canceled --sort number'))).toEqual(['REP-3', 'REP-5', 'REP-6']);
+        expect(await json('clowdy task unarchive REP-1 REP-5')).toEqual({ restored: ['REP-1', 'REP-2', 'REP-3', 'REP-6', 'REP-5'] });
+        expect((await json('clowdy task archive REP-6 --cancel --json')).result).toEqual({ archived: ['REP-6'] });
+    });
+
+    test('says how to give the tasks in the help, and refuses no task, an option it does not have, a task that is not there and open work', async () => {
+        const { shell, json } = await setup();
+        const help = await shell('clowdy task archive --help');
+
+        expect(help.code).toBe(0);
+        expect(help.stdout).toContain('Usage: clowdy task archive <task-id>... [options]');
+        expect(help.stdout).toMatch(/<task-id>\.\.\. +The tasks to archive, each by key/);
+        expect(help.stdout).toContain('--cancel');
+        expect(help.stdout).toContain('clowdy task archive CLW-3 --cancel');
+        expect(help.stdout).toContain('is refused without --cancel');
+        expect((await shell('clowdy task unarchive --help')).stdout).toContain('Usage: clowdy task unarchive <task-id>... [options]');
+        expect((await shell('clowdy task list --help')).stdout).toMatch(/--archived\s+Only the archived tasks/);
+        expect((await shell('clowdy task list --help')).stdout).toContain('clowdy task list --archived');
+        expect((await shell('clowdy task --help')).stdout).toMatch(/task archive +Archives closed tasks/);
+        expect((await shell('clowdy task --help')).stdout).toMatch(/task unarchive +Brings archived tasks back/);
+
+        const none = await shell('clowdy task archive');
+
+        expect(none.code).toBe(2);
+        expect(none.stderr).toContain('Missing <task-id>');
+        expect((await shell('clowdy task archive --force REP-1')).stderr).toContain('Unknown option --force');
+        expect((await shell('clowdy task archive REP-99')).code).toBe(1);
+
+        await json('clowdy task create Busy');
+        expect((await shell('clowdy task archive REP-1')).stderr).toContain('REP-1 (To do) is not closed');
+        expect((await shell('clowdy task archive REP-1 --no-cancel')).code).toBe(1);
+    });
+
     test('leaves a comment from words, --body, a heredoc or a pipe, reads them back page by page, and shows the latest in task get', async () => {
         const { h, json } = await setup();
         const note = 'Found the cause.\nIt\'s "the cache"; $HOME and `date` stay as written.\n\n- [x] checked';
@@ -516,7 +597,7 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         const { tools } = await setup();
         const commands = new Map(tools.filter(candidate => candidate.cli).map(candidate => [candidate.name, candidate as unknown as CliTool]));
 
-        expect([...commands.keys()].sort()).toEqual(['task_comment', 'task_comments', 'task_create', 'task_get', 'task_list', 'task_update', 'thread_list', 'thread_log', 'thread_output', 'thread_spawn', 'thread_stop', 'thread_tell', 'thread_wait']);
+        expect([...commands.keys()].sort()).toEqual(['task_archive', 'task_comment', 'task_comments', 'task_create', 'task_get', 'task_list', 'task_unarchive', 'task_update', 'thread_list', 'thread_log', 'thread_output', 'thread_spawn', 'thread_stop', 'thread_tell', 'thread_wait']);
 
         for (const [name, lines] of Object.entries(EXAMPLES)) {
             const known = commands.get(name);

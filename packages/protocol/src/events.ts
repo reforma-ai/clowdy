@@ -20,6 +20,10 @@ export type EventData =
     | { type: 'chat.upserted'; chat: Chat }
     /** The chat and `runIds` (its orchestrator and every run below it, with their streams and task links) are gone. */
     | { type: 'chat.deleted'; chatId: string; runIds: string[] }
+    /**
+     * A task was made or changed. One carrying `archivedAt` is in the archive and a client takes it off the board (a task archived with what is inside it
+     * gets one event each); the event of a task that came back has no `archivedAt`.
+     */
     | { type: 'task.upserted'; task: Task }
     /** The task is gone, its comments with it (there is no `task.comment.deleted` for each): a client drops what it holds of them. */
     | { type: 'task.deleted'; taskId: TaskId }
@@ -58,7 +62,7 @@ export type EventType = EventData['type'];
 /** `GET /v1/events` frame names. */
 export const SSE_EVENT = 'clowdy';
 
-/** Events for a project plus the docs tree: what `GET /v1/projects/:id/snapshot` returns, as of `cursor`. */
+/** Events for a project plus the docs tree: what `GET /v1/projects/:id/snapshot` returns, as of `cursor`. `tasks` leaves out the archived ones (`TaskArchivePage`). */
 export interface ProjectSnapshot {
     cursor: number;
     project: Project;

@@ -929,6 +929,9 @@ export class FixtureTransport implements Transport {
             case 'task.comment.edit':
             case 'task.comment.delete':
                 return fail('unavailable', 'The demo data has no comments');
+            case 'task.archive':
+            case 'task.unarchive':
+                return fail('unavailable', 'The demo data has no archive');
 
             case 'run.cancel':
                 return this.#cancelRun(command.runId);

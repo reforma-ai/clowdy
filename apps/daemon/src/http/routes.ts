@@ -8,6 +8,7 @@ import { streamItems } from '../domain/items';
 import { findProjectIcon } from '../domain/projectIcon';
 import { projectsInfo, requireProject } from '../domain/projects';
 import { projectSnapshot, rootSnapshot, taskDetail } from '../domain/snapshots';
+import { archivedTasksPage } from '../domain/taskArchive';
 import { taskCommentsPage } from '../domain/taskComments';
 import { DEFAULT_LIMIT } from '../domain/taskQuery';
 import { CommandError, invalid, notFound } from '../errors';
@@ -15,7 +16,7 @@ import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body'
 import { commandResponse, failure, json } from './responses';
 import { eventStream } from './sse';
 
-import type { Health, TaskCommentsPage } from '@clowdy/protocol';
+import type { Health, TaskArchivePage, TaskCommentsPage } from '@clowdy/protocol';
 import type { Services } from '../commands';
 
 export interface RouteContext {
@@ -166,6 +167,18 @@ export function createRoutes(context: RouteContext): Route[] {
                 });
 
                 return json({ comments, total, ...(nextCursor !== undefined && { nextCursor }) } satisfies TaskCommentsPage);
+            },
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/archived-tasks$/,
+            handle: (_request, url, [id]) => {
+                const { tasks, total, nextCursor } = archivedTasksPage(store, id, {
+                    limit: integerParam(url.searchParams.get('limit'), 'limit', DEFAULT_LIMIT),
+                    cursor: url.searchParams.get('cursor') ?? undefined,
+                });
+
+                return json({ tasks, total, ...(nextCursor !== undefined && { nextCursor }) } satisfies TaskArchivePage);
             },
         },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/docs$/, handle: (_request, _url, [id]) => json(docs.tree(requireProject(store, id))) },

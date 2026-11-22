@@ -9,7 +9,7 @@ import { getItem, itemRef, setItemRef } from '../src/db/items';
 import { MIGRATIONS } from '../src/db/migrations';
 import { getRun, getRunWork } from '../src/db/runs';
 import { countTaskComments, getTaskComment, insertTaskComment, latestTaskComments, listTaskComments, updateTaskCommentBody } from '../src/db/taskComments';
-import { childIdsOf, deleteTask, getTask, upsertTask } from '../src/db/tasks';
+import { childIdsOf, countArchivedTasks, deleteTask, getTask, latestArchiveTime, listAllTasks, listArchivedTasks, listTasks, upsertTask } from '../src/db/tasks';
 import { newId } from '../src/ids';
 import { Store } from '../src/store';
 import { cleanTempDirs, tempDir } from './helpers';
@@ -380,6 +380,74 @@ describe('migrations', () => {
         expect(getTaskComment(db, 'cmt_1')).toBeUndefined();
         expect(getTaskComment(db, 'cmt_2')).toBeUndefined();
         expect(getTaskComment(db, 'cmt_3')).toBeDefined();
+        db.close();
+    });
+
+    test('version 22 adds the archive column to an older database: its tasks are not archived, the archive is indexed, and the reads tell the two apart', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 22));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_2', 'Other', 'OTH', 1);
+        before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_1', 'prj_1', 'Done', 'done', 0);
+        before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_2', 'prj_2', 'Done', 'done', 0);
+
+        for (const number of [1, 2, 3, 4]) {
+            before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(`tsk_${ number }`, 'prj_1', number, `Task ${ number }`, 'sts_1', '{"kind":"user"}', 10, 20, 30);
+        }
+
+        before.query('INSERT INTO task_deps (task_id, depends_on_id) VALUES (?, ?)').run('tsk_2', 'tsk_1');
+        before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('tsk_o', 'prj_2', 1, 'Elsewhere', 'sts_2', '{"kind":"user"}', 10, 20);
+        expect((before.query('PRAGMA table_info(tasks)').all() as { name: string }[]).map(column => column.name)).not.toContain('archived_at');
+        before.close();
+
+        const db = openDatabase(path);
+        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+        const column = (db.query('PRAGMA table_info(tasks)').all() as { name: string; notnull: number }[]).find(entry => entry.name === 'archived_at');
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(MIGRATIONS.length).toBeGreaterThanOrEqual(22);
+        expect(column).toMatchObject({ name: 'archived_at', notnull: 0 });
+        expect(indexes).toContain('tasks_archived');
+        expect((db.query('PRAGMA index_info(tasks_archived)').all() as { name: string }[]).map(entry => entry.name)).toEqual(['project_id', 'archived_at']);
+        // The index holds the archive only: every task of an older database is on the board.
+        expect(db.query('SELECT COUNT(*) AS n FROM tasks WHERE archived_at IS NOT NULL').get()).toEqual({ n: 0 });
+        expect(listTasks(db, 'prj_1').map(task => task.id)).toEqual(['tsk_1', 'tsk_2', 'tsk_3', 'tsk_4']);
+        expect(getTask(db, 'tsk_1')).not.toHaveProperty('archivedAt');
+        expect(getTask(db, 'tsk_1')).toMatchObject({ title: 'Task 1', updatedAt: 20, closedAt: 30 });
+        expect(countArchivedTasks(db, 'prj_1')).toBe(0);
+        expect(latestArchiveTime(db, 'prj_1')).toBe(0);
+        expect(listArchivedTasks(db, 'prj_1', 10)).toEqual([]);
+
+        // Archiving is a write of the same task with a time: the board and the archive part ways, the dependencies and the other project stay.
+        upsertTask(db, { ...getTask(db, 'tsk_1') as Task, archivedAt: 500 });
+        upsertTask(db, { ...getTask(db, 'tsk_2') as Task, archivedAt: 500 });
+        upsertTask(db, { ...getTask(db, 'tsk_4') as Task, archivedAt: 400 });
+        upsertTask(db, { ...getTask(db, 'tsk_o') as Task, archivedAt: 900 });
+
+        expect(listTasks(db, 'prj_1').map(task => task.id)).toEqual(['tsk_3']);
+        expect(listAllTasks(db, 'prj_1').map(task => task.id)).toEqual(['tsk_1', 'tsk_2', 'tsk_3', 'tsk_4']);
+        expect(getTask(db, 'tsk_1')).toMatchObject({ archivedAt: 500 });
+        expect(countArchivedTasks(db, 'prj_1')).toBe(3);
+        expect(latestArchiveTime(db, 'prj_1')).toBe(500);
+        // The latest batch first, a batch by number, the dependencies of each task kept.
+        expect(listArchivedTasks(db, 'prj_1', 10).map(task => task.id)).toEqual(['tsk_1', 'tsk_2', 'tsk_4']);
+        expect(listArchivedTasks(db, 'prj_1', 10)[1]).toMatchObject({ dependsOn: ['tsk_1'], archivedAt: 500 });
+        expect(listArchivedTasks(db, 'prj_1', 2).map(task => task.id)).toEqual(['tsk_1', 'tsk_2']);
+        expect(listArchivedTasks(db, 'prj_1', 10, { archivedAt: 500, number: 1 }).map(task => task.id)).toEqual(['tsk_2', 'tsk_4']);
+        expect(listArchivedTasks(db, 'prj_1', 10, { archivedAt: 500, number: 2 }).map(task => task.id)).toEqual(['tsk_4']);
+        expect(listArchivedTasks(db, 'prj_1', 10, { archivedAt: 400, number: 4 })).toEqual([]);
+        expect(listArchivedTasks(db, 'prj_2', 10).map(task => task.id)).toEqual(['tsk_o']);
+
+        // The next write of the task without the time brings it back, and a row keeps the time through writes of other fields.
+        upsertTask(db, { ...getTask(db, 'tsk_4') as Task, title: 'Renamed' });
+        expect(getTask(db, 'tsk_4')).toMatchObject({ title: 'Renamed', archivedAt: 400 });
+
+        const { archivedAt: _, ...restored } = getTask(db, 'tsk_4') as Task;
+
+        upsertTask(db, restored);
+        expect(getTask(db, 'tsk_4')).not.toHaveProperty('archivedAt');
+        expect(db.query('SELECT archived_at FROM tasks WHERE id = ?').get('tsk_4')).toEqual({ archived_at: null });
         db.close();
     });
 

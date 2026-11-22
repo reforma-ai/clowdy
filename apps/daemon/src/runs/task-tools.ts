@@ -4,12 +4,13 @@ import { z } from 'zod';
 import { taskIdsOfChat } from '../db/chats';
 import { listStatuses } from '../db/projects';
 import { countTaskComments, latestTaskComments } from '../db/taskComments';
-import { childIdsOf, dependentsOf, getTask, listTasks } from '../db/tasks';
+import { childIdsOf, dependentsOf, getTask, listAllTasks } from '../db/tasks';
 import { parseChecklist } from '../domain/checklist';
+import { archiveTask, unarchiveTask } from '../domain/taskArchive';
 import { addTaskComment, taskCommentsPage } from '../domain/taskComments';
 import { countByCategory, DEFAULT_LIMIT, isoTime, MAX_LIMIT, parseSince, queryTasks } from '../domain/taskQuery';
 import { categoryOf, createTask, linkRunTask, resolveTask, updateTask } from '../domain/tasks';
-import { TaskTree } from '../domain/taskTree';
+import { sameArchiveSide, TaskTree } from '../domain/taskTree';
 import { invalid } from '../errors';
 import { clip, defineTool, taskRef } from './tool-kit';
 
@@ -74,27 +75,32 @@ function commentsOf(store: Store, task: Task) {
 
 /**
  * What a task holds, as `describeTask` tells it: the tasks directly inside it as key, title and status (at most `MAX_CHILDREN`, with their total), and
- * every task below it counted by category. Nothing for a task with no children, so a leaf reads as before.
+ * every task below it counted by category. Nothing for a task with no children, so a leaf reads as before. Archived tasks are not counted for a task on
+ * the board, and an archived task holds the archived tasks inside it.
  */
 function contents(store: Store, task: Task, statuses: readonly TaskStatus[]) {
     if (childIdsOf(store.db, task.id).length === 0) {
         return {};
     }
 
-    const tree = new TaskTree(listTasks(store.db, task.projectId));
-    const children = tree.childrenOf(task.id);
+    const tree = new TaskTree(listAllTasks(store.db, task.projectId));
+    const children = tree.childrenOf(task.id).filter(child => sameArchiveSide(child, task));
     const statusOf = (of: Task) => statuses.find(candidate => candidate.id === of.statusId);
+
+    if (children.length === 0) {
+        return {};
+    }
 
     return {
         children: children.slice(0, MAX_CHILDREN).map(child => ({ key: child.key, title: child.title, status: statusOf(child)?.name })),
         childrenTotal: children.length,
-        descendants: countByCategory(tree.descendantsOf(task.id).map(({ task: below }) => statusOf(below)?.category ?? 'todo')),
+        descendants: countByCategory(tree.descendantsOf(task.id).filter(({ task: below }) => sameArchiveSide(below, task)).map(({ task: below }) => statusOf(below)?.category ?? 'todo')),
     };
 }
 
 /**
  * A task as the models read it: keys everywhere, the status spelled out, what it waits for and what waits for it (each as key, title and status), the task
- * it is inside and the tasks inside it, and who is working on it. The description is whole; a listing leaves it out (`TaskRow`).
+ * it is inside and the tasks inside it, whether it is archived, and who is working on it. The description is whole; a listing leaves it out (`TaskRow`).
  */
 export function describeTask({ store, runs }: ToolDeps, task: Task) {
     const statuses = listStatuses(store.db, task.projectId);
@@ -111,6 +117,7 @@ export function describeTask({ store, runs }: ToolDeps, task: Task) {
         ...(checklist && { checklist }),
         status: statusName(task),
         category: categoryOf(store, task),
+        ...(task.archivedAt !== undefined && { archived: true as const, archivedAt: isoTime(task.archivedAt) }),
         ...(parent && { parent: { key: parent.key, title: parent.title } }),
         dependsOn: summaries(task.dependsOn),
         blocks: summaries(dependentsOf(store.db, task.id)),
@@ -127,17 +134,18 @@ function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
     const { store, runs } = deps;
 
     return [
-        defineTool('task_get', 'Reads one task: key, title, full description (with its checklist count), status, the task it is inside, the tasks inside it (key, title, status; at most 50, with the total, and the tasks below it counted by category), the tasks it depends on and the tasks waiting for it (key, title, status), the runs working on it now, who created it and when it last changed, and its comments (how many, and the last three cut short: task_comments reads them whole).', z.strictObject({ taskId: taskRef }), (input) => {
+        defineTool('task_get', 'Reads one task, an archived one too (it says archived: true and when): key, title, full description (with its checklist count), status, the task it is inside, the tasks inside it (key, title, status; at most 50, with the total, and the tasks below it counted by category), the tasks it depends on and the tasks waiting for it (key, title, status), the runs working on it now, who created it and when it last changed, and its comments (how many, and the last three cut short: task_comments reads them whole).', z.strictObject({ taskId: taskRef }), (input) => {
             const task = resolveTask(store, run.projectId, input.taskId);
 
             return { task: { ...describeTask(deps, task), ...commentsOf(store, task) } };
         }, { cli: { positional: ['taskId'] } }),
 
-        defineTool('task_list', `Lists the project's tasks, one short row each (key, title, status, the task it is inside, dependencies, what blocks it, how many tasks are inside it by category, its checklist count, whether a run works on it); task_get has the description. parent, under and roots each list one part of the tree (give only one of them), and the counts then describe that part. By default it shows the work in flight (todo, active and review), not the backlog and not closed (done, canceled) work: the counts of every category come with the answer, so ask for the rest when you need it. A text query searches every task, closed ones too: use it to find tasks about one thing before you create duplicates. Pages hold ${ DEFAULT_LIMIT } rows unless limit says otherwise (at most ${ MAX_LIMIT }); the answer carries nextCursor while more are left. Newest change first. The first page also lists the project's statuses with their ids.`, z.strictObject({
+        defineTool('task_list', `Lists the project's tasks, one short row each (key, title, status, the task it is inside, dependencies, what blocks it, how many tasks are inside it by category, its checklist count, whether a run works on it); task_get has the description. parent, under and roots each list one part of the tree (give only one of them), and the counts then describe that part. By default it shows the work in flight (todo, active and review), not the backlog and not closed (done, canceled) work: the counts of every category come with the answer, so ask for the rest when you need it. A text query searches every task, closed ones too: use it to find tasks about one thing before you create duplicates. Archived tasks are in none of these: archived lists only them, whatever their status (query, status and the tree filters narrow that listing), and the answer's archived is how many the project has in its archive. Pages hold ${ DEFAULT_LIMIT } rows unless limit says otherwise (at most ${ MAX_LIMIT }); the answer carries nextCursor while more are left. Newest change first. The first page also lists the project's statuses with their ids.`, z.strictObject({
             query: z.string().optional().describe('Only tasks whose key, title or description contain this text; searches closed tasks too'),
             parent: taskRef.optional().describe('Only the tasks directly inside this task'),
             under: taskRef.optional().describe('Only the tasks anywhere below this task: its children, theirs, and so on'),
-            roots: z.boolean().optional().describe('Only the top-level tasks, the ones inside no task'),
+            roots: z.boolean().optional().describe('Only the top-level tasks, the ones inside no task (with archived: the tops of the archived pieces, also a task archived alone out of a task that stayed)'),
+            archived: z.boolean().optional().describe('Only the archived tasks, instead of the tasks on the board: closed work that was put away, found by key and restored with task_unarchive'),
             status: z.array(z.string()).optional().describe(`Only tasks in these statuses; each is an id, a status name or a category (${ CATEGORIES })`),
             all: z.boolean().optional().describe('Every task: backlog and closed ones as well (a status filter wins over it)'),
             ready: z.boolean().optional().describe('Only tasks that can start now: not closed, every dependency closed (done or canceled)'),
@@ -153,7 +161,7 @@ function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
             const statuses = listStatuses(store.db, run.projectId);
             const mine = new Set(run.chatId ? taskIdsOfChat(store.db, run.chatId) : []);
             const page = queryTasks({
-                tasks: listTasks(store.db, run.projectId),
+                tasks: listAllTasks(store.db, run.projectId),
                 statuses,
                 isRunning: taskId => runs.activeRunsOfTask(taskId).length > 0,
                 linkedToChat: taskId => mine.has(taskId),
@@ -200,6 +208,14 @@ function dependenciesAfter(store: Store, run: Run, task: Task, input: { dependsO
 
 /** `note` after a blank line at the end of `description`; a description with nothing in it is replaced by the note. */
 const appended = (description: string, note: string) => (description.trim() ? `${ description.trimEnd() }\n\n${ note }` : note);
+
+/** The tasks `references` name, each once, those nearest the root first: a task given with one inside it then takes it into its own archive batch, whatever the order of the words. */
+function shallowFirst(store: Store, run: Run, references: string[]): Task[] {
+    const tasks = [...new Map(references.map(reference => resolveTask(store, run.projectId, reference)).map(task => [task.id, task])).values()];
+    const tree = new TaskTree(listAllTasks(store.db, run.projectId));
+
+    return tasks.toSorted((left, right) => tree.depthOf(left.id) - tree.depthOf(right.id));
+}
 
 /** What an orchestrator may do with tasks: create them, change anything about them. */
 export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
@@ -283,5 +299,34 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
 
             return { comment: describeComment(comment), total: countTaskComments(store.db, task.id) };
         }, { cli: { positional: ['taskId', 'body'], stdin: 'body' } }),
+
+        defineTool('task_archive', 'Archives closed tasks, each with every task inside it: the batch leaves the board and every listing (task_list archived lists it, task_get still reads it by key) and task_unarchive brings it back. Only closed tasks (Done, Canceled) are archived: a task that is open, or has an open task inside it, is refused, unless cancel is set, which first moves the open ones to Canceled (the tasks that waited for them are released, as when you cancel by hand) and archives them with the rest. A task a run is working on, or one inside it, is refused whatever cancel says: stop that run first (your own run does not count). Several tasks go in one call, all of them or none. Returns the keys archived (the tasks inside included) and, when cancel closed some, the keys it canceled.', z.strictObject({
+            taskId: z.array(taskRef).min(1).describe('The tasks to archive, each by key; the tasks inside each one go with it'),
+            cancel: z.boolean().optional().describe('Cancel the open tasks among them first, then archive; without it an open task refuses the archive'),
+        }), input => store.tx(() => {
+            const archived: Task[] = [];
+            const canceled: Task[] = [];
+
+            for (const task of shallowFirst(store, run, input.taskId)) {
+                const result = archiveTask(store, deps.runs, task.id, { cancel: input.cancel, exceptRunId: run.id });
+
+                archived.push(...result.archived);
+                canceled.push(...result.canceled);
+            }
+
+            return { archived: archived.map(task => task.key), ...(canceled.length > 0 && { canceled: canceled.map(task => task.key) }) };
+        }), { cli: { positional: ['taskId'] } }),
+
+        defineTool('task_unarchive', 'Brings archived tasks back to the board, each with the tasks inside it that were archived together with it (one archived on its own earlier stays archived). A task whose parent is archived is refused: restore the parent first. Several tasks go in one call, all of them or none. Returns the keys restored; a task that is not archived changes nothing.', z.strictObject({
+            taskId: z.array(taskRef).min(1).describe('The archived tasks to bring back, each by key; the tasks archived with each one come with it'),
+        }), input => store.tx(() => {
+            const restored: Task[] = [];
+
+            for (const task of shallowFirst(store, run, input.taskId)) {
+                restored.push(...unarchiveTask(store, task.id).restored);
+            }
+
+            return { restored: restored.map(task => task.key) };
+        }), { cli: { positional: ['taskId'] } }),
     ];
 }
