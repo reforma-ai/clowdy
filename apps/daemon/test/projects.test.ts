@@ -531,15 +531,68 @@ describe('project.update', () => {
         expect(pathsOf(h.ok('project.update', { projectId: both.id, folders: [{ id: both.folders[1].id }, { id: both.folders[0].id }] }).project)).toEqual([api.path, shop.path]);
     });
 
-    test('over HTTP an entry is a folder to keep or a path to add, never both', async () => {
+    test('over HTTP an entry is a folder to keep, a path to add, or a folder with its new path, and nothing else', async () => {
         const h = await setup();
         const project = h.openRepo('both');
         const main = projectOf(h, project.id).folders[0];
-        const body = command('project.update', { projectId: project.id, folders: [{ id: main.id, path: project.path }] });
-        const response = await h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(body) });
+        const send = (entry: object) => h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(command('project.update', { projectId: project.id, folders: [entry] })) });
 
-        expect(response.status).toBe(400);
-        expect(await response.json()).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        for (const entry of [{}, { id: main.id, path: project.path, extra: true }, { id: main.id, path: '' }]) {
+            const response = await send(entry);
+
+            expect(response.status).toBe(400);
+            expect(await response.json()).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        }
+
+        expect((await send({ id: main.id, path: project.path })).status).toBe(200);
+    });
+
+    test('a folder is moved by its id and its new path: it keeps its id and its place in the order, and the new path takes the checks of a new folder', async () => {
+        const h = await setup();
+        const project = h.openRepo('web');
+        const main = projectOf(h, project.id).folders[0];
+        const api = realpathSync.native(makeRepo(h.config.projectsDir, 'api'));
+        const { project: two } = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: api }] });
+        const second = two.folders[1];
+        const next = realpathSync.native(makeRepo(h.config.projectsDir, 'api-next'));
+        const cursor = h.store.headCursor();
+
+        const moved = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: second.id, path: next }] }).project as Project;
+
+        expect(moved.folders).toEqual([main, { id: second.id, path: next }]);
+        expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, next]);
+        expect(upserted(h.events(cursor)).map(event => pathsOf((event.data as { project: Project }).project))).toEqual([[project.path, next]]);
+
+        // The checks of a new folder: it exists, is a folder, and neither repeats nor lies inside (or around) another folder of the project.
+        mkdirSync(join(project.path, 'src'));
+        writeFileSync(join(tempDir(), 'file'), '');
+
+        const move = (path: string) => h.send('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: second.id, path }] });
+
+        expect(failure(move(join(project.path, 'src'))).message).toContain('inside');
+        expect(failure(move(project.path)).message).toContain('twice');
+        expect(failure(move(join(next, 'missing'))).code).toBe('invalid');
+        expect(failure(move('relative/path')).code).toBe('invalid');
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: 'fld_nope', path: next }] })).message).toContain('not one of the project');
+        expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, next]);
+    });
+
+    test('a move of the main folder waits for the agents, as a new main folder does, and a move of another folder does not', async () => {
+        const { h, gate, project, task } = await busyProject('busy');
+        const main = projectOf(h, project.id).folders[0];
+        const api = realpathSync.native(makeRepo(h.config.projectsDir, 'api'));
+        const apiNext = realpathSync.native(makeRepo(h.config.projectsDir, 'api-next'));
+        const mainNext = realpathSync.native(makeRepo(h.config.projectsDir, 'busy-next'));
+        const working = { code: 'conflict', message: 'The agents of this project are still working. Stop them first.' };
+        const { project: grown } = h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { path: api }] });
+        const second = grown.folders[1].id;
+
+        expect(failure(h.send('project.update', { projectId: project.id, folders: [{ id: main.id, path: mainNext }, { id: second }] }))).toMatchObject(working);
+        expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, api]);
+
+        expect(pathsOf(h.ok('project.update', { projectId: project.id, folders: [{ id: main.id }, { id: second, path: apiNext }] }).project)).toEqual([project.path, apiNext]);
+
+        gate.release(task.key);
     });
 
     test('a new main folder waits for the agents, while other folders, a rename and the same list do not', async () => {

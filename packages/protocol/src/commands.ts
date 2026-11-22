@@ -31,17 +31,19 @@ export const commandSchema = z.discriminatedUnion('type', [
      */
     z.object({ ...base, type: z.literal('project.add'), name: z.string().min(1).optional(), folders: z.array(z.string().min(1)).max(MAX_PROJECT_FOLDERS).optional() }),
     /**
-     * `folders` is the project's whole new list, in order: `{ id }` keeps a folder it has, `{ path }` adds one (the checks of `project.add`).
-     * A new main folder waits until no run of the project is unfinished. `name`, `folders` and an icon are refused for the personal space. A
-     * settings field set to `null` is cleared, so the project follows the daemon's own choice again (and `icon: null` shows the found icon or the
-     * folder icon again; `NO_PROJECT_ICON` shows the folder icon).
+     * `folders` is the project's whole new list, in order: `{ id }` keeps a folder it has, `{ path }` adds one (the checks of `project.add`), and
+     * `{ id, path }` moves a folder it has to another place on the disk (the same checks), for a folder that was moved or renamed outside
+     * Clowdy: the folder keeps its id, so its chats stay with it, and a session that cannot be resumed from the new place starts again from
+     * the record of the conversation. A new main folder, and a move of the main folder, wait until no run of the project is unfinished. `name`,
+     * `folders` and an icon are refused for the personal space. A settings field set to `null` is cleared, so the project follows the daemon's own
+     * choice again (and `icon: null` shows the found icon or the folder icon again; `NO_PROJECT_ICON` shows the folder icon).
      */
     z.object({
         ...base,
         type: z.literal('project.update'),
         projectId: z.string(),
         name: z.string().min(1).optional(),
-        folders: z.array(z.union([z.object({ id: z.string().min(1) }).strict(), z.object({ path: z.string().min(1) }).strict()])).min(1).max(MAX_PROJECT_FOLDERS).optional(),
+        folders: z.array(z.union([z.object({ id: z.string().min(1) }).strict(), z.object({ path: z.string().min(1) }).strict(), z.object({ id: z.string().min(1), path: z.string().min(1) }).strict()])).min(1).max(MAX_PROJECT_FOLDERS).optional(),
         settings: z.object({
             maxParallelRuns: z.number().int().min(1).max(1000).nullable().optional(),
             engine: engine.nullable().optional(),
