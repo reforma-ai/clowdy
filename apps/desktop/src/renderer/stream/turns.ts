@@ -1,5 +1,6 @@
 import { COMPACT_TOOL } from './compaction';
 import { isSubagentTool } from './subagents';
+import { WORKSPACE_TOOL } from './toolView';
 
 import type { StreamItem } from '@clowdy/protocol';
 
@@ -121,8 +122,8 @@ export function foldFinishedWork(items: readonly StreamItem[], active: boolean):
     });
 }
 
-/** What a group may hold: a call that is not a sub-agent's card or a compaction (lines of their own), and what the agent thought. */
-const isRunItem = (item: StreamItem) => item.body.kind === 'reasoning' || (item.body.kind === 'tool' && item.body.name !== COMPACT_TOOL && !isSubagentTool(item.body.name));
+/** What a group may hold: a call that is not a sub-agent's card, a compaction or the step that makes the chat's worktree (lines of their own), and what the agent thought. */
+const isRunItem = (item: StreamItem) => item.body.kind === 'reasoning' || (item.body.kind === 'tool' && item.body.name !== COMPACT_TOOL && item.body.name !== WORKSPACE_TOOL && !isSubagentTool(item.body.name));
 
 /**
  * Puts tool calls that follow one another under one block, with the thoughts of the agent before, between and after them (thoughts that follow one another

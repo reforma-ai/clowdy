@@ -38,6 +38,19 @@ describe('describeTool', () => {
         expect(describeTool('Bash', { command: 'make test', description: 'make test' }).verb).toBe('');
     });
 
+    it('reads the step that makes a worktree as Preparing workspace while it runs and Prepared workspace once it is over', () => {
+        const input = { path: '/work/api', branch: 'clowdy/ab12cd34', base: 'origin/main' };
+
+        expect(describeTool('workspace', input, undefined, { state: 'running' })).toEqual({ icon: 'workspace', verb: 'Preparing workspace', target: 'clowdy/ab12cd34', log: true });
+        expect(describeTool('workspace', input, 'Preparing worktree', { state: 'done' })).toMatchObject({ verb: 'Prepared workspace', target: 'clowdy/ab12cd34' });
+        // A view made with no word on the call's state reads as a call that is over.
+        expect(describeTool('workspace', input).verb).toBe('Prepared workspace');
+    });
+
+    it('keeps the imperative for a workspace step that failed, since the card strikes it through with the reason, and has no chip when the input names no branch', () => {
+        expect(describeTool('workspace', {}, undefined, { state: 'error', error: 'The branch is checked out elsewhere' })).toEqual({ icon: 'workspace', verb: 'Prepare workspace', target: undefined, log: true });
+    });
+
     it('searches by pattern and finds files by glob', () => {
         expect(describeTool('Grep', { pattern: 'BookingStep', path: 'src' })).toMatchObject({ icon: 'search', verb: 'Searching', target: 'BookingStep' });
         expect(describeTool('Glob', { pattern: 'src/**/mail*' })).toMatchObject({ icon: 'search', verb: 'Finding files', target: 'src/**/mail*' });

@@ -271,6 +271,12 @@ describe('groupToolRuns', () => {
         expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tool', 'tool', 'tools(2)', 'tool', 'tool']);
     });
 
+    it('keeps the step that makes the chat\'s worktree out of a run: a line of its own, with its log, before the agent\'s calls', () => {
+        const items = [user(0), named('workspace', 500), tool(1000), tool(2000)];
+
+        expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tool', 'tools(2)']);
+    });
+
     it('leaves the calls of a fold in it, for the view to group when the fold opens, and groups the same calls outside one', () => {
         const items = [user(0), tool(1000), tool(2000), said(3000, 'Done.')];
         const [, worked] = groupToolRuns(foldFinishedWork(items, false));
