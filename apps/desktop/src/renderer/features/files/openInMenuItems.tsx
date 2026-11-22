@@ -1,4 +1,4 @@
-import { ArrowUpRight, Copy } from '@clowdy/icons/14';
+import { Copy, Follow } from '@clowdy/icons/14';
 
 import { absolutePath, actionIcon, openActions, openEffects, type FolderGit, type OpenAction, type OpenEffects, type OpenPrograms, type OpenTarget } from '../openWith';
 
@@ -39,7 +39,7 @@ export function openInMenuItems({ projectId, folder, programs, git, effects = op
 
         return [
             ...(copying.length > 0 ? [{ id: 'copy-path', label: 'Copy path', icon: <Copy aria-hidden="true" />, onAction: () => undefined, children: copying }] : []),
-            ...(opening.length > 0 ? [{ id: 'open-in', label: 'Open in…', icon: <ArrowUpRight aria-hidden="true" />, onAction: () => undefined, children: opening }] : []),
+            ...(opening.length > 0 ? [{ id: 'open-in', label: 'Open in…', icon: <Follow aria-hidden="true" />, onAction: () => undefined, children: opening }] : []),
         ];
     };
 }
