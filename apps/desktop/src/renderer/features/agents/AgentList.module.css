@@ -97,7 +97,7 @@
 .groupTitle {
     display: flex;
     align-items: center;
-    gap: var(--spacing-xs);
+    gap: var(--spacing-1);
     min-width: 0;
     font-weight: 500;
 }
