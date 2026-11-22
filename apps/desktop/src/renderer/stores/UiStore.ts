@@ -369,6 +369,11 @@ export class ProjectUi {
         this.sidePanelOpen = !this.sidePanelOpen;
     }
 
+    /** Shuts the side panel; nothing when it is shut. */
+    closeSidePanel(): void {
+        this.sidePanelOpen = false;
+    }
+
     /** Shows a tab of the side panel. */
     showSidePanelTab(tab: SidePanelTab): void {
         this.sidePanelTab = tab;
