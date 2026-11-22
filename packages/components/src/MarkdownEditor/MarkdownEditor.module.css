@@ -49,13 +49,15 @@
 
     /* Front matter */
 
+    /* A band across the editor's whole width, flush with its top; the text inside keeps the page's column. */
     .frontMatter {
-        margin: 0 0 var(--spacing-24);
-        padding: var(--spacing-8) var(--spacing-12);
-        border: 1px solid var(--color-secondary-muted);
-        border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
-        corner-shape: superellipse(var(--squircle-value));
-        background-color: var(--color-surface);
+        background-color: var(--color-secondary-muted-light);
+    }
+
+    /* Comes after `.page`, so it takes the column's width and side padding and sets its own top and bottom. */
+    .frontMatterColumn {
+        margin-block: 0;
+        padding-block: var(--spacing-12);
     }
 
     .frontMatterCode {

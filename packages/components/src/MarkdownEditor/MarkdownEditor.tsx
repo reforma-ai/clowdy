@@ -160,17 +160,21 @@ export function MarkdownEditor({
                 </Show>
             </Show>
 
-            <Scrollable className={ styles.scroll } contentClass={ styles.page }>
+            <Scrollable className={ styles.scroll }>
                 <Show when={ frontMatter }>
-                    <figure className={ styles.frontMatter }>
-                        <Text as="figcaption" variant="label" color="secondary">
-                            Front matter · edit it in source mode
-                        </Text>
-                        <pre className={ styles.frontMatterCode }>{ frontMatter.trimEnd() }</pre>
-                    </figure>
+                    <div className={ styles.frontMatter }>
+                        <figure className={ cn(styles.page, styles.frontMatterColumn) }>
+                            <Text as="figcaption" variant="label" color="secondary">
+                                Front matter · edit it in source mode
+                            </Text>
+                            <pre className={ styles.frontMatterCode }>{ frontMatter.trimEnd() }</pre>
+                        </figure>
+                    </div>
                 </Show>
 
-                <EditorContent editor={ editor } />
+                <div className={ styles.page }>
+                    <EditorContent editor={ editor } />
+                </div>
             </Scrollable>
         </div>
     );
