@@ -6,10 +6,10 @@ export const SIDE_PANEL_COMMAND = 'sidePanel.toggle';
 /** `Cmd+Esc` on macOS, `Ctrl+Shift+B` elsewhere: Windows keeps `Ctrl+Esc` for the Start menu, so the key never reaches the app there. */
 export const SIDE_PANEL_KEYS = { mac: 'Meta+Escape', win: '$mod+Shift+b' } as const;
 
-/** The command that shows a tab of the panel, opening the panel when it is shut and leaving it open on a tab that is already shown. */
-export const sidePanelTabCommand = (tab: SidePanelTab) => `sidePanel.show.${ tab }`;
+/** The command that opens the panel on a tab, or shuts the panel when that tab is already shown. */
+export const sidePanelTabCommand = (tab: SidePanelTab) => `sidePanel.tab.${ tab }`;
 
-/** `Cmd+0`, `Cmd+1`, `Cmd+2` (`Ctrl+` off a Mac): the tabs by their place in the header, Files and Terminal on the digits that are easy to reach and Info on 0. */
+/** `Cmd+0`, `Cmd+1`, `Cmd+2` (`Ctrl+` off a Mac): the tabs, Files and Terminal on the digits that are easy to reach and Info on 0. A second press shuts the panel, as `Cmd+1` shuts the Project tool window of JetBrains. */
 export const SIDE_PANEL_TAB_KEYS: Record<SidePanelTab, string> = { info: '$mod+0', files: '$mod+1', terminal: '$mod+2' };
 
 /** The tabs' names, in the header, the tooltips and the shortcuts page. */
