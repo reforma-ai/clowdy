@@ -119,6 +119,20 @@ describe('FileTree', () => {
         expect(tree.isVisible('node_modules/react/index.js')).toBe(false);
     });
 
+    it('should tell a hidden path, or one inside a hidden folder, from a shown one', () => {
+        const tree = new FileTree(new MemoryFileSystem({}), {
+            exclude: ['bun.lock'],
+            hidden: ['**/.*', '**/node_modules'],
+        });
+
+        expect(tree.isHidden('.env')).toBe(true);
+        expect(tree.isHidden('.briefback/plan/notes.md')).toBe(true);
+        expect(tree.isHidden('app/node_modules/x/index.js')).toBe(true);
+        expect(tree.isHidden('app/page.tsx')).toBe(false);
+        expect(tree.isHidden('app')).toBe(false);
+        expect(tree.isHidden('bun.lock')).toBe(false);
+    });
+
     it('should keep the sorted children between reads outside a reaction', async () => {
         const tree = new FileTree(new MemoryFileSystem({ 'b.ts': '', 'a.ts': '' }));
 

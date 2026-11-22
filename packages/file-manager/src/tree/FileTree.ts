@@ -193,6 +193,17 @@ export class FileTree {
         return true;
     }
 
+    /** The path, or a folder above it, matches the hidden globs: a row the tree draws only while `showHidden` is on. */
+    isHidden(path: string): boolean {
+        for (let current = normalizePath(path); current !== ''; current = dirname(current)) {
+            if (this.#visibilityOf(current) === 'hidden') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** Globs of the paths it does not show: the excluded ones, and the hidden ones unless `showHidden`. */
     get unshownGlobs(): string[] {
         return [...this.#exclude, ...(this.showHidden ? [] : this.#hidden)].map(glob => glob.pattern);
@@ -500,7 +511,7 @@ export class FileTree {
         }
     }
 
-    #shows(path: string): boolean {
+    #visibilityOf(path: string): Visibility {
         let visibility = this.#visibility.get(path);
 
         if (visibility === undefined) {
@@ -511,6 +522,12 @@ export class FileTree {
                     : 'shown';
             this.#visibility.set(path, visibility);
         }
+
+        return visibility;
+    }
+
+    #shows(path: string): boolean {
+        const visibility = this.#visibilityOf(path);
 
         return visibility === 'shown' || (visibility === 'hidden' && this.showHidden);
     }

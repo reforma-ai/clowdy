@@ -161,9 +161,11 @@ function NameInput({ node, onValueChange }: { node: NodeApi<ExplorerItem>; onVal
 export function ExplorerRow({ node, dragHandle }: NodeRendererProps<ExplorerItem>) {
     const [menuOpen, setMenuOpen] = useState(false);
     const contextMenu = useContextMenu();
-    const { dropFolder, menuItems } = useExplorer();
+    const { manager, root, dropFolder, menuItems } = useExplorer();
     const { kind, name } = node.data;
     const draft = node.id === DRAFT_ID;
+    // The tree shows a hidden path only while "Show hidden files" is on, and draws it fainter so it still reads as one. A scope's rows are shown by its own rules.
+    const hidden = !draft && root === '' && manager.tree.isHidden(node.id);
     // A new row has no path yet, so its icon follows the name being typed.
     const [draftName, setDraftName] = useState('');
     const iconPath = draft ? draftName.trim() || node.id : node.id;
@@ -187,6 +189,7 @@ export function ExplorerRow({ node, dragHandle }: NodeRendererProps<ExplorerItem
             data-selected={node.isSelected || undefined}
             data-sole-selected={(node.isSelected && node.tree.hasOneSelection) || undefined}
             data-editing={node.isEditing || undefined}
+            data-hidden={hidden || undefined}
             data-drop-target={ownFill === 'drop' || undefined}
             data-joined-start={(ownFill && fill(node.prev) === ownFill) || undefined}
             data-joined-end={(ownFill && fill(node.next) === ownFill) || undefined}

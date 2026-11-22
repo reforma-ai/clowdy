@@ -151,6 +151,12 @@
     white-space: nowrap;
 }
 
+/* A hidden file or folder, or one inside it, shown because "Show hidden files" is on: fainter than the rest. The ⋯ menu and the rename input keep their look. */
+.row[data-hidden] .toggleArea,
+.row[data-hidden] .name {
+    opacity: 0.5;
+}
+
 /* Inline rename and new-row input */
 
 .nameField {
