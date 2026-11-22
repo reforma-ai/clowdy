@@ -42,3 +42,10 @@
     background-color: var(--color-surface);
     overflow: auto;
 }
+
+/* The editor and the file tree scroll for themselves, and fill the plate. */
+.plate[data-tab='files'] {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}

@@ -5,7 +5,7 @@ import { readStored, writeStored, type KeyValueStorage } from '../../stores/stor
  * left part of the window does not need (`SidePanelLayout` keeps that part at its least), so a wide window can give it as much as the person wants.
  */
 export const SIDE_PANEL_MIN_WIDTH = 280;
-export const SIDE_PANEL_DEFAULT_WIDTH = 420;
+export const SIDE_PANEL_DEFAULT_WIDTH = 600;
 
 const STORAGE_KEY = 'clowdy:side-panel-width';
 

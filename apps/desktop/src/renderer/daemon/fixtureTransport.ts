@@ -1,3 +1,4 @@
+import { MemoryFileSystem } from '@clowdy/file-manager/memory';
 import { folderNames, isBusyRunStatus, isTerminalRunStatus, mainFolder, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, STOPPED_TOOL } from '@clowdy/protocol';
 
 import {
@@ -11,8 +12,10 @@ import {
     FIXTURE_LIVE_TOOL_ID,
     type FixtureData,
 } from './fixtureData';
+import { fixtureFileContents } from './fixtureFiles';
 import { TransportError, type CommandInput, type FeedStatus, type StreamTarget, type Transport } from './transport';
 
+import type { FileSystemProvider } from '@clowdy/file-manager/provider';
 import type {
     AgentInfo,
     AgentModels,
@@ -160,6 +163,8 @@ export class FixtureTransport implements Transport {
     #idCounter = 100;
     #timelineStarted = false;
     readonly #files = new Map<string, StoredFile>();
+    /** The file system of each folder, made when the file manager first asks and kept, so what the person edits stays for the session. */
+    readonly #fileSystems = new Map<string, MemoryFileSystem>();
     /** The turn each run is on, so the end of an older turn does not end a newer one. */
     readonly #turns = new Map<RunId, number>();
     /** How many times an edit rewrote each run's stream: an item written after one gets an id of its own, as the daemon's items do, though it takes the freed number. */
@@ -281,6 +286,21 @@ export class FixtureTransport implements Transport {
         const found = project.folders.flatMap((folder, index) => (this.#data.files[folder.path] ?? []).map(path => ({ folderId: folder.id, path, searched: several ? `${ names[index] }/${ path }` : path })));
 
         return found.filter(file => words.every(word => file.searched.toLowerCase().includes(word))).slice(0, limit).map(({ folderId, path }) => ({ folderId, path }));
+    }
+
+    fileSystem(projectId: ProjectId, folderId: FolderId): FileSystemProvider {
+        const folder = this.#project(projectId).folders.find(candidate => candidate.id === folderId);
+
+        if (!folder) throw new TransportError(`Folder ${ folderId } does not exist`, 404);
+
+        let fileSystem = this.#fileSystems.get(folderId);
+
+        if (!fileSystem) {
+            fileSystem = new MemoryFileSystem(fixtureFileContents(this.#data.files[folder.path] ?? []));
+            this.#fileSystems.set(folderId, fileSystem);
+        }
+
+        return fileSystem;
     }
 
     async uploadAttachment(projectId: ProjectId, file: File): Promise<Attachment> {
@@ -905,6 +925,10 @@ export class FixtureTransport implements Transport {
             }
             case 'task.start':
                 return this.#startTask(command.taskId, command.force === true);
+            case 'task.comment.add':
+            case 'task.comment.edit':
+            case 'task.comment.delete':
+                return fail('unavailable', 'The demo data has no comments');
 
             case 'run.cancel':
                 return this.#cancelRun(command.runId);
@@ -925,10 +949,6 @@ export class FixtureTransport implements Transport {
                 if (skill.enabled !== command.enabled) {
                     skill.enabled = command.enabled;
                     data.projects.forEach(project => this.#emit(project.id, { type: 'skills.changed' }));
-            case 'task.comment.add':
-            case 'task.comment.edit':
-            case 'task.comment.delete':
-                return fail('unavailable', 'The demo data has no comments');
                 }
 
                 return ok({ name: command.name, enabled: command.enabled });

@@ -1,3 +1,4 @@
+import type { FileSystemProvider } from '@clowdy/file-manager/provider';
 import type {
     AgentInfo,
     AgentModels,
@@ -59,6 +60,8 @@ export interface Transport {
     getDocFile: (projectId: ProjectId, folderId: FolderId, path: string) => Promise<DocFile>;
     /** Files of the project's folders whose path contains every word of `query`, best match first, each with its folder and its path relative to that folder. */
     getProjectFiles: (projectId: ProjectId, query: string, limit?: number) => Promise<ProjectFileMatch[]>;
+    /** One folder of the project as a file system, for the file manager to browse and edit; the daemon checks every path against the folder. Nothing is asked until the file system is used. */
+    fileSystem: (projectId: ProjectId, folderId: FolderId) => FileSystemProvider;
     /** Stores a file in the project, to go with the next message of one of its chats. Rejects with a `TransportError` that carries the daemon's reason when it refuses. */
     uploadAttachment: (projectId: ProjectId, file: File) => Promise<Attachment>;
     /** The bytes of an attachment, to show it. */

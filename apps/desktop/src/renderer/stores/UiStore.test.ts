@@ -233,6 +233,25 @@ describe('UiStore', () => {
         expect(new UiStore(memoryStorage(), initialUiFromSearch('?panel=open')).forProject('p1').sidePanelOpen).toBe(true);
     });
 
+    it('starts the side panel on its Info tab, and keeps the tab the person left it on per project', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        expect(ui.sidePanelTab).toBe('info');
+
+        ui.showSidePanelTab('files');
+        expect(ui.sidePanelTab).toBe('files');
+        expect(store.forProject('p2').sidePanelTab).toBe('info');
+        expect(new UiStore(storage).forProject('p1').sidePanelTab).toBe('files');
+    });
+
+    it('reads the side panel tab from the page URL, and drops a tab that is not one', () => {
+        expect(initialUiFromSearch('?panel=open&panelTab=files')).toEqual({ sidePanelOpen: true, sidePanelTab: 'files' });
+        expect(initialUiFromSearch('?panelTab=terminal')).toEqual({});
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"terminal"}' })).forProject('p1').sidePanelTab).toBe('info');
+    });
+
     it('reads the fold of the strip from the page URL, and drops what is damaged in storage', () => {
         expect(initialUiFromSearch('?agents=folded')).toEqual({ agentsFolded: true });
         expect(initialUiFromSearch('?agents=open')).toEqual({ agentsFolded: false });

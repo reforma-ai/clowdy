@@ -1,34 +1,13 @@
 import { Text } from '@clowdy/components/Text';
 import { Folder } from '@clowdy/icons/14';
-import { mainFolder } from '@clowdy/protocol';
 
 import { PathText } from '../../shared/PathText';
 import { ProjectIcon } from '../../shared/ProjectIcon';
 import { useProjectState, useProjectUi } from '../../stores';
-import { chatFolder, draftTarget } from '../agents/agentTree';
+import { currentFolder } from './currentFolder';
 import styles from './InfoTab.module.css';
 
-import type { ProjectFolder } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
-import type { ProjectState, ProjectUi } from '../../stores';
-
-/**
- * The folder the window is working in: the folder of the open chat, or of the new chat that is being made, while the Agents section is on show, and the
- * project's main folder in every other case, since the other sections belong to the project and not to a folder.
- */
-export function currentFolder(project: Pick<ProjectState, 'chats' | 'project'>, ui: Pick<ProjectUi, 'section' | 'chatId' | 'draft' | 'draftFolderId'>): ProjectFolder {
-    const { folders } = project.project;
-
-    if (ui.section === 'agents') {
-        const found = ui.chatId ? chatFolder(project.chats, folders, ui.chatId) : undefined;
-
-        if (found) return found.folder;
-
-        if (ui.draft) return draftTarget(folders, ui.draftFolderId).folder;
-    }
-
-    return mainFolder(project.project);
-}
 
 function InfoRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
     return (
@@ -42,7 +21,7 @@ function InfoRow({ icon, label, children }: { icon: ReactNode; label: string; ch
     );
 }
 
-/** The panel's first and only tab for now: what the window is working on, as a short list. */
+/** The panel's Info tab: what the window is working on, as a short list. */
 export function InfoTab() {
     const project = useProjectState();
     const ui = useProjectUi();

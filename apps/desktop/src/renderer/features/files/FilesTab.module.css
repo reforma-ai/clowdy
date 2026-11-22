@@ -1,0 +1,6 @@
+/* Fills the plate of the side panel. */
+.view {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+}

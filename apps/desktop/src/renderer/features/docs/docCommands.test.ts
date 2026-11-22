@@ -185,6 +185,27 @@ describe('save', () => {
         expect(store.save).not.toHaveBeenCalled();
     });
 
+    it('leaves the key to the side panel\'s own editors while the focus is there', () => {
+        const store = setupSave();
+        const panel = document.createElement('aside');
+        const field = document.createElement('div');
+
+        panel.setAttribute('data-side-panel', '');
+        field.setAttribute('contenteditable', 'true');
+        field.tabIndex = 0;
+        panel.append(field);
+        document.body.append(panel);
+        field.focus();
+
+        expect(press('s', field, { metaKey: true })).toBe(false);
+        expect(store.save).not.toHaveBeenCalled();
+
+        element('editor').focus();
+
+        expect(press('s', element('editor'), { metaKey: true })).toBe(true);
+        expect(store.save).toHaveBeenCalledTimes(1);
+    });
+
     it('does not save behind a dialog', () => {
         const store = setupSave();
         const overlay = document.createElement('div');

@@ -1,0 +1,4 @@
+/* The icon is a sidebar at the left; the tree is at the right. */
+.icon {
+    transform: scaleX(-1);
+}

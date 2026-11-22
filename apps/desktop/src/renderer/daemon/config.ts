@@ -1,6 +1,10 @@
+import { FileSystemError } from '@clowdy/file-manager/provider';
+
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
 import { TransportError, type Transport } from './transport';
+
+import type { FileSystemProvider } from '@clowdy/file-manager/provider';
 
 export type DaemonConfig =
     | { kind: 'daemon'; url: string; token: string }
@@ -29,6 +33,13 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
 
 const noDaemon = () => Promise.reject(new TransportError('No daemon is configured'));
 
+/** A file system whose every request fails, as the daemon's would while it is out of reach. */
+const noFiles = (): FileSystemProvider => {
+    const fail = () => Promise.reject(new FileSystemError('Unavailable', 'No daemon is configured'));
+
+    return { list: fail, read: fail, write: fail, createDirectory: fail, move: fail, copy: fail, delete: fail };
+};
+
 /** Answers every request with a failure, so the UI shows its "cannot reach" screen like for any unreachable daemon. */
 const unconfigured: Transport = {
     getRootSnapshot: noDaemon,
@@ -41,6 +52,7 @@ const unconfigured: Transport = {
     getDocsTree: noDaemon,
     getDocFile: noDaemon,
     getProjectFiles: noDaemon,
+    fileSystem: noFiles,
     uploadAttachment: noDaemon,
     getAttachment: noDaemon,
     deleteAttachment: noDaemon,

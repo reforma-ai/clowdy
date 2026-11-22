@@ -1,8 +1,10 @@
 import { PROTOCOL_HEADER, PROTOCOL_VERSION, ROUTES, SSE_EVENT } from '@clowdy/protocol';
 
+import { HttpFileSystem } from './httpFileSystem';
 import { SseParser } from './sse';
 import { TransportError, type CommandInput, type FeedStatus, type StreamTarget, type Transport } from './transport';
 
+import type { FileSystemProvider } from '@clowdy/file-manager/provider';
 import type {
     AgentInfo,
     AgentModels,
@@ -113,6 +115,10 @@ export class HttpTransport implements Transport {
         if (limit !== undefined) params.set('limit', String(limit));
 
         return this.#get(`${ ROUTES.projectFiles(projectId) }?${ params }`);
+    }
+
+    fileSystem(projectId: ProjectId, folderId: FolderId): FileSystemProvider {
+        return new HttpFileSystem({ target: () => ({ base: this.#base, headers: this.#headers }), fetch: this.#fetch, route: ROUTES.projectFs(projectId), folderId, sleep: this.#sleep });
     }
 
     async uploadAttachment(projectId: ProjectId, file: File): Promise<Attachment> {

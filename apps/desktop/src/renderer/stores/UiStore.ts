@@ -14,6 +14,11 @@ export const SETTINGS_PAGES = ['appearance', 'chat', 'files', 'shortcuts', 'proj
 export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
 
+/** The tabs of the side panel's header, in the order they appear there. */
+export const SIDE_PANEL_TABS = ['info', 'files'] as const;
+
+export type SidePanelTab = typeof SIDE_PANEL_TABS[number];
+
 /** Where a project's window is: the section and what is open in it. History walks these; the view options of a section are not places. */
 export interface ProjectView {
     section: Section;
@@ -47,6 +52,7 @@ interface StoredProjectUi {
     collapsedFolders: FolderId[];
     agentsFolded: boolean;
     sidePanelOpen: boolean;
+    sidePanelTab: SidePanelTab;
     tasksView: TasksView;
 }
 
@@ -55,7 +61,7 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'sidePanelOpen' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'sidePanelOpen' | 'sidePanelTab' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -84,6 +90,10 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
     if (params.has('agents')) initial.agentsFolded = params.get('agents') === 'folded';
 
     if (params.has('panel')) initial.sidePanelOpen = params.get('panel') === 'open';
+
+    const panelTab = SIDE_PANEL_TABS.find(candidate => candidate === params.get('panelTab'));
+
+    if (panelTab) initial.sidePanelTab = panelTab;
 
     if (view === 'board' || view === 'list') initial.tasksView = view;
 
@@ -117,6 +127,8 @@ export class ProjectUi {
     agentsFolded = false;
     /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat or section is on show. */
     sidePanelOpen = false;
+    /** The tab the side panel shows, kept for the project: the one it was left on. */
+    sidePanelTab: SidePanelTab = 'info';
     tasksView: TasksView = 'board';
     /** Agents: files that a hand-off from another chat left for the new-chat page, which takes them once it is open. Not kept between sessions. */
     pendingFiles: readonly File[] = [];
@@ -137,6 +149,7 @@ export class ProjectUi {
             this.collapsedFolders = Array.isArray(stored.collapsedFolders) ? stored.collapsedFolders.filter(id => typeof id === 'string') : [];
             this.agentsFolded = stored.agentsFolded === true;
             this.sidePanelOpen = stored.sidePanelOpen === true;
+            this.sidePanelTab = SIDE_PANEL_TABS.find(tab => tab === stored.sidePanelTab) ?? this.sidePanelTab;
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';
         }
 
@@ -155,6 +168,7 @@ export class ProjectUi {
                 collapsedFolders: [...this.collapsedFolders],
                 agentsFolded: this.agentsFolded,
                 sidePanelOpen: this.sidePanelOpen,
+                sidePanelTab: this.sidePanelTab,
                 tasksView: this.tasksView,
             }),
             value => writeStored(storage, key, value)
@@ -272,6 +286,11 @@ export class ProjectUi {
     /** Opens the side panel at the right of the window, or shuts it. */
     toggleSidePanel(): void {
         this.sidePanelOpen = !this.sidePanelOpen;
+    }
+
+    /** Shows a tab of the side panel. */
+    showSidePanelTab(tab: SidePanelTab): void {
+        this.sidePanelTab = tab;
     }
 
     setTasksView(view: TasksView): void {

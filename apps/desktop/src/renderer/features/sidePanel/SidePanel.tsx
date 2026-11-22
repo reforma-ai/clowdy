@@ -1,31 +1,54 @@
 import { Button } from '@clowdy/components/Button';
-import { Info } from '@clowdy/icons/16';
+import { PanelLoadingState } from '@clowdy/components/Panel';
+import { Folder, Info } from '@clowdy/icons/16';
+import { lazy, Suspense } from 'react';
 
+import { useProjectUi } from '../../stores';
+import { FilesTreeToggle } from '../files';
 import { InfoTab } from './InfoTab';
 import styles from './SidePanel.module.css';
 import { SidePanelToggle } from './SidePanelToggle';
 
+import type { SidePanelTab } from '../../stores';
+
+// Its own chunk, loaded when the Files tab is first shown: the editor and the file tree are the heaviest part of the panel.
+const FilesTab = lazy(() => import('../files/FilesTab'));
+
+/** The tabs of the header, in order. */
+const TABS: ReadonlyArray<{ tab: SidePanelTab; label: string; icon: typeof Info }> = [
+    { tab: 'info', label: 'Info', icon: Info },
+    { tab: 'files', label: 'Files', icon: Folder },
+];
+
 /**
- * The column at the right of the window, with the window's chrome behind its header and a paper plate under it, as a second sidebar. The header is
- * where the tabs are to go; for now it has the one tab there is, Info, and the button that shuts the panel at the window's right edge. Everything
- * the panel is to show later (files, changes, a terminal) becomes a tab of its own beside this one.
+ * The column at the right of the window, with the window's chrome behind its header and a paper plate under it, as a second sidebar. The tabs are in the
+ * header, with the button that shuts the panel at the window's right edge; the plate shows the tab that is chosen, which the project keeps. A tool the
+ * panel is to have later (changes, a terminal) becomes a tab of its own beside these.
  */
 export function SidePanel() {
+    const ui = useProjectUi();
+    const { sidePanelTab: chosen } = ui;
+
     return (
-        <aside className={ styles.panel } aria-label="Panel">
+        <aside className={ styles.panel } aria-label="Panel" data-side-panel="">
             <header className={ styles.header }>
-                <div className={ styles.tabs }>
-                    {/* The only tab, and always the chosen one: a toggle with nothing to switch to until there is a second tab. */}
-                    <Button variant="filling" size="sm" iconOnly aria-label="Info" tooltip="Info" tooltipPlacement="bottom" isPressed>
-                        <Info />
-                    </Button>
+                <div className={ styles.tabs } role="group" aria-label="Panel tabs">
+                    { TABS.map(({ tab, label, icon: Icon }) => (
+                        <Button key={ tab } variant="filling" size="sm" isPressed={ tab === chosen } onPress={ () => ui.showSidePanelTab(tab) }>
+                            <Icon aria-hidden="true" />
+                            { label }
+                        </Button>
+                    )) }
                 </div>
                 <div className={ styles.end }>
+                    { chosen === 'files' && <FilesTreeToggle /> }
                     <SidePanelToggle />
                 </div>
             </header>
-            <section className={ styles.plate } aria-label="Info">
-                <InfoTab />
+            <section className={ styles.plate } data-tab={ chosen } aria-label={ TABS.find(({ tab }) => tab === chosen)?.label }>
+                { chosen === 'files'
+                    ? <Suspense fallback={ <PanelLoadingState /> }><FilesTab /></Suspense>
+                    : <InfoTab /> }
             </section>
         </aside>
     );

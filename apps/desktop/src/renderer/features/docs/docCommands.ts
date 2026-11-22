@@ -50,7 +50,8 @@ export function docSearchCommand(focusSearch: () => void): Command {
 
 /**
  * Save the open document with `Mod+S`, also from inside the editor. It is live only while there is something to save,
- * which is when the Save button is enabled, so its hint shows exactly then.
+ * which is when the Save button is enabled, so its hint shows exactly then. The side panel has editors of its own (its Files tab saves a file with the same key):
+ * with the focus there the key is theirs, and the document is saved by its own button.
  */
 export function docSaveCommand(store: Pick<DocsStore, 'current' | 'save'>): Command {
     return {
@@ -60,6 +61,7 @@ export function docSaveCommand(store: Pick<DocsStore, 'current' | 'save'>): Comm
         keys: '$mod+s',
         scope: DOCS_SCOPE,
         inInputs: true,
+        focus: () => document.activeElement?.closest('[data-side-panel]') == null,
         when: () => {
             const buffer = store.current;
 

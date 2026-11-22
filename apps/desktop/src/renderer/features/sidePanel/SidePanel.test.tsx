@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
-import { currentFolder } from './InfoTab';
+import { currentFolder } from './currentFolder';
 import { SidePanelLayout } from './SidePanelLayout';
 import { SidePanelToggle } from './SidePanelToggle';
 import { useSidePanel } from './useSidePanel';
@@ -15,6 +15,11 @@ import { useSidePanel } from './useSidePanel';
 import type { Chat, ProjectFolder } from '@clowdy/protocol';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// The editor and the file tree have tests of their own; here the panel only has to show the tab.
+vi.mock('../files/FilesTab', () => ({ default: () => <p>The files</p> }));
+// The babel plugin that makes the app's components observers does not run under Vitest: the panel is one, to follow the tab that is chosen.
+vi.mock('./SidePanel', async (importOriginal) => ({ SidePanel: observer((await importOriginal<typeof import('./SidePanel')>()).SidePanel) }));
 
 // The babel plugin that makes the app's components observers does not run under Vitest.
 const Layout = observer(SidePanelLayout);
@@ -53,6 +58,7 @@ const nextFrame = () => act(async () => {
 });
 const panel = () => container.querySelector<HTMLElement>('aside[aria-label="Panel"]');
 const toggle = () => container.querySelector<HTMLButtonElement>('button[aria-label="Side panel"]');
+const tab = (name: string) => [...(panel()?.querySelectorAll<HTMLButtonElement>('header button') ?? [])].find(button => button.textContent === name);
 const ui = () => store.ui.forProject(store.selectedProjectId!);
 
 async function draw(element: React.ReactElement) {
@@ -145,23 +151,62 @@ describe('the side panel of the window', () => {
         expect(panel()).toBeNull();
     });
 
-    it('has the one tab, Info, with the project and the folder the window is working in, and the button that shuts it', async () => {
+    it('opens on the Info tab, with the project and the folder the window is working in, and has the button that shuts it', async () => {
         act(() => ui().toggleSidePanel());
         await draw(<Layout><p>The page</p></Layout>);
 
         const project = store.selectedProject!.project;
 
-        expect(panel()?.querySelector('button[aria-label="Info"]')?.getAttribute('aria-pressed')).toBe('true');
+        expect(tab('Info')?.getAttribute('aria-pressed')).toBe('true');
+        expect(tab('Files')?.getAttribute('aria-pressed')).toBe('false');
         expect(panel()?.querySelector('[aria-label="Info"][class*="plate"]')).not.toBeNull();
         expect(panel()?.textContent).toContain('Project');
         expect(panel()?.textContent).toContain(project.name);
         expect(panel()?.textContent).toContain('Folder');
         expect(panel()?.textContent).toContain('car-rental');
         expect(mainFolder(project).path).toBe('/Users/dev/car-rental');
+        expect(panel()?.querySelector('button[aria-label="File tree"]')).toBeNull();
 
         await press(panel()!.querySelector<HTMLButtonElement>('button[aria-label="Side panel"]')!);
 
         expect(ui().sidePanelOpen).toBe(false);
+    });
+
+    it('shows the Files tab when it is chosen, with the button for the file tree beside the one that shuts the panel, and goes back to Info', async () => {
+        act(() => ui().toggleSidePanel());
+        await draw(<Layout><p>The page</p></Layout>);
+
+        await press(tab('Files')!);
+        await settle();
+
+        expect(ui().sidePanelTab).toBe('files');
+        expect(tab('Files')?.getAttribute('aria-pressed')).toBe('true');
+        expect(tab('Info')?.getAttribute('aria-pressed')).toBe('false');
+        expect(panel()?.querySelector('[aria-label="Files"][class*="plate"]')?.textContent).toBe('The files');
+        expect(panel()?.querySelector('button[aria-label="File tree"]')).not.toBeNull();
+
+        await press(tab('Info')!);
+
+        expect(panel()?.querySelector('[aria-label="Info"][class*="plate"]')).not.toBeNull();
+        expect(panel()?.textContent).not.toContain('The files');
+        expect(panel()?.querySelector('button[aria-label="File tree"]')).toBeNull();
+    });
+
+    it('keeps the chosen tab for the project, and starts another project on Info', async () => {
+        act(() => ui().toggleSidePanel());
+        act(() => ui().showSidePanelTab('files'));
+        await draw(<Layout><p>The page</p></Layout>);
+        await settle();
+
+        expect(panel()?.textContent).toContain('The files');
+
+        const other = store.projects.find(project => project.id !== store.selectedProjectId && !project.personal)!.id;
+
+        act(() => store.selectProject(other));
+        act(() => ui().toggleSidePanel());
+        await settle();
+
+        expect(tab('Info')?.getAttribute('aria-pressed')).toBe('true');
     });
 });
 
