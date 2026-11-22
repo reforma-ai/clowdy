@@ -34,7 +34,7 @@ export function ArchiveButton({ anchor }: { anchor: RefObject<HTMLElement | null
 
     return (
         <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
-            <Button variant="filling" color="secondary" size="sm" iconOnly aria-label="Archive" tooltip="Archive">
+            <Button variant="filling" color="secondary" size="sm" iconOnly aria-label="History" tooltip="History">
                 <History />
             </Button>
             <Popover triggerRef={ anchor } placement="bottom start" spacing="xs" width="trigger">

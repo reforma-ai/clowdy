@@ -745,11 +745,11 @@ describe('grouped by folder', () => {
 });
 
 describe('the heading', () => {
-    it('has the archive, as a button, to the left of the filters', () => {
+    it('has the history, as a button, to the left of the filters', () => {
         // The rows have an Archive of their own, as a quick action: the heading's buttons are the ones outside the list.
-        const buttons = [...container.querySelectorAll<HTMLElement>('button[aria-label="Archive"], button[aria-label="Filters"]')].filter(button => !button.closest('[role="grid"]'));
+        const buttons = [...container.querySelectorAll<HTMLElement>('button[aria-label="History"], button[aria-label="Filters"]')].filter(button => !button.closest('[role="grid"]'));
 
-        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['Archive', 'Filters']);
+        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['History', 'Filters']);
         expect(buttons[0].parentElement).toBe(buttons[1].parentElement);
     });
 
@@ -791,14 +791,14 @@ describe('the archive', () => {
         expect(rowKeys()).toEqual(expect.not.arrayContaining(['c-2', 'c-4']));
         expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-6', 'c-5', 'c-3']);
 
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(titles()).toEqual([expect.stringMatching(/^New chat/), expect.stringMatching(/^First version/)]);
         expect(titles()[0]).toMatch(/now$/);
     });
 
     it('opens under the heading and is as wide as it, not wider than the column', async () => {
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         const popover = document.body.querySelector<HTMLElement>('[data-modal-clickout-layer]')!;
 
@@ -808,7 +808,7 @@ describe('the archive', () => {
     it('shows the mark of the provider each chat runs on, as the list does, and the speech bubble for a chat that never started', async () => {
         await archive('c-2', true);
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(archiveRow('First version').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe(project().runs.get('r-orch-2')?.engine);
         expect(archiveRow('New chat').querySelector('[data-provider]')).toBeNull();
@@ -816,7 +816,7 @@ describe('the archive', () => {
     });
 
     it('says so when there is nothing in it', async () => {
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(titles()).toEqual([]);
         expect(document.body.textContent).toContain('No archived chats');
@@ -824,7 +824,7 @@ describe('the archive', () => {
 
     it('brings a chat back into the list and opens it when it is picked', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
         await press(archiveRow('New chat'));
         await vi.waitFor(() => expect(project().chats.get('c-4')?.archivedAt).toBeUndefined());
         await draw();
@@ -837,7 +837,7 @@ describe('the archive', () => {
 
     it('keeps the row of an open menu as if hovered here too', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(archiveRow('New chat').hasAttribute('data-open')).toBe(false);
 
@@ -848,7 +848,7 @@ describe('the archive', () => {
 
     it('has a menu in each row, with Unarchive and Delete', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
 
         expect([...document.body.querySelectorAll('[role="menuitem"]')].map(row => row.textContent)).toEqual(['Unarchive', 'Delete']);
@@ -856,7 +856,7 @@ describe('the archive', () => {
 
     it('puts a chat back in the list from its menu, without opening it', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
         await press(menuItem('Unarchive'));
         await vi.waitFor(() => expect(project().chats.get('c-4')?.archivedAt).toBeUndefined());
@@ -869,7 +869,7 @@ describe('the archive', () => {
 
     it('deletes an archived chat from its menu', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
         await press(menuItem('Delete'));
         // The chat never ran, so nothing asks first.
@@ -919,7 +919,7 @@ describe('the archive', () => {
 
         expect(menuItem('Archive').querySelector('svg')?.outerHTML).toBe(rowIcon.outerHTML);
         // The 16px history mark, where the others are 14px.
-        expect(buttonNamed('Archive').querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 16 16');
+        expect(buttonNamed('History').querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 16 16');
         expect(rowIcon.getAttribute('viewBox')).toBe('0 0 14 14');
     });
 });
@@ -1057,16 +1057,16 @@ describe('threads', () => {
         await store.command({ type: 'chat.setArchived', chatId: 'c-6b', archived: true });
         await vi.waitFor(() => expect(project().chats.get('c-6b')?.archivedAt).toBeDefined());
         await draw();
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(archiveTitles()).toEqual([expect.stringMatching(/^Write the refund tests/)]);
 
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
         await stopThreads();
         await store.command({ type: 'chat.setArchived', chatId: 'c-6', archived: true });
         await vi.waitFor(() => expect(project().chats.get('c-6')?.archivedAt).toBeDefined());
         await draw();
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(archiveTitles()).toEqual([expect.stringMatching(/^Ship the checkout/)]);
         expect(rowKeys().some(key => key?.startsWith('c-6'))).toBe(false);
