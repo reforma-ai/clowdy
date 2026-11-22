@@ -59,10 +59,10 @@
 
 **This stage:** `ExplorerScope.root` becomes `roots: [{ id, label, root }]`; the explorer draws, for each, a gray label row (not selectable, no menu of its own beyond New file) and the root's entries under it at the first level; the scoped name filter, `loadDeep`, new file, paste and drop work per root.
 
-- [ ] Complete
-  - [ ] `ExplorerScope.roots`, label rows in the explorer's data, their look (gray, small, no chevron)
-  - [ ] `scopeFilter` and the deep listing over several roots; create, paste, drop and the area menu default to the first root, a row's menu to its folder
-  - [ ] tests: two roots drawn with their labels, a filter across both, a label that cannot be selected, a root with no entry hidden
+- [x] Complete
+  - [x] `ExplorerScope.roots` (`ExplorerScopeRoot { id, label, root }`, may be a getter over observable state), label rows in the explorer's data (`/root:<id>`, `role="presentation"`, not selectable, openable, renamable or draggable), their look (gray, small, no chevron)
+  - [x] `scopeFilter` and the deep listing over several roots; create, paste, drop and the area menu default to the first root that has rows, a row's menu to its folder, a label's own menu offers New file, New folder and Paste into its root; a row dropped at the top level lands in the root whose label is nearest above
+  - [x] tests (`specs/scope-rows.test.ts`, the desktop `FileManagerView.test.tsx` section): two roots drawn with their labels, a filter across both, a label that cannot be selected, a root with no entry hidden. Not driven by a test: a real drag between roots (only the pure `rootAtIndex`), the Delete key on a label (guarded in code: a label has no targets)
 
 **Done when:** a view over a tree with `.briefback` and `specs` entries shows two labels, each with its Markdown files, and the filter finds a file in either.
 **Verify:** `cd packages/file-manager && bun run test && bun run typecheck && bunx eslint src specs`; `cd apps/desktop && bunx vitest run src/renderer/features/files`

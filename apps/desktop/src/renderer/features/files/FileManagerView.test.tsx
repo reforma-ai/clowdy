@@ -2,6 +2,7 @@
 import { FileManager } from '@clowdy/file-manager';
 import { MemoryFileSystem } from '@clowdy/file-manager/memory';
 import { FileManagerView } from '@clowdy/file-manager/react';
+import { observable, runInAction } from 'mobx';
 import { act, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -263,7 +264,7 @@ describe('the filter in the header of the file tree', () => {
 
 describe('a part of the tree, drawn by rules of its own', () => {
     const scope = {
-        root: '.clowdy/docs',
+        roots: [{ id: 'documents', label: 'Documents', root: '.clowdy/docs' }],
         include: (path: string, kind: string) => kind === 'directory' || /\.md$/i.test(path),
         fileName: (name: string) => (/\.md$/i.test(name) ? name : `${ name }.md`),
     };
@@ -412,3 +413,253 @@ describe('a part of the tree, drawn by rules of its own', () => {
         expect(rows()).toEqual(['src']);
     });
 });
+
+describe('a scope with several roots, each under a gray label', () => {
+    const BRIEFBACK = { id: 'briefback', label: 'Briefback', root: '.briefback' };
+    const SPECS = { id: 'specs', label: 'Specs', root: 'specs' };
+    const KIRO = { id: 'kiro', label: 'Kiro', root: '.kiro/specs' };
+    const markdown = (path: string, kind: string) => kind === 'directory' || /\.md$/i.test(path);
+    const FILES = {
+        '.briefback/index.md': '# Index',
+        '.briefback/config.json': '{}',
+        '.briefback/acp/plan.md': '# Plan',
+        '.briefback/acp/research/spec-formats.md': '# Formats',
+        'specs/readme.md': '# Readme',
+        'specs/001-a/spec.md': '# Spec',
+        'specs/001-a/tasks.md': '# Tasks',
+        '.kiro/specs/feat/deep/er/x.md': '# X',
+        'src/a.ts': '',
+    };
+    const heading = (element: Element) => (element.hasAttribute('data-heading') ? `# ${ element.textContent }` : element.textContent);
+    /** The labels and the rows of the tree, top to bottom. */
+    const layout = () => [...container.querySelectorAll('[data-heading], [role="treeitem"]')].map(heading);
+    const labels = () => [...container.querySelectorAll('[data-heading]')].map(element => element.textContent);
+    const field = () => container.querySelector<HTMLInputElement>('input[aria-label="Filter documents"]')!;
+    const treeHost = () => container.querySelector<HTMLElement>('[role="tree"]')!;
+
+    function type(value: string) {
+        act(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field(), value);
+            field().dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
+    /** A scope whose list of roots is read from observable state, as the Docs tab's will be from the tree. */
+    function scopeOf(roots: () => ReadonlyArray<typeof BRIEFBACK>) {
+        return {
+            get roots() {
+                return roots();
+            },
+            include: markdown,
+            fileName: (name: string) => (/\.md$/i.test(name) ? name : `${ name }.md`),
+        };
+    }
+
+    const props = (scope: ReturnType<typeof scopeOf>) => ({ scope, filterPlaceholder: 'Filter documents', emptyText: 'No documents yet' });
+
+    beforeEach(async () => {
+        manager.dispose();
+        manager = new FileManager({ provider: new MemoryFileSystem(FILES), hidden: ['**/.*'] });
+        await manager.start();
+    });
+
+    it('draws each root that has a row under its label, in the order of the list, folders first, and leaves a root with none and the files the scope does not include out', async () => {
+        draw(props(scopeOf(() => [BRIEFBACK, KIRO_EMPTY(), SPECS])));
+        await settle();
+
+        expect(layout()).toEqual(['# Briefback', 'acp', 'index.md', '# Specs', '001-a', 'readme.md']);
+        expect(container.textContent).not.toContain('Empty');
+    });
+
+    it('is a gray label that cannot be selected or opened, and is not an item of the tree', async () => {
+        draw(props(scopeOf(() => [BRIEFBACK, SPECS])));
+        await settle();
+
+        const label = container.querySelector<HTMLElement>('[data-heading]')!;
+
+        expect(label.getAttribute('role')).toBe('presentation');
+        expect(container.querySelectorAll('[role="treeitem"]')).toHaveLength(4);
+
+        act(() => label.click());
+        await settle();
+
+        expect(container.querySelector('[role="treeitem"][aria-selected="true"]')).toBeNull();
+        expect(manager.tabs.active).toBeNull();
+
+        // A file below it is an item as before.
+        act(() => void [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(row => row.textContent === 'index.md')!.click());
+        await settle();
+
+        expect(manager.tabs.active?.path).toBe('.briefback/index.md');
+        expect(container.querySelector('[role="treeitem"][aria-selected="true"]')?.textContent).toBe('index.md');
+    });
+
+    it('can be arrowed onto, and does nothing for the keys that act on a row: it is not renamed, selected or opened', async () => {
+        draw(props(scopeOf(() => [BRIEFBACK, SPECS])));
+        await settle();
+
+        const press = (key: string) => act(() => void treeHost().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })));
+        const selected = () => [...container.querySelectorAll('[role="treeitem"][aria-selected="true"]')].map(row => row.textContent);
+
+        // A row of the first folder is the one the keys are on; the key up goes to the label above it.
+        act(() => void [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(row => row.textContent === 'acp')!.click());
+        await settle();
+        press('ArrowUp');
+
+        for (const key of ['F2', 'Enter', ' ']) press(key);
+
+        await settle();
+
+        // Nothing happened to the label, and the folder is still the only one selected.
+        expect(treeHost().querySelector('input')).toBeNull();
+        expect(selected()).toEqual(['acp']);
+        expect(manager.tabs.active).toBeNull();
+
+        // The control of this test: the same key on the folder below the label does rename it.
+        press('ArrowDown');
+        press('F2');
+        await settle();
+
+        expect(treeHost().querySelector('input')).not.toBeNull();
+    });
+
+    it('filters across the roots by name, deep ones included, and keeps the label of each root that has a match and drops the others', async () => {
+        draw(props(scopeOf(() => [BRIEFBACK, SPECS])));
+        await settle();
+
+        type('plan');
+        await settle();
+        expect(layout()).toEqual(['# Briefback', 'acp', 'plan.md']);
+
+        type('tasks');
+        await settle();
+        expect(layout()).toEqual(['# Specs', '001-a', 'tasks.md']);
+
+        type('spec');
+        await settle();
+        expect(layout()).toEqual(['# Briefback', 'acp', 'research', 'spec-formats.md', '# Specs', '001-a', 'spec.md']);
+
+        type('nothing of the kind');
+        await settle();
+        expect(labels()).toEqual([]);
+        expect(container.textContent).toContain('No matches');
+
+        type('');
+        await settle();
+        expect(labels()).toEqual(['Briefback', 'Specs']);
+    });
+
+    it('opens the folders of a file below the second root when it is the open tab, and selects it', async () => {
+        await manager.open('specs/001-a/tasks.md');
+        draw(props(scopeOf(() => [BRIEFBACK, SPECS])));
+        await settle();
+
+        expect(layout()).toEqual(['# Briefback', 'acp', 'index.md', '# Specs', '001-a', 'spec.md', 'tasks.md', 'readme.md']);
+        expect(container.querySelector('[role="treeitem"][aria-selected="true"]')?.textContent).toBe('tasks.md');
+    });
+
+    it('draws a root that the list gains later, listed whole, and takes one away', async () => {
+        const state = observable({ roots: [BRIEFBACK] });
+
+        draw(props(scopeOf(() => state.roots)));
+        await settle();
+        expect(layout()).toEqual(['# Briefback', 'acp', 'index.md']);
+
+        runInAction(() => {
+            state.roots = [BRIEFBACK, KIRO];
+        });
+        await settle();
+
+        // The root's own folders are below the first level of the tree's listing: the scope listed it whole when the list gained it.
+        expect(layout()).toEqual(['# Briefback', 'acp', 'index.md', '# Kiro', 'feat']);
+
+        type('deep');
+        await settle();
+        expect(layout()).toEqual(['# Kiro', 'feat', 'deep', 'er', 'x.md']);
+
+        type('');
+        runInAction(() => {
+            state.roots = [KIRO];
+        });
+        await settle();
+        expect(layout()).toEqual(['# Kiro', 'feat']);
+    });
+
+    it('says it is empty only while no root has a row, and does not offer a new row when there is no root', async () => {
+        const state = observable({ roots: [KIRO_EMPTY()] });
+
+        draw(props(scopeOf(() => state.roots)));
+        await settle();
+        expect(layout()).toEqual([]);
+        expect(container.textContent).toContain('No documents yet');
+
+        runInAction(() => {
+            state.roots = [KIRO_EMPTY(), SPECS];
+        });
+        await settle();
+        expect(layout()).toEqual(['# Specs', '001-a', 'readme.md']);
+        expect(container.textContent).not.toContain('No documents yet');
+
+        runInAction(() => {
+            state.roots = [];
+        });
+        await settle();
+        expect(container.textContent).toContain('No documents yet');
+
+        // No folder to put anything in: the empty area has no menu.
+        act(() => void treeHost().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })));
+        await settle();
+        expect(document.body.querySelector('[role="menu"]')).toBeNull();
+    });
+
+    it('makes a new file in the first root from the empty area, and in the root of a label from its own menu, completing the name', async () => {
+        draw(props(scopeOf(() => [BRIEFBACK, SPECS])));
+        await settle();
+
+        const choose = async (label: string) => {
+            await settle();
+            act(() => void [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === label)!.click());
+            await settle();
+        };
+        const nameInput = () => container.querySelector<HTMLInputElement>('input[aria-label="New file name"]')!;
+        const submit = async (value: string) => {
+            act(() => {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput(), value);
+                nameInput().dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            act(() => void nameInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+            await settle();
+        };
+
+        // The area below the rows is the first root.
+        act(() => void treeHost().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })));
+        await choose('New file');
+
+        // The inline row is under the first label, after its folders.
+        expect(layout()).toEqual(['# Briefback', 'acp', '', 'index.md', '# Specs', '001-a', 'readme.md']);
+
+        await submit('idea');
+        expect((await manager.provider.list('.briefback', 1)).map(entry => entry.path)).toContain('.briefback/idea.md');
+        expect(manager.tabs.active?.path).toBe('.briefback/idea.md');
+
+        // The label of the second root has a menu of its own.
+        act(() => void container.querySelectorAll<HTMLElement>('[data-heading] > *')[1]!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })));
+        await choose('New file');
+        await submit('plan.md');
+
+        expect((await manager.provider.list('specs', 1)).map(entry => entry.path)).toContain('specs/plan.md');
+        expect(manager.tabs.active?.path).toBe('specs/plan.md');
+    });
+
+    it('is the tree as it was without a scope', async () => {
+        draw({ scope: undefined });
+        await settle();
+
+        expect(labels()).toEqual([]);
+        expect(layout()).toEqual(['specs', 'src']);
+    });
+});
+
+/** A root with nothing in it, under a name nothing has. */
+const KIRO_EMPTY = () => ({ id: 'empty', label: 'Empty', root: 'nowhere/at/all' });
+

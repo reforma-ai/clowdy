@@ -16,7 +16,7 @@ export function isDocumentPath(path: string): boolean {
  * globs say of the dot folder they are in. A new file is a document: it gets `.md` when the name has no Markdown extension.
  */
 export const DOCS_SCOPE: ExplorerScope = {
-    root: DOCS_ROOT,
+    roots: [{ id: 'documents', label: 'Documents', root: DOCS_ROOT }],
     label: 'Documents',
     include: (path, kind) => kind === 'directory' || isMarkdown(path),
     fileName: name => (isMarkdown(name) ? name : `${ name }.md`),

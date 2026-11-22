@@ -15,12 +15,13 @@ import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, 
 import { Tree } from 'react-arborist';
 import useResizeObserver from 'use-resize-observer';
 
-import { basename, isPathWithin, joinPath } from '../../paths';
+import { basename, dirname, isPathWithin, joinPath } from '../../paths';
 import { isMac } from '../platform';
 import styles from './Explorer.module.css';
-import { DRAFT_ID, ExplorerContext, folderOf, hotkeyItem, targetsOf } from './explorerContext';
+import { DRAFT_ID, ExplorerContext, folderOfNode, HEADING_PREFIX, hotkeyItem, targetsOf } from './explorerContext';
 import { ExplorerAreaMenu } from './ExplorerMenu';
 import { ExplorerDragPreview, ExplorerRow, ExplorerRowFrame } from './ExplorerRow';
+import { matchedRoots, rootAtIndex } from './scopeRows';
 
 import type { DragEvent, KeyboardEvent, Ref } from 'react';
 import type { RenameHandler, TreeApi } from 'react-arborist';
@@ -28,7 +29,7 @@ import type { FileManager } from '../../FileManager';
 import type { UploadItem } from '../../FileOperations';
 import type { FileEntry, FileKind } from '../../provider';
 import type { FileTree } from '../../tree/FileTree';
-import type { ExplorerActions, ExplorerFilter, ExplorerItem, ExplorerScope } from './explorerContext';
+import type { ExplorerActions, ExplorerFilter, ExplorerItem, ExplorerScope, ExplorerScopeRoot } from './explorerContext';
 import type { FileMenuItem } from './ExplorerMenu';
 
 const ROW_HEIGHT = 32;
@@ -72,6 +73,36 @@ function folderChildren(tree: FileTree, entry: FileEntry, scope: ExplorerScope |
     }
 
     return entry.hasChildren ? [] : null;
+}
+
+interface RootRows {
+    root: ExplorerScopeRoot;
+    rows: ExplorerItem[];
+}
+
+const NO_ROOTS: ReadonlyArray<ExplorerScopeRoot> = [];
+
+/** The rows of every root of a scope, each root's own, in the order the scope gives its roots. */
+function rootRowsOf(tree: FileTree, scope: ExplorerScope): RootRows[] {
+    return scope.roots.map(root => ({ root, rows: itemsOf(tree, root.root, scope) }));
+}
+
+/** The gray label row that heads a root. */
+function headingOf({ id, label, root }: ExplorerScopeRoot): ExplorerItem {
+    return { id: `${HEADING_PREFIX}${id}`, name: label, kind: 'directory', children: null, heading: root };
+}
+
+/** The rows of a scope as one list: each root that has rows (or hosts the inline new row) under its label, in order. */
+function scopedData(groups: readonly RootRows[], draft: Draft | null): ExplorerItem[] {
+    return groups.flatMap(({ root, rows }) => {
+        const hosts = draft !== null && isPathWithin(draft.parent, root.root);
+
+        if (rows.length === 0 && !hosts) {
+            return [];
+        }
+
+        return [headingOf(root), ...(draft && hosts ? withDraft(rows, draft, root.root) : rows)];
+    });
 }
 
 /** `items` with the inline new row first among its kind in its folder. */
@@ -247,12 +278,21 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
     const [initialOpenState] = useState<Record<string, boolean>>(() =>
         Object.fromEntries([...manager.openFolders].map(path => [path, true]))
     );
-    const root = scope?.root ?? '';
-    const items = useMemo(() => computed(() => itemsOf(manager.tree, root, scope)), [manager, root, scope]).get();
-    const data = draft ? withDraft(items, draft, root) : items;
+    // A scope's rows are read from its roots as they are now (the list may change with the tree): the explorer is an observer, so a root is drawn when it comes.
+    const groups = useMemo(() => computed(() => (scope ? rootRowsOf(manager.tree, scope) : null)), [manager, scope]).get();
+    const items = useMemo(() => computed(() => (scope ? [] : itemsOf(manager.tree, '', undefined))), [manager, scope]).get();
+    const roots = groups?.map(group => group.root) ?? NO_ROOTS;
+    const hasRows = groups ? groups.some(group => group.rows.length > 0) : items.length > 0;
+    // The folder a new row, a paste and a drop default to: the whole tree's, or the scope's first root that has rows (its first one when none has).
+    const root = groups ? ((groups.find(group => group.rows.length > 0) ?? groups[0])?.root.root ?? '') : '';
+    // A scope with no root has no folder to put anything in.
+    const canCreate = !scope || roots.length > 0;
+    const isRootFolder = (path: string) => (scope ? roots.some(candidate => candidate.root === path) : path === '');
+    const data = groups ? scopedData(groups, draft) : draft ? withDraft(items, draft, '') : items;
     const { revealed } = manager;
     // The filter the host drew, or the manager's own.
     const filterResult = filter === undefined ? manager.filterResult : filter;
+    const matchedHeadings = matchedRoots(filterResult, roots);
     const activePath = manager.tabs.activePath;
     const shown = useRef<{ revealed: typeof revealed; activePath: string | null }>({
         revealed: null,
@@ -298,9 +338,11 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
             shown.current = { revealed: null, activePath: null };
         }
 
-        // A row exists for a path the tree shows, or in a scope, for one below its root that it includes.
+        // A row exists for a path the tree shows, or in a scope, for one below a root of it that it includes.
         const visible = (path: string, kind: FileKind = 'file') =>
-            scope ? path !== root && isPathWithin(path, root) && (scope.include?.(path, kind) ?? true) : manager.tree.isVisible(path);
+            scope
+                ? roots.some(candidate => path !== candidate.root && isPathWithin(path, candidate.root)) && (scope.include?.(path, kind) ?? true)
+                : manager.tree.isVisible(path);
         const ready = (path: string) => manager.tree.get(path) !== undefined || !visible(path);
 
         if (revealed !== shown.current.revealed && (!revealed || ready(revealed.path))) {
@@ -318,7 +360,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                 reveal(api, activePath);
             }
         }
-    }, [manager, scope, root, revealed, activePath, data, dndRoot, sized]);
+    }, [manager, scope, roots, revealed, activePath, data, dndRoot, sized]);
 
     // The inline new row edits as soon as it shows; cancelling removes it.
     useEffect(() => {
@@ -341,7 +383,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
         dropFolder,
         menuItems,
         create: (parent, kind) => {
-            if (parent !== root) {
+            if (!isRootFolder(parent)) {
                 treeApi.current?.openParents(parent);
                 treeApi.current?.open(parent);
             }
@@ -403,14 +445,18 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
         const mod = (isMac ? event.metaKey : event.ctrlKey) && !event.altKey && !event.shiftKey;
 
         if (mod && event.code === 'KeyC' && manager.canCopy) {
-            event.preventDefault();
-            actions.copy(targetsOf(node).map(target => target.path));
+            const targets = targetsOf(node);
+
+            if (targets.length > 0) {
+                event.preventDefault();
+                actions.copy(targets.map(target => target.path));
+            }
         }
         else if (mod && event.code === 'KeyV' && manager.canPaste) {
             event.preventDefault();
-            void manager.paste(folderOf(node.id, node.data.kind));
+            void manager.paste(folderOfNode(node));
         }
-        else if (event.key === 'F2' && node.id !== DRAFT_ID && !manager.readonly) {
+        else if (event.key === 'F2' && node.id !== DRAFT_ID && node.data.heading === undefined && !manager.readonly) {
             event.preventDefault();
             void api.edit(node);
         }
@@ -437,7 +483,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
     const selectedFolder = () => {
         const selected = treeApi.current?.selectedNodes.at(-1);
 
-        return selected ? folderOf(selected.id, selected.data.kind) : root;
+        return selected ? folderOfNode(selected) : root;
     };
 
     useImperativeHandle(ref, () => ({
@@ -477,7 +523,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
     useEffect(() => () => clearTimeout(springOpen.current?.timer), []);
 
     // Files dragged in from outside go in the folder under the pointer.
-    const isFileDrag = (event: DragEvent) => !manager.readonly && event.dataTransfer.types.includes('Files');
+    const isFileDrag = (event: DragEvent) => !manager.readonly && canCreate && event.dataTransfer.types.includes('Files');
 
     const handleDrop = (event: DragEvent<HTMLDivElement>) => {
         holdOver(null);
@@ -519,7 +565,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                         className={styles.treeHost}
                         data-drop-target={dropFolder === root || undefined}
                         onDragOver={event => {
-                            if (manager.readonly) {
+                            if (manager.readonly || !canCreate) {
                                 return;
                             }
 
@@ -548,8 +594,9 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
 
                             if (
                                 !manager.readonly &&
+                                canCreate &&
                                 event.currentTarget.contains(target) &&
-                                !target.closest('[role="treeitem"]')
+                                !target.closest('[role="treeitem"], [data-heading]')
                             ) {
                                 areaMenu.areaProps.onContextMenu(event);
                             }
@@ -567,15 +614,31 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                                 initialOpenState={initialOpenState}
                                 // Filtered, the tree shows the files the filter found, the inline new row, and the folders above them, open.
                                 searchTerm={filterResult?.query ?? ''}
-                                searchMatch={node => node.id === DRAFT_ID || (filterResult?.paths.has(node.id) ?? false)}
+                                searchMatch={node =>
+                                    node.id === DRAFT_ID ||
+                                    (filterResult?.paths.has(node.id) ?? false) ||
+                                    (node.data.heading !== undefined && matchedHeadings.has(node.data.heading))}
                                 className={styles.list}
                                 aria-label={scope?.label ?? 'Files'}
-                                disableEdit={manager.readonly}
-                                disableDrag={manager.readonly}
-                                // A drag from another tree on the shared manager brings no rows of this one.
-                                disableDrop={({ parentNode, dragNodes }) =>
-                                    dragNodes.length === 0 || dragNodes.every(node => node.parent?.id === parentNode.id)
-                                }
+                                // A label row is neither selected, renamed nor dragged.
+                                disableSelect={item => item.heading !== undefined}
+                                disableEdit={item => manager.readonly || item.heading !== undefined}
+                                disableDrag={item => manager.readonly || item.heading !== undefined}
+                                // A drag from another tree on the shared manager brings no rows of this one. A drop at the top level of a scope lands in the root whose label is above that
+                                // place, so it moves nothing only for rows that are in that root already.
+                                disableDrop={({ parentNode, dragNodes, index }) => {
+                                    if (dragNodes.length === 0) {
+                                        return true;
+                                    }
+
+                                    if (scope && parentNode.isRoot) {
+                                        const destination = rootAtIndex(data, index, root);
+
+                                        return dragNodes.every(node => dirname(node.id) === destination);
+                                    }
+
+                                    return dragNodes.every(node => node.parent?.id === parentNode.id);
+                                }}
                                 onToggle={id => {
                                     const api = treeApi.current;
                                     const open = api?.isOpen(id) ?? false;
@@ -603,8 +666,8 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                                     }
                                 }}
                                 onRename={handleRename}
-                                onMove={({ dragIds, parentId }) => {
-                                    void manager.operations.move(dragIds, parentId ?? root, {
+                                onMove={({ dragIds, parentId, index }) => {
+                                    void manager.operations.move(dragIds, parentId ?? (scope ? rootAtIndex(data, index, root) : root), {
                                         confirmReplace: names => askToReplace(manager, names),
                                     });
                                 }}
@@ -620,7 +683,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                         <Show when={filterResult?.paths.size === 0}>
                             <PanelEmptyRow className={styles.empty}>No matches</PanelEmptyRow>
                         </Show>
-                        <Show when={emptyText !== undefined && items.length === 0 && !draft && !filterResult}>
+                        <Show when={emptyText !== undefined && !hasRows && !draft && !filterResult}>
                             <PanelEmptyRow className={styles.empty}>{emptyText}</PanelEmptyRow>
                         </Show>
                     </div>

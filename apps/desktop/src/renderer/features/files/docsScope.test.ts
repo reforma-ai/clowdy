@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { DOCS_ROOT, DOCS_SCOPE, isDocumentPath } from './docsScope';
 
 describe('what the Docs tab draws', () => {
-    it('is the folder below .clowdy/docs, and says so to a screen reader', () => {
-        expect(DOCS_SCOPE.root).toBe(DOCS_ROOT);
-        expect(DOCS_SCOPE.root).toBe('.clowdy/docs');
+    it('is the folder below .clowdy/docs, under a label of its own, and says so to a screen reader', () => {
+        expect(DOCS_SCOPE.roots).toEqual([{ id: 'documents', label: 'Documents', root: DOCS_ROOT }]);
+        expect(DOCS_ROOT).toBe('.clowdy/docs');
         expect(DOCS_SCOPE.label).toBe('Documents');
     });
 

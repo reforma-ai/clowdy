@@ -82,14 +82,18 @@ export const FileManagerView = observer(function FileManagerView({
     // again) lays itself out at that width, which squeezes the sidebar to its narrowest and leaves it there once the box grows. So the group is built when the
     // box has a width, and stays built.
     const [sized, setSized] = useState(false);
-    // A scope is drawn from the tree's own entries, and its folders below the first level are not listed until they are opened: list the scope whole, once the tree has.
+    // A scope is drawn from the tree's own entries, and its folders below the first level are not listed until they are opened: list every root of the scope whole,
+    // once the tree has, and again for a root that the list gains later. The roots are read here, so that the view (an observer) follows a scope whose list changes.
     const ready = manager.tree.status === 'ready';
+    const rootsKey = scope ? scope.roots.map(({ root }) => root).join('\n') : '';
 
     useEffect(() => {
         if (scope && ready) {
-            manager.tree.loadDeep(scope.root).catch((error: unknown) => manager.notify('Couldn’t list the folder', error));
+            for (const root of rootsKey === '' ? [] : rootsKey.split('\n')) {
+                manager.tree.loadDeep(root).catch((error: unknown) => manager.notify('Couldn’t list the folder', error));
+            }
         }
-    }, [manager, scope, ready]);
+    }, [manager, scope, ready, rootsKey]);
 
     // A scope has a filter of its own: the manager's goes through the provider, whose search can leave the scope's folders out.
     const [scopeQuery, setScopeQuery] = useState('');

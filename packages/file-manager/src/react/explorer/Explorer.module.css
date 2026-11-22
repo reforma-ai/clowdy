@@ -96,6 +96,26 @@
     isolation: isolate;
 }
 
+/* The gray label that heads a root of a scope: the same height as a row, and no plate under it. */
+.heading {
+    display: flex;
+    align-items: flex-end;
+    height: 100%;
+    padding-block: 1px;
+    padding-inline: var(--spacing-8);
+    color: var(--color-secondary-muted-text);
+    font-size: var(--text-xs);
+    line-height: var(--leading-md);
+    user-select: none;
+}
+
+.headingName {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* The ⋯ menu is hidden while the name is edited, so the field takes its room. */
 .row[data-editing] {
     padding-right: var(--spacing-8);

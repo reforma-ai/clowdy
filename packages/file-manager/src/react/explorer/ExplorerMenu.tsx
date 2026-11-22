@@ -203,18 +203,22 @@ export function ExplorerMenu({ node, isOpen, onOpenChange, contextMenu }: Explor
     );
 }
 
-/** The right-click menu of the empty area below the rows: new items and Paste in the root folder. */
-export function ExplorerAreaMenu({ contextMenu }: { contextMenu: UseContextMenuResult }) {
+/**
+ * The right-click menu of the empty area below the rows, or of a label row: new items and Paste in a folder, which is the explorer's root for the area and the root a
+ * label heads for a label row.
+ */
+export function ExplorerAreaMenu({ contextMenu, folder }: { contextMenu: UseContextMenuResult; folder?: string }) {
     const { manager, root, create } = useExplorer();
+    const target = folder ?? root;
 
     const handleAction = (key: string) => {
         contextMenu.close();
 
         if (key === 'paste') {
-            void manager.paste(root);
+            void manager.paste(target);
         }
         else {
-            create(root, key === 'new-file' ? 'file' : 'directory');
+            create(target, key === 'new-file' ? 'file' : 'directory');
         }
     };
 

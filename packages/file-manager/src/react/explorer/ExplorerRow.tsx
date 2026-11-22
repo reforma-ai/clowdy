@@ -8,8 +8,8 @@ import { createPortal } from 'react-dom';
 
 import { basename, dirname, isPathWithin } from '../../paths';
 import styles from './Explorer.module.css';
-import { DRAFT_ID, folderOf, hotkeyItem, targetsOf, useExplorer } from './explorerContext';
-import { ExplorerMenu } from './ExplorerMenu';
+import { DRAFT_ID, folderOfNode, hotkeyItem, targetsOf, useExplorer } from './explorerContext';
+import { ExplorerAreaMenu, ExplorerMenu } from './ExplorerMenu';
 
 import type { SyntheticEvent } from 'react';
 import type { DragPreviewProps, NodeApi, NodeRendererProps, RowRendererProps } from 'react-arborist';
@@ -29,12 +29,28 @@ function stopPropagation(event: SyntheticEvent) {
 export function ExplorerRowFrame({ node, attrs, innerRef, children }: RowRendererProps<ExplorerItem>) {
     const { draftParent } = useExplorer();
 
+    // A label row is not an item of the tree: no role, no selection, no click that selects it. Files dropped on it go in the root it heads.
+    if (node.data.heading !== undefined) {
+        return (
+            <div
+                ref={innerRef}
+                role="presentation"
+                style={{ ...attrs.style, minWidth: 0, width: '100%' }}
+                data-heading=""
+                data-folder={node.data.heading}
+                onFocus={stopPropagation}
+            >
+                {children}
+            </div>
+        );
+    }
+
     return (
         <div
             {...attrs}
             ref={innerRef}
             style={{ ...attrs.style, minWidth: 0, width: '100%' }}
-            data-folder={node.id === DRAFT_ID ? draftParent : folderOf(node.id, node.data.kind)}
+            data-folder={node.id === DRAFT_ID ? draftParent : folderOfNode(node)}
             onFocus={stopPropagation}
             onClick={node.handleClick}
         >
@@ -157,8 +173,37 @@ function NameInput({ node, onValueChange }: { node: NodeApi<ExplorerItem>; onVal
     );
 }
 
-/** One explorer row: chevron, icon, name or its input, and the ⋯ menu shown on hover. */
-export function ExplorerRow({ node, dragHandle }: NodeRendererProps<ExplorerItem>) {
+/** The gray label that heads a root of a scope. Its right-click menu makes new items and pastes in the root it heads. */
+function ExplorerHeading({ name, folder }: { name: string; folder: string }) {
+    const contextMenu = useContextMenu();
+    const { manager } = useExplorer();
+
+    return (
+        <div
+            className={styles.heading}
+            onContextMenu={event => {
+                if (!manager.readonly) {
+                    contextMenu.areaProps.onContextMenu(event);
+                }
+            }}
+        >
+            <span className={styles.headingName}>{name}</span>
+            <Show when={contextMenu.isOpen}>
+                <ExplorerAreaMenu contextMenu={contextMenu} folder={folder} />
+            </Show>
+        </div>
+    );
+}
+
+/** One explorer row: a label row of a scope, or a row of the tree. */
+export function ExplorerRow(props: NodeRendererProps<ExplorerItem>) {
+    const { heading, name } = props.node.data;
+
+    return heading === undefined ? <ExplorerEntryRow {...props} /> : <ExplorerHeading name={name} folder={heading} />;
+}
+
+/** One row of the tree: chevron, icon, name or its input, and the ⋯ menu shown on hover. */
+function ExplorerEntryRow({ node, dragHandle }: NodeRendererProps<ExplorerItem>) {
     const [menuOpen, setMenuOpen] = useState(false);
     const contextMenu = useContextMenu();
     const { manager, root, dropFolder, menuItems } = useExplorer();
