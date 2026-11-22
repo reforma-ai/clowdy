@@ -169,4 +169,30 @@
         -webkit-mask-image: none;
         mask-image: none;
     }
+
+    /*
+     * Horizontal edge fade, for a scroller that scrolls sideways only (a strip of tabs): the same fade at the left and right edges, where there is more to scroll
+     * to. With both axes enabled `edgeFade` is the vertical one. A root has `data-scroll-h-*` only while its horizontal axis is on.
+     */
+    .edgeFade.scrollH:not(.scrollV) {
+        --scrollbar-fade: 20px;
+    }
+
+    /* Mid-scroll — fade left and right */
+    .edgeFade.scrollH:not(.scrollV)[data-scroll-h-start='false'][data-scroll-h-end='false'] > .container {
+        -webkit-mask-image: linear-gradient(to right, transparent 0, black var(--scrollbar-fade), black calc(100% - var(--scrollbar-fade)), transparent 100%);
+        mask-image: linear-gradient(to right, transparent 0, black var(--scrollbar-fade), black calc(100% - var(--scrollbar-fade)), transparent 100%);
+    }
+
+    /* At the left — fade right only */
+    .edgeFade.scrollH:not(.scrollV)[data-scroll-h-start='true'][data-scroll-h-end='false'] > .container {
+        -webkit-mask-image: linear-gradient(to right, black 0, black calc(100% - var(--scrollbar-fade)), transparent 100%);
+        mask-image: linear-gradient(to right, black 0, black calc(100% - var(--scrollbar-fade)), transparent 100%);
+    }
+
+    /* At the right — fade left only */
+    .edgeFade.scrollH:not(.scrollV)[data-scroll-h-start='false'][data-scroll-h-end='true'] > .container {
+        -webkit-mask-image: linear-gradient(to right, transparent 0, black var(--scrollbar-fade), black 100%);
+        mask-image: linear-gradient(to right, transparent 0, black var(--scrollbar-fade), black 100%);
+    }
 }

@@ -20,6 +20,7 @@ import styles from './EditorArea.module.css';
 import { MarkdownPane } from './MarkdownPane';
 
 import type { Extension } from '@codemirror/state';
+import type { ReactNode } from 'react';
 import type { TextDocument } from '../../documents/TextDocument';
 import type { FileManager } from '../../FileManager';
 
@@ -108,7 +109,7 @@ const ViewToggle = observer(function ViewToggle({ document }: { document: TextDo
     );
 });
 
-const TabStrip = observer(function TabStrip({ manager }: { manager: FileManager }) {
+const TabStrip = observer(function TabStrip({ manager, toolbar }: { manager: FileManager; toolbar?: ReactNode }) {
     // Copy so this component tracks the tab list itself.
     const documents = manager.tabs.documents.slice();
     const active = manager.tabs.active;
@@ -118,6 +119,7 @@ const TabStrip = observer(function TabStrip({ manager }: { manager: FileManager 
             <Scrollable
                 vertical={false}
                 horizontal
+                edgeFade
                 className={styles.tabStrip}
                 contentClass={styles.tabList}
                 role="tablist"
@@ -129,6 +131,7 @@ const TabStrip = observer(function TabStrip({ manager }: { manager: FileManager 
             <Show when={active?.status === 'text' && active.renderedView && active}>
                 {document => <ViewToggle document={document} />}
             </Show>
+            {toolbar}
         </div>
     );
 });
@@ -249,25 +252,27 @@ const DocumentPane = observer(function DocumentPane({ document }: { document: Te
 interface EditorAreaProps {
     manager: FileManager;
     editorExtensions?: Extension;
+    /** What the host puts at the end of the tab strip, which is there while no file is open too. */
+    toolbar?: ReactNode;
 }
 
 /** Tabs, the "Changed on disk" bar, and the editor or a note for the active tab. */
-export const EditorArea = observer(function EditorArea({ manager, editorExtensions }: EditorAreaProps) {
+export const EditorArea = observer(function EditorArea({ manager, editorExtensions, toolbar }: EditorAreaProps) {
     const active = manager.tabs.active;
     const text = active?.status === 'text' ? active : null;
 
     return (
-        <Show
-            when={manager.tabs.documents.length > 0}
-            fallback={
-                <PanelEmptyState
-                    icon={<Page width={24} height={24} className={styles.emptyLogo} />}
-                    title="Open a file to edit it"
-                />
-            }
-        >
-            <Box className={styles.area}>
-                <TabStrip manager={manager} />
+        <Box className={styles.area}>
+            <TabStrip manager={manager} toolbar={toolbar} />
+            <Show
+                when={manager.tabs.documents.length > 0}
+                fallback={
+                    <PanelEmptyState
+                        icon={<Page width={24} height={24} className={styles.emptyLogo} />}
+                        title="Open a file to edit it"
+                    />
+                }
+            >
                 <Show when={active?.conflict && active}>{document => <ConflictBar document={document} />}</Show>
                 <Show when={active?.richTextBlocked}>{reason => <RichTextBlockedBar reason={reason} />}</Show>
                 <div className={styles.content}>
@@ -282,7 +287,7 @@ export const EditorArea = observer(function EditorArea({ manager, editorExtensio
                         {document => <DocumentPane document={document} />}
                     </Show>
                 </div>
-            </Box>
-        </Show>
+            </Show>
+        </Box>
     );
 });

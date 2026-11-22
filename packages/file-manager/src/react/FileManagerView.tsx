@@ -1,14 +1,15 @@
+import { Button } from '@clowdy/components/Button';
 import { Panel, PanelHeader, PanelSearchButton, PanelTab, PanelTabHeader } from '@clowdy/components/Panel';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup, usePanelRef } from '@clowdy/components/Resizable';
 import { Show } from '@clowdy/components/Show';
+import { Folder } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { observer } from 'mobx-react-lite';
-import { useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
 
 import { closeTab } from './editor/closeTab';
 import { EditorArea } from './editor/EditorArea';
 import { Explorer } from './explorer/Explorer';
-import { ExplorerPanelMenu } from './explorer/ExplorerMenu';
 import styles from './FileManagerView.module.css';
 import { isMac } from './platform';
 import { SearchView } from './search/SearchView';
@@ -17,7 +18,7 @@ import type { Extension } from '@codemirror/state';
 import type { KeyboardEvent, ReactNode } from 'react';
 import type { FileManager, SidebarPanel } from '../FileManager';
 import type { FileEntry } from '../provider';
-import type { ExplorerHandle, ExplorerProps } from './explorer/Explorer';
+import type { ExplorerProps } from './explorer/Explorer';
 import type { FileMenuItem } from './explorer/ExplorerMenu';
 
 const TABS: ReadonlyArray<{ value: SidebarPanel; label: string }> = [
@@ -35,6 +36,8 @@ export interface FileManagerViewProps {
     dndManager?: ExplorerProps['dndManager'];
     /** The sidebar (the file tree and the search) is shown. It is built each time it opens, at `sidebarWidth`. */
     sidebarOpen?: boolean;
+    /** Shows or hides the sidebar: the button at the end of the editor's tab strip, which is there while no file is open too. Without it the view has no such button. */
+    onSidebarToggle?: () => void;
     /** The width in pixels the sidebar opens at. */
     sidebarWidth?: number;
     /** The width the sidebar has landed on after a drag or a key press of the person's. */
@@ -61,10 +64,10 @@ export const FileManagerView = observer(function FileManagerView({
     sidebarOpen = true,
     sidebarWidth = SIDEBAR_DEFAULT_WIDTH,
     onSidebarWidthChange,
+    onSidebarToggle,
     onSidebarRequest,
     className,
 }: FileManagerViewProps) {
-    const explorer = useRef<ExplorerHandle>(null);
     const sidebar = usePanelRef();
     const id = useId();
     const { panel } = manager;
@@ -129,7 +132,11 @@ export const FileManagerView = observer(function FileManagerView({
                 }}
             >
                 <ResizablePanel id={`${id}-editor`} className={styles.editor} minSize={EDITOR_MIN_WIDTH}>
-                    <EditorArea manager={manager} editorExtensions={editorExtensions} />
+                    <EditorArea
+                        manager={manager}
+                        editorExtensions={editorExtensions}
+                        toolbar={!sidebarOpen && onSidebarToggle && <SidebarToggle open={false} onPress={onSidebarToggle} />}
+                    />
                 </ResizablePanel>
 
                 <Show when={sidebarOpen}>
@@ -137,24 +144,20 @@ export const FileManagerView = observer(function FileManagerView({
                         <Panel side="right" className={styles.sidebar}>
                             <PanelHeader>
                                 <PanelTabHeader tab={panel} tabs={TABS} onSelect={next => manager.showPanel(next)} />
-                                <Show when={panel === 'files'}>
-                                    <PanelHeader.Actions>
+                                <PanelHeader.Actions>
+                                    <Show when={panel === 'files'}>
                                         <PanelSearchButton
                                             isOpen={manager.filterOpen}
                                             tooltip="Filter files"
                                             onPress={() => (manager.filterOpen ? manager.closeFilter() : manager.showFilter())}
                                         />
-                                        <ExplorerPanelMenu
-                                            manager={manager}
-                                            onCreate={kind => explorer.current?.create(kind)}
-                                            onPaste={() => explorer.current?.paste()}
-                                        />
-                                    </PanelHeader.Actions>
-                                </Show>
+                                    </Show>
+                                    {onSidebarToggle && <SidebarToggle open onPress={onSidebarToggle} />}
+                                </PanelHeader.Actions>
                             </PanelHeader>
                             <PanelTab key={panel}>
                                 <Show when={panel === 'files'} fallback={<SearchView manager={manager} />}>
-                                    <Explorer ref={explorer} manager={manager} menuItems={menuItems} dndManager={dndManager} />
+                                    <Explorer manager={manager} menuItems={menuItems} dndManager={dndManager} />
                                 </Show>
                             </PanelTab>
                         </Panel>
@@ -164,6 +167,37 @@ export const FileManagerView = observer(function FileManagerView({
         </div>
     );
 });
+
+/**
+ * The button that shows and hides the sidebar. It is at the right edge of the view whichever the state, so a second press lands where the first did: at the end of the
+ * editor's tab strip while the sidebar is hidden, and at the end of the sidebar's own header while it is shown (the two bars are one height, and one the same
+ * distance from the edge). Pressed while the sidebar is shown. One takes the other's place, so after a press from the keyboard the new one takes the focus.
+ */
+function SidebarToggle({ open, onPress }: { open: boolean; onPress: () => void }) {
+    return (
+        <Button
+            variant="filling"
+            color="secondary"
+            size="sm"
+            iconOnly
+            className={styles.toggle}
+            aria-label="File tree"
+            tooltip={open ? 'Hide the file tree' : 'Show the file tree'}
+            tooltipPlacement="bottom"
+            isPressed={open}
+            data-sidebar-toggle=""
+            onPress={event => {
+                onPress();
+
+                if (event.pointerType === 'keyboard') {
+                    requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-sidebar-toggle]')?.focus());
+                }
+            }}
+        >
+            <Folder />
+        </Button>
+    );
+}
 
 /**
  * The sidebar's panel and the edge to drag it by. It is built each time the sidebar opens, which is when its width is read, with an id of its own each
