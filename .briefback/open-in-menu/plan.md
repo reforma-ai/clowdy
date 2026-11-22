@@ -176,5 +176,6 @@ Left as follow-ups, none blocking:
 
 - The read of every project (Settings > Projects poll, the agents screen) now also runs `git branch --show-current` for each folder. Read the branch only with `?project=` if it ever matters.
 - The chip menu fills in late: the programs (IPC) and the git facts (HTTP) are read when it opens. A small cache of the last answers would remove the growth of the popover.
-- A chip for a folder written without a trailing slash (`src/booking`) is taken for a file, so its menu says `Show in` and its GitHub link is a `/blob/`. Resolve the kind from the tree or the listing of the folder.
+- Done in 482b510: a chip for a folder written without a trailing slash (`src/booking`) was taken for a file, so its menu said `Show in` and its GitHub link was a `/blob/`. `useKindOnDisk` now reads the kind from the tree or the listing of the folder when the menu opens. The chip's icon still follows the written path, since reading the disk for every chip would load the file manager for each one.
+- Done in 482b510: in the Files tree's row menu, Copy path is a submenu (Absolute path, Relative path) and Open in… has an icon; both go after the row's own items, before Delete. The folder pill's and the chip's menus keep their flat Copy path and Copy relative path.
 - Not checked on a real machine: launching Finder, an editor and a terminal on macOS and Windows, and the menus in the running app.
