@@ -31,12 +31,12 @@ async function readyRoot(storage = memoryStorage()): Promise<RootStore> {
 
 const ui = () => root.ui.forProject(root.selectedProjectId!);
 
-/** Where the window is, in one comparable string: the project and the place, or Settings over it. */
+/** Where the window is, in one comparable string: the project and the place. */
 function place(): string {
     const { section, chatId, taskId, runId, draft } = ui();
     const here = { agents: draft ? '@new-chat' : (runId ?? chatId), tasks: taskId }[section];
 
-    return `${ root.selectedProjectId }/${ root.ui.settingsOpen ? `settings:${ root.ui.settingsPage }` : `${ section }:${ here }` }`;
+    return `${ root.selectedProjectId }/${ section }:${ here }`;
 }
 
 /** Goes back until the start and returns how many steps it took. */
@@ -133,26 +133,28 @@ describe('NavHistory recording', () => {
         expect(ui().draftFolderId).toBe('fld_other');
     });
 
-    it('records Settings and its pages', () => {
+    it('does not record Settings, which is a window over a place and not one, and a step through the history shuts it', () => {
         root.ui.openSettings('providers');
         root.ui.showSettingsPage('skills');
+
+        expect(root.history.canGoBack).toBe(false);
+
         root.ui.showSection(ui(), 'tasks');
 
+        expect(root.ui.settingsOpen).toBe(false);
         expect(place()).toBe('p-car/tasks:null');
 
-        root.history.back();
-        expect(place()).toBe('p-car/settings:skills');
-        root.history.back();
-        expect(place()).toBe('p-car/settings:providers');
         root.history.back();
         expect(place()).toBe('p-car/agents:null');
         expect(root.history.canGoBack).toBe(false);
 
         root.history.forward();
-        root.history.forward();
-        root.history.forward();
         expect(place()).toBe('p-car/tasks:null');
+
+        root.ui.openSettings('skills');
+        root.history.back();
         expect(root.ui.settingsOpen).toBe(false);
+        expect(place()).toBe('p-car/agents:null');
     });
 
     it('records the selected project, and the place each project was left on comes back with it', () => {
@@ -174,7 +176,6 @@ describe('NavHistory recording', () => {
         expect(stops).toEqual([
             'p-car/tasks:t-24',
             'p-clowdy/tasks:null',
-            'p-clowdy/settings:appearance',
             'p-clowdy/agents:null',
             'p-car/tasks:t-24',
             'p-car/agents:null',
@@ -197,11 +198,9 @@ describe('NavHistory recording', () => {
         expect(root.history.canGoBack).toBe(true);
         expect(root.history.canGoForward).toBe(true);
 
-        // Going back over a project change and out of Settings applies several fields at once, and still leaves the entries as they were.
+        // Going back over a project change applies several fields at once, and still leaves the entries as they were.
         root.history.forward();
         root.selectProject(FIXTURE_EMPTY_PROJECT_ID);
-        root.ui.openSettings('skills');
-        root.history.back();
         root.history.back();
         expect(place()).toBe('p-car/tasks:t-25');
         expect(root.history.canGoForward).toBe(true);
@@ -606,7 +605,7 @@ describe('NavHistory at the start', () => {
         store.ui.showSection(store.ui.forProject(project.id), 'tasks');
         expect(store.history.canGoBack).toBe(true);
         store.history.back();
-        expect(store.ui.settingsOpen).toBe(true);
+        expect(store.ui.forProject(project.id).section).toBe('agents');
         store.dispose();
     });
 

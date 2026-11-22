@@ -34,12 +34,6 @@ export interface ProjectView {
     tasksScope: TaskId | null;
 }
 
-/** Whether Settings covers the window, and on which page. The page is `null` while Settings is closed, because it does not show then. */
-export interface SettingsView {
-    open: boolean;
-    page: SettingsPage | null;
-}
-
 interface StoredProjectUi {
     section: Section;
     chatId: ChatId | null;
@@ -445,7 +439,7 @@ export class ProjectUi {
     }
 }
 
-/** Window state: one `ProjectUi` per project, and the global Settings page that sits over the sections. */
+/** Window state: one `ProjectUi` per project, and the global Settings window that opens over the window. */
 export class UiStore {
     settingsOpen = false;
     settingsPage: SettingsPage = 'appearance';
@@ -469,25 +463,19 @@ export class UiStore {
         return ui;
     }
 
-    get settingsView(): SettingsView {
-        return { open: this.settingsOpen, page: this.settingsOpen ? this.settingsPage : null };
-    }
-
-    /** Shows a place of the project and the Settings state that went with it, as one change: what back and forward do. */
-    restore(ui: ProjectUi, view: ProjectView, settings: SettingsView): void {
+    /** Shows a place of the project, as back and forward do. Settings is a window over a place, not one: going to a place shuts it. */
+    restore(ui: ProjectUi, view: ProjectView): void {
         ui.show(view);
-        this.settingsOpen = settings.open;
-
-        if (settings.page) this.settingsPage = settings.page;
+        this.settingsOpen = false;
     }
 
-    /** Rail navigation: shows a section of the project and leaves Settings. */
+    /** Rail navigation: shows a section of the project and shuts Settings. */
     showSection(ui: ProjectUi, section: Section): void {
         this.settingsOpen = false;
         ui.section = section;
     }
 
-    /** Leaves Settings for the section that is under it. */
+    /** Shuts the Settings window, which shows the section that is under it again. */
     closeSettings(): void {
         this.settingsOpen = false;
     }

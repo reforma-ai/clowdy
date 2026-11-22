@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 
 import { Screen as AgentsScreen } from '../features/agents';
 import { openQuickSearch, quickSearchCommands } from '../features/quickSearch';
-import { Screen as SettingsScreen } from '../features/settings';
+import { SettingsDialog } from '../features/settings';
 import { SidePanelLayout, SidePanelRail, useSidePanel } from '../features/sidePanel';
 import { Screen as TasksScreen } from '../features/tasks';
 import { ChordHud, hotkeys, installDispatcher, useCommands } from '../hotkeys';
@@ -29,7 +29,7 @@ const SCREENS: Record<Section, ComponentType> = {
 
 /**
  * The window: one title band across the top, and under it the rail on the left, the selected section's screen, the side panel beside it while a project's panel
- * is open, and the panel's rail at the right edge, which is there whether the panel is open or not.
+ * is open, and the rail at the right edge (the panel's tabs, Info and Settings), which is there whether the panel is open or not. Settings is a window over all this.
  */
 export function Shell() {
     const root = useRootStore();
@@ -45,7 +45,7 @@ export function Shell() {
             <div className={ styles.body }>
                 { root.phase === 'ready' && <Rail /> }
                 <SidePanelLayout>
-                    <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare, panel.available && !panel.open && styles.railed) }>
+                    <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare, panel.railShown && !panel.open && styles.railed) }>
                         <Outlet />
                     </main>
                 </SidePanelLayout>
@@ -54,6 +54,7 @@ export function Shell() {
             <SyncBanner />
             <ChordHud />
             <FindBar />
+            <SettingsDialog />
         </div>
     );
 }
@@ -66,8 +67,6 @@ function Outlet() {
 
     // The desktop shell hands over the daemon's address once, while the page loads: only a reload finds a daemon that started or moved since.
     if (root.phase === 'unreachable') return <Unreachable message={ root.loadError } onRetry={ () => (window.desktop ? location.reload() : void root.load()) } />;
-
-    if (root.ui.settingsOpen) return <SettingsScreen />;
 
     if (!project) return <NoProject />;
 

@@ -1,5 +1,5 @@
 import { Checkbox } from '@clowdy/icons/14';
-import { Settings, Team } from '@clowdy/icons/16';
+import { Team } from '@clowdy/icons/16';
 
 import { commandTooltip } from '../hotkeys';
 import { RailItem } from '../shared/RailItem';
@@ -15,7 +15,7 @@ const SECTION_VIEWS: Record<Section, { label: string; icon: ComponentType<SVGPro
     tasks: { label: 'Tasks', icon: Checkbox, size: 14 },
 };
 
-/** The left rail: the three sections, and Settings pinned at the bottom. */
+/** The left rail: the sections of the project. */
 export function Rail() {
     const root = useRootStore();
     const ui = root.selectedProjectId ? root.ui.forProject(root.selectedProjectId) : undefined;
@@ -34,15 +34,13 @@ export function Rail() {
                             icon={ icon }
                             size={ size }
                             disabled={ !ui }
-                            current={ !!ui && !root.ui.settingsOpen && ui.section === section }
+                            current={ !!ui && ui.section === section }
                             tooltip={ commandTooltip(label, navCommandId(section)) }
                             onPress={ () => ui && root.ui.showSection(ui, section) }
                         />
                     );
                 }) }
             </div>
-
-            <RailItem className={ styles.settings } label="Settings" icon={ Settings } size={ 16 } current={ root.ui.settingsOpen } onPress={ () => root.ui.openSettings() } />
         </nav>
     );
 }

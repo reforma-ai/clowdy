@@ -1,3 +1,4 @@
+import { SETTINGS_COMMAND, SETTINGS_KEYS } from '../features/settings/commands';
 import { SIDE_PANEL_COMMAND, SIDE_PANEL_KEYS, SIDE_PANEL_TAB_KEYS, SIDE_PANEL_TAB_LABELS, sidePanelTabCommand, TERMINAL_COMMAND, TERMINAL_KEYS } from '../features/sidePanel';
 import { SIDE_PANEL_TABS } from '../stores';
 
@@ -26,7 +27,7 @@ export interface ShellCommandsRoot extends Pick<RootStore, 'phase' | 'selectedPr
 }
 
 /**
- * The commands that work in every section, for `useCommands('app', …)`: the shortcuts page of Settings, the `G` chords that switch sections, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
+ * The commands that work in every section, for `useCommands('app', …)`: the shortcuts page of Settings, the `G` chords that switch sections, `Cmd+,` for the Settings window, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
  * the side panel, `Ctrl+`` for its terminal, `Cmd+0`, `Cmd+1` and `Cmd+2` for its tabs, and back and forward.
  * `?` opens Settings on its Shortcuts page, once the window shows anything to open it over: while the app loads or cannot reach its daemon, the key reaches the page.
  * A section chord and a new chat need a selected project, as the Rail's buttons do, and also leave Settings.
@@ -53,6 +54,16 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
             keys: ['?', '$mod+/', '$mod+?'],
             when: () => root.phase === 'ready',
             handler: () => root.ui.openSettings('shortcuts'),
+        },
+        {
+            id: SETTINGS_COMMAND,
+            title: 'Open settings',
+            group: 'General',
+            keys: SETTINGS_KEYS,
+            // From a text field too: the message box is where a hand is.
+            inInputs: true,
+            when: () => root.phase === 'ready',
+            handler: () => root.ui.openSettings(),
         },
         ...sections,
         {

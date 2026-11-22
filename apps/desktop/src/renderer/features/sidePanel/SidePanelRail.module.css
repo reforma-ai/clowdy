@@ -7,3 +7,16 @@
     width: 58px;
     padding-block: var(--spacing-lg);
 }
+
+/* The tabs take the column's height, so Info can go to its bottom, above Settings. */
+.tabs {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    min-height: 0;
+}
+
+.bottom {
+    margin-top: auto;
+}

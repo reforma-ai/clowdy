@@ -96,9 +96,14 @@ export class RootStore {
         return this.selectedProjectId ? this.#states.get(this.selectedProjectId) : undefined;
     }
 
-    /** A project's own screen is on show: the projects are loaded, Settings is shut, and the selected project has arrived. */
+    /** A project's own screen can be drawn, with its side panel: the projects are loaded and the selected project has arrived. Settings is a window over it and does not end that. */
+    get projectScreenReady(): boolean {
+        return this.phase === 'ready' && this.selectedProject?.status === 'ready';
+    }
+
+    /** A project's own screen is the one in use: it is ready, and Settings is shut, so the keys of the screen and of its panel act. */
     get showsProjectScreen(): boolean {
-        return this.phase === 'ready' && !this.ui.settingsOpen && this.selectedProject?.status === 'ready';
+        return this.projectScreenReady && !this.ui.settingsOpen;
     }
 
     /** A project's state, once the project was selected. */

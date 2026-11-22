@@ -514,6 +514,16 @@ describe('UiStore', () => {
         expect([store.settingsOpen, ui.section]).toEqual([false, 'tasks']);
     });
 
+    it('shuts Settings when a place is shown, as back and forward show one: Settings is a window over a place, not a place', () => {
+        const store = new UiStore();
+        const ui = store.forProject('p1');
+
+        store.openSettings('skills');
+        store.restore(ui, { ...ui.view, section: 'tasks' });
+
+        expect([store.settingsOpen, store.settingsPage, ui.section]).toEqual([false, 'skills', 'tasks']);
+    });
+
     it('keeps the Settings page it was left on, and opens on another when asked', () => {
         const store = new UiStore();
 

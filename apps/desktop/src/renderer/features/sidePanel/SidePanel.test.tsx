@@ -5,6 +5,7 @@ import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createFixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { currentFolder } from './currentFolder';
@@ -76,6 +77,16 @@ const panel = () => container.querySelector<HTMLElement>('aside[aria-label="Pane
 const rail = () => container.querySelector<HTMLElement>('nav[aria-label="Panel tabs"]');
 const tab = (name: string) => [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(button => button.textContent === name);
 const ui = () => store.ui.forProject(store.selectedProjectId!);
+const settingsItem = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Settings');
+
+/** A window with no project on show: the projects are loaded and there are none. */
+async function withoutProjects() {
+    const empty = new RootStore(new FixtureTransport({ data: { ...createFixtureData(), projects: [] } }), { storage: memory() });
+
+    await empty.load();
+    store.dispose();
+    store = empty;
+}
 
 async function draw(element: React.ReactElement) {
     act(() => root.render(<RootStoreProvider value={ store }>{ element }</RootStoreProvider>));
@@ -140,17 +151,25 @@ describe('the side panel of the window', () => {
         expect(unmounted).not.toHaveBeenCalled();
     });
 
-    it('is drawn only while the window shows a project, and comes back with Settings shut', async () => {
+    it('stays where it is while Settings is open over it, which is a window and not a screen in its place', async () => {
         act(() => ui().toggleSidePanel());
         store.ui.openSettings();
         await draw(<Layout><p>The page</p></Layout>);
 
-        expect(panel()).toBeNull();
+        expect(panel()).not.toBeNull();
 
         act(() => store.ui.closeSettings());
         await settle();
 
         expect(panel()).not.toBeNull();
+    });
+
+    it('is drawn only while the window shows a project', async () => {
+        await withoutProjects();
+        await draw(<Layout><p>The page</p></Layout>);
+
+        expect(store.selectedProjectId).toBeNull();
+        expect(panel()).toBeNull();
     });
 
     it('is open for the project it was opened in, and not for another', async () => {
@@ -236,7 +255,7 @@ describe('the side panel of the window', () => {
 
         const names = [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].map(button => button.textContent);
 
-        expect(names).toEqual(['Info', 'Files', 'Docs', 'Terminal']);
+        expect(names).toEqual(['Files', 'Docs', 'Terminal', 'Info']);
 
         await press(tab('Terminal')!);
         await settle();
@@ -270,7 +289,7 @@ describe('the rail of the side panel', () => {
         await draw(<Frame />);
 
         expect(panel()).toBeNull();
-        expect([...rail()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Info', 'Files', 'Docs', 'Terminal']);
+        expect([...rail()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Info']);
         expect(rail()!.querySelector('[aria-current]')).toBeNull();
 
         act(() => ui().toggleSidePanel());
@@ -324,11 +343,44 @@ describe('the rail of the side panel', () => {
         expect(ui().sidePanelOpen).toBe(true);
     });
 
-    it('is not drawn where the window shows no project', async () => {
-        store.ui.openSettings();
+    it('has Info at the bottom beside Settings, and Settings under it', async () => {
+        await draw(<Frame />);
+
+        const items = [...container.querySelectorAll<HTMLButtonElement>('button')];
+
+        expect(items.map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Info', 'Settings']);
+        // Info is the one tab that is pushed to the bottom of the column, so that it sits above Settings.
+        expect(tab('Info')!.className).toMatch(/bottom/);
+        expect(tab('Files')!.className).not.toMatch(/bottom/);
+    });
+
+    it('opens the Settings window with its item, which is current while it is open and does not touch the panel', async () => {
+        await draw(<Frame />);
+
+        expect(settingsItem()!.getAttribute('aria-current')).toBeNull();
+
+        await press(settingsItem()!);
+
+        expect(store.ui.settingsOpen).toBe(true);
+        expect(settingsItem()!.getAttribute('aria-current')).toBe('page');
+        expect(ui().sidePanelOpen).toBe(false);
+        // The rail stays whole under the window.
+        expect(rail()).not.toBeNull();
+
+        act(() => store.ui.closeSettings());
+        await settle();
+
+        expect(settingsItem()!.getAttribute('aria-current')).toBeNull();
+    });
+
+    it('is drawn where the window shows no project too, with Settings alone: the window has settings and a project has the tabs', async () => {
+        await withoutProjects();
         await draw(<Frame />);
 
         expect(rail()).toBeNull();
+        expect(settingsItem()).toBeDefined();
+        expect([...container.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Settings']);
+        expect(settingsItem()!.className).toMatch(/bottom/);
     });
 });
 
