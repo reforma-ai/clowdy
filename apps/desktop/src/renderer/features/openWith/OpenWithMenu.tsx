@@ -49,7 +49,7 @@ export function OpenWithMenu({ target, missing = false, git, onClose, 'aria-labe
         missing,
         effects: openEffects,
         inFiles: isHere
-            ? () => void openInFiles(root, target.projectId, target.folder, target.relative).then(opened => !opened && toast.error({ message: 'This file is not on the disk' }))
+            ? () => void openInFiles(root, target.projectId, target.folder, target.relative).then(opened => !opened && toast.error({ message: 'That path is not on the disk' }))
             : undefined,
     });
     const opening = actions.filter(action => action.group === 'open');
