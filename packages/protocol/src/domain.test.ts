@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { ACTIVE_RUN_STATUSES, folderNames, isBusyRunStatus, isClosedCategory, isTerminalRunStatus, MAX_TASK_DEPTH } from './domain';
+import { ACTIVE_RUN_STATUSES, folderNames, isBusyRunStatus, isClosedCategory, isTerminalRunStatus, MAX_TASK_DEPTH, shownRunReason, shownRunStatus } from './domain';
 
 import type { TaskStatusCategory } from './domain';
 
@@ -33,6 +33,34 @@ describe('run statuses', () => {
         for (const status of ['waiting_background', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
             expect(isBusyRunStatus(status)).toBe(false);
         }
+    });
+});
+
+describe('shownRunStatus', () => {
+    test('a run that works or rests for its background work reads waiting_user while a card is open to the person', () => {
+        expect(shownRunStatus({ status: 'waiting_background', awaitingUser: true })).toBe('waiting_user');
+        expect(shownRunStatus({ status: 'running', awaitingUser: true })).toBe('waiting_user');
+        expect(shownRunStatus({ status: 'waiting_user', awaitingUser: true })).toBe('waiting_user');
+    });
+
+    test('every status reads as its own when nothing is open, and a run that is over, queued or blocked is never called waiting', () => {
+        for (const status of ['queued', 'running', 'waiting_background', 'waiting_user', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
+            expect(shownRunStatus({ status })).toBe(status);
+            expect(shownRunStatus({ status, awaitingUser: false })).toBe(status);
+        }
+
+        for (const status of ['queued', 'blocked', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
+            expect(shownRunStatus({ status, awaitingUser: true })).toBe(status);
+        }
+    });
+
+    test('the reason is the run\'s own while its status reads as it is, and says the person is waited for where the card overrides the status', () => {
+        expect(shownRunReason({ status: 'waiting_background', statusReason: 'Waiting for background work' })).toBe('Waiting for background work');
+        expect(shownRunReason({ status: 'waiting_user', statusReason: 'Waiting for your approval', awaitingUser: true })).toBe('Waiting for your approval');
+        expect(shownRunReason({ status: 'queued', statusReason: 'Waiting for a free slot', awaitingUser: true })).toBe('Waiting for a free slot');
+        expect(shownRunReason({ status: 'waiting_background', statusReason: 'Waiting for background work', awaitingUser: true })).toBe('Waiting for you');
+        expect(shownRunReason({ status: 'running', awaitingUser: true })).toBe('Waiting for you');
+        expect(shownRunReason({ status: 'running' })).toBeUndefined();
     });
 });
 

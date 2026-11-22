@@ -71,6 +71,32 @@ describe('RunDetail, Stop', () => {
     });
 });
 
+describe('RunDetail, a card open to the person', () => {
+    const resting = (): Run => ({ ...runOf('r-na-02'), status: 'waiting_background', statusReason: 'Waiting for background work' });
+
+    it('reads a run that rests for its background work as Background, with its own reason and the live line of the wait', async () => {
+        await draw(resting());
+        await draw(resting());
+
+        expect(container.querySelector('header')?.textContent).toContain('Background');
+        expect(container.querySelector('header')?.textContent).toContain('Waiting for background work');
+        expect(container.textContent).toContain('Waiting for background work…');
+    });
+
+    it('reads it as Waiting for you while a request is open, with no line that says it waits for background work', async () => {
+        await draw({ ...resting(), awaitingUser: true });
+        await draw({ ...resting(), awaitingUser: true });
+
+        const header = container.querySelector('header')?.textContent;
+
+        expect(header).toContain('Waiting');
+        expect(header).not.toContain('Background');
+        expect(header).toContain('Waiting for you');
+        expect(header).not.toContain('Waiting for background work');
+        expect(container.textContent).not.toContain('Waiting for background work…');
+    });
+});
+
 describe('RunDetail, messages', () => {
     it('reads a finished sub-agent run without a row of actions under its answer', async () => {
         await draw(runOf('r-na-01'));

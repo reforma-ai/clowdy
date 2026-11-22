@@ -188,6 +188,14 @@ describe('chatDotTone', () => {
         expect(chatDotTone(run('r', 'failed'))).toBe('danger');
     });
 
+    it('is blue for a run that rests for its background work while a card is open to the person, and green again once it is decided', () => {
+        expect(chatDotTone(run('r', 'waiting_background', { awaitingUser: true }))).toBe('accent');
+        expect(chatDotTone(run('r', 'running', { awaitingUser: true }))).toBe('accent');
+        expect(chatDotTone(run('r', 'waiting_background'))).toBe('success');
+        // A run that is over has no mark worth showing, whatever a stale snapshot says.
+        expect(chatDotTone(run('r', 'cancelled', { awaitingUser: true }))).toBeUndefined();
+    });
+
     it('keeps the usual tone of a run that is blocked or queued', () => {
         expect(chatDotTone(run('r', 'blocked'))).toBe('warning');
         expect(chatDotTone(run('r', 'queued'))).toBe('neutral');

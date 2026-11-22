@@ -1,9 +1,9 @@
-import { ACTIVE_RUN_STATUSES, isBusyRunStatus, isTerminalRunStatus } from '@clowdy/protocol';
+import { ACTIVE_RUN_STATUSES, isBusyRunStatus, isTerminalRunStatus, shownRunStatus } from '@clowdy/protocol';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { listItems } from '../src/db/items';
 import { getProject } from '../src/db/projects';
-import { listRuns, runningCounts } from '../src/db/runs';
+import { listRuns, runningCounts, upsertRun } from '../src/db/runs';
 import { appendItem } from '../src/domain/items';
 import { QUEUE_REASON } from '../src/runs/scheduler';
 import { describeItem, threadState } from '../src/runs/threads';
@@ -560,6 +560,124 @@ describe('approvals of the agent', () => {
         expect(h.run(runId).status).toBe('waiting_background');
     });
 
+    test('a run that keeps waiting_background while its agent asks is marked as waiting for the person until the card is decided, and a client reads it as waiting_user', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+
+        runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
+        expect(h.run(runId).awaitingUser).toBeUndefined();
+
+        const asked = runs.askApproval(runId, request('ls'), live().signal);
+
+        expect(h.run(runId)).toMatchObject({ status: 'waiting_background', statusReason: BACKGROUND_REASON, awaitingUser: true });
+        expect(shownRunStatus(h.run(runId))).toBe('waiting_user');
+        expect(threadState(h.run(runId))).toBe('asking');
+        expect(h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).at(-1)?.data).toMatchObject({ run: { awaitingUser: true } });
+
+        h.ok('run.decide', { runId, approvalId: approvalsOf(h, runId)[0]!.approvalId, decision: 'allow_once' });
+        await asked;
+
+        expect(h.run(runId)).toMatchObject({ status: 'waiting_background' });
+        expect(h.run(runId).awaitingUser).toBeUndefined();
+        expect(shownRunStatus(h.run(runId))).toBe('waiting_background');
+        expect(threadState(h.run(runId))).toBe('idle');
+        expect(h.events().filter(event => event.data.type === 'run.upserted' && event.data.run.id === runId).at(-1)?.data).not.toMatchObject({ run: { awaitingUser: true } });
+    });
+
+    test('the mark holds while any card is open, covers a parked run too, and a request that is withdrawn clears it', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const stop = live();
+        const first = runs.askApproval(runId, request('first'), live().signal);
+        const second = runs.askApproval(runId, request('second'), stop.signal);
+
+        expect(h.run(runId)).toMatchObject({ status: 'waiting_user', awaitingUser: true });
+        h.ok('run.decide', { runId, approvalId: approvalsOf(h, runId)[0]!.approvalId, decision: 'allow_once' });
+        await first;
+        expect(h.run(runId)).toMatchObject({ status: 'waiting_user', awaitingUser: true });
+
+        // A withdrawn request is a Stop or a closing session: the run is not handed its slot back, whoever ends it settles the status.
+        stop.abort();
+        expect(await second).toBeUndefined();
+        expect(approvalsOf(h, runId).map(approval => approval.state)).toEqual(['decided', 'cancelled']);
+        expect(h.run(runId).awaitingUser).toBeUndefined();
+    });
+
+    test('a turn that ends while a request is open leaves the mark on, so the run that rests for its background work still reads as waiting for the person', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const asked = runs.askApproval(runId, request('ls'), live().signal);
+
+        runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
+        expect(h.run(runId)).toMatchObject({ status: 'waiting_background', awaitingUser: true });
+        expect(shownRunStatus(h.run(runId))).toBe('waiting_user');
+
+        h.ok('run.decide', { runId, approvalId: approvalsOf(h, runId)[0]!.approvalId, decision: 'reject' });
+        await asked;
+        expect(h.run(runId).awaitingUser).toBeUndefined();
+    });
+
+    test('a question and an approval share the mark: it stays until the last of them ends, and a run parked for both is marked from the first', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const asked = runs.ask(runId, { text: 'Which one?', options: [{ id: 'a', label: 'A' }] }, live().signal);
+
+        expect(h.run(runId)).toMatchObject({ status: 'waiting_user', awaitingUser: true });
+
+        const approved = runs.askApproval(runId, request('ls'), live().signal);
+        const question = listItems(h.store.db, runId, 0).flatMap(item => (item.body.kind === 'question' ? [item.body] : []))[0]!;
+
+        h.ok('run.answer', { runId, questionId: question.questionId, answer: 'A' });
+        expect(await asked).toBe('A');
+        expect(h.run(runId)).toMatchObject({ status: 'waiting_user', awaitingUser: true });
+        h.ok('run.decide', { runId, approvalId: approvalsOf(h, runId)[0]!.approvalId, decision: 'allow_once' });
+        expect(await approved).toBe('allow_once');
+        await waitFor(() => h.run(runId).status === 'running', 'the run to go back to work');
+        expect(h.run(runId).awaitingUser).toBeUndefined();
+    });
+
+    test('a question that is withdrawn clears the mark of a run that was parked for it', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const stop = live();
+        const asked = runs.ask(runId, { text: 'Which one?', options: [{ id: 'a', label: 'A' }] }, stop.signal);
+
+        expect(h.run(runId).awaitingUser).toBe(true);
+        stop.abort(new Error('Stopped'));
+        await expect(asked).rejects.toThrow('Stopped');
+        expect(h.run(runId).awaitingUser).toBeUndefined();
+    });
+
+    test('a request that ends after its run was deleted ends quietly and brings no mark back', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const stop = live();
+        const asked = runs.askApproval(runId, request('ls'), stop.signal);
+
+        h.store.db.run('DELETE FROM runs WHERE id = ?', [runId]);
+        stop.abort();
+        expect(await asked).toBeUndefined();
+        expect(h.store.db.query('SELECT COUNT(*) AS count FROM runs WHERE id = ?').get(runId)).toEqual({ count: 0 });
+    });
+
+    test('a run that ends while a request is open keeps no mark, and the request that ends after it does not bring it back', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const stop = live();
+
+        runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON });
+
+        const asked = runs.askApproval(runId, request('ls'), stop.signal);
+
+        expect(h.run(runId).awaitingUser).toBe(true);
+        runs.setStatus(runId, 'cancelled', { reason: 'Stopped' });
+        expect(h.run(runId).awaitingUser).toBeUndefined();
+        stop.abort();
+        expect(await asked).toBeUndefined();
+        expect(h.run(runId)).toMatchObject({ status: 'cancelled' });
+        expect(h.run(runId).awaitingUser).toBeUndefined();
+    });
+
     test('a thread whose agent waits on an approval reads asking to its parent, and the log line says what it is', async () => {
         const { h, runs, create } = await runningRun();
         const runId = create();
@@ -727,6 +845,32 @@ describe('restart recovery', () => {
 
         expect(second.run(runId).status).toBe('interrupted');
         expect(approvals.map(approval => [approval.approvalId, approval.state])).toEqual([['apv_open', 'expired'], ['apv_done', 'decided']]);
+    });
+
+    test('what a run had open to the person does not survive a restart, wherever the run rests', async () => {
+        const gate = new GateEngine();
+        const first = await startHarness({ maxRuns: 1 }, { engines: gateEngines(gate) });
+        const project = first.openRepo();
+        const running = first.ok('task.create', { projectId: project.id, title: 'Asking' }).task;
+        const queued = first.ok('task.create', { projectId: project.id, title: 'Queued' }).task;
+        const runningRun = first.ok('task.start', { taskId: running.id }).runId as string;
+        const queuedRun = first.ok('task.start', { taskId: queued.id }).runId as string;
+
+        await waitFor(() => first.run(runningRun).status === 'running', 'the first run to start');
+        expect(first.run(queuedRun).status).toBe('queued');
+
+        for (const id of [runningRun, queuedRun]) {
+            upsertRun(first.store.db, { ...first.run(id), awaitingUser: true });
+        }
+
+        await first.stop();
+
+        const second = await restartHarness(first, { engines: gateEngines(new GateEngine()) });
+
+        harnesses.push(second);
+        expect(second.run(runningRun)).toMatchObject({ status: 'interrupted' });
+        expect(second.run(runningRun).awaitingUser).toBeUndefined();
+        expect(second.run(queuedRun).awaitingUser).toBeUndefined();
     });
 
     test('a thought the crash cut short comes back done, so the app does not show it as going on', async () => {

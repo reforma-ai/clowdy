@@ -397,7 +397,7 @@ describe('thread_stop', () => {
 
 describe('thread_output and thread_log', () => {
     test('output is the latest turn\'s final answer, cut at 4,000 characters; a failed thread says why; background work it keeps open is listed', async () => {
-        const { engine, exec, root, spawn, on } = await setup();
+        const { h, engine, exec, root, spawn, on } = await setup();
         const parent = await root('Plan the release', latch());
         const answered = await spawn(parent.run, 'Check the cache', says(`First I looked around. ${ 'Still looking. '.repeat(300) }`, 'The cache is fine.'));
 
@@ -450,6 +450,18 @@ describe('thread_output and thread_log', () => {
         await waitFor(() => lingering.run().status === 'waiting_background', 'the thread to wait for its build');
         expect(await exec(parent.run, 'thread_output', { thread: lingering.threadId })).toMatchObject({ state: 'idle', reason: 'Waiting for background work', text: 'Started the build', open: ['bun run build'] });
         expect((await exec(parent.run, 'thread_list')).threads.find((entry: { threadId: string }) => entry.threadId === lingering.threadId)).toMatchObject({ state: 'idle', open: ['bun run build'] });
+
+        // Its agent asks for permission in a turn it starts by itself while the session waits for the build: the run keeps its status, and the thread reads as asking,
+        // with the reason that says so and the build still listed. Once the request is gone it is idle again.
+        const withdraw = new AbortController();
+        const asked = h.daemon.services.runs.askApproval(lingering.run().id, { toolCallId: 'call-ls', title: 'Run ls', subject: { kind: 'command', command: 'ls' }, decisions: ['allow_once', 'reject'], key: 'command:ls' }, withdraw.signal);
+
+        expect(lingering.run().status).toBe('waiting_background');
+        expect(await exec(parent.run, 'thread_output', { thread: lingering.threadId })).toMatchObject({ state: 'asking', reason: 'Waiting for you', open: ['bun run build'] });
+        expect((await exec(parent.run, 'thread_list')).threads.find((entry: { threadId: string }) => entry.threadId === lingering.threadId)).toMatchObject({ state: 'asking', open: ['bun run build'] });
+        withdraw.abort();
+        expect(await asked).toBeUndefined();
+        expect(await exec(parent.run, 'thread_output', { thread: lingering.threadId })).toMatchObject({ state: 'idle', reason: 'Waiting for background work', open: ['bun run build'] });
     });
 
     test('log shows the last lines with their numbers and who wrote each message', async () => {

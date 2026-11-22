@@ -53,7 +53,7 @@ export function Executors({ taskRuns, onOpen }: { taskRuns: readonly Run[]; onOp
                                     <span className={ styles.rowName }>{ run.name }</span>
                                     <span className={ styles.rowSummary }>{ run.summary }</span>
                                 </span>
-                                <RunStatusPill status={ run.status } reason={ run.statusReason } />
+                                <RunStatusPill run={ run } />
                             </button>
                         )) }
                     </div>

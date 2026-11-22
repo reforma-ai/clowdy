@@ -368,6 +368,22 @@ export function isBusyRunStatus(status: RunStatus): boolean {
     return !isTerminalRunStatus(status) && status !== 'waiting_background';
 }
 
+/**
+ * The status a person reads a run by. It is the run's own, except that a run with a question or a request for permission open to the person
+ * (`Run.awaitingUser`) reads `waiting_user` while it works or rests for its background work: its session goes on, so the status stays what it was
+ * (`waiting_background` leads to no `waiting_user`), and the card is all that says it needs the person. Every place that tells a run that waits for
+ * the person from one that does not (a chat's dot, a thread's row, a thread as its parent reads it) goes by this, and logic (what takes a message, what
+ * can be stopped) by `status`.
+ */
+export function shownRunStatus(run: Pick<Run, 'status' | 'awaitingUser'>): RunStatus {
+    return run.awaitingUser === true && (run.status === 'running' || run.status === 'waiting_background') ? 'waiting_user' : run.status;
+}
+
+/** Why the run waits, as it reads beside `shownRunStatus`: its own reason, except where the card open to the person overrides a status that says otherwise. */
+export function shownRunReason(run: Pick<Run, 'status' | 'awaitingUser' | 'statusReason'>): string | undefined {
+    return shownRunStatus(run) === run.status ? run.statusReason : 'Waiting for you';
+}
+
 export interface Run {
     id: RunId;
     projectId: ProjectId;
@@ -425,6 +441,13 @@ export interface Run {
      * list. Absent when nothing is open, which is how most runs stay.
      */
     background?: BackgroundItem[];
+    /**
+     * Set while a question or a request for permission of the run is open to the person, whatever the run's status: a run that works is parked in
+     * `waiting_user` for it, but one whose agent asks while the session rests for its background work (a turn the agent started by itself, a sub-agent
+     * that goes on) keeps `waiting_background`, and its card is the only sign. Absent when nothing is open, and once the run is over. Read it through
+     * `shownRunStatus`.
+     */
+    awaitingUser?: boolean;
     createdAt: number;
     startedAt?: number;
     finishedAt?: number;

@@ -4,6 +4,7 @@ import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle, Split } from '@clowdy/icons/14';
+import { shownRunStatus } from '@clowdy/protocol';
 import { useMemo, useRef } from 'react';
 
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -92,7 +93,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                 <StreamView
                     items={ items }
                     active={ isRunActive(run) }
-                    working={ isRunActive(run) && liveLine(run.status) }
+                    working={ isRunActive(run) && liveLine(shownRunStatus(run)) }
                     links={ links }
                     // Reply puts a message in the message box as a card, or quotes selected words into the draft; a fork is a conversation to go on in, and an edit sends the
                     // message again: a chat that is read only has none of them. The chat is rewritten from a message only at rest, so while the agent works Edit is not drawn.

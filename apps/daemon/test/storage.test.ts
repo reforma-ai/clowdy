@@ -7,7 +7,7 @@ import { clearChatFolders, getChat, upsertChat } from '../src/db/chats';
 import { openDatabase } from '../src/db/connection';
 import { getItem, itemRef, setItemRef } from '../src/db/items';
 import { MIGRATIONS } from '../src/db/migrations';
-import { getRun, getRunWork } from '../src/db/runs';
+import { getRun, getRunWork, upsertRun } from '../src/db/runs';
 import { countTaskComments, getTaskComment, insertTaskComment, latestTaskComments, listTaskComments, updateTaskCommentBody } from '../src/db/taskComments';
 import { childIdsOf, countArchivedTasks, deleteTask, getTask, latestArchiveTime, listAllTasks, listArchivedTasks, listTasks, upsertTask } from '../src/db/tasks';
 import { newId } from '../src/ids';
@@ -108,6 +108,27 @@ describe('migrations', () => {
         expect(getRun(db, 'run_1')?.background).toBeUndefined();
         db.query('UPDATE runs SET background = ? WHERE id = ?').run(JSON.stringify([{ id: 'bg-1', kind: 'command', title: 'sleep 60' }]), 'run_1');
         expect(getRun(db, 'run_1')?.background).toEqual([{ id: 'bg-1', kind: 'command', title: 'sleep 60' }]);
+        db.close();
+    });
+
+    test('version 23 gives the runs of an older database a column that reads as nothing open to the person, and stores the mark', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 23));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO runs (id, project_id, root_run_id, role, name, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('run_1', 'prj_1', 'run_1', 'orchestrator', 'Orchestrator 01', 'waiting_background', 'claude', 1);
+        before.close();
+
+        const db = openDatabase(path);
+        const run = getRun(db, 'run_1')!;
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(run).toMatchObject({ id: 'run_1', status: 'waiting_background' });
+        expect(run).not.toHaveProperty('awaitingUser');
+        upsertRun(db, { ...run, awaitingUser: true });
+        expect(getRun(db, 'run_1')).toMatchObject({ awaitingUser: true });
+        upsertRun(db, run);
+        expect(getRun(db, 'run_1')).not.toHaveProperty('awaitingUser');
         db.close();
     });
 

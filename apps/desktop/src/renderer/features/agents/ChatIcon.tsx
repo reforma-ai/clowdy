@@ -1,4 +1,5 @@
 import { Message } from '@clowdy/icons/14';
+import { shownRunStatus } from '@clowdy/protocol';
 
 import { RUN_STATUS_VIEW, StatusDot } from '../../shared';
 import { ProviderIcon } from '../settings/providers/ProviderIcon';
@@ -20,14 +21,15 @@ export function ChatIcon({ chat, run, threadsWorking = false }: { chat: Chat; ru
     const tone = chatDotTone(run, threadsWorking);
     // The run's own state wins; only a chat whose run says nothing shows its threads.
     const own = run !== undefined && chatDotTone(run) !== undefined ? run : undefined;
+    const ownStatus = own && shownRunStatus(own);
 
     if (!tone) return icon;
 
     return (
         <span className={ styles.icon }>
             { icon }
-            <span className={ styles.dot } role="img" aria-label={ own ? RUN_STATUS_VIEW[own.status].label : 'Threads working' }>
-                <StatusDot status={ own?.status } tone={ tone } className={ styles.dotMark } />
+            <span className={ styles.dot } role="img" aria-label={ ownStatus ? RUN_STATUS_VIEW[ownStatus].label : 'Threads working' }>
+                <StatusDot status={ ownStatus } tone={ tone } className={ styles.dotMark } />
             </span>
         </span>
     );

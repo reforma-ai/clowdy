@@ -75,7 +75,7 @@ export function FilterPopover({ filter, onChange, statuses, agents, isOpen, onOp
                                 >
                                     <span className={ styles.option }>
                                         <span className={ styles.optionLabel }>{ run.name }</span>
-                                        <RunStatusPill status={ run.status } reason={ run.statusReason } />
+                                        <RunStatusPill run={ run } />
                                     </span>
                                 </Checkbox>
                             )) }

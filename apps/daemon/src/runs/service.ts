@@ -3,7 +3,7 @@ import { ACTIVE_RUN_STATUSES, isClosedCategory, isTerminalRunStatus, projectEngi
 import { getChat } from '../db/chats';
 import { findApproval, findQuestion, listOpenApprovals, listOpenThoughts, listRunningTools } from '../db/items';
 import { getProject } from '../db/projects';
-import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
+import { activeSubtree, clearAwaitingUser, countActiveRuns, countRunsWithRole, getRun, getRunWork, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
 import { getTask } from '../db/tasks';
 import { appendItem, updateItem } from '../domain/items';
 import { categoryOf, linkRunTask, moveTask, requireTask } from '../domain/tasks';
@@ -242,8 +242,9 @@ export class RunService {
 
             if (isTerminalRunStatus(status)) {
                 next.finishedAt = now;
-                // A run that ended has nothing open: its session is gone, and so is what it had running in the background.
+                // A run that ended has nothing open: its session is gone, and so is what it had running in the background and what it asked the person.
                 delete next.background;
+                delete next.awaitingUser;
 
                 if (options.result !== undefined) {
                     next.result = options.result;
@@ -616,6 +617,9 @@ export class RunService {
                 this.setStatus(runId, 'waiting_user', { reason });
             }
 
+            // Whatever the status, the run now has something open to the person: a run that keeps `waiting_background` is still told apart by it.
+            this.setAwaitingUser(runId, true);
+
             return this.require(runId).status === 'waiting_user';
         });
         const entry = this.waits.get(runId) ?? { open: 0, parked: false };
@@ -640,8 +644,28 @@ export class RunService {
         }
 
         this.waits.delete(runId);
+        this.setAwaitingUser(runId, false);
 
         return entry.parked && getRun(this.store.db, runId)?.status === 'waiting_user';
+    }
+
+    /**
+     * Keeps `Run.awaitingUser`: set while the run has a question or a request open to the person, cleared when the last one ends. Nothing is written when
+     * it already stands so, and a run that is over keeps none. It never throws: it runs where a wait ends, and the store may be gone when the daemon stops.
+     */
+    private setAwaitingUser(runId: string, awaiting: boolean): void {
+        try {
+            const run = getRun(this.store.db, runId);
+
+            if (!run || (run.awaitingUser === true) === awaiting || (awaiting && isTerminalRunStatus(run.status))) {
+                return;
+            }
+
+            this.update(runId, ({ awaitingUser: _awaiting, ...rest }) => (awaiting ? { ...rest, awaitingUser: true } : rest));
+        }
+        catch (error) {
+            console.warn(`[clowdy] run ${ runId } could not be marked ${ awaiting ? 'as waiting for' : 'as no longer waiting for' } the person: ${ errorMessage(error) }`);
+        }
     }
 
     /* --------------------------------- Cancel --------------------------------- */
@@ -821,6 +845,9 @@ export class RunService {
         }
 
         return this.store.tx(() => {
+            // What the sessions had open to the person is gone with them, wherever its run now rests.
+            clearAwaitingUser(this.store.db);
+
             const withProcess = new Set(listRunsWithProcess(this.store.db).map(entry => entry.runId));
             const dead = listActiveRuns(this.store.db).filter(run => ['running', 'waiting_user', 'waiting_background'].includes(run.status) || withProcess.has(run.id));
 

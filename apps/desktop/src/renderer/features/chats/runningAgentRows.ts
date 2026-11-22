@@ -1,4 +1,4 @@
-import { isTerminalRunStatus } from '@clowdy/protocol';
+import { isTerminalRunStatus, shownRunStatus } from '@clowdy/protocol';
 
 import { subagentLabel } from '../../stream/subagents';
 import { orchestratorOf } from '../agents/agentTree';
@@ -17,7 +17,7 @@ export function runningAgents(runs: Iterable<Run>, orchestratorRunId: RunId | un
     if (orchestratorRunId === undefined) return [];
 
     return [...runs]
-        .filter(run => run.rootRunId === orchestratorRunId && run.id !== orchestratorRunId && (run.status === 'running' || run.status === 'waiting_user'))
+        .filter(run => run.rootRunId === orchestratorRunId && run.id !== orchestratorRunId && ['running', 'waiting_user'].includes(shownRunStatus(run)))
         .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 }
 
@@ -92,10 +92,10 @@ export function agentRowLabel(run: Pick<Run, 'name'>): string {
 }
 
 /** One row's words: `Explore agent · Reading form.tsx · 4 calls`, `Explore agent working` before it has done anything, `… · Waiting for you`. */
-export function agentRowText(run: Pick<Run, 'name' | 'status'>, activity: string | undefined, calls: number): string {
+export function agentRowText(run: Pick<Run, 'name' | 'status' | 'awaitingUser'>, activity: string | undefined, calls: number): string {
     const label = agentRowLabel(run);
 
-    if (run.status === 'waiting_user') return `${ label } · Waiting for you`;
+    if (shownRunStatus(run) === 'waiting_user') return `${ label } · Waiting for you`;
 
     const head = activity ? `${ label } · ${ activity }` : `${ label } working`;
 
@@ -141,8 +141,9 @@ export function stripRows(agents: readonly Run[], threads: readonly ThreadAtWork
  * of its own), `· Waiting for you` on a question, `· Waiting for background work` while its session keeps work open after its turn, `· Waiting for a
  * free slot` while queued, and why it is blocked.
  */
-export function threadRowText(chat: Pick<Chat, 'title'>, run: Pick<Run, 'status' | 'statusReason'>, activity: string | undefined): string {
-    switch (run.status) {
+export function threadRowText(chat: Pick<Chat, 'title'>, run: Pick<Run, 'status' | 'statusReason' | 'awaitingUser'>, activity: string | undefined): string {
+    // A thread that rests for its background work while its agent asks reads as waiting for the person (`shownRunStatus`): the card is in its own chat.
+    switch (shownRunStatus(run)) {
         case 'waiting_user':
             return `${ chat.title } · Waiting for you`;
         case 'waiting_background':

@@ -5,7 +5,7 @@ import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { StopBold } from '@clowdy/icons/16';
-import { isTerminalRunStatus, type ApprovalDecision, type Run, type RunRole } from '@clowdy/protocol';
+import { isTerminalRunStatus, shownRunReason, shownRunStatus, type ApprovalDecision, type Run, type RunRole } from '@clowdy/protocol';
 import { useState } from 'react';
 
 import { AgentChip, RunStatusPill, TaskChip } from '../../shared';
@@ -40,7 +40,7 @@ function RunHeader({ run, parent }: { run: Run; parent: Run | undefined }) {
     const [isStopping, setIsStopping] = useState(false);
     const tasks = project.tasksOfRun(run.id);
     // A failed run's error is in its stream.
-    const reason = run.status === 'failed' ? undefined : run.statusReason;
+    const reason = run.status === 'failed' ? undefined : shownRunReason(run);
 
     const stop = async () => {
         setIsStopping(true);
@@ -59,7 +59,7 @@ function RunHeader({ run, parent }: { run: Run; parent: Run | undefined }) {
                 <div className={ styles.heading }>
                     <div className={ styles.nameLine }>
                         <Text variant="heading-5" truncate>{ run.name }</Text>
-                        <RunStatusPill status={ run.status } reason={ run.statusReason } />
+                        <RunStatusPill run={ run } />
                     </div>
                     <Text color="secondary" truncate>{ run.summary ? `${ ROLE_LABEL[run.role] } · ${ run.summary }` : ROLE_LABEL[run.role] }</Text>
                 </div>
@@ -134,11 +134,14 @@ function RunStream({ run }: { run: Run }) {
         if (!result.ok) toast.error({ message: `Could not send the decision: ${ result.error.message }` });
     };
 
+    // The live line follows what the person reads of the run: none while a card waits for them. A question is answered only while the run itself is parked (the daemon's rule).
+    const shown = shownRunStatus(run);
+
     return (
         <StreamView
             items={ stream.items }
             active={ !isTerminalRunStatus(run.status) }
-            working={ run.status === 'running' || (run.status === 'waiting_background' && 'Waiting for background work…') }
+            working={ shown === 'running' || (shown === 'waiting_background' && 'Waiting for background work…') }
             onAnswer={ run.status === 'waiting_user' ? answer : undefined }
             onDecide={ decide }
             emptyState={ <Text color="secondary">This run has not written anything yet.</Text> }

@@ -463,4 +463,12 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 23,
+        up(db) {
+            // Whether a question or a request for permission of the run is open to the person, whatever its status (see `Run.awaitingUser`): 1 while one is,
+            // NULL otherwise, which is every run of an older database. What is open dies with the daemon, so the next start clears it (`RunService.recover`).
+            db.run('ALTER TABLE runs ADD COLUMN awaiting_user INTEGER');
+        },
+    },
 ];

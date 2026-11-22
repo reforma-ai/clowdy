@@ -1,4 +1,4 @@
-import { folderNames, isTerminalRunStatus, mainFolder, type Chat, type ChatId, type FolderId, type ProjectFolder, type Run, type RunId } from '@clowdy/protocol';
+import { folderNames, isTerminalRunStatus, mainFolder, shownRunStatus, type Chat, type ChatId, type FolderId, type ProjectFolder, type Run, type RunId } from '@clowdy/protocol';
 
 import { isRunActive } from '../chats/chatRun';
 
@@ -226,12 +226,13 @@ export function resolveSelection(chats: ReadonlyMap<ChatId, Chat>, chatList: rea
 
 /**
  * The dot on the icon of a chat's row, from what its orchestrator is doing: green while it works (or waits for its own background work),
- * blue when it has asked the person something, red when it failed. A run that is blocked or queued shows its usual tone.
+ * blue when it has asked the person something (also while the run rests for its background work and a card is open: `shownRunStatus`), red when it failed.
+ * A run that is blocked or queued shows its usual tone.
  * A chat at rest whose own threads work (`threadsWorking`) is green too: its work goes on in them.
  * Nothing for a chat that has not started or whose run is over (done, stopped, interrupted): no news is no dot.
  */
 export function chatDotTone(run: Run | undefined, threadsWorking = false): StatusTone | undefined {
-    switch (run?.status) {
+    switch (run && shownRunStatus(run)) {
         case 'running':
         case 'waiting_background':
             return 'success';

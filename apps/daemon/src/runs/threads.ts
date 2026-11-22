@@ -1,4 +1,4 @@
-import { isTerminalRunStatus } from '@clowdy/protocol';
+import { isTerminalRunStatus, shownRunReason, shownRunStatus } from '@clowdy/protocol';
 import { isAbsolute } from 'node:path';
 
 import { getChat, listChatDescendants, listChildChats } from '../db/chats';
@@ -33,9 +33,12 @@ export type ThreadState = 'working' | 'asking' | 'idle' | 'failed' | 'stopped' |
 
 /** The state of a thread from its orchestrator run (`undefined` for a thread whose first message has not made one). */
 export function threadState(run: Run | undefined): ThreadState {
-    switch (run?.status) {
-        case undefined:
-            return 'new';
+    if (!run) {
+        return 'new';
+    }
+
+    // A run that rests for its background work while its agent asks reads as asking (`shownRunStatus`).
+    switch (shownRunStatus(run)) {
         case 'queued':
         case 'running':
         case 'blocked':
@@ -309,6 +312,7 @@ export class ThreadService {
         const target = this.inTree(caller, threadId);
         const run = this.runOf(target);
         const state = threadState(run);
+        const reason = run && shownRunReason(run);
         const text = run ? lastTurnText(this.deps.store.db, run.id) : undefined;
 
         if (target.parentChatId !== undefined && target.parentChatId === caller.chatId && (state === 'idle' || state === 'failed' || state === 'interrupted')) {
@@ -319,7 +323,7 @@ export class ThreadService {
             threadId: target.id,
             title: target.title,
             state,
-            ...(run?.statusReason && { reason: run.statusReason }),
+            ...(reason && { reason }),
             text: text === undefined ? null : clipOutput(text),
             open: openOf(run),
             ...(run?.status === 'failed' && { error: run.error ?? 'It failed without saying why' }),

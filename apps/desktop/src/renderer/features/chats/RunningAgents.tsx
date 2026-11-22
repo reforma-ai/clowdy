@@ -1,5 +1,6 @@
 import { Shimmer } from '@clowdy/components/Shimmer';
 import { BackgroundTask, Robot, Split, Terminal } from '@clowdy/icons/14';
+import { shownRunStatus } from '@clowdy/protocol';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { useAgentActivity } from '../../stream/useAgentActivity';
@@ -29,7 +30,7 @@ import type { BackgroundItem, Chat, Run, RunId } from '@clowdy/protocol';
 function AgentRow({ run }: { run: Run }) {
     const root = useRootStore();
     const ui = useProjectUi();
-    const waiting = run.status === 'waiting_user';
+    const waiting = shownRunStatus(run) === 'waiting_user';
     const { activity, calls } = useAgentActivity(waiting ? undefined : run.id);
     const text = agentRowText(run, activity, calls);
     // Stop ends this agent and nothing else, whether the orchestrator's turn runs or its session waits. A sub-agent whose session cannot end it alone
@@ -57,7 +58,7 @@ function ThreadRow({ chat, run }: ThreadAtWork) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
-    const working = run.status === 'running';
+    const working = shownRunStatus(run) === 'running';
     const { activity } = useAgentActivity(working ? run.id : undefined);
     const text = threadRowText(chat, run, activity);
 

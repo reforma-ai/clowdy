@@ -54,6 +54,7 @@ describe('a row\'s words', () => {
         expect(agentRowText(explore, 'Reading form.tsx', 1)).toBe('Explore agent · Reading form.tsx · 1 call');
         expect(agentRowText(explore, undefined, 0)).toBe('Explore agent working');
         expect(agentRowText({ name: 'Plan', status: 'waiting_user' }, 'Reading a.ts', 7)).toBe('Plan agent · Waiting for you');
+        expect(agentRowText({ name: 'Plan', status: 'running', awaitingUser: true }, 'Reading a.ts', 7)).toBe('Plan agent · Waiting for you');
     });
 });
 
@@ -209,6 +210,8 @@ describe('threads in the strip', () => {
         expect(threadRowText(fix, { status: 'running' }, undefined)).toBe('Fix login working');
         expect(threadRowText(fix, { status: 'waiting_user' }, 'Thinking…')).toBe('Fix login · Waiting for you');
         expect(threadRowText(fix, { status: 'waiting_background' }, undefined)).toBe('Fix login · Waiting for background work');
+        // A thread that rests for its background work while its agent asks is waiting for the person, whichever card it is.
+        expect(threadRowText(fix, { status: 'waiting_background', awaitingUser: true }, undefined)).toBe('Fix login · Waiting for you');
         expect(threadRowText(fix, { status: 'queued' }, undefined)).toBe('Fix login · Waiting for a free slot');
         expect(threadRowText(fix, { status: 'blocked', statusReason: 'Usage limit until 14:00' }, undefined)).toBe('Fix login · Usage limit until 14:00');
         expect(threadRowText(fix, { status: 'blocked' }, undefined)).toBe('Fix login · Blocked');
