@@ -1,11 +1,23 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { FixtureTransport } from '../daemon/fixtureTransport';
+import { RootStore, RootStoreProvider } from '../stores';
 import { StreamLinksContext } from './StreamLinks';
 import { UserBubble } from './UserBubble';
 
+// A file chip knows the project's folders, so the message is drawn inside a window that has a project selected.
+let store: RootStore;
+
+beforeAll(async () => {
+    store = new RootStore(new FixtureTransport());
+    await store.load();
+});
+
+afterAll(() => store.dispose());
+
 const links = { taskOfKey: (key: string) => (key === 'CAR-24' ? { id: 't-24', key, title: 'Rebuild the form' } : undefined) };
-const bubble = (text: string) => renderToStaticMarkup(<StreamLinksContext value={ links }><UserBubble text={ text } at={ 0 } /></StreamLinksContext>);
+const bubble = (text: string) => renderToStaticMarkup(<RootStoreProvider value={ store }><StreamLinksContext value={ links }><UserBubble text={ text } at={ 0 } /></StreamLinksContext></RootStoreProvider>);
 
 describe('UserBubble', () => {
     it('keeps the line breaks of a message the daemon wrote in the person\'s name', () => {
