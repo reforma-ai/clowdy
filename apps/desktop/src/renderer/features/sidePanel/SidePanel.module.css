@@ -17,12 +17,13 @@
     padding-right: calc(var(--titlebar-inset-end) + var(--spacing-lg));
 }
 
+/* The tabs sit at the header's right, beside the button that shuts the panel, so the header's left is the window's chrome. */
 .tabs {
     display: flex;
-    flex: 1;
     align-items: center;
     gap: var(--spacing-xs);
     min-width: 0;
+    margin-left: auto;
 }
 
 .end {
@@ -30,7 +31,6 @@
     flex-shrink: 0;
     align-items: center;
     gap: var(--spacing-md);
-    margin-left: auto;
 }
 
 /* The paper plate, drawn as the window's content plate is, with a square corner: it stands against the page's plate, whose corner at that edge is square too. */

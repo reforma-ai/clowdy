@@ -26,8 +26,8 @@ const TABS: ReadonlyArray<{ tab: SidePanelTab; label: string; icon: typeof Info 
 ];
 
 /**
- * The column at the right of the window, with the window's chrome behind its header and a paper plate under it, as a second sidebar. The tabs are in the
- * header, with the button that shuts the panel at the window's right edge; the plate shows the tab that is chosen, which the project keeps. A tool the
+ * The column at the right of the window, with the window's chrome behind its header and a paper plate under it, as a second sidebar. The tabs are at the
+ * right of the header, beside the button that shuts the panel at the window's right edge; the plate shows the tab that is chosen, which the project keeps. A tool the
  * panel is to have later (changes) becomes a tab of its own beside these.
  */
 export function SidePanel() {
