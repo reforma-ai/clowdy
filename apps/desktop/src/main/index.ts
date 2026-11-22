@@ -1,5 +1,5 @@
 import { PROTOCOL_VERSION } from '@clowdy/protocol';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, session, shell, autoUpdater as squirrel, type MessageBoxOptions } from 'electron';
+import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, session, shell, autoUpdater as squirrel, type MessageBoxOptions } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { watch } from 'node:fs';
 import { release } from 'node:os';
@@ -10,6 +10,7 @@ import { DEV_BUILD_MARKER } from '../shared/dev';
 import { createAppIcon } from './appIcon';
 import { showBootWindow, type BootWindow } from './bootWindow';
 import { bundleRuntime, installBun, installedRipgrep, installOwnBundle, pruneBunCopies, readBundleInfo, updatesDir, type BundleInfo } from './bundle';
+import { createClipboardFiles, systemClipboardFilesDeps } from './clipboardFiles';
 import { attachDaemon, currentContext, daemonAddress, ensureDaemon, environmentRuntime, findRunning, type DaemonContext, type DaemonRuntime } from './daemon';
 import { askToReplaceDaemon, showDaemonError } from './daemonDialog';
 import { daemonHoldsLock } from './daemonFiles';
@@ -46,6 +47,9 @@ const openWith = createOpenWith(systemOpenWithDeps(
     }),
     path => shell.showItemInFolder(path)
 ));
+
+/** The files and folders on the system clipboard: copied in the app they paste into Finder or Explorer, and copied there they paste into the file tree. */
+const clipboardFiles = createClipboardFiles(systemClipboardFilesDeps(clipboard, ClipboardItem));
 
 /** The OTA bundle installed during this run, which every page that loads is told about. */
 let updateReady: number | undefined;
@@ -184,6 +188,9 @@ function start(): void {
             restartToUpdate: () => ota.restart(),
             listOpenApps: openWith.listApps,
             openPath: openWith.openPath,
+            readClipboardFiles: clipboardFiles.read,
+            writeClipboardFiles: clipboardFiles.write,
+            pasteClipboardFiles: clipboardFiles.paste,
         });
 
         /**

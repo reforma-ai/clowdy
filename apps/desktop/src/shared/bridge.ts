@@ -24,6 +24,12 @@ export const IPC_CHANNELS = {
     openApps: 'desktop:open-apps',
     /** Renderer to main: open a folder or a file in one of them. */
     openPath: 'desktop:open-path',
+    /** Renderer to main: the files and folders on the system clipboard. */
+    clipboardFiles: 'desktop:clipboard-files',
+    /** Renderer to main: put files and folders on the system clipboard. */
+    copyFiles: 'desktop:copy-files',
+    /** Renderer to main: copy files and folders of the system clipboard into a folder. */
+    pasteFiles: 'desktop:paste-files',
 } as const;
 
 /** A program that can open a folder or a file: an editor or a file manager, found on this computer. `id` is the catalog's, `name` is what the person reads, and `icon` is its own icon as a `data:` image, none when it could not be read. */
@@ -44,6 +50,21 @@ export interface OpenApps {
 export interface OpenPathApp {
     kind: 'editor' | 'terminal' | 'fileManager';
     id: string;
+}
+
+/** A file or a folder on the system clipboard: copied in the app, or in Finder or Explorer. */
+export interface ClipboardFile {
+    /** Where it is, absolute, as the system writes a path. */
+    path: string;
+    /** The last part of the path. */
+    name: string;
+    kind: 'file' | 'directory';
+}
+
+/** One entry of a paste: which of the files on the clipboard (by its path), and the name its copy gets in the folder. */
+export interface PasteItem {
+    path: string;
+    name: string;
 }
 
 /** What the Edit menu asked the page to do. */
@@ -103,4 +124,13 @@ export interface DesktopBridge {
     getOpenApps: () => Promise<OpenApps>;
     /** Opens a folder or a file in one of them: a file is opened by an editor and shown by a file manager, and a terminal takes folders only. Rejects when the path is gone or the program cannot be started. */
     openPath: (path: string, app: OpenPathApp) => Promise<void>;
+    /** The files and folders the system clipboard holds that are still on the disk, in the order they were copied. */
+    readClipboardFiles: () => Promise<ClipboardFile[]>;
+    /** Replaces the clipboard with these files and folders (absolute paths): they paste as files into the system's file manager and other programs, and as their paths into a text field. */
+    writeClipboardFiles: (paths: readonly string[]) => Promise<void>;
+    /**
+     * Copies files and folders of the clipboard into `folder`, each under the name it is given. The entries only say which of the files on the clipboard now go where: a path
+     * that is not on it is refused, and so is a name that is taken. Rejects with what went wrong.
+     */
+    pasteClipboardFiles: (folder: string, items: readonly PasteItem[]) => Promise<void>;
 }

@@ -24,7 +24,7 @@ function register(actions: Partial<Parameters<typeof registerIpc>[2]> = {}) {
             on: (channel: string, listener: Listener) => void listeners.set(channel, listener),
         } as never,
         TRUSTED,
-        { setThemeSource: vi.fn(), getDaemon: async () => undefined, ready: async () => undefined, restartToUpdate: vi.fn(), listOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }), openPath: async () => undefined, ...actions }
+        { setThemeSource: vi.fn(), getDaemon: async () => undefined, ready: async () => undefined, restartToUpdate: vi.fn(), listOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }), openPath: async () => undefined, readClipboardFiles: async () => [], writeClipboardFiles: async () => undefined, pasteClipboardFiles: async () => undefined, ...actions }
     );
 
     return { listeners, handlers };
@@ -246,5 +246,40 @@ describe('opening a folder in a program', () => {
         expect(() => handlers.get(IPC_CHANNELS.openPath)!(event, '/Users/dev/web', { kind: 'editor', id: 'cursor' })).toThrow('Untrusted sender');
         expect(listOpenApps).not.toHaveBeenCalled();
         expect(openPath).not.toHaveBeenCalled();
+    });
+});
+
+describe('the files on the clipboard', () => {
+    test('the app\'s own page can read them, put some there and paste them, and what it sends is handed on as it is', async () => {
+        const files = [{ path: '/Users/dev/a.txt', name: 'a.txt', kind: 'file' as const }];
+        const readClipboardFiles = vi.fn(async () => files);
+        const writeClipboardFiles = vi.fn(async () => undefined);
+        const pasteClipboardFiles = vi.fn(async () => undefined);
+        const { handlers } = register({ readClipboardFiles, writeClipboardFiles, pasteClipboardFiles });
+        const event = callFrom({ url: `${ TRUSTED }/` });
+
+        expect(await handlers.get(IPC_CHANNELS.clipboardFiles)!(event)).toEqual(files);
+
+        await handlers.get(IPC_CHANNELS.copyFiles)!(event, ['/Users/dev/a.txt']);
+        await handlers.get(IPC_CHANNELS.pasteFiles)!(event, '/Users/dev/out', [{ path: '/Users/dev/a.txt', name: 'a.txt' }]);
+
+        expect(writeClipboardFiles).toHaveBeenCalledWith(['/Users/dev/a.txt']);
+        expect(pasteClipboardFiles).toHaveBeenCalledWith('/Users/dev/out', [{ path: '/Users/dev/a.txt', name: 'a.txt' }]);
+    });
+
+    test('another page can do none of it', () => {
+        const readClipboardFiles = vi.fn(async () => []);
+        const writeClipboardFiles = vi.fn(async () => undefined);
+        const pasteClipboardFiles = vi.fn(async () => undefined);
+        const { handlers } = register({ readClipboardFiles, writeClipboardFiles, pasteClipboardFiles });
+        const event = callFrom({ url: 'https://example.com/' });
+
+        expect(() => handlers.get(IPC_CHANNELS.clipboardFiles)!(event)).toThrow('Untrusted sender');
+        expect(() => handlers.get(IPC_CHANNELS.copyFiles)!(event, ['/Users/dev/a.txt'])).toThrow('Untrusted sender');
+        expect(() => handlers.get(IPC_CHANNELS.pasteFiles)!(event, '/Users/dev/out', [])).toThrow('Untrusted sender');
+
+        expect(readClipboardFiles).not.toHaveBeenCalled();
+        expect(writeClipboardFiles).not.toHaveBeenCalled();
+        expect(pasteClipboardFiles).not.toHaveBeenCalled();
     });
 });

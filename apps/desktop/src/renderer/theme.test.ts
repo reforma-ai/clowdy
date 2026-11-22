@@ -50,6 +50,9 @@ describe('theme', () => {
             findInPage: async () => ({ matches: 0, activeMatchOrdinal: 0 }),
             getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
             openPath: async () => undefined,
+            readClipboardFiles: async () => [],
+            writeClipboardFiles: async () => undefined,
+            pasteClipboardFiles: async () => undefined,
             stopFind: async () => undefined,
             onFindCommand: () => () => undefined,
         };
