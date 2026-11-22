@@ -280,6 +280,166 @@ describe('the tool vocabulary', () => {
     });
 });
 
+describe('tasks inside tasks', () => {
+    const keysOf = (rows: { key: string }[]) => rows.map(row => row.key);
+
+    test('task_create puts the task inside another by key, and task_update moves it and takes it out again', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic');
+        const stage = await task('Stage', { parent: epic.key });
+        const other = await task('Other epic');
+
+        expect(stage.parent).toEqual({ key: epic.key, title: 'Epic' });
+        expect(epic).not.toHaveProperty('parent');
+        expect((await exec(orchestrator, 'task_update', { taskId: stage.key, parent: other.key })).task.parent).toEqual({ key: other.key, title: 'Other epic' });
+        expect((await exec(orchestrator, 'task_update', { taskId: stage.key, clearParent: true })).task).not.toHaveProperty('parent');
+        expect((await exec(orchestrator, 'task_update', { taskId: stage.id, parent: epic.id })).task.parent.key).toBe(epic.key);
+        // clearParent: false leaves the parent alone.
+        expect((await exec(orchestrator, 'task_update', { taskId: stage.key, clearParent: false, title: 'Stage 2' })).task.parent.key).toBe(epic.key);
+    });
+
+    test('a parent that is the task, its descendant, too deep, missing or in both fields is refused with the reason', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const a = await task('A');
+        const child = await task('B', { parent: a.key });
+
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, parent: a.key })).rejects.toThrow('cannot be its own parent');
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, parent: child.key })).rejects.toThrow(`Task ${ child.key } is inside ${ a.key }, so it cannot be its parent`);
+        await expect(task('x', { parent: 'REP-99' })).rejects.toThrow(/does not exist/);
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, parent: 'REP-99' })).rejects.toThrow(/does not exist/);
+        await expect(exec(orchestrator, 'task_update', { taskId: a.key, parent: child.key, clearParent: true })).rejects.toThrow('give one of them');
+
+        let last = a;
+
+        for (let level = 2; level <= 8; level++) {
+            last = await task(`Level ${ level }`, { parent: last.key });
+        }
+
+        await expect(task('Level 9', { parent: last.key })).rejects.toThrow(/would reach level 9, and a tree has at most 8 levels/);
+    });
+
+    test('a parent from another project is refused, by key as unknown and by id as another project\'s, and no task is left behind', async () => {
+        const { exec, orchestrator, task, h } = await setup();
+        const other = h.openRepo('other');
+        const foreign = h.ok('task.create', { projectId: other.id, title: 'Foreign' }).task;
+
+        await expect(task('Orphan', { parent: foreign.key })).rejects.toThrow(/does not exist/);
+        await expect(task('Orphan', { parent: foreign.id })).rejects.toThrow(/belongs to another project/);
+        expect((await exec(orchestrator, 'task_list', { all: true })).total).toBe(0);
+    });
+
+    test('task_get names the parent, lists the children with a total, counts the tasks below by category and the checklist, and says nothing of them for a leaf', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic', { description: 'Plan\n- [x] design\n- [ ] build' });
+        const stage = await task('Stage', { parent: epic.key });
+        const done = await task('Done stage', { parent: epic.key, status: 'done' });
+        const step = await task('Step', { parent: stage.key, status: 'active' });
+        const leaf = await task('Leaf');
+
+        const { task: got } = await exec(orchestrator, 'task_get', { taskId: epic.key });
+
+        expect(got).toMatchObject({
+            checklist: { done: 1, total: 2 },
+            children: [{ key: stage.key, title: 'Stage', status: 'To do' }, { key: done.key, title: 'Done stage', status: 'Done' }],
+            childrenTotal: 2,
+            descendants: { todo: 1, active: 1, done: 1 },
+        });
+        expect(got).not.toHaveProperty('parent');
+        expect((await exec(orchestrator, 'task_get', { taskId: step.key })).task).toMatchObject({ parent: { key: stage.key, title: 'Stage' } });
+        expect((await exec(orchestrator, 'task_get', { taskId: step.key })).task).not.toHaveProperty('children');
+        expect((await exec(orchestrator, 'task_get', { taskId: stage.key })).task).toMatchObject({ parent: { key: epic.key, title: 'Epic' }, children: [{ key: step.key, status: 'In progress' }], childrenTotal: 1, descendants: { active: 1 } });
+
+        for (const field of ['parent', 'children', 'childrenTotal', 'descendants', 'checklist']) {
+            expect((await exec(orchestrator, 'task_get', { taskId: leaf.key })).task).not.toHaveProperty(field);
+        }
+    });
+
+    test('task_get names at most 50 children and still says how many there are', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic');
+
+        for (let index = 0; index < 52; index++) {
+            await task(`Child ${ index }`, { parent: epic.key, status: index < 10 ? 'done' : 'todo' });
+        }
+
+        const { task: got } = await exec(orchestrator, 'task_get', { taskId: epic.key });
+
+        expect(got.children).toHaveLength(50);
+        expect(got.children[0].title).toBe('Child 0');
+        expect(got.children[49].title).toBe('Child 49');
+        expect(got.childrenTotal).toBe(52);
+        expect(got.descendants).toEqual({ todo: 42, done: 10 });
+    });
+
+    test('task_list rows carry parent, children and checklist, and parent, under and roots list a part of the tree with its own counts', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const epic = await task('Epic', { status: 'active' });
+        const stage = await task('Stage', { parent: epic.key, description: '- [x] a\n- [ ] b' });
+        const closed = await task('Closed stage', { parent: epic.key, status: 'done' });
+        const step = await task('Step', { parent: stage.key });
+        const root = await task('Another root');
+
+        const whole = await exec(orchestrator, 'task_list', { sort: 'number' });
+
+        expect(keysOf(whole.tasks)).toEqual([epic.key, stage.key, step.key, root.key]);
+        expect(whole.tasks[0]).toMatchObject({ key: epic.key, children: { todo: 1, done: 1 } });
+        expect(whole.tasks[0]).not.toHaveProperty('parent');
+        expect(whole.tasks[1]).toMatchObject({ key: stage.key, parent: epic.key, children: { todo: 1 }, checklist: { done: 1, total: 2 } });
+        expect(whole.tasks[2]).toMatchObject({ key: step.key, parent: stage.key });
+        expect(whole.tasks[2]).not.toHaveProperty('children');
+        expect(whole.counts).toMatchObject({ todo: 3, active: 1, done: 1 });
+
+        const direct = await exec(orchestrator, 'task_list', { parent: epic.key, sort: 'number' });
+
+        expect(keysOf(direct.tasks)).toEqual([stage.key]);
+        expect(direct).toMatchObject({ total: 1, counts: { todo: 1, done: 1, active: 0 } });
+        expect(keysOf((await exec(orchestrator, 'task_list', { parent: epic.key, all: true, sort: 'number' })).tasks)).toEqual([stage.key, closed.key]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { under: epic.key, all: true, sort: 'number' })).tasks)).toEqual([stage.key, closed.key, step.key]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { under: epic.key, sort: 'number' })).tasks)).toEqual([stage.key, step.key]);
+        expect((await exec(orchestrator, 'task_list', { under: epic.id, all: true })).counts).toMatchObject({ todo: 2, done: 1, active: 0 });
+        expect(keysOf((await exec(orchestrator, 'task_list', { roots: true, sort: 'number' })).tasks)).toEqual([epic.key, root.key]);
+        expect((await exec(orchestrator, 'task_list', { roots: true })).counts).toMatchObject({ todo: 1, active: 1, done: 0 });
+        await expect(exec(orchestrator, 'task_list', { parent: epic.key, roots: true })).rejects.toThrow('give one of them');
+        await expect(exec(orchestrator, 'task_list', { under: 'REP-99' })).rejects.toThrow(/does not exist/);
+    });
+
+    test('deleting a parent shows in the list at once: its children are roots or the grandparent\'s', async () => {
+        const { exec, orchestrator, task, h } = await setup();
+        const epic = await task('Epic');
+        const stage = await task('Stage', { parent: epic.key });
+        const step = await task('Step', { parent: stage.key });
+
+        h.ok('task.delete', { taskId: stage.id });
+        expect((await exec(orchestrator, 'task_get', { taskId: step.key })).task.parent).toEqual({ key: epic.key, title: 'Epic' });
+        h.ok('task.delete', { taskId: epic.id });
+        expect(keysOf((await exec(orchestrator, 'task_list', { roots: true })).tasks)).toEqual([step.key]);
+    });
+
+    test('a canceled dependency is resolved: the waiting task is ready, not blocked, and has no blockedBy', async () => {
+        const { exec, orchestrator, task } = await setup();
+        const first = await task('First');
+        const second = await task('Second', { dependsOn: [first.key] });
+
+        expect((await exec(orchestrator, 'task_list', { blocked: true })).tasks).toMatchObject([{ key: second.key, blockedBy: [first.key] }]);
+        await exec(orchestrator, 'task_update', { taskId: first.key, status: 'canceled' });
+        expect((await exec(orchestrator, 'task_list', { blocked: true })).tasks).toEqual([]);
+        expect(keysOf((await exec(orchestrator, 'task_list', { ready: true })).tasks)).toEqual([second.key]);
+        expect((await exec(orchestrator, 'task_list', { ready: true })).tasks[0]).not.toHaveProperty('blockedBy');
+    });
+
+    test('the tools say how to spell the parent, and refuse a field they do not have', async () => {
+        const { orchestrator, toolsOf } = await setup();
+        const tool = (name: string) => toolsOf(orchestrator).find(candidate => candidate.name === name)!;
+        const properties = (name: string) => (tool(name).inputSchema as { properties: Record<string, { description?: string }> }).properties;
+
+        expect(Object.keys(properties('task_create'))).toContain('parent');
+        expect(Object.keys(properties('task_update'))).toEqual(expect.arrayContaining(['parent', 'clearParent']));
+        expect(Object.keys(properties('task_list'))).toEqual(expect.arrayContaining(['parent', 'under', 'roots']));
+        expect(properties('task_update').clearParent.description).toContain('top-level');
+        await expect(tool('task_update').execute({ taskId: 'REP-1', parentId: 'REP-2' }, new AbortController().signal)).rejects.toThrow(/Invalid input for task_update.*parentId/s);
+    });
+});
+
 describe('ask_user', () => {
     test('a second question while one is open is refused at once, so the first stays answerable', async () => {
         const outcomes: string[] = [];

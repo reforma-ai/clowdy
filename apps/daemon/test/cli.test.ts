@@ -329,6 +329,57 @@ describe('clowdy in an agent\'s shell, against a daemon', () => {
         expect((await shell('clowdy task get REP-99')).code).toBe(1);
     });
 
+    test('puts a task inside another with --parent, lists a part of the tree, and takes a task out again with --clear-parent', async () => {
+        const { shell, json } = await setup();
+        const keys = (answer: { tasks: { key: string }[] }) => answer.tasks.map(row => row.key);
+
+        await json('clowdy task create Epic --description-file - <<\'EOF\'\n- [x] design\n- [ ] build\nEOF');
+
+        expect((await json('clowdy task create "Stage one" --parent REP-1')).task).toMatchObject({ key: 'REP-2', parent: { key: 'REP-1', title: 'Epic' } });
+        await json('clowdy task create "Stage two" --parent REP-1 --status done');
+        await json('clowdy task create Step --parent REP-2');
+        await json('clowdy task create "Another root"');
+
+        expect(keys(await json('clowdy task list --parent REP-1 --sort number'))).toEqual(['REP-2']);
+        expect(keys(await json('clowdy task list --parent REP-1 --all --sort number'))).toEqual(['REP-2', 'REP-3']);
+        expect(keys(await json('clowdy task list --under REP-1 --sort number'))).toEqual(['REP-2', 'REP-4']);
+        expect(keys(await json('clowdy task list --roots --sort number'))).toEqual(['REP-1', 'REP-5']);
+        expect(await json('clowdy task list --under REP-1 --all')).toMatchObject({ total: 3, counts: { todo: 2, done: 1 } });
+        expect((await json('clowdy task list --sort number')).tasks[0]).toMatchObject({ key: 'REP-1', children: { todo: 1, done: 1 }, checklist: { done: 1, total: 2 } });
+        expect((await json('clowdy task get REP-1')).task).toMatchObject({ children: [{ key: 'REP-2' }, { key: 'REP-3' }], childrenTotal: 2, descendants: { todo: 2, done: 1 }, checklist: { done: 1, total: 2 } });
+
+        expect((await json('clowdy task update REP-4 --parent REP-1')).task).toMatchObject({ parent: { key: 'REP-1' } });
+        expect((await json('clowdy task update REP-4 --no-clear-parent --title Stepper')).task).toMatchObject({ title: 'Stepper', parent: { key: 'REP-1' } });
+        expect((await json('clowdy task update REP-4 --clear-parent')).task).not.toHaveProperty('parent');
+        expect(keys(await json('clowdy task list --roots --sort number'))).toEqual(['REP-1', 'REP-4', 'REP-5']);
+
+        const both = await shell('clowdy task update REP-4 --parent REP-1 --clear-parent');
+
+        expect(both.code).toBe(1);
+        expect(both.stderr).toContain('give one of them');
+
+        const loop = await shell('clowdy task update REP-1 --parent REP-2');
+
+        expect(loop.code).toBe(1);
+        expect(loop.stderr).toContain('Task REP-2 is inside REP-1, so it cannot be its parent');
+        expect((await shell('clowdy task create Orphan --parent REP-99')).code).toBe(1);
+
+        // The detach flag is a plain boolean, and --no-parent is not a way to spell it: the parser says what exists.
+        const wrong = await shell('clowdy task update REP-4 --no-parent');
+
+        expect(wrong.code).toBe(2);
+        expect(wrong.stderr).toContain('Unknown option --no-parent');
+        expect(wrong.stderr).toContain('--clear-parent');
+
+        const help = await shell('clowdy task update --help');
+
+        expect(help.stdout).toContain('--clear-parent');
+        expect(help.stdout).toContain('Make the task a top-level task again');
+        expect(help.stdout).toContain('--parent <text>');
+        expect(help.stdout).toContain('clowdy task update CLW-7 --clear-parent');
+        expect((await shell('clowdy task list --help')).stdout).toMatch(/--under <text>\s+Only the tasks anywhere below this task/);
+    });
+
     test('a refused call exits 1 with the daemon\'s message, a bad command line 2, and stdin with nothing in it 2 without hanging', async () => {
         const { chat, shell } = await setup();
 

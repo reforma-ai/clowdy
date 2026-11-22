@@ -31,7 +31,7 @@ export function threadTools({ threads }: ToolDeps, run: Run): ToolDefinition[] {
             model: z.string().optional().describe('The model, in the agent\'s own spelling; default yours when the agent is yours'),
             effort: z.string().optional().describe('The reasoning level, in the agent\'s own spelling'),
             mode: z.enum(['autopilot', 'semi']).optional().describe('autopilot decides alone; semi asks the person at significant forks. Default your mode'),
-            tasks: z.array(taskRef).optional().describe('Tasks the thread works on: it is assigned to them, and waits while their dependencies are not Done'),
+            tasks: z.array(taskRef).optional().describe('Tasks the thread works on: it is assigned to them, and waits while their dependencies are not closed (Done or Canceled)'),
             cwd: z.string().optional().describe('Absolute path of an existing folder the thread works in (a git worktree you made, say); default the folder this chat works in'),
         }), input => ({
             ...threads.spawn(run, input),

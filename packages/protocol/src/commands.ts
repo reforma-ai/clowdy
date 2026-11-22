@@ -123,6 +123,8 @@ export const commandSchema = z.discriminatedUnion('type', [
         description: z.string().optional(),
         statusId: z.string().optional(),
         dependsOn: z.array(z.string()).optional(),
+        /** The task the new one is part of (same project, at most `MAX_TASK_DEPTH` levels deep). */
+        parentId: z.string().optional(),
         /** Link the new task to this chat, as if the orchestrator had created it there. */
         chatId: z.string().optional(),
     }),
@@ -134,7 +136,13 @@ export const commandSchema = z.discriminatedUnion('type', [
         description: z.string().optional(),
         statusId: z.string().optional(),
         dependsOn: z.array(z.string()).optional(),
+        /**
+         * Moves the task, with everything inside it, under this task; `null` makes it a root. Refused (`invalid`) for a task of another project, the task
+         * itself, one of its own descendants, and a result deeper than `MAX_TASK_DEPTH` levels, counting the task's own subtree.
+         */
+        parentId: z.string().nullable().optional(),
     }),
+    /** Deletes the task; the tasks inside it move up to its own parent (a root's become roots). */
     z.object({ ...base, type: z.literal('task.delete'), taskId: z.string() }),
     /** Opens a new chat bound to the task, with an orchestrator run that starts on it now; answers `{ runId, chatId }`. One active run per task unless `force`. */
     z.object({ ...base, type: z.literal('task.start'), taskId: z.string(), engine: engine.optional(), force: z.boolean().optional() }),

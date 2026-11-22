@@ -22,7 +22,7 @@ export const taskHandlers: Pick<Handlers, 'task.create' | 'task.update' | 'task.
     },
 
     /**
-     * Opens a new chat named after the task, linked to it, with an orchestrator assigned to the task (it waits while the task's dependencies are not Done)
+     * Opens a new chat named after the task, linked to it, with an orchestrator assigned to the task (it waits while the task's dependencies are not closed, Done or Canceled)
      * whose first message is the task itself. One active run per task unless `force`: the run of a chat already started from it.
      */
     'task.start': ({ store, runs, driver, agents }, command) => {

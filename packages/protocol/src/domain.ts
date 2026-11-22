@@ -255,6 +255,19 @@ export interface TaskStatus {
 
 export type TaskStatusCategory = 'backlog' | 'todo' | 'active' | 'review' | 'done' | 'canceled';
 
+/** A task in one of these categories is finished: it releases the tasks that wait for it and no longer counts as work in flight. */
+export const CLOSED_TASK_CATEGORIES: readonly TaskStatusCategory[] = ['done', 'canceled'];
+
+export function isClosedCategory(category: TaskStatusCategory): boolean {
+    return CLOSED_TASK_CATEGORIES.includes(category);
+}
+
+/**
+ * How many levels a tree of tasks may have through the daemon's commands and tools: a root is level 1. It is GitHub's limit, so a tracker imported later
+ * fits. The store itself has no limit; moving a task checks the deepest task of its subtree too.
+ */
+export const MAX_TASK_DEPTH = 8;
+
 /** Where a task came from or is mirrored to. The internal list is the source of truth; providers are optional. */
 export interface TaskExternalRef {
     provider: string;
@@ -271,12 +284,16 @@ export interface Task {
     title: string;
     description: string;
     statusId: string;
-    /** Tasks that must be done before this one can start. */
+    /** Tasks that must be closed (done or canceled) before this one can start. */
     dependsOn: TaskId[];
+    /** The task this one is part of; absent for a root. A task may hold tasks down to `MAX_TASK_DEPTH` levels. */
+    parentId?: TaskId;
     createdBy: Actor;
     external?: TaskExternalRef;
     createdAt: number;
     updatedAt: number;
+    /** When the task entered a closed status (`isClosedCategory`); absent while it is open. Unlike `updatedAt` it does not move with every edit. */
+    closedAt?: number;
 }
 
 export type Actor = { kind: 'user' } | { kind: 'run'; runId: RunId } | { kind: 'provider'; provider: string };

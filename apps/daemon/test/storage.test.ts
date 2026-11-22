@@ -8,10 +8,12 @@ import { openDatabase } from '../src/db/connection';
 import { getItem, itemRef, setItemRef } from '../src/db/items';
 import { MIGRATIONS } from '../src/db/migrations';
 import { getRun, getRunWork } from '../src/db/runs';
+import { childIdsOf, deleteTask, getTask, upsertTask } from '../src/db/tasks';
 import { newId } from '../src/ids';
 import { Store } from '../src/store';
 import { cleanTempDirs, tempDir } from './helpers';
 
+import type { Task } from '@clowdy/protocol';
 import type { Migration } from '../src/db/migrations';
 
 afterAll(cleanTempDirs);
@@ -271,6 +273,61 @@ describe('migrations', () => {
         expect(itemRef(db, 'run_1', 1)).toBe('msg_1');
         // The point is the daemon's own: the item a client reads has no trace of it.
         expect(JSON.stringify(getItem(db, 'run_1', 1))).not.toContain('msg_1');
+        db.close();
+    });
+
+    test('version 20 gives the tasks of an older database no parent and, when they are closed, a closing time taken from their last change', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 20));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+
+        for (const [index, category] of ['todo', 'active', 'review', 'done', 'canceled'].entries()) {
+            before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run(`sts_${ category }`, 'prj_1', category, category, index);
+            before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(`tsk_${ category }`, 'prj_1', index + 1, category, `sts_${ category }`, '{"kind":"user"}', 10, 100 + index);
+        }
+
+        before.close();
+
+        const db = openDatabase(path);
+        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(indexes).toContain('tasks_parent');
+
+        for (const category of ['todo', 'active', 'review']) {
+            expect(getTask(db, `tsk_${ category }`)).not.toHaveProperty('closedAt');
+        }
+
+        expect(getTask(db, 'tsk_done')).toMatchObject({ closedAt: 103, updatedAt: 103 });
+        expect(getTask(db, 'tsk_canceled')).toMatchObject({ closedAt: 104, updatedAt: 104 });
+        expect(db.query('SELECT COUNT(*) AS n FROM tasks WHERE parent_id IS NOT NULL').get()).toEqual({ n: 0 });
+        expect(getTask(db, 'tsk_todo')).not.toHaveProperty('parentId');
+        db.close();
+    });
+
+    test('a task keeps its parent and closing time through writes, and a parent that goes clears the column of the tasks inside it', () => {
+        const db = openDatabase(join(tempDir(), 'clowdy.db'));
+
+        db.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'New', 'NEW', 1);
+        db.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_1', 'prj_1', 'To do', 'todo', 0);
+
+        const base: Omit<Task, 'id' | 'number' | 'key'> = { projectId: 'prj_1', title: 'T', description: '', statusId: 'sts_1', dependsOn: [], createdBy: { kind: 'user' }, createdAt: 1, updatedAt: 1 };
+
+        upsertTask(db, { ...base, id: 'tsk_a', number: 1, key: 'NEW-1' });
+        upsertTask(db, { ...base, id: 'tsk_b', number: 2, key: 'NEW-2', parentId: 'tsk_a', closedAt: 5 });
+        expect(getTask(db, 'tsk_b')).toMatchObject({ parentId: 'tsk_a', closedAt: 5 });
+        expect(childIdsOf(db, 'tsk_a')).toEqual(['tsk_b']);
+
+        // The next write replaces both: a task that was reopened and made a root again has neither.
+        upsertTask(db, { ...base, id: 'tsk_b', number: 2, key: 'NEW-2', updatedAt: 2 });
+        expect(getTask(db, 'tsk_b')).not.toHaveProperty('parentId');
+        expect(getTask(db, 'tsk_b')).not.toHaveProperty('closedAt');
+
+        upsertTask(db, { ...base, id: 'tsk_b', number: 2, key: 'NEW-2', parentId: 'tsk_a' });
+        deleteTask(db, 'tsk_a');
+        expect(getTask(db, 'tsk_b')).toBeDefined();
+        expect(getTask(db, 'tsk_b')).not.toHaveProperty('parentId');
         db.close();
     });
 

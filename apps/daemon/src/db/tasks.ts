@@ -11,10 +11,12 @@ interface TaskRow {
     title: string;
     description: string;
     status_id: string;
+    parent_id: string | null;
     created_by: string;
     external: string | null;
     created_at: number;
     updated_at: number;
+    closed_at: number | null;
 }
 
 const SELECT = 'SELECT t.*, p.task_prefix FROM tasks t JOIN projects p ON p.id = t.project_id';
@@ -28,10 +30,12 @@ const toTask = (row: TaskRow, dependsOn: string[]): Task => clean({
     description: row.description,
     statusId: row.status_id,
     dependsOn,
+    parentId: row.parent_id,
     createdBy: JSON.parse(row.created_by),
     external: parseJson(row.external),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    closedAt: row.closed_at,
 }) as Task;
 
 export function dependenciesOf(db: Database, taskId: string): string[] {
@@ -40,6 +44,11 @@ export function dependenciesOf(db: Database, taskId: string): string[] {
 
 export function dependentsOf(db: Database, taskId: string): string[] {
     return (db.query('SELECT task_id FROM task_deps WHERE depends_on_id = ? ORDER BY rowid').all(taskId) as { task_id: string }[]).map(row => row.task_id);
+}
+
+/** The ids of the tasks directly inside `taskId`, in number order. */
+export function childIdsOf(db: Database, taskId: string): string[] {
+    return (db.query('SELECT id FROM tasks WHERE parent_id = ? ORDER BY number').all(taskId) as { id: string }[]).map(row => row.id);
 }
 
 export function getTask(db: Database, id: string): Task | undefined {
@@ -70,13 +79,14 @@ export function listTasks(db: Database, projectId: string): Task[] {
 
 export function upsertTask(db: Database, task: Task): void {
     db.query(`
-        INSERT INTO tasks (id, project_id, number, title, description, status_id, created_by, external, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (id, project_id, number, title, description, status_id, parent_id, created_by, external, created_at, updated_at, closed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description,
-            status_id = excluded.status_id, external = excluded.external, updated_at = excluded.updated_at
+            status_id = excluded.status_id, parent_id = excluded.parent_id, external = excluded.external, updated_at = excluded.updated_at,
+            closed_at = excluded.closed_at
     `).run(
-        task.id, task.projectId, task.number, task.title, task.description, task.statusId,
-        JSON.stringify(task.createdBy), task.external ? JSON.stringify(task.external) : null, task.createdAt, task.updatedAt
+        task.id, task.projectId, task.number, task.title, task.description, task.statusId, task.parentId ?? null,
+        JSON.stringify(task.createdBy), task.external ? JSON.stringify(task.external) : null, task.createdAt, task.updatedAt, task.closedAt ?? null
     );
     db.query('DELETE FROM task_deps WHERE task_id = ?').run(task.id);
 

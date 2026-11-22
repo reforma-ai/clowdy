@@ -1,10 +1,13 @@
+import { MAX_TASK_DEPTH } from '@clowdy/protocol';
 import { z } from 'zod';
 
 import { taskIdsOfChat } from '../db/chats';
 import { listStatuses } from '../db/projects';
-import { dependentsOf, getTask, listTasks } from '../db/tasks';
-import { DEFAULT_LIMIT, isoTime, MAX_LIMIT, parseSince, queryTasks } from '../domain/taskQuery';
+import { childIdsOf, dependentsOf, getTask, listTasks } from '../db/tasks';
+import { parseChecklist } from '../domain/checklist';
+import { countByCategory, DEFAULT_LIMIT, isoTime, MAX_LIMIT, parseSince, queryTasks } from '../domain/taskQuery';
 import { categoryOf, createTask, linkRunTask, resolveTask, updateTask } from '../domain/tasks';
+import { TaskTree } from '../domain/taskTree';
 import { invalid } from '../errors';
 import { defineTool, taskRef } from './tool-kit';
 
@@ -14,6 +17,9 @@ import type { Store } from '../store';
 import type { ToolDeps } from './tool-kit';
 
 const CATEGORIES = 'backlog, todo, active, review, done, canceled';
+
+/** The most children `task_get` names: an epic with hundreds of them would fill the model's context, and `childrenTotal` says how many there are. */
+const MAX_CHILDREN = 50;
 
 const statusField = z.string().optional().describe(`A status: its id, its name ("In progress") or its category (${ CATEGORIES }). task_list shows the project's statuses`);
 
@@ -43,23 +49,48 @@ function statusesNamed(store: Store, projectId: string, value: string): TaskStat
 const authorOf = (actor: Actor) => (actor.kind === 'user' ? 'user' : actor.kind === 'run' ? 'agent' : actor.provider);
 
 /**
- * A task as the models read it: keys everywhere, the status spelled out, what it waits for and what waits for it (each as key, title and status), and who
- * is working on it. The description is whole; a listing leaves it out (`TaskRow`).
+ * What a task holds, as `describeTask` tells it: the tasks directly inside it as key, title and status (at most `MAX_CHILDREN`, with their total), and
+ * every task below it counted by category. Nothing for a task with no children, so a leaf reads as before.
+ */
+function contents(store: Store, task: Task, statuses: readonly TaskStatus[]) {
+    if (childIdsOf(store.db, task.id).length === 0) {
+        return {};
+    }
+
+    const tree = new TaskTree(listTasks(store.db, task.projectId));
+    const children = tree.childrenOf(task.id);
+    const statusOf = (of: Task) => statuses.find(candidate => candidate.id === of.statusId);
+
+    return {
+        children: children.slice(0, MAX_CHILDREN).map(child => ({ key: child.key, title: child.title, status: statusOf(child)?.name })),
+        childrenTotal: children.length,
+        descendants: countByCategory(tree.descendantsOf(task.id).map(({ task: below }) => statusOf(below)?.category ?? 'todo')),
+    };
+}
+
+/**
+ * A task as the models read it: keys everywhere, the status spelled out, what it waits for and what waits for it (each as key, title and status), the task
+ * it is inside and the tasks inside it, and who is working on it. The description is whole; a listing leaves it out (`TaskRow`).
  */
 export function describeTask({ store, runs }: ToolDeps, task: Task) {
     const statuses = listStatuses(store.db, task.projectId);
     const statusName = (of: Task) => statuses.find(candidate => candidate.id === of.statusId)?.name;
     const summaries = (ids: string[]) => ids.flatMap(id => getTask(store.db, id) ?? []).map(related => ({ key: related.key, title: related.title, status: statusName(related) }));
+    const parent = task.parentId === undefined ? undefined : getTask(store.db, task.parentId);
+    const checklist = parseChecklist(task.description);
 
     return {
         id: task.id,
         key: task.key,
         title: task.title,
         description: task.description,
+        ...(checklist && { checklist }),
         status: statusName(task),
         category: categoryOf(store, task),
+        ...(parent && { parent: { key: parent.key, title: parent.title } }),
         dependsOn: summaries(task.dependsOn),
         blocks: summaries(dependentsOf(store.db, task.id)),
+        ...contents(store, task, statuses),
         activeRuns: runs.activeRunsOfTask(task.id).map(run => ({ runId: run.id, name: run.name, role: run.role, status: run.status })),
         createdBy: authorOf(task.createdBy),
         createdAt: isoTime(task.createdAt),
@@ -72,16 +103,19 @@ function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
     const { store, runs } = deps;
 
     return [
-        defineTool('task_get', 'Reads one task: key, title, full description, status, the tasks it depends on and the tasks waiting for it (key, title, status), the runs working on it now, who created it and when it last changed.', z.strictObject({ taskId: taskRef }), input => ({
+        defineTool('task_get', 'Reads one task: key, title, full description (with its checklist count), status, the task it is inside, the tasks inside it (key, title, status; at most 50, with the total, and the tasks below it counted by category), the tasks it depends on and the tasks waiting for it (key, title, status), the runs working on it now, who created it and when it last changed.', z.strictObject({ taskId: taskRef }), input => ({
             task: describeTask(deps, resolveTask(store, run.projectId, input.taskId)),
         }), { cli: { positional: ['taskId'] } }),
 
-        defineTool('task_list', `Lists the project's tasks, one short row each (key, title, status, dependencies, what blocks it, whether a run works on it); task_get has the description. By default it shows the work in flight (todo, active and review), not the backlog and not closed (done, canceled) work: the counts of every category come with the answer, so ask for the rest when you need it. A text query searches every task, closed ones too: use it to find tasks about one thing before you create duplicates. Pages hold ${ DEFAULT_LIMIT } rows unless limit says otherwise (at most ${ MAX_LIMIT }); the answer carries nextCursor while more are left. Newest change first. The first page also lists the project's statuses with their ids.`, z.strictObject({
+        defineTool('task_list', `Lists the project's tasks, one short row each (key, title, status, the task it is inside, dependencies, what blocks it, how many tasks are inside it by category, its checklist count, whether a run works on it); task_get has the description. parent, under and roots each list one part of the tree (give only one of them), and the counts then describe that part. By default it shows the work in flight (todo, active and review), not the backlog and not closed (done, canceled) work: the counts of every category come with the answer, so ask for the rest when you need it. A text query searches every task, closed ones too: use it to find tasks about one thing before you create duplicates. Pages hold ${ DEFAULT_LIMIT } rows unless limit says otherwise (at most ${ MAX_LIMIT }); the answer carries nextCursor while more are left. Newest change first. The first page also lists the project's statuses with their ids.`, z.strictObject({
             query: z.string().optional().describe('Only tasks whose key, title or description contain this text; searches closed tasks too'),
+            parent: taskRef.optional().describe('Only the tasks directly inside this task'),
+            under: taskRef.optional().describe('Only the tasks anywhere below this task: its children, theirs, and so on'),
+            roots: z.boolean().optional().describe('Only the top-level tasks, the ones inside no task'),
             status: z.array(z.string()).optional().describe(`Only tasks in these statuses; each is an id, a status name or a category (${ CATEGORIES })`),
             all: z.boolean().optional().describe('Every task: backlog and closed ones as well (a status filter wins over it)'),
-            ready: z.boolean().optional().describe('Only tasks that can start now: not closed, every dependency done'),
-            blocked: z.boolean().optional().describe('Only tasks that wait for another: not closed, a dependency not done'),
+            ready: z.boolean().optional().describe('Only tasks that can start now: not closed, every dependency closed (done or canceled)'),
+            blocked: z.boolean().optional().describe('Only tasks that wait for another: not closed, a dependency not closed'),
             running: z.boolean().optional().describe('Only tasks a run is working on now'),
             mine: z.boolean().optional().describe('Only tasks linked to this chat: the ones it created and the one it was started from'),
             updatedSince: z.string().optional().describe('Only tasks changed since an ISO date or time (2026-11-01) or a duration back from now (90m, 12h, 7d, 2w)'),
@@ -99,6 +133,8 @@ function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
                 linkedToChat: taskId => mine.has(taskId),
             }, {
                 ...input,
+                parentId: input.parent === undefined ? undefined : resolveTask(store, run.projectId, input.parent).id,
+                underId: input.under === undefined ? undefined : resolveTask(store, run.projectId, input.under).id,
                 statusIds: input.status?.length ? new Set(input.status.flatMap(value => statusesNamed(store, run.projectId, value).map(status => status.id))) : undefined,
                 updatedSince: input.updatedSince === undefined ? undefined : parseSince(input.updatedSince),
             });
@@ -136,11 +172,12 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
     return [
         ...readTaskTools(deps, run),
 
-        defineTool('task_create', 'Creates a task in the project, linked to this chat. Create the tasks it depends on first. It can also make existing tasks wait for the new one. Without a status the task starts in To do.', z.strictObject({
+        defineTool('task_create', 'Creates a task in the project, linked to this chat. Create the tasks it depends on first. It can also make existing tasks wait for the new one, and put the new task inside another one. Without a status the task starts in To do.', z.strictObject({
             title: z.string().min(1).describe('The outcome in a few words'),
             description: z.string().optional().describe('Outcome, Owns, Needs, Check, Out of scope'),
-            dependsOn: z.array(taskRef).optional().describe('Tasks that must be Done before this one can start'),
-            blocks: z.array(taskRef).optional().describe('Existing tasks that depend on the new one: each one waits until it is Done'),
+            dependsOn: z.array(taskRef).optional().describe('Tasks that must be closed (Done or Canceled) before this one can start'),
+            blocks: z.array(taskRef).optional().describe('Existing tasks that depend on the new one: each one waits until it is closed (Done or Canceled)'),
+            parent: taskRef.optional().describe(`The task the new one is part of, such as the epic a stage belongs to; tasks nest up to ${ MAX_TASK_DEPTH } levels`),
             status: statusField,
         }), input => store.tx(() => {
             const task = createTask(store, {
@@ -149,6 +186,7 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
                 description: input.description,
                 statusId: input.status === undefined ? undefined : resolveStatus(store, run.projectId, input.status).id,
                 dependsOn: idsOf(store, run, input.dependsOn),
+                parentId: input.parent === undefined ? undefined : resolveTask(store, run.projectId, input.parent).id,
                 createdBy: { kind: 'run', runId: run.id },
                 chatId: run.chatId,
             });
@@ -164,7 +202,7 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
             return { task: describeTask(deps, task) };
         }), { cli: { positional: ['title'] } }),
 
-        defineTool('task_update', 'Changes a task: its title, its description (replaced, or added to at the end), the tasks it depends on (replaced, or added to and taken from) or its status. Set Done only after the work is verified; a run waiting for this task starts by itself once it is Done.', z.strictObject({
+        defineTool('task_update', 'Changes a task: its title, its description (replaced, or added to at the end), the tasks it depends on (replaced, or added to and taken from), its status, or the task it is inside. Set Done only after the work is verified; a run waiting for this task starts by itself once it is Done or Canceled.', z.strictObject({
             taskId: taskRef,
             title: z.string().min(1).optional(),
             description: z.string().optional().describe('The whole new text; read the task first to keep what is there, or use append'),
@@ -172,6 +210,8 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
             dependsOn: z.array(taskRef).optional().describe('The complete list of tasks this one depends on'),
             addDependsOn: z.array(taskRef).optional().describe('Tasks to add to the ones this task depends on'),
             removeDependsOn: z.array(taskRef).optional().describe('Tasks to take off the ones this task depends on'),
+            parent: taskRef.optional().describe(`Move the task, with the tasks inside it, under this task; tasks nest up to ${ MAX_TASK_DEPTH } levels`),
+            clearParent: z.boolean().optional().describe('Make the task a top-level task again, inside no task (not together with parent)'),
             status: statusField,
         }), input => store.tx(() => {
             if (input.description !== undefined && input.append !== undefined) {
@@ -182,12 +222,17 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
                 throw invalid('dependsOn is the whole list; do not combine it with addDependsOn or removeDependsOn');
             }
 
+            if (input.parent !== undefined && input.clearParent) {
+                throw invalid('parent moves the task under another task and clearParent makes it a top-level task: give one of them');
+            }
+
             const task = resolveTask(store, run.projectId, input.taskId);
             const updated = updateTask(store, task.id, {
                 title: input.title,
                 description: input.append === undefined ? input.description : appended(task.description, input.append),
                 statusId: input.status === undefined ? undefined : resolveStatus(store, run.projectId, input.status).id,
                 dependsOn: dependenciesAfter(store, run, task, input),
+                parentId: input.clearParent ? null : input.parent === undefined ? undefined : resolveTask(store, run.projectId, input.parent).id,
             });
 
             return { task: describeTask(deps, updated) };

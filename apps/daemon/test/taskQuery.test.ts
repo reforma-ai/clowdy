@@ -109,11 +109,23 @@ describe('filters', () => {
         task(6, 'todo', { dependsOn: ['tsk_5'] }),
     ];
 
-    test('ready is open work whose dependencies are all done; blocked is open work with one that is not', () => {
-        expect(keys(list(tasks, { ready: true, sort: 'number' }))).toEqual(['CLW-2', 'CLW-4']);
-        expect(keys(list(tasks, { blocked: true, sort: 'number' }))).toEqual(['CLW-3', 'CLW-6']);
-        expect(keys(list(tasks, { all: true, ready: true, sort: 'number' }))).toEqual(['CLW-2', 'CLW-4']);
+    test('ready is open work whose dependencies are all closed, done or canceled; blocked is open work with one that is not', () => {
+        // CLW-2 waits for a done task and CLW-6 for a canceled one: both are released. CLW-3 waits for CLW-4, which is still in progress.
+        expect(keys(list(tasks, { ready: true, sort: 'number' }))).toEqual(['CLW-2', 'CLW-4', 'CLW-6']);
+        expect(keys(list(tasks, { blocked: true, sort: 'number' }))).toEqual(['CLW-3']);
+        expect(keys(list(tasks, { all: true, ready: true, sort: 'number' }))).toEqual(['CLW-2', 'CLW-4', 'CLW-6']);
         expect(() => list(tasks, { ready: true, blocked: true })).toThrow(/exclude each other/);
+    });
+
+    test('a canceled dependency is not in blockedBy, and a closed task is neither ready nor blocked', () => {
+        const rows = list(tasks, { all: true, sort: 'number' }).tasks;
+
+        expect(rows.find(row => row.key === 'CLW-6')).not.toHaveProperty('blockedBy');
+        expect(rows.find(row => row.key === 'CLW-3')).toMatchObject({ blockedBy: ['CLW-4'] });
+        // CLW-5 is canceled and CLW-1 is done: closed tasks are neither ready nor blocked, whatever they depend on.
+        expect(keys(list(tasks, { all: true, ready: true }))).not.toContain('CLW-5');
+        expect(keys(list(tasks, { all: true, blocked: true }))).not.toContain('CLW-5');
+        expect(keys(list(tasks, { all: true, ready: true }))).not.toContain('CLW-1');
     });
 
     test('running and mine narrow to the tasks a run works on and the ones linked to the chat', () => {
@@ -203,5 +215,98 @@ describe('order and pages', () => {
 
     test('an empty project answers an empty page', () => {
         expect(list([])).toEqual({ tasks: [], total: 0, shown: 0, counts: { backlog: 0, todo: 0, active: 0, review: 0, done: 0, canceled: 0 } });
+    });
+});
+
+describe('the tree', () => {
+    // CLW-1 (epic, in progress)
+    //   CLW-2 done, CLW-3 todo (a checklist), CLW-4 todo
+    //     CLW-5 canceled, CLW-6 review
+    // CLW-7 (another root), CLW-8 (a root, done)
+    const tree = [
+        task(1, 'active', { description: 'Epic\n- [x] plan\n- [ ] build\n- [ ] ship' }),
+        task(2, 'done', { parentId: 'tsk_1' }),
+        task(3, 'todo', { parentId: 'tsk_1', description: '- [x] one\n- [x] two' }),
+        task(4, 'todo', { parentId: 'tsk_1' }),
+        task(5, 'canceled', { parentId: 'tsk_4' }),
+        task(6, 'review', { parentId: 'tsk_4' }),
+        task(7, 'todo'),
+        task(8, 'done'),
+    ];
+
+    test('a row names its parent by key and counts its children by category, leaving out the categories with none; a leaf and a root say nothing', () => {
+        const rows = list(tree, { all: true, sort: 'number' }).tasks;
+        const row = (key: string) => rows.find(candidate => candidate.key === key);
+
+        expect(row('CLW-1')).toMatchObject({ children: { todo: 2, done: 1 } });
+        expect(row('CLW-1')).not.toHaveProperty('parent');
+        expect(row('CLW-4')).toMatchObject({ parent: 'CLW-1', children: { review: 1, canceled: 1 } });
+        expect(row('CLW-6')).toMatchObject({ parent: 'CLW-4' });
+        expect(row('CLW-6')).not.toHaveProperty('children');
+        expect(row('CLW-7')).not.toHaveProperty('parent');
+        expect(row('CLW-7')).not.toHaveProperty('children');
+        // The roll-up counts every direct child, whichever the listing shows.
+        expect(list(tree).tasks.find(candidate => candidate.key === 'CLW-1')?.children).toEqual({ todo: 2, done: 1 });
+    });
+
+    test('a row has a checklist when its description has an item, and not otherwise', () => {
+        const rows = list(tree, { all: true, sort: 'number' }).tasks;
+
+        expect(rows[0].checklist).toEqual({ done: 1, total: 3 });
+        expect(rows[2].checklist).toEqual({ done: 2, total: 2 });
+        expect(rows[1]).not.toHaveProperty('checklist');
+    });
+
+    test('parent lists the direct children, under every task below, and roots the tasks with no parent', () => {
+        expect(keys(list(tree, { parentId: 'tsk_1', all: true, sort: 'number' }))).toEqual(['CLW-2', 'CLW-3', 'CLW-4']);
+        expect(keys(list(tree, { underId: 'tsk_1', all: true, sort: 'number' }))).toEqual(['CLW-2', 'CLW-3', 'CLW-4', 'CLW-5', 'CLW-6']);
+        expect(keys(list(tree, { underId: 'tsk_4', all: true, sort: 'number' }))).toEqual(['CLW-5', 'CLW-6']);
+        expect(keys(list(tree, { roots: true, all: true, sort: 'number' }))).toEqual(['CLW-1', 'CLW-7', 'CLW-8']);
+        expect(keys(list(tree, { parentId: 'tsk_6', all: true }))).toEqual([]);
+    });
+
+    test('the default status scope and the other filters apply on top of the structural scope', () => {
+        // The open children of the epic: the done one stays out unless all, or a status, asks for it.
+        expect(keys(list(tree, { parentId: 'tsk_1', sort: 'number' }))).toEqual(['CLW-3', 'CLW-4']);
+        expect(keys(list(tree, { underId: 'tsk_1', sort: 'number' }))).toEqual(['CLW-3', 'CLW-4', 'CLW-6']);
+        expect(keys(list(tree, { roots: true, sort: 'number' }))).toEqual(['CLW-1', 'CLW-7']);
+        expect(keys(list(tree, { underId: 'tsk_1', statusIds: new Set(['sts_canceled']) }))).toEqual(['CLW-5']);
+        expect(keys(list(tree, { parentId: 'tsk_1', query: 'zzz' }))).toEqual([]);
+        expect(keys(list(tree, { underId: 'tsk_1', ready: true, sort: 'number' }))).toEqual(['CLW-3', 'CLW-4', 'CLW-6']);
+        expect(list(tree, { parentId: 'tsk_1' }).total).toBe(2);
+    });
+
+    test('counts describe the structural scope, before the status scope hides anything; with no scope they are the project\'s', () => {
+        expect(list(tree).counts).toEqual({ backlog: 0, todo: 3, active: 1, review: 1, done: 2, canceled: 1 });
+        expect(list(tree, { parentId: 'tsk_1' }).counts).toEqual({ backlog: 0, todo: 2, active: 0, review: 0, done: 1, canceled: 0 });
+        expect(list(tree, { underId: 'tsk_1' }).counts).toEqual({ backlog: 0, todo: 2, active: 0, review: 1, done: 1, canceled: 1 });
+        expect(list(tree, { roots: true }).counts).toEqual({ backlog: 0, todo: 1, active: 1, review: 0, done: 1, canceled: 0 });
+        expect(list(tree, { parentId: 'tsk_6' }).counts).toEqual({ backlog: 0, todo: 0, active: 0, review: 0, done: 0, canceled: 0 });
+    });
+
+    test('pages and their cursor stay inside the structural scope, with the same total and counts on every page', () => {
+        const query = { underId: 'tsk_1', all: true, sort: 'number', limit: 2 } as const;
+        const first = list(tree, query);
+        const second = list(tree, { ...query, cursor: first.nextCursor });
+        const last = list(tree, { ...query, cursor: second.nextCursor });
+
+        expect([keys(first), keys(second), keys(last)]).toEqual([['CLW-2', 'CLW-3'], ['CLW-4', 'CLW-5'], ['CLW-6']]);
+        expect(last.nextCursor).toBeUndefined();
+        expect([first.total, second.total, last.total]).toEqual([5, 5, 5]);
+        expect([second.counts, last.counts]).toEqual([first.counts, first.counts]);
+    });
+
+    test('parent, under and roots pick different parts of the tree and are not given together', () => {
+        expect(() => list(tree, { parentId: 'tsk_1', underId: 'tsk_1' })).toThrow(/give one of them/);
+        expect(() => list(tree, { roots: true, underId: 'tsk_1' })).toThrow(/give one of them/);
+        expect(() => list(tree, { roots: true, parentId: 'tsk_1' })).toThrow(/give one of them/);
+        expect(() => list(tree, { roots: false, parentId: 'tsk_1' })).not.toThrow();
+    });
+
+    test('a cycle in the data does not loop a listing', () => {
+        const loop = [task(1, 'todo', { parentId: 'tsk_2' }), task(2, 'todo', { parentId: 'tsk_1' })];
+
+        expect(keys(list(loop, { underId: 'tsk_1', sort: 'number' }))).toEqual(['CLW-2']);
+        expect(list(loop, { sort: 'number' }).tasks.map(row => row.parent)).toEqual(['CLW-2', 'CLW-1']);
     });
 });
