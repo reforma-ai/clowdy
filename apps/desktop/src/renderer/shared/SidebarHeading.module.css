@@ -5,18 +5,20 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-md);
+
+    --overhang: calc((var(--leading-xl) - var(--spacing-30)) / 2);
+    --reach: var(--spacing-10);
 }
 
 /*
- * A button is taller than the title's line: it overhangs the row by half the difference instead of stretching it. The same overhang
- * goes to the right edge, so the button is as far from the top of the column as it is from its right edge.
+ * A button's plate is taller than the title's line, so it overhangs the row by half the difference (`--overhang`, negative) instead of stretching it. And the column's own margin
+ * is wider than the plate needs: the plates reach out of it by `--reach`, to the left (the project select) and to the right (the buttons), so with the margin of 16px a plate is
+ * 6px from the column's edge on both sides, and from its top by the margin above the row (`AgentList.module.css`).
  */
 .actions {
-    --overhang: calc((var(--leading-xl) - var(--spacing-30)) / 2);
-
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
     margin-block: var(--overhang);
-    margin-inline-end: var(--overhang);
+    margin-inline-end: calc(var(--reach) * -1);
 }

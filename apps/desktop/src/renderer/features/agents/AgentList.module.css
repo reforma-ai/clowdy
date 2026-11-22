@@ -1,9 +1,11 @@
 /*
  * The same inset as the heading of Documents; the list below has its own 8px, and the rows their own padding. A margin and not padding, so
- * the heading's box is the title's line and its buttons' edges: the archive's list opens under it, as wide as it, close to the buttons.
+ * the heading's box is the title's line and the column's text margins: the archive's list opens under it, as wide as it. The plates of the
+ * select and of the buttons reach out of the box, to stand 6px from the column's edges (`SidebarHeading.module.css`).
  */
 .heading {
-    margin: var(--spacing-xl) var(--spacing-xl) var(--spacing-lg);
+    /* The row's top is where the plates of the select and the buttons stand 6px from the edge: the margin less what they reach and overhang (`SidebarHeading.module.css`). */
+    margin: calc(var(--spacing-xl) - var(--reach) - var(--overhang)) var(--spacing-xl) var(--spacing-lg);
 }
 
 /*
