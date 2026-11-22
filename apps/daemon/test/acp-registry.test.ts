@@ -555,6 +555,12 @@ describe('AgentRegistry', () => {
             expect((await reg.list())[0]?.permissions).toEqual({ presets: [{ id: 'accept-edits', name: 'Accept edits', description: 'Stub edits files' }, { id: 'auto', name: 'Approve for me', description: 'Stub decides' }], default: 'accept-edits' });
             expect(() => reg.update('stub', { permission: 'full' })).toThrow('Stub has no preset called "full"');
 
+            // No choice: the provider's own default, with its mode and environment, though the client's pair would have said `full`.
+            const untouched = await start(reg, 'stub');
+
+            expect(untouched.permission).toEqual({ preset: 'accept-edits', mode: 'files', answer: 'ask' });
+            expect(untouched.env).toMatchObject({ STUB_PERMISSIONS: 'accept-edits' });
+
             reg.update('stub', { permission: 'auto' });
 
             const agent = await start(reg, 'stub');
@@ -578,6 +584,21 @@ describe('AgentRegistry', () => {
             reg.update('stub', { permission: 'ask', env: { STUB_MODE: 'person' } });
 
             expect((await start(reg, 'stub')).env).toMatchObject({ STUB_MODE: 'person' });
+        });
+
+        test('what a preset sets wins over what a setting sets, and the default preset sets it too', async () => {
+            program('codex', 'codex-cli 0.166.0');
+
+            const reg = new AgentRegistry({
+                discovery: discovery(),
+                providers: [{
+                    spec: { id: 'stub', name: 'Stub', programs: ['codex'], launch: { kind: 'binary', args: [] }, settings: [{ id: 'on', label: 'On', description: 'x', default: true, effect: () => ({ env: { STUB_MODE: 'setting', STUB_SETTING: '1' } }) }] },
+                    permissions: { presets: [{ id: 'ask', description: 'x' }], default: 'ask', apply: () => ({ effect: { env: { STUB_MODE: 'preset' } }, answer: 'ask' }) },
+                }],
+            });
+
+            // Nothing chosen: the default preset's effect comes after the setting's, and the setting's other variables stay.
+            expect((await start(reg, 'stub')).env).toMatchObject({ STUB_MODE: 'preset', STUB_SETTING: '1' });
         });
     });
 

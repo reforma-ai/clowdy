@@ -124,7 +124,7 @@ export interface AgentOverride {
     env?: Record<string, string>;
     /** The values the person chose for the agent's settings (`AgentSettingSpec.id`); one not named has its default. */
     settings?: Record<string, boolean>;
-    /** The permission preset the person chose for the agent (`AgentPermissions`); absent when they have not, and the agent then runs as it did before presets. */
+    /** The permission preset the person chose for the agent (`AgentPermissions`); absent when they have not, and the agent then runs on its provider's default. */
     permission?: PermissionPresetId;
 }
 

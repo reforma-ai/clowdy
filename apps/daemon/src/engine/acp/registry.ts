@@ -43,8 +43,7 @@ export interface ResolvedAgent {
     clientMeta?: Record<string, unknown>;
     /**
      * The permission preset the agent runs on and what it means for this start: the person's choice, else the provider's default. Every agent the registry
-     * resolves has one; it is absent only on an agent made without a registry (a test, a probe), which the daemon's own policy then answers
-     * (`CLOWDY_AGENT_PERMISSIONS`).
+     * resolves has one; it is absent only on an agent a test builds without one, which the engine's own policy then answers (`CLOWDY_AGENT_PERMISSIONS`).
      */
     permission?: { preset: PermissionPresetId; mode?: string; answer: 'ask' | 'allow' };
 }
@@ -289,8 +288,7 @@ export class AgentRegistry {
      */
     private permissionPlan(id: string, override: AgentOverride): { permission: NonNullable<ResolvedAgent['permission']>; effect: SettingEffect } {
         const support = this.permissionsOf(id);
-        const chosen = support.presets.some(candidate => candidate.id === override.permission) ? override.permission : undefined;
-        const preset = chosen ?? support.default;
+        const preset = chosenPreset(support, override) ?? support.default;
         const { mode, effect, answer } = support.apply(preset);
 
         return { permission: { preset, ...(mode !== undefined && { mode }), answer }, effect: effect ?? {} };
@@ -532,9 +530,12 @@ function settingsOf(spec: AgentSpec, override: AgentOverride): AgentSetting[] {
     return (spec.settings ?? []).map(setting => ({ id: setting.id, label: setting.label, description: setting.description, value: settingValue(setting, override), default: setting.default }));
 }
 
+/** The person's choice of permission preset, unless the agent no longer offers it (written by hand, or left from a provider that offered more). */
+const chosenPreset = (support: PermissionSupport, override: AgentOverride): PermissionPresetId | undefined => (support.presets.some(preset => preset.id === override.permission) ? override.permission : undefined);
+
 /** The permission presets of an agent for a person to see and pick from: the names are the same for every agent, the descriptions are the agent's own. A chosen preset the agent no longer offers is not shown as chosen. */
 function permissionsInfo(support: PermissionSupport, override: AgentOverride): AgentPermissions {
-    const chosen = support.presets.some(preset => preset.id === override.permission) ? override.permission : undefined;
+    const chosen = chosenPreset(support, override);
 
     return {
         presets: support.presets.map(({ id, description }) => ({ id, name: PERMISSION_PRESET_NAMES[id], description })),
