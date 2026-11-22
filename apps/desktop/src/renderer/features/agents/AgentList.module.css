@@ -79,8 +79,13 @@
  * it, which is what folds the group, with the group's new-chat button at the row's end. It has no icon, so the name starts where the icons of the chats
  * below it do, and a gap above it sets the group apart from the one before. A missing folder's name is the warning's colour.
  */
+/*
+ * The row starts the room of the name's plate (its padding and border, see `.groupName`) earlier than a chat's row does, so the plate fits in the row's label, which
+ * clips what leaves it, and the name's text stands where a chat's icon does.
+ */
 .group {
     margin-block-start: var(--spacing-md);
+    padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) - var(--spacing-xs) - 1px);
     cursor: default;
 }
 
@@ -88,12 +93,32 @@
     color: var(--color-warning-text);
 }
 
+/* A box of its own line and not an inline one: the name inside shrinks to the room the row has, and an inline box would be as wide as the whole name. */
 .groupTitle {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: var(--spacing-xs);
     min-width: 0;
     font-weight: 500;
+}
+
+/*
+ * The name of a group that opens its folder's menu: a button, its plate (on hover) around the text by its padding and border. The box is as much narrower on the right as the
+ * button's padding, so the chevron after it stays as far from the text as it was. A name that is only a label (a page in a browser) has the same room at its start.
+ */
+.groupNameBox {
+    display: inline-flex;
+    min-width: 0;
+    margin-inline-end: calc(-1 * var(--spacing-xs));
+}
+
+.groupName {
+    padding-inline: var(--spacing-xs);
+    font: inherit;
+}
+
+.groupPlainName {
+    padding-inline-start: calc(var(--spacing-xs) + 1px);
 }
 
 .groupFold {

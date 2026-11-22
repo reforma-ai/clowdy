@@ -404,6 +404,36 @@ describe('grouped by folder', () => {
         expect(rowOf(`@empty:${ API.id }`).textContent).toBe('No chats');
     });
 
+    it('opens the menu of the folder from a press on the name of its group, in the desktop app only', async () => {
+        const name = (folderId: string) => rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
+        const menuItems = () => [...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].map(row => row.textContent);
+
+        // A page in a browser has nothing to open a folder in: the name is a label.
+        await restart();
+        expect(name(MAIN)).toBeNull();
+
+        window.desktop = { getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }), openPath: vi.fn(async () => undefined) } as never;
+
+        try {
+            await restart();
+            expect(name(MAIN)?.textContent).toBe('car-rental');
+
+            // The folder the window works in can be opened in the Files tab and the terminal; the project's other folders cannot, the tabs show one folder.
+            await press(name(MAIN)!);
+            expect(menuItems()).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Open in…']);
+
+            // The menu holds the page while it is open: the other folder's is a fresh start.
+            await restart();
+            await press(name(API.id)!);
+            expect(menuItems()).toEqual(['Copy path', 'Open in…']);
+            // The press on the name folds nothing and opens no chat.
+            expect(ui().collapsedFolders).toEqual([]);
+        }
+        finally {
+            window.desktop = undefined;
+        }
+    });
+
     it('folds a group by the chevron after its name and by the arrows, not by a press on the heading, and remembers it', async () => {
         await restart();
         // The heading is a label: a press on its name folds nothing.
