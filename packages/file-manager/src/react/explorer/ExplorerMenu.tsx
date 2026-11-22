@@ -1,11 +1,12 @@
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
 import { Hotkey } from '@clowdy/components/Hotkey';
-import { Menu, MenuItem, MenuSection, MenuSeparator } from '@clowdy/components/List';
+import { Menu, MenuItem, MenuSection, MenuSeparator, SubmenuTrigger } from '@clowdy/components/List';
 import { PanelHeader } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, type UseContextMenuResult } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { Check, Copy, EditPen, Eye, Folder, More, Page, Paste, Trash } from '@clowdy/icons/14';
+import { ChevronRight } from '@clowdy/icons/8';
 import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
 
@@ -22,12 +23,51 @@ export interface FileMenuItem {
     id: string;
     label: string;
     icon?: ReactNode;
-    /** A letter pressed with ⌘ (Ctrl off Mac) runs `onAction` on the focused row or selection, or while the menu is open. Shown beside the label. */
+    /** A letter pressed with ⌘ (Ctrl off Mac) runs `onAction` on the focused row or selection, or while the menu is open. Shown beside the label. Not for an item with `children`. */
     hotkey?: string;
     onAction: () => void;
+    /**
+     * Items that open in a submenu beside this one. The item itself then does nothing when pressed (`onAction` is not called); the ids of the children are unique among
+     * all the items of the menu, and a child has no ⌘ key of its own.
+     */
+    children?: FileMenuItem[];
 }
 
 const HOST_PREFIX = 'host:';
+
+/** The items that run something: a submenu's children, in place of the submenu. */
+function actionItems(items: readonly FileMenuItem[]): FileMenuItem[] {
+    return items.flatMap(item => (item.children ? actionItems(item.children) : [item]));
+}
+
+/** A host's item: a row of the menu, or a row that opens a submenu with its children. */
+function HostMenuItem({ item, onAction }: { item: FileMenuItem; onAction: (key: string) => void }) {
+    if (item.children) {
+        return (
+            <SubmenuTrigger>
+                <MenuItem id={HOST_PREFIX + item.id} icon={item.icon} textValue={item.label} endAffix={<ChevronRight />}>
+                    {item.label}
+                </MenuItem>
+                <Popover spacing="xs">
+                    <Menu aria-label={item.label} size="sm" onAction={key => onAction(String(key))}>
+                        <For each={item.children}>{child => <HostMenuItem key={child.id} item={child} onAction={onAction} />}</For>
+                    </Menu>
+                </Popover>
+            </SubmenuTrigger>
+        );
+    }
+
+    return (
+        <MenuItem
+            id={HOST_PREFIX + item.id}
+            icon={item.icon}
+            textValue={item.label}
+            endAffix={item.hotkey ? <Hotkey hotkey={['mod', item.hotkey]} /> : undefined}
+        >
+            {item.label}
+        </MenuItem>
+    );
+}
 
 function RowMenuContent({ targets, onClose }: { targets: readonly FileEntry[]; onClose: () => void }) {
     const explorer = useExplorer();
@@ -39,7 +79,7 @@ function RowMenuContent({ targets, onClose }: { targets: readonly FileEntry[]; o
         onClose();
 
         if (key.startsWith(HOST_PREFIX)) {
-            hostItems.find(item => HOST_PREFIX + item.id === key)?.onAction();
+            actionItems(hostItems).find(item => HOST_PREFIX + item.id === key)?.onAction();
 
             return;
         }
@@ -105,19 +145,7 @@ function RowMenuContent({ targets, onClose }: { targets: readonly FileEntry[]; o
                             Paste
                         </MenuItem>
                     </Show>
-                    <For each={hostItems}>
-                        {item => (
-                            <MenuItem
-                                key={item.id}
-                                id={HOST_PREFIX + item.id}
-                                icon={item.icon}
-                                textValue={item.label}
-                                endAffix={item.hotkey ? <Hotkey hotkey={['mod', item.hotkey]} /> : undefined}
-                            >
-                                {item.label}
-                            </MenuItem>
-                        )}
-                    </For>
+                    <For each={hostItems}>{item => <HostMenuItem key={item.id} item={item} onAction={handleAction} />}</For>
                 </MenuSection>
                 <Show when={!manager.readonly}>
                     <MenuSeparator />

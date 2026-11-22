@@ -110,3 +110,63 @@ describe('the button that shows and hides the file tree', () => {
         expect(container.querySelector('[role="tree"]')).toBeNull();
     });
 });
+
+describe('the menu of a row', () => {
+    const press = (target: HTMLElement) => act(async () => {
+        target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        target.click();
+    });
+    const rightClick = (target: HTMLElement) => act(async () => {
+        target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 20 }));
+    });
+    const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    const menuItem = (text: string) => menuItems().find(item => item.textContent === text);
+
+    it('draws the items a host adds, and one that has children as a submenu, whose child runs and shuts the menu', async () => {
+        const open = vi.fn();
+        const copy = vi.fn();
+        const parent = vi.fn();
+
+        draw({
+            menuItems: targets => (targets.length === 1
+                ? [
+                    { id: 'open-in', label: 'Open in…', onAction: parent, children: [{ id: 'editor', label: 'Open in Cursor', onAction: open }] },
+                    { id: 'copy-path', label: 'Copy path', onAction: copy },
+                ]
+                : []),
+        });
+        await settle();
+        await rightClick(container.querySelector<HTMLElement>('[role="treeitem"] [draggable="true"]')!);
+
+        // The host's items are after the explorer's own; the one with children is a row that opens a menu, with no child shown yet.
+        expect(menuItem('Open in…')?.getAttribute('aria-haspopup')).toBe('menu');
+        expect(menuItem('Copy path')).not.toBeUndefined();
+        expect(menuItem('Open in Cursor')).toBeUndefined();
+
+        await press(menuItem('Open in…')!);
+
+        expect(menuItem('Open in Cursor')).not.toBeUndefined();
+
+        await press(menuItem('Open in Cursor')!);
+
+        expect(open).toHaveBeenCalledOnce();
+        expect(parent).not.toHaveBeenCalled();
+        expect(copy).not.toHaveBeenCalled();
+        expect(menuItems()).toHaveLength(0);
+    });
+
+    it('runs a flat item of the host as before', async () => {
+        const copy = vi.fn();
+
+        draw({ menuItems: () => [{ id: 'copy-path', label: 'Copy path', onAction: copy }] });
+        await settle();
+        await rightClick(container.querySelector<HTMLElement>('[role="treeitem"] [draggable="true"]')!);
+        await press(menuItem('Copy path')!);
+
+        expect(copy).toHaveBeenCalledOnce();
+        expect(menuItems()).toHaveLength(0);
+    });
+});
