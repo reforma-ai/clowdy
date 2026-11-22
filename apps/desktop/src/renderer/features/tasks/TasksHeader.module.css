@@ -5,7 +5,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-lg);
-    padding: var(--spacing-xl) var(--spacing-xxl) var(--spacing-lg);
+    padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-lg);
 }
 
 .titles {

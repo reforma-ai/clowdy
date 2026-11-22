@@ -5,6 +5,8 @@
     /* The plate of its hover reaches out of the title's line and of the column's margin, as the heading's buttons do (`SidebarHeading.module.css`): the icon stands where the title's first letter stood. */
     margin-inline-start: calc(var(--reach) * -1);
     margin-block: var(--overhang);
+    /* Less padding than a button has, so the icon stands 16px from the column's edge, where the Tasks screen's title starts. */
+    padding-inline-start: calc(var(--spacing-xl) - var(--reach));
 }
 
 /* The main folder's path gives way to the count of the others, which always shows. */

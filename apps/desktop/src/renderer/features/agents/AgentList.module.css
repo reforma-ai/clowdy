@@ -1,14 +1,12 @@
 /*
- * The same inset as the heading of Documents; the list below has its own 8px, and the rows their own padding. A margin and not padding, so
- * the heading's box is the title's line and the column's text margins: the archive's list opens under it, as wide as it. The plates of the
- * select and of the buttons reach out of the box, to stand 8px from the column's edges, in line with the rows' plates (`SidebarHeading.module.css`).
+ * The same inset as the title of the Tasks screen (`TasksHeader`): 16px from the top and the sides, so the two titles stand at one height and as far from the edges of their
+ * plates. The list below has its own 8px, and the rows their own padding. A margin and not padding, so the heading's box is the title's line and the column's text margins:
+ * the archive's list opens under it, as wide as it. The plates of the select and of the buttons reach out of the box, to stand 8px from the column's edges, in line with
+ * the rows' plates (`SidebarHeading.module.css`).
  */
 .heading {
-    /*
-     * The row's top is where the plates of the select and the buttons stand 8px from the edge: the margin less what they reach and overhang. Below, the plates' bottom
-     * meets the list's own 8px, so the gap under them is the gap above them (`SidebarHeading.module.css`).
-     */
-    margin: calc(var(--spacing-xl) - var(--reach) - var(--overhang)) var(--spacing-xl) calc(var(--overhang) * -1);
+    /* The gap under the plates (their overhang, this margin and the list's own 8px) comes out as the gap above them: 13px. */
+    margin: var(--spacing-xl) var(--spacing-xl) var(--spacing-md);
 }
 
 /*
