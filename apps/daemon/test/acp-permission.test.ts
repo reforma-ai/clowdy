@@ -44,6 +44,19 @@ describe('classify', () => {
         expect(classify({ toolCall: { title: 'Move', kind: 'move', locations: [{ path: '/b' }, { path: '/a' }] }, options: OPTIONS }).key).toBe('file:/a\n/b');
     });
 
+    test('a version 2 diff names its files in its changes, a move with the old path and the new', () => {
+        const { subject } = classify({
+            toolCall: {
+                title: 'Edit',
+                kind: 'edit',
+                content: [{ type: 'diff', changes: [{ operation: 'modify', path: '/work/a.ts' }, { operation: 'move', oldPath: '/work/b.ts', path: '/work/c.ts' }] }],
+            },
+            options: OPTIONS,
+        });
+
+        expect(subject).toEqual({ kind: 'file_change', paths: ['/work/a.ts', '/work/b.ts', '/work/c.ts'] });
+    });
+
     test('a change that names no path is a tool like any other', () => {
         expect(classify({ toolCall: { title: 'Write', kind: 'edit' }, options: OPTIONS }).subject).toEqual({ kind: 'tool_use', tool: 'Write' });
     });

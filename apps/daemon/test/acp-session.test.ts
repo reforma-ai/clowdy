@@ -166,6 +166,23 @@ eachProtocol('a turn on an ACP agent', (protocol) => {
             expect(seen.map(request => request.subject)).toEqual([{ kind: 'command', command: 'first' }, { kind: 'command', command: 'second', ...(protocol === 'v2' && { cwd: '/work' }) }]);
         });
 
+        test('a request the agent takes back is answered cancelled, and the asker is told through its signal', async () => {
+            let ended = false;
+            const approve: Approver = (_request, signal) => new Promise((resolve) => {
+                signal.addEventListener('abort', () => {
+                    ended = true;
+                    resolve(undefined);
+                }, { once: true });
+            });
+            const { session } = use({ permission: ask }).start('permcancel', { approve });
+            const events = await collect(session);
+
+            await session.close();
+
+            expect(ended).toBe(true);
+            expect(textOf(events)).toBe('permission: cancelled');
+        });
+
         test('a Stop answers the waiting request cancelled and the asker is told through its signal, so nothing is left hanging', async () => {
             let asked: () => void = () => undefined;
             const waiting = new Promise<void>((resolve) => {

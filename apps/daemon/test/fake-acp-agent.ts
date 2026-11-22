@@ -371,6 +371,25 @@ const app = agent({ name: 'fake-acp-agent' })
                         await say(`permission: ${ answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome }`);
                         break;
                     }
+                    case 'permcancel': {
+                        // The agent takes its request back after a moment (`$/cancel_request`); the client answers it `cancelled`.
+                        const withdraw = new AbortController();
+                        const asked = client.request(methods.client.session.requestPermission, {
+                            sessionId,
+                            toolCall: { toolCallId: `p${ ++calls }`, title: 'Run a command', kind: 'execute', rawInput: { command: 'ls' } },
+                            options: [
+                                { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+                                { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+                            ],
+                        }, { cancellationSignal: withdraw.signal });
+
+                        setTimeout(() => withdraw.abort(), 150);
+
+                        const answer = await asked;
+
+                        await say(`permission: ${ answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome }`);
+                        break;
+                    }
                     case 'perm2': {
                         // Two requests at once, as an agent that runs two tools in parallel sends them.
                         const ask = (title: string) => client.request(methods.client.session.requestPermission, {

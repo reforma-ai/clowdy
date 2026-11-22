@@ -52,9 +52,10 @@ export interface LayerHost {
     offerTitle(title: string): void;
     /**
      * The option of a permission request the agent is answered with, or `undefined` to cancel the request. It may wait for the person (an agent on a preset that
-     * asks), and ends when the session does: whatever the agent asked while it was being stopped is answered `undefined`.
+     * asks), and ends when the session does (whatever the agent asked while it was being stopped is answered `undefined`) or when `withdrawn` aborts: the
+     * agent took the request back with `$/cancel_request`, and ACP has the client answer it `cancelled`.
      */
-    pickPermission(request: PermissionParams): Promise<string | undefined>;
+    pickPermission(request: PermissionParams, withdrawn: AbortSignal): Promise<string | undefined>;
     /** Moves the prompt along and wakes the steers that wait for it. A turn that begins after the last one ended moves it to `running` again. */
     promptIs(state: Exclude<PromptState, 'before'>): void;
     /** Whether the prompt is with the agent. */

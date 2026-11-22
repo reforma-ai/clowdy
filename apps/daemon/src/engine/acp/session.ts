@@ -503,7 +503,7 @@ export class AcpSession implements EngineSession {
             deps,
             openBridge: () => this.access,
             offerTitle: title => this.offerTitle(title),
-            pickPermission: request => this.pickPermission(agent, request),
+            pickPermission: (request, withdrawn) => this.pickPermission(agent, request, withdrawn),
             promptIs: state => this.promptIs(state),
             promptRunning: () => this.prompt === 'running',
             record: () => this.record(),
@@ -518,9 +518,10 @@ export class AcpSession implements EngineSession {
      * What the agent is answered when it asks for permission. An agent on a preset that asks (`ResolvedAgent.permission.answer`) has the request put to
      * the person through the run (`EngineStartOptions.approve`) and is answered with the option of what they decided; any other agent, and one run with
      * no `approve` (an engine used without the run runtime), is answered by the daemon's policy: the first option of the kinds it takes. A request that
-     * comes while the session is ending, or is withdrawn, is answered with nothing, which the layer turns into `cancelled`.
+     * comes while the session is ending, or is withdrawn (by the end of the session, or by the agent: `withdrawn`), is answered with nothing, which the
+     * layer turns into `cancelled`.
      */
-    private async pickPermission(agent: ResolvedAgent, request: PermissionParams): Promise<string | undefined> {
+    private async pickPermission(agent: ResolvedAgent, request: PermissionParams, withdrawn: AbortSignal): Promise<string | undefined> {
         const { approve } = this.options;
         const answer = agent.permission?.answer;
 
@@ -528,12 +529,14 @@ export class AcpSession implements EngineSession {
             return this.policyOption(request.options, answer === 'allow' ? 'allow' : this.deps.permissions);
         }
 
-        if (this.signal.aborted) {
+        const ended = AbortSignal.any([this.signal, withdrawn]);
+
+        if (ended.aborted) {
             return undefined;
         }
 
         try {
-            const decision = await approve(classify(request), this.signal);
+            const decision = await approve(classify(request), ended);
 
             return decision && optionFor(request.options, decision);
         }

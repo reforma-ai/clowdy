@@ -570,8 +570,8 @@ export class V2Layer implements ProtocolLayer {
                     channel.push({ kind: 'update', update: params.update, from: params.sessionId });
                 }
             })
-            .onRequest(methods.client.session.requestPermission, async ({ params }) => {
-                const optionId = await host.pickPermission(paramsOfV2(params));
+            .onRequest(methods.client.session.requestPermission, async ({ params, signal }) => {
+                const optionId = await host.pickPermission(paramsOfV2(params), signal);
 
                 return { outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId } };
             });

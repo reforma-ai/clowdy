@@ -60,11 +60,22 @@ function commandOf(input: unknown): string | undefined {
     return undefined;
 }
 
+/** The files a diff in a call's content is about: its own `path` (version 1), or the paths of its `changes` (version 2: a move names the old path and the new). */
+function diffPaths(entry: unknown): (string | undefined)[] {
+    if (!isRecord(entry) || entry.type !== 'diff') {
+        return [];
+    }
+
+    const changes = Array.isArray(entry.changes) ? entry.changes.filter(isRecord).flatMap(change => [text(change.oldPath), text(change.path)]) : [];
+
+    return [text(entry.path), ...changes];
+}
+
 /** The paths a change names: the call's own locations, the files its diffs are about, and the path of its input. Each once, in the order met. */
 function pathsOf({ locations, content, rawInput }: PermissionParams['toolCall']): string[] {
     const found = [
         ...(locations ?? []).map(location => text(location?.path)),
-        ...(content ?? []).map(entry => (isRecord(entry) && entry.type === 'diff' ? text(entry.path) : undefined)),
+        ...(content ?? []).flatMap(diffPaths),
         firstText(rawInput, ['file_path', 'filePath', 'path']),
     ];
 

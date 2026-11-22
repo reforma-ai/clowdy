@@ -7,7 +7,7 @@ import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, 
 import { getTask } from '../db/tasks';
 import { appendItem, updateItem } from '../domain/items';
 import { categoryOf, linkRunTask, moveTask, requireTask } from '../domain/tasks';
-import { conflict, invalid, notFound, unavailable } from '../errors';
+import { conflict, errorMessage, invalid, notFound, unavailable } from '../errors';
 import { newId } from '../ids';
 import { EngineLimits } from './limits';
 import { killSurvivor, signalProcess } from './processes';
@@ -461,10 +461,11 @@ export class RunService {
      * Puts an agent's permission request to the person: an `approval` item in the run's stream, the run parked in `waiting_user` while it waits (several
      * can be open at once, and a question beside them), and the decision as the answer. A request the person allowed for the rest of the run (`allow_always`
      * of an earlier one with the same key) is answered `allow_once` at once, with no item. `undefined` when the request was withdrawn: `signal` ended
-     * (a Stop, the session closing), and its item is marked `cancelled`. Never rejects.
+     * (a Stop, the session closing, the agent taking the request back), and its item is marked `cancelled`; a request with no answer the person could
+     * give (the agent's options have no kind that maps to a decision) is not put to anyone and is withdrawn the same way. Never rejects.
      */
     async askApproval(runId: string, request: ApprovalRequest, signal: AbortSignal): Promise<ApprovalDecision | undefined> {
-        if (signal.aborted) {
+        if (signal.aborted || request.decisions.length === 0) {
             return undefined;
         }
 
@@ -474,10 +475,15 @@ export class RunService {
 
         const approvalId = newId('apv');
         const { key, decisions, ...shown } = request;
-        const decided = new Promise<ApprovalDecision | undefined>((resolve) => {
-            this.approvals.set(approvalId, { key, resolve });
-            signal.addEventListener('abort', () => resolve(undefined), { once: true });
-        });
+        const { promise: decided, resolve: settle } = Promise.withResolvers<ApprovalDecision | undefined>();
+        const withdraw = () => settle(undefined);
+        const forget = () => {
+            this.approvals.delete(approvalId);
+            signal.removeEventListener('abort', withdraw);
+        };
+
+        this.approvals.set(approvalId, { key, resolve: settle });
+        signal.addEventListener('abort', withdraw, { once: true });
 
         try {
             this.waitForPerson(runId, 'Waiting for your approval', () => appendItem(this.store, runId, {
@@ -491,18 +497,18 @@ export class RunService {
             }));
         }
         catch (error) {
-            this.approvals.delete(approvalId);
-            console.warn(`[clowdy] an approval of run ${ runId } could not be put to the person: ${ error instanceof Error ? error.message : String(error) }`);
+            forget();
+            console.warn(`[clowdy] an approval of run ${ runId } could not be put to the person: ${ errorMessage(error) }`);
 
             return undefined;
         }
 
         const decision = await decided;
 
-        this.approvals.delete(approvalId);
+        forget();
 
         if (decision === undefined) {
-            this.settleApproval(runId, approvalId, 'cancelled');
+            this.cancelApproval(runId, approvalId);
         }
 
         const parked = this.endWait(runId);
@@ -569,28 +575,29 @@ export class RunService {
             }
 
             updateItem(this.store, runId, item.seq, { ...item.body, state: 'decided', decision });
+            this.store.afterCommit(() => {
+                if (decision === 'allow_always') {
+                    this.grants.set(runId, (this.grants.get(runId) ?? new Set()).add(waiting.key));
+                }
 
-            if (decision === 'allow_always') {
-                this.grants.set(runId, (this.grants.get(runId) ?? new Set()).add(waiting.key));
-            }
-
-            this.store.afterCommit(() => waiting.resolve(decision));
+                waiting.resolve(decision);
+            });
         });
     }
 
-    /** Marks an approval item that is still open as `state`, for a request that ended without a decision. The store may be gone already when the daemon stops. */
-    private settleApproval(runId: string, approvalId: string, state: 'cancelled' | 'expired'): void {
+    /** Marks an approval item that is still open `cancelled`, for a request that ended without a decision. The store may be gone already when the daemon stops. */
+    private cancelApproval(runId: string, approvalId: string): void {
         try {
             this.store.tx(() => {
                 const item = findApproval(this.store.db, runId, approvalId);
 
                 if (item?.body.kind === 'approval' && item.body.state === 'open') {
-                    updateItem(this.store, runId, item.seq, { ...item.body, state });
+                    updateItem(this.store, runId, item.seq, { ...item.body, state: 'cancelled' });
                 }
             });
         }
         catch (error) {
-            console.warn(`[clowdy] approval ${ approvalId } of run ${ runId } could not be marked ${ state }: ${ error instanceof Error ? error.message : String(error) }`);
+            console.warn(`[clowdy] approval ${ approvalId } of run ${ runId } could not be marked cancelled: ${ errorMessage(error) }`);
         }
     }
 

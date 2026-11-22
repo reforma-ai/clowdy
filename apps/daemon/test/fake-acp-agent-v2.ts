@@ -855,6 +855,30 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
                     await say(`permission: ${ answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome }`);
                     break;
                 }
+                case 'permcancel': {
+                    // The agent takes its request back after a moment (`$/cancel_request`); the client answers it `cancelled`.
+                    const withdraw = new AbortController();
+
+                    await send(state(session, { state: 'requires_action' }));
+
+                    const asked = client.request(methods.client.session.requestPermission, {
+                        sessionId,
+                        title: 'Run a command',
+                        subject: { type: 'command', command: 'ls', cwd: '/work' },
+                        options: [
+                            { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+                            { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+                        ],
+                    }, { cancellationSignal: withdraw.signal });
+
+                    setTimeout(() => withdraw.abort(), 150);
+
+                    const answer = await asked;
+
+                    await send(state(session, { state: 'running' }));
+                    await say(`permission: ${ answer.outcome.outcome === 'selected' ? answer.outcome.optionId : answer.outcome.outcome }`);
+                    break;
+                }
                 case 'perm2': {
                     // Two requests at once, as an agent that runs two tools in parallel sends them; the second is a command subject, the other kind a v2 request carries.
                     const options = [

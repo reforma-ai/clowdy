@@ -114,8 +114,8 @@ export class V1Layer implements ProtocolLayer {
                     channel.push({ kind: 'update', update: params.update });
                 }
             })
-            .onRequest(methods.client.session.requestPermission, async ({ params }) => {
-                const optionId = await host.pickPermission(params);
+            .onRequest(methods.client.session.requestPermission, async ({ params, signal }) => {
+                const optionId = await host.pickPermission(params, signal);
 
                 return { outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId } };
             });

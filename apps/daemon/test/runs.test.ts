@@ -8,7 +8,7 @@ import { appendItem } from '../src/domain/items';
 import { QUEUE_REASON } from '../src/runs/scheduler';
 import { describeItem, threadState } from '../src/runs/threads';
 import { BACKGROUND_REASON, canTransition, NEEDS_REASON, TRANSITIONS } from '../src/runs/transitions';
-import { cleanTempDirs, GateEngine, gateEngines, Harness, restartHarness, startHarness, waitFor } from './helpers';
+import { cleanTempDirs, GateEngine, gateEngines, Harness, restartHarness, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
 
 import type { BackgroundItem, ClowdyEvent, RunStatus, StreamItemBody } from '@clowdy/protocol';
 import type { ApprovalRequest } from '../src/engine/types';
@@ -155,9 +155,9 @@ describe('waiting for background work', () => {
         return { h, project, runs, create };
     }
 
-    test('is entered from running, and leaves by queued or an end, never straight to running', () => {
+    test('is entered from running (or from a run parked for the person, whose turn ends with a request open), and leaves by queued or an end, never straight to running', () => {
         for (const from of Object.keys(TRANSITIONS) as RunStatus[]) {
-            expect(canTransition(from, 'waiting_background')).toBe(from === 'running' || from === 'waiting_background');
+            expect(canTransition(from, 'waiting_background')).toBe(from === 'running' || from === 'waiting_user' || from === 'waiting_background');
         }
 
         // It repeats to refresh its reason, and a session that fails for a moment is retried through `blocked`.
@@ -476,6 +476,45 @@ describe('approvals of the agent', () => {
         expect(approvalsOf(h, runId)[0]).toMatchObject({ state: 'cancelled' });
         expect(approvalsOf(h, runId)[0]).not.toHaveProperty('decision');
         expect(h.send('run.decide', { runId, approvalId, decision: 'allow_once' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    });
+
+    test('a request whose options the person could not answer is not put to anyone, and the agent is told it was withdrawn', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+
+        expect(await runs.askApproval(runId, request('ls', { decisions: [] }), live().signal)).toBeUndefined();
+        expect(approvalsOf(h, runId)).toHaveLength(0);
+        expect(h.run(runId).status).toBe('running');
+    });
+
+    test('a turn that ends while a request is open ends the run, and the card is withdrawn with the session', async () => {
+        const engine = new ScriptEngine(async function* ({ options, signal }) {
+            yield { type: 'session', sessionId: 's-1' };
+            // A request for work in the background, still open when the agent's turn ends; the session's own signal ends with the session.
+            void options.approve!(request('ls'), signal);
+            yield { type: 'done', result: 'ok' };
+        });
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+
+        harnesses.push(h);
+
+        const { id: projectId } = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to end');
+        await waitFor(() => approvalsOf(h, runId)[0]?.state === 'cancelled', 'the card to be withdrawn');
+    });
+
+    test('a turn that ends with background work open, while a request is open, waits for it, and the card can still be decided without the run taking a slot', async () => {
+        const { h, runs, create } = await runningRun();
+        const runId = create();
+        const asked = runs.askApproval(runId, request('ls'), live().signal);
+
+        expect(runs.setStatus(runId, 'waiting_background', { reason: BACKGROUND_REASON }).status).toBe('waiting_background');
+        h.ok('run.decide', { runId, approvalId: approvalsOf(h, runId)[0]!.approvalId, decision: 'allow_once' });
+        expect(await asked).toBe('allow_once');
+        expect(h.run(runId).status).toBe('waiting_background');
     });
 
     test('a request that comes after the stop is not put to anyone', async () => {
