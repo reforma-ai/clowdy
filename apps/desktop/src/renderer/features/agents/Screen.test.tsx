@@ -3,13 +3,14 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID, type FixtureData } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace, type FixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys, installDispatcher } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 
+import type { ProjectInfo } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
@@ -1199,5 +1200,97 @@ describe('threads', () => {
         await press(menuItem('Delete'));
 
         expect(openConfirmModal).toHaveBeenCalledWith(expect.objectContaining({ message: '"Ship the checkout", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.' }));
+    });
+});
+
+describe('a chat that works in a worktree', () => {
+    const mark = (key: string) => rowOf(key).querySelector<HTMLElement>('[role="img"][aria-label*="worktree"]');
+
+    async function restart(transport = new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) })) {
+        act(() => reactRoot.unmount());
+        store.dispose();
+        reactRoot = createRoot(container);
+        store = new RootStore(transport, { storage: memoryStorage() });
+        await store.load();
+        await draw();
+    }
+
+    /** The fixture daemon with a chat in a worktree, and what it reads of the project's worktrees as `set` last said (`undefined`: nothing). */
+    function reading(workspaces: ProjectInfo['workspaces'], change?: (data: FixtureData) => void) {
+        const data = withFixtureWorkspace(createFixtureData());
+
+        change?.(data);
+
+        const transport = new FixtureTransport({ data });
+        const read = vi.spyOn(transport, 'getProjectsInfo');
+        let current = workspaces;
+
+        read.mockImplementation(async projectId => (await FixtureTransport.prototype.getProjectsInfo.call(transport, projectId)).map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, workspaces: current } : entry)));
+
+        return { transport, read, set: (next: ProjectInfo['workspaces']) => void (current = next) };
+    }
+
+    it('has a branch mark after its title, with its branch in the mark\'s title, and no other row has one', async () => {
+        await restart();
+
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on clowdy/ab12cd34');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.querySelector('svg')).not.toBeNull();
+        expect(rowKeys().filter(key => key && mark(key))).toEqual([FIXTURE_WORKSPACE_CHAT_ID]);
+        // The title stays what the row is called, with the mark after it.
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).textContent).toContain('Weekend surcharge in a worktree');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.previousElementSibling?.textContent).toBe('Weekend surcharge in a worktree');
+    });
+
+    it('says the branch the worktree has now, as the daemon read it, and not the one it was made with', async () => {
+        await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' }]).transport);
+
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on feature/other');
+    });
+
+    it('reads what the daemon knows again when the window gets focus, for the branch an agent switched to meanwhile', async () => {
+        const { transport, read, set } = reading([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' }]);
+
+        await restart(transport);
+
+        const everything = () => read.mock.calls.filter(([projectId]) => projectId === undefined).length;
+        const reads = everything();
+
+        set([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'hotfix' }]);
+        await act(async () => {
+            window.dispatchEvent(new Event('focus'));
+        });
+        await draw();
+
+        expect(everything()).toBeGreaterThan(reads);
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on hotfix');
+    });
+
+    it('says the worktree is gone when the daemon says it is no longer on the disk', async () => {
+        await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: false }]).transport);
+
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector('[role="img"]')?.getAttribute('title')).toBe('The worktree no longer exists');
+    });
+
+    it('falls back to the branch it was made with when the read has no word on the worktree, and to a plain line when it was made with none', async () => {
+        await restart(reading(undefined).transport);
+
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on clowdy/ab12cd34');
+
+        await restart(reading(undefined, data => void delete data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace!.branch).transport);
+
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree');
+    });
+
+    it('shows the chat\'s folder, where it works and the branch read only under its message box, from the chat\'s own workspace', async () => {
+        await restart();
+        await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
+
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe(FIXTURE_WORKSPACE_CHAT_ID);
+        expect(container.querySelector('[aria-label="Where it runs: Worktree"]')?.textContent).toBe('Worktree');
+        await vi.waitFor(() => expect(container.querySelector('[aria-label="Branch: clowdy/ab12cd34"]')).not.toBeNull());
+
+        await draw(() => ui().openChat('c-1'));
+
+        expect(container.querySelector('[aria-label="Where it runs: Project checkout"]')?.textContent).toBe('Project checkout');
     });
 });

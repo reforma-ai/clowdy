@@ -9,10 +9,11 @@ const POLL_MS = 10_000;
 
 /**
  * What the daemon reads about each project (`getProjectsInfo`): asked when the page opens, when the list of projects changes and, unless `poll` is
- * off, every ten seconds while the window is visible. A failed read keeps what was known, and `failed` says the last one did. With `enabled` off
+ * off, every ten seconds while the window is visible. With `refreshOnFocus` it is asked again each time the window gets focus, for a page that does not poll but names what
+ * changes while the app is in the background. A failed read keeps what was known, and `failed` says the last one did. With `enabled` off
  * nothing is read (a screen that needs the answer only sometimes).
  */
-export function useProjectsInfo({ enabled = true, poll = true }: { enabled?: boolean; poll?: boolean } = {}): { info: ReadonlyMap<ProjectId, ProjectInfo>; failed: boolean } {
+export function useProjectsInfo({ enabled = true, poll = true, refreshOnFocus = false }: { enabled?: boolean; poll?: boolean; refreshOnFocus?: boolean } = {}): { info: ReadonlyMap<ProjectId, ProjectInfo>; failed: boolean } {
     const root = useRootStore();
     const [info, setInfo] = useState<ReadonlyMap<ProjectId, ProjectInfo>>(new Map());
     const [failed, setFailed] = useState(false);
@@ -39,6 +40,14 @@ export function useProjectsInfo({ enabled = true, poll = true }: { enabled?: boo
     useEffect(() => {
         if (enabled) reload();
     }, [enabled, reload, projects]);
+
+    useEffect(() => {
+        if (!enabled || !refreshOnFocus) return undefined;
+
+        window.addEventListener('focus', reload);
+
+        return () => window.removeEventListener('focus', reload);
+    }, [enabled, refreshOnFocus, reload]);
 
     useEffect(() => {
         const timer = enabled && poll

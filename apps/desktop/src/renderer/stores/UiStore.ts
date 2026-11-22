@@ -3,7 +3,7 @@ import { makeAutoObservable, observableRef, reaction } from 'mobx';
 import { readStored, removeStored, writeStored, type KeyValueStorage } from './storage';
 import { revealTask, type RevealTasks } from './taskReveal';
 
-import type { ChatId, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
+import type { ChatId, ChatWorkspaceChoice, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
 
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
 export const SETTINGS_PAGES = ['appearance', 'chat', 'files', 'shortcuts', 'projects', 'providers', 'skills'] as const;
@@ -36,6 +36,8 @@ export interface ProjectView {
     draft: boolean;
     /** Agents: the folder the new chat is for, `null` for the main folder. Meaningful only with `draft`. */
     draftFolderId: FolderId | null;
+    /** Agents: where the new chat works in its folder, `null` for the folder's own checkout. Meaningful only with `draft`. */
+    draftWorkspace: ChatWorkspaceChoice | null;
 }
 
 interface StoredProjectUi {
@@ -108,6 +110,12 @@ export class ProjectUi {
     draft = false;
     /** Agents: the folder the new-chat page is for, `null` for the main folder. Not kept between sessions. */
     draftFolderId: FolderId | null = null;
+    /**
+     * Agents: where the new-chat page's chat works in that folder: `null` is Project checkout, the folder itself; `{ mode: 'new' }` a worktree the chat's first turn makes (from `base`,
+     * the folder's default branch when it has none), `{ mode: 'existing' }` one of the folder's worktrees. It is a choice about one folder, so it goes back to Project checkout when the
+     * folder changes. Not kept between sessions.
+     */
+    draftWorkspace: ChatWorkspaceChoice | null = null;
     /** Agents: the chats whose threads the person opened in the list. A chat that is not here is folded, which is how every chat starts. */
     expandedChats: readonly ChatId[] = [];
     /**
@@ -182,7 +190,7 @@ export class ProjectUi {
         }
 
         Object.assign(this, initial);
-        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, expandedChats: observableRef, collapsedFolders: observableRef, tasksCollapsed: observableRef });
+        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, draftWorkspace: observableRef, expandedChats: observableRef, collapsedFolders: observableRef, tasksCollapsed: observableRef });
         reaction(
             (): StoredProjectUi => ({
                 chatId: this.chatId,
@@ -212,17 +220,19 @@ export class ProjectUi {
             runId: this.runId,
             draft: this.draft,
             draftFolderId: this.draftFolderId,
+            draftWorkspace: this.draftWorkspace,
         };
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ chatId, runId, draft, draftFolderId }: ProjectView): void {
+    show({ chatId, runId, draft, draftFolderId, draftWorkspace }: ProjectView): void {
         if (chatId !== this.chatId || runId !== this.runId || draft !== this.draft) this.showChat();
 
         this.chatId = chatId;
         this.runId = runId;
         this.draft = draft;
         this.draftFolderId = draftFolderId;
+        this.draftWorkspace = draftWorkspace;
     }
 
     /** Shows the chat; `null` leaves none selected. */
@@ -232,6 +242,7 @@ export class ProjectUi {
         this.runId = null;
         this.draft = false;
         this.draftFolderId = null;
+        this.draftWorkspace = null;
     }
 
     /**
@@ -244,15 +255,28 @@ export class ProjectUi {
         this.runId = null;
         this.draft = true;
         this.draftFolderId = folderId;
+        this.draftWorkspace = null;
 
         if (attach.length > 0) this.pendingFiles = [...this.pendingFiles, ...attach];
     }
 
-    /** Changes the folder the new-chat page is for, `null` for the main folder. Only with that page open: the folder is no part of any other place. */
+    /**
+     * Changes the folder the new-chat page is for, `null` for the main folder. Only with that page open: the folder is no part of any other place. Another folder is another
+     * repository, so what was chosen for the first (its base branch, its worktree) goes back to Project checkout.
+     */
     setDraftFolder(folderId: FolderId | null): void {
         if (!this.draft) return;
 
+        if (folderId !== this.draftFolderId) this.draftWorkspace = null;
+
         this.draftFolderId = folderId;
+    }
+
+    /** Changes where the new chat works in its folder, `null` for the folder's own checkout. Only with the new-chat page open. */
+    setDraftWorkspace(choice: ChatWorkspaceChoice | null): void {
+        if (!this.draft) return;
+
+        this.draftWorkspace = choice;
     }
 
     /** The files `openDraft` was given, handed over once: the next call finds none. */
@@ -303,6 +327,7 @@ export class ProjectUi {
         this.runId = runId;
         this.draft = false;
         this.draftFolderId = null;
+        this.draftWorkspace = null;
     }
 
     /** Opens or folds the threads of a chat in the list. */

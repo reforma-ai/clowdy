@@ -29,7 +29,7 @@ import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
 import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
 
-import type { Chat, ChatId, ChatMode, FolderId, ProjectId, QueuedMessage, Run } from '@clowdy/protocol';
+import type { Chat, ChatId, ChatMode, ChatWorkspaceChoice, FolderId, ProjectId, QueuedMessage, Run } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
 import type { ReplyMessage } from '../../stream/MessageActions';
 
@@ -75,10 +75,11 @@ export interface ComposerProps {
     /** The chat's orchestrator, once the first message started one. While it works the mode stays as it is. */
     run: Run | undefined;
     /**
-     * For the new-chat page: the project the chat is made in, the folder of it the chat works in (none: the main folder), what to do once its first
-     * message is sent, and what the project asks a new chat to start with (its agent and its mode; what it leaves out starts where the last chat left off).
+     * For the new-chat page: the project the chat is made in, the folder of it the chat works in (none: the main folder) and where in that folder (`workspace`: a
+     * worktree the chat makes or one that exists; none: the folder's own checkout), what to do once its first message is sent, and what the project asks a new chat to
+     * start with (its agent and its mode; what it leaves out starts where the last chat left off).
      */
-    start?: { projectId: ProjectId; folderId?: FolderId; onStarted: (chatId: ChatId) => void; defaults?: { engine?: string; mode?: ChatMode } };
+    start?: { projectId: ProjectId; folderId?: FolderId; workspace?: ChatWorkspaceChoice; onStarted: (chatId: ChatId) => void; defaults?: { engine?: string; mode?: ChatMode } };
     /** How many lines the empty field is tall (it still grows with the text). One by default. */
     minLines?: number;
     /** The box of an edit frame (see `EditMode`) in place of the chat's message box. */
@@ -112,10 +113,11 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
     const [rememberedMode, setRememberedMode] = useState(readRememberedMode);
     const [pickedMode, setPickedMode] = useState<{ projectId: ProjectId | undefined; mode: ChatMode }>();
     const draftMode = pickedMode && pickedMode.projectId === start?.projectId ? pickedMode.mode : startingMode(start?.defaults?.mode, rememberedMode);
-    // The chat a first message made, when sending the message then failed. It belongs to the project and the folder it was made in: the page of
-    // another project or folder (the same composer, drawn again) starts its own chat, and a model picked there is not picked for this one.
-    const [madeIn, setMade] = useState<Chat>();
-    const made = madeIn?.projectId === start?.projectId && madeIn?.folderId === start?.folderId ? madeIn : undefined;
+    // The chat a first message made, when sending the message then failed. It belongs to the project, the folder and the place in it (`where`: its worktree is fixed from
+    // the start) it was made for: the page of another project, folder or place (the same composer, drawn again) starts its own chat, and a model picked there is not picked for this one.
+    const where = JSON.stringify(start?.workspace ?? null);
+    const [madeIn, setMade] = useState<{ chat: Chat; where: string }>();
+    const made = madeIn?.chat.projectId === start?.projectId && madeIn?.chat.folderId === start?.folderId && madeIn?.where === where ? madeIn?.chat : undefined;
     const target = chat ?? made;
     const running = isRunActive(run);
     // A message to a busy orchestrator waits in the queue; the box says so, and Send now on a queued message steers.
@@ -206,6 +208,8 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
                 type: 'chat.create',
                 projectId: start.projectId,
                 ...(start.folderId && { folderId: start.folderId }),
+                // A copy of the choice: the store keeps the one it holds, and the command is what the transport sends on.
+                ...(start.workspace && { workspace: { ...start.workspace } }),
                 mode: draftMode,
                 ...(choice && { engine: choice.engine, ...(choice.model && { model: choice.model }), ...(choice.effort && { effort: choice.effort }) }),
             });
@@ -217,7 +221,7 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
                 return;
             }
 
-            setMade(fresh.chat);
+            setMade({ chat: fresh.chat, where });
             chatId = fresh.chat.id;
         }
 

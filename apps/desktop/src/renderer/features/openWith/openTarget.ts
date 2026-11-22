@@ -13,13 +13,20 @@ export interface OpenTarget {
     path: string;
     relative: string;
     kind: 'file' | 'directory';
+    /**
+     * `path` is in a worktree of the folder, not in the folder's own checkout (the worktree a chat works in). The Files and Terminal tabs show the folder's own checkout, so the
+     * menu offers neither for it, until they follow the chat's worktree.
+     */
+    inWorktree?: true;
 }
 
-/** What git says about a folder: the `origin` address, and the branch (a short hash when HEAD is detached). */
+/** What git says about a folder, or about the worktree a chat works in: the `origin` address, and the branch (a short hash when HEAD is detached). */
 export interface FolderGit {
     remoteUrl?: string;
     branch?: string;
     detached?: boolean;
+    /** A chat's worktree that was made and is gone from the disk. */
+    gone?: true;
 }
 
 /** The programs a person has chosen, each of which opens the target when its item is pressed. */

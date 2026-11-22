@@ -1,0 +1,38 @@
+@reference '@clowdy/styles/rulesets';
+
+/*
+ * A chip with nothing to press: the pills' own height, inset, type and icon gap, in the muted colour, with no plate (a clear border keeps the box the same). The
+ * started chat's mode and branch are these, and so is the mode of a folder that has no worktrees to offer.
+ */
+.label {
+    @ruleset typography-button-sm;
+
+    display: flex;
+    flex-shrink: 1;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-width: 0;
+    max-width: min(100%, 16rem);
+    height: var(--spacing-30);
+    padding: var(--spacing-4) var(--spacing-10);
+    border: 1px solid transparent;
+    color: var(--color-secondary-muted-text);
+    cursor: default;
+}
+
+.label svg {
+    flex-shrink: 0;
+}
+
+/* The mode of a folder with no worktrees to offer is a pill that does not open, and says why when it is pointed at. */
+.off {
+    cursor: not-allowed;
+}
+
+/* The mark of a worktree in the list that has something not committed: the same warning colour the missing folder has. */
+.changes {
+    @ruleset typography-text-xs;
+
+    flex-shrink: 0;
+    color: var(--color-warning-text);
+}

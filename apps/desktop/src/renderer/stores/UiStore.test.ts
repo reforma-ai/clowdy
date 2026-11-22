@@ -965,6 +965,65 @@ describe('UiStore', () => {
         expect([ui.draft, ui.draftFolderId]).toEqual([false, null]);
     });
 
+    describe('where the new chat works in its folder', () => {
+        it('starts in the folder\'s own checkout, whatever the page was before, and is part of the place (`view`)', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openDraft();
+            expect(ui.draftWorkspace).toBeNull();
+
+            ui.setDraftWorkspace({ mode: 'new', base: 'origin/dev' });
+            expect(ui.view).toMatchObject({ draft: true, draftWorkspace: { mode: 'new', base: 'origin/dev' } });
+
+            // Opening the page again, for a folder or not, starts it over.
+            ui.openDraft([], 'fld-api');
+            expect(ui.draftWorkspace).toBeNull();
+        });
+
+        it('is forgotten once a chat or a run opens, and brought back with the page by back and forward', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openDraft([], 'fld-api');
+            ui.setDraftWorkspace({ mode: 'existing', path: '/work/api-fix' });
+
+            const view = ui.view;
+
+            ui.openChat('c1');
+            expect(ui.draftWorkspace).toBeNull();
+
+            ui.show(view);
+            expect([ui.draft, ui.draftFolderId, ui.draftWorkspace]).toEqual([true, 'fld-api', { mode: 'existing', path: '/work/api-fix' }]);
+
+            ui.openRun('r1');
+            expect(ui.draftWorkspace).toBeNull();
+        });
+
+        it('goes back to Project checkout when the folder changes, and stays when the same folder is picked again', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openDraft([], 'fld-api');
+            ui.setDraftWorkspace({ mode: 'new' });
+            ui.setDraftFolder('fld-api');
+            expect(ui.draftWorkspace).toEqual({ mode: 'new' });
+
+            // A worktree or a base belongs to the repository it was chosen for.
+            ui.setDraftFolder('fld-notes');
+            expect(ui.draftWorkspace).toBeNull();
+
+            ui.setDraftWorkspace({ mode: 'new', base: 'main' });
+            ui.setDraftFolder(null);
+            expect(ui.draftWorkspace).toBeNull();
+        });
+
+        it('is kept only with the new-chat page open', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openChat('c1');
+            ui.setDraftWorkspace({ mode: 'new' });
+            expect(ui.draftWorkspace).toBeNull();
+        });
+    });
+
     it('ignores URL values that name no view, and a section, which is gone', () => {
         expect(initialUiFromSearch('?section=tasks&view=cards')).toEqual({});
         expect(initialUiFromSearch('')).toEqual({});

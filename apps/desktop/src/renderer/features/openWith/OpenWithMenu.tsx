@@ -52,8 +52,8 @@ export function OpenWithMenu({ target, missing = false, git, onClose, 'aria-labe
     const project = useProjectState();
     const ui = useProjectUi();
     const apps = useOpenApps();
-    // The Files tab shows the folder the window works in, so a path in another folder of the project cannot be shown there.
-    const isHere = currentFolder(project, ui).id === target.folder.id;
+    // The Files tab shows the folder the window works in, so a path in another folder of the project cannot be shown there, nor can one in a worktree of it.
+    const isHere = currentFolder(project, ui).id === target.folder.id && !target.inWorktree;
     const actions = openActions({
         target,
         programs: chosenPrograms(apps),

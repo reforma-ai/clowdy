@@ -4,7 +4,7 @@ import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat } from '@clowdy/icons/14';
+import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Version } from '@clowdy/icons/14';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, type SyntheticEvent } from 'react';
 
 import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
@@ -18,6 +18,7 @@ import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
 import { deleteChat } from '../chats/deleteChat';
 import { threadsAtWork } from '../chats/runningAgentRows';
+import { workspaceHead } from '../openWith';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
 import { agentGroups, agentRows, ancestorChats, asksThePerson, groupFolderOf, isActiveThread, orchestratorOf, type AgentGroup, type AgentRow, type AgentSelection } from './agentTree';
@@ -26,7 +27,7 @@ import { ChatIcon } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
 import { GroupFolderName } from './GroupFolderName';
 
-import type { Chat, ChatId, FolderId } from '@clowdy/protocol';
+import type { Chat, ChatId, ChatWorkspace, FolderId, ProjectWorkspaceInfo } from '@clowdy/protocol';
 
 /** The id of the first row, the one that starts a chat. Chat ids never look like it. */
 export const NEW_CHAT_ROW = '@new-chat';
@@ -68,8 +69,17 @@ interface ChatActions {
  * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
  * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), in a project of several folders, the
  * chats stand in a group for the folder they work in, under a heading that folds the group, has a button for a chat in that folder, and opens the folder's menu (`GroupFolderName`) from a press on its name, which also shows the new-chat page for that folder.
+ * A chat that works in a worktree has a branch mark after its title, with its branch in the mark's title: the one the tree has checked out, from `workspaces` (`ProjectInfo.workspaces`, which `Screen` reads).
  */
-export function AgentList({ selection, chats, missing, isCovered }: { selection: AgentSelection; chats: readonly Chat[]; missing: ReadonlySet<FolderId>; /** The side panel is in the place of the chat, so the list is a plate of its own. */ isCovered: boolean }) {
+export function AgentList({ selection, chats, missing, workspaces, isCovered }: {
+    selection: AgentSelection;
+    chats: readonly Chat[];
+    missing: ReadonlySet<FolderId>;
+    /** What the daemon last read of the project's worktrees: the branch each has now. */
+    workspaces?: readonly ProjectWorkspaceInfo[];
+    /** The side panel is in the place of the chat, so the list is a plate of its own. */
+    isCovered: boolean;
+}) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -298,7 +308,12 @@ export function AgentList({ selection, chats, missing, isCovered }: { selection:
             >
                 { renamingId === chat.id
                     ? <RenameField chat={ chat } onDone={ () => setRenamingId(null) } />
-                    : <span className={ styles.title } onDoubleClick={ () => setRenamingId(chat.id) }>{ chat.title }</span> }
+                    : (
+                        <span className={ styles.titleLine }>
+                            <span className={ styles.title } onDoubleClick={ () => setRenamingId(chat.id) }>{ chat.title }</span>
+                            { chat.workspace && <WorktreeMark workspace={ chat.workspace } read={ workspaces } /> }
+                        </span>
+                    ) }
             </GridListItem>
         );
     };
@@ -414,6 +429,22 @@ function FilterMenu() {
                 </PopoverScroll>
             </Popover>
         </PopoverTrigger>
+    );
+}
+
+/**
+ * The mark of a chat that works in a worktree: a branch icon after its title, whose own title names the branch. The branch is the one the worktree has now when the daemon's
+ * read has it (an agent may have switched), else the one it was made with, which only a list that has not heard of the worktree yet can still show.
+ */
+function WorktreeMark({ workspace, read }: { workspace: ChatWorkspace; read: readonly ProjectWorkspaceInfo[] | undefined }) {
+    const head = workspaceHead(workspace, read);
+    const branch = head?.branch ?? workspace.branch;
+    const title = head?.gone ? 'The worktree no longer exists' : branch ? `Works in a worktree on ${ branch }` : 'Works in a worktree';
+
+    return (
+        <span className={ styles.worktree } role="img" aria-label={ title } title={ title } data-gone={ head?.gone || undefined }>
+            <Version aria-hidden="true" />
+        </span>
     );
 }
 
