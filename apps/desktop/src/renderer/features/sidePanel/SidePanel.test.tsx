@@ -185,7 +185,8 @@ describe('the corner at the top of the rail', () => {
             await settle();
 
             expect(menu()).toMatch(/Use .+ to toggle the panel$/);
-        } finally {
+        }
+        finally {
             remove();
         }
     });
