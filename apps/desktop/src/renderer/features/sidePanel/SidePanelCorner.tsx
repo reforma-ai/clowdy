@@ -2,37 +2,38 @@ import { Button } from '@clowdy/components/Button';
 import { LargePanel, SmallPanel } from '@clowdy/icons/14';
 
 import { commandTooltip } from '../../hotkeys';
-import { SIDE_PANEL_EXPAND_COMMAND } from './commands';
+import { SIDE_PANEL_COMMAND, SIDE_PANEL_EXPAND_COMMAND } from './commands';
 import styles from './SidePanelCorner.module.css';
 import { useSidePanel } from './useSidePanel';
 
 /**
- * The corner of the title band over the side panel's rail: as wide as the rail, so the usage status stops short of it, and with the button that expands the open panel into
- * the place of the chat and gives it back (`ProjectUi.toggleSidePanelExpanded`, and the key `Cmd+Shift+Enter`). Its icon draws the panel as it is: the narrow panel (`SmallPanel`)
- * while it sits beside the chat, the wide one (`LargePanel`) while it is expanded and the button is pressed. The button is there while the panel is open; a shut panel
- * leaves the corner empty. The corner is there with the rail.
+ * The corner of the title band over the side panel's rail: as wide as the rail, so the usage status stops short of it, and with the button of the panel's size
+ * (`ProjectUi.toggleSidePanelExpanded`, and the key `Cmd+Shift+Enter`). The button is there with a project on show whether the panel is open or not. Open, a press expands the
+ * panel into the place of the chat and gives it back. Shut, a press opens it as `Cmd+Esc` does, on the tab and in the size it was left in. Its icon draws the panel as it is,
+ * or as it will come back: the narrow panel (`SmallPanel`) while the project has it beside the chat, the wide one (`LargePanel`) while it has it expanded.
  */
 export function SidePanelCorner() {
-    const { railShown, open, expanded, toggleExpanded } = useSidePanel();
+    const { available, railShown, open, expanded, expandedChoice, toggle, toggleExpanded } = useSidePanel();
 
     if (!railShown) return null;
 
-    const label = expanded ? 'Collapse panel' : 'Expand panel';
+    const label = !open ? 'Show panel' : expanded ? 'Collapse panel' : 'Expand panel';
+    const command = open ? SIDE_PANEL_EXPAND_COMMAND : SIDE_PANEL_COMMAND;
 
     return (
         <div className={ styles.corner }>
-            { open && (
+            { available && (
                 <Button
                     variant="filling"
                     size="sm"
                     iconOnly
                     aria-label={ label }
-                    aria-pressed={ expanded }
-                    tooltip={ commandTooltip(label, SIDE_PANEL_EXPAND_COMMAND) ?? label }
+                    aria-pressed={ open ? expanded : undefined }
+                    tooltip={ commandTooltip(label, command) ?? label }
                     tooltipPlacement="bottom"
-                    onPress={ toggleExpanded }
+                    onPress={ open ? toggleExpanded : toggle }
                 >
-                    { expanded ? <LargePanel /> : <SmallPanel /> }
+                    { expandedChoice ? <LargePanel /> : <SmallPanel /> }
                 </Button>
             ) }
         </div>

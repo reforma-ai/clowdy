@@ -11,6 +11,8 @@ export interface SidePanelControl {
     tab: SidePanelTab;
     /** The panel is drawn in the place of the chat: it is open, and the project has it expanded. A shut panel is never expanded, and comes back expanded when the project has it so. */
     expanded: boolean;
+    /** The project's choice of the expanded size, kept while the panel is shut: the panel comes back in it. */
+    expandedChoice: boolean;
     toggle: () => void;
     /** Takes the chat's place for the open panel, or gives it back. */
     toggleExpanded: () => void;
@@ -23,5 +25,5 @@ export function useSidePanel(): SidePanelControl {
     const root = useRootStore();
     const ui = root.projectScreenReady && root.selectedProjectId ? root.ui.forProject(root.selectedProjectId) : undefined;
 
-    return { available: ui !== undefined, railShown: root.phase === 'ready', open: ui?.sidePanelOpen === true, tab: ui?.sidePanelTab ?? 'info', expanded: ui?.sidePanelOpen === true && ui.sidePanelExpanded, toggle: () => ui?.toggleSidePanel(), toggleExpanded: () => ui?.toggleSidePanelExpanded(), toggleTab: tab => ui?.toggleSidePanelTab(tab) };
+    return { available: ui !== undefined, railShown: root.phase === 'ready', open: ui?.sidePanelOpen === true, tab: ui?.sidePanelTab ?? 'info', expanded: ui?.sidePanelOpen === true && ui.sidePanelExpanded, expandedChoice: ui?.sidePanelExpanded === true, toggle: () => ui?.toggleSidePanel(), toggleExpanded: () => ui?.toggleSidePanelExpanded(), toggleTab: tab => ui?.toggleSidePanelTab(tab) };
 }

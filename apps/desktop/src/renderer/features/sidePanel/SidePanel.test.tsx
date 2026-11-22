@@ -113,22 +113,31 @@ afterEach(() => {
 });
 
 describe('the corner over the rail', () => {
-    it('has no button while the panel is shut, and the one that expands the open panel and gives the chat its place back', async () => {
+    const icon = () => expandButton()?.querySelector('svg')?.innerHTML;
+
+    it('has the button while the panel is shut too, which opens it, and the one that expands the open panel and gives the chat its place back', async () => {
         await draw(<><Layout><p>The page</p></Layout><Corner /></>);
 
-        expect(expandButton()).toBeNull();
+        expect(expandButton()?.getAttribute('aria-label')).toBe('Show panel');
+        expect(expandButton()?.hasAttribute('aria-pressed')).toBe(false);
 
-        act(() => ui().toggleSidePanel());
-        await settle();
+        const narrow = icon();
 
+        await press(expandButton()!);
+
+        expect(ui().sidePanelOpen).toBe(true);
         expect(expandButton()?.getAttribute('aria-label')).toBe('Expand panel');
         expect(panel()?.hasAttribute('data-expanded')).toBe(false);
+        expect(icon()).toBe(narrow);
 
         await press(expandButton()!);
 
         expect(ui().sidePanelExpanded).toBe(true);
         expect(expandButton()?.getAttribute('aria-label')).toBe('Collapse panel');
+        expect(expandButton()?.getAttribute('aria-pressed')).toBe('true');
         expect(panel()?.hasAttribute('data-expanded')).toBe(true);
+        // The wide panel has an icon of its own.
+        expect(icon()).not.toBe(narrow);
         // The edge between the page and the panel lies under the expanded panel.
         expect(container.querySelector<HTMLElement>('[role="separator"]')?.className).toMatch(/edgeCovered/);
 
@@ -136,22 +145,30 @@ describe('the corner over the rail', () => {
 
         expect(ui().sidePanelExpanded).toBe(false);
         expect(panel()?.hasAttribute('data-expanded')).toBe(false);
+        expect(icon()).toBe(narrow);
     });
 
-    it('brings the panel back expanded after it was shut while expanded, and without the button while it is shut', async () => {
+    it('brings the panel back as it was shut: shut while expanded, the button keeps the wide icon and opens it expanded', async () => {
         act(() => ui().toggleSidePanel());
         await draw(<><Layout><p>The page</p></Layout><Corner /></>);
+
+        const narrow = icon();
+
         await press(expandButton()!);
+
+        const wide = icon();
 
         act(() => ui().toggleSidePanel());
         await settle();
 
         expect(panel()).toBeNull();
-        expect(expandButton()).toBeNull();
+        expect(expandButton()?.getAttribute('aria-label')).toBe('Show panel');
+        expect(icon()).toBe(wide);
+        expect(icon()).not.toBe(narrow);
 
-        act(() => ui().toggleSidePanel());
-        await settle();
+        await press(expandButton()!);
 
+        expect(ui().sidePanelOpen).toBe(true);
         expect(panel()?.hasAttribute('data-expanded')).toBe(true);
         expect(expandButton()?.getAttribute('aria-label')).toBe('Collapse panel');
     });
