@@ -606,6 +606,12 @@ describe('the folder the Info tab names', () => {
         expect(currentFolder(project, { ...idle, draft: true }).path).toBe('/Users/dev/web');
     });
 
+    // The new-chat page is opened over the chat that was open, which stays remembered under it, so the page's folder is what counts.
+    it('is the folder of the new chat that is being made, not that of the chat that was open when it was started', () => {
+        expect(currentFolder(project, { ...idle, chatId: 'c1', draft: true }).path).toBe('/Users/dev/web');
+        expect(currentFolder(project, { ...idle, chatId: 'c2', draft: true, draftFolderId: 'f2' }).path).toBe('/Users/dev/api');
+    });
+
     it('is the main folder when no chat is open', () => {
         expect(currentFolder(project, idle).path).toBe('/Users/dev/web');
     });
