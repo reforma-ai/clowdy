@@ -8,12 +8,14 @@ import { ListCursor, type Grid } from '../../hotkeys/listCursor';
 import { createRegistry, type HotkeyRegistry } from '../../hotkeys/registry';
 import { createUndoStack, type UndoStack } from '../../hotkeys/undo';
 import { focusZoneOf, taskCommands, TASKS_SCOPE, type FocusZone, type TaskCommandDeps } from './taskCommands';
+import { TaskTree } from './taskTree';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
 import type { CommandResult, Task, TaskStatus } from '@clowdy/protocol';
 import type { CommandInput } from '../../daemon/transport';
 import type { PickerRequest } from '../../shared/PickerPopover';
 import type { TasksView } from '../../stores';
+import type { TreeRow } from './taskTree';
 
 /** The project the harness's undo entries belong to. */
 const UNDO_SCOPE = 'p';
@@ -53,12 +55,23 @@ interface Harness {
         openTask: Mock<(taskId: string | null) => void>;
         openChat: Mock<(chatId: string | null) => void>;
         openDoc: Mock<(path: string | null) => void>;
-        setTasksView: Mock<(view: TasksView) => void>;
     };
+    /** What the view toggle asked for. */
+    setView: Mock<(view: TasksView) => void>;
+    /** The scopes the commands asked the screen to show, and how many times it was asked to go up. */
+    scoped: { opened: string[]; up: number };
+    /** The tasks the commands folded or opened in the tree list: `[id, folded]`. */
+    folds: [string, boolean][];
     reveal: Mock<() => void>;
     known: Set<string>;
     state: {
         view: TasksView;
+        /** The scope the screen shows: a task id, or `null` for the roots. */
+        scope: string | null;
+        /** The rows of the tree list as drawn. Empty while the screen shows a board. */
+        rows: TreeRow[];
+        /** Tasks that cannot hold tasks (the last level). */
+        full: Set<string>;
         zone: FocusZone;
         focused: boolean;
         /** The tasks the project holds; replace entries to change what the commands read. */
@@ -115,12 +128,14 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
         }),
         openChat: vi.fn<(chatId: string | null) => void>(),
         openDoc: vi.fn<(path: string | null) => void>(),
-        setTasksView: vi.fn<(view: TasksView) => void>((next) => {
-            state.view = next;
-        }),
     };
+    const setView = vi.fn<(view: TasksView) => void>((next) => {
+        state.view = next;
+    });
+    const scoped: Harness['scoped'] = { opened: [], up: 0 };
+    const folds: Harness['folds'] = [];
     const known = new Set(grid.flat());
-    const state: Harness['state'] = { view, zone: 'list', focused: true, tasks, refused: new Set(), blocked: new Map(), chats: new Map(), docs: new Map(), docsFail: false };
+    const state: Harness['state'] = { view, scope: null, rows: [], full: new Set(), zone: 'list', focused: true, tasks, refused: new Set(), blocked: new Map(), chats: new Map(), docs: new Map(), docsFail: false };
     const reveal = vi.fn<() => void>();
     const sent: CommandInput[][] = [];
     const pickers: PickerRequest[] = [];
@@ -136,6 +151,13 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
         ui,
         hasTask: id => known.has(id),
         view: () => state.view,
+        setView,
+        scope: () => state.scope,
+        rows: () => state.rows,
+        setFolded: (taskId, folded) => void folds.push([taskId, folded]),
+        openScope: taskId => void scoped.opened.push(taskId),
+        goUp: () => void scoped.up++,
+        canHaveChildren: taskId => !state.full.has(taskId),
         focusZone: zoneOf ?? (() => state.zone),
         isCursorFocused: () => state.focused,
         revealCursor: reveal,
@@ -187,7 +209,7 @@ function setup(grid: Grid, view: TasksView = 'board', zoneOf?: () => FocusZone, 
 
     uninstall = installDispatcher(registry);
 
-    return { cursor, ui, reveal, known, state, sent, pickers, confirms, started, titles, registry, undo, asked, copied, notices, replaced, deps };
+    return { cursor, ui, setView, scoped, folds, reveal, known, state, sent, pickers, confirms, started, titles, registry, undo, asked, copied, notices, replaced, deps };
 }
 
 /** Returns whether a command took the key (the dispatcher calls `preventDefault`). */
@@ -241,7 +263,7 @@ describe('cursor movement', () => {
         expect(cursor.cursorId).toBe('b1');
     });
 
-    it('leaves the left and right arrows to the page in the list view', () => {
+    it('leaves the left and right arrows to the page in a list with nothing to fold', () => {
         const { cursor } = setup(list, 'list');
 
         expect(press('ArrowRight')).toBe(false);
@@ -707,6 +729,176 @@ describe('Change status', () => {
         press('s');
 
         expect(harness.pickers).toEqual([]);
+    });
+});
+
+describe('the tree list', () => {
+    /** a1 holds a2 and a3, a3 holds a4, and b1 stands alone: the rows are a1, a2, a3, a4, b1 with a1 and a3 open. */
+    const family = [
+        fakeTask('a1', { number: 1 }),
+        fakeTask('a2', { number: 2, parentId: 'a1' }),
+        fakeTask('a3', { number: 3, parentId: 'a1' }),
+        fakeTask('a4', { number: 4, parentId: 'a3' }),
+        fakeTask('b1', { number: 5 }),
+    ];
+
+    /** The tree list as the screen draws it, with `folded` closed, and the cursor on `at`. */
+    function setupTree({ folded = [], at = 'a1' }: { folded?: string[]; at?: string } = {}) {
+        const rows = new TaskTree(family, STATUSES).rows(null, folded);
+        const harness = setup([rows.map(row => row.task.id)], 'list', undefined, family);
+
+        harness.state.rows = rows;
+        harness.cursor.setCursor(at);
+
+        return harness;
+    }
+
+    it('opens a folded row with the right arrow, and on an open row goes to the first task inside it', () => {
+        const { cursor, folds } = setupTree({ folded: ['a1'] });
+
+        expect(press('ArrowRight')).toBe(true);
+        expect(folds).toEqual([['a1', false]]);
+        expect(cursor.cursorId).toBe('a1');
+
+        // Opened: the rows are drawn again with the tasks inside it.
+        const harness = setupTree();
+
+        expect(press('ArrowRight')).toBe(true);
+        expect(harness.cursor.cursorId).toBe('a2');
+        expect(harness.folds).toEqual([]);
+    });
+
+    it('folds an open row with the left arrow, and on a folded row or one with nothing inside goes to its parent row', () => {
+        const harness = setupTree();
+
+        expect(press('ArrowLeft')).toBe(true);
+        expect(harness.folds).toEqual([['a1', true]]);
+        expect(harness.cursor.cursorId).toBe('a1');
+
+        // a2 has nothing inside: its parent row is a1.
+        harness.cursor.setCursor('a2');
+        press('ArrowLeft');
+
+        expect(harness.cursor.cursorId).toBe('a1');
+
+        // a4 is a level deeper: its parent row is a3, not the top.
+        harness.cursor.setCursor('a4');
+        press('ArrowLeft');
+
+        expect(harness.cursor.cursorId).toBe('a3');
+
+        // a3 is open, so the first press folds it, and with it folded the next goes up.
+        const folded = setupTree({ folded: ['a3'], at: 'a3' });
+
+        press('ArrowLeft');
+
+        expect(folded.folds).toEqual([]);
+        expect(folded.cursor.cursorId).toBe('a1');
+    });
+
+    it('leaves the arrows to the page where there is nothing to do: Right on a row with nothing inside, Left on a row at the top', () => {
+        const harness = setupTree({ at: 'a2' });
+
+        expect(press('ArrowRight')).toBe(false);
+
+        harness.cursor.setCursor('b1');
+
+        expect(press('ArrowLeft')).toBe(false);
+        expect(press('ArrowRight')).toBe(false);
+        expect(harness.cursor.cursorId).toBe('b1');
+        expect(harness.folds).toEqual([]);
+    });
+
+    it('keeps the board\'s columns for the arrows when the screen shows a board', () => {
+        const { cursor } = setup(board);
+
+        cursor.setCursor('a1');
+        press('ArrowRight');
+
+        expect(cursor.cursorId).toBe('b1');
+    });
+
+    it('lists the arrows under both of their jobs on the shortcuts page', () => {
+        const { registry } = setupTree();
+        const titles = helpEntries(registry).map(({ command }) => command.title);
+
+        expect(titles).toEqual(expect.arrayContaining(['Move to the column on the left, or fold the row', 'Move to the column on the right, or unfold the row']));
+    });
+});
+
+describe('the scope of the screen', () => {
+    it('O then S opens the sub-tasks of the cursor task, also one with nothing inside, where New sub-task starts', () => {
+        const { scoped, cursor } = setup(list, 'list');
+
+        cursor.setCursor('a2');
+        press('o');
+
+        expect(press('s')).toBe(true);
+        expect(scoped.opened).toEqual(['a2']);
+    });
+
+    it('takes the cursor task and never the selection, and shows the cursor first when the focus is elsewhere', () => {
+        const { scoped, cursor, state, reveal } = setup(list, 'list');
+
+        cursor.toggle('a1');
+        cursor.setCursor('a3');
+        state.focused = false;
+        press('o');
+        press('s');
+
+        expect(scoped.opened).toEqual([]);
+        expect(reveal).toHaveBeenCalledTimes(1);
+
+        state.focused = true;
+        press('o');
+        press('s');
+
+        expect(scoped.opened).toEqual(['a3']);
+    });
+
+    it('says so on a task at the last level, and the S after the O is not Change status', () => {
+        const { scoped, notices, state, pickers } = setup(list, 'list');
+
+        state.full.add('a1');
+        press('o');
+        press('s');
+
+        expect(scoped.opened).toEqual([]);
+        expect(pickers).toEqual([]);
+        expect(notices).toEqual([{ message: 'A1 cannot hold sub-tasks: tasks go only 8 levels deep', tone: undefined }]);
+    });
+
+    it('is off while the focus is in a widget of the screen that keeps its keys', () => {
+        const { scoped, state } = setup(list, 'list');
+
+        state.zone = 'other';
+
+        expect(press('o')).toBe(false);
+        expect(press('s')).toBe(false);
+        expect(scoped.opened).toEqual([]);
+    });
+
+    it('U goes up one level inside a task, and at the roots the key is the page\'s', () => {
+        const { scoped, state } = setup(list, 'list');
+
+        expect(press('u')).toBe(false);
+        expect(scoped.up).toBe(0);
+
+        state.scope = 'a1';
+
+        expect(press('u')).toBe(true);
+        expect(scoped.up).toBe(1);
+    });
+
+    it('shows no hint for going up at the roots, and one inside a task', () => {
+        const { registry, state } = setup(list, 'list');
+
+        expect(commandHint('tasks.scope.up', registry)).toBeUndefined();
+
+        state.scope = 'a1';
+
+        expect(commandHint('tasks.scope.up', registry)).toEqual([['u']]);
+        expect(commandHint('tasks.subtasks.open', registry)).toEqual([['o'], ['s']]);
     });
 });
 
@@ -1236,6 +1428,34 @@ describe('New task, view, filter and search', () => {
         expect(harness.asked.created).toBe(1);
     });
 
+    it('C inside a task opens the dialog the same way, since the screen makes the sub-task of the task it is in', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.scope = 'a1';
+
+        expect(press('c')).toBe(true);
+        expect(harness.asked.created).toBe(1);
+        expect(harness.notices).toEqual([]);
+    });
+
+    it('C says why instead of opening the dialog inside a task at the last level, and still makes a task of the roots', () => {
+        const harness = setup(list, 'list');
+
+        harness.state.scope = 'a1';
+        harness.state.full.add('a1');
+
+        expect(press('c')).toBe(true);
+        expect(harness.asked.created).toBe(0);
+        expect(harness.notices).toEqual([{ message: 'Tasks go only 8 levels deep', tone: undefined }]);
+
+        // A task of the last level elsewhere does not matter at the roots.
+        harness.state.scope = null;
+        press('c');
+
+        expect(harness.asked.created).toBe(1);
+        expect(harness.notices).toHaveLength(1);
+    });
+
     it('C is a plain key: not with a modifier, not in a text field, and not while the key is held', () => {
         const harness = setup(list, 'list');
         const input = document.createElement('input');
@@ -1298,11 +1518,11 @@ describe('New task, view, filter and search', () => {
         const harness = setup(board);
 
         expect(press('b', { metaKey: true })).toBe(true);
-        expect(harness.ui.setTasksView).toHaveBeenLastCalledWith('list');
+        expect(harness.setView).toHaveBeenLastCalledWith('list');
 
         press('b', { metaKey: true });
 
-        expect(harness.ui.setTasksView).toHaveBeenLastCalledWith('board');
+        expect(harness.setView).toHaveBeenLastCalledWith('board');
     });
 
     it('Cmd+B does not take a plain B, and is off in a text field', () => {
@@ -1313,7 +1533,7 @@ describe('New task, view, filter and search', () => {
 
         expect(press('b')).toBe(false);
         expect(press('b', { metaKey: true }, input)).toBe(false);
-        expect(harness.ui.setTasksView).not.toHaveBeenCalled();
+        expect(harness.setView).not.toHaveBeenCalled();
     });
 
     it('uses Ctrl+B on Windows', () => {
@@ -1327,7 +1547,7 @@ describe('New task, view, filter and search', () => {
 
         expect(press('b', { metaKey: true })).toBe(false);
         expect(press('b', { ctrlKey: true })).toBe(true);
-        expect(harness.ui.setTasksView).toHaveBeenCalledTimes(1);
+        expect(harness.setView).toHaveBeenCalledTimes(1);
     });
 
     it('is off while a dialog or a popover is open', () => {
@@ -1696,8 +1916,8 @@ describe('where the focus is, and the shortcuts page and the key hints', () => {
 
         const dead = harness.registry.listCommands().all.filter(command => !harness.registry.listCommands().live.includes(command)).map(command => command.id);
 
-        // Only what has nothing to act on: the board's column keys in a list, Escape with nothing open or selected, and Undo with nothing to take back.
-        expect(dead.sort()).toEqual(['tasks.cursor.left', 'tasks.cursor.right', 'tasks.escape', 'tasks.undo'].sort());
+        // Only what has nothing to act on: the column keys with no row to fold in a flat list, Escape with nothing open or selected, Go up at the roots, and Undo with nothing to take back.
+        expect(dead.sort()).toEqual(['tasks.cursor.left', 'tasks.cursor.right', 'tasks.escape', 'tasks.scope.up', 'tasks.undo'].sort());
     });
 });
 
@@ -1712,7 +1932,7 @@ describe('the shortcuts page', () => {
 
         expect(new Set(titles).size).toBe(titles.length);
         expect(titles.every(title => title.trim().length >= 4 && !title.endsWith('.'))).toBe(true);
-        expect(titles).toEqual(expect.arrayContaining(['New task', 'Switch between board and list', 'Filter tasks', 'Search tasks', 'Copy task key', 'Copy task title', 'Open linked chat', 'Open latest document']));
+        expect(titles).toEqual(expect.arrayContaining(['New task', 'Switch between board and list', 'Filter tasks', 'Search tasks', 'Copy task key', 'Copy task title', 'Open linked chat', 'Open latest document', 'Open sub-tasks', 'Go up one level']));
     });
 
     it('writes the new keys as the capsules read them', () => {
@@ -1725,6 +1945,8 @@ describe('the shortcuts page', () => {
         expect(keysOf('tasks.search')).toEqual([[['/']]]);
         expect(keysOf('tasks.chat.open')).toEqual([[['o'], ['c']]]);
         expect(keysOf('tasks.doc.open')).toEqual([[['o'], ['d']]]);
+        expect(keysOf('tasks.subtasks.open')).toEqual([[['o'], ['s']]]);
+        expect(keysOf('tasks.scope.up')).toEqual([[['u']]]);
     });
 });
 
@@ -1768,6 +1990,8 @@ describe('the keymap', () => {
             'tasks.copy.title',
             'tasks.chat.open',
             'tasks.doc.open',
+            'tasks.subtasks.open',
+            'tasks.scope.up',
             'tasks.undo',
         ]);
         expect(new Set(commands.map(command => command.group))).toEqual(new Set(['Tasks']));

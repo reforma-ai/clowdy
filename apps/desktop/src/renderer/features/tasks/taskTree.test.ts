@@ -95,6 +95,39 @@ describe('childrenOf', () => {
     });
 });
 
+describe('levelOf', () => {
+    it('is the children without a filter, and the roots for no scope', () => {
+        expect(numbers(tree().levelOf('t-1'))).toEqual(numbers(tree().childrenOf('t-1')));
+        expect(numbers(tree().levelOf(null))).toEqual([9, 8, 1]);
+        expect(tree().levelOf('t-8')).toEqual([]);
+    });
+
+    it('finds a match below a child the filter drops, so the level never hides it', () => {
+        // Only the done tasks match: 2 sits in the level of 1, and 3, which is inside 2, matches too and stays inside it.
+        const keep = (candidate: Task) => candidate.statusId === 'done';
+
+        expect(numbers(tree().levelOf('t-1', keep))).toEqual([2]);
+        // At the roots the task 1 is dropped, so what matches inside it comes up to the level.
+        expect(numbers(tree().levelOf(null, keep))).toEqual([2]);
+        expect(numbers(tree().levelOf('t-2', keep))).toEqual([3]);
+    });
+
+    it('moves the matches of a dropped task into the level in workflow order', () => {
+        const keep = (candidate: Task) => [4, 5, 9].includes(candidate.number);
+
+        // 9 is a root, 5 is in 1, 4 is in 2 in 1: all three stand at the roots, backlog first and then todo by number.
+        expect(numbers(tree().levelOf(null, keep))).toEqual([9, 4, 5]);
+    });
+
+    it('hands out a list of its own', () => {
+        const level = tree().levelOf(null);
+
+        level.length = 0;
+
+        expect(tree().levelOf(null)).toHaveLength(3);
+    });
+});
+
 describe('descendantsOf', () => {
     it('lists every task below a task at any depth, and nothing of the task itself or its siblings', () => {
         expect(numbers(tree().descendantsOf('t-1'))).toEqual([4, 5, 6, 2, 3, 7]);

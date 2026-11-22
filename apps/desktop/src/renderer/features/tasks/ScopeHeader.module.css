@@ -1,0 +1,36 @@
+@reference '@clowdy/styles/rulesets';
+
+/* A compact strip under the screen's header: it reads as the title of the board below it, not as a card on it. */
+.scope {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin: 0 var(--spacing-xxl) var(--spacing-lg);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+}
+
+.key {
+    @ruleset typography-text-xs;
+
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+    font-weight: 500;
+}
+
+.title {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.spacer {
+    flex: 1;
+}

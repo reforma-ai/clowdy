@@ -170,3 +170,48 @@ describe('the menu of a row', () => {
         expect(menuItems()).toHaveLength(0);
     });
 });
+
+describe('the filter in the header of the file tree', () => {
+    const field = () => container.querySelector<HTMLInputElement>('input[aria-label="Filter files"]')!;
+
+    function type(value: string) {
+        act(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field(), value);
+            field().dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
+    it('is the header\'s title, in place of a name for it, with the button that hides the tree after it', async () => {
+        draw({ onSidebarToggle: () => undefined });
+        await settle();
+
+        const toggle = container.querySelector('button[aria-label="File tree"]')!;
+
+        expect(field().closest('aside')).not.toBeNull();
+        expect(field().placeholder).toBe('Filter files');
+        expect(field().compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(container.querySelector('aside [role="tablist"]')).toBeNull();
+    });
+
+    it('filters the tree by name as it is typed, and shows the whole tree again when it is emptied', async () => {
+        type('a.');
+        await settle();
+
+        expect(manager.filterQuery).toBe('a.');
+        expect([...container.querySelectorAll('[role="treeitem"]')].map(row => row.textContent)).toEqual(['a.ts']);
+
+        type('');
+        await settle();
+
+        expect(container.querySelectorAll('[role="treeitem"]')).toHaveLength(2);
+    });
+
+    it('opens the first file it shows on Enter', async () => {
+        type('b.t');
+        await settle();
+        act(() => void field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+        await settle();
+
+        expect(manager.tabs.active?.path).toBe('b.ts');
+    });
+});

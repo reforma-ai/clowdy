@@ -53,6 +53,10 @@
     align-self: flex-start;
 }
 
+.subtasks {
+    align-self: flex-start;
+}
+
 .statusList {
     min-width: 12rem;
 }

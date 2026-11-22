@@ -162,7 +162,7 @@ export const QuickSearch = observer(function QuickSearch({ model, folder }: Quic
                     value={ query }
                     onChange={ event => model.setQuery(event.target.value) }
                 />
-                { pending && <Spinner size="xs" aria-label="Searching" className={ styles.spinner } /> }
+                { pending && <Spinner size="xxs" aria-label="Searching" className={ styles.spinner } /> }
             </div>
 
             { rows.length > 0

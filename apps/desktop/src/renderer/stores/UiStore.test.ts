@@ -254,6 +254,145 @@ describe('UiStore', () => {
         });
     });
 
+    describe('opening a task reveals it on the Tasks screen', () => {
+        /** 31 holds 32 and 35, 32 holds 33; 24 is a root; 38 is archived. */
+        const tasks = new Map<string, { id: string; parentId?: string; archivedAt?: number }>([
+            ['t-24', { id: 't-24' }],
+            ['t-31', { id: 't-31' }],
+            ['t-32', { id: 't-32', parentId: 't-31' }],
+            ['t-33', { id: 't-33', parentId: 't-32' }],
+            ['t-35', { id: 't-35', parentId: 't-31' }],
+            ['t-38', { id: 't-38', archivedAt: 5 }],
+        ]);
+        const open = () => new UiStore(undefined, undefined, () => tasks).forProject('p1');
+
+        it('keeps the scope for a task inside it, and opens the folds above the task', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-31');
+            ui.toggleTaskCollapsed('t-32');
+            ui.toggleTaskCollapsed('t-35');
+            // The through board and the tree list draw every level.
+            ui.setTasksSubtasks(true);
+            ui.openTask('t-33');
+
+            expect([ui.section, ui.taskId, ui.tasksScope]).toEqual(['tasks', 't-33', 't-31']);
+            expect(ui.tasksCollapsed).toEqual(['t-35']);
+        });
+
+        it('moves the scope to the parent of a task outside it, and to the roots for a root', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-35');
+            ui.openTask('t-33');
+
+            expect(ui.tasksScope).toBe('t-32');
+
+            ui.openTask('t-24');
+
+            expect(ui.tasksScope).toBeNull();
+        });
+
+        it('keeps the scope for the roots with the list or the through board, which draw every level, and goes to the parent on a board of one level', () => {
+            const ui = open();
+
+            ui.setTasksView('list');
+            ui.openTask('t-33');
+
+            expect(ui.tasksScope).toBeNull();
+
+            ui.setTasksView('board');
+            ui.openTask('t-33');
+
+            // The first level of the roots has no card for it.
+            expect(ui.tasksScope).toBe('t-32');
+
+            ui.setTasksScope(null);
+            ui.setTasksSubtasks(true);
+            ui.openTask('t-33');
+
+            expect(ui.tasksScope).toBeNull();
+        });
+
+        it('reads the view of the task page inside a task, and the project\'s own view at the roots', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-31');
+            ui.setTasksView('list');
+            ui.openTask('t-33');
+
+            // The task page is a board of one level, whatever the project's view is.
+            expect(ui.tasksScope).toBe('t-32');
+
+            ui.setTasksScope('t-31');
+            ui.setTaskPageView('list');
+            ui.openTask('t-33');
+
+            expect(ui.tasksScope).toBe('t-31');
+        });
+
+        it('shows a remembered scope that is gone as the roots, and writes the one it settled on', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-gone');
+            ui.openTask('t-24');
+
+            expect(ui.tasksScope).toBeNull();
+        });
+
+        it('puts the screen where a task that was just made will show, though the project does not hold it yet', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-31');
+            // Made inside CAR-32: a card of the level of CAR-32, so the board of one level goes there.
+            ui.openTask('t-new', { madeIn: 't-32' });
+
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-new', 't-32']);
+
+            // Made at the roots, from inside a task.
+            ui.openTask('t-newer', { madeIn: null });
+
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-newer', null]);
+
+            // Made inside the scope: it stays.
+            ui.setTasksScope('t-31');
+            ui.openTask('t-newest', { madeIn: 't-31' });
+
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-newest', 't-31']);
+        });
+
+        it('leaves the screen where it is when the screen opens a task it draws itself', () => {
+            const ui = open();
+
+            ui.openTask('t-33', { reveal: false });
+
+            expect([ui.taskId, ui.tasksScope, ui.section]).toEqual(['t-33', null, 'tasks']);
+        });
+
+        it('leaves the scope alone for a task the project does not hold, and for the one that closes the panel', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-31');
+            ui.openTask('t-38');
+            ui.openTask('t-missing');
+
+            expect(ui.tasksScope).toBe('t-31');
+
+            ui.openTask(null);
+
+            expect([ui.taskId, ui.tasksScope]).toEqual([null, 't-31']);
+        });
+
+        it('does nothing to the scope without the project\'s tasks, as a window state of its own has none', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.setTasksScope('t-35');
+            ui.openTask('t-24');
+
+            expect(ui.tasksScope).toBe('t-35');
+        });
+    });
+
     it('starts from defaults when the stored value is damaged', () => {
         const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"nope","taskId":5,"tasksView":"cards"}' })).forProject('p1');
 

@@ -1,7 +1,7 @@
 import { copyText } from '@clowdy/components/CopyButton';
 import { useListHoverHighlight } from '@clowdy/components/List';
 import { openConfirmModal } from '@clowdy/components/modals';
-import { PanelEmptyRow, PanelSearch } from '@clowdy/components/Panel';
+import { PanelEmptyRow } from '@clowdy/components/Panel';
 import { useContextMenu } from '@clowdy/components/Popover';
 import {
     elementScrollAxisSource,
@@ -197,6 +197,8 @@ export interface ExplorerHandle {
     create: (kind: FileKind) => void;
     /** Pastes into the selected folder, or next to the selected file. */
     paste: () => void;
+    /** Opens the first file the filter shows: Enter in the filter field, which the host draws. */
+    openFirstMatch: () => void;
 }
 
 export interface ExplorerProps {
@@ -207,13 +209,12 @@ export interface ExplorerProps {
 }
 
 /**
- * The Files tab: the filter and a virtualized tree with keyboard navigation and multi-select, inline
+ * The file tree: virtualized, filtered by `manager.filter` (the host draws the field), with keyboard navigation and multi-select, inline
  * create and rename, row menus, copy and paste, drag to move, files dropped from outside, and the
  * active tab revealed. Open folders are kept on the manager, so they open again when the tab shows again.
  */
 export const Explorer = observer(function Explorer({ manager, menuItems, dndManager, ref }: ExplorerProps) {
     const treeApi = useRef<TreeApi<ExplorerItem>>(null);
-    const filterInput = useRef<HTMLInputElement>(null);
     const { width = 0, height = 0, ref: measure } = useResizeObserver<HTMLDivElement>();
     // The tree's own element is where react-dnd's HTML5 backend listens (see `dndRootElement`): on the window, the backend would also cancel the native drags of the
     // host's other screens, since it takes every drag it does not know for a stray one. It must exist when the tree first renders, so the tree waits for it.
@@ -234,7 +235,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
     );
     const items = useMemo(() => computed(() => itemsOf(manager.tree, '')), [manager]).get();
     const data = draft ? withDraft(items, draft) : items;
-    const { revealed, filterQuery, filterResult, filterRequests } = manager;
+    const { revealed, filterResult } = manager;
     const activePath = manager.tabs.activePath;
     const shown = useRef<{ revealed: typeof revealed; activePath: string | null }>({
         revealed: null,
@@ -278,12 +279,6 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
             }
         }
     }, [manager, revealed, activePath, data, dndRoot]);
-
-    // ⌘P focuses the filter, with its query selected, each time.
-    useEffect(() => {
-        filterInput.current?.focus();
-        filterInput.current?.select();
-    }, [filterRequests]);
 
     // The inline new row edits as soon as it shows; cancelling removes it.
     useEffect(() => {
@@ -414,19 +409,14 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
     useImperativeHandle(ref, () => ({
         create: kind => actions.create(selectedFolder(), kind),
         paste: () => void manager.paste(selectedFolder()),
+        openFirstMatch: () => {
+            const first = treeApi.current?.visibleNodes.find(node => filterResult?.paths.has(node.id));
+
+            if (first) {
+                void manager.open(first.id);
+            }
+        },
     }));
-
-    // Enter in the filter opens the first file it shows.
-    const handleFilterKeyDown = (event: { key: string }) => {
-        const first =
-            event.key === 'Enter'
-                ? treeApi.current?.visibleNodes.find(node => filterResult?.paths.has(node.id))
-                : undefined;
-
-        if (first) {
-            void manager.open(first.id);
-        }
-    };
 
     // A closed folder that any drag rests on opens after a moment.
     const holdOver = (folder: string | null) => {
@@ -484,18 +474,6 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
     return (
         <ExplorerContext value={actions}>
             <div className={styles.root} onKeyDown={handleKeyDown}>
-                <PanelSearch
-                    isOpen={manager.filterOpen}
-                    value={filterQuery}
-                    onChange={query => {
-                        void manager.filter(query);
-                    }}
-                    placeholder="Filter files"
-                    aria-label="Filter files"
-                    isPending={filterQuery.trim() !== '' && filterResult?.query !== filterQuery}
-                    inputRef={filterInput}
-                    onKeyDown={handleFilterKeyDown}
-                />
                 <ScrollChromeRoot
                     rootRef={chrome.rootRef}
                     className={styles.body}

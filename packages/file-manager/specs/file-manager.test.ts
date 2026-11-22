@@ -323,20 +323,31 @@ describe('FileManager filter', () => {
         expect(manager.tree.children('src/app/foo').map(entry => entry.path)).toEqual(['src/app/foo/bar.ts']);
     });
 
-    it('should clear the query and the result when the filter closes', async () => {
+    it('should clear the result when the query is emptied', async () => {
         const manager = filtered({ 'src/app/foo/bar.ts': '' });
 
         await manager.start();
-        manager.showFilter();
         await manager.filter('bar');
 
         expect(manager.filterResult?.paths).toEqual(new Set(['src/app/foo/bar.ts']));
 
-        manager.closeFilter();
+        await manager.filter('  ');
 
-        expect(manager.filterOpen).toBe(false);
-        expect(manager.filterQuery).toBe('');
+        expect(manager.filterQuery).toBe('  ');
         expect(manager.filterResult).toBeNull();
+    });
+
+    it('should find a file the tree lists although the provider\'s own search leaves it out, such as one git ignores, and words that are not one name', async () => {
+        const fs = new MemoryFileSystem({ 'BACKLOG.md': '', 'src/booking/price.ts': '', 'src/other.ts': '' });
+        const manager = new FileManager({ provider: fs });
+
+        vi.spyOn(fs, 'findFiles').mockResolvedValue([]);
+        await manager.start();
+        await manager.filter('backlog');
+
+        expect(manager.filterResult?.paths).toEqual(new Set(['BACKLOG.md']));
+        expect(manager.listedFiles('booking price')).toEqual(['src/booking/price.ts']);
+        expect(manager.listedFiles('  ')).toEqual([]);
     });
 
     it('should find hidden files once they are shown', async () => {
@@ -360,7 +371,7 @@ describe('FileManager filter', () => {
 
         const cleared = manager.filter('bar');
 
-        manager.closeFilter();
+        void manager.filter('');
         await cleared;
 
         expect(manager.filterResult).toBeNull();

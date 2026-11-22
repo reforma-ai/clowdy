@@ -87,3 +87,18 @@
     flex-wrap: wrap;
     gap: var(--spacing-xs);
 }
+
+/* Where the task lives, when the board draws it away from its parent: after the key, in the same muted line. */
+.parent {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+}

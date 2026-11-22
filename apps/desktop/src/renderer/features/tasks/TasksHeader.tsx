@@ -1,24 +1,40 @@
+import { Breadcrumb } from '@clowdy/components/Breadcrumb';
 import { Button } from '@clowdy/components/Button';
 import { SearchInput } from '@clowdy/components/Input';
 import { Text } from '@clowdy/components/Text';
 import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/ToggleButtonGroup';
-import { Columns, List, Plus } from '@clowdy/icons/14';
+import { Columns, Layers, List, Plus } from '@clowdy/icons/14';
 
 import { commandHint, CommandHotkey, commandTooltip } from '../../hotkeys';
 import { SCREEN_TITLE } from '../../shared';
+import { Unavailable } from '../../shared/Unavailable';
 import { FilterPopover } from './FilterPopover';
 import styles from './TasksHeader.module.css';
 
-import type { Run, TaskStatus } from '@clowdy/protocol';
+import type { Run, Task, TaskId, TaskStatus } from '@clowdy/protocol';
 import type { KeyboardEvent, Ref } from 'react';
 import type { TasksView } from '../../stores';
 import type { TaskFilter } from './taskView';
 
+/** A task of the path, which shows by its key: the title of the one the screen is in is in the scope's own header below. */
+export type TaskCrumb = Pick<Task, 'id' | 'key'>;
+
 export interface TasksHeaderProps {
-    /** Where the tasks come from: `Internal`, `Internal + Linear`. */
+    /** Where the tasks come from: `Internal`, `Internal + Linear`. Only the project's own page says it. */
     subtitle: string;
+    /** The place of a scope: the tasks above it, the root first, and the task itself. Without it the screen is at the project's roots and the title says `Tasks`. */
+    path?: { ancestors: readonly TaskCrumb[]; task: TaskCrumb };
+    /** A press on a crumb: show the insides of that task, or the project's roots with `null`. */
+    onOpenScope: (taskId: TaskId | null) => void;
     view: TasksView;
     onViewChange: (view: TasksView) => void;
+    /** The board draws the tasks below the first level too. Only the board has the choice: the list is always a tree. */
+    showSubtasks: boolean;
+    onSubtasksChange: (show: boolean) => void;
+    /** The button makes a sub-task of the task the screen is inside, and says so; without it, a task of the roots. */
+    inTask: boolean;
+    /** Why the button is off (the task is at the last level), or nothing while it works. */
+    createHint?: string;
     onCreate: () => void;
     filter: TaskFilter;
     onFilterChange: (filter: TaskFilter) => void;
@@ -32,10 +48,14 @@ export interface TasksHeaderProps {
     onFilterOpenChange: (isOpen: boolean) => void;
 }
 
-/** The screen's header: title and source on the left; view switch, search, filter and "+ Task" on the right. */
-export function TasksHeader({ subtitle, view, onViewChange, onCreate, filter, onFilterChange, statuses, agents, searchRef, onSearchExit, isFilterOpen, onFilterOpenChange }: TasksHeaderProps) {
+/**
+ * The screen's header: title and source on the left, or the path of the scope in their place; view switch, the sub-tasks toggle of the board, search, filter
+ * and "+ Task" on the right, which is "+ Sub-task" inside a task.
+ */
+export function TasksHeader({ subtitle, path, onOpenScope, view, onViewChange, showSubtasks, onSubtasksChange, inTask, createHint, onCreate, filter, onFilterChange, statuses, agents, searchRef, onSearchExit, isFilterOpen, onFilterOpenChange }: TasksHeaderProps) {
     // One key switches the view, so both items carry its hint. A hint on the other item alone would move between them on every switch and rebuild the button that was just pressed.
     const switchView = commandTooltip('Switch view', 'tasks.view.toggle');
+    const createLabel = inTask ? 'New sub-task' : 'New task';
 
     // Esc clears the text first (the field does that and marks the event handled), and leaves when there is none.
     // Enter is taken here: its keypress would go to the card that has the keyboard by then, and press it.
@@ -48,8 +68,20 @@ export function TasksHeader({ subtitle, view, onViewChange, onCreate, filter, on
     return (
         <header className={ styles.header }>
             <div className={ styles.titles }>
-                <Text variant={ SCREEN_TITLE }>Tasks</Text>
-                <Text color="secondary" truncate>{ subtitle }</Text>
+                { path
+                    ? (
+                        <Breadcrumb variant={ SCREEN_TITLE } aria-label="Task path">
+                            <Breadcrumb.Link key="tasks" onPress={ () => onOpenScope(null) }>Tasks</Breadcrumb.Link>
+                            { path.ancestors.map(crumb => <Breadcrumb.Link key={ crumb.id } onPress={ () => onOpenScope(crumb.id) }>{ crumb.key }</Breadcrumb.Link>) }
+                            <Breadcrumb.Page key={ path.task.id }>{ path.task.key }</Breadcrumb.Page>
+                        </Breadcrumb>
+                    )
+                    : (
+                        <>
+                            <Text variant={ SCREEN_TITLE }>Tasks</Text>
+                            <Text color="secondary" truncate>{ subtitle }</Text>
+                        </>
+                    ) }
             </div>
 
             <div className={ styles.toolbar }>
@@ -66,6 +98,19 @@ export function TasksHeader({ subtitle, view, onViewChange, onCreate, filter, on
                     <ToggleButtonGroupItem value="board" tooltip={ switchView }><Columns />Board</ToggleButtonGroupItem>
                     <ToggleButtonGroupItem value="list" tooltip={ switchView }><List />List</ToggleButtonGroupItem>
                 </ToggleButtonGroup>
+
+                {/* One item that is on or off: the group may be empty. */}
+                { view === 'board' && (
+                    <ToggleButtonGroup
+                        aria-label="Sub-tasks"
+                        size="sm"
+                        disallowEmptySelection={ false }
+                        selectedKeys={ showSubtasks ? ['subtasks'] : [] }
+                        onSelectionChange={ keys => onSubtasksChange(keys.has('subtasks')) }
+                    >
+                        <ToggleButtonGroupItem value="subtasks" tooltip="Show the tasks inside tasks on the board too"><Layers />Sub-tasks</ToggleButtonGroupItem>
+                    </ToggleButtonGroup>
+                ) }
 
                 <SearchInput
                     className={ styles.search }
@@ -90,10 +135,12 @@ export function TasksHeader({ subtitle, view, onViewChange, onCreate, filter, on
                     onOpenChange={ onFilterOpenChange }
                 />
 
-                <Button color="primary" size="sm" tooltip={ commandTooltip('New task', 'tasks.create') } onPress={ onCreate }>
-                    <Plus />
-                    Task
-                </Button>
+                <Unavailable label={ createLabel } hint={ createHint } placement="bottom">
+                    <Button color="primary" size="sm" isDisabled={ createHint !== undefined } tooltip={ createHint === undefined ? commandTooltip(createLabel, 'tasks.create') : undefined } onPress={ onCreate }>
+                        <Plus />
+                        { inTask ? 'Sub-task' : 'Task' }
+                    </Button>
+                </Unavailable>
             </div>
         </header>
     );

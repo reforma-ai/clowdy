@@ -14,6 +14,9 @@ import type { Task, TaskId, TaskStatus, TaskStatusCategory } from '@clowdy/proto
 
 export type { Checklist };
 
+/** Why a task at the last level cannot hold another: what every control that would add a sub-task says when it is off. */
+export const DEPTH_LIMIT_HINT = `Tasks go only ${ MAX_TASK_DEPTH } levels deep`;
+
 /** Whether a task is wanted: what the screen's filter lets through. */
 export type Keep = (task: Task) => boolean;
 
@@ -89,6 +92,14 @@ export class TaskTree {
         const children = scope === null ? this.#roots : this.#children.get(scope) ?? [];
 
         return keep ? children.filter(keep) : [...children];
+    }
+
+    /**
+     * The tasks a board of one level draws for the scope: its children, and with a filter also the kept tasks below a child the filter drops, so a match is never
+     * hidden by the level (searching `Refund` at the roots finds the task inside Payments). In workflow status order and then number, the same as `rows` at its top level.
+     */
+    levelOf(scope: TaskId | null, keep?: Keep): Task[] {
+        return [...this.#shown(scope, keep)];
     }
 
     /** Every task below the scope at any depth, in workflow status order and then number: what a board that shows the sub-tasks flattens onto itself. */

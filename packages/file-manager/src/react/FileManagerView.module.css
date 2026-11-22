@@ -34,3 +34,14 @@
 .sidebar .toggle {
     margin-inline-end: 0;
 }
+
+/* The filter is the header's title: it takes the room the toggle leaves. Its icon is 13px from the edge, as in the filter field of Reforma's tree (the header's own side
+   padding and the input's). */
+.filter[data-size][data-variant] {
+    --clowdy-input-radius: var(--radius-md);
+    --clowdy-input-height: var(--spacing-30);
+
+    flex: 1;
+    min-width: 0;
+    width: auto;
+}

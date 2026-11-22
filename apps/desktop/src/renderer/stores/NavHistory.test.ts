@@ -270,6 +270,34 @@ describe('NavHistory recording', () => {
         expect([ui().tasksScope, ui().taskId]).toEqual(['t-31', null]);
     });
 
+    it('records a task opened from outside the scope with the scope it moved to, as one place, and back returns to the place it left', () => {
+        root.ui.showSection(ui(), 'tasks');
+        ui().setTasksScope('t-32');
+        // CAR-24 is a root: a chip in a chat opens it, and the screen shows the roots with it.
+        ui().openTask('t-24');
+
+        expect([ui().tasksScope, ui().taskId]).toEqual([null, 't-24']);
+
+        root.history.back();
+
+        expect([ui().section, ui().tasksScope, ui().taskId]).toEqual(['tasks', 't-32', null]);
+
+        root.history.forward();
+
+        expect([ui().tasksScope, ui().taskId]).toEqual([null, 't-24']);
+    });
+
+    it('keeps one entry for a task opened inside the scope, whose folds open with it', () => {
+        root.ui.showSection(ui(), 'tasks');
+        ui().setTasksScope('t-31');
+        ui().setTasksSubtasks(true);
+        ui().toggleTaskCollapsed('t-32');
+        ui().openTask('t-33');
+
+        expect([ui().tasksScope, ui().taskId, ui().tasksCollapsed]).toEqual(['t-31', 't-33', []]);
+        expect(stepsBack()).toBe(3);
+    });
+
     it('does not record the options of a scope: the sub-tasks toggle, the page view and the folds', () => {
         root.ui.showSection(ui(), 'tasks');
         ui().setTasksScope('t-31');

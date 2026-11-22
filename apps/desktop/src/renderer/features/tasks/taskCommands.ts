@@ -1,6 +1,10 @@
+import { MAX_TASK_DEPTH } from '@clowdy/protocol';
+
 import { listFocusOf } from '../../hotkeys/listNavigation';
 import { statusOptions, taskOptions } from './pickerOptions';
+import { DEPTH_LIMIT_HINT } from './taskTree';
 import { adjacentStatus, blockedByOptions, blockingOptions, newestChat, toggleDependency } from './taskView';
+import { treeMove } from './treeNavigation';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
 import type { Chat, ChatId, CommandResult, Task, TaskId, TaskStatus } from '@clowdy/protocol';
@@ -9,6 +13,7 @@ import type { Command } from '../../hotkeys';
 import type { Direction, ListCursor } from '../../hotkeys/listCursor';
 import type { PickerRequest } from '../../shared/PickerPopover';
 import type { ProjectUi, TasksView } from '../../stores';
+import type { TreeRow } from './taskTree';
 
 export const TASKS_SCOPE = 'tasks';
 
@@ -41,12 +46,27 @@ export function focusZoneOf(active: Element | null, region: Element | null): Foc
 
 export interface TaskCommandDeps {
     cursor: ListCursor;
-    ui: Pick<ProjectUi, 'taskId' | 'openTask' | 'openDoc' | 'setTasksView'>;
+    ui: Pick<ProjectUi, 'taskId' | 'openTask' | 'openDoc'>;
     /** Shows a chat in the Agents section, bringing it out of the archive first when it is in it. */
     openChat: (chatId: ChatId) => void;
     /** Whether the task still exists. The open task can be one that is gone, and then there is no panel to follow with. */
     hasTask: (taskId: TaskId) => boolean;
+    /** The view the screen draws now: the project's own at the roots, a task page's inside a task. The list is a tree. */
     view: () => TasksView;
+    /** Sets that view, wherever it is kept. */
+    setView: (view: TasksView) => void;
+    /** The scope the screen shows: the task whose insides it draws, or `null` for the project's roots. */
+    scope: () => TaskId | null;
+    /** The rows of the tree list as drawn, folded ones' insides left out. Read when a key is pressed. Nothing while the screen shows a board. */
+    rows: () => readonly TreeRow[];
+    /** Folds the insides of a task in the tree list, or opens them. */
+    setFolded: (taskId: TaskId, folded: boolean) => void;
+    /** Shows the insides of a task: its own scope. */
+    openScope: (taskId: TaskId) => void;
+    /** Shows the scope above the one on the screen. */
+    goUp: () => void;
+    /** Whether the task can hold tasks: the daemon refuses a level past `MAX_TASK_DEPTH`. */
+    canHaveChildren: (taskId: TaskId) => boolean;
     focusZone: () => FocusZone;
     /** Whether the keyboard focus is on the cursor item, which is what shows the cursor. */
     isCursorFocused: () => boolean;
@@ -73,7 +93,7 @@ export interface TaskCommandDeps {
     confirm: (request: OpenConfirmModalOptions) => void;
     /** Puts the keyboard in the title of the task's panel, which is open (or opening) when this is called. */
     focusTitle: (taskId: TaskId) => void;
-    /** Opens the "New task" dialog, as the header's button does. */
+    /** Opens the "New task" dialog, as the header's button does: for a sub-task of the task the screen is inside, or a task of the roots at the roots. */
     create: () => void;
     /** Opens the filter popover, with the keyboard in it. */
     openFilter: () => void;
@@ -135,7 +155,7 @@ const onTheList = (deps: TaskCommandDeps): Pick<Command, 'when' | 'focus'> => ({
 
 /** The cursor, `Enter` and `Escape`. `Enter` only acts where the list has the focus, so it never takes a key from a widget that uses it. */
 function navigationCommands(deps: TaskCommandDeps): Command[] {
-    const { cursor, ui, hasTask, view, focusZone, revealCursor } = deps;
+    const { cursor, ui, hasTask, view, rows, setFolded, focusZone, revealCursor } = deps;
     const move = (id: string, title: string, keys: Command['keys'], direction: Direction, extra: Partial<Command> = {}): Command => ({
         id,
         title,
@@ -151,11 +171,35 @@ function navigationCommands(deps: TaskCommandDeps): Command[] {
         ...extra,
     });
 
+    // The arrows are the board's columns, and the tree list's folds: one command each, since two commands cannot share a key. In the list a key with nothing to do
+    // (Right on a row with nothing inside, Left on a row at the top) is not ours, and stays the page's.
+    const sideways = (id: string, title: string, keys: string, direction: 'left' | 'right'): Command => move(id, title, keys, direction, {
+        when: () => hasCursor(deps) && (view() === 'board' || treeMove(rows(), cursor.cursorId, direction) !== undefined),
+        handler: () => onCursor(deps, () => {
+            if (view() === 'board') {
+                cursor.move(direction);
+                settle(deps);
+
+                return;
+            }
+
+            const step = treeMove(rows(), cursor.cursorId, direction);
+
+            if (step?.kind === 'move') {
+                cursor.setCursor(step.taskId);
+                settle(deps);
+            }
+            else if (step) {
+                setFolded(step.taskId, step.kind === 'fold');
+            }
+        }),
+    });
+
     return [
         move('tasks.cursor.down', 'Move down', ['ArrowDown', 'j'], 'down'),
         move('tasks.cursor.up', 'Move up', ['ArrowUp', 'k'], 'up'),
-        move('tasks.cursor.left', 'Move to the column on the left', 'ArrowLeft', 'left', { when: () => view() === 'board' && hasCursor(deps) }),
-        move('tasks.cursor.right', 'Move to the column on the right', 'ArrowRight', 'right', { when: () => view() === 'board' && hasCursor(deps) }),
+        sideways('tasks.cursor.left', 'Move to the column on the left, or fold the row', 'ArrowLeft', 'left'),
+        sideways('tasks.cursor.right', 'Move to the column on the right, or unfold the row', 'ArrowRight', 'right'),
         move('tasks.cursor.first', 'Jump to the first task', 'Home', 'first', { repeat: false }),
         move('tasks.cursor.last', 'Jump to the last task', 'End', 'last', { repeat: false }),
         {
@@ -439,11 +483,24 @@ function actionCommands(deps: TaskCommandDeps): Command[] {
 /**
  * `C` creates a task, `Cmd/Ctrl+B` switches the view, `F` opens the filter and `/` the search. They belong to the screen, not to a task,
  * so they work wherever the key is not a character of a text field, which the dispatcher already keeps out.
+ * Inside a task `C` makes a sub-task of it, as the "+ Sub-task" button does, and at the last level it says why it cannot, as that button does when it is off.
  */
-function screenCommands({ ui, view, create, openFilter, focusSearch }: TaskCommandDeps): Command[] {
+function screenCommands({ view, setView, scope, canHaveChildren, create, notify, openFilter, focusSearch }: TaskCommandDeps): Command[] {
     return [
-        { id: 'tasks.create', title: 'New task', group: GROUP, keys: 'c', scope: TASKS_SCOPE, handler: () => create() },
-        { id: 'tasks.view.toggle', title: 'Switch between board and list', group: GROUP, keys: '$mod+b', scope: TASKS_SCOPE, handler: () => ui.setTasksView(view() === 'board' ? 'list' : 'board') },
+        {
+            id: 'tasks.create',
+            title: 'New task',
+            group: GROUP,
+            keys: 'c',
+            scope: TASKS_SCOPE,
+            handler: () => {
+                const inside = scope();
+
+                if (inside !== null && !canHaveChildren(inside)) notify(DEPTH_LIMIT_HINT);
+                else create();
+            },
+        },
+        { id: 'tasks.view.toggle', title: 'Switch between board and list', group: GROUP, keys: '$mod+b', scope: TASKS_SCOPE, handler: () => setView(view() === 'board' ? 'list' : 'board') },
         { id: 'tasks.filter', title: 'Filter tasks', group: GROUP, keys: 'f', scope: TASKS_SCOPE, handler: () => openFilter() },
         { id: 'tasks.search', title: 'Search tasks', group: GROUP, keys: '/', scope: TASKS_SCOPE, handler: () => focusSearch() },
     ];
@@ -544,6 +601,37 @@ function linkedCommands(deps: TaskCommandDeps): Command[] {
 }
 
 /**
+ * `O` then `S` opens the cursor task's own scope, its sub-tasks (a board or list of what is inside it, empty for a task with nothing inside yet, where "New sub-task" starts),
+ * and `U` goes up one level, inside a task only. `O S` is one of the `O` chords for the same reason as `O C` and `O D`: a chord that waits for a key which then falls
+ * through to "Change status" would be worse than a toast, so it exists for every task and says so where it cannot open (the last level).
+ * `U` exists only inside a task, where the screen can go up; at the roots the key stays the page's.
+ */
+function scopeCommands(deps: TaskCommandDeps): Command[] {
+    const { scope, goUp, openScope, canHaveChildren, notify } = deps;
+
+    return [
+        {
+            id: 'tasks.subtasks.open',
+            title: 'Open sub-tasks',
+            group: GROUP,
+            keys: 'o s',
+            scope: TASKS_SCOPE,
+            when: () => cursorTask(deps) !== undefined,
+            focus: () => inList(deps),
+            handler: () => onCursor(deps, () => {
+                const task = cursorTask(deps);
+
+                if (!task) return;
+
+                if (canHaveChildren(task.id)) openScope(task.id);
+                else notify(`${ task.key } cannot hold sub-tasks: tasks go only ${ MAX_TASK_DEPTH } levels deep`);
+            }),
+        },
+        { id: 'tasks.scope.up', title: 'Go up one level', group: GROUP, keys: 'u', scope: TASKS_SCOPE, when: () => scope() !== null, handler: () => goUp() },
+    ];
+}
+
+/**
  * `Cmd/Ctrl+Z` takes back the latest status, title, description or dependency change. The history is the window's, so it needs neither the list's focus nor a cursor;
  * a text field keeps its own undo and a dialog or picker keeps the key, as with every command. It exists only while there is something to take back.
  */
@@ -564,6 +652,7 @@ export function taskCommands(deps: TaskCommandDeps): Command[] {
         ...screenCommands(deps),
         ...copyCommands(deps),
         ...linkedCommands(deps),
+        ...scopeCommands(deps),
         ...undoCommands(deps),
     ];
 }

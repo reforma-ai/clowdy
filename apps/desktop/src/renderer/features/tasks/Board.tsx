@@ -6,6 +6,7 @@ import { TaskCard } from './TaskCard';
 import { activeExecutors } from './taskView';
 
 import type { Run, Task, TaskId, TaskStatus } from '@clowdy/protocol';
+import type { TaskNotes } from './scopeView';
 
 const DRAG_TYPE = 'application/x-clowdy-task';
 
@@ -17,6 +18,10 @@ export interface BoardColumn {
 export interface BoardProps {
     columns: BoardColumn[];
     runsOfTask: ReadonlyMap<TaskId, readonly Run[]>;
+    /** What a card says besides its name: the work inside the task, its checklist, the task it is inside. */
+    notesOf: (task: Task) => TaskNotes;
+    /** A press on a card's roll-up chip: show the insides of that task. */
+    onOpenScope: (taskId: TaskId) => void;
     /** The task the detail panel shows. */
     openId: TaskId | null;
     /** The tasks the keyboard selected, for a bulk action. */
@@ -25,8 +30,11 @@ export interface BoardProps {
     onMove: (taskId: TaskId, statusId: string) => void;
 }
 
-/** The board: a column per status, cards in them. A card dropped on another column changes the task's status. The screen handles clicks and keys. */
-export function Board({ columns, runsOfTask, openId, selectedIds, onMove }: BoardProps) {
+/**
+ * The board: a column per status, cards in them: the tasks of one level, or every task of the scope when the sub-tasks are shown. A card dropped on another column
+ * changes the task's status, in both. The screen handles clicks and keys.
+ */
+export function Board({ columns, runsOfTask, notesOf, onOpenScope, openId, selectedIds, onMove }: BoardProps) {
     const [dragging, setDragging] = useState<TaskId | null>(null);
     const [over, setOver] = useState<string | null>(null);
 
@@ -75,6 +83,8 @@ export function Board({ columns, runsOfTask, openId, selectedIds, onMove }: Boar
                                 key={ task.id }
                                 task={ task }
                                 executors={ activeExecutors(runsOfTask.get(task.id)) }
+                                notes={ notesOf(task) }
+                                onOpenScope={ () => onOpenScope(task.id) }
                                 isSelected={ selectedIds.has(task.id) }
                                 isOpen={ task.id === openId }
                                 isDragging={ task.id === dragging }

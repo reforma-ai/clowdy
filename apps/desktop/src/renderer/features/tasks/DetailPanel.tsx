@@ -3,7 +3,7 @@ import { ConfirmButton } from '@clowdy/components/ConfirmButton';
 import { ListBoxItem } from '@clowdy/components/List';
 import { Select } from '@clowdy/components/Select';
 import { Text } from '@clowdy/components/Text';
-import { ArrowUpRight, Box, Close } from '@clowdy/icons/14';
+import { ArrowUpRight, Box, Close, Layers } from '@clowdy/icons/14';
 import { useState, type Ref } from 'react';
 
 import { commandTooltip } from '../../hotkeys';
@@ -15,6 +15,7 @@ import styles from './DetailPanel.module.css';
 import { Executors, LatestActivity, RelatedChats, Results, Section } from './DetailSections';
 import { EditableText } from './EditableText';
 import { StatusIcon } from './status';
+import { settledUi, settleScope } from './tasksScope';
 import { sendWithUndo } from './taskUndo';
 import { activeExecutors, dependencyCandidates, externalLink, startBlockedReason, taskActivity } from './taskView';
 
@@ -27,15 +28,19 @@ export interface DetailPanelProps {
     taskRuns: readonly Run[];
     /** The title field, for the rename key to put the keyboard in. */
     titleRef?: Ref<HTMLTextAreaElement | null>;
+    /** Shows the task's own scope. Given only for a task that has tasks inside it, and then the panel offers "Open sub-tasks". */
+    onOpenSubtasks?: () => void;
 }
 
 type TaskChanges = Partial<Pick<Extract<CommandInput, { type: 'task.update' }>, 'title' | 'description' | 'statusId' | 'dependsOn'>>;
 
 /** The selected task, on the right of the section: edit it, see who works on it and what came out, start or delete it. */
-export function DetailPanel({ task, taskRuns, titleRef }: DetailPanelProps) {
+export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks }: DetailPanelProps) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
+    // What the panel opens makes a place in the history, which must not carry a scope that is gone.
+    const nav = settledUi(root, project, ui, { reveal: true });
     const [isStarting, setIsStarting] = useState(false);
 
     const status = project.statuses.find(candidate => candidate.id === task.statusId);
@@ -54,7 +59,7 @@ export function DetailPanel({ task, taskRuns, titleRef }: DetailPanelProps) {
     const remove = async () => {
         const result = await sendCommand(root, { type: 'task.delete', taskId: task.id });
 
-        if (result.ok) ui.openTask(null);
+        if (result.ok) nav.openTask(null);
     };
 
     return (
@@ -64,7 +69,7 @@ export function DetailPanel({ task, taskRuns, titleRef }: DetailPanelProps) {
                     <Box aria-hidden width={ 12 } height={ 12 } />
                     { task.key }
                 </span>
-                <Button iconOnly size="sm" variant="filling" aria-label="Close" tooltip="Close" onPress={ () => ui.openTask(null) }>
+                <Button iconOnly size="sm" variant="filling" aria-label="Close" tooltip="Close" onPress={ () => nav.openTask(null) }>
                     <Close />
                 </Button>
             </div>
@@ -99,9 +104,21 @@ export function DetailPanel({ task, taskRuns, titleRef }: DetailPanelProps) {
                         value={ task.description }
                         onCommit={ description => update({ description }) }
                     />
+                    { onOpenSubtasks && (
+                        <Button variant="bordered" size="sm" className={ styles.subtasks } tooltip={ commandTooltip('Open sub-tasks', 'tasks.subtasks.open') } onPress={ onOpenSubtasks }>
+                            <Layers />
+                            Open sub-tasks
+                        </Button>
+                    ) }
                 </div>
 
-                <Executors taskRuns={ taskRuns } onOpen={ runId => void openRun(root, project, ui, runId) } />
+                <Executors
+                    taskRuns={ taskRuns }
+                    onOpen={ (runId) => {
+                        settleScope(root, project, ui);
+                        void openRun(root, project, ui, runId);
+                    } }
+                />
 
                 <Section title="Dependencies" count={ task.dependsOn.length }>
                     <DependencyList
@@ -111,13 +128,19 @@ export function DetailPanel({ task, taskRuns, titleRef }: DetailPanelProps) {
                         candidates={ dependencyCandidates(project.taskList, { taskId: task.id, taken: task.dependsOn }) }
                         onAdd={ id => void update({ dependsOn: [...task.dependsOn, id] }) }
                         onRemove={ id => void update({ dependsOn: task.dependsOn.filter(candidate => candidate !== id) }) }
-                        onOpen={ id => ui.openTask(id) }
+                        onOpen={ id => nav.openTask(id) }
                     />
                 </Section>
 
-                <RelatedChats chats={ project.chatsOfTask(task.id) } onOpen={ chatId => void openChat(root, project, ui, chatId) } />
+                <RelatedChats
+                    chats={ project.chatsOfTask(task.id) }
+                    onOpen={ (chatId) => {
+                        settleScope(root, project, ui);
+                        void openChat(root, project, ui, chatId);
+                    } }
+                />
 
-                <Results taskId={ task.id } expectChecks={ activeExecutors(taskRuns).length > 0 } onOpenDoc={ path => ui.openDoc(path) } />
+                <Results taskId={ task.id } expectChecks={ activeExecutors(taskRuns).length > 0 } onOpenDoc={ path => nav.openDoc(path) } />
 
                 <LatestActivity activity={ taskActivity(task, taskRuns, project.runs) } />
             </div>

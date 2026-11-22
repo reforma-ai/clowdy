@@ -19,17 +19,6 @@ function scoreOf(path: string, first: string): number {
     return name.startsWith(first) ? 0 : name.includes(first) ? 1 : 2;
 }
 
-/** The files of the tree (the folders it has listed so far, and the ones that are shown: not the hidden ones unless they are asked for) that have every word of `query` in their path. */
-function treeFiles(tree: FileManager['tree'], query: string): string[] {
-    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-
-    tree.setShowHidden(treeLayout.showHidden);
-
-    return [...tree.entries.values()]
-        .filter(({ path, kind }) => kind === 'file' && words.every(word => path.toLowerCase().includes(word)) && tree.isVisible(path))
-        .map(({ path }) => path);
-}
-
 /**
  * The files of two lists, as one: the ones that name the words best first, then the shorter paths, the project's list before the other where they tie (the sort is
  * stable), each file once.
@@ -86,7 +75,11 @@ export function quickSearchSource(root: RootStore, project: ProjectState, folder
             // sees: a file that git ignores is in the tree and not in that list. Either one on its own is an answer; a failure is one only when both fail.
             const [listed, shown] = await Promise.allSettled([
                 root.transport.getProjectFiles(projectId, query, FILE_LIMIT),
-                managerOf(root, projectId, folder).then(({ tree }) => treeFiles(tree, query)),
+                managerOf(root, projectId, folder).then((manager) => {
+                    manager.tree.setShowHidden(treeLayout.showHidden);
+
+                    return manager.listedFiles(query);
+                }),
             ]);
 
             if (listed.status === 'rejected' && shown.status === 'rejected') throw listed.reason;

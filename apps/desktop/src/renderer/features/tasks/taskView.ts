@@ -101,7 +101,8 @@ export function boardColumns(statuses: readonly TaskStatus[], tasks: readonly Ta
 
 /**
  * The ids the cursor walks, in the order the view draws them: the board's columns in workflow order, or the list's one column in the order it is given.
- * `tasks` is what the view shows, in task order.
+ * `tasks` is what the view shows: a board's tasks in any order (the columns group them), and the tree list's rows top to bottom with the insides of folded rows left out,
+ * which is the order the cursor must walk (`scopeContent` makes both).
  */
 export function taskGrid(view: TasksView, tasks: readonly Task[], statuses: readonly TaskStatus[]): TaskId[][] {
     if (view === 'board') return boardColumns(statuses, tasks).map(column => column.tasks.map(task => task.id));

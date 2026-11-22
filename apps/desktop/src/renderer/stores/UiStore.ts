@@ -1,6 +1,7 @@
 import { makeAutoObservable, observableRef, reaction } from 'mobx';
 
 import { readStored, removeStored, writeStored, type KeyValueStorage } from './storage';
+import { revealTask, type RevealTasks } from './taskReveal';
 
 import type { ChatId, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
 
@@ -153,8 +154,13 @@ export class ProjectUi {
     /** Agents: files that a hand-off from another chat left for the new-chat page, which takes them once it is open. Not kept between sessions. */
     pendingFiles: readonly File[] = [];
 
-    constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}) {
+    /** The tasks the project holds, for `openTask` to reveal a task in. Read when a task is opened, not kept. */
+    readonly #tasks: (() => RevealTasks | undefined) | undefined;
+
+    constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}, tasks?: () => RevealTasks | undefined) {
         const key = uiKey(projectId);
+
+        this.#tasks = tasks;
         const stored = readStored(storage, key) as Partial<Record<keyof StoredProjectUi, unknown>> | undefined;
 
         if (stored && typeof stored === 'object') {
@@ -270,10 +276,34 @@ export class ProjectUi {
         return files;
     }
 
-    /** Shows the task in the Tasks section; `null` closes its detail panel. */
-    openTask(taskId: TaskId | null): void {
+    /**
+     * Shows the task in the Tasks section; `null` closes its detail panel. The task is made visible in one change with the opening, so history has one entry for both:
+     * the scope stays when the task is inside it and moves to the task's parent when it is not (`revealTask`), and the folds above the task open.
+     * `reveal: false` is for the Tasks screen opening a task it draws already (a click on a card, a key on the cursor task): with a filter on, a card can be drawn away
+     * from its parent, and opening it must not move the screen. `madeIn` is for a task that was just made inside a task (`null`: a root) and may not have reached the
+     * project yet, since the daemon's event can come after the reply to the command: the screen is put where the task will show, and not left where it is.
+     */
+    openTask(taskId: TaskId | null, { reveal = true, madeIn }: { reveal?: boolean; madeIn?: TaskId | null } = {}): void {
         this.section = 'tasks';
         this.taskId = taskId;
+
+        if (taskId !== null && reveal) this.#reveal(taskId, madeIn);
+    }
+
+    /** Puts the screen where the task shows: its scope, and its folds. Nothing changes without the project's tasks, or for a task they do not hold. */
+    #reveal(taskId: TaskId, madeIn: TaskId | null | undefined): void {
+        const tasks = this.#tasks?.();
+
+        if (!tasks) return;
+
+        const scope = this.resolveTasksScope(tasks);
+        const view = scope === null ? this.tasksView : this.taskPageView;
+        const reveal = revealTask(tasks, scope, taskId, { oneLevel: view === 'board' && !this.tasksSubtasks, madeIn });
+
+        if (!reveal) return;
+
+        this.tasksScope = reveal.scope;
+        this.expandTasks(reveal.unfold);
     }
 
     /** Shows the run in the Agents section, below its chat; a root run is its chat. */
@@ -388,15 +418,16 @@ export class UiStore {
     settingsProjectId: ProjectId | null = null;
     readonly #projects = new Map<ProjectId, ProjectUi>();
 
-    constructor(private readonly storage?: KeyValueStorage, private readonly initial?: InitialProjectUi) {
-        makeAutoObservable<UiStore, 'storage' | 'initial'>(this, { storage: false, initial: false });
+    /** `tasksOf` gives the tasks a project holds, which `ProjectUi.openTask` needs to reveal a task: the root store hands them over, a test of the window state alone has none. */
+    constructor(private readonly storage?: KeyValueStorage, private readonly initial?: InitialProjectUi, private readonly tasksOf?: (projectId: ProjectId) => RevealTasks | undefined) {
+        makeAutoObservable<UiStore, 'storage' | 'initial' | 'tasksOf'>(this, { storage: false, initial: false, tasksOf: false });
     }
 
     forProject(projectId: ProjectId): ProjectUi {
         let ui = this.#projects.get(projectId);
 
         if (!ui) {
-            ui = new ProjectUi(projectId, this.storage, this.initial);
+            ui = new ProjectUi(projectId, this.storage, this.initial, () => this.tasksOf?.(projectId));
             this.#projects.set(projectId, ui);
         }
 

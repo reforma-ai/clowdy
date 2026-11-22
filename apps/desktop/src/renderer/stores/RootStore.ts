@@ -82,7 +82,7 @@ export class RootStore {
     constructor(readonly transport: Transport, { storage = browserStorage(), notify, initialUi }: RootStoreOptions = {}) {
         this.#storage = storage;
         this.#notify = notify;
-        this.ui = new UiStore(storage, initialUi);
+        this.ui = new UiStore(storage, initialUi, projectId => this.projectState(projectId)?.tasks);
         this.streams = new StreamStore(transport);
         this.models = new ModelsStore(transport);
         this.projectIcons = new ProjectIconsStore(transport);

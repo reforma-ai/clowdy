@@ -13,17 +13,6 @@
     min-height: 0;
 }
 
-.message {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-md);
-    padding: var(--spacing-xxl);
-    text-align: center;
-}
-
 /* Holds the board or the list, and is where their clicks, pointer movement and focus are read. */
 .region {
     display: flex;

@@ -29,9 +29,65 @@
 
 .title {
     overflow: hidden;
-    text-overflow: ellipsis;
     color: var(--color-text);
     font-weight: 500;
+}
+
+/* The title with its fold and chips on one line; the indent grows by a level per `--depth`, set by the row. */
+.line {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+    padding-inline-start: calc(var(--depth, 0) * var(--spacing-xxl));
+}
+
+/* The room of the chevron, there or not. */
+.fold {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-16);
+    height: var(--spacing-16);
+}
+
+.chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-16);
+    height: var(--spacing-16);
+    padding: 0;
+    border: 0;
+    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background: none;
+    color: var(--color-secondary-muted-text);
+    cursor: pointer;
+}
+
+.chevron:hover {
+    background-color: var(--color-secondary-muted);
+    color: var(--color-text);
+}
+
+.chevron svg path {
+    fill: currentColor;
+}
+
+.text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chips {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-xs);
 }
 
 .agents {

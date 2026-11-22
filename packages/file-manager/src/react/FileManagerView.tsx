@@ -1,11 +1,13 @@
 import { Button } from '@clowdy/components/Button';
-import { Panel, PanelHeader, PanelTab, PanelTabHeader } from '@clowdy/components/Panel';
+import { SearchInput } from '@clowdy/components/Input';
+import { Panel, PanelHeader, PanelTab } from '@clowdy/components/Panel';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup, usePanelRef } from '@clowdy/components/Resizable';
 import { Show } from '@clowdy/components/Show';
+import { Spinner } from '@clowdy/components/Spinner';
 import { Folder } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { observer } from 'mobx-react-lite';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 import { closeTab } from './editor/closeTab';
 import { EditorArea } from './editor/EditorArea';
@@ -17,11 +19,8 @@ import type { Extension } from '@codemirror/state';
 import type { KeyboardEvent, ReactNode } from 'react';
 import type { FileManager } from '../FileManager';
 import type { FileEntry } from '../provider';
-import type { ExplorerProps } from './explorer/Explorer';
+import type { ExplorerHandle, ExplorerProps } from './explorer/Explorer';
 import type { FileMenuItem } from './explorer/ExplorerMenu';
-
-/** The sidebar's one tab. Finding a file by its name or by its content is the host's: the search of the whole window, not a part of this tree. */
-const TABS = [{ value: 'files', label: 'Files' }] as const;
 
 export interface FileManagerViewProps {
     manager: FileManager;
@@ -48,8 +47,9 @@ const EDITOR_MIN_WIDTH = 100;
 const SIDEBAR_DEFAULT_WIDTH = 240;
 
 /**
- * The editor area, and beside it at the right the sidebar with the file tree, on an edge that can be dragged. Its shortcuts (⌘S, ⌥W or ⌘W) work only while
- * focus is inside it. Opening a file by its name or finding text in the files is the host's search: it calls `manager.open`.
+ * The editor area, and beside it at the right the sidebar with the file tree, on an edge that can be dragged. The sidebar's header is the filter of the tree (by file
+ * name), with the button that hides the sidebar at its end. Its shortcuts (⌘S, ⌥W or ⌘W) work only while focus is inside it. Finding a file anywhere by its name, or text in
+ * the files, is the host's search: it calls `manager.open`.
  */
 export const FileManagerView = observer(function FileManagerView({
     manager,
@@ -63,6 +63,7 @@ export const FileManagerView = observer(function FileManagerView({
     className,
 }: FileManagerViewProps) {
     const sidebar = usePanelRef();
+    const explorer = useRef<ExplorerHandle>(null);
     const id = useId();
 
     // ⌘ on macOS and Ctrl elsewhere, by physical key like the app's hotkeys.
@@ -118,19 +119,43 @@ export const FileManagerView = observer(function FileManagerView({
                     <Sidebar panelRef={sidebar} width={sidebarWidth}>
                         <Panel side="right" className={styles.sidebar}>
                             <PanelHeader>
-                                <PanelTabHeader tab="files" tabs={TABS} onSelect={() => undefined} />
+                                <FilterField manager={manager} onSubmit={() => explorer.current?.openFirstMatch()} />
                                 <PanelHeader.Actions>
                                     {onSidebarToggle && <SidebarToggle open onPress={onSidebarToggle} />}
                                 </PanelHeader.Actions>
                             </PanelHeader>
                             <PanelTab>
-                                <Explorer manager={manager} menuItems={menuItems} dndManager={dndManager} />
+                                <Explorer ref={explorer} manager={manager} menuItems={menuItems} dndManager={dndManager} />
                             </PanelTab>
                         </Panel>
                     </Sidebar>
                 </Show>
             </ResizablePanelGroup>
         </div>
+    );
+});
+
+/** The filter of the tree: the files whose name has what is typed, with the folders above them. Enter opens the first. It takes the place a title would have in the header. */
+const FilterField = observer(function FilterField({ manager, onSubmit }: { manager: FileManager; onSubmit: () => void }) {
+    const { filterQuery, filterResult } = manager;
+
+    return (
+        <SearchInput
+            size="sm"
+            variant="inline"
+            className={styles.filter}
+            placeholder="Filter files"
+            aria-label="Filter files"
+            value={filterQuery}
+            onChange={(query: string) => void manager.filter(query)}
+            onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                    onSubmit();
+                }
+            }}
+        >
+            {filterQuery.trim() !== '' && filterResult?.query !== filterQuery ? <Spinner slot="suffix" size="xs" aria-label="Searching" /> : null}
+        </SearchInput>
     );
 });
 

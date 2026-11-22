@@ -49,10 +49,6 @@ export class FileManager {
     readonly readonly: boolean;
     /** The latest path to show in the explorer; see `reveal`. */
     @observableRef accessor revealed: { path: string } | null = null;
-    /** The filter field shows above the Files tree. */
-    @observable accessor filterOpen = false;
-    /** Counts `showFilter` calls, so the view focuses the filter on each one. */
-    @observable accessor filterRequests = 0;
     /** What the Files filter looks for. */
     @observable accessor filterQuery = '';
     /** The shown files the latest filter found, with its query; `null` while the query is empty. */
@@ -200,23 +196,9 @@ export class FileManager {
         this.revealed = { path: normalizePath(path) };
     }
 
-    /** Shows the filter field above the tree and focuses it. */
-    @action
-    showFilter(): void {
-        this.filterOpen = true;
-        this.filterRequests++;
-    }
-
-    /** Hides the filter and shows the whole tree again. */
-    @action
-    closeFilter(): void {
-        this.filterOpen = false;
-        void this.filter('');
-    }
-
     /**
-     * Filters the Files tree to the shown files `findFiles` returns for `query`, listing the folders
-     * above each so they have rows. An empty query shows the whole tree again.
+     * Filters the Files tree to the shown files `findFiles` returns for `query`, and the ones the tree has listed that have its words (`listedFiles`), listing the
+     * folders above each so they have rows. An empty query shows the whole tree again.
      */
     @action
     filter(query: string): Promise<void> {
@@ -298,9 +280,26 @@ export class FileManager {
         this.#closeIfGone(document, listed ? document.handleChange() : document.handleDelete());
     }
 
-    /** Files `findFiles` returns that the tree shows, once the folders above them are listed. */
+    /**
+     * The files the tree has listed so far, and shows, whose path has every word of `query`, ignoring case. They are what the person sees, which a provider's own search may
+     * not know: the daemon's, for one, lists the files git tracks and leaves out the ones it ignores.
+     */
+    listedFiles(query: string): string[] {
+        const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+
+        if (words.length === 0) {
+            return [];
+        }
+
+        return [...this.tree.entries.values()]
+            .filter(({ path, kind }) => kind === 'file' && words.every(word => path.toLowerCase().includes(word)) && this.tree.isVisible(path))
+            .map(({ path }) => path);
+    }
+
+    /** Files `findFiles` returns and the tree has listed, that the tree shows, once the folders above them are listed. */
     async #shownMatches(query: string): Promise<ReadonlySet<string>> {
-        const paths = (await this.findFiles(query)).filter(path => this.tree.isVisible(path));
+        const found = (await this.findFiles(query)).filter(path => this.tree.isVisible(path));
+        const paths = [...new Set([...found, ...this.listedFiles(query)])];
         const folders = new Set<string>();
 
         for (const path of paths) {

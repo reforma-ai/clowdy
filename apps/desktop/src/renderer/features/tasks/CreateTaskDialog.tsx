@@ -13,16 +13,20 @@ import { DependencyList } from './DependencyList';
 import { StatusIcon } from './status';
 import { createdTaskId, dependencyCandidates } from './taskView';
 
+import type { TaskId } from '@clowdy/protocol';
 import type { ProjectState, ProjectUi, RootStore } from '../../stores';
 
 export interface CreateTaskDialogProps {
     root: RootStore;
     project: ProjectState;
     ui: ProjectUi;
+    /** Makes the new task a sub-task of this one, and says so in the dialog. The parent picker for any task is part of the task's details, not of this dialog. */
+    parentId?: TaskId;
 }
 
 /**
- * "New task": title, description, status and dependencies. The new task opens in the detail panel.
+ * "New task": title, description, status and dependencies. The new task opens in the detail panel, and the Tasks screen shows it where it is: with a `parentId` the task goes
+ * inside that one, and a muted line under the heading names it; the screen keeps its scope when the task is inside it and moves to the task's parent when it is not.
  * `onClose` runs when the dialog is closed, however it was: the window hands focus back after it, so a caller that wants it elsewhere acts a tick later.
  */
 export function openCreateTask(props: CreateTaskDialogProps, { onClose }: { onClose?: () => void } = {}): void {
@@ -39,7 +43,7 @@ export function openCreateTask(props: CreateTaskDialogProps, { onClose }: { onCl
     });
 }
 
-function CreateTaskForm({ root, project, ui }: CreateTaskDialogProps) {
+function CreateTaskForm({ root, project, ui, parentId }: CreateTaskDialogProps) {
     const { modal } = useModalContext();
     const descriptionId = useId();
     const [title, setTitle] = useState('');
@@ -49,6 +53,7 @@ function CreateTaskForm({ root, project, ui }: CreateTaskDialogProps) {
     const [error, setError] = useState('');
     const [isPending, setIsPending] = useState(false);
     const canSubmit = title.trim() !== '';
+    const parent = parentId === undefined ? undefined : project.tasks.get(parentId);
 
     const submit = async (event: FormEvent) => {
         event.preventDefault();
@@ -65,6 +70,7 @@ function CreateTaskForm({ root, project, ui }: CreateTaskDialogProps) {
             description: description.trim() || undefined,
             statusId,
             dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
+            parentId,
         });
 
         if (result.ok) {
@@ -72,7 +78,8 @@ function CreateTaskForm({ root, project, ui }: CreateTaskDialogProps) {
 
             const taskId = createdTaskId(result.data);
 
-            if (taskId) ui.openTask(taskId);
+            // The daemon's event may come after this reply, so the new task is not always in the project yet: `madeIn` puts the screen where it will show.
+            if (taskId) ui.openTask(taskId, { madeIn: parentId ?? null });
         }
         else {
             setError(result.error.message);
@@ -83,7 +90,10 @@ function CreateTaskForm({ root, project, ui }: CreateTaskDialogProps) {
 
     return (
         <form className={ styles.form } onSubmit={ event => void submit(event) }>
-            <Text variant="heading-3">New task</Text>
+            <div className={ styles.heading }>
+                <Text variant="heading-3">New task</Text>
+                { parent && <Text color="secondary" truncate>{ `Sub-task of ${ parent.key } ${ parent.title }` }</Text> }
+            </div>
 
             <FormField layout="vertical">
                 <FormField.Label>Title</FormField.Label>
