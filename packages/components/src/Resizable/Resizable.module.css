@@ -47,8 +47,8 @@
         transition-delay: var(--transition-delay-fast);
     }
 
-    .handle[data-separator='active']:after,
-    :global(body[data-resizable-dragging]) .handle::after {
+    /* Only the edge that is being dragged: the body's dragging mark is for every edge in the window, and a window may have several. */
+    .handle[data-separator='active']:after {
         background-color: var(--color-primary-light);
         transition-delay: 0s;
     }

@@ -33,14 +33,12 @@
     margin-left: auto;
 }
 
-/* The paper plate, drawn as the window's content plate is, round at the corner the chrome shows through. */
+/* The paper plate, drawn as the window's content plate is, with a square corner: it stands against the page's plate, whose corner at that edge is square too. */
 .plate {
     flex: 1;
     min-height: 0;
     border-top: 1px solid var(--color-surface-border);
     border-left: 1px solid var(--color-surface-border);
-    border-top-left-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
     background-color: var(--color-surface);
     overflow: auto;
 }
