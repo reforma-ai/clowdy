@@ -1,5 +1,13 @@
 .trigger {
-    max-width: 18rem;
+    gap: var(--spacing-md);
+    min-width: 0;
+    max-width: 100%;
+    /*
+     * The plate of its hover reaches out of the title's line, so the icon stands where the title's first letter stood: by the padding to the left, and by the overhang of a
+     * button over the line, as the heading's buttons do (`SidebarHeading.module.css`).
+     */
+    margin-inline-start: calc(var(--spacing-10) * -1);
+    margin-block: calc((var(--leading-xl) - var(--spacing-30)) / 2);
 }
 
 /* The main folder's path gives way to the count of the others, which always shows. */

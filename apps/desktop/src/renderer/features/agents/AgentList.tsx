@@ -9,6 +9,7 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, ty
 
 import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
 import { SidebarHeading } from '../../shared';
+import { ProjectSelect } from '../../shell/ProjectSelect';
 import { NEW_CHAT_COMMAND } from '../../shell/shellCommands';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { archiveChat } from '../chats/archiveChat';
@@ -295,7 +296,7 @@ export function AgentList({ selection, chats, missing, isCovered }: { selection:
 
     return (
         <Panel side="left" className={ isCovered ? styles.covered : undefined }>
-            <SidebarHeading ref={ heading } title="Agents" className={ styles.heading }>
+            <SidebarHeading ref={ heading } title={ <ProjectSelect /> } className={ styles.heading }>
                 <ArchiveButton anchor={ heading } />
                 <FilterMenu />
             </SidebarHeading>
