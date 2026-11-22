@@ -54,15 +54,16 @@ function OutsideMenu({ path, onClose }: { path: string; onClose: () => void }) {
 }
 
 /**
- * A file or folder named in a message: its icon and name, the whole path on hover. A press opens it in the Files tab of the side panel; a right-click opens the menu
- * of the path (`OpenWithMenu`: Open in Files, the editor, the file manager, GitHub, the copies of the path). A press that has nothing to open (the file is not on
- * the disk, the path is in a folder the window is not on, or in none of the project's) opens the same menu where the pointer is, so there is always something to do with it.
+ * A file or folder named in a message: its icon and name, the whole path on hover. A press opens it in the Files tab of the side panel; a right-click, a click with
+ * ⌘ or Ctrl held, and a long touch open the menu of the path (`OpenWithMenu`: Open in Files, the editor, the file manager, GitHub, the copies of the path). A press
+ * that has nothing to open (the file is not on the disk, the path is in a folder the window is not on, or in none of the project's) opens the same menu where the
+ * pointer is, so there is always something to do with it.
  */
 export function FileChip({ path, lines, className }: FileChipProps) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
-    const contextMenu = useContextMenu();
+    const contextMenu = useContextMenu({ longPress: true });
     const clean = normalizeChipPath(path);
     const label = lines ? `${ chipLabelFromPath(clean) } (${ lines })` : chipLabelFromPath(clean);
     const current = currentFolder(project, ui);
@@ -72,11 +73,19 @@ export function FileChip({ path, lines, className }: FileChipProps) {
         // Where the menu opens if there is nothing to open: at the pointer, or under the chip for a press from the keyboard (which has no pointer). Read before waiting,
         // since the event is not the chip's any more after that.
         const { left, bottom } = event.currentTarget.getBoundingClientRect();
-        const at = event.detail === 0 ? { clientX: left, clientY: bottom } : { clientX: event.clientX, clientY: event.clientY };
+        const [x, y] = event.detail === 0 ? [left, bottom] : [event.clientX, event.clientY];
+
+        // ⌘ on a Mac, Ctrl on Windows: the menu, as a right-click gives it, in place of opening the file.
+        if (event.metaKey || event.ctrlKey) {
+            contextMenu.openAt(x, y);
+
+            return;
+        }
+
         // The tab shows the folder the window works in: a path in another folder of the project is not there to open.
         const opened = target && target.folder.id === current.id && await openInFiles(root, project.id, target.folder, target.relative);
 
-        if (!opened) contextMenu.areaProps.onContextMenu({ ...at, preventDefault: () => undefined } as MouseEvent);
+        if (!opened) contextMenu.openAt(x, y);
     };
 
     return (

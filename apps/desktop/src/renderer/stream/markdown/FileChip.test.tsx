@@ -108,6 +108,49 @@ describe('FileChip', () => {
         open.mockRestore();
     });
 
+    it('opens the menu on a click with ⌘ or Ctrl held, in place of opening the file', async () => {
+        await draw('src/booking/price.ts');
+        await act(async () => void chip().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true, clientX: 12, clientY: 8, detail: 1 })));
+        await settle();
+
+        expect(openInFiles).not.toHaveBeenCalled();
+        expect(items()).toEqual(['Open in Files', 'Open in GitHub', 'Copy path', 'Copy relative path']);
+
+        await act(async () => item('Copy path').click());
+        await act(async () => void chip().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true, clientX: 12, clientY: 8, detail: 1 })));
+        await settle();
+
+        expect(openInFiles).not.toHaveBeenCalled();
+        expect(items()).toContain('Copy relative path');
+    });
+
+    it('opens the menu on a long touch, and the release does not open the file', async () => {
+        await draw('src/booking/price.ts');
+        vi.useFakeTimers();
+
+        try {
+            const touch = (type: string) => act(() => {
+                const event = new Event(type, { bubbles: true, cancelable: true });
+
+                Object.assign(event, { pointerType: 'touch', clientX: 12, clientY: 8 });
+                chip().dispatchEvent(event);
+            });
+
+            await touch('pointerdown');
+            await act(async () => void vi.advanceTimersByTime(500));
+            await touch('pointerup');
+        }
+        finally {
+            vi.useRealTimers();
+        }
+
+        await press();
+        await settle();
+
+        expect(openInFiles).not.toHaveBeenCalled();
+        expect(items()).toEqual(['Open in Files', 'Open in GitHub', 'Copy path', 'Copy relative path']);
+    });
+
     it('takes a path with no trailing slash for the folder it is on the disk: the page of GitHub is its tree', async () => {
         const open = vi.spyOn(window, 'open').mockReturnValue(null);
 
