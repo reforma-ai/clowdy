@@ -242,8 +242,21 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
     });
     const springOpen = useRef<{ folder: string; timer: ReturnType<typeof setTimeout> } | null>(null);
 
+    // The list is drawn once its host has a size, and takes its offset from the element after every resize. A list built with no size and asked to scroll to the open file
+    // (the reveal below runs as the tree mounts, as when the side panel opens again) could end up at an offset the element was not at: the rows for that offset were drawn,
+    // the ones above it were not, and the tree stayed that way until something scrolled it, as opening a file does.
+    const sized = width > 0 && height > 0;
+
     useLayoutEffect(() => {
-        setScrollElement(treeApi.current?.listEl.current ?? null);
+        const api = treeApi.current;
+        const list = api?.listEl.current ?? null;
+
+        setScrollElement(list);
+
+        // Whatever moved the element on its own, the list takes its offset from the element again.
+        if (api && list) {
+            api.scrollToOffset(list.scrollTop);
+        }
     }, [width, height]);
 
     useListHoverHighlight(scrollElement, scrollElement !== null, `.${styles.row}`);
@@ -277,7 +290,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                 reveal(api, activePath);
             }
         }
-    }, [manager, revealed, activePath, data, dndRoot]);
+    }, [manager, revealed, activePath, data, dndRoot, sized]);
 
     // The inline new row edits as soon as it shows; cancelling removes it.
     useEffect(() => {
@@ -512,7 +525,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                             }
                         }}
                     >
-                        <Show when={dndRoot}>
+                        <Show when={dndRoot && sized}>
                             <Tree<ExplorerItem>
                                 ref={treeApi}
                                 data={data}

@@ -9,9 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // happy-dom has no layout: the tree measures its host to know how many rows to draw, so it is told a size. The view measures its own box too, and a test can take the width away.
-const box = vi.hoisted(() => ({ width: 240 }));
+const box = vi.hoisted(() => ({ width: 240, height: 320 }));
 
-vi.mock('use-resize-observer', () => ({ default: () => ({ ref: () => undefined, width: box.width, height: 320 }) }));
+vi.mock('use-resize-observer', () => ({ default: () => ({ ref: () => undefined, width: box.width, height: box.height }) }));
 
 let container: HTMLDivElement;
 let root: Root;
@@ -35,6 +35,7 @@ function dragEvent(type: string, types: string[]) {
 
 beforeEach(async () => {
     box.width = 240;
+    box.height = 320;
     manager = new FileManager({ provider: new MemoryFileSystem({ 'a.ts': '', 'b.ts': '' }) });
     container = document.createElement('div');
     document.body.append(container);
@@ -69,6 +70,26 @@ describe('the layout of the view', () => {
 
         expect(container.querySelectorAll('[role="treeitem"]').length).toBe(2);
         expect(container.querySelector('[aria-label="Resize the file tree"]')).not.toBeNull();
+    });
+});
+
+describe('the rows of the tree', () => {
+    it('are drawn once the tree\'s host has a height, not before: a list built with none could be asked to scroll to a row and end up out of step with its element', async () => {
+        act(() => root.unmount());
+        root = createRoot(container);
+        box.height = 0;
+        draw();
+        await settle();
+
+        expect(container.querySelector('[aria-label="Resize the file tree"]')).not.toBeNull();
+        expect(container.querySelector('[role="treeitem"]')).toBeNull();
+
+        // The view and the tree are memoized: a changed prop is what makes them measure again, as the observer's own update would.
+        box.height = 320;
+        draw({ className: 'measured', menuItems: () => [] });
+        await settle();
+
+        expect(container.querySelectorAll('[role="treeitem"]').length).toBe(2);
     });
 });
 
