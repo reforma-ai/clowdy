@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import { sha256 } from './bundleManifest';
-import { createProtocolHandler } from './protocol';
+import { CONTENT_SECURITY_POLICY, createProtocolHandler } from './protocol';
 import { APP_ORIGIN } from './security';
 
 const encoder = new TextEncoder();
@@ -49,5 +49,16 @@ describe('createProtocolHandler', () => {
 
         expect((await get(handler, '/assets/app.js')).status).toBe(404);
         expect((await get(handler, '/assets/extra.js')).status).toBe(404);
+    });
+});
+
+describe('CONTENT_SECURITY_POLICY', () => {
+    const directive = (name: string) => CONTENT_SECURITY_POLICY.split('; ').find(part => part.startsWith(`${ name } `));
+
+    test('lets the page frame a blob (the file manager\'s PDF preview) and nothing from outside the app', () => {
+        expect(directive('frame-src')).toBe('frame-src \'self\' blob:');
+        expect(directive('frame-ancestors')).toBe('frame-ancestors \'none\'');
+        expect(directive('object-src')).toBe('object-src \'none\'');
+        expect(directive('script-src')).toBe('script-src \'self\' \'wasm-unsafe-eval\'');
     });
 });

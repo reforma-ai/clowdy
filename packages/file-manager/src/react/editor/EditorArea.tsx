@@ -165,22 +165,21 @@ function RichTextBlockedBar({ reason }: { reason: string }) {
 }
 
 function BinaryPreview({ path, blob }: { path: string; blob: Blob }) {
-    // A PDF would need a frame of the browser's viewer, which the app's content security policy keeps out (no `frame-src`): it is a note, as any file that cannot be previewed.
-    const found = mediaKind(path);
-    const kind = found === 'pdf' ? undefined : found;
+    const kind = mediaKind(path);
     const attach = useCallback(
-        (element: HTMLImageElement | HTMLMediaElement | null) => {
+        (element: HTMLImageElement | HTMLMediaElement | HTMLIFrameElement | null) => {
             if (!element) {
                 return;
             }
 
-            const url = URL.createObjectURL(blob);
+            // Typed as PDF, so the frame opens the browser's PDF viewer whatever type the provider gave the blob. The app's content security policy lets a page frame a `blob:` for this.
+            const url = URL.createObjectURL(kind === 'pdf' ? new Blob([blob], { type: 'application/pdf' }) : blob);
 
             element.src = url;
 
             return () => URL.revokeObjectURL(url);
         },
-        [blob]
+        [blob, kind]
     );
 
     return (
@@ -188,8 +187,8 @@ function BinaryPreview({ path, blob }: { path: string; blob: Blob }) {
             when={kind}
             fallback={
                 <PanelEmptyState
-                    title={found === 'pdf' ? 'PDF file' : 'Binary file'}
-                    description={found === 'pdf' ? 'PDF files can’t be shown here' : 'This file isn’t UTF-8 text, so it can’t be edited here'}
+                    title="Binary file"
+                    description="This file isn’t UTF-8 text, so it can’t be edited here"
                 />
             }
         >
@@ -201,6 +200,9 @@ function BinaryPreview({ path, blob }: { path: string; blob: Blob }) {
             </Show>
             <Show when={kind === 'audio'}>
                 <audio ref={attach} controls />
+            </Show>
+            <Show when={kind === 'pdf'}>
+                <iframe ref={attach} title={basename(path)} className={styles.pdf} />
             </Show>
         </Show>
     );

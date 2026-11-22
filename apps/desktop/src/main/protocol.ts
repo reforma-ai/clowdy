@@ -14,6 +14,8 @@ export const CONTENT_SECURITY_POLICY = [
     'media-src \'self\' data: blob:',
     // Loopback only: the daemon listens there with a local token (see spec §5).
     'connect-src \'self\' data: blob: http://127.0.0.1:* ws://127.0.0.1:*',
+    // `blob:` for the file manager's PDF preview, which frames the file as a PDF blob.
+    'frame-src \'self\' blob:',
     'worker-src \'self\' blob:',
     'object-src \'none\'',
     'base-uri \'none\'',
