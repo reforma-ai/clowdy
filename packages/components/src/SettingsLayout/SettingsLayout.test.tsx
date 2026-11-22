@@ -281,10 +281,45 @@ describe('SettingsLayout as a window the host holds', () => {
         expect(host.textContent).toContain('One');
     });
 
-    it('draws what a section is for at the top of its content, under a hairline', () => {
+    it('draws what a section is for in the header under the title, outside the content that moves', () => {
         draw({}, <SettingsLayout.Intro>How it looks</SettingsLayout.Intro>);
 
-        expect(host.textContent).toContain('How it looks');
-        expect(host.querySelector('[class*="intro"]')).not.toBeNull();
+        const description = host.querySelector('[class*="description"]')!;
+
+        expect(description.textContent).toBe('How it looks');
+        expect(host.querySelector('[class*="header"]')!.contains(description)).toBe(true);
+        expect(host.querySelector('[class*="viewport"]')!.textContent).not.toContain('How it looks');
+    });
+
+    it('draws only the top layer\'s line: the page\'s while no pane is open over it, and the pane\'s while it is the last of the stack', () => {
+        function Page() {
+            return (
+                <>
+                    <SettingsLayout.Intro>The page</SettingsLayout.Intro>
+                    <SettingsLayout.Pane paneKey="one">
+                        <SettingsLayout.Intro>The pane</SettingsLayout.Intro>
+                    </SettingsLayout.Pane>
+                </>
+            );
+        }
+
+        const description = () => host.querySelector('[class*="description"]')?.textContent;
+
+        draw({ stack: [] }, <Page />);
+        expect(description()).toBe('The page');
+
+        draw({ stack: [{ id: 'one', label: 'One' }] }, <Page />);
+        expect(description()).toBe('The pane');
+
+        draw({ stack: [] }, <Page />);
+        expect(description()).toBe('The page');
+    });
+
+    it('is a plain line where it stands when there is no layout around it', () => {
+        act(() => {
+            root.render(<SettingsLayout.Intro>Alone</SettingsLayout.Intro>);
+        });
+
+        expect(host.textContent).toBe('Alone');
     });
 });

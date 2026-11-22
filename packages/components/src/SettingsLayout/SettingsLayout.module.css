@@ -39,11 +39,37 @@
 
     .header {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
+        flex-direction: column;
         flex-shrink: 0;
         padding: var(--spacing-40) var(--spacing-40) var(--spacing-20);
         background: var(--modal-background, var(--color-surface));
+    }
+
+    .headerRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    /* What the section is for, under the title and apart from the content that moves, with a hairline under it. Empty, it takes no room, and the header is as it was. */
+    .description:empty {
+        display: none;
+    }
+
+    .description:not(:empty) {
+        margin-top: var(--spacing-xs);
+        padding-bottom: var(--spacing-xl);
+        border-bottom: 1px solid var(--color-secondary-muted-border);
+    }
+
+    .header:has(.description:not(:empty)) {
+        padding-bottom: 0;
+    }
+
+    /* What it is for stops well short of the column's right edge, so its lines stay short enough to read and never run under the header's action. The hairline still spans the column. */
+    .descriptionText {
+        display: block;
+        max-width: 34rem;
     }
 
     .viewport {
@@ -95,19 +121,6 @@
     .title {
         min-width: 0;
         flex: 1;
-    }
-
-    /* Pulled up under the title it belongs to: the header and the scrolling content each leave 20px, which would set it apart from the title as if it were a block of the page. */
-    .intro {
-        margin-top: calc(var(--spacing-12) * -1);
-        padding-bottom: var(--spacing-xl);
-        border-bottom: 1px solid var(--color-secondary-muted-border);
-    }
-
-    /* What it is for stops well short of the column's right edge, so its lines stay short enough to read and never run under the header's action. The hairline still spans the column. */
-    .introText {
-        display: block;
-        max-width: 34rem;
     }
 }
 
