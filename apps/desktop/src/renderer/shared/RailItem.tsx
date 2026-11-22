@@ -12,6 +12,8 @@ export interface RailItemProps {
     size: number;
     /** The item is the page the rail shows now (`aria-current`). */
     current: boolean;
+    /** The current item is drawn in the primary colour instead of the neutral one, as Reforma's rail does for the chat that is open. */
+    accent?: boolean;
     disabled?: boolean;
     /** What a tooltip says (the label is on the button already, so it is for the key that does the same); none, no tooltip. */
     tooltip?: ReactNode;
@@ -22,12 +24,12 @@ export interface RailItemProps {
 }
 
 /** An item of a rail, the column of a glyph tile and a label under it: the window's left rail and the side panel's right one are made of these. */
-export function RailItem({ label, icon: Icon, size, current, disabled, tooltip, tooltipPlacement = 'right', className, onPress }: RailItemProps) {
+export function RailItem({ label, icon: Icon, size, current, accent, disabled, tooltip, tooltipPlacement = 'right', className, onPress }: RailItemProps) {
     return (
         <Tooltip content={ tooltip } placement={ tooltipPlacement }>
             <button
                 type="button"
-                className={ cn(styles.item, className) }
+                className={ cn(styles.item, accent && styles.accent, className) }
                 disabled={ disabled }
                 aria-current={ current ? 'page' : undefined }
                 onClick={ onPress }

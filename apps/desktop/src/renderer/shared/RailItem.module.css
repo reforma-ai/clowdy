@@ -57,6 +57,15 @@
     }
 }
 
+/* The same rule as the neutral one with a class more, so it wins over it and over the hover that lightens the tile, as in Reforma's `itemAccent`. */
+.item.accent[aria-current='page'] {
+    color: var(--color-primary);
+
+    .glyph {
+        background-color: var(--color-primary-muted-light);
+    }
+}
+
 .item:disabled {
     opacity: var(--opacity-disabled);
     cursor: default;
