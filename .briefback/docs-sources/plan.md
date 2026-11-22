@@ -86,6 +86,17 @@
 
 **Depends on:** Stage 3.
 
-- [ ] Complete
-  - [ ] `apps/desktop/AGENTS.md`, `apps/daemon/AGENTS.md`, `packages/file-manager/AGENTS.md`, the `docs` skill's note on where the Docs tab looks
-  - [ ] `briefback review` of the whole change
+- [x] Complete
+  - [x] `apps/desktop/AGENTS.md`, `apps/daemon/AGENTS.md`, `packages/file-manager/AGENTS.md`, the `docs` skill's note on where the Docs tab looks
+  - [x] `briefback review` of the whole change (an independent read-only reviewer: findings below)
+
+**Review findings, fixed:**
+- A folder with no source could not get its first document from the Docs tab (no root, so no area menu, drop or draft): the scope answers `.clowdy/docs` alone where there is no source, a root that is not drawn while it is empty but can host the new file.
+- A resync failed for good when a folder opened or listed deep was gone since (a branch checkout overflows the watcher into a bare `resync` with no delete events): `FileTree` forgets a folder that is NotFound instead of failing the whole refresh, and lists a folder that `loadDeep` listed once, whole, on a resync, not every folder below it one by one.
+- `@` suggestions: the list is ranked by name before it is cut (`compareDocs`, also the palette's order: the name that starts with the word, the one that has it, the one only the path has, the shorter name first), and no source gives more than four, so a source with many plans does not take the menu from the others.
+- A walk of every source on each key: `.git` and `node_modules` are never listed, a source is listed up to 20 000 entries, and the palette reads the documents once while it is open.
+- `docSourceOf` was dead code (no two roots nest): deleted. Stale comments in the protocol, `FileManagerView`, the AGENTS notes and the docs skill.
+
+**Review findings, left:** an outside drag over the first root tints the whole tree though the drop lands in that root only (cosmetic); the `@` menu still asks the daemon for the documents on each key (bounded now, not cached: a cache would hide a document made a second ago from the menu).
+
+**Commits:** `fab398e`, `12f8899`, `8698655`; the review fixes in the commit that follows them.

@@ -33,7 +33,7 @@ Other topic documents (a runbook, a glossary) are fine at top level or in a new 
 - Names: lowercase kebab-case ASCII ending in `.md`. Decisions, research and checks start with a date: `2026-11-17-use-sqlite.md`. Take the date from `date +%F`, not from memory. Same topic twice in a day: add a distinguishing word.
 - One topic per file. Keep `index.md` under about 60 lines and other files under about 300; split by topic when longer.
 - Plain Markdown that the visual editor round-trips: headings, paragraphs, bullet and numbered lists, tables of at most 5 columns, code fences with a language, links, bold, blockquotes. No front matter, no HTML, no base64 images, no footnotes, no checkbox lists (task state lives in the task list), no diagrams as code. Put metadata as plain lines or a short bullet list under the title (`Status: accepted`).
-- Link to other documents with a path relative to the docs folder, for example the target `decisions/2026-11-17-auth.md`. Write code paths as code spans, not links; the Docs tab opens only its own folder.
+- Link to other documents with a path relative to the docs folder, for example the target `decisions/2026-11-17-auth.md`. Write code paths as code spans, not links; the Docs tab opens only the folders it lists (`.briefback`, `.clowdy/docs`, the ones of the spec tools).
 - Write prose in the language the user and the existing docs use. Keep file names and the labels below in English so every agent finds them.
 - Never rename or delete a document others may link to. Supersede it instead (below). Rename only when the user asks.
 

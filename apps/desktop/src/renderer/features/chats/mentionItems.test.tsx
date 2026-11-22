@@ -64,6 +64,16 @@ describe('docs', () => {
         expect(docItems(tree, folders.slice(0, 1), 'clowdy plan')).toEqual([]);
     });
 
+    it('ranks the documents by name before it cuts the list, and lets no source fill it: a dozen plans of one source leave room for the others', () => {
+        const plans = Array.from({ length: 8 }, (_, index): DocNode => ({ path: `feature-${ index }`, name: `feature-${ index }`, kind: 'dir', children: [{ path: `feature-${ index }/plan.md`, name: 'plan.md', kind: 'file' }] }));
+        const tree = [{ folderId: 'fld_app', sources: [briefback(...plans), documents({ path: 'plan.md', name: 'plan.md', kind: 'file' }, { path: 'plan-view.md', name: 'plan-view.md', kind: 'file' })] }];
+        const paths = docItems(tree, folders.slice(0, 1), 'plan').map(item => (item.data as { path: string }).path);
+
+        expect(paths).toEqual(['.briefback/feature-0/plan.md', '.briefback/feature-1/plan.md', '.briefback/feature-2/plan.md', '.briefback/feature-3/plan.md', '.clowdy/docs/plan.md', '.clowdy/docs/plan-view.md']);
+        // A document whose name has the word, though it starts with something else, comes after the ones whose name starts with it.
+        expect(docItems([{ folderId: 'fld_app', sources: [documents({ path: 'my-plan.md', name: 'my-plan.md', kind: 'file' }, { path: 'plan.md', name: 'plan.md', kind: 'file' })] }], folders.slice(0, 1), 'plan').map(item => item.label)).toEqual(['plan.md', 'my-plan.md']);
+    });
+
     it('offers the documents of every folder, another folder\'s by its absolute path, each with its folder\'s name', () => {
         const tree = [
             { folderId: 'fld_app', sources: [documents(...nodes)] },

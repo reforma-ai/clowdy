@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, rmSync, symlinkSync, wri
 import { join } from 'node:path';
 
 import { isDocFile } from '../src/docs/paths';
-import { docsTree } from '../src/docs/tree';
+import { docsTree, listDocs } from '../src/docs/tree';
 import { cleanTempDirs, startHarness, tempDir } from './helpers';
 
 import type { DocNode, Project } from '@clowdy/protocol';
@@ -247,6 +247,32 @@ describe('document sources', () => {
         finally {
             chmodSync(shut, 0o755);
         }
+    });
+});
+
+describe('the size of a listing', () => {
+    test('skips .git and node_modules, which no document is in, wherever they are put', () => {
+        const root = tempDir('listing');
+
+        for (const dir of ['plans', 'plans/node_modules/pkg', '.git/refs', 'clone/.git']) mkdirSync(join(root, dir), { recursive: true });
+
+        for (const file of ['plans/a.md', 'plans/node_modules/pkg/README.md', '.git/refs/b.md', 'clone/.git/c.md', 'clone/d.md']) writeFileSync(join(root, file), 'x');
+
+        const paths = (nodes: DocNode[]): string[] => nodes.flatMap(node => [node.path, ...paths(node.children ?? [])]);
+
+        expect(paths(listDocs(root))).toEqual(['clone', 'clone/d.md', 'plans', 'plans/a.md']);
+    });
+
+    test('stops at its budget of entries and keeps what it listed (which ones is the file system\'s order)', () => {
+        const root = tempDir('budget');
+
+        for (const name of ['a', 'b', 'c', 'd', 'e']) writeFileSync(join(root, `${ name }.md`), 'x');
+
+        const listed = listDocs(root, '', { left: 3 }).map(node => node.path);
+
+        expect(listed).toHaveLength(3);
+        expect(listed).toEqual(listed.toSorted());
+        expect(listDocs(root)).toHaveLength(5);
     });
 });
 

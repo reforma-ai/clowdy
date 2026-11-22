@@ -98,6 +98,8 @@ export class FileTree {
     #rootDepth = 0;
     /** Folders opened past the root window. A resync lists these again, not the rest of the project. */
     #opened = new Set<string>();
+    /** Folders `loadDeep` listed whole: a resync lists each of them once, whole, and not every folder below it one by one. */
+    readonly #deep = new Set<string>();
     /** Folders `loadDeep` was asked for while a refresh was in flight: that refresh's listing knows nothing of them, so they are listed again once it has committed. */
     readonly #deepRetry = new Set<string>();
     /** Creates under a folder this tab has not listed. They are not rows; they give that folder a chevron. */
@@ -232,18 +234,22 @@ export class FileTree {
             const listed: FileEntry[] = [];
             const covered = new Set<string>();
 
-            // A folder opened while this listing is in flight is listed before the tree is replaced.
+            const deepRoots = [...this.#deep];
+            const belowDeep = (dir: string) => deepRoots.some(root => dir === root || dir.startsWith(`${ root }/`));
+
+            // A folder opened while this listing is in flight is listed before the tree is replaced. The folders below a deep one are in its own listing.
             for (;;) {
-                const extra = [...this.#opened].filter(dir => !covered.has(dir));
+                const extra = [...this.#opened].filter(dir => !covered.has(dir) && !belowDeep(dir));
 
                 if (covered.size > 0 && extra.length === 0) {
                     break;
                 }
 
                 const includeRoot = covered.size === 0;
-                const [root, nested] = await Promise.all([
+                const [root, nested, deep] = await Promise.all([
                     includeRoot ? this.#provider.list('', INITIAL_DEPTH) : Promise.resolve([]),
-                    Promise.all(extra.map(dir => this.#provider.list(dir, 1))).then(groups => groups.flat()),
+                    Promise.all(extra.map(dir => this.#listOpened(dir))).then(groups => groups.flat()),
+                    includeRoot ? Promise.all(deepRoots.map(dir => this.#listDeepAgain(dir))).then(groups => groups.flat()) : Promise.resolve([]),
                 ]);
 
                 if (generation !== this.#generation) {
@@ -255,7 +261,7 @@ export class FileTree {
                 for (const dir of extra) {
                     covered.add(dir);
                 }
-                listed.push(...root, ...nested);
+                listed.push(...root, ...nested, ...deep);
             }
 
             runInAction(() => {
@@ -404,8 +410,50 @@ export class FileTree {
 
             if (dir !== '') {
                 this.#opened.add(dir);
+                this.#deep.add(dir);
             }
         });
+    }
+
+    /**
+     * An opened folder's entries for a resync. A folder that is gone since it was opened (a resync that came with no delete events says nothing of it, as after a branch
+     * was checked out) lists nothing and is forgotten: one folder that is not there must not fail the listing of the rest, again and again.
+     */
+    async #listOpened(dir: string): Promise<FileEntry[]> {
+        try {
+            return await this.#provider.list(dir, 1);
+        }
+        catch (error) {
+            if (FileSystemError.is(error, 'NotFound')) {
+                this.#opened.delete(dir);
+
+                return [];
+            }
+
+            throw error;
+        }
+    }
+
+    /** A deep folder's entries, whole, for a resync. One that is gone is forgotten with the folders opened below it. */
+    async #listDeepAgain(dir: string): Promise<FileEntry[]> {
+        try {
+            return await this.#provider.list(dir);
+        }
+        catch (error) {
+            if (FileSystemError.is(error, 'NotFound')) {
+                this.#deep.delete(dir);
+
+                for (const opened of [...this.#opened]) {
+                    if (opened === dir || opened.startsWith(`${ dir }/`)) {
+                        this.#opened.delete(opened);
+                    }
+                }
+
+                return [];
+            }
+
+            throw error;
+        }
     }
 
     /** Lists again the folders `loadDeep` could not list while a refresh was in flight. A folder that fails stays as the refresh left it: its top level. */

@@ -595,7 +595,7 @@ export interface Artifact {
 /* -------------------------------- Documents ------------------------------- */
 
 export interface DocNode {
-    /** Path relative to the docs folder, `/`-separated. */
+    /** Path relative to the root of its source (`.briefback`, `.clowdy/docs`), `/`-separated. */
     path: string;
     name: string;
     kind: 'file' | 'dir';

@@ -50,14 +50,3 @@ export function docSourcesOf(isDirectory: (path: string) => boolean): DocSourceD
 export function isDocumentPath(path: string): boolean {
     return isMarkdownFile(path) && DOC_SOURCES.some(source => path.startsWith(`${ source.root }/`));
 }
-
-/** The source whose root a path is below: the deepest one, so no file belongs to two; the earlier of two of the same depth. */
-export function docSourceOf(path: string): DocSourceDef | undefined {
-    let found: DocSourceDef | undefined;
-
-    for (const source of DOC_SOURCES) {
-        if (path.startsWith(`${ source.root }/`) && (!found || source.root.length > found.root.length)) found = source;
-    }
-
-    return found;
-}

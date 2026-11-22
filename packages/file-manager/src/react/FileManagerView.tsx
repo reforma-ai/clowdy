@@ -83,7 +83,8 @@ export const FileManagerView = observer(function FileManagerView({
     // box has a width, and stays built.
     const [sized, setSized] = useState(false);
     // A scope is drawn from the tree's own entries, and its folders below the first level are not listed until they are opened: list every root of the scope whole,
-    // once the tree has, and again for a root that the list gains later. The roots are read here, so that the view (an observer) follows a scope whose list changes.
+    // once the tree has, and again (all of them, which a tree that holds them already lists once more) when the set of roots changes. The roots are read here, so that the view
+    // (an observer) follows a scope whose list changes.
     const ready = manager.tree.status === 'ready';
     const rootsKey = scope ? scope.roots.map(({ root }) => root).join('\n') : '';
 

@@ -36,8 +36,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            last page)
  * GET  /v1/projects/:id/docs              -> DocsTree (one entry per folder in the project's order, with the document sources it has: the roots of
  *                                            `DOC_SOURCES` that are folders (`.briefback`, `.clowdy/docs`, Spec Kit's, OpenSpec's, Kiro's), each with its
- *                                            Markdown tree; a source with no Markdown file, one that is a link out of the folder, and a folder with none
- *                                            are left out, empty. A missing main folder is `unavailable`; another folder that is missing is left out)
+ *                                            Markdown tree; a source with no Markdown file, or that is a link out of the folder, is left out, so a folder
+ *                                            with none has an entry with `sources: []`. A missing main folder is `unavailable`; another folder that is
+ *                                            missing is left out)
  * GET  /v1/projects/:id/files?query=&limit= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
  *                                            the folder's name counting as part of the path when there are several; best match first,
  *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside

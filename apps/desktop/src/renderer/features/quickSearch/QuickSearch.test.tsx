@@ -264,8 +264,8 @@ describe('the quick search palette', () => {
 
         await search('pricing');
 
-        // The name that starts with the word first, then the files of a folder that has it: each with the folder it is in, from the folder of the project.
-        expect(names()).toEqual(['pricing.md.clowdy/docs/decisions', 'competitors.md.briefback/weekend-pricing/research', 'handoff.md.briefback/weekend-pricing', 'plan.md.briefback/weekend-pricing']);
+        // The name that starts with the word first, then the files of a folder that has it, the shorter name first: each with the folder it is in, from the folder of the project.
+        expect(names()).toEqual(['pricing.md.clowdy/docs/decisions', 'plan.md.briefback/weekend-pricing', 'handoff.md.briefback/weekend-pricing', 'competitors.md.briefback/weekend-pricing/research']);
         expect(rows()[0]!.querySelector('mark')?.textContent).toBe('pricing');
 
         const ui = store.ui.forProject(FIXTURE_PROJECT_ID);

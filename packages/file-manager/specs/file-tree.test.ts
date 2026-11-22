@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { FileManager } from '../src/FileManager';
 import { MemoryFileSystem } from '../src/memory/MemoryFileSystem';
+import { FileSystemError, type FileEntry, type FileSystemProvider } from '../src/provider';
 import { FileTree } from '../src/tree/FileTree';
-
-import type { FileEntry, FileSystemProvider } from '../src/provider';
 
 const flush = () => new Promise(resolve => setTimeout(resolve));
 
@@ -244,6 +243,76 @@ describe('FileTree', () => {
         await fs.write('.clowdy/docs/plans/deep/c.md', '');
         await tree.refresh();
         expect(tree.get('.clowdy/docs/plans/deep/c.md')?.kind).toBe('file');
+    });
+
+    it('should list a folder listed deep once, whole, on a resync, and not every folder below it one by one', async () => {
+        const memory = new MemoryFileSystem({ 'a.ts': '', '.briefback/one/research/a.md': '', '.briefback/two/plan.md': '', '.briefback/three/handoff.md': '' });
+        const calls: string[] = [];
+        const provider: FileSystemProvider = new Proxy(memory, {
+            get(target, key) {
+                if (key === 'list') {
+                    return async (dir = '', depth?: number) => {
+                        calls.push(`${ dir }:${ depth ?? 'all' }`);
+
+                        return target.list(dir, depth);
+                    };
+                }
+
+                const value: unknown = Reflect.get(target, key, target);
+
+                return typeof value === 'function' ? value.bind(target) : value;
+            },
+        });
+        const tree = new FileTree(provider, { hidden: ['**/.*'] });
+
+        await tree.refresh();
+        await tree.loadDeep('.briefback');
+        calls.length = 0;
+
+        await memory.write('.briefback/one/research/b.md', '');
+        await tree.refresh();
+
+        expect(calls).toEqual([`:${ 3 }`, '.briefback:all']);
+        expect(tree.get('.briefback/one/research/b.md')?.kind).toBe('file');
+    });
+
+    it('should not let a folder that is gone, which a resync said nothing of, fail every later refresh', async () => {
+        const gone = new Set<string>();
+
+        class Strict extends MemoryFileSystem {
+            override async list(dir = '', depth = Number.POSITIVE_INFINITY): Promise<FileEntry[]> {
+                if ([...gone].some(path => dir === path || dir.startsWith(`${ path }/`))) {
+                    throw new FileSystemError('NotFound', `${ dir } is gone`);
+                }
+
+                return (await super.list(dir, depth)).filter(entry => ![...gone].some(path => entry.path === path || entry.path.startsWith(`${ path }/`)));
+            }
+        }
+
+        const fs = new Strict({ '.briefback/old/research/a.md': '', '.briefback/keep/plan.md': '', 'lib/deep/x.ts': '', 'src/a.ts': '' });
+        const tree = new FileTree(fs, { hidden: ['**/.*'] });
+
+        await tree.refresh();
+        await tree.loadDeep('.briefback');
+        await tree.load('lib/deep');
+
+        // Another branch was checked out: a folder opened one by one, and one inside a deep folder, are gone, with no event for either.
+        gone.add('.briefback/old');
+        gone.add('lib/deep');
+        await fs.write('.briefback/keep/new.md', '');
+        await tree.refresh();
+
+        expect(tree.status).toBe('ready');
+        expect(tree.get('.briefback/old')).toBeUndefined();
+        expect(tree.get('.briefback/keep/new.md')?.kind).toBe('file');
+
+        // A whole deep folder that is gone is forgotten, and the next refresh is as good as any.
+        gone.add('.briefback');
+        await tree.refresh();
+        await tree.refresh();
+
+        expect(tree.status).toBe('ready');
+        expect(tree.get('.briefback')).toBeUndefined();
     });
 
     it('should list an opened folder again on refresh and leave an unloaded one out', async () => {

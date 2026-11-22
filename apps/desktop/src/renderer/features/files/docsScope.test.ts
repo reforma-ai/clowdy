@@ -45,10 +45,10 @@ describe('what the Docs tab draws', () => {
         expect(docsScopeOf(manager)).toBe(scope);
     });
 
-    it('has no source for a folder with none, and takes a bare specs folder for nobody\'s', async () => {
+    it('has .clowdy/docs for its only root where the folder has no source, so that the first document can be made, and takes a bare specs folder for nobody\'s', async () => {
         const manager = await managerOf({ 'src/a.ts': '', 'specs/readme.md': '', 'docs/guide.md': '' });
 
-        expect(docsScopeOf(manager).roots).toEqual([]);
+        expect(docsScopeOf(manager).roots).toEqual([{ id: 'documents', label: 'Documents', root: DOCS_ROOT }]);
     });
 
     it('gains a source that appears later, as an agent makes one, and the list is observable', async () => {
@@ -63,6 +63,7 @@ describe('what the Docs tab draws', () => {
         manager.tree.applyChanges([{ type: 'created', path: 'specs', kind: 'directory' }]);
         stop();
 
+        // The root a folder with no source has is replaced by the first one that comes.
         expect(seen).toEqual([['briefback'], ['briefback', 'speckit']]);
     });
 

@@ -115,10 +115,10 @@ describe('the names the palette looks for', () => {
 });
 
 describe('the documents the palette looks for', () => {
-    it('need every word in the path, ranked as file names are (the name that starts with the word first), and keep the order they came in where they tie', () => {
+    it('need every word in the path, ranked by name (the name that starts with the word first, the shorter name first), and keep the order they came in where they tie', () => {
         const paths = ['research/pricing-notes.md', 'decisions/2026-11-17-pricing.md', 'pricing.md', 'plan.md', 'decisions/Pricing/model.md', 'pricing.md'];
 
-        expect(matchDocs('pricing', paths)).toEqual(['research/pricing-notes.md', 'pricing.md', 'decisions/2026-11-17-pricing.md', 'decisions/Pricing/model.md']);
+        expect(matchDocs('pricing', paths)).toEqual(['pricing.md', 'research/pricing-notes.md', 'decisions/2026-11-17-pricing.md', 'decisions/Pricing/model.md']);
         expect(matchDocs('PRICING decisions', paths)).toEqual(['decisions/2026-11-17-pricing.md', 'decisions/Pricing/model.md']);
         expect(matchDocs('nothing here', paths)).toEqual([]);
     });

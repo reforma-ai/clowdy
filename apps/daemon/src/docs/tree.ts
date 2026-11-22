@@ -10,11 +10,18 @@ import type { Dirent } from 'node:fs';
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
+/** The most entries (files and folders) one source is listed with: a `.briefback` that holds a clone of a repository must not hold the daemon up on every key of the `@` menu. */
+export const MAX_DOC_ENTRIES = 20_000;
+
+/** Folders that are never listed: a tool's own store and dependencies, which no document is in, whatever is put in a source. */
+const NEVER_LISTED = new Set(['.git', 'node_modules']);
+
 /**
  * The documents under `root`: Markdown files and folders only, folders first, names in natural order
- * (`doc2` before `doc10`). Symbolic links are not listed, and a folder that cannot be read lists nothing.
+ * (`doc2` before `doc10`). Symbolic links are not listed, a folder that cannot be read lists nothing, and `.git` and `node_modules` are skipped; past `MAX_DOC_ENTRIES`
+ * the rest of the source is left out.
  */
-export function listDocs(root: string, relative = ''): DocNode[] {
+export function listDocs(root: string, relative = '', budget = { left: MAX_DOC_ENTRIES }): DocNode[] {
     const nodes: DocNode[] = [];
     let entries: Dirent[];
 
@@ -26,12 +33,16 @@ export function listDocs(root: string, relative = ''): DocNode[] {
     }
 
     for (const entry of entries) {
+        if (budget.left <= 0) break;
+
         const path = relative ? `${ relative }/${ entry.name }` : entry.name;
 
-        if (entry.isDirectory()) {
-            nodes.push({ path, name: entry.name, kind: 'dir', children: listDocs(root, path) });
+        if (entry.isDirectory() && !NEVER_LISTED.has(entry.name)) {
+            budget.left--;
+            nodes.push({ path, name: entry.name, kind: 'dir', children: listDocs(root, path, budget) });
         }
         else if (entry.isFile() && isDocFile(entry.name)) {
+            budget.left--;
             nodes.push({ path, name: entry.name, kind: 'file' });
         }
     }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DOC_SOURCES, docSourceOf, docSourcesOf, isDocumentPath, isMarkdownFile } from './docSources';
+import { DOC_SOURCES, docSourcesOf, isDocumentPath, isMarkdownFile } from './docSources';
 
 /** A folder that has exactly these folders (and so every folder above them). */
 const has = (...folders: string[]) => {
@@ -64,14 +64,6 @@ describe('a document path', () => {
         for (const path of ['.briefback/config.json', '.briefback/x/probe.ts.txt', 'README.md', 'docs/guide.md', '.briefback', '.briefback.md', '.briefbackup/plan.md', '.clowdy/index.md', '.specify/templates/spec-template.md', 'openspec/config.yaml', 'openspec/project.md', '.kiro/hooks/x.md']) {
             expect(isDocumentPath(path), path).toBe(false);
         }
-    });
-
-    it('belongs to the source with the deepest root', () => {
-        expect(docSourceOf('.briefback/x/plan.md')?.id).toBe('briefback');
-        expect(docSourceOf('.specify/memory/constitution.md')?.id).toBe('speckit-memory');
-        expect(docSourceOf('specs/001/spec.md')?.id).toBe('speckit');
-        expect(docSourceOf('src/a.ts')).toBeUndefined();
-        expect(docSourceOf('.briefback')).toBeUndefined();
     });
 });
 

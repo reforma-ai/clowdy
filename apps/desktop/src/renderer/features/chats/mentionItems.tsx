@@ -1,6 +1,7 @@
 import { FileIcon } from '@clowdy/components/FileIcon';
 import { folderNames } from '@clowdy/protocol';
 
+import { compareDocs } from '../files/docsScope';
 import { mentionIcon } from './MentionChip';
 
 import type { RichInputTriggerItem } from '@clowdy/components/RichInput';
@@ -9,6 +10,8 @@ import type { DocNode, DocsTree, ProjectFileMatch, ProjectFolder, SkillEntry, Ta
 /** How many of each kind the `@` menu lists: it is a pick list, not a search page. */
 export const TASKS_SHOWN = 6;
 export const DOCS_SHOWN = 6;
+/** The most documents of one source the menu lists, so that a source with many plans does not take the whole list from the others. */
+export const DOCS_PER_SOURCE = 4;
 export const FILES_SHOWN = 20;
 
 const wordsOf = (query: string) => query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -72,15 +75,29 @@ export function docItems(tree: DocsTree, folders: readonly ProjectFolder[], quer
 
         const name = names[index] ?? '';
 
-        return sources.flatMap(({ root, nodes }) => docPaths(nodes).map((relative) => {
+        return sources.flatMap(({ id, root, nodes }) => docPaths(nodes).map((relative) => {
             const path = `${ root }/${ relative }`;
 
-            return { folderId, path, shown: several ? `${ name }/${ path }` : path, agentPath: index === 0 ? path : underFolder(folder.path, path) };
+            return { folderId, source: `${ folderId }/${ id }`, path, shown: several ? `${ name }/${ path }` : path, agentPath: index === 0 ? path : underFolder(folder.path, path) };
         }));
     });
 
+    const ranked = compareDocs(query);
+
+    // Ranked before it is cut, and no source gives more than its share, or the first source would fill the menu: a dozen plans of `.briefback` would hide the one
+    // document of the others.
+    const taken = new Map<string, number>();
+
     return docs
         .filter(doc => hasAll(words, doc.shown.toLowerCase()))
+        .toSorted((a, b) => ranked(a.path, b.path))
+        .filter((doc) => {
+            const count = taken.get(doc.source) ?? 0;
+
+            taken.set(doc.source, count + 1);
+
+            return count < DOCS_PER_SOURCE;
+        })
         .slice(0, DOCS_SHOWN)
         .map(({ folderId, path, shown, agentPath }) => {
             const data = { path: agentPath };

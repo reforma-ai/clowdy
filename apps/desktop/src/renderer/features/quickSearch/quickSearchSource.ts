@@ -1,11 +1,12 @@
 import { openChat } from '../chats/archiveChat';
 import { docPaths } from '../chats/mentionItems';
 import { isHiddenPath, treeLayout } from '../files';
+import { compareDocs } from '../files/docsScope';
 import { filesManagerOf as managerOf, showFilesTab, tabOf } from '../files/openInFiles';
 import { foundChats } from './quickSearchChats';
 
 import type { FileManager } from '@clowdy/file-manager';
-import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
+import type { DocsTree, ProjectFolder, ProjectId } from '@clowdy/protocol';
 import type { ProjectState, RootStore } from '../../stores';
 import type { Found, FoundChat, FoundDoc, QuickSearchSource } from './QuickSearchModel';
 
@@ -31,8 +32,8 @@ export function mergeFiles(query: string, ...lists: ReadonlyArray<readonly strin
 }
 
 /**
- * The documents whose path has every word of `query` (any case): the names that start with the first word first, then the ones that have it, then the ones only the path
- * has, as file names are ranked; the order they came in is kept where they tie, which is the order of the sources and of their trees, so Briefback comes first. A path is the
+ * The documents whose path has every word of `query` (any case), ranked by `compareDocs`: the names that start with the first word first, then the ones that have it, then the
+ * ones only the path has, the shorter name first; the order they came in is kept where they tie, which is the order of the sources and of their trees, so Briefback comes first. A path is the
  * document's own in the project folder, so its source's root is part of it (and no document is hidden for being in a dot folder: that is where they are).
  */
 export function matchDocs(query: string, paths: readonly string[]): string[] {
@@ -45,7 +46,7 @@ export function matchDocs(query: string, paths: readonly string[]): string[] {
 
             return words.every(word => lower.includes(word));
         })
-        .toSorted((a, b) => scoreOf(a, first) - scoreOf(b, first));
+        .toSorted(compareDocs(query));
 }
 
 /**
@@ -96,6 +97,8 @@ const isNoise = (path: string) => path.split('/').some(name => name === 'node_mo
 export function quickSearchSource(root: RootStore, project: ProjectState, folder: ProjectFolder): QuickSearchSource {
     const projectId = project.id;
     let manager: FileManager | undefined;
+    // The documents are read from the disk once for the palette that is open: it is a few seconds of someone typing, not a watch.
+    let documents: Promise<DocsTree> | undefined;
 
     return {
         chats: query => foundChats(project, query),
@@ -121,7 +124,13 @@ export function quickSearchSource(root: RootStore, project: ProjectState, folder
         docs: async (query) => {
             // The daemon reads the folder's document sources from the disk (`.briefback`, `.clowdy/docs`, the roots of Spec Kit, OpenSpec and Kiro), which the file names leave out as
             // hidden: the Docs tab's own tree is the same files. A path is the document's own in the folder, the root of its source first.
-            const tree = await root.transport.getDocsTree(projectId);
+            documents ??= root.transport.getDocsTree(projectId);
+
+            const tree = await documents.catch((error: unknown) => {
+                documents = undefined;
+
+                throw error;
+            });
             const mine = tree.find(entry => entry.folderId === folder.id);
 
             return matchDocs(query, mine?.sources.flatMap(({ root: sourceRoot, nodes }) => docPaths(nodes).map(path => `${ sourceRoot }/${ path }`)) ?? []);
