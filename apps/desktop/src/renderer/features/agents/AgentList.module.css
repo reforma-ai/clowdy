@@ -1,12 +1,11 @@
 /*
- * The same inset as the title of the Tasks screen (`TasksHeader`): 16px from the top and the sides, so the two titles stand at one height and as far from the edges of their
- * plates. The list below has its own 8px, and the rows their own padding. A margin and not padding, so the heading's box is the title's line and the column's text margins:
- * the archive's list opens under it, as wide as it. The plates of the select and of the buttons reach out of the box, to stand 8px from the column's edges, in line with
- * the rows' plates (`SidebarHeading.module.css`).
+ * The same inset as the header of the Tasks screen (`TasksHeader`): 12px from the top and the sides, and a row of the same height (its buttons, 30px), so the two titles stand
+ * at one height. The list below has its own 8px, and the rows their own padding. A margin and not padding, so the heading's box is the column's text margins: the archive's
+ * list opens under it, as wide as it. The plates of the select and of the buttons reach out of the box, to stand 8px from the column's edges, in line with the rows' plates
+ * (`SidebarHeading.module.css`).
  */
 .heading {
-    /* The gap under the plates (their overhang, this margin and the list's own 8px) comes out as the gap above them: 13px. */
-    margin: var(--spacing-xl) var(--spacing-xl) var(--spacing-md);
+    margin: var(--spacing-lg);
 }
 
 /*

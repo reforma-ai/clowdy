@@ -1,7 +1,7 @@
 .list {
     flex: 1;
     min-height: 0;
-    padding: 0 var(--spacing-xl) var(--spacing-xxl);
+    padding: 0 var(--spacing-lg) var(--spacing-xxl);
 }
 
 .table {
