@@ -9,6 +9,7 @@ import {
     FIXTURE_LIVE_RUN_ID,
     FIXTURE_LIVE_TEXT_ID,
     FIXTURE_LIVE_TOOL_ID,
+    fixtureFolderGit,
     type FixtureData,
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
@@ -28,6 +29,7 @@ import type {
     CommandResult,
     DocsTree,
     EventData,
+    FolderGit,
     FolderId,
     Project,
     ProjectFileMatch,
@@ -200,6 +202,14 @@ export class FixtureTransport implements Transport {
             tasks: tasks.filter(task => task.projectId === project.id).length,
             activeRuns: this.#activeRuns(project.id),
         })));
+    }
+
+    async getFolderGit(projectId: ProjectId, folderId: FolderId): Promise<FolderGit> {
+        const folder = this.#project(projectId).folders.find(candidate => candidate.id === folderId);
+
+        if (!folder) throw new TransportError(`No such folder: ${ folderId }`, 404);
+
+        return structuredClone(fixtureFolderGit(folder.path, this.#data.git[folder.path]));
     }
 
     async getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {

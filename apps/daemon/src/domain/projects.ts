@@ -18,6 +18,7 @@ import {
     upsertProject,
 } from '../db/projects';
 import { conflict, invalid, notFound, unavailable } from '../errors';
+import { folderHead } from '../git/state';
 import { newId } from '../ids';
 import { git, gitLine } from './git';
 
@@ -465,20 +466,6 @@ async function isFolder(path: string): Promise<boolean> {
     catch {
         return false;
     }
-}
-
-/**
- * Where a folder's HEAD is: the branch it has checked out, or on a detached HEAD the short hash of the commit, with `detached`. Nothing outside a repository
- * (git fails), and nothing in one whose HEAD points at no commit and no branch.
- */
-async function folderHead(folder: string): Promise<Pick<ProjectFolderInfo, 'branch' | 'detached'> | undefined> {
-    const branch = await gitLine(folder, ['branch', '--show-current']);
-
-    if (branch) return { branch };
-
-    const commit = await gitLine(folder, ['rev-parse', '--short', 'HEAD']);
-
-    return commit ? { branch: commit, detached: true } : undefined;
 }
 
 /**

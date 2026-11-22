@@ -13,6 +13,7 @@ import { archivedTasksPage } from '../domain/taskArchive';
 import { taskCommentsPage } from '../domain/taskComments';
 import { DEFAULT_LIMIT } from '../domain/taskQuery';
 import { CommandError, invalid, notFound } from '../errors';
+import { projectFolderGit } from '../git/state';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body';
 import { commandResponse, failure, json } from './responses';
 import { eventStream } from './sse';
@@ -184,6 +185,7 @@ export function createRoutes(context: RouteContext): Route[] {
                 return json({ tasks, total, ...(nextCursor !== undefined && { nextCursor }) } satisfies TaskArchivePage);
             },
         },
+        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/git$/, handle: async (_request, url, [id]) => json(await projectFolderGit(requireProject(store, id), url.searchParams.get('folderId') ?? '')) },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/docs$/, handle: (_request, _url, [id]) => json(docsTree(requireProject(store, id))) },
         {
             method: 'GET',

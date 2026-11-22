@@ -39,6 +39,13 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            Markdown tree; a source with no Markdown file, or that is a link out of the folder, is left out, so a folder
  *                                            with none has an entry with `sources: []`. A missing main folder is `unavailable`; another folder that is
  *                                            missing is left out)
+ * GET  /v1/projects/:id/git?folderId=    -> FolderGit (what git says about one folder of the project: whether it is the root of a repository, the branch it has
+ *                                            checked out, the folder's default branch (`origin/HEAD`, else `origin/main` or `origin/master`, else a local `main` or
+ *                                            `master`, else the current HEAD; no network), its branches (local, then those of the remotes, at most `MAX_GIT_BRANCHES`)
+ *                                            and its worktrees (`git worktree list`: the working trees only, the folder's own checkout flagged, each with whether it has
+ *                                            changes). A folder that is not the root of a repository answers `isRepository: false` and nothing else; `folderId` of no
+ *                                            folder of the project is `not_found`, none is `invalid`, and a folder gone from the disk, or a git that does not answer
+ *                                            in time, is `unavailable`)
  * GET  /v1/projects/:id/files?query=&limit= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
  *                                            the folder's name counting as part of the path when there are several; best match first,
  *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside
@@ -77,6 +84,7 @@ export const ROUTES = {
     taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
     projectArchivedTasks: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/archived-tasks`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
+    projectGit: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
@@ -96,6 +104,46 @@ export const MAX_PROJECT_FOLDERS = 50;
 
 /** The longest `ProjectSettings.icon`: a 64px PNG the app made is a few kilobytes as a data URL. */
 export const MAX_PROJECT_ICON_LENGTH = 64 * 1024;
+
+/** The most branches `GET /v1/projects/:id/git` lists: a repository with more is cut, local branches first, and `FolderGit.truncated` says so. */
+export const MAX_GIT_BRANCHES = 1000;
+
+/**
+ * One branch of a folder's repository: `main` for a local one, `origin/main` for one of a remote's (`remote`). The name is short, not always a ref git takes bare (a tag
+ * may be called `main` too): the daemon resolves it as `refs/heads/<name>` for a local branch and `refs/remotes/<name>` for a remote one.
+ */
+export interface GitBranch {
+    name: string;
+    remote: boolean;
+}
+
+/** One worktree of a repository, as `git worktree list` gives it: the main checkout and the linked ones, whoever made them. */
+export interface GitWorktree {
+    /** Absolute, written as the machine writes paths (git prints `C:/work` on Windows). */
+    path: string;
+    /** The branch it has checked out; absent on a detached HEAD. */
+    branch?: string;
+    /** The first seven characters of the commit it is on; empty on a branch with no commit yet. */
+    head: string;
+    /** The worktree is the folder itself, which the project holds (when the folder is a linked worktree, that one). */
+    main: boolean;
+    /** Something in it is not committed, a new file included. Also set when git could not tell in time. */
+    dirty: boolean;
+}
+
+/** What `GET /v1/projects/:id/git` says about a folder: a repository's branches and worktrees, or that the folder is no repository. */
+export type FolderGit = { isRepository: false } | {
+    isRepository: true;
+    /** The branch the folder has checked out, or on a detached HEAD the short hash of its commit (with `detached`); in a repository with no commit yet, the name its first branch will have. */
+    branch?: string;
+    detached?: true;
+    /** The ref a new worktree starts from unless the person picks another (a `GitBranch.name`, or a short hash on a detached HEAD); absent in a repository with no commit yet. */
+    defaultBranch?: string;
+    branches: GitBranch[];
+    /** `branches` was cut at `MAX_GIT_BRANCHES`. */
+    truncated?: true;
+    worktrees: GitWorktree[];
+};
 
 /** A file `GET /v1/projects/:id/files` found: the folder of the project it is in, and its path below that folder with `/` separators. */
 export interface ProjectFileMatch {

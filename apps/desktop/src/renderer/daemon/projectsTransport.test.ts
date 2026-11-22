@@ -34,6 +34,45 @@ describe('HttpTransport.getProjectsInfo', () => {
     });
 });
 
+describe('HttpTransport.getFolderGit', () => {
+    it('asks for one folder of one project, both ids escaped', async () => {
+        const urls: string[] = [];
+        const fetchImpl = (async (input: RequestInfo | URL) => {
+            urls.push(String(input));
+
+            return new Response(JSON.stringify({ isRepository: false }), { status: 200 });
+        }) as typeof fetch;
+        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
+
+        expect(await transport.getFolderGit('prj a', 'fld/b')).toEqual({ isRepository: false });
+        expect(urls).toEqual(['http://127.0.0.1:4310/v1/projects/prj%20a/git?folderId=fld%2Fb']);
+    });
+});
+
+describe('FixtureTransport.getFolderGit', () => {
+    it('answers the branches and worktrees of a repository, and that a folder git knows nothing of is none', async () => {
+        const transport = new FixtureTransport();
+        const { projects } = await transport.getRootSnapshot();
+        const [personal, carRental] = [projects[0].folders[0], projects.find(project => project.id === FIXTURE_PROJECT_ID)!.folders[0]];
+
+        expect(await transport.getFolderGit(FIXTURE_PROJECT_ID, carRental.id)).toMatchObject({
+            isRepository: true,
+            branch: 'main',
+            defaultBranch: 'origin/main',
+            branches: expect.arrayContaining([{ name: 'main', remote: false }, { name: 'origin/main', remote: true }]),
+            worktrees: [{ path: carRental.path, branch: 'main', main: true, dirty: false }, { branch: 'clowdy/ab12cd34', main: false, dirty: true }],
+        });
+        expect(await transport.getFolderGit(FIXTURE_PERSONAL_PROJECT_ID, personal.id)).toEqual({ isRepository: false });
+    });
+
+    it('refuses a project or a folder it does not have', async () => {
+        const transport = new FixtureTransport();
+
+        await expect(transport.getFolderGit('p-none', 'fld_car_rental')).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getFolderGit(FIXTURE_PROJECT_ID, 'fld_none')).rejects.toMatchObject({ status: 404 });
+    });
+});
+
 async function connected() {
     const transport = new FixtureTransport();
     const { cursor } = await transport.getRootSnapshot();

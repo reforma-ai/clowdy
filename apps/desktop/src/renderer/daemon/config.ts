@@ -44,6 +44,7 @@ const unconfigured: Transport = {
     getRootSnapshot: noDaemon,
     getProjectSnapshot: noDaemon,
     getProjectsInfo: noDaemon,
+    getFolderGit: noDaemon,
     subscribe: () => () => undefined,
     command: noDaemon,
     getItems: noDaemon,

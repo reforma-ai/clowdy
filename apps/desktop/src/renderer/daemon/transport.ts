@@ -8,6 +8,7 @@ import type {
     Command,
     CommandResult,
     DocsTree,
+    FolderGit,
     FolderId,
     ProjectFileMatch,
     ProjectId,
@@ -67,6 +68,11 @@ export interface Transport {
      * With a project id, that project alone.
      */
     getProjectsInfo: (projectId?: ProjectId) => Promise<ProjectInfo[]>;
+    /**
+     * What git says about one folder of a project: its branches, its default branch and its worktrees, or that the folder is no repository. Read when asked, never
+     * pushed: a folder's branches and worktrees change in a terminal or by an agent. `unavailable` for a folder gone from the disk.
+     */
+    getFolderGit: (projectId: ProjectId, folderId: FolderId) => Promise<FolderGit>;
     /** Follows the change feed after `cursor`. Returns what ends the subscription. */
     subscribe: (cursor: number, onEvent: (event: ClowdyEvent) => void, onStatus: (status: FeedStatus) => void) => () => void;
     /**

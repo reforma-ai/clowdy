@@ -12,6 +12,7 @@ import type {
     ClowdyEvent,
     CommandResult,
     DocsTree,
+    FolderGit,
     FolderId,
     ProjectFileMatch,
     ProjectId,
@@ -104,6 +105,10 @@ export class HttpTransport implements Transport {
 
     getProjectsInfo(projectId?: ProjectId): Promise<ProjectInfo[]> {
         return this.#get(projectId === undefined ? ROUTES.projectsInfo : `${ ROUTES.projectsInfo }?project=${ encodeURIComponent(projectId) }`);
+    }
+
+    getFolderGit(projectId: ProjectId, folderId: FolderId): Promise<FolderGit> {
+        return this.#get(`${ ROUTES.projectGit(projectId) }?folderId=${ encodeURIComponent(folderId) }`);
     }
 
     getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {

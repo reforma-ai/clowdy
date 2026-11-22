@@ -10,6 +10,7 @@ import type {
     ChatTaskLink,
     DocNode,
     DocsSource,
+    FolderGit,
     PermissionPresetId,
     Project,
     ProjectId,
@@ -345,6 +346,29 @@ const API_FILES = [
     'src/booking/price.ts',
     'src/limits.ts',
 ];
+
+/**
+ * What `GET git` answers for a fixture folder: no repository when `git` says nothing of it, else the branch it has checked out, a few more branches (local and
+ * `origin`'s), `origin/main` as the default one, and two worktrees: the folder itself and one Clowdy made for a chat, with changes in it.
+ */
+export function fixtureFolderGit(path: string, head: { branch?: string; detached?: true } | undefined): FolderGit {
+    if (!head?.branch) return { isRepository: false };
+
+    const name = path.split('/').filter(Boolean).at(-1) ?? 'folder';
+    const locals = [...new Set([...(head.detached ? [] : [head.branch]), 'main', 'dev', 'feature/payments'])];
+
+    return {
+        isRepository: true,
+        branch: head.branch,
+        ...(head.detached && { detached: true as const }),
+        defaultBranch: 'origin/main',
+        branches: [...locals.map(branch => ({ name: branch, remote: false })), ...['origin/main', 'origin/dev'].map(branch => ({ name: branch, remote: true }))],
+        worktrees: [
+            { path, ...(!head.detached && { branch: head.branch }), head: 'a1b2c3d', main: true, dirty: false },
+            { path: `/Users/dev/Clowdy/workspaces/${ name }/ab12cd34/${ name }`, branch: 'clowdy/ab12cd34', head: '9f8e7d6', main: false, dirty: true },
+        ],
+    };
+}
 
 /**
  * The document sources of a folder as the daemon lists them: those of the registry that have files here, in its order, each with its tree. `files` is by the id of the
