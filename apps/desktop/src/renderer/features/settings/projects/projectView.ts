@@ -171,8 +171,11 @@ export function workspaceFields(settings: FolderSettings | undefined): Workspace
     return { baseBranch: settings?.baseBranch ?? '', files: (settings?.setup?.files ?? []).join('\n'), command: settings?.setup?.command ?? '' };
 }
 
-/** The lines of a files field: each trimmed, the empty ones left out. */
-export const workspaceFileLines = (text: string): string[] => text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+/**
+ * The lines of a files field: each trimmed, a `\` written as `/` (the daemon takes `/` on every system, so a path typed the Windows way is the same file) and a leading
+ * `./` left off (`./.env` is `.env`), the empty lines left out.
+ */
+export const workspaceFileLines = (text: string): string[] => text.split(/\r?\n/).map(line => line.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '')).filter(Boolean);
 
 /** What saving the fields sends. A field with nothing in it clears, and a setup with no files and no command is none. */
 export function workspacePatch(fields: WorkspaceFields): WorkspacePatch {

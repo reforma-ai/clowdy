@@ -138,6 +138,12 @@ describe('the Workspace fields of a folder', () => {
         expect(workspaceFileLines('')).toEqual([]);
     });
 
+    it('reads a path typed the Windows way, or with a leading ./, as the daemon takes it, and leaves a path that goes up for the daemon to refuse', () => {
+        expect(workspaceFileLines('apps\\web\\.env\n./.env.local\n.\\.npmrc\n././x')).toEqual(['apps/web/.env', '.env.local', '.npmrc', 'x']);
+        expect(workspaceFileLines('../secrets\n./')).toEqual(['../secrets']);
+        expect(workspaceFileLines('C:\\code\\.env')).toEqual(['C:/code/.env']);
+    });
+
     it('sends what is typed, trimmed, and null for a field with nothing in it', () => {
         expect(workspacePatch({ baseBranch: '  next ', files: '.env\n', command: ' bun install ' })).toEqual({ baseBranch: 'next', setup: { files: ['.env'], command: 'bun install' } });
         expect(workspacePatch({ baseBranch: '', files: '', command: '' })).toEqual({ baseBranch: null, setup: null });

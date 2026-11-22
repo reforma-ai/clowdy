@@ -7,6 +7,7 @@ import { clearChatFolders, getChat, upsertChat } from '../src/db/chats';
 import { openDatabase } from '../src/db/connection';
 import { getItem, itemRef, setItemRef } from '../src/db/items';
 import { MIGRATIONS } from '../src/db/migrations';
+import { getProject, upsertProject } from '../src/db/projects';
 import { getRun, getRunWork, upsertRun } from '../src/db/runs';
 import { countTaskComments, getTaskComment, insertTaskComment, latestTaskComments, listTaskComments, updateTaskCommentBody } from '../src/db/taskComments';
 import { childIdsOf, countArchivedTasks, deleteTask, getTask, latestArchiveTime, listAllTasks, listArchivedTasks, listTasks, upsertTask } from '../src/db/tasks';
@@ -129,6 +130,31 @@ describe('migrations', () => {
         expect(getRun(db, 'run_1')).toMatchObject({ awaitingUser: true });
         upsertRun(db, run);
         expect(getRun(db, 'run_1')).not.toHaveProperty('awaitingUser');
+        db.close();
+    });
+
+    test('version 24 gives the folders of an older database a settings column that reads as none, and stores the settings of a folder with its project\'s row', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 24));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO project_folders (id, project_id, path, position) VALUES (?, ?, ?, ?)').run('fld_1', 'prj_1', '/work/old', 0);
+        before.close();
+
+        const db = openDatabase(path);
+        const project = getProject(db, 'prj_1')!;
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(project.folders).toEqual([{ id: 'fld_1', path: '/work/old' }]);
+        expect(project.folders[0]).not.toHaveProperty('settings');
+
+        const settings = { baseBranch: 'origin/next', setup: { files: ['.env'], command: 'bun install' } };
+
+        upsertProject(db, { ...project, folders: [{ ...project.folders[0]!, settings }] });
+        expect(getProject(db, 'prj_1')?.folders).toEqual([{ id: 'fld_1', path: '/work/old', settings }]);
+        // A list written without them clears them: whoever builds a folder list starts from the project's own folders.
+        upsertProject(db, { ...project, folders: [{ id: 'fld_1', path: '/work/old' }] });
+        expect(getProject(db, 'prj_1')?.folders[0]).not.toHaveProperty('settings');
         db.close();
     });
 

@@ -103,15 +103,12 @@ describe('project.updateFolder', () => {
         expect(commandSchema.safeParse({ ...base, type: 'project.updateFolder', projectId: 'p1', folderId: 'f1' }).success).toBe(false);
     });
 
-    test('holds the limits: a branch name, the number of files and the length of a command', () => {
-        expect(commandSchema.safeParse(update({ baseBranch: '' })).success).toBe(false);
-        expect(commandSchema.safeParse(update({ baseBranch: 'b'.repeat(MAX_BASE_BRANCH_LENGTH) })).success).toBe(true);
-        expect(commandSchema.safeParse(update({ baseBranch: 'b'.repeat(MAX_BASE_BRANCH_LENGTH + 1) })).success).toBe(false);
-        expect(commandSchema.safeParse(update({ setup: { files: Array.from({ length: MAX_SETUP_FILES }, (_, index) => `f${ index }`) } })).success).toBe(true);
-        expect(commandSchema.safeParse(update({ setup: { files: Array.from({ length: MAX_SETUP_FILES + 1 }, (_, index) => `f${ index }`) } })).success).toBe(false);
-        expect(commandSchema.safeParse(update({ setup: { files: [''] } })).success).toBe(false);
-        expect(commandSchema.safeParse(update({ setup: { files: [], command: 'x'.repeat(MAX_SETUP_COMMAND_LENGTH) } })).success).toBe(true);
-        expect(commandSchema.safeParse(update({ setup: { files: [], command: 'x'.repeat(MAX_SETUP_COMMAND_LENGTH + 1) } })).success).toBe(false);
+    test('leaves the limits to the daemon, which trims the text first and says which limit a refusal is', () => {
+        expect(commandSchema.safeParse(update({ baseBranch: '' })).success).toBe(true);
+        expect(commandSchema.safeParse(update({ baseBranch: 'b'.repeat(MAX_BASE_BRANCH_LENGTH + 1) })).success).toBe(true);
+        expect(commandSchema.safeParse(update({ setup: { files: Array.from({ length: MAX_SETUP_FILES + 1 }, (_, index) => `f${ index }`) } })).success).toBe(true);
+        expect(commandSchema.safeParse(update({ setup: { files: [''] } })).success).toBe(true);
+        expect(commandSchema.safeParse(update({ setup: { files: [], command: 'x'.repeat(MAX_SETUP_COMMAND_LENGTH + 1) } })).success).toBe(true);
     });
 
     test('the files are a list of strings, and a setup has to name them', () => {

@@ -682,6 +682,10 @@ describe('project.updateFolder', () => {
             '/etc/passwd', '/.env', '..', '../secrets', 'a/../../b', 'a/..', './.env', 'a/./b', '.', '...', '.. ', 'a/.. /b',
             'C:/Users/me/.env', 'C:.env', 'c:\\Users\\.env', '\\\\server\\share\\.env', '\\.env', 'a\\b', '.env:stream',
             'a//b', 'a/', '/', '*/.env', 'config/*/x', '.env\0', '.env\n.npmrc', ' ', '',
+            // The repository's own entry, however a system spells it; a file in a linked worktree that points at the repository.
+            '.git', '.git/config', '.GIT/hooks/pre-commit', 'a/.git/config', '.Git.', '.git ', '.git/*',
+            // What no file is named with: DEL, a C1 control, a line separator, a mark that turns the text round, and a name too long.
+            '.env\u007f', '.env\u0085', '.en\u2028v', '\u202Eexe.txt', 'a'.repeat(501),
         ];
 
         for (const file of refused) {
@@ -694,17 +698,39 @@ describe('project.updateFolder', () => {
         expect(h.store.headCursor()).toBe(cursor);
 
         // What is fine: a name with a dot or a space in it, a nested path, a pattern in the last part, and the limits themselves.
-        const fine = ['.env', '.env.local', '.env*', 'my notes.txt', 'apps/web/.env', 'apps/web/*', 'a..b', '..hidden', '.config/app.json', 'ünï/ф.txt', '*'];
+        const fine = ['.env', '.env.local', '.env*', 'my notes.txt', 'apps/web/.env', 'apps/web/*', 'a..b', '..hidden', '.config/app.json', 'ünï/ф.txt', '*', '.gitignore', '.github/workflows/ci.yml', 'my.git/x', 'a'.repeat(500)];
 
         expect(update(h, project.id, web.id, { setup: { files: fine } }).ok).toBe(true);
         expect(settingsOf(h, project.id, web.id)?.setup?.files).toEqual(fine);
         expect(update(h, project.id, web.id, { setup: { files: Array.from({ length: 50 }, (_, index) => `f${ index }`), command: 'x'.repeat(4000) } }).ok).toBe(true);
     });
 
-    test('refuses a base branch that is empty, has no name, is too long or holds a control character', async () => {
+    test('checks the limits on the text as it is kept, and says which limit a refusal is', async () => {
+        const { h, project, web } = await twoFolders();
+        const message = (settings: unknown) => failure(update(h, project.id, web.id, settings)).message;
+
+        expect(message({ setup: { files: Array.from({ length: 51 }, (_, index) => `f${ index }`) } })).toBe('A setup lists at most 50 files');
+        expect(message({ setup: { files: [], command: 'x'.repeat(4001) } })).toBe('The command is longer than 4000 characters');
+        expect(message({ setup: { files: [], command: 'a\0b' } })).toBe('The command has a NUL character');
+        expect(message({ baseBranch: 'b'.repeat(301) })).toBe('The base branch is longer than 300 characters');
+        expect(message({ baseBranch: '-x' })).toBe('The base branch cannot start with -');
+        expect(message({ baseBranch: '--upload-pack=x' })).toBe('The base branch cannot start with -');
+        expect(message({ baseBranch: '' })).toBe('The base branch is empty');
+        expect(message({ setup: { files: ['.git/config'] } })).toBe('The file ".git/config" must not name .git');
+        expect(message({ setup: { files: ['a'.repeat(501)] } })).toContain('is longer than 500 characters');
+
+        // 51 lines with one repeated are 50 files, and spaces round a command do not count against its limit.
+        const lines = Array.from({ length: 50 }, (_, index) => `f${ index }`);
+
+        expect(update(h, project.id, web.id, { setup: { files: [...lines, 'f0'], command: `\n  ${ 'x'.repeat(4000) }  \n` } }).ok).toBe(true);
+        expect(settingsOf(h, project.id, web.id)?.setup?.files).toEqual(lines);
+        expect(settingsOf(h, project.id, web.id)?.setup?.command).toHaveLength(4000);
+    });
+
+    test('refuses a base branch that is empty, has no name, is too long, starts with a dash or holds a control character', async () => {
         const { h, project, web } = await twoFolders();
 
-        for (const baseBranch of ['', '   ', 'b'.repeat(301), 'dev\nelop']) {
+        for (const baseBranch of ['', '   ', 'b'.repeat(301), 'dev\nelop', 'dev\u007f', 'dev\u202E', '-x']) {
             expect(failure(update(h, project.id, web.id, { baseBranch })), JSON.stringify(baseBranch)).toMatchObject({ code: 'invalid' });
         }
 
@@ -807,7 +833,7 @@ describe('project.updateFolder', () => {
         expect(projectOf(h, project.id).folders[0]).not.toHaveProperty('settings');
     });
 
-    test('over HTTP the schema keeps null, drops what is not a setting, and refuses a malformed command with 400', async () => {
+    test('over HTTP the schema keeps null, drops what is not a setting, refuses a malformed command, and the limits answer with their own message', async () => {
         const { h, project, web } = await twoFolders();
         const post = async (settings: unknown) => {
             const response = await h.fetch('/v1/commands', { method: 'POST', body: JSON.stringify(command('project.updateFolder', { projectId: project.id, folderId: web.id, settings })) });
@@ -819,15 +845,27 @@ describe('project.updateFolder', () => {
         expect((await post({ baseBranch: null, setup: null })).body).toMatchObject({ ok: true, data: { project: { id: project.id } } });
         expect(settingsOf(h, project.id, web.id)).toBeUndefined();
 
-        for (const settings of [{ baseBranch: '' }, { baseBranch: 3 }, { setup: { command: 'x' } }, { setup: { files: [''] } }, { setup: { files: Array.from({ length: 51 }, (_, index) => `f${ index }`) } }, { setup: { files: [], command: 'x'.repeat(4001) } }, 'main']) {
+        for (const settings of [{ baseBranch: 3 }, { setup: { command: 'x' } }, { setup: { files: 'a' } }, 'main']) {
             const { status, body } = await post(settings);
 
             expect(status, JSON.stringify(settings)).toBe(400);
-            expect(body).toMatchObject({ ok: false, error: { code: 'invalid' } });
+            expect(body).toMatchObject({ ok: false, error: { code: 'invalid', message: 'The command is not valid' } });
         }
 
-        // A path the schema lets through is the daemon's to refuse, with a message that names it.
-        expect((await post({ setup: { files: ['../x'] } })).body).toMatchObject({ ok: false, error: { code: 'invalid', message: expect.stringContaining('../x') } });
+        // The limits and the paths are the daemon's to refuse, with a message that says which and that the person sees.
+        const refusals: [unknown, string][] = [
+            [{ baseBranch: '' }, 'The base branch is empty'],
+            [{ setup: { files: ['../x'] } }, 'The file "../x" must not have a . or .. part'],
+            [{ setup: { files: Array.from({ length: 51 }, (_, index) => `f${ index }`) } }, 'A setup lists at most 50 files'],
+            [{ setup: { files: [], command: 'x'.repeat(4001) } }, 'The command is longer than 4000 characters'],
+        ];
+
+        for (const [settings, message] of refusals) {
+            const { status, body } = await post(settings);
+
+            expect(status, message).toBe(400);
+            expect(body).toMatchObject({ ok: false, error: { code: 'invalid', message } });
+        }
     });
 });
 
