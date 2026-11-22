@@ -96,6 +96,11 @@ export class RootStore {
         return this.selectedProjectId ? this.#states.get(this.selectedProjectId) : undefined;
     }
 
+    /** A project's own screen is on show: the projects are loaded, Settings is shut, and the selected project has arrived. */
+    get showsProjectScreen(): boolean {
+        return this.phase === 'ready' && !this.ui.settingsOpen && this.selectedProject?.status === 'ready';
+    }
+
     /** A project's state, once the project was selected. */
     projectState(projectId: ProjectId): ProjectState | undefined {
         return this.#states.get(projectId);

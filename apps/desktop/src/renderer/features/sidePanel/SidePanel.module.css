@@ -1,0 +1,46 @@
+.panel {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* The title band's height, on the window's chrome. The right padding keeps the Windows caption buttons clear, as the title band's does while the panel is shut. */
+.header {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-md);
+    height: var(--spacing-48);
+    padding-left: var(--spacing-lg);
+    padding-right: calc(var(--titlebar-inset-end) + var(--spacing-lg));
+}
+
+.tabs {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
+}
+
+.end {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-left: auto;
+}
+
+/* The paper plate, drawn as the window's content plate is, round at the corner the chrome shows through. */
+.plate {
+    flex: 1;
+    min-height: 0;
+    border-top: 1px solid var(--color-surface-border);
+    border-left: 1px solid var(--color-surface-border);
+    border-top-left-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface);
+    overflow: auto;
+}

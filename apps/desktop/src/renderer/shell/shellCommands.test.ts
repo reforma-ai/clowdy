@@ -12,6 +12,8 @@ import { navCommandId, NEW_CHAT_COMMAND, shellCommands, type ShellCommandsRoot }
 let registry: HotkeyRegistry;
 let uninstall: () => void;
 let ui: UiStore;
+/** Whether the window shows a project: what the real root works out from its phase, Settings and the selected project. */
+let screen: { shown: boolean };
 let root: ShellCommandsRoot;
 let history: ShellCommandsRoot['history'] & { canGoBack: boolean; canGoForward: boolean };
 let openHelp: () => void;
@@ -31,7 +33,10 @@ beforeEach(() => {
     // A stand-in for the real history, which has its own tests: only what the commands read and call.
     history = observable({ canGoBack: false, canGoForward: false, back: vi.fn(), forward: vi.fn() }, { back: false, forward: false });
     // `ui` and `history` stay out of the observable: they are stores of their own, like on the real `RootStore`.
-    root = observable({ selectedProjectId: 'p' as string | null, ui, history }, { ui: false, history: false });
+    screen = observable({ shown: true });
+    root = observable({ selectedProjectId: 'p' as string | null, get showsProjectScreen() {
+        return screen.shown;
+    }, ui, history }, { ui: false, history: false });
     openHelp = vi.fn();
 
     for (const command of shellCommands(root, openHelp)) registry.defineCommand({ ...command, scope: 'app' });
@@ -294,7 +299,7 @@ describe('the keymap', () => {
         for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'sidePanel.toggle', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
         expect(navCommandId('tasks')).toBe('nav.tasks');
     });
 });
@@ -376,5 +381,92 @@ describe('new chat', () => {
 
     it('shows its keys as the hint of the New chat row', () => {
         expect(commandHint(NEW_CHAT_COMMAND, registry)).toEqual([['meta', 'n']]);
+    });
+});
+
+describe('the side panel', () => {
+    const panelOpen = () => ui.forProject('p').sidePanelOpen;
+
+    it('opens and shuts the selected project\'s panel on Cmd+Shift+B, and on the key of a layout without Latin letters', () => {
+        const first = press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true });
+
+        expect(panelOpen()).toBe(true);
+        expect(first.defaultPrevented).toBe(true);
+
+        press({ key: 'И', code: 'KeyB', metaKey: true, shiftKey: true });
+
+        expect(panelOpen()).toBe(false);
+        expect(ui.forProject('other').sidePanelOpen).toBe(false);
+    });
+
+    it('works from a text field, since the message box is where a hand is', () => {
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        try {
+            press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true }, input);
+
+            expect(panelOpen()).toBe(true);
+        }
+        finally {
+            input.remove();
+        }
+    });
+
+    it('leaves the key to the Docs editor while it has the focus, where it is Quote, and takes it back outside', () => {
+        const editor = document.createElement('div');
+        const text = document.createElement('div');
+
+        editor.dataset.slot = 'markdown-editor';
+        text.contentEditable = 'true';
+        text.tabIndex = 0;
+        editor.append(text);
+        document.body.append(editor);
+
+        try {
+            text.focus();
+
+            const inside = press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true }, text);
+
+            expect(panelOpen()).toBe(false);
+            expect(inside.defaultPrevented).toBe(false);
+
+            text.blur();
+            press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true });
+
+            expect(panelOpen()).toBe(true);
+        }
+        finally {
+            editor.remove();
+        }
+    });
+
+    it('does nothing, and leaves the key to the page, where the window shows no project (Settings, loading), and does not take Cmd+B alone', () => {
+        runInAction(() => {
+            screen.shown = false;
+        });
+
+        const event = press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true });
+
+        expect(panelOpen()).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+
+        runInAction(() => {
+            screen.shown = true;
+        });
+        press({ key: 'b', code: 'KeyB', metaKey: true });
+
+        expect(panelOpen()).toBe(false);
+    });
+
+    it('shows its key as the hint of the toggle button, and none where it cannot run', () => {
+        expect(commandHint('sidePanel.toggle', registry)).toEqual([['shift', 'meta', 'b']]);
+
+        runInAction(() => {
+            screen.shown = false;
+        });
+
+        expect(commandHint('sidePanel.toggle', registry)).toBeUndefined();
     });
 });

@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { Screen as AgentsScreen } from '../features/agents';
 import { Screen as DocsScreen } from '../features/docs';
 import { Screen as SettingsScreen } from '../features/settings';
+import { SidePanelLayout } from '../features/sidePanel';
 import { Screen as TasksScreen } from '../features/tasks';
 import { ChordHud, hotkeys, installDispatcher, useCommands } from '../hotkeys';
 import { openHelp } from '../hotkeys/openHelp';
@@ -28,7 +29,10 @@ const SCREENS: Record<Section, ComponentType> = {
     docs: DocsScreen,
 };
 
-/** The window: title band on top, rail on the left, the selected section's screen beside it. */
+/**
+ * The window: title band on top, rail on the left, the selected section's screen beside it, and, while a project's side panel is open, the panel at the
+ * right, from the top edge to the bottom, with all of the rest beside it.
+ */
 export function Shell() {
     const root = useRootStore();
 
@@ -37,14 +41,16 @@ export function Shell() {
 
     return (
         <div className={ styles.shell }>
-            <TitleBand />
-            <div className={ styles.body }>
-                { root.phase === 'ready' && <Rail /> }
-                <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare) }>
-                    <Outlet />
-                </main>
-            </div>
-            <SyncBanner />
+            <SidePanelLayout>
+                <TitleBand />
+                <div className={ styles.body }>
+                    { root.phase === 'ready' && <Rail /> }
+                    <main className={ cn(styles.outlet, root.phase !== 'ready' && styles.bare) }>
+                        <Outlet />
+                    </main>
+                </div>
+                <SyncBanner />
+            </SidePanelLayout>
             <ChordHud />
             <FindBar />
         </div>

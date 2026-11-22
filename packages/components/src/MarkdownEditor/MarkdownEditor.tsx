@@ -138,7 +138,7 @@ export function MarkdownEditor({
     }
 
     return (
-        <div className={ cn(styles.root, className) }>
+        <div data-slot="markdown-editor" className={ cn(styles.root, className) }>
             <Show when={ editable }>
                 <Show when={ unsupported } fallback={ <MarkdownToolbar editor={ editor } /> }>
                     { ({ reason }) => (

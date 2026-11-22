@@ -1,6 +1,8 @@
 import { Button } from '@clowdy/components/Button';
 import { ChevronLeft, ChevronRight, Keyboard } from '@clowdy/icons/16';
+import { cn } from '@clowdy/lib';
 
+import { SidePanelToggle, useSidePanel } from '../features/sidePanel';
 import { commandTooltip } from '../hotkeys';
 import { openHelp } from '../hotkeys/openHelp';
 import { useRootStore } from '../stores';
@@ -16,9 +18,10 @@ import { UsageStatus } from './UsageStatus';
 export function TitleBand() {
     const root = useRootStore();
     const { history } = root;
+    const panel = useSidePanel();
 
     return (
-        <header className={ styles.band }>
+        <header className={ cn(styles.band, panel.open && styles.beside) }>
             { root.phase === 'ready' && (
                 <>
                     <div className={ styles.history }>
@@ -61,6 +64,7 @@ export function TitleBand() {
                         >
                             <Keyboard />
                         </Button>
+                        { !panel.open && <SidePanelToggle /> }
                     </div>
                 </>
             ) }

@@ -1,0 +1,47 @@
+.info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    margin: 0;
+    padding: var(--spacing-lg);
+}
+
+/* A label of a fixed width, so the values stand in a line. */
+.row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.label {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-sm);
+    width: 6rem;
+}
+
+/* The same height for both, so the label and its value are level whatever sits in them (an icon, a path). */
+.label,
+.value {
+    min-height: var(--spacing-24);
+}
+
+.icon {
+    display: flex;
+    flex-shrink: 0;
+}
+
+.value {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    min-width: 0;
+    margin: 0;
+}
+
+/* A path or a name shrinks to the room that is left, as `PathText` asks of where it stands. */
+.value > * {
+    min-width: 0;
+}

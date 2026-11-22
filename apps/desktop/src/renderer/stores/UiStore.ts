@@ -46,6 +46,7 @@ interface StoredProjectUi {
     groupByFolder: boolean;
     collapsedFolders: FolderId[];
     agentsFolded: boolean;
+    sidePanelOpen: boolean;
     tasksView: TasksView;
 }
 
@@ -54,7 +55,7 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'sidePanelOpen' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -81,6 +82,8 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
     if (params.get('collapsed')) initial.collapsedFolders = params.get('collapsed')!.split(',').filter(Boolean);
 
     if (params.has('agents')) initial.agentsFolded = params.get('agents') === 'folded';
+
+    if (params.has('panel')) initial.sidePanelOpen = params.get('panel') === 'open';
 
     if (view === 'board' || view === 'list') initial.tasksView = view;
 
@@ -112,6 +115,8 @@ export class ProjectUi {
     collapsedFolders: readonly FolderId[] = [];
     /** Chats: the strip of running agents over the message box shows its line only, with the rows folded away. Kept for every chat of the project. */
     agentsFolded = false;
+    /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat or section is on show. */
+    sidePanelOpen = false;
     tasksView: TasksView = 'board';
     /** Agents: files that a hand-off from another chat left for the new-chat page, which takes them once it is open. Not kept between sessions. */
     pendingFiles: readonly File[] = [];
@@ -131,6 +136,7 @@ export class ProjectUi {
             this.groupByFolder = stored.groupByFolder !== false;
             this.collapsedFolders = Array.isArray(stored.collapsedFolders) ? stored.collapsedFolders.filter(id => typeof id === 'string') : [];
             this.agentsFolded = stored.agentsFolded === true;
+            this.sidePanelOpen = stored.sidePanelOpen === true;
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';
         }
 
@@ -148,6 +154,7 @@ export class ProjectUi {
                 groupByFolder: this.groupByFolder,
                 collapsedFolders: [...this.collapsedFolders],
                 agentsFolded: this.agentsFolded,
+                sidePanelOpen: this.sidePanelOpen,
                 tasksView: this.tasksView,
             }),
             value => writeStored(storage, key, value)
@@ -260,6 +267,11 @@ export class ProjectUi {
     /** Folds the rows of the running-agents strip under its line, or shows them again. */
     toggleAgentsFolded(): void {
         this.agentsFolded = !this.agentsFolded;
+    }
+
+    /** Opens the side panel at the right of the window, or shuts it. */
+    toggleSidePanel(): void {
+        this.sidePanelOpen = !this.sidePanelOpen;
     }
 
     setTasksView(view: TasksView): void {

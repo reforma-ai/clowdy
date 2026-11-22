@@ -211,6 +211,28 @@ describe('UiStore', () => {
         expect(new UiStore(storage).forProject('p1').agentsFolded).toBe(false);
     });
 
+    it('keeps the side panel closed until the person opens it, and remembers it per project', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        expect(ui.sidePanelOpen).toBe(false);
+
+        ui.toggleSidePanel();
+        expect(ui.sidePanelOpen).toBe(true);
+        expect(store.forProject('p2').sidePanelOpen).toBe(false);
+        expect(new UiStore(storage).forProject('p1').sidePanelOpen).toBe(true);
+
+        ui.toggleSidePanel();
+        expect(new UiStore(storage).forProject('p1').sidePanelOpen).toBe(false);
+    });
+
+    it('reads the side panel from the page URL', () => {
+        expect(initialUiFromSearch('?panel=open')).toEqual({ sidePanelOpen: true });
+        expect(initialUiFromSearch('?panel=closed')).toEqual({ sidePanelOpen: false });
+        expect(new UiStore(memoryStorage(), initialUiFromSearch('?panel=open')).forProject('p1').sidePanelOpen).toBe(true);
+    });
+
     it('reads the fold of the strip from the page URL, and drops what is damaged in storage', () => {
         expect(initialUiFromSearch('?agents=folded')).toEqual({ agentsFolded: true });
         expect(initialUiFromSearch('?agents=open')).toEqual({ agentsFolded: false });
