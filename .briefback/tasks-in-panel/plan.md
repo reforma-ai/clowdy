@@ -39,10 +39,10 @@
 
 **This stage:** The expanded panel shipped with the rule that choosing a chat ends expanded. The owner turned that around: a covering panel just hides, and the flag is a mode kept as the person set it, also between sessions. This stage changes that rule and persists the flag, so Stage 2 can add a tab that covers the chat on top of it.
 
-- [ ] Complete
-  - [ ] Choosing a chat, a run or the new-chat row, and history showing another chat, closes an open expanded panel and leaves `sidePanelExpanded` as it was; a shut panel or a split one is not touched
-  - [ ] `sidePanelExpanded` is stored per project with the open state and the tab, and read back
-  - [ ] Tests and the guide say the new rule
+- [x] Complete
+  - [x] Choosing a chat, a run or the new-chat row, and history showing another chat, closes an open expanded panel and leaves `sidePanelExpanded` as it was; a shut panel or a split one is not touched
+  - [x] `sidePanelExpanded` is stored per project with the open state and the tab, and read back
+  - [x] Tests and the guide say the new rule
 
 **Files**
 
@@ -52,7 +52,9 @@
 
 **Done when:** with the panel expanded, choosing any chat shows that chat full width and a later `Cmd+Esc` brings the panel back expanded, also after a reload.
 **Verify:** `bun run test src/renderer/stores src/renderer/features/sidePanel src/renderer/shell` and `bun run lint` in `apps/desktop`; in the screenshot harness expand the panel, call `openChat` through `--eval`, and see the chat.
-**Commits:** None yet.
+**Commits:**
+
+- `8e1eccd` feat(desktop): shut a panel that covers the chat when a chat is chosen, and keep the expanded choice per project
 
 ## Stage 2 — Tasks is a tab of the panel, and the Tasks section is gone
 
