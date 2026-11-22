@@ -6,7 +6,7 @@ import { SIDE_PANEL_TAB_LABELS } from './commands';
 import { InfoTab } from './InfoTab';
 import styles from './SidePanel.module.css';
 
-// Its own chunk, loaded when the Files tab is first shown: the editor and the file tree are the heaviest part of the panel.
+// Its own chunk, loaded when the Files or the Docs tab is first shown (they are one view): the editor and the file tree are the heaviest part of the panel.
 const FilesTab = lazy(() => import('../files/FilesTab'));
 // Likewise for the terminal: xterm is loaded when the tab is first shown.
 const TerminalTab = lazy(() => import('../terminal/TerminalTab'));
@@ -22,7 +22,7 @@ export function SidePanel() {
     return (
         <aside className={ styles.panel } aria-label="Panel" data-side-panel="">
             <section className={ styles.plate } data-tab={ chosen } aria-label={ SIDE_PANEL_TAB_LABELS[chosen] }>
-                { chosen === 'files' && <Suspense fallback={ <PanelLoadingState /> }><FilesTab /></Suspense> }
+                { (chosen === 'files' || chosen === 'docs') && <Suspense fallback={ <PanelLoadingState /> }><FilesTab variant={ chosen } /></Suspense> }
                 { chosen === 'terminal' && <Suspense fallback={ <PanelLoadingState /> }><TerminalTab /></Suspense> }
                 { chosen === 'info' && <InfoTab /> }
             </section>

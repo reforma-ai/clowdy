@@ -16,7 +16,22 @@ import type { Chat, ProjectFolder } from '@clowdy/protocol';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // The editor and the file tree have tests of their own; here the panel only has to show the tab.
-vi.mock('../files/FilesTab', () => ({ default: () => <p>The files</p> }));
+// It is told which of its two tabs it draws, and says when it is built: the two tabs are one view, which stays where it is when the panel moves between them.
+const built = vi.hoisted(() => vi.fn());
+
+vi.mock('../files/FilesTab', async () => {
+    const { useEffect } = await import('react');
+
+    return {
+        default: ({ variant }: { variant?: string }) => {
+            useEffect(() => {
+                built();
+            }, []);
+
+            return <p>{ variant === 'docs' ? 'The docs' : 'The files' }</p>;
+        },
+    };
+});
 // So has the terminal.
 vi.mock('../terminal/TerminalTab', () => ({ default: () => <p>The terminal</p> }));
 // The babel plugin that makes the app's components observers does not run under Vitest: the panel is one, to follow the tab that is chosen.
@@ -189,7 +204,31 @@ describe('the side panel of the window', () => {
         expect(panel()?.textContent).not.toContain('The files');
     });
 
-    it('has a Terminal tab after Files, which shows the terminal', async () => {
+    it('has a Docs tab, which is the Files view over the same file manager: it stays built when the panel moves between the two', async () => {
+        built.mockClear();
+        act(() => ui().toggleSidePanel());
+        await draw(<Frame />);
+
+        await press(tab('Files')!);
+        await settle();
+
+        expect(panel()?.querySelector('[aria-label="Files"][class*="plate"]')?.textContent).toBe('The files');
+
+        await press(tab('Docs')!);
+        await settle();
+
+        expect(ui().sidePanelTab).toBe('docs');
+        expect(panel()?.querySelector('[aria-label="Docs"][class*="plate"]')?.textContent).toBe('The docs');
+        expect(tab('Docs')?.getAttribute('aria-current')).toBe('page');
+
+        await press(tab('Files')!);
+        await settle();
+
+        expect(panel()?.textContent).toContain('The files');
+        expect(built).toHaveBeenCalledOnce();
+    });
+
+    it('has a Terminal tab after Docs, which shows the terminal', async () => {
         await draw(<Frame />);
 
         act(() => ui().toggleSidePanel());
@@ -197,7 +236,7 @@ describe('the side panel of the window', () => {
 
         const names = [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].map(button => button.textContent);
 
-        expect(names).toEqual(['Info', 'Files', 'Terminal']);
+        expect(names).toEqual(['Info', 'Files', 'Docs', 'Terminal']);
 
         await press(tab('Terminal')!);
         await settle();
@@ -231,7 +270,7 @@ describe('the rail of the side panel', () => {
         await draw(<Frame />);
 
         expect(panel()).toBeNull();
-        expect([...rail()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Info', 'Files', 'Terminal']);
+        expect([...rail()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Info', 'Files', 'Docs', 'Terminal']);
         expect(rail()!.querySelector('[aria-current]')).toBeNull();
 
         act(() => ui().toggleSidePanel());

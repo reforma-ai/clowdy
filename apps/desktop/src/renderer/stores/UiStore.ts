@@ -16,7 +16,7 @@ export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
 
 /** The tabs of the side panel's header, in the order they appear there. */
-export const SIDE_PANEL_TABS = ['info', 'files', 'terminal'] as const;
+export const SIDE_PANEL_TABS = ['info', 'files', 'docs', 'terminal'] as const;
 
 export type SidePanelTab = typeof SIDE_PANEL_TABS[number];
 

@@ -1,5 +1,5 @@
 import { Terminal } from '@clowdy/icons/14';
-import { Folder, Info } from '@clowdy/icons/16';
+import { File, Folder, Info } from '@clowdy/icons/16';
 
 import { commandTooltip } from '../../hotkeys';
 import { RailItem } from '../../shared/RailItem';
@@ -13,6 +13,7 @@ import type { SidePanelTab } from '../../stores';
 const TABS: ReadonlyArray<{ tab: SidePanelTab; icon: typeof Info; size: number }> = [
     { tab: 'info', icon: Info, size: 16 },
     { tab: 'files', icon: Folder, size: 16 },
+    { tab: 'docs', icon: File, size: 16 },
     { tab: 'terminal', icon: Terminal, size: 14 },
 ];
 

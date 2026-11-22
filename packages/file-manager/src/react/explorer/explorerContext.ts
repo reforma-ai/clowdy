@@ -23,6 +23,8 @@ export interface ExplorerItem {
 export interface ExplorerScope {
     /** The folder whose children are the top rows (`.clowdy/docs`). */
     root: string;
+    /** What the tree is called to a screen reader, in place of `Files`. */
+    label?: string;
     /** Which entries are rows; folders are asked too. Without it every entry is. */
     include?: (path: string, kind: FileKind) => boolean;
     /** The name a file gets from the one that was typed for it (a document gets `.md` when it has none). */

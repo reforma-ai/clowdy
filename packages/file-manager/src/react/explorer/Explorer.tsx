@@ -561,7 +561,7 @@ export const Explorer = observer(function Explorer({ manager, menuItems, dndMana
                                 searchTerm={filterResult?.query ?? ''}
                                 searchMatch={node => node.id === DRAFT_ID || (filterResult?.paths.has(node.id) ?? false)}
                                 className={styles.list}
-                                aria-label="Files"
+                                aria-label={scope?.label ?? 'Files'}
                                 disableEdit={manager.readonly}
                                 disableDrag={manager.readonly}
                                 // A drag from another tree on the shared manager brings no rows of this one.

@@ -6,6 +6,7 @@ import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { chosenPrograms, useFolderGit, useOpenApps } from '../openWith';
 import { currentFolder } from '../sidePanel/currentFolder';
 import { openInTerminal } from '../terminal/openInTerminal';
+import { DOCS_SCOPE } from './docsScope';
 import { FILES_SCOPE, filesCommands } from './filesCommands';
 import styles from './FilesTab.module.css';
 import { openInMenuItems } from './openInMenuItems';
@@ -16,8 +17,11 @@ import { useFilesStore } from './useFilesStore';
  * The side panel's Files tab: the editor with the files that are open in tabs, and at its right the tree of the folder the window is working in (the same
  * folder the Info tab names). Each folder keeps its own tabs, so the tree and the tabs change with the folder, and come back with it. A row's menu has, after its own items,
  * Open in Terminal (a folder), Copy path (absolute or relative) and Open in… (the editor, the file manager, the terminal program, GitHub).
+ *
+ * The Docs tab is this same view over the same file manager, so the tabs, the editor and the buffers are the same ones: the only difference is the tree at the right,
+ * which draws the folder's documents (`DOCS_SCOPE`) in place of every file. The component stays mounted when the panel moves between the two tabs.
  */
-export default function FilesTab() {
+export default function FilesTab({ variant = 'files' }: { variant?: 'files' | 'docs' }) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -38,6 +42,9 @@ export default function FilesTab() {
             className={ styles.view }
             key={ `${ project.project.id }/${ folder.id }` }
             manager={ manager }
+            scope={ variant === 'docs' ? DOCS_SCOPE : undefined }
+            filterPlaceholder={ variant === 'docs' ? 'Filter documents' : undefined }
+            emptyText={ variant === 'docs' ? 'No documents yet' : undefined }
             menuItems={ openInMenuItems({ projectId: project.id, folder, programs: chosenPrograms(apps), git, inTerminal: relative => void openInTerminal(root, project.id, folder, relative) }) }
             sidebarOpen={ treeLayout.open }
             sidebarWidth={ treeLayout.width }
