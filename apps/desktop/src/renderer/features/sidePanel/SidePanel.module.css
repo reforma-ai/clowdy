@@ -6,6 +6,18 @@
     min-height: 0;
 }
 
+/*
+ * Expanded: out of the column, over the Agents screen's chat. It starts at the chat's left edge (`--agents-chat`, set on the chat's section) and keeps the column's right edge,
+ * top and bottom (`--side-panel-column`, set on the column), so the list of chats stays beside it. A page with no chat (the anchor is not there) leaves it in its own column.
+ */
+.panel[data-expanded] {
+    position: fixed;
+    top: anchor(--side-panel-column top);
+    right: anchor(--side-panel-column right);
+    bottom: anchor(--side-panel-column bottom);
+    left: anchor(--agents-chat left, anchor(--side-panel-column left));
+}
+
 /* The paper plate, drawn as the window's content plate is, mirrored: its top right corner is rounded where it meets the rail, and the one at the page's plate is square, as that plate's corner at that edge is. */
 .plate {
     flex: 1;
@@ -17,6 +29,11 @@
     corner-shape: superellipse(var(--squircle-value));
     background-color: var(--color-surface);
     overflow: auto;
+}
+
+/* Expanded, the list of chats is beside it, and its own right border is the edge between them: the plate's would be a second line next to it. */
+.panel[data-expanded] .plate {
+    border-left: 0;
 }
 
 /* The editor and the file tree scroll for themselves, and fill the plate; so do the documents, which are the same view, and the terminal. */

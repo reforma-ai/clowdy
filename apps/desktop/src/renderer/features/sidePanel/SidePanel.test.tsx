@@ -9,6 +9,7 @@ import { createFixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { currentFolder } from './currentFolder';
+import { SidePanelCorner } from './SidePanelCorner';
 import { SidePanelLayout } from './SidePanelLayout';
 import { SidePanelRail } from './SidePanelRail';
 
@@ -41,6 +42,7 @@ vi.mock('./SidePanel', async (importOriginal) => ({ SidePanel: observer((await i
 // The babel plugin that makes the app's components observers does not run under Vitest.
 const Layout = observer(SidePanelLayout);
 const Rail = observer(SidePanelRail);
+const Corner = observer(SidePanelCorner);
 /** The page with its side panel, and the rail at the window's right edge. */
 const Frame = () => (
     <>
@@ -77,6 +79,7 @@ const panel = () => container.querySelector<HTMLElement>('aside[aria-label="Pane
 const rail = () => container.querySelector<HTMLElement>('nav[aria-label="Panel tabs"]');
 const tab = (name: string) => [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(button => button.textContent === name);
 const ui = () => store.ui.forProject(store.selectedProjectId!);
+const expandButton = () => container.querySelector<HTMLButtonElement>('button[aria-label$="panel"]');
 const settingsItem = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Settings');
 
 /** A window with no project on show: the projects are loaded and there are none. */
@@ -107,6 +110,59 @@ afterEach(() => {
     act(() => root.unmount());
     container.remove();
     store.dispose();
+});
+
+describe('the corner over the rail', () => {
+    it('has no button while the panel is shut, and the one that expands the open panel and gives the chat its place back', async () => {
+        await draw(<><Layout><p>The page</p></Layout><Corner /></>);
+
+        expect(expandButton()).toBeNull();
+
+        act(() => ui().toggleSidePanel());
+        await settle();
+
+        expect(expandButton()?.getAttribute('aria-label')).toBe('Expand panel');
+        expect(panel()?.hasAttribute('data-expanded')).toBe(false);
+
+        await press(expandButton()!);
+
+        expect(ui().sidePanelExpanded).toBe(true);
+        expect(expandButton()?.getAttribute('aria-label')).toBe('Collapse panel');
+        expect(panel()?.hasAttribute('data-expanded')).toBe(true);
+        // The edge between the page and the panel lies under the expanded panel.
+        expect(container.querySelector<HTMLElement>('[role="separator"]')?.className).toMatch(/edgeCovered/);
+
+        await press(expandButton()!);
+
+        expect(ui().sidePanelExpanded).toBe(false);
+        expect(panel()?.hasAttribute('data-expanded')).toBe(false);
+    });
+
+    it('brings the panel back expanded after it was shut while expanded, and without the button while it is shut', async () => {
+        act(() => ui().toggleSidePanel());
+        await draw(<><Layout><p>The page</p></Layout><Corner /></>);
+        await press(expandButton()!);
+
+        act(() => ui().toggleSidePanel());
+        await settle();
+
+        expect(panel()).toBeNull();
+        expect(expandButton()).toBeNull();
+
+        act(() => ui().toggleSidePanel());
+        await settle();
+
+        expect(panel()?.hasAttribute('data-expanded')).toBe(true);
+        expect(expandButton()?.getAttribute('aria-label')).toBe('Collapse panel');
+    });
+
+    it('is as wide as the rail even with no project, and has no button there', async () => {
+        await withoutProjects();
+        await draw(<Corner />);
+
+        expect(container.firstElementChild?.className).toMatch(/corner/);
+        expect(expandButton()).toBeNull();
+    });
 });
 
 describe('the side panel of the window', () => {

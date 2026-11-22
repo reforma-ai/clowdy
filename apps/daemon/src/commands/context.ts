@@ -1,7 +1,6 @@
 import type { Command, CommandType } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
-import type { DocsService } from '../docs/service';
 import type { AgentRegistry } from '../engine/acp/registry';
 import type { FilesService } from '../files/service';
 import type { FsService } from '../fs/service';
@@ -25,7 +24,6 @@ export interface Services {
     queue: ChatQueue;
     /** Threads: chats an agent of another chat starts and drives with its `thread_*` tools. */
     threads: ThreadService;
-    docs: DocsService;
     files: FilesService;
     /** The files of a project's folders for the file manager. */
     fs: FsService;

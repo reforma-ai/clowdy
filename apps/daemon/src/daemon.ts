@@ -6,7 +6,6 @@ import { AttachmentsService } from './attachments/service';
 import { installShimOrWarn } from './cli/shim';
 import { openDatabase } from './db/connection';
 import { listProjects } from './db/projects';
-import { DocsService } from './docs/service';
 import { ensurePersonalProject } from './domain/projects';
 import { createEngines } from './engine';
 import { CHAT_TITLE_SETTING } from './engine/acp/catalog';
@@ -87,7 +86,6 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         const runs = new RunService(store, config, engines);
         // A turn asks for its tools when it starts, by which time the thread service below exists.
         const driver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, threads }, run, mode, agents.taskChannel(run.engine)), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
-        const docs = new DocsService(store);
         const attachments = new AttachmentsService(store, config.dataDir);
         // Before the recovery: a turn the restart interrupted holds its chat's queue.
         const queue = new ChatQueue({ store, runs, driver, attachments });
@@ -99,13 +97,12 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             announce: () => announceAgentsChanged(store),
         });
         const files = new FilesService();
-        const services: Services = { config, store, runs, driver, queue, threads, docs, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }), terminals: options.terminals ?? new TerminalService() };
+        const services: Services = { config, store, runs, driver, queue, threads, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }), terminals: options.terminals ?? new TerminalService() };
 
         await runs.recover();
         attachments.sweep();
         // Before the watchers, so the personal space is watched like any project.
         ensurePersonalProject(store, config);
-        docs.watchExisting(listProjects(store.db));
         skills.watchFolders(listProjects(store.db));
         driver.resumeWaiting();
         queue.resumePending();
@@ -121,7 +118,6 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             created?.stop();
             providers.stop();
             services.models.stop();
-            docs.stop();
             services.fs.stop();
             skills.stop();
             store.db.close();

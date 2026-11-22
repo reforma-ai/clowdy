@@ -52,10 +52,11 @@ export function SidePanelLayout({ children }: { children: ReactNode }) {
 function SideColumn({ panel }: { panel: ReturnType<typeof usePanelRef> }) {
     const [width] = useState(() => readSidePanelWidth(browserStorage()));
     const id = useId();
+    const { expanded } = useSidePanel();
 
     return (
         <>
-            <ResizableHandle aria-label="Resize the side panel" />
+            <ResizableHandle aria-label="Resize the side panel" className={ expanded ? styles.edgeCovered : undefined } />
 
             <ResizablePanel
                 id={ id }

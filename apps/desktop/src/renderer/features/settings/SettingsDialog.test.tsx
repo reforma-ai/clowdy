@@ -55,7 +55,7 @@ describe('the Settings window', () => {
 
         expect(windowEl()).not.toBeNull();
         expect(pages()).toEqual(['Appearance', 'Chat', 'Files', 'Shortcuts', 'Projects', 'Providers', 'Skills']);
-        expect(windowEl()?.querySelector('section[aria-label="Shortcuts"]')).not.toBeNull();
+        expect(windowEl()?.querySelector('nav [aria-current="page"]')?.textContent).toBe('Shortcuts');
     });
 
     it('goes when Settings is shut from the store', async () => {

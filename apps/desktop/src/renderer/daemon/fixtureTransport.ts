@@ -5,7 +5,6 @@ import {
     catalogTokens,
     createFixtureData,
     DEFAULT_STATUSES,
-    docHash,
     docsTree,
     FIXTURE_LIVE_RUN_ID,
     FIXTURE_LIVE_TEXT_ID,
@@ -27,7 +26,6 @@ import type {
     Chat,
     ClowdyEvent,
     CommandResult,
-    DocFile,
     DocsTree,
     EventData,
     FolderId,
@@ -296,18 +294,6 @@ export class FixtureTransport implements Transport {
     async getDocsTree(projectId: ProjectId): Promise<DocsTree> {
         // Every fixture folder exists; one without a docs folder has no documents, and reading does not make one.
         return this.#project(projectId).folders.map(folder => ({ folderId: folder.id, nodes: docsTree(Object.keys(this.#data.docs[folder.path] ?? {})) }));
-    }
-
-    async getDocFile(projectId: ProjectId, folderId: FolderId, path: string): Promise<DocFile> {
-        const folder = this.#project(projectId).folders.find(candidate => candidate.id === folderId);
-
-        if (!folder) throw new TransportError(`No such folder: ${ folderId }`, 404);
-
-        const content = this.#data.docs[folder.path]?.[path];
-
-        if (content === undefined) throw new TransportError(`No such file: ${ path }`, 404);
-
-        return { path, content, hash: docHash(content) };
     }
 
     async getProjectFiles(projectId: ProjectId, query: string, limit = 40): Promise<ProjectFileMatch[]> {
@@ -1004,34 +990,6 @@ export class FixtureTransport implements Transport {
                 this.#agentsChanged();
 
                 return ok();
-            }
-            case 'docs.write': {
-                const folder = data.projects.find(project => project.id === command.projectId)?.folders.find(candidate => candidate.id === command.folderId);
-
-                if (!folder) return fail('not_found', `Folder ${ command.folderId } does not exist`);
-
-                // The first document of a folder makes its docs folder.
-                const files = data.docs[folder.path] ??= {};
-                const existing = files[command.path];
-
-                if (command.baseHash === null && existing !== undefined) return fail('conflict', 'The file already exists', { hash: docHash(existing), content: existing });
-
-                if (command.baseHash !== null) {
-                    if (existing === undefined) return fail('not_found', 'No such file');
-
-                    if (docHash(existing) !== command.baseHash) return fail('conflict', 'The file changed on disk', { hash: docHash(existing), content: existing });
-                }
-
-                files[command.path] = command.content;
-
-                // Like the daemon: every project that has the folder hears of it, with the id the folder has there.
-                for (const project of data.projects) {
-                    const shared = project.folders.find(candidate => candidate.path === folder.path);
-
-                    if (shared) this.#emit(project.id, { type: 'docs.changed', folderId: shared.id, path: command.path, change: existing === undefined ? 'created' : 'modified' });
-                }
-
-                return ok({ hash: docHash(command.content) });
             }
         }
     }

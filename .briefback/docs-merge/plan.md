@@ -90,21 +90,25 @@
 
 **This stage:** everything the inventory lists goes.
 
-- [ ] Complete
+- [x] Complete
   - [x] renderer: `features/docs/`, the left rail item and `Shell`'s screen, `nav.docs` and the `g d` chord, `SECTIONS` 'docs', `docPath`, `docFolderId`, `openDoc`, `NavHistory` and `ProjectState.lastDocsChange` (commit `163a1b3`)
-  - [ ] renderer, with the protocol: `getDocFile` in the transports, the fixture `docs.write`, the `docs.changed` case that `ProjectState` still ignores
+  - [x] renderer, with the protocol: `getDocFile` in the transports, the fixture's `docs.write`, the `docs.changed` case of `ProjectState`, and their tests
   - [x] tasks: kept, not deleted (scope change): a doc result and `O D` open the document on the Docs tab (`openDocument`), so the task model's own feature is not touched
-  - [ ] daemon and protocol: the `docs.write` command, `GET docs/file`, the docs read, write, announce and watcher code, `docs.changed`, `DocFile`; `realPathBelow` moves to where `projectIcon` can reach it; the listing stays. **Waiting:** `routes.ts`, the protocol's `api.ts` and `api.test.ts`, `http.test.ts`, `commands.test.ts`, the app's transports and `apps/daemon/AGENTS.md` have another agent's uncommitted work in them; do this half once those are committed (or by hand-picking hunks). The plan for it: `DocsService` shrinks to a `docsTree(project)` function in `docs/tree.ts` (its `root` rule: a missing main folder is `unavailable`, a docs folder that leads out `invalid`, another folder's failure leaves it out), `docs/service.ts`, `docs/watcher.ts` and `commands/docs.ts` go, `docs/paths.ts` keeps `DOCS_DIR`, `isDocFile` and `realPathBelow`; `ProjectWatchers` loses `docs` (`domain/projects.ts`, `commands/project.ts`) and `Services.docs`, `daemon.ts` its `watchExisting` and `stop`; `GET docs` calls the function; the protocol loses `docs.write`, `docs.changed`, `DocFile` and `ROUTES.docsFile`; the app loses `getDocFile`, the fixture's `docs.write` and the `docs.changed` case; `test/docs.test.ts` keeps only the tree cases, the docs parts of `projects.test.ts` (326-358, 406-416, 569-629) and `http.test.ts` (57) go; a stale `docs.changed` row in the event log reaches an app that ignores it
-  - [ ] the tests of all of it, the skill's and prompts' wording, the README, both `AGENTS.md`
-  - [ ] stored state: a stored `section: 'docs'` falls back to Agents (already covered); `clowdy:sidebar-width:docs` is left alone
+  - [x] daemon and protocol: the `docs.write` command, `GET docs/file`, the docs read, write, announce and watcher code, `docs.changed`, `DocFile`, `ROUTES.docsFile`, `foldersAtPath`. `DocsService` shrank to `docsTree(project)` in `docs/tree.ts` (its `root` rule kept: a missing main folder or a docs folder that is not a folder is `unavailable`, one that leads out `invalid`, another folder's failure leaves it out); `docs/paths.ts` keeps `DOCS_DIR`, `isDocFile` and `realPathBelow` (the project icon uses it); `ProjectWatchers` and `Services` lost `docs`; `GET docs` calls the function; `test/docs.test.ts` keeps the tree cases, the docs parts of `projects.test.ts` and `http.test.ts` went. A stale `docs.changed` row in the event log reaches an app whose `applyEvent` has no case for it, which skips it
+  - [x] the tests of all of it, the skill's and prompts' wording, the README, both `AGENTS.md`
+  - [x] stored state: a stored `section: 'docs'` falls back to Agents (already covered); `clowdy:sidebar-width:docs` is left alone
 
 **Done when:** no reference to the removed names is left (`grep`), the daemon's tests and the app's pass, and a project with documents shows them in the Docs tab.
 **Verify:** `bunx turbo run build lint typecheck test --affected`
+**Commits:** `163a1b3` refactor(desktop): remove the Docs screen, now that Docs is a tab of the side panel; `1f2c4c7` refactor: remove the daemon's document read, write and watch now that Docs is a tab of the file manager (daemon `bun test`: 1669 pass; the app's typecheck stayed red only on another agent's Settings work in progress)
 
 ## Stage 5 — Review and docs
 
 **Depends on:** Stage 4.
 
-- [ ] Complete
-  - [ ] `briefback review` of the whole change
-  - [ ] `apps/desktop/AGENTS.md` and `packages/file-manager/AGENTS.md` describe the scope and the Docs tab, and the Docs bullet is gone
+- [x] Complete
+  - [x] `briefback review` of the whole change (an independent read-only reviewer; its findings and what became of them below)
+  - [x] `apps/desktop/AGENTS.md` and `packages/file-manager/AGENTS.md` describe the scope and the Docs tab, and the Docs bullet is gone
+
+**Review findings, fixed:** a `loadDeep` asked for while a refresh was in flight was dropped, and the watch stream's first resync does exactly that on a first mount, so only the top level of `.clowdy/docs` showed (`FileTree` now remembers the folder and lists it again once the refresh has committed); `No documents yet` showed while the tree was still being listed (shown only once the tree is ready); the active tab was not revealed after switching between Files and Docs (the explorer shows again when its scope changes); a document's name was completed with `.md` only on create, not checked before it and not on rename (the row's name input checks and applies the completed name); stale wording in the docs skill and `AGENTS.md`; the test for a `.clowdy` that links out of its folder is back.
+**Review findings, left:** a file dropped from outside or pasted into the docs tree that is not Markdown is created and then not shown there (it is in Files); a link inside the docs folder that points at another file of the project is listed and edited through by `fs`, and `docsTree` for `@` mentions still skips links; the docs tab has no error line or Retry when listing fails (Files has none either; the error is a toast).

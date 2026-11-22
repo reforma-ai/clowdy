@@ -60,14 +60,13 @@ describe('HttpTransport requests', () => {
     });
 
     it('builds the routes for items, a chat, a task and documents', async () => {
-        const { fetchImpl, calls } = scriptedFetch(Array.from({ length: 6 }, () => json([])));
+        const { fetchImpl, calls } = scriptedFetch(Array.from({ length: 5 }, () => json([])));
         const transport = new HttpTransport({ url: 'http://d', token: 't', fetch: fetchImpl });
 
         await transport.getItems({ runId: 'r 1' }, 12);
         await transport.getItems({ chatId: 'c1' });
         await transport.getTaskDetail('t1');
         await transport.getDocsTree('p1');
-        await transport.getDocFile('p1', 'fld 1', 'decisions/a b.md');
         await transport.getProjectSnapshot('p/1');
 
         expect(calls.map(call => call.url)).toEqual([
@@ -75,7 +74,6 @@ describe('HttpTransport requests', () => {
             'http://d/v1/chats/c1/items?after=0',
             'http://d/v1/tasks/t1/detail',
             'http://d/v1/projects/p1/docs',
-            'http://d/v1/projects/p1/docs/file?folderId=fld%201&path=decisions%2Fa%20b.md',
             'http://d/v1/projects/p%2F1/snapshot',
         ]);
     });

@@ -196,19 +196,6 @@ export const commandSchema = z.discriminatedUnion('type', [
     /** Decides an `approval` stream item that is `open`: the run goes on when none is left. `allow_always` makes Clowdy answer the same request for the rest of the run without asking; the agent itself is told to allow it once. */
     z.object({ ...base, type: z.literal('run.decide'), runId: z.string(), approvalId: z.string(), decision: z.enum(['allow_once', 'allow_always', 'reject']) }),
 
-    /* Documents */
-    z.object({
-        ...base,
-        type: z.literal('docs.write'),
-        projectId: z.string(),
-        /** The folder of the project whose `.clowdy/docs` holds the document; the first write there makes that docs folder. */
-        folderId: z.string().min(1),
-        path: z.string().min(1),
-        content: z.string(),
-        /** Hash of the version the edit started from; `null` creates a new file. A mismatch answers `conflict`. */
-        baseHash: z.string().nullable(),
-    }),
-
     /* Agents */
     /** Adds an agent the daemon can run: any command that speaks the Agent Client Protocol on stdio. */
     z.object({ ...base, type: z.literal('agent.add'), id: z.string().min(1).max(32), name: z.string().min(1).max(80), command: z.string().min(1), args: z.array(z.string()).optional(), env: z.record(z.string(), z.string()).optional() }),

@@ -10,7 +10,7 @@ import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_I
 import { FixtureTransport } from '../../../daemon/fixtureTransport';
 import { overrideTransport } from '../../../daemon/testing';
 import { RootStore, RootStoreProvider } from '../../../stores';
-import { ProjectsPage } from './ProjectsPage';
+import { SettingsWindow } from '../SettingsWindow';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
 import type { SortableList as SortableListComponent, SortableListDropContext } from '@clowdy/components/SortableList';
@@ -62,9 +62,6 @@ vi.mock('@clowdy/components/SortableList', async (importOriginal) => {
     };
 });
 
-// The babel plugin that makes the app's components observers does not run under Vitest.
-const Page = observer(ProjectsPage);
-
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let container: HTMLDivElement;
@@ -87,7 +84,8 @@ async function open(projectId: string | null = null, overrides: Partial<Transpor
     store = new RootStore(overrideTransport(new FixtureTransport({ data }), overrides), { storage: memoryStorage() });
     await store.load();
     store.ui.openProjectSettings(projectId);
-    act(() => reactRoot.render(<RootStoreProvider value={ store }><Page /></RootStoreProvider>));
+    // The page is drawn in the Settings window, whose layout holds the project's page as its stack.
+    act(() => reactRoot.render(<RootStoreProvider value={ store }><SettingsWindow /></RootStoreProvider>));
     await flush();
 }
 

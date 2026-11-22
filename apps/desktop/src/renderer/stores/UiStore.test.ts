@@ -646,6 +646,70 @@ describe('UiStore', () => {
         expect(ui.sidePanelOpen).toBe(false);
     });
 
+    it('keeps the side panel expanded apart from whether it is open, and not between sessions', () => {
+        const storage = memoryStorage();
+        const ui = new UiStore(storage).forProject('p1');
+
+        expect(ui.sidePanelExpanded).toBe(false);
+
+        ui.toggleSidePanel();
+        ui.toggleSidePanelExpanded();
+        expect(ui.sidePanelExpanded).toBe(true);
+
+        // A shut panel keeps the choice, and comes back expanded.
+        ui.toggleSidePanel();
+        expect(ui.sidePanelExpanded).toBe(true);
+        ui.toggleSidePanelTab('terminal');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
+
+        expect(new UiStore(storage).forProject('p1').sidePanelExpanded).toBe(false);
+
+        ui.toggleSidePanelExpanded();
+        expect(ui.sidePanelExpanded).toBe(false);
+    });
+
+    it('gives the chat its place back when a chat is chosen with the panel open, and only then', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+        const expand = () => {
+            ui.sidePanelOpen = true;
+            ui.sidePanelExpanded = true;
+        };
+        const choose = [
+            ['a chat', () => ui.openChat('c1')],
+            ['the chat that is open already', () => ui.openChat(ui.chatId)],
+            ['a run', () => ui.openRun('r1')],
+            ['the new-chat row', () => ui.openDraft()],
+        ] as const;
+
+        for (const [, open] of choose) {
+            expand();
+            open();
+            expect(ui.sidePanelExpanded).toBe(false);
+        }
+
+        // With the panel shut the chat is in full already: the choice stays for when the panel is opened again.
+        ui.sidePanelOpen = false;
+        ui.sidePanelExpanded = true;
+        ui.openChat('c2');
+        ui.openRun('r2');
+        ui.openDraft();
+        expect(ui.sidePanelExpanded).toBe(true);
+    });
+
+    it('gives the chat its place back when history shows another chat, and not when it shows the same one', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.openChat('c1');
+        ui.sidePanelOpen = true;
+        ui.sidePanelExpanded = true;
+
+        ui.show({ ...ui.view, section: 'tasks' });
+        expect(ui.sidePanelExpanded).toBe(true);
+
+        ui.show({ ...ui.view, chatId: 'c2' });
+        expect(ui.sidePanelExpanded).toBe(false);
+    });
+
     it('opens the side panel on a tab from a shut panel or another tab, and never shuts it', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 
@@ -798,6 +862,17 @@ describe('UiStore', () => {
         ui.showSettingsPage('skills');
         ui.showSettingsPage('projects');
         expect(ui.settingsProjectId).toBeNull();
+    });
+
+    it('shows the page of a project over Settings > Projects, or the list again, without changing the page of Settings', () => {
+        const ui = new UiStore();
+
+        ui.openSettings('providers');
+        ui.setSettingsProject('p1');
+        expect([ui.settingsPage, ui.settingsProjectId]).toEqual(['providers', 'p1']);
+
+        ui.setSettingsProject(null);
+        expect([ui.settingsPage, ui.settingsProjectId]).toEqual(['providers', null]);
     });
 
     it('forgets a removed project: its window state, its stored copy, and its page in Settings', () => {

@@ -52,7 +52,6 @@ const unconfigured: Transport = {
     getTaskComments: noDaemon,
     getArchivedTasks: noDaemon,
     getDocsTree: noDaemon,
-    getDocFile: noDaemon,
     getProjectFiles: noDaemon,
     fileSystem: noFiles,
     uploadAttachment: noDaemon,

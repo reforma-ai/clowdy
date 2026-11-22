@@ -60,6 +60,10 @@ interface SettingsLayoutContextValue {
 
 const SettingsLayoutContext = createContext<SettingsLayoutContextValue | null>(null);
 const SettingsOverlayContext = createContext<HTMLElement | null>(null);
+/** The line under the title, in the header: what `Intro` draws there, from wherever the page keeps it. */
+const SettingsDescriptionContext = createContext<HTMLElement | null>(null);
+/** The key of the pane whose content is being drawn, so an `Intro` in it knows it belongs to that pane and not to the page under it. */
+const SettingsPaneContext = createContext<string | undefined>(undefined);
 const SettingsLeaveGuardContext = createContext<RefObject<(() => boolean | Promise<boolean>) | null> | null>(null);
 
 function settleLeave(decision: boolean | Promise<boolean>, apply: () => void) {
@@ -385,7 +389,9 @@ function Pane({ paneKey, className, children }: SettingsLayoutPaneProps) {
                         transition={ paneTransition(reducedMotion) }
                         inert={ covered }
                     >
-                        { children }
+                        <SettingsPaneContext value={ paneKey }>
+                            { children }
+                        </SettingsPaneContext>
                     </MotionScrollable>
                 )
                 : null }
@@ -407,6 +413,7 @@ function Shell({
 }) {
     const { selectedId, stack } = useSettingsLayout();
     const [overlay, setOverlay] = useState<HTMLDivElement | null>(null);
+    const [description, setDescription] = useState<HTMLDivElement | null>(null);
     const reducedMotion = useReducedMotion();
     const covered = stack.length > 0;
     const animate = useMemo(
@@ -416,39 +423,57 @@ function Shell({
 
     return (
         <SettingsOverlayContext value={ overlay }>
-            <div className={ cn(styles.content, className) }>
-                <div className={ styles.header }>
-                    <Title />
-                    { action }
+            <SettingsDescriptionContext value={ description }>
+                <div className={ cn(styles.content, className) }>
+                    {/* The title, what the section is for, and its action are one block that stays put: only what is below it moves. */}
+                    <div className={ styles.header }>
+                        <div className={ styles.headerRow }>
+                            <Title />
+                            { action }
+                        </div>
+                        <div ref={ setDescription } className={ styles.description } />
+                    </div>
+                    <div ref={ setOverlay } className={ styles.viewport }>
+                        <MotionScrollable
+                            key={ selectedId }
+                            className={ styles.scroll }
+                            contentClass={ styles.scrollContent }
+                            initial={ reducedMotion ? false : { opacity: SECTION_START_OPACITY, y: SECTION_RISE } }
+                            animate={ animate }
+                            transition={ covered
+                                ? paneTransition(reducedMotion)
+                                : sectionTransition(reducedMotion) }
+                            inert={ covered }
+                        >
+                            { children }
+                        </MotionScrollable>
+                    </div>
+                    { footer }
                 </div>
-                <div ref={ setOverlay } className={ styles.viewport }>
-                    <MotionScrollable
-                        key={ selectedId }
-                        className={ styles.scroll }
-                        contentClass={ styles.scrollContent }
-                        initial={ reducedMotion ? false : { opacity: SECTION_START_OPACITY, y: SECTION_RISE } }
-                        animate={ animate }
-                        transition={ covered
-                            ? paneTransition(reducedMotion)
-                            : sectionTransition(reducedMotion) }
-                        inert={ covered }
-                    >
-                        { children }
-                    </MotionScrollable>
-                </div>
-                { footer }
-            </div>
+            </SettingsDescriptionContext>
         </SettingsOverlayContext>
     );
 }
 
-/** What a section or a nested view is for, at the top of its content: muted, short lines, and a hairline under it. */
+/**
+ * What a section or a nested view is for. It is written where the page keeps its content, and drawn in the header under the title, with the title and the action
+ * as one block that does not move when the page changes. Only the top layer's is drawn: the page's while no pane is open over it, and a pane's while that pane is the
+ * last of the stack. Outside a `SettingsLayout` it is a plain line where it stands.
+ */
 function Intro({ className, children }: { className?: string; children: ReactNode }) {
-    return (
-        <div className={ cn(styles.intro, className) }>
-            <Text color="secondary" className={ styles.introText }>{ children }</Text>
-        </div>
-    );
+    const layout = use(SettingsLayoutContext);
+    const slot = use(SettingsDescriptionContext);
+    const pane = use(SettingsPaneContext);
+    const text = <Text color="secondary" className={ cn(styles.descriptionText, className) }>{ children }</Text>;
+
+    if (!layout) {
+        return text;
+    }
+
+    const top = layout.stack.at(-1)?.id;
+    const active = pane === undefined ? layout.stack.length === 0 : pane === top;
+
+    return slot && active ? createPortal(text, slot) : null;
 }
 
 function Empty({ children }: { children: ReactNode }) {
@@ -478,7 +503,13 @@ function Content({ headerRight, footer, saveable, className, children }: Setting
     }
 
     return (
-        <Shell className={ className } action={ headerRight } footer={ footer }>
+        <Shell
+            className={ className }
+            action={ headerRight
+                ? <div className={ styles.headerAction }>{ headerRight }</div>
+                : undefined }
+            footer={ footer }
+        >
             { children }
         </Shell>
     );

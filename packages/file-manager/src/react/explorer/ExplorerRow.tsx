@@ -65,19 +65,21 @@ export function ExplorerDragPreview({ mouse, id, dragIds, isDragging }: DragPrev
 
 /** The inline name input of a rename or a new row. Enter or leaving it applies a valid name; Escape cancels. */
 function NameInput({ node, onValueChange }: { node: NodeApi<ExplorerItem>; onValueChange?: (value: string) => void }) {
-    const { manager, draftParent } = useExplorer();
+    const { manager, draftParent, fileName } = useExplorer();
     const { kind, name } = node.data;
     const draft = node.id === DRAFT_ID;
     const [value, setValue] = useState(name);
     const finished = useRef(false);
     const input = useRef<HTMLInputElement>(null);
     const field = useRef<HTMLSpanElement>(null);
-    const unchanged = value.trim() === '' || (!draft && value.trim() === name);
+    // A scope can complete a file's name (`.md` for a document): the name is checked, and applied, as it will be.
+    const typed = kind === 'file' && fileName && value.trim() !== '' ? fileName(value.trim()) : value.trim();
+    const unchanged = typed === '' || (!draft && typed === name);
     const problem = unchanged
         ? null
         : manager.operations.validateName(
             draft ? (draftParent ?? '') : dirname(node.id),
-            value,
+            typed,
             draft ? undefined : node.id
         );
 
@@ -89,7 +91,7 @@ function NameInput({ node, onValueChange }: { node: NodeApi<ExplorerItem>; onVal
         finished.current = true;
 
         if (apply && !unchanged && !problem) {
-            node.submit(value.trim());
+            node.submit(typed);
         }
         else {
             node.reset();

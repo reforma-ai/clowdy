@@ -43,7 +43,7 @@ export function AppearancePage() {
     const [theme, setThemeState] = useState(getTheme);
 
     return (
-        <SettingsPage title="Appearance" description="How Clowdy looks on this computer">
+        <SettingsPage description="How Clowdy looks on this computer">
             <SettingsSection title="Theme">
                 <SettingsCard>
                     <SettingsRow title="Color theme" description="Choose your preferred color theme">

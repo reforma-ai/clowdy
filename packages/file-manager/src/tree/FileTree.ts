@@ -98,6 +98,8 @@ export class FileTree {
     #rootDepth = 0;
     /** Folders opened past the root window. A resync lists these again, not the rest of the project. */
     #opened = new Set<string>();
+    /** Folders `loadDeep` was asked for while a refresh was in flight: that refresh's listing knows nothing of them, so they are listed again once it has committed. */
+    readonly #deepRetry = new Set<string>();
     /** Creates under a folder this tab has not listed. They are not rows; they give that folder a chevron. */
     #below = new Set<string>();
 
@@ -265,6 +267,8 @@ export class FileTree {
 
                 this.status = 'ready';
             });
+
+            await this.#retryDeep();
         }
         catch (error) {
             if (generation === this.#generation) {
@@ -341,11 +345,18 @@ export class FileTree {
 
     /**
      * Lists a folder and everything below it, for a view that needs the whole of a small part of the tree (a folder of documents), and counts every folder it
-     * listed as opened, so a resync lists them again and the changes below them show. A folder that is not there lists nothing. Not while a listing is in flight:
-     * that one is the whole tree's, and asks again for the folders opened by then.
+     * listed as opened, so a resync lists them again and the changes below them show. A folder that is not there lists nothing. Not while a refresh is in
+     * flight: its listing replaces the entries and knows nothing of this folder, so the folder is listed again once the refresh has committed.
      */
     async loadDeep(path: string): Promise<void> {
         const dir = normalizePath(path);
+
+        if (this.#pending) {
+            this.#deepRetry.add(dir);
+
+            return;
+        }
+
         const generation = this.#generation;
         let listed: FileEntry[];
 
@@ -361,6 +372,13 @@ export class FileTree {
         }
 
         if (generation !== this.#generation || this.#pending) {
+            this.#deepRetry.add(dir);
+
+            // A refresh that began and committed while the folder was being listed has nobody left to ask again.
+            if (!this.#pending) {
+                await this.#retryDeep();
+            }
+
             return;
         }
 
@@ -377,6 +395,14 @@ export class FileTree {
                 this.#opened.add(dir);
             }
         });
+    }
+
+    /** Lists again the folders `loadDeep` could not list while a refresh was in flight. A folder that fails stays as the refresh left it: its top level. */
+    async #retryDeep(): Promise<void> {
+        const roots = [...this.#deepRetry];
+
+        this.#deepRetry.clear();
+        await Promise.all(roots.map(root => this.loadDeep(root).catch(() => undefined)));
     }
 
     @action

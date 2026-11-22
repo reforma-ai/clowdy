@@ -2,6 +2,7 @@ import { SidebarLayout } from '../../shared';
 import { useProjectState, useProjectUi } from '../../stores';
 import { ChatView } from '../chats/ChatView';
 import { useProjectsInfo } from '../settings/projects/useProjectsInfo';
+import { useSidePanel } from '../sidePanel';
 import { AgentList } from './AgentList';
 import { chatFolder, resolveSelection, visibleChats } from './agentTree';
 import { ChatFolder } from './ChatFolder';
@@ -17,6 +18,8 @@ import styles from './Screen.module.css';
 export function Screen() {
     const project = useProjectState();
     const ui = useProjectUi();
+    // The expanded side panel is drawn over the chat, which stays where it is: hidden, so it takes no click, no key and no reader.
+    const { expanded } = useSidePanel();
     // A remembered chat or run may be gone: the chat that was open, or the first one listed, stands in.
     const chats = visibleChats(project.chatList, chatListPreferences.sort);
     const selection = resolveSelection(project.chats, chats, project.runs, ui.chatId, ui.runId, ui.draft);
@@ -31,7 +34,7 @@ export function Screen() {
 
     return (
         <SidebarLayout screen="agents" defaultWidth={ 270 } sidebar={ <AgentList selection={ selection } chats={ chats } missing={ missing } /> }>
-            <section className={ styles.main } aria-label={ run ? 'Sub-agent' : 'Chat' }>
+            <section className={ styles.main } aria-label={ run ? 'Sub-agent' : 'Chat' } data-covered={ expanded || undefined }>
                 { run
                     ? <RunDetail key={ run.id } run={ run } />
                     : chat

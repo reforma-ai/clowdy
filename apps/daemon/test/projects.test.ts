@@ -400,21 +400,16 @@ describe('project.delete', () => {
         expect(projectsOf(h).map(candidate => candidate.id)).not.toContain(project.id);
     });
 
-    test('stops watching the folders of the project', async () => {
+    test('forgets the skills the project had read', async () => {
         const h = await setup();
         const project = h.openRepo('watched');
-        const docs = join(project.path, '.clowdy', 'docs');
 
-        // The first request for the documents starts their watcher.
-        mkdirSync(docs, { recursive: true });
-        expect((await h.fetch(`/v1/projects/${ project.id }/docs`)).status).toBe(200);
         await h.fetch(`/v1/skills?projectId=${ project.id }`);
 
         const cursor = h.store.headCursor();
 
         h.ok('project.delete', { projectId: project.id });
-        writeFileSync(join(docs, 'late.md'), '# Late');
-        await Bun.sleep(400);
+        await Bun.sleep(100);
 
         expect(h.events(cursor).map(event => event.data.type)).toEqual(['project.deleted']);
         expect((h.daemon.services.skills as unknown as { projectFingerprints: Map<string, string> }).projectFingerprints.has(project.id)).toBe(false);
@@ -566,7 +561,7 @@ describe('project.update', () => {
         gate.release(task.key);
     });
 
-    test('a new main folder: the docs and the project follow, the old folder is let go', async () => {
+    test('a new main folder: the documents and the project follow', async () => {
         const h = await setup();
         const project = h.openRepo('before');
         const next = makeRepo(h.config.projectsDir, 'after');
@@ -590,43 +585,6 @@ describe('project.update', () => {
         expect(await tree()).toContain('new.md');
         expect(await tree()).not.toContain('old.md');
         expect(pathsOf(projectSnapshot(h.store, project.id).project)).toEqual([realpathSync.native(next)]);
-
-        // Documents of the new folder are announced, those of the old one are not.
-        const afterMove = h.store.headCursor();
-
-        writeFileSync(join(oldDocs, 'ignored.md'), '# Ignored');
-        writeFileSync(join(newDocs, 'fresh.md'), '# Fresh');
-        await waitFor(() => h.events(afterMove).some(event => event.data.type === 'docs.changed'), 'the new folder to be watched');
-        await Bun.sleep(300);
-
-        // (The file system may also report a file written just before the watch began, so only these two are told apart.)
-        const announced = h.events(afterMove).filter(event => event.data.type === 'docs.changed').map(event => (event.data as { path: string }).path);
-
-        expect(announced).toContain('fresh.md');
-        expect(announced).not.toContain('ignored.md');
-    });
-
-    test('a folder another project still has keeps its documents announced to that project after this one lets it go', async () => {
-        const h = await setup();
-        const shared = makeRepo(h.config.projectsDir, 'shared');
-        const docs = join(realpathSync.native(shared), '.clowdy', 'docs');
-        const { project: keeper } = h.ok('project.add', { folders: [shared] });
-        const { project: leaver } = h.ok('project.add', { folders: [makeRepo(h.config.projectsDir, 'own'), shared] });
-
-        // Both read their trees: the shared folder has one watcher, waiting for its docs folder.
-        await h.fetch(`/v1/projects/${ keeper.id }/docs`);
-        expect(await (await h.fetch(`/v1/projects/${ leaver.id }/docs`)).json()).toEqual([{ folderId: leaver.folders[0].id, nodes: [] }, { folderId: leaver.folders[1].id, nodes: [] }]);
-        h.ok('project.update', { projectId: leaver.id, folders: [{ id: leaver.folders[0].id }] });
-        await Bun.sleep(150);
-
-        const cursor = h.store.headCursor();
-
-        mkdirSync(docs, { recursive: true });
-        writeFileSync(join(docs, 'note.md'), '# Note');
-        await waitFor(() => h.events(cursor).some(event => event.data.type === 'docs.changed' && event.projectId === keeper.id), 'the change for the project that kept the folder');
-        await Bun.sleep(200);
-
-        expect(h.events(cursor).filter(event => event.data.type === 'docs.changed').every(event => event.projectId === keeper.id)).toBe(true);
     });
 
     test('a project works in its new main folder, and the old folder can be added as a project of its own', async () => {

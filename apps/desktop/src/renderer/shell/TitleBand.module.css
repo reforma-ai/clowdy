@@ -14,11 +14,13 @@
     align-items: center;
 }
 
-/* What sits at the right edge: the usage badges. The band's own right padding keeps it clear of the Windows caption buttons. */
+/*
+ * What sits at the right edge: the usage badges, then the corner over the side panel's rail. There is no gap between them, so the badges end where the rail begins, in line with
+ * the right edge of the plate below. The band's own right padding keeps it clear of the Windows caption buttons.
+ */
 .end {
     display: flex;
     flex-shrink: 0;
     align-items: center;
-    gap: var(--spacing-md);
     margin-left: auto;
 }

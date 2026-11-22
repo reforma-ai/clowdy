@@ -173,7 +173,7 @@ export const FileManagerView = observer(function FileManagerView({
                                         dndManager={dndManager}
                                         scope={scope}
                                         filter={scope ? (scoped ?? null) : undefined}
-                                        emptyText={emptyText}
+                                        emptyText={ready ? emptyText : undefined}
                                     />
                                 </PanelTab>
                             </Panel>

@@ -18,7 +18,7 @@ export function ShortcutsPage() {
     const groups = useMemo(() => groupHelpEntries(shortcutEntries()), []);
 
     return (
-        <SettingsPage title="Shortcuts" description="The keys that run commands in Clowdy">
+        <SettingsPage description="The keys that run commands in Clowdy">
             { groups.map(group => (
                 <SettingsSection key={ group.name } title={ group.name }>
                     <SettingsCard divided>

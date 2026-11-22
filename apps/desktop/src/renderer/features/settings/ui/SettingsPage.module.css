@@ -1,60 +1,6 @@
-/* The page fills what the Settings column gives it: the title line on top, and the scrolling layers below. */
-.page {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-}
-
-/*
- * The title line does not scroll. It is as tall as a small button (30px), so it is the same height with an action and without one, and
- * it has room above it and below: the title does not sit against the top of the window.
- */
-.header {
-    flex: none;
-    padding: var(--spacing-32) var(--spacing-xxl) var(--spacing-md);
-}
-
-.titleLine {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-xl);
-    min-height: var(--spacing-30);
-    min-width: 0;
-}
-
-.path {
-    flex: 1;
-    min-width: 0;
-}
-
-.actions {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: var(--spacing-sm);
-}
-
-/* What a layer scrolls. At least 24px between its blocks, and room under the last one. */
+/* The blocks of a page, at least 24px apart. The window's scroll gives the padding around them. */
 .body {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-24);
-    padding: 0 var(--spacing-xxl) var(--spacing-32);
-}
-
-.intro {
-    padding-bottom: var(--spacing-xl);
-    border-bottom: 1px solid var(--color-secondary-muted-border);
-}
-
-/*
- * What the page is for stops well short of the column's right edge, so it never runs under the page's action in the title line (a small
- * button) and its lines stay short enough to read. The hairline under it still spans the column.
- */
-.description {
-    display: block;
-    max-width: 34rem;
 }

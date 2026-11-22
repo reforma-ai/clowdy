@@ -1,1 +1,1 @@
-export { ProjectsPage } from './ProjectsPage';
+export { AddProjectButton, ProjectsPage } from './ProjectsPage';

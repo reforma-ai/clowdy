@@ -319,6 +319,92 @@ describe('a part of the tree, drawn by rules of its own', () => {
         expect(container.textContent).toContain('No documents yet');
     });
 
+    it('shows the document that is open when the scope is switched on, the folder it is in opened', async () => {
+        // The Files tree does not draw it, as the folder it is in is a hidden one; the tab is open all the same.
+        draw({ scope: undefined });
+        await settle();
+        await manager.open('.clowdy/docs/plans/b.md');
+        await settle();
+        expect(rows()).toEqual(['src']);
+
+        draw({ scope, filterPlaceholder: 'Filter documents', emptyText: 'No documents yet' });
+        await settle();
+
+        expect(rows()).toEqual(['plans', 'b.md', 'a.md']);
+        expect(container.querySelector('[role="treeitem"][aria-selected="true"]')?.textContent).toBe('b.md');
+    });
+
+    it('completes the name of a renamed document, and checks the completed name', async () => {
+        const tree = container.querySelector<HTMLElement>('[role="tree"]')!;
+        const nameInput = () => container.querySelector<HTMLInputElement>('[role="treeitem"] input')!;
+        const typeName = (value: string) => {
+            act(() => {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput(), value);
+                nameInput().dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        };
+        const press = (key: string) => act(() => void nameInput().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })));
+
+        await manager.operations.createFile('.clowdy/docs', 'taken.md');
+        await settle();
+
+        act(() => void [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(row => row.textContent === 'a.md')!.click());
+        act(() => void tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true, cancelable: true })));
+        await settle();
+
+        // `taken` is `taken.md` once completed, which is a name in the folder already.
+        typeName('taken');
+        press('Enter');
+        await settle();
+        expect(await manager.provider.list('.clowdy/docs', 1).then(entries => entries.map(entry => entry.path).sort())).toEqual(['.clowdy/docs/a.md', '.clowdy/docs/plans', '.clowdy/docs/taken.md', '.clowdy/docs/x.png']);
+
+        act(() => void tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true, cancelable: true })));
+        await settle();
+        typeName('idea');
+        press('Enter');
+        await settle();
+
+        expect(await manager.provider.list('.clowdy/docs', 1).then(entries => entries.map(entry => entry.path).sort())).toEqual(['.clowdy/docs/idea.md', '.clowdy/docs/plans', '.clowdy/docs/taken.md', '.clowdy/docs/x.png']);
+    });
+
+    it('does not say it is empty while the tree is still being listed', async () => {
+        manager.dispose();
+
+        const memory = new MemoryFileSystem({ 'src/a.ts': '' });
+        let release = () => {};
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const provider = new Proxy(memory, {
+            get(target, key) {
+                if (key === 'list') {
+                    return async (...args: Parameters<MemoryFileSystem['list']>) => {
+                        await gate;
+
+                        return target.list(...args);
+                    };
+                }
+
+                const value: unknown = Reflect.get(target, key, target);
+
+                return typeof value === 'function' ? value.bind(target) : value;
+            },
+        });
+
+        manager = new FileManager({ provider, hidden: ['**/.*'] });
+
+        const started = manager.start();
+
+        draw({ scope: { ...scope }, emptyText: 'No documents yet' });
+        await settle();
+        expect(container.textContent).not.toContain('No documents yet');
+
+        release();
+        await started;
+        await settle();
+        expect(container.textContent).toContain('No documents yet');
+    });
+
     it('is the tree as it was without a scope: the hidden folder is not in it', async () => {
         draw({ scope: undefined });
         await settle();
