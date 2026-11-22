@@ -1,5 +1,5 @@
 import { Button } from '@clowdy/components/Button';
-import { Collapse, Expand } from '@clowdy/icons/16';
+import { LargePanel, SmallPanel } from '@clowdy/icons/14';
 
 import { commandTooltip } from '../../hotkeys';
 import { SIDE_PANEL_EXPAND_COMMAND } from './commands';
@@ -8,7 +8,8 @@ import { useSidePanel } from './useSidePanel';
 
 /**
  * The corner of the title band over the side panel's rail: as wide as the rail, so the usage status stops short of it, and with the button that expands the open panel into
- * the place of the chat and gives it back (`ProjectUi.toggleSidePanelExpanded`, and the key `Cmd+Shift+Enter`). The button is there while the panel is open; a shut panel
+ * the place of the chat and gives it back (`ProjectUi.toggleSidePanelExpanded`, and the key `Cmd+Shift+Enter`). Its icon draws the panel as it is: the narrow panel (`SmallPanel`)
+ * while it sits beside the chat, the wide one (`LargePanel`) while it is expanded and the button is pressed. The button is there while the panel is open; a shut panel
  * leaves the corner empty. The corner is there with the rail.
  */
 export function SidePanelCorner() {
@@ -31,7 +32,7 @@ export function SidePanelCorner() {
                     tooltipPlacement="bottom"
                     onPress={ toggleExpanded }
                 >
-                    { expanded ? <Collapse /> : <Expand /> }
+                    { expanded ? <LargePanel /> : <SmallPanel /> }
                 </Button>
             ) }
         </div>
