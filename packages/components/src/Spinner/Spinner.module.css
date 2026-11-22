@@ -94,7 +94,7 @@
     .root[data-size='sm'],
     .labelRoot[data-size='sm'] {
         --spinner-size: var(--spacing-20);
-        --spinner-width: 3px;
+        --spinner-width: 2px;
     }
 
     .root[data-size='md'],
