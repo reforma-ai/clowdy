@@ -5,6 +5,7 @@ import { makeAutoObservable, reaction } from 'mobx';
 
 import { readStored, writeStored, type KeyValueStorage } from '../../stores/storage';
 import { HIDDEN_GLOBS } from './hidden';
+import { clipboardOf } from './systemClipboard';
 
 import type { FolderId, ProjectId } from '@clowdy/protocol';
 import type { Transport } from '../../daemon/transport';
@@ -31,8 +32,12 @@ export class FilesStore {
     readonly #disposers: Array<() => void> = [];
     #disposed = false;
 
-    constructor(readonly transport: Pick<Transport, 'fileSystem'>, readonly storage?: KeyValueStorage) {
-        makeAutoObservable<FilesStore, 'transport' | 'storage'>(this, { transport: false, storage: false });
+    /**
+     * `folderPath` says where a folder is on the disk, for the desktop app's clipboard to copy files to and from it; without it (or in a page that is not the desktop
+     * app) the tree has no Copy and no Paste.
+     */
+    constructor(readonly transport: Pick<Transport, 'fileSystem'>, readonly storage?: KeyValueStorage, readonly folderPath?: (projectId: ProjectId, folderId: FolderId) => string | undefined) {
+        makeAutoObservable<FilesStore, 'transport' | 'storage' | 'folderPath'>(this, { transport: false, storage: false, folderPath: false });
     }
 
     /** The file manager of a folder of a project. */
@@ -78,6 +83,7 @@ export class FilesStore {
             provider: files,
             search: files.search?.bind(files),
             hidden: HIDDEN_GLOBS,
+            clipboard: clipboardOf(this.folderPath?.(projectId, folderId)),
             notify: (message, error) => void toast.error({ title: message, message: error === undefined ? undefined : errorMessage(error) }),
         });
         const saved = storedTabs(this.storage, key);

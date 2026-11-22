@@ -35,7 +35,7 @@ describe('the names the palette looks for', () => {
 
             return new MemoryFileSystem(files);
         });
-        const root = { transport: { getProjectFiles: vi.fn(listed), fileSystem } } as unknown as RootStore;
+        const root = { transport: { getProjectFiles: vi.fn(listed), fileSystem }, projects: [] } as unknown as RootStore;
 
         const project = { id: 'p1' as ProjectId, chats: new Map(), runs: new Map(), project: { folders: [FOLDER] } } as unknown as ProjectState;
 

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { MemoryFileSystem } from '@clowdy/file-manager/memory';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
@@ -16,6 +16,34 @@ const FOLDER = 'fld_car_rental';
 const settle = () => new Promise(resolve => setTimeout(resolve, 20));
 
 describe('FilesStore', () => {
+    afterEach(() => {
+        delete window.desktop;
+    });
+
+    it('gives a folder the desktop app\'s clipboard when the app is there and says where the folder is, and none otherwise', async () => {
+        const bare = new FilesStore({ fileSystem: () => new MemoryFileSystem() }, memory(), () => '/Users/dev/web');
+
+        expect(bare.managerOf('p', 'f1').clipboard).toBeUndefined();
+
+        const writeClipboardFiles = vi.fn(async () => undefined);
+
+        window.desktop = { platform: 'darwin', readClipboardFiles: async () => [], writeClipboardFiles, pasteClipboardFiles: async () => undefined } as never;
+
+        const located = new FilesStore({ fileSystem: () => new MemoryFileSystem({ 'a.ts': '' }) }, memory(), (_project, folder) => (folder === 'f1' ? '/Users/dev/web' : undefined));
+        const manager = located.managerOf('p', 'f1');
+
+        expect(manager.canCopy).toBe(true);
+        expect(located.managerOf('p', 'f2').clipboard).toBeUndefined();
+        expect(new FilesStore({ fileSystem: () => new MemoryFileSystem() }, memory()).managerOf('p', 'f1').clipboard).toBeUndefined();
+
+        await settle();
+        await manager.copy(['a.ts']);
+
+        expect(writeClipboardFiles).toHaveBeenCalledWith(['/Users/dev/web/a.ts']);
+
+        for (const store of [bare, located]) store.dispose();
+    });
+
     it('makes one file manager for each folder and keeps it, so what is open in a folder is still there when it comes back', async () => {
         const store = new FilesStore(new FixtureTransport(), memory());
         const manager = store.managerOf(FIXTURE_PROJECT_ID, FOLDER);

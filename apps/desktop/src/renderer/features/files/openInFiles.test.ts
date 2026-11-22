@@ -27,7 +27,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-    filesStoreOf(store.transport).dispose();
+    filesStoreOf(store).dispose();
     store.dispose();
     localStorage.clear();
 });

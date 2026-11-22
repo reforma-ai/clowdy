@@ -6,7 +6,7 @@ import type { RootStore } from '../../stores';
 export async function filesManagerOf(root: RootStore, projectId: ProjectId, folder: ProjectFolder): Promise<FileManager> {
     const { filesStoreOf } = await import('./useFilesStore');
 
-    return filesStoreOf(root.transport).startedManagerOf(projectId, folder.id);
+    return filesStoreOf(root).startedManagerOf(projectId, folder.id);
 }
 
 /** Shows the side panel on its Files tab. The tab shows the folder the window is working in. */
