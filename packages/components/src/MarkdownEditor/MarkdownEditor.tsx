@@ -49,6 +49,11 @@ export interface MarkdownEditorProps {
  */
 const shownBodies = new WeakMap<Editor, { body: string; canonical: string }>();
 
+/** What a front matter block holds, without its `---` or `+++` lines; `''` for no block or an empty one. */
+function linesBetweenDelimiters(frontMatter: string): string {
+    return frontMatter.trimEnd().split('\n').slice(1, -1).join('\n');
+}
+
 /** Rich text editing for a markdown file: markdown in through `value`, out through `onChange`. */
 export function MarkdownEditor({
     value,
@@ -141,7 +146,7 @@ export function MarkdownEditor({
         }
     }, [editor, support, unsupported, value]);
 
-    const { frontMatter } = splitFrontMatter(value);
+    const frontMatterText = linesBetweenDelimiters(splitFrontMatter(value).frontMatter);
 
     if (unsupported?.tooLarge) {
         return null;
@@ -161,13 +166,10 @@ export function MarkdownEditor({
             </Show>
 
             <Scrollable className={ styles.scroll }>
-                <Show when={ frontMatter }>
+                <Show when={ frontMatterText }>
                     <div className={ styles.frontMatter }>
-                        <figure className={ cn(styles.page, styles.frontMatterColumn) }>
-                            <Text as="figcaption" variant="label" color="secondary">
-                                Front matter · edit it in source mode
-                            </Text>
-                            <pre className={ styles.frontMatterCode }>{ frontMatter.trimEnd() }</pre>
+                        <figure className={ cn(styles.page, styles.frontMatterColumn) } aria-label="Front matter">
+                            <pre className={ styles.frontMatterCode }>{ frontMatterText }</pre>
                         </figure>
                     </div>
                 </Show>

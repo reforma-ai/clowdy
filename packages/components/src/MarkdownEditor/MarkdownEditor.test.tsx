@@ -373,15 +373,15 @@ describe('MarkdownEditor', () => {
     });
 
     it.each([
-        ['YAML', '---\ntitle: Guide\ntags: [a, b]\n---\n\n', 'Intro\n'],
-        ['empty YAML', '---\n---\n', ''],
-        ['TOML', '+++\ntitle = "Guide"\n+++\n', 'Intro\n'],
-    ])('should show %s front matter read-only and emit it unchanged', async(_name, frontMatter, body) => {
+        ['YAML', '---\ntitle: Guide\ntags: [a, b]\n---\n\n', 'Intro\n', 'title: Guide\ntags: [a, b]'],
+        ['empty YAML', '---\n---\n', '', undefined],
+        ['TOML', '+++\ntitle = "Guide"\n+++\n', 'Intro\n', 'title = "Guide"'],
+    ])('should show %s front matter read-only, without its delimiters, and emit it unchanged', async(_name, frontMatter, body, shown) => {
         const onChange = vi.fn();
 
         await render({ value: frontMatter + body, onChange });
 
-        expect(host.querySelector('figure pre')?.textContent).toBe(frontMatter.trimEnd());
+        expect(host.querySelector('figure pre')?.textContent).toBe(shown);
         expect(mountedEditor().getMarkdown()).toBe(body.trimEnd());
 
         await typeAtEnd('.');
