@@ -22,6 +22,9 @@ export type SidePanelSize = 'hide' | 'half' | 'wide';
 /** The tabs whose view is always the size of the chat's place, whatever the project chose for the others (`ProjectUi.sidePanelIsFull`). */
 const FULL_TABS: readonly SidePanelTab[] = ['tasks'];
 
+/** The tabs that are a tree beside a view (Files and Docs): they need more room beside the chat than the others, and where the window has none they are in the chat's place (`ProjectUi.sidePanelTabIsFull`). */
+const TREE_TABS: readonly SidePanelTab[] = ['files', 'docs'];
+
 /** Where a project's window is: the chat or run open in it. History walks these; the view options of the Tasks tab, the side panel and what it shows are not places. */
 export interface ProjectView {
     chatId: ChatId | null;
@@ -145,13 +148,16 @@ export class ProjectUi {
 
     /** The tasks the project holds, for `openTask` to reveal a task in. Read when a task is opened, not kept. */
     readonly #tasks: (() => RevealTasks | undefined) | undefined;
+    /** The window is wide enough for a panel with a tree beside the chat (`UiStore.windowFitsHalf`), read when the panel's size is asked for. */
+    readonly #windowFitsHalf: () => boolean;
     /** Tasks: the comment each task's composer holds and has not sent, the one written last at the end. Not kept between sessions, and no place of the history. */
     readonly #commentDrafts = new Map<TaskId, string>();
 
-    constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}, tasks?: () => RevealTasks | undefined) {
+    constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}, tasks?: () => RevealTasks | undefined, windowFitsHalf: () => boolean = () => true) {
         const key = uiKey(projectId);
 
         this.#tasks = tasks;
+        this.#windowFitsHalf = windowFitsHalf;
         const stored = readStored(storage, key) as Partial<Record<keyof StoredProjectUi, unknown>> | undefined;
 
         if (stored && typeof stored === 'object') {
@@ -348,9 +354,17 @@ export class ProjectUi {
         if (size !== 'hide' && !this.sidePanelTabIsFull) this.sidePanelExpanded = size === 'wide';
     }
 
-    /** The tab the panel shows is always the size of the chat's place (the Tasks tab), so it has no expanded size to choose. */
+    /**
+     * The tab the panel shows is the size of the chat's place, so it has no expanded size to choose: the Tasks tab always is, and a tab with a tree beside a view (Files, Docs) is
+     * where the window is too narrow for it beside the chat (`UiStore.windowFitsHalf`). Nothing is kept for it: in a wider window the project's own choice is back.
+     */
     get sidePanelTabIsFull(): boolean {
-        return FULL_TABS.includes(this.sidePanelTab);
+        return FULL_TABS.includes(this.sidePanelTab) || (TREE_TABS.includes(this.sidePanelTab) && !this.#windowFitsHalf());
+    }
+
+    /** The tab the panel shows is a tree beside a view, which needs more room than the other tabs do while it is beside the chat. */
+    get sidePanelTabHasTree(): boolean {
+        return TREE_TABS.includes(this.sidePanelTab);
     }
 
     /** The panel is, or comes back, in the place of the chat: the project has it expanded, or the tab is a full one. */
@@ -482,6 +496,8 @@ export class UiStore {
     /** The project whose own page is open inside Settings > Projects; `null` shows the list of projects. */
     settingsProjectId: ProjectId | null = null;
     readonly #projects = new Map<ProjectId, ProjectUi>();
+    /** The window is wide enough for the side panel with a tree (Files, Docs) beside the chat, which the shell reads from the window's width. Wide enough until it says it is not. */
+    windowFitsHalf = true;
 
     /** `tasksOf` gives the tasks a project holds, which `ProjectUi.openTask` needs to reveal a task: the root store hands them over, a test of the window state alone has none. */
     constructor(private readonly storage?: KeyValueStorage, private readonly initial?: InitialProjectUi, private readonly tasksOf?: (projectId: ProjectId) => RevealTasks | undefined) {
@@ -492,7 +508,7 @@ export class UiStore {
         let ui = this.#projects.get(projectId);
 
         if (!ui) {
-            ui = new ProjectUi(projectId, this.storage, this.initial, () => this.tasksOf?.(projectId));
+            ui = new ProjectUi(projectId, this.storage, this.initial, () => this.tasksOf?.(projectId), () => this.windowFitsHalf);
             this.#projects.set(projectId, ui);
         }
 
@@ -503,6 +519,11 @@ export class UiStore {
     restore(ui: ProjectUi, view: ProjectView): void {
         ui.show(view);
         this.settingsOpen = false;
+    }
+
+    /** Tells whether the window is wide enough for the side panel with a tree beside the chat; the panels of Files and Docs are in the chat's place while it is not. */
+    setWindowFitsHalf(fits: boolean): void {
+        this.windowFitsHalf = fits;
     }
 
     /** Shuts the Settings window, which shows the page that is under it again. */

@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import { Screen as AgentsScreen } from '../features/agents';
 import { openQuickSearch, quickSearchCommands } from '../features/quickSearch';
 import { SettingsDialog } from '../features/settings';
-import { SidePanelLayout, SidePanelRail, useSidePanel } from '../features/sidePanel';
+import { SidePanelLayout, SidePanelRail, useSidePanel, useWindowFitsHalf } from '../features/sidePanel';
 import { ChordHud, hotkeys, installDispatcher, useCommands } from '../hotkeys';
 import { useRootStore } from '../stores';
 import { FindBar } from './FindBar';
@@ -26,6 +26,7 @@ export function Shell() {
     const root = useRootStore();
     const panel = useSidePanel();
 
+    useWindowFitsHalf();
     useEffect(() => installDispatcher(hotkeys), []);
     useCommands('app', shellCommands(root));
     useCommands('app', quickSearchCommands({ available: () => root.showsProjectScreen, open: tab => openQuickSearch(root, tab) }));

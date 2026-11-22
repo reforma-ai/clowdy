@@ -15,6 +15,7 @@ import { EditorArea } from './editor/EditorArea';
 import { Explorer } from './explorer/Explorer';
 import { scopeFilter } from './explorer/scopeFilter';
 import styles from './FileManagerView.module.css';
+import { EDITOR_MIN_WIDTH, SIDEBAR_MIN_WIDTH } from './layout';
 import { isMac } from './platform';
 
 import type { Extension } from '@codemirror/state';
@@ -50,9 +51,6 @@ export interface FileManagerViewProps {
     className?: string;
 }
 
-/** The narrowest the sidebar and the editor can be dragged to. */
-const SIDEBAR_MIN_WIDTH = 160;
-const EDITOR_MIN_WIDTH = 100;
 const SIDEBAR_DEFAULT_WIDTH = 240;
 
 /**

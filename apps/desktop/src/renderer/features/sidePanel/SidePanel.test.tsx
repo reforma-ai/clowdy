@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
+import { defineCommand } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { SIDE_PANEL_COMMAND, SIDE_PANEL_KEYS } from './commands';
 import { currentFolder } from './currentFolder';
 import { SidePanelLayout } from './SidePanelLayout';
 import { SidePanelRail } from './SidePanelRail';
@@ -166,6 +168,26 @@ describe('the corner at the top of the rail', () => {
         expect(panel()).toBeNull();
         expect(pressed()).toBe('false');
         expect(icon()).toBe('none');
+    });
+
+    it('titles the menu as the side panel, and tells the key that toggles the panel only while there is one', async () => {
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+        await press(expandButton()!);
+
+        const menu = () => sizes()?.parentElement?.textContent;
+
+        expect(menu()).toMatch(/^Side panel/);
+        expect(menu()).not.toContain('to toggle the panel');
+
+        const remove = defineCommand({ id: SIDE_PANEL_COMMAND, title: 'Toggle side panel', group: 'General', keys: SIDE_PANEL_KEYS, scope: 'app', handler: () => undefined });
+
+        try {
+            await settle();
+
+            expect(menu()).toMatch(/Use .+ to toggle the panel$/);
+        } finally {
+            remove();
+        }
     });
 
     it('shows a panel that was shut while expanded as hidden, and brings it back in the size that is chosen', async () => {

@@ -1,3 +1,32 @@
+/* The title, the row of sizes and the hint under it: the two lines of text start where the first picture does. */
+.menu {
+    display: flex;
+    flex-direction: column;
+}
+
+.title,
+.hint {
+    padding-inline: var(--spacing-md);
+    color: var(--color-secondary-muted-text);
+    font-size: var(--spacing-12);
+    line-height: var(--spacing-16);
+}
+
+.title {
+    padding-block: var(--spacing-xs) var(--spacing-xxs);
+    font-weight: 500;
+    cursor: default;
+}
+
+.hint {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding-block: var(--spacing-xxs) var(--spacing-xs);
+    cursor: default;
+}
+
 .sizes {
     display: flex;
     gap: var(--spacing-xs);

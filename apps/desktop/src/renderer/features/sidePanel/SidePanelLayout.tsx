@@ -3,15 +3,12 @@ import { cn } from '@clowdy/lib';
 import { useId, useState } from 'react';
 
 import { browserStorage } from '../../stores/storage';
-import { readSidePanelWidth, SIDE_PANEL_MIN_WIDTH, writeSidePanelWidth } from './panelWidth';
+import { readSidePanelWidth, SIDE_PANEL_MIN_WIDTH, TREE_PANEL_MIN_WIDTH, WINDOW_MIN_WIDTH, writeSidePanelWidth } from './panelWidth';
 import { SidePanel } from './SidePanel';
 import styles from './SidePanelLayout.module.css';
 import { useSidePanel } from './useSidePanel';
 
 import type { ReactNode } from 'react';
-
-/** What the window keeps at the left of the panel: the narrowest left column and the narrowest page (about 640), with a little to spare, so dragging the panel wide cannot squeeze them out. The rails are outside the layout. */
-const WINDOW_MIN_WIDTH = 598;
 
 /**
  * The part of the window between its two rails split in two: the page on the left, and the side panel on the right while it is open. The edge between them
@@ -53,7 +50,9 @@ export function SidePanelLayout({ children }: { children: ReactNode }) {
 function SideColumn({ panel }: { panel: ReturnType<typeof usePanelRef> }) {
     const [width] = useState(() => readSidePanelWidth(browserStorage()));
     const id = useId();
-    const { expanded } = useSidePanel();
+    const { expanded, tabHasTree } = useSidePanel();
+    // A tree beside a view needs its own least while it is beside the chat. Where it is in the chat's place the column is only kept, under it, and any window has room for the least of the others.
+    const minSize = tabHasTree && !expanded ? TREE_PANEL_MIN_WIDTH : SIDE_PANEL_MIN_WIDTH;
 
     return (
         <>
@@ -64,7 +63,7 @@ function SideColumn({ panel }: { panel: ReturnType<typeof usePanelRef> }) {
                 panelRef={ panel }
                 className={ styles.side }
                 defaultSize={ width }
-                minSize={ SIDE_PANEL_MIN_WIDTH }
+                minSize={ minSize }
                 groupResizeBehavior="preserve-pixel-size"
             >
                 <SidePanel />

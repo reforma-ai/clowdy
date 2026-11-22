@@ -754,6 +754,54 @@ describe('UiStore', () => {
         expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
     });
 
+    it('puts Files and Docs in the chat\'s place while the window is too narrow for them beside it, and leaves the other tabs and the choice alone', () => {
+        const store = new UiStore(memoryStorage());
+        const ui = store.forProject('p1');
+
+        ui.openSidePanelTab('files');
+        expect([ui.sidePanelTabIsFull, ui.sidePanelCoversChat]).toEqual([false, false]);
+
+        store.setWindowFitsHalf(false);
+        expect([ui.sidePanelTabIsFull, ui.sidePanelCoversChat, ui.sidePanelExpanded]).toEqual([true, true, false]);
+
+        ui.showSidePanelTab('docs');
+        expect(ui.sidePanelCoversChat).toBe(true);
+
+        for (const tab of ['terminal', 'info'] as const) {
+            ui.showSidePanelTab(tab);
+            expect([ui.sidePanelTabIsFull, ui.sidePanelCoversChat]).toEqual([false, false]);
+        }
+
+        // Wider again, the project's own choice is back: nothing was kept.
+        ui.showSidePanelTab('files');
+        store.setWindowFitsHalf(true);
+        expect([ui.sidePanelTabIsFull, ui.sidePanelCoversChat, ui.sidePanelExpanded]).toEqual([false, false, false]);
+    });
+
+    it('sets the size of a panel that is full for the width of the window as it does for Tasks: shown or hidden, and the choice as it was', () => {
+        const store = new UiStore(memoryStorage());
+        const ui = store.forProject('p1');
+
+        ui.showSidePanelTab('files');
+        store.setWindowFitsHalf(false);
+
+        ui.setSidePanelSize('half');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded, ui.sidePanelCoversChat]).toEqual([true, false, true]);
+
+        ui.setSidePanelSize('hide');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, false]);
+    });
+
+    it('knows that Files and Docs are a tree beside a view', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        expect((['files', 'docs', 'terminal', 'info', 'tasks'] as const).map((tab) => {
+            ui.showSidePanelTab(tab);
+
+            return ui.sidePanelTabHasTree;
+        })).toEqual([true, true, false, false, false]);
+    });
+
     it('covers the chat on the Tasks tab whatever the expanded choice, and only while the panel is open', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 

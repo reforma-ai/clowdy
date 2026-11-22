@@ -2,3 +2,4 @@ export { SIDE_PANEL_COMMAND, SIDE_PANEL_EXPAND_COMMAND, SIDE_PANEL_EXPAND_KEYS, 
 export { SidePanelLayout } from './SidePanelLayout';
 export { SidePanelRail } from './SidePanelRail';
 export { useSidePanel } from './useSidePanel';
+export { useWindowFitsHalf } from './useWindowFitsHalf';

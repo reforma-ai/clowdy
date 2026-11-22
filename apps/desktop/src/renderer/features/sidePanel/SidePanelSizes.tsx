@@ -1,5 +1,7 @@
 import { cn } from '@clowdy/lib';
 
+import { commandHint, CommandHotkey } from '../../hotkeys';
+import { SIDE_PANEL_COMMAND } from './commands';
 import { PANEL_SIZE_LABELS } from './panelSize';
 import styles from './SidePanelSizes.module.css';
 
@@ -45,22 +47,33 @@ export interface SidePanelSizesProps {
     ref?: Ref<HTMLDivElement>;
 }
 
-/** The menu of the rail's corner button: the sizes of the side panel in a row, each a picture of the window with the panel in that size and its name under it. */
+/**
+ * The menu of the rail's corner button: a title that says what the pictures are for (the side panel), the sizes in a row, each a picture of the window with the panel in that size
+ * and its name under it, and under them the key that opens and shuts the panel (left out while that command has no key to show).
+ */
 export function SidePanelSizes({ size, sizes, onSelect, ref }: SidePanelSizesProps) {
     return (
-        <div ref={ ref } className={ styles.sizes } role="group" aria-label="Side panel size">
-            { sizes.map(option => (
-                <button
-                    key={ option }
-                    type="button"
-                    className={ cn(styles.option, option === size && styles.current) }
-                    aria-pressed={ option === size }
-                    onClick={ () => onSelect(option) }
-                >
-                    <SizePreview size={ option } />
-                    <span className={ styles.label }>{ PANEL_SIZE_LABELS[option] }</span>
-                </button>
-            )) }
+        <div className={ styles.menu }>
+            <div className={ styles.title }>Side panel</div>
+            <div ref={ ref } className={ styles.sizes } role="group" aria-label="Side panel size">
+                { sizes.map(option => (
+                    <button
+                        key={ option }
+                        type="button"
+                        className={ cn(styles.option, option === size && styles.current) }
+                        aria-pressed={ option === size }
+                        onClick={ () => onSelect(option) }
+                    >
+                        <SizePreview size={ option } />
+                        <span className={ styles.label }>{ PANEL_SIZE_LABELS[option] }</span>
+                    </button>
+                )) }
+            </div>
+            { commandHint(SIDE_PANEL_COMMAND) && (
+                <div className={ styles.hint }>
+                    Use <CommandHotkey id={ SIDE_PANEL_COMMAND } size="xs" /> to toggle the panel
+                </div>
+            ) }
         </div>
     );
 }

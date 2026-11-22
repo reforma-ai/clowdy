@@ -19,6 +19,11 @@
             "import": "./src/react/index.ts",
             "default": "./src/react/index.ts"
         },
+        "./layout": {
+            "types": "./src/react/layout.ts",
+            "import": "./src/react/layout.ts",
+            "default": "./src/react/layout.ts"
+        },
         "./editor-search": {
             "types": "./src/react/editor/editorSearch.ts",
             "import": "./src/react/editor/editorSearch.ts",
