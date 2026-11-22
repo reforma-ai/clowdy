@@ -2723,6 +2723,18 @@
                     "fingerprint": "986de09bbb460f69dcfd9b39e43754f90396e08139b432e97593a14c77c47619",
                     "name": "add-folder",
                     "sourceHash": "359be41615cf058d034169492cbd0c78f91a50079c2d00735897ec378f90f8ce"
+                },
+                "16554:129132": {
+                    "file": "small-panel.svg",
+                    "fingerprint": "0c34fb60cdf63cb82c848295263ed32f742c8b203a07f90eaa9c7ef9490181d8",
+                    "name": "small-panel",
+                    "sourceHash": "7169e5585b893da16d7d1ac1f4c82899ab16bdbf8fefab0deb6654c26e781125"
+                },
+                "16554:129138": {
+                    "file": "large-panel.svg",
+                    "fingerprint": "4d392f56807d91193544c01e0e7159a3ad6b0d470b719d05a85848df6e1b6b3f",
+                    "name": "large-panel",
+                    "sourceHash": "9db8ed68351e7d08bf1b4b6d340e4afb0bb5d1d9cdac767b5168f68c53eb895e"
                 }
             },
             "nodeId": "12522:118247"
