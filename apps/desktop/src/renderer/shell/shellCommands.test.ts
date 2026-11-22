@@ -2,6 +2,7 @@
 import { observable, runInAction } from 'mobx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SETTINGS_COMMAND, SETTINGS_KEYS } from '../features/settings/commands';
 import { SIDE_PANEL_KEYS, SIDE_PANEL_TAB_KEYS } from '../features/sidePanel';
 import { installDispatcher } from '../hotkeys/dispatcher';
 import { commandHint } from '../hotkeys/react';
@@ -62,7 +63,6 @@ describe('section chords', () => {
     it.each([
         ['a', 'agents'],
         ['t', 'tasks'],
-        ['d', 'docs'],
     ] as const)('G then %s shows the %s section of the selected project', (second, section) => {
         ui.forProject('p').section = section === 'agents' ? 'tasks' : 'agents';
 
@@ -79,7 +79,7 @@ describe('section chords', () => {
         try {
             press({ key: 'g' });
 
-            expect(registry.pending?.candidates.map(({ command }) => command.id).sort()).toEqual(['nav.agents', 'nav.docs', 'nav.tasks']);
+            expect(registry.pending?.candidates.map(({ command }) => command.id).sort()).toEqual(['nav.agents', 'nav.tasks']);
             expect(sectionOf()).toBe('agents');
 
             vi.advanceTimersByTime(1000);
@@ -108,10 +108,10 @@ describe('section chords', () => {
         ui.openSettings('providers');
 
         press({ key: 'g' });
-        press({ key: 'd' });
+        press({ key: 't' });
 
         expect(ui.settingsOpen).toBe(false);
-        expect(sectionOf()).toBe('docs');
+        expect(sectionOf()).toBe('tasks');
     });
 
     it('needs a selected project, and does not even start the chord without one', () => {
@@ -225,6 +225,69 @@ describe('help.open', () => {
     });
 });
 
+describe('settings.open', () => {
+    it('opens Settings on Cmd+, on the page it was left on, from a text field too', () => {
+        const event = press({ key: ',', code: 'Comma', metaKey: true });
+
+        expect([ui.settingsOpen, ui.settingsPage]).toEqual([true, 'appearance']);
+        expect(event.defaultPrevented).toBe(true);
+
+        ui.closeSettings();
+        ui.showSettingsPage('skills');
+
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        try {
+            press({ key: ',', code: 'Comma', metaKey: true }, input);
+
+            expect([ui.settingsOpen, ui.settingsPage]).toEqual([true, 'skills']);
+        }
+        finally {
+            input.remove();
+        }
+    });
+
+    it('does not open on Ctrl+, on macOS, or on a bare comma, and stays shut until the window has loaded', () => {
+        press({ key: ',', code: 'Comma', ctrlKey: true });
+        press({ key: ',', code: 'Comma' });
+
+        expect(ui.settingsOpen).toBe(false);
+
+        runInAction(() => {
+            loading.phase = 'unreachable';
+        });
+
+        const event = press({ key: ',', code: 'Comma', metaKey: true });
+
+        expect(ui.settingsOpen).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('waits while a window is open over the page, as every command does, so Settings is shut with Esc', () => {
+        const overlay = document.createElement('div');
+
+        overlay.setAttribute('data-modal-overlay', '');
+        document.body.append(overlay);
+
+        try {
+            press({ key: ',', code: 'Comma', metaKey: true });
+
+            expect(ui.settingsOpen).toBe(false);
+        }
+        finally {
+            overlay.remove();
+        }
+    });
+
+    it('has Cmd+, on a Mac and Ctrl+, elsewhere, and shows it as the hint of the Settings item', () => {
+        expect(commandPresses({ keys: SETTINGS_KEYS }, 'darwin')).toEqual([['meta', ',']]);
+        expect(commandPresses({ keys: SETTINGS_KEYS }, 'win32')).toEqual([['ctrl', ',']]);
+        expect(commandHint(SETTINGS_COMMAND, registry)).toEqual([['meta', ',']]);
+    });
+});
+
 describe('back and forward', () => {
     const setHistory = (canGoBack: boolean, canGoForward: boolean) => runInAction(() => {
         history.canGoBack = canGoBack;
@@ -323,7 +386,7 @@ describe('the keymap', () => {
         for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'sidePanel.toggle', 'sidePanel.terminal', 'sidePanel.tab.info', 'sidePanel.tab.files', 'sidePanel.tab.docs', 'sidePanel.tab.terminal', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'settings.open', 'nav.agents', 'nav.tasks', 'chats.new', 'sidePanel.toggle', 'sidePanel.terminal', 'sidePanel.tab.info', 'sidePanel.tab.files', 'sidePanel.tab.docs', 'sidePanel.tab.terminal', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
         expect(navCommandId('tasks')).toBe('nav.tasks');
     });
 });

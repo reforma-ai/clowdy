@@ -217,14 +217,17 @@ describe('ProjectsPage list', () => {
         expect(store.ui.settingsOpen).toBe(false);
     });
 
-    it('takes one step back from the opened project to the list it was opened from', async () => {
+    it('leaves Settings for the opened project, and one step back goes to the project the window was on', async () => {
         await open();
         await click(button('Clowdy actions'));
         await click([...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Open project')!);
+
+        expect(store.ui.settingsOpen).toBe(false);
+
         act(() => store.history.back());
 
         expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
-        expect([store.ui.settingsOpen, store.ui.settingsPage]).toEqual([true, 'projects']);
+        expect(store.ui.settingsOpen).toBe(false);
     });
 
     it('offers no removal for the personal space', async () => {

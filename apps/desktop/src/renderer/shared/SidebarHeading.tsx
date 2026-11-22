@@ -16,7 +16,7 @@ export interface SidebarHeadingProps {
     ref?: Ref<HTMLDivElement>;
 }
 
-/** The title of a screen's left column (Agents, Documents, Settings), with its buttons at the right edge: the title of Tasks' header, without the toolbar. */
+/** The title of a screen's left column (Agents, Settings), with its buttons at the right edge: the title of Tasks' header, without the toolbar. */
 export function SidebarHeading({ title, children, className, ref }: SidebarHeadingProps) {
     return (
         <div ref={ ref } className={ cn(styles.heading, className) }>

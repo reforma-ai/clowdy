@@ -46,7 +46,7 @@ export function focusZoneOf(active: Element | null, region: Element | null): Foc
 
 export interface TaskCommandDeps {
     cursor: ListCursor;
-    ui: Pick<ProjectUi, 'taskId' | 'openTask' | 'openDoc'>;
+    ui: Pick<ProjectUi, 'taskId' | 'openTask'> & { openDoc: (path: string) => void };
     /** Shows a chat in the Agents section, bringing it out of the archive first when it is in it. */
     openChat: (chatId: ChatId) => void;
     /** Whether the task still exists. The open task can be one that is gone, and then there is no panel to follow with. */
@@ -571,7 +571,7 @@ function cursorTask({ cursor, tasks }: TaskCommandDeps): Task | undefined {
     return cursor.cursorId === null ? undefined : tasks().find(task => task.id === cursor.cursorId);
 }
 
-/** Opens the task's newest document in Documents, or says why it cannot. Asking the daemon takes a moment, so the task is the one the key was pressed on. */
+/** Opens the task's newest document on the Docs tab, or says why it cannot. Asking the daemon takes a moment, so the task is the one the key was pressed on. */
 async function openLatestDoc({ ui, docPathOf, notify }: TaskCommandDeps, task: Task): Promise<void> {
     try {
         const path = await docPathOf(task.id);

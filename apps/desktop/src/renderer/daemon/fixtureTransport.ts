@@ -272,6 +272,19 @@ export class FixtureTransport implements Transport {
         });
     }
 
+    async getTaskDetailByKey(projectId: ProjectId, key: string): Promise<TaskDetail> {
+        const project = this.#project(projectId);
+        const match = /^(.+)-(\d+)$/.exec(key);
+        // As the daemon reads a key: the project's own prefix in any case and a number it has, the archived tasks included; anything else is a 404.
+        const task = match && match[1].toUpperCase() === project.taskPrefix.toUpperCase()
+            ? this.#data.tasks.find(candidate => candidate.projectId === projectId && candidate.number === Number(match[2]))
+            : undefined;
+
+        if (!task) throw new TransportError(`No such task: ${ key }`, 404);
+
+        return this.getTaskDetail(task.id);
+    }
+
     async getTaskComments(taskId: TaskId, page?: PageQuery): Promise<TaskCommentsPage> {
         return this.#tasks.commentsPage(taskId, page);
     }

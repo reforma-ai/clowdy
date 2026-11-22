@@ -24,6 +24,11 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/chats/:id/items?after=SEQ      -> StreamItem[] (the chat's orchestrator stream)
  * GET  /v1/tasks/:id/detail               -> TaskDetail (the task itself, an archived one too, so a client can open a task its snapshot does not hold,
  *                                            with the ids of its chats and runs and its artifacts; `not_found` for no such task)
+ * GET  /v1/projects/:id/tasks/:key/detail -> TaskDetail (the same answer as `GET /v1/tasks/:id/detail`, for the task a key such as `CAR-12` names in that
+ *                                            project, an archived one too: a client that met a key in a message reads the task without knowing its id. The key
+ *                                            is `<the project's taskPrefix>-<number>`, the prefix in any case. `not_found` for anything that is not a key of that
+ *                                            project (another prefix, no number, a number nobody has) and for a project that does not exist, so a client reads
+ *                                            404 as "no such task")
  * GET  /v1/tasks/:id/comments?limit=&cursor= -> TaskCommentsPage (the task's comments, oldest first; `limit` 1 to 100, default 25; `cursor` is the
  *                                            `nextCursor` of the page before, which is absent on the last page. Comments are not in the snapshot)
  * GET  /v1/projects/:id/archived-tasks?limit=&cursor= -> TaskArchivePage (the project's archived tasks, the ones the snapshot leaves out, newest archived
@@ -69,6 +74,7 @@ export const ROUTES = {
     runItems: (runId: string) => `/v1/runs/${ encodeURIComponent(runId) }/items`,
     chatItems: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/items`,
     taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
+    projectTaskDetail: (projectId: string, key: string) => `/v1/projects/${ encodeURIComponent(projectId) }/tasks/${ encodeURIComponent(key) }/detail`,
     taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
     projectArchivedTasks: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/archived-tasks`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,

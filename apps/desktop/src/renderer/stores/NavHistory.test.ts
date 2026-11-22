@@ -31,12 +31,12 @@ async function readyRoot(storage = memoryStorage()): Promise<RootStore> {
 
 const ui = () => root.ui.forProject(root.selectedProjectId!);
 
-/** Where the window is, in one comparable string: the project and the place, or Settings over it. */
+/** Where the window is, in one comparable string: the project and the place. */
 function place(): string {
-    const { section, chatId, taskId, runId, docPath, draft } = ui();
-    const here = { agents: draft ? '@new-chat' : (runId ?? chatId), tasks: taskId, docs: docPath }[section];
+    const { section, chatId, taskId, runId, draft } = ui();
+    const here = { agents: draft ? '@new-chat' : (runId ?? chatId), tasks: taskId }[section];
 
-    return `${ root.selectedProjectId }/${ root.ui.settingsOpen ? `settings:${ root.ui.settingsPage }` : `${ section }:${ here }` }`;
+    return `${ root.selectedProjectId }/${ section }:${ here }`;
 }
 
 /** Goes back until the start and returns how many steps it took. */
@@ -68,12 +68,11 @@ describe('NavHistory recording', () => {
         expect(root.history.canGoForward).toBe(false);
     });
 
-    it('records a section, a chat, a task, a run and a document, and walks them back and forth', () => {
+    it('records a section, a chat, a task and a run, and walks them back and forth', () => {
         root.ui.showSection(ui(), 'tasks');
         ui().openChat('c-1');
         ui().openTask('t-24');
         ui().openRun('r-na-02');
-        ui().openDoc('decisions/pricing.md');
 
         const stops = [place()];
 
@@ -83,7 +82,6 @@ describe('NavHistory recording', () => {
         }
 
         expect(stops).toEqual([
-            'p-car/docs:decisions/pricing.md',
             'p-car/agents:r-na-02',
             'p-car/tasks:t-24',
             'p-car/agents:c-1',
@@ -135,33 +133,35 @@ describe('NavHistory recording', () => {
         expect(ui().draftFolderId).toBe('fld_other');
     });
 
-    it('records Settings and its pages', () => {
+    it('does not record Settings, which is a window over a place and not one, and a step through the history shuts it', () => {
         root.ui.openSettings('providers');
         root.ui.showSettingsPage('skills');
+
+        expect(root.history.canGoBack).toBe(false);
+
         root.ui.showSection(ui(), 'tasks');
 
+        expect(root.ui.settingsOpen).toBe(false);
         expect(place()).toBe('p-car/tasks:null');
 
-        root.history.back();
-        expect(place()).toBe('p-car/settings:skills');
-        root.history.back();
-        expect(place()).toBe('p-car/settings:providers');
         root.history.back();
         expect(place()).toBe('p-car/agents:null');
         expect(root.history.canGoBack).toBe(false);
 
         root.history.forward();
-        root.history.forward();
-        root.history.forward();
         expect(place()).toBe('p-car/tasks:null');
+
+        root.ui.openSettings('skills');
+        root.history.back();
         expect(root.ui.settingsOpen).toBe(false);
+        expect(place()).toBe('p-car/agents:null');
     });
 
     it('records the selected project, and the place each project was left on comes back with it', () => {
         ui().openTask('t-24');
         root.selectProject(FIXTURE_EMPTY_PROJECT_ID);
         root.ui.openSettings('appearance');
-        root.ui.showSection(ui(), 'docs');
+        root.ui.showSection(ui(), 'tasks');
         root.selectProject(FIXTURE_PROJECT_ID);
 
         expect(place()).toBe('p-car/tasks:t-24');
@@ -175,8 +175,7 @@ describe('NavHistory recording', () => {
 
         expect(stops).toEqual([
             'p-car/tasks:t-24',
-            'p-clowdy/docs:null',
-            'p-clowdy/settings:appearance',
+            'p-clowdy/tasks:null',
             'p-clowdy/agents:null',
             'p-car/tasks:t-24',
             'p-car/agents:null',
@@ -199,11 +198,9 @@ describe('NavHistory recording', () => {
         expect(root.history.canGoBack).toBe(true);
         expect(root.history.canGoForward).toBe(true);
 
-        // Going back over a project change and out of Settings applies several fields at once, and still leaves the entries as they were.
+        // Going back over a project change applies several fields at once, and still leaves the entries as they were.
         root.history.forward();
         root.selectProject(FIXTURE_EMPTY_PROJECT_ID);
-        root.ui.openSettings('skills');
-        root.history.back();
         root.history.back();
         expect(place()).toBe('p-car/tasks:t-25');
         expect(root.history.canGoForward).toBe(true);
@@ -217,7 +214,7 @@ describe('NavHistory recording', () => {
         root.history.back();
         expect(root.history.canGoForward).toBe(true);
 
-        root.ui.showSection(ui(), 'docs');
+        root.ui.showSection(ui(), 'tasks');
 
         expect(root.history.canGoForward).toBe(false);
         root.history.back();
@@ -337,13 +334,13 @@ describe('NavHistory recording', () => {
         expect(ui().tasksScope).toBe('t-31');
 
         // Nothing has settled the scope when they leave by the rail again.
-        root.ui.showSection(ui(), 'docs');
+        root.ui.showSection(ui(), 'agents');
         root.history.back();
 
         expect([ui().section, ui().tasksScope]).toEqual(['tasks', null]);
 
         root.history.forward();
-        expect(ui().section).toBe('docs');
+        expect(ui().section).toBe('agents');
     });
 
     it('leaves the scope of an entry alone while it is on the board when the window moves on', async () => {
@@ -518,14 +515,14 @@ describe('NavHistory entries that are gone', () => {
 
     it('does not skip a place because of a selection it remembers in another section', async () => {
         ui().openChat('c-2');
-        ui().openDoc('decisions/pricing.md');
+        ui().openTask('t-24');
         await remove({ type: 'chat.delete', chatId: 'c-2' });
 
-        // The Docs entry carries `chatId: 'c-2'` along, which Docs does not show.
+        // The Tasks entry carries `chatId: 'c-2'` along, which the Tasks screen does not show.
         root.history.back();
         expect(place()).toBe('p-car/agents:null');
         root.history.forward();
-        expect(place()).toBe('p-car/docs:decisions/pricing.md');
+        expect(place()).toBe('p-car/tasks:t-24');
     });
 
     it('stays put when nothing ahead can be shown, and says so', async () => {
@@ -605,10 +602,10 @@ describe('NavHistory at the start', () => {
         expect(store.selectedProjectId).toBe(project.id);
         expect(store.history.canGoBack).toBe(false);
 
-        store.ui.showSection(store.ui.forProject(project.id), 'docs');
+        store.ui.showSection(store.ui.forProject(project.id), 'tasks');
         expect(store.history.canGoBack).toBe(true);
         store.history.back();
-        expect(store.ui.settingsOpen).toBe(true);
+        expect(store.ui.forProject(project.id).section).toBe('agents');
         store.dispose();
     });
 

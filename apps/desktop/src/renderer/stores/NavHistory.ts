@@ -2,20 +2,18 @@ import { compareStructural, makeAutoObservable, observableShallow, reaction, run
 
 import type { Project, ProjectId } from '@clowdy/protocol';
 import type { ProjectState } from './ProjectState';
-import type { ProjectView, SettingsPage, UiStore } from './UiStore';
+import type { ProjectView, UiStore } from './UiStore';
 
 /** The oldest entries fall off past this many. */
 export const HISTORY_LIMIT = 100;
 
 /**
- * Everything the window shows, as one history entry: the selected project, its place (section and what is open in it, the scope of the Tasks screen
- * among it) and Settings. The options of a section (the Tasks view and its sub-tasks toggle, finished runs, filters, the cursor and the selection) are not part of it.
+ * Everything the window shows, as one history entry: the selected project and its place (section and what is open in it, the scope of the Tasks screen
+ * among it). Settings is a window over a place, not a place, so it is not part of it. The options of a section (the Tasks view and its sub-tasks toggle,
+ * finished runs, filters, the cursor and the selection) are not part of it either.
  */
 interface NavSnapshot extends ProjectView {
     projectId: ProjectId;
-    settingsOpen: boolean;
-    /** `null` while Settings is closed: the page does not show then, and two entries that differ only there would look the same. */
-    settingsPage: SettingsPage | null;
 }
 
 /** What the history needs of the root store. */
@@ -101,9 +99,7 @@ export class NavHistory {
 
         if (selectedProjectId === null) return undefined;
 
-        const { open, page } = ui.settingsView;
-
-        return { projectId: selectedProjectId, ...ui.forProject(selectedProjectId).view, settingsOpen: open, settingsPage: page };
+        return { projectId: selectedProjectId, ...ui.forProject(selectedProjectId).view };
     }
 
     #record(snapshot: NavSnapshot): void {
@@ -128,7 +124,7 @@ export class NavHistory {
 
     /** The entry with the roots of the Tasks screen in place of a scope that has left the board; the entry itself when the scope is there, or the entry is not a Tasks one. */
     #withoutGoneScope(entry: NavSnapshot): NavSnapshot {
-        if (entry.section !== 'tasks' || entry.tasksScope === null || entry.settingsOpen) return entry;
+        if (entry.section !== 'tasks' || entry.tasksScope === null) return entry;
 
         const state = this.host.projectState(entry.projectId);
 
@@ -159,21 +155,20 @@ export class NavHistory {
     /**
      * Whether what the entry shows is still there: its project, and the chat, task or run of its section, and for the Tasks screen the task whose insides it
      * showed (a scope that is gone or archived is not a place to go back to), and a task it had open, which may be an archived one the window has read
-     * (`ProjectState.archivedKnown`, bounded: one let go of is no longer a place). Documents are always there, the tree may list them again.
+     * (`ProjectState.archivedKnown`, bounded: one let go of is no longer a place).
      */
-    #exists({ projectId, section, chatId, taskId, runId, tasksScope, settingsOpen }: NavSnapshot): boolean {
+    #exists({ projectId, section, chatId, taskId, runId, tasksScope }: NavSnapshot): boolean {
         if (!this.host.projects.some(project => project.id === projectId)) return false;
 
         const state = this.host.projectState(projectId);
 
-        // Settings covers the section, and a project that has not delivered its snapshot yet cannot say what it holds.
-        if (settingsOpen || state?.status !== 'ready') return true;
+        // A project that has not delivered its snapshot yet cannot say what it holds.
+        if (state?.status !== 'ready') return true;
 
         switch (section) {
             case 'agents': return (chatId === null || state.chats.has(chatId)) && (runId === null || state.runs.has(runId));
             // An archived task the window has read is a place too, and a scope is never one (the screen shows the roots for it).
             case 'tasks': return (taskId === null || state.tasks.has(taskId) || state.archivedKnown.has(taskId)) && (tasksScope === null || state.tasks.has(tasksScope));
-            case 'docs': return true;
         }
     }
 
@@ -189,6 +184,6 @@ export class NavHistory {
 
         if (host.selectedProjectId !== entry.projectId) host.selectProject(entry.projectId);
 
-        host.ui.restore(host.ui.forProject(entry.projectId), entry, { open: entry.settingsOpen, page: entry.settingsPage });
+        host.ui.restore(host.ui.forProject(entry.projectId), entry);
     }
 }

@@ -4,7 +4,7 @@ import type { Attachment, ChatId, Task, TaskId } from '@clowdy/protocol';
 
 /** What a message's text may point at inside the app. Without it, task keys stay plain text and a thread's name opens nothing. */
 export interface StreamLinks {
-    /** The task a key like `CAR-24` names, when the project has one. */
+    /** The task a key like `CAR-24` names, when the project has one. It answers at once, and a key the window does not know yet may be read from the daemon meanwhile (`ProjectState.taskOfKey`): call it while rendering, so the chip appears when the task is known. */
     taskOfKey?: (key: string) => Pick<Task, 'id' | 'key' | 'title'> | undefined;
     onOpenTask?: (taskId: TaskId) => void;
     /** The bytes of a file a message carries, to show an image. Without it a file shows as its icon. */

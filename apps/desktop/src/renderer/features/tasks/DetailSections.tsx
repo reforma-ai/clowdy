@@ -103,7 +103,7 @@ function ResultContent({ row }: { row: ResultRow }) {
     );
 }
 
-/** What the task produced: changes, commits, checks, documents. A document opens in Documents. */
+/** What the task produced: changes, commits, checks, documents. A document opens on the Docs tab. */
 export function Results({ taskId, expectChecks, onOpenDoc }: { taskId: TaskId; expectChecks: boolean; onOpenDoc: (path: string) => void }) {
     const { state, retry } = useTaskArtifacts(taskId);
     const rows = state.status === 'ready' ? resultRows(state.artifacts, { expectChecks }) : [];

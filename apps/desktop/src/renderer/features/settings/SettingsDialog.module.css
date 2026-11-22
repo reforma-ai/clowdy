@@ -1,0 +1,8 @@
+/* Nearly the whole window, as in the Codex app: an inset of 64px on every side, and no larger than 1240 by 860 on a big screen. The modal's overlay type fills what these allow. */
+.window:global([data-modal-window]) {
+    --modal-overlay-inset: var(--spacing-64);
+    --modal-overlay-max-width: 1240px;
+    --modal-overlay-max-height: 860px;
+
+    overflow: hidden;
+}

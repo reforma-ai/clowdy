@@ -20,20 +20,15 @@ describe('UiStore', () => {
         expect([ui.section, ui.runId]).toEqual(['agents', 'r1']);
         ui.openChat('c1');
         expect([ui.section, ui.chatId, ui.runId]).toEqual(['agents', 'c1', null]);
-        ui.openDoc('decisions/pricing.md');
-        expect([ui.section, ui.docPath]).toEqual(['docs', 'decisions/pricing.md']);
     });
 
-    it('keeps the folder of the open document, the main one when none is named, across a restart', () => {
-        const storage = memoryStorage();
+    it('forgets what an older version kept of the open document, and the Docs section: they fall back to the Agents section', () => {
+        const storage = memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","docPath":"decisions/pricing.md","docFolderId":"fld_api"}' });
         const ui = new UiStore(storage).forProject('p1');
 
-        ui.openDoc('endpoints.md', 'fld_api');
-        expect([ui.docPath, ui.docFolderId, ui.view.docFolderId]).toEqual(['endpoints.md', 'fld_api', 'fld_api']);
-        expect(new UiStore(storage).forProject('p1')).toMatchObject({ docPath: 'endpoints.md', docFolderId: 'fld_api' });
-
-        ui.openDoc('decisions/pricing.md');
-        expect([ui.docPath, ui.docFolderId]).toEqual(['decisions/pricing.md', null]);
+        expect(ui.section).toBe('agents');
+        expect(ui).not.toHaveProperty('docPath');
+        expect(Object.keys(ui.view)).not.toContain('docPath');
     });
 
     it('keeps a chat and one of its runs apart: opening one clears the other, and so does the new-chat row', () => {
@@ -515,8 +510,18 @@ describe('UiStore', () => {
 
         store.openSettings();
         expect(store.settingsOpen).toBe(true);
-        store.showSection(ui, 'docs');
-        expect([store.settingsOpen, ui.section]).toEqual([false, 'docs']);
+        store.showSection(ui, 'tasks');
+        expect([store.settingsOpen, ui.section]).toEqual([false, 'tasks']);
+    });
+
+    it('shuts Settings when a place is shown, as back and forward show one: Settings is a window over a place, not a place', () => {
+        const store = new UiStore();
+        const ui = store.forProject('p1');
+
+        store.openSettings('skills');
+        store.restore(ui, { ...ui.view, section: 'tasks' });
+
+        expect([store.settingsOpen, store.settingsPage, ui.section]).toEqual([false, 'skills', 'tasks']);
     });
 
     it('keeps the Settings page it was left on, and opens on another when asked', () => {
@@ -538,10 +543,10 @@ describe('UiStore', () => {
     });
 
     it('starts from what the page URL preselects, ahead of the stored state', () => {
-        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&chat=c-1&run=r-1&doc=a.md&docFolder=fld-2');
-        const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"docs","tasksView":"board"}' }), initial).forProject('p1');
+        const initial = initialUiFromSearch('?fixtures=1&section=tasks&task=t-24&view=list&chat=c-1&run=r-1');
+        const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"agents","tasksView":"board"}' }), initial).forProject('p1');
 
-        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', chatId: 'c-1', runId: 'r-1', docPath: 'a.md', docFolderId: 'fld-2' });
+        expect(ui).toMatchObject({ section: 'tasks', taskId: 't-24', tasksView: 'list', chatId: 'c-1', runId: 'r-1' });
     });
 
     it('folds every chat until its threads are opened, and keeps what the person opened per project across a restart', () => {

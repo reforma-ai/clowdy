@@ -26,6 +26,12 @@ export type LoadStatus = 'loading' | 'ready' | 'failed';
 /** The most archived tasks a project remembers (`ProjectState.archivedKnown`): the ones read longest ago are let go first. */
 export const ARCHIVED_MEMORY_LIMIT = 500;
 
+/** The most keys a project remembers having asked the daemon about to no avail (`ProjectState.taskOfKey`): the ones asked longest ago are let go first. */
+export const UNRESOLVED_KEYS_LIMIT = 500;
+
+/** The most keys `ProjectState.taskOfKey` reads from the daemon at once: a long chat full of keys must not flood the daemon or hold up the window's own requests, so the rest wait their turn. */
+export const KEY_READS_AT_ONCE = 4;
+
 const chatLinkKey = (link: ChatTaskLink) => `${ link.chatId }:${ link.taskId }`;
 const runLinkKey = (link: RunTaskLink) => `${ link.runId }:${ link.taskId }:${ link.relation }`;
 
@@ -61,8 +67,6 @@ export class ProjectState {
     error = '';
     /** Cursor of the last event this project has taken in: the snapshot's, then each applied event's. */
     cursor = 0;
-    /** The newest change to the docs folder of one of the project's folders; screens that show it refetch what the change touches. */
-    lastDocsChange: { folderId: FolderId; path: string; change: 'created' | 'modified' | 'removed'; cursor: number } | null = null;
     /** Counts `artifact.added` events; a task detail that shows artifacts refetches when it changes. */
     artifactsRevision = 0;
     /**
@@ -88,6 +92,17 @@ export class ProjectState {
     #loadId = 0;
     /** The reads of tasks the project does not hold that are on their way, so two parts of the screen asking for one task make one request. */
     readonly #reading = new Map<TaskId, Promise<Task | undefined>>();
+    /**
+     * The keys `taskOfKey` is reading from the daemon right now, one request per key. Plain, not observable: `taskOfKey` runs while a component renders, and it must not change
+     * what the render observes.
+     */
+    readonly #readingKeys = new Set<string>();
+    /** The keys asked for while `KEY_READS_AT_ONCE` reads were on their way, in the order they were asked: each is read when a place is free. Plain, like the set above. */
+    readonly #waitingKeys = new Set<string>();
+    /** Counts the snapshots taken in, so a read that ends after one knows it began before it. Plain. */
+    #snapshots = 0;
+    /** The keys the daemon was asked about and gave nothing to show (no such task, a read that failed, a task that is not archived), so they are not asked again until a snapshot is taken in. Plain, bounded. */
+    readonly #unresolvedKeys = new Set<string>();
 
     constructor(private readonly transport: Transport, project: Project) {
         this.id = project.id;
@@ -103,7 +118,6 @@ export class ProjectState {
             runTaskLinks: observableShallow,
             commentsRevisions: observableShallow,
             archivedKnown: observableShallow,
-            lastDocsChange: observableRef,
         });
     }
 
@@ -146,6 +160,9 @@ export class ProjectState {
         // A task that is on the board is not archived any more, whatever the memory says: it was restored while the feed was away.
         snapshot.tasks.forEach(task => this.archivedKnown.delete(task.id));
         this.archiveRevision++;
+        // The feed may have missed what makes a key a task now, and a daemon that failed may be back: every key is asked again when something shows it.
+        this.#unresolvedKeys.clear();
+        this.#snapshots++;
         this.runs = new Map(snapshot.runs.map(run => [run.id, run]));
         this.chatTaskLinks = new Map(snapshot.chatTaskLinks.map(link => [chatLinkKey(link), link]));
         this.runTaskLinks = new Map(snapshot.runTaskLinks.map(link => [runLinkKey(link), link]));
@@ -251,13 +268,11 @@ export class ProjectState {
                 else this.runTaskLinks.delete(runLinkKey(data.link));
 
                 break;
-            case 'docs.changed':
-                this.lastDocsChange = { folderId: data.folderId, path: data.path, change: data.change, cursor };
-                break;
             case 'artifact.added':
                 this.artifactsRevision++;
                 break;
-            // Stream items belong to `StreamStore`; notices and a deleted project are handled by the root store.
+            // Stream items belong to `StreamStore`; notices and a deleted project are handled by the root store. A document is a file now: the file manager's watch reports it.
+            case 'docs.changed':
             case 'project.deleted':
             case 'stream.item':
             case 'notice':
@@ -339,13 +354,87 @@ export class ProjectState {
         return this.tasks.get(taskId) ?? this.archivedKnown.get(taskId);
     }
 
-    /** The task a key like `CAR-24` names, on the board or among the archived tasks the window knows: what a mention or a chip resolves a key with. */
+    /**
+     * The task a key like `CAR-24` names, on the board or among the archived tasks the window knows: what a mention or a chip resolves a key with. It answers at once, and
+     * for a key it does not know that has the shape of this project's keys it also starts one read of the task from the daemon (`getTaskDetailByKey`), which is how a key
+     * of an archived task the window never saw becomes a chip: the task is remembered when it is archived, and whatever read the answer through here draws again. Text
+     * that is not a key of this project asks nothing, so any code span may be passed.
+     */
     taskOfKey(key: string): Task | undefined {
+        const held = this.#heldTaskOfKey(key);
+
+        if (held) return held;
+
+        if (this.#mayBeKey(key) && !this.#readingKeys.has(key) && !this.#waitingKeys.has(key) && !this.#unresolvedKeys.has(key)) {
+            this.#waitingKeys.add(key);
+            this.#startKeyReads();
+        }
+
+        return undefined;
+    }
+
+    #heldTaskOfKey(key: string): Task | undefined {
         for (const task of this.tasks.values()) if (task.key === key) return task;
 
         for (const task of this.archivedKnown.values()) if (task.key === key) return task;
 
         return undefined;
+    }
+
+    /** Starts the reads that wait for a place, as many as `KEY_READS_AT_ONCE` allows, the keys asked for first going first. */
+    #startKeyReads(): void {
+        for (const key of this.#waitingKeys) {
+            if (this.#readingKeys.size >= KEY_READS_AT_ONCE) return;
+
+            this.#waitingKeys.delete(key);
+            this.#readingKeys.add(key);
+            void this.#readKey(key);
+        }
+    }
+
+    /** Whether the project is loaded, so the board is known and a key it lacks may be an archived task, and `key` is `<this project's prefix>-<number>`, the prefix in any case. */
+    #mayBeKey(key: string): boolean {
+        if (this.status !== 'ready') return false;
+
+        const dash = key.lastIndexOf('-');
+
+        // Task numbers start at 1 and have no leading zero.
+        return dash > 0 && /^[1-9]\d*$/.test(key.slice(dash + 1)) && key.slice(0, dash).toUpperCase() === this.project.taskPrefix.toUpperCase();
+    }
+
+    /**
+     * Reads the task of `key` and remembers it when it is archived and not on the board (a task that is not archived is the board's, and its event may come after the
+     * reply). It never rejects. A key that still names no task the window knows afterwards (a 404, a failed read, a task of the board, a key in another case than the
+     * task's) is not asked again until a snapshot is taken in. A read that ends after a snapshot began before it, and its key is read again.
+     */
+    async #readKey(key: string): Promise<void> {
+        const snapshots = this.#snapshots;
+
+        try {
+            const { task } = await this.transport.getTaskDetailByKey(this.id, key);
+
+            if (task.projectId === this.id) this.rememberArchived([task]);
+        }
+        catch {
+            // No such task, or a daemon out of reach: both are settled below, and a key that is not a task stays text.
+        }
+
+        this.#readingKeys.delete(key);
+
+        if (!this.#heldTaskOfKey(key)) {
+            // A read that began before a snapshot may describe what the snapshot has replaced: it is not held against its key, which is read again instead.
+            if (snapshots !== this.#snapshots) this.#waitingKeys.add(key);
+            else this.#markUnresolved(key);
+        }
+
+        this.#startKeyReads();
+    }
+
+    #markUnresolved(key: string): void {
+        this.#unresolvedKeys.delete(key);
+        this.#unresolvedKeys.add(key);
+
+        if (this.#unresolvedKeys.size > UNRESOLVED_KEYS_LIMIT) this.#unresolvedKeys.delete(this.#unresolvedKeys.values().next().value as string);
     }
 
     /**

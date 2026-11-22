@@ -37,12 +37,12 @@ describe('ShortcutsPage', () => {
         const names = sections().map(section => section.getAttribute('aria-label'));
 
         expect(names.slice(0, 2)).toEqual(['General', 'Navigation']);
-        expect(names).toEqual(expect.arrayContaining(['Agents', 'Tasks', 'Documents']));
+        expect(names).toEqual(expect.arrayContaining(['Agents', 'Tasks']));
+        expect(names).not.toContain('Documents');
     });
 
     it('lists the commands of the sections that are not mounted, which the registry does not hold while Settings is open', () => {
         expect(sectionNamed('Tasks').textContent).toContain('New task');
-        expect(sectionNamed('Documents').textContent).toContain('Save document');
         expect(sectionNamed('Navigation').textContent).toContain('Go to Tasks');
     });
 

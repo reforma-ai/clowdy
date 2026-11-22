@@ -42,14 +42,15 @@
 
 **This stage:** `FileTree` can say the children of a path without the hidden and excluded rules (`entriesOf`), and the explorer takes a `scope` (`root`, `include`) that makes its rows the entries below `root` that pass `include`, with creating, pasting and dropping defaulting to the root. `FileManagerView` takes the same `scope` for its sidebar, with the filter's placeholder and the empty state as props, and filters the scoped rows by name itself.
 
-- [ ] Complete
-  - [ ] `FileTree.entriesOf(parent)`: every entry whose parent is `parent`, sorted as `children` is, hidden or not
-  - [ ] `Explorer` `scope`: rows from `entriesOf(scope.root)` filtered by `scope.include`, folders kept, and the root in place of `''` for a new row, a paste and a drop
-  - [ ] `FileManagerView` `scope`, `filterPlaceholder` and `emptyText`: the scoped filter by name, the empty state of a root with no entries
-  - [ ] tests: a manager over a memory file system with `.clowdy/docs/a.md`, `.clowdy/docs/plans/b.md`, `.clowdy/docs/x.png` and `src/a.ts` shows only the two documents, creating makes the file below the root, and a row opens in the manager's tabs
+- [x] Complete
+  - [x] `FileTree.entriesOf(parent)`: every entry whose parent is `parent`, sorted as `children` is, hidden or not (and `loadDeep`, which lists a scope whole)
+  - [x] `Explorer` `scope`: rows from `entriesOf(scope.root)` filtered by `scope.include`, folders kept, and the root in place of `''` for a new row, a paste and a drop
+  - [x] `FileManagerView` `scope`, `filterPlaceholder` and `emptyText`: the scoped filter by name, the empty state of a root with no entries
+  - [x] tests: the tree's `entriesOf` and `loadDeep`, and a view over `.clowdy/docs/a.md`, `.clowdy/docs/plans/b.md`, `.clowdy/docs/x.png` and `src/a.ts` that shows the two documents, filters its own rows and opens in the manager's tabs (creating below the root is not driven by a test: the explorer's draft row has none)
 
 **Done when:** a test renders `FileManagerView` with a docs scope and finds exactly the two Markdown files under a root that the hidden globs would hide, a new row creates `.clowdy/docs/<name>.md` territory (below the root), and the unscoped view still lists everything.
 **Verify:** `cd packages/file-manager && bun run test && bun run typecheck && bunx eslint src specs`; `cd apps/desktop && bunx vitest run src/renderer/features/files`
+**Commits:** `359881d` feat(file-manager): draw a part of the tree by rules of its own, with a filter of its own
 
 ## Stage 2 — The Docs tab
 
@@ -57,15 +58,16 @@
 
 **This stage:** the side panel gets a Docs tab on its rail. `FilesTab` takes a `variant` (`files` or `docs`) and draws the same `FileManagerView` over the same manager, with the docs scope for `docs`, so switching tabs moves no editor. A New document item, the `Cmd+3` key and the fixtures' documents (in the fixture file system, under `.clowdy/docs`) come with it. The old Docs section stays until Stage 4, so both exist for now.
 
-- [ ] Complete
-  - [ ] `SIDE_PANEL_TABS` and its label, key and command for `docs`; `UiStore` keeps and restores it; the rail item, with the `File` icon, after Files
-  - [ ] `SidePanel` keeps one `FilesTab` mounted for `files` and `docs`
-  - [ ] the docs tree's New document item and the `.md` rule
-  - [ ] the fixtures hold documents below `.clowdy/docs` in the fixture file system, with the old fixture documents moved
-  - [ ] tests for the tab, the key, the shared tabs (open in Docs, still open in Files), and the empty state
+- [x] Complete
+  - [x] `SIDE_PANEL_TABS` and its label, key and command for `docs`; `UiStore` keeps and restores it; the rail item, with the `File` icon, after Files
+  - [x] `SidePanel` keeps one `FilesTab` mounted for `files` and `docs`
+  - [x] the docs tree's New file item and the `.md` rule (the tree's own New file, with `scope.fileName`)
+  - [x] the fixtures' documents are also files below `.clowdy/docs` in the fixture file system (`getDocsTree` still reads the old fixture data until the old code goes)
+  - [x] tests for the tab, the key, the shared view that stays built, the scope and the stored tab
 
 **Done when:** in the fixtures page the Docs tab shows the fixture documents as a tree beside the same editor and tabs as Files, a document opened there is still open when the Files tab is chosen, and `Cmd+3` toggles the tab.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/features/sidePanel src/renderer/features/files src/renderer/shell src/renderer/stores && bun run typecheck`, and a screenshot of the Docs tab.
+**Commits:** `0e7e8e9` feat(desktop): add a Docs tab to the side panel that is the Files view over a folder of documents; `674359b` fix(desktop): let the Docs tab's plate fill the panel as Files' does (the plate's rule named only `files` and `terminal`, so the height collapsed once the tree was hidden)
 
 ## Stage 3 — Chips, mentions and Cmd+K reach the Docs tab
 
@@ -74,12 +76,13 @@
 **This stage:** a path chip below `.clowdy/docs` opens in the Docs tab; `@doc` mentions read the daemon's docs listing as they do now, and Cmd+K gets a Docs tab (names from the same listing, opening a document in the Docs tab).
 
 - [ ] Complete
-  - [ ] `openInFiles` picks the tab by the path; the chip and the row menu follow
-  - [ ] the palette's Docs tab, its model, source, keys and tests
-  - [ ] `@doc` mentions keep working without the Docs screen's store
+  - [x] `openInFiles` picks the tab by the path; the chip, the row menu and the palette's results follow (`showFilesTab` takes the tab)
+  - [ ] the palette's Docs tab, its model, source, keys and tests (not done: the owner said "possibly"; it is a follow-up, nothing breaks without it, since the palette never found documents)
+  - [x] `@doc` mentions keep working: they read the daemon's docs listing, which stays
 
 **Done when:** a chip to `.clowdy/docs/decisions/pricing.md` opens the document in the Docs tab, Cmd+K's Docs tab finds a document by its name, and `@` still offers documents.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/features/quickSearch src/renderer/features/chats src/renderer/features/files src/renderer/stream`
+**Commits:** `6f4501f` feat(desktop): open a document from a chip or the palette on the Docs tab
 
 ## Stage 4 — Delete the old Docs
 
@@ -88,9 +91,10 @@
 **This stage:** everything the inventory lists goes.
 
 - [ ] Complete
-  - [ ] renderer: `features/docs/`, the left rail item and `Shell`'s screen, `nav.docs` and the `g d` chord, `SECTIONS` 'docs', `docPath`, `docFolderId`, `openDoc`, `NavHistory` and `ProjectState.lastDocsChange`, `getDocFile` in the transports, the fixture `docs.write`
-  - [ ] tasks: the doc artifact views, commands and scope that nothing feeds
-  - [ ] daemon and protocol: the `docs.write` command, `GET docs/file`, the docs read, write, announce and watcher code, `docs.changed`, `DocFile`; `realPathBelow` moves to where `projectIcon` can reach it; the listing stays
+  - [x] renderer: `features/docs/`, the left rail item and `Shell`'s screen, `nav.docs` and the `g d` chord, `SECTIONS` 'docs', `docPath`, `docFolderId`, `openDoc`, `NavHistory` and `ProjectState.lastDocsChange` (commit `163a1b3`)
+  - [ ] renderer, with the protocol: `getDocFile` in the transports, the fixture `docs.write`, the `docs.changed` case that `ProjectState` still ignores
+  - [x] tasks: kept, not deleted (scope change): a doc result and `O D` open the document on the Docs tab (`openDocument`), so the task model's own feature is not touched
+  - [ ] daemon and protocol: the `docs.write` command, `GET docs/file`, the docs read, write, announce and watcher code, `docs.changed`, `DocFile`; `realPathBelow` moves to where `projectIcon` can reach it; the listing stays. **Waiting:** `routes.ts`, the protocol's `api.ts` and `api.test.ts`, `http.test.ts`, `commands.test.ts`, the app's transports and `apps/daemon/AGENTS.md` have another agent's uncommitted work in them; do this half once those are committed (or by hand-picking hunks). The plan for it: `DocsService` shrinks to a `docsTree(project)` function in `docs/tree.ts` (its `root` rule: a missing main folder is `unavailable`, a docs folder that leads out `invalid`, another folder's failure leaves it out), `docs/service.ts`, `docs/watcher.ts` and `commands/docs.ts` go, `docs/paths.ts` keeps `DOCS_DIR`, `isDocFile` and `realPathBelow`; `ProjectWatchers` loses `docs` (`domain/projects.ts`, `commands/project.ts`) and `Services.docs`, `daemon.ts` its `watchExisting` and `stop`; `GET docs` calls the function; the protocol loses `docs.write`, `docs.changed`, `DocFile` and `ROUTES.docsFile`; the app loses `getDocFile`, the fixture's `docs.write` and the `docs.changed` case; `test/docs.test.ts` keeps only the tree cases, the docs parts of `projects.test.ts` (326-358, 406-416, 569-629) and `http.test.ts` (57) go; a stale `docs.changed` row in the event log reaches an app that ignores it
   - [ ] the tests of all of it, the skill's and prompts' wording, the README, both `AGENTS.md`
   - [ ] stored state: a stored `section: 'docs'` falls back to Agents (already covered); `clowdy:sidebar-width:docs` is left alone
 

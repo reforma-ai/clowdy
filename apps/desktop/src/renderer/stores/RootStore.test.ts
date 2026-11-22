@@ -41,6 +41,8 @@ describe('RootStore', () => {
 
         root.ui.openSettings();
         expect(root.showsProjectScreen).toBe(false);
+        // Settings is a window over the project's screen: the screen is still there to be drawn, with its panel, behind it.
+        expect(root.projectScreenReady).toBe(true);
 
         root.ui.closeSettings();
         expect(root.showsProjectScreen).toBe(true);
