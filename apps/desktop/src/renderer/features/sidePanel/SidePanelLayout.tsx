@@ -1,4 +1,5 @@
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup, usePanelRef } from '@clowdy/components/Resizable';
+import { cn } from '@clowdy/lib';
 import { useId, useState } from 'react';
 
 import { browserStorage } from '../../stores/storage';
@@ -56,7 +57,7 @@ function SideColumn({ panel }: { panel: ReturnType<typeof usePanelRef> }) {
 
     return (
         <>
-            <ResizableHandle aria-label="Resize the side panel" className={ expanded ? styles.edgeCovered : undefined } />
+            <ResizableHandle aria-label="Resize the side panel" className={ cn(styles.edge, expanded && styles.edgeCovered) } />
 
             <ResizablePanel
                 id={ id }
