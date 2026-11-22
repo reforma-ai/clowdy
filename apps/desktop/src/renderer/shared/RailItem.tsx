@@ -30,8 +30,7 @@ export function RailItem({ label, icon: Icon, size, current, disabled, tooltip, 
                 className={ cn(styles.item, className) }
                 disabled={ disabled }
                 aria-current={ current ? 'page' : undefined }
-                // A double click is one press: `detail` counts its clicks (a press from the keyboard has none), and the second would undo the first of an item that toggles.
-                onClick={ event => event.detail < 2 && onPress() }
+                onClick={ onPress }
             >
                 <span className={ styles.glyph }>
                     <Icon width={ size } height={ size } aria-hidden />

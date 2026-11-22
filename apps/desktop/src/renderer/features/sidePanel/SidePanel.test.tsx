@@ -269,19 +269,20 @@ describe('the rail of the side panel', () => {
         expect(ui().sidePanelOpen).toBe(true);
     });
 
-    it('counts a double click as one press, so the second click does not undo the first', async () => {
+    it('toggles on every click, however fast they come after one another at one place, so a double click is two toggles', async () => {
         await draw(<Frame />);
 
+        // The browser counts such clicks in `detail`, and every one of them counts.
+        for (const detail of [1, 2, 3]) {
+            await act(async () => void tab('Files')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail })));
+        }
+
+        // Opened, shut, opened.
+        expect(ui().sidePanelOpen).toBe(true);
+
         await doubleClick(tab('Files')!);
-        await settle();
 
         expect(ui().sidePanelOpen).toBe(true);
-        expect(ui().sidePanelTab).toBe('files');
-
-        await doubleClick(tab('Files')!);
-        await settle();
-
-        expect(ui().sidePanelOpen).toBe(false);
     });
 
     it('is not drawn where the window shows no project', async () => {
