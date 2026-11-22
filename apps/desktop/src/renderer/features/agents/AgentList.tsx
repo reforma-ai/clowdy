@@ -1,6 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
-import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem, MenuSection, MenuSeparator, useCellEditMode } from '@clowdy/components/List';
+import { GridList, GridListItem, listBoxItemDataShow, Menu, MenuHeader, MenuItem, MenuSection, useCellEditMode } from '@clowdy/components/List';
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
@@ -360,7 +360,8 @@ function FilterMenu() {
     const project = useProjectState();
     const { sort, showFinishedThreads } = chatListPreferences;
     const [isOpen, setIsOpen] = useState(false);
-    const shown = showFinishedThreads ? ['finished'] : [];
+    const hasFolders = project.project.folders.length > 1;
+    const shown = [...(showFinishedThreads ? ['finished'] : []), ...(hasFolders && ui.groupByFolder ? ['folders'] : [])];
 
     return (
         <PopoverTrigger isOpen={ isOpen } onOpenChange={ setIsOpen }>
@@ -374,24 +375,18 @@ function FilterMenu() {
                             aria-label="Show"
                             selectionMode="multiple"
                             selectedKeys={ shown }
-                            onSelectionChange={ keys => chatListPreferences.setShowFinishedThreads(keys === 'all' || keys.has('finished')) }
+                            onSelectionChange={ (keys) => {
+                                const on = (key: string) => keys === 'all' || keys.has(key);
+
+                                if (on('finished') !== showFinishedThreads) chatListPreferences.setShowFinishedThreads(!showFinishedThreads);
+                                if (hasFolders && on('folders') !== ui.groupByFolder) ui.setGroupByFolder(!ui.groupByFolder);
+                            } }
                         >
                             <MenuItem id="finished" textValue="Show finished sub-threads" endAffix={ showFinishedThreads ? <Check /> : undefined }>Show finished sub-threads</MenuItem>
+                            { hasFolders && (
+                                <MenuItem id="folders" textValue="Group chats by folder" endAffix={ ui.groupByFolder ? <Check /> : undefined }>Group chats by folder</MenuItem>
+                            ) }
                         </MenuSection>
-                        <MenuSeparator />
-                        { project.project.folders.length > 1 && (
-                            <>
-                                <MenuSection
-                                    aria-label="Group"
-                                    selectionMode="multiple"
-                                    selectedKeys={ ui.groupByFolder ? ['folders'] : [] }
-                                    onSelectionChange={ keys => ui.setGroupByFolder(keys === 'all' || keys.has('folders')) }
-                                >
-                                    <MenuItem id="folders" textValue="Group chats by folder" endAffix={ ui.groupByFolder ? <Check /> : undefined }>Group chats by folder</MenuItem>
-                                </MenuSection>
-                                <MenuSeparator />
-                            </>
-                        ) }
                         <MenuSection
                             selectionMode="single"
                             disallowEmptySelection
