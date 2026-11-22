@@ -29,6 +29,7 @@ const moves = z.array(z.object({ from: z.string(), to: z.string() })).max(MAX_BA
 const moveBody = z.object({ folderId: z.string(), moves, overwrite: z.boolean().optional() });
 const copyBody = z.object({ folderId: z.string(), copies: moves, overwrite: z.boolean().optional() });
 const deleteBody = z.object({ folderId: z.string(), paths: z.array(z.string()).max(MAX_BATCH) });
+const searchBody = z.object({ folderId: z.string(), query: z.string(), matchCase: z.boolean().optional(), wholeWord: z.boolean().optional(), exclude: z.array(z.string()).optional() });
 
 async function readJson<S extends z.ZodType>(request: Request, schema: S): Promise<z.output<S>> {
     let body: unknown;
@@ -167,6 +168,18 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
                 await fs.remove(requireProject(store, id), folderId, paths);
 
                 return json({ ok: true });
+            },
+        },
+        {
+            method: 'POST',
+            pattern: new RegExp(`${ PREFIX }search$`),
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, searchBody);
+
+                // A search may run for a minute with nothing to send; its own time limit ends it, and the client leaving ends it sooner.
+                context.keepOpen(request);
+
+                return json(await fs.search(requireProject(store, id), body, request.signal));
             },
         },
         {

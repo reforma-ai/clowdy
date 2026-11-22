@@ -96,7 +96,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             announce: () => announceAgentsChanged(store),
         });
         const files = new FilesService();
-        const services: Services = { config, store, runs, driver, queue, threads, docs, files, fs: new FsService(files), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
+        const services: Services = { config, store, runs, driver, queue, threads, docs, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
 
         await runs.recover();
         attachments.sweep();

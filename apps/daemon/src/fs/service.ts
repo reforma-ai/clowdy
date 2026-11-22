@@ -6,13 +6,15 @@ import { makeFolder, remove, transfer } from './batch';
 import { checkPreconditions, makeFolders, readBody, readFileBytes, removeFolders, writeFileAtomically } from './content';
 import { matchPaths } from './find';
 import { exists, fsFailure, locate, missing, normalizeFsPath, versionOf } from './paths';
+import { ContentSearch } from './search';
 import { watchStream } from './stream';
 import { MAX_LIST_ENTRIES, walkTree } from './walk';
 import { FolderWatch } from './watcher';
 
-import type { FolderId, FsEntry, FsMove, Project, ProjectFolder } from '@clowdy/protocol';
+import type { FolderId, FsEntry, FsMove, FsSearchRequest, FsSearchResult, Project, ProjectFolder } from '@clowdy/protocol';
 import type { FilesService } from '../files/service';
 import type { Preconditions } from './content';
+import type { SearchOptions } from './search';
 import type { WatchOptions } from './watcher';
 
 /** The most items one move, copy or delete names. */
@@ -49,10 +51,15 @@ export class FsService {
     /** Where the cap of a listing is; a test lowers it. */
     maxListEntries = MAX_LIST_ENTRIES;
 
+    /** The search of file contents, with its limits; a test lowers them. */
+    readonly contentSearch: ContentSearch;
+
     private watches = new Map<string, FolderWatch>();
     private queues = new Map<string, Promise<void>>();
 
-    constructor(private files: FilesService, private watchOptions: WatchOptions = {}) {}
+    constructor(private files: FilesService, private watchOptions: WatchOptions = {}, searchOptions: SearchOptions = {}) {
+        this.contentSearch = new ContentSearch(searchOptions);
+    }
 
     async list(project: Project, folderId: FolderId, path: string, depth?: number): Promise<FsEntry[]> {
         const { root } = await this.open(project, folderId);
@@ -93,6 +100,16 @@ export class FsService {
         }
 
         return found;
+    }
+
+    /**
+     * The lines of the folder's files that hold `request.query` (see `ContentSearch`). It needs the folder on the disk (`unavailable`) and a
+     * valid request (`invalid`); `signal` is the client's, and a client that went away ends the search.
+     */
+    async search(project: Project, request: FsSearchRequest, signal?: AbortSignal): Promise<FsSearchResult> {
+        const { root } = await this.open(project, request.folderId);
+
+        return this.contentSearch.search(root, request, signal);
     }
 
     async read(project: Project, folderId: FolderId, path: string): Promise<{ bytes: Uint8Array; version: string }> {
@@ -221,8 +238,10 @@ export class FsService {
         }, heartbeatMs);
     }
 
-    /** Ends every watch; the daemon is stopping. */
+    /** Ends every watch and search; the daemon is stopping. */
     stop(): void {
+        this.contentSearch.stop();
+
         for (const watcher of this.watches.values()) {
             watcher.close();
         }
