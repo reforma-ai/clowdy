@@ -1,0 +1,59 @@
+.sizes {
+    display: flex;
+    gap: var(--spacing-xs);
+}
+
+/* A tile of a picture and a name: quiet until the pointer is over it, and in the primary colour for the size the panel is in, as the rail's current tab is. */
+.option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-md) var(--spacing-sm);
+    border: 0;
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: transparent;
+    color: var(--color-secondary-muted-text);
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color 150ms ease-out;
+}
+
+.option:hover {
+    background-color: var(--color-secondary-muted-light);
+    color: var(--color-text);
+}
+
+.option.current {
+    background-color: var(--color-primary-muted-light);
+    color: var(--color-primary);
+}
+
+.label {
+    font-size: var(--spacing-12);
+    font-weight: 500;
+    line-height: var(--spacing-16);
+}
+
+.preview {
+    display: block;
+    flex: none;
+}
+
+/* The picture is drawn in the tile's colour, so it follows the hover and the current size: lines for the window, a quiet fill for what is not the panel, a stronger one for the panel. */
+.frame {
+    fill: none;
+    stroke: currentcolor;
+    stroke-opacity: 0.4;
+}
+
+.chrome {
+    fill: currentcolor;
+    fill-opacity: 0.2;
+}
+
+.panel {
+    fill: currentcolor;
+    fill-opacity: 0.85;
+}

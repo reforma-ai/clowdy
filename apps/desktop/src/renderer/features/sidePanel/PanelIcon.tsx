@@ -23,26 +23,19 @@ const FRAME = 'M11.0002 1C12.1047 1.00013 13.0002 1.89551 13.0002 3V11C13.0001 1
 export interface PanelIconProps {
     /** What the panel is now: the icon draws it so. */
     state: PanelIconState;
-    /** What a press of the button the icon is in makes of it: the icon moves to it while the pointer is over the button. */
-    next: PanelIconState;
     className?: string;
 }
 
 /**
- * One icon for the three sizes of the side panel, in the place of a different icon for each: a frame with the panel inside it, drawn as the panel is, which glides to the
- * panel as it will be while the pointer is over the button the icon is in (a `button` or a `[role=button]` ancestor), and to it again when the state changes under the pointer.
- * The geometry comes from here and the motion from the stylesheet, so the icon is the same size and colour as the rest of the 14 pack (`currentColor`).
+ * One icon for the three sizes of the side panel, in the place of a different icon for each: a frame with the panel inside it, drawn as the panel is, which glides to the new
+ * size when the state changes. The geometry comes from here and the motion from the stylesheet, so the icon is the same size and colour as the rest of the 14 pack (`currentColor`).
  */
-export function PanelIcon({ state, next, className }: PanelIconProps) {
-    const from = PANEL[state];
-    const to = PANEL[next];
+export function PanelIcon({ state, className }: PanelIconProps) {
+    const { x, width, rx } = PANEL[state];
     const vars = {
-        '--from-x': `${ from.x }px`,
-        '--from-width': `${ from.width }px`,
-        '--from-rx': `${ from.rx }px`,
-        '--to-x': `${ to.x }px`,
-        '--to-width': `${ to.width }px`,
-        '--to-rx': `${ to.rx }px`,
+        '--x': `${ x }px`,
+        '--width': `${ width }px`,
+        '--rx': `${ rx }px`,
     } as CSSProperties;
 
     return (
@@ -54,7 +47,6 @@ export function PanelIcon({ state, next, className }: PanelIconProps) {
             fill="none"
             aria-hidden="true"
             data-state={ state }
-            data-next={ next }
             style={ vars }
         >
             <path d={ FRAME } fill="currentColor" />

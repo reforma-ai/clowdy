@@ -723,34 +723,34 @@ describe('UiStore', () => {
         expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'terminal']);
     });
 
-    it('steps the side panel through its three states: shown, expanded, hidden, and shown beside the chat again', () => {
+    it('sets the side panel to one of its three sizes: beside the chat, in the chat\'s place, or hidden', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
         const state = () => [ui.sidePanelOpen, ui.sidePanelExpanded];
 
         expect(state()).toEqual([false, false]);
 
-        ui.stepSidePanel();
-        expect(state()).toEqual([true, false]);
-
-        ui.stepSidePanel();
+        ui.setSidePanelSize('wide');
         expect(state()).toEqual([true, true]);
 
-        ui.stepSidePanel();
+        ui.setSidePanelSize('half');
+        expect(state()).toEqual([true, false]);
+
+        ui.setSidePanelSize('hide');
         expect(state()).toEqual([false, false]);
 
-        ui.stepSidePanel();
+        ui.setSidePanelSize('half');
+        ui.setSidePanelSize('half');
         expect(state()).toEqual([true, false]);
     });
 
-    it('opens a panel that was shut expanded by another way in the size it was left in, with a step', () => {
+    it('keeps the choice of the expanded size when the panel is hidden, so it comes back in it by the keys', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 
-        ui.toggleSidePanel();
-        ui.toggleSidePanelExpanded();
-        ui.toggleSidePanel();
-        expect(ui.sidePanelExpanded).toBe(true);
+        ui.setSidePanelSize('wide');
+        ui.setSidePanelSize('hide');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, true]);
 
-        ui.stepSidePanel();
+        ui.toggleSidePanel();
         expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, true]);
     });
 
@@ -783,19 +783,19 @@ describe('UiStore', () => {
         expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'files']);
     });
 
-    it('steps the Tasks tab through shown and hidden only, and leaves the expanded choice as it was', () => {
+    it('shows the Tasks tab for any size but hidden, and leaves the expanded choice as it was', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 
         ui.showSidePanelTab('tasks');
-        ui.stepSidePanel();
-        expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([true, false]);
+        ui.setSidePanelSize('half');
+        expect([ui.sidePanelOpen, ui.sidePanelExpanded, ui.sidePanelCoversChat]).toEqual([true, false, true]);
 
-        ui.stepSidePanel();
+        ui.setSidePanelSize('hide');
         expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, false]);
 
         ui.toggleSidePanelExpanded();
-        ui.stepSidePanel();
-        ui.stepSidePanel();
+        ui.setSidePanelSize('wide');
+        ui.setSidePanelSize('hide');
         expect([ui.sidePanelOpen, ui.sidePanelExpanded]).toEqual([false, true]);
     });
 

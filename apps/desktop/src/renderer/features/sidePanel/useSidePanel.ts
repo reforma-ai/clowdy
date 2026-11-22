@@ -1,4 +1,4 @@
-import { useRootStore, type SidePanelTab } from '../../stores';
+import { useRootStore, type SidePanelSize, type SidePanelTab } from '../../stores';
 
 export interface SidePanelControl {
     /** The window shows a project's screen (Settings may be open over it), so the panel and the project's tabs of the rail can be there. */
@@ -11,11 +11,11 @@ export interface SidePanelControl {
     tab: SidePanelTab;
     /** The panel is drawn in the place of the chat: it is open, and the project has it expanded or it shows the Tasks tab, which is always so. A shut panel is never expanded, and comes back expanded when the project has it so. */
     expanded: boolean;
-    /** The panel comes back in the place of the chat when it is shown from shut: the project's choice of the expanded size, kept while the panel is shut, or the Tasks tab. */
-    expandedChoice: boolean;
+    /** The tab the panel shows, or showed last, is always in the place of the chat (Tasks), so it has no size beside the chat. */
+    tabIsFull: boolean;
     toggle: () => void;
-    /** The next of the panel's three states: shown beside the chat, expanded, hidden. What the button in the corner does. */
-    step: () => void;
+    /** Sets the panel to one of the sizes the corner button's menu offers. */
+    setSize: (size: SidePanelSize) => void;
     /** Opens the panel on a tab, or shuts it when that tab is the one it shows: what a click on the tab's item and the tab's key do. */
     toggleTab: (tab: SidePanelTab) => void;
 }
@@ -25,5 +25,5 @@ export function useSidePanel(): SidePanelControl {
     const root = useRootStore();
     const ui = root.projectScreenReady && root.selectedProjectId ? root.ui.forProject(root.selectedProjectId) : undefined;
 
-    return { available: ui !== undefined, railShown: root.phase === 'ready', open: ui?.sidePanelOpen === true, tab: ui?.sidePanelTab ?? 'info', expanded: ui?.sidePanelCoversChat === true, expandedChoice: ui?.sidePanelIsFull === true, toggle: () => ui?.toggleSidePanel(), step: () => ui?.stepSidePanel(), toggleTab: tab => ui?.toggleSidePanelTab(tab) };
+    return { available: ui !== undefined, railShown: root.phase === 'ready', open: ui?.sidePanelOpen === true, tab: ui?.sidePanelTab ?? 'info', expanded: ui?.sidePanelCoversChat === true, tabIsFull: ui?.sidePanelTabIsFull === true, toggle: () => ui?.toggleSidePanel(), setSize: size => ui?.setSidePanelSize(size), toggleTab: tab => ui?.toggleSidePanelTab(tab) };
 }

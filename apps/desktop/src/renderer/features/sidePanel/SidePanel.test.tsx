@@ -113,42 +113,62 @@ afterEach(() => {
 });
 
 describe('the corner at the top of the rail', () => {
-    // The icon is one, drawn for the state the panel is in and moving to the one a press leads to.
-    const icon = () => `${ expandButton()?.querySelector('svg')?.getAttribute('data-state') } > ${ expandButton()?.querySelector('svg')?.getAttribute('data-next') }`;
+    // The icon is one, drawn for the state the panel is in.
+    const icon = () => expandButton()?.querySelector('svg')?.getAttribute('data-state');
     const pressed = () => expandButton()?.getAttribute('aria-pressed');
+    // The menu is in the overlay layer of the page, outside the container.
+    const sizes = () => document.querySelector('[role="group"][aria-label="Side panel size"]');
+    const sizeButtons = () => [...(sizes()?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
+    const size = (name: string) => sizeButtons().find(button => button.textContent === name)!;
+    const current = () => sizeButtons().filter(button => button.getAttribute('aria-pressed') === 'true').map(button => button.textContent);
+    const pause = (ms: number) => act(async () => {
+        await new Promise(resolve => setTimeout(resolve, ms));
+    });
 
-    it('steps the panel through shown, expanded and hidden with one button, which is pressed while the panel is shown and has an icon that draws the panel as it is and moves to what it will be', async () => {
+    it('opens a menu of the sizes with a press, and a choice sets the panel to that size and shuts the menu', async () => {
         await draw(<><Layout><p>The page</p></Layout><Rail /></>);
 
+        expect(sizes()).toBeNull();
         expect(pressed()).toBe('false');
-        expect(icon()).toBe('none > small');
+        expect(icon()).toBe('none');
 
         await press(expandButton()!);
 
-        expect(ui().sidePanelOpen).toBe(true);
+        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'Half', 'Hide']);
+        expect(current()).toEqual(['Hide']);
+
+        await press(size('Half'));
+
+        expect(sizes()).toBeNull();
+        expect([ui().sidePanelOpen, ui().sidePanelExpanded]).toEqual([true, false]);
         expect(panel()?.hasAttribute('data-expanded')).toBe(false);
         expect(pressed()).toBe('true');
-        expect(icon()).toBe('small > large');
+        expect(icon()).toBe('small');
 
         await press(expandButton()!);
+        expect(current()).toEqual(['Half']);
+
+        await press(size('Wide'));
 
         expect(ui().sidePanelExpanded).toBe(true);
         expect(panel()?.hasAttribute('data-expanded')).toBe(true);
         expect(pressed()).toBe('true');
-        expect(icon()).toBe('large > none');
+        expect(icon()).toBe('large');
         // The edge between the page and the panel lies under the expanded panel.
         expect(container.querySelector<HTMLElement>('[role="separator"]')?.className).toMatch(/edgeCovered/);
 
         await press(expandButton()!);
+        expect(current()).toEqual(['Wide']);
 
-        expect([ui().sidePanelOpen, ui().sidePanelExpanded]).toEqual([false, false]);
+        await press(size('Hide'));
+
+        expect([ui().sidePanelOpen, ui().sidePanelExpanded]).toEqual([false, true]);
         expect(panel()).toBeNull();
-        // Hidden from the button, the panel comes back beside the chat: the cycle goes round.
         expect(pressed()).toBe('false');
-        expect(icon()).toBe('none > small');
+        expect(icon()).toBe('none');
     });
 
-    it('opens a panel that was shut while expanded, by another way than the button, expanded again, with the icon moving to the wide panel', async () => {
+    it('shows a panel that was shut while expanded as hidden, and brings it back in the size that is chosen', async () => {
         act(() => ui().toggleSidePanel());
         await draw(<><Layout><p>The page</p></Layout><Rail /></>);
 
@@ -157,32 +177,74 @@ describe('the corner at the top of the rail', () => {
         await settle();
 
         expect(panel()).toBeNull();
-        expect(pressed()).toBe('false');
-        expect(icon()).toBe('none > large');
+        expect(icon()).toBe('none');
 
         await press(expandButton()!);
+        expect(current()).toEqual(['Hide']);
 
-        expect(panel()?.hasAttribute('data-expanded')).toBe(true);
-        expect(pressed()).toBe('true');
-        expect(icon()).toBe('large > none');
+        await press(size('Half'));
+
+        expect(panel()?.hasAttribute('data-expanded')).toBe(false);
+        expect(icon()).toBe('small');
     });
 
-    it('steps a panel on the Tasks tab through shown and hidden, and leaves the expanded choice alone', async () => {
+    it('offers Wide and Hide on the Tasks tab, which has no size beside the chat, and leaves the expanded choice alone', async () => {
         act(() => ui().showSidePanelTab('tasks'));
         await draw(<><Layout><p>The page</p></Layout><Rail /></>);
 
-        // Shut, the panel comes back full on this tab.
-        expect(icon()).toBe('none > large');
-
         await press(expandButton()!);
+
+        expect(sizeButtons().map(button => button.textContent)).toEqual(['Wide', 'Hide']);
+
+        await press(size('Wide'));
 
         expect(panel()?.hasAttribute('data-expanded')).toBe(true);
-        expect(icon()).toBe('large > none');
+        expect(icon()).toBe('large');
 
         await press(expandButton()!);
+        expect(current()).toEqual(['Wide']);
+
+        await press(size('Hide'));
 
         expect([ui().sidePanelOpen, ui().sidePanelExpanded]).toEqual([false, false]);
         expect(panel()).toBeNull();
+    });
+
+    it('moves the focus to the current size on a press, and gives it back to the button when Escape shuts the menu', async () => {
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+
+        await press(expandButton()!);
+        await pause(50);
+
+        expect(document.activeElement).toBe(size('Hide'));
+
+        await act(async () => {
+            document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        });
+        await pause(50);
+
+        expect(sizes()).toBeNull();
+        expect(document.activeElement).toBe(expandButton());
+    });
+
+    it('opens the menu when the pointer rests on the button, without taking the focus, and shuts it when the pointer leaves', async () => {
+        await draw(<><Layout><p>The page</p></Layout><Rail /></>);
+
+        const button = expandButton()!;
+        const over = (type: string, target: HTMLElement, relatedTarget: HTMLElement) => act(async () => {
+            target.dispatchEvent(new MouseEvent(type, { bubbles: true, relatedTarget }));
+        });
+
+        await over('mouseover', button, document.body);
+        expect(sizes()).toBeNull();
+
+        await pause(300);
+        expect(sizes()).not.toBeNull();
+        expect(document.activeElement).not.toBe(size('Hide'));
+
+        await over('mouseout', button, document.body);
+        await pause(400);
+        expect(sizes()).toBeNull();
     });
 
     it('is the first item of the rail, and the rail keeps its top empty when there is no project, with no button there', async () => {

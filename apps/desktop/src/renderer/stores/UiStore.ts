@@ -16,6 +16,9 @@ export const SIDE_PANEL_TABS = ['info', 'files', 'docs', 'terminal', 'tasks'] as
 
 export type SidePanelTab = typeof SIDE_PANEL_TABS[number];
 
+/** The sizes of the side panel the corner button offers: not shown, beside the chat, and in the chat's place. */
+export type SidePanelSize = 'hide' | 'half' | 'wide';
+
 /** The tabs whose view is always the size of the chat's place, whatever the project chose for the others (`ProjectUi.sidePanelIsFull`). */
 const FULL_TABS: readonly SidePanelTab[] = ['tasks'];
 
@@ -335,22 +338,14 @@ export class ProjectUi {
     }
 
     /**
-     * The next of the panel's three states, the one the button in the title band's corner leads to: a shut panel opens in the size it was left in, an open one beside the chat
-     * is expanded, and an expanded one is hidden, and starts beside the chat when it comes back by this button again. The Tasks tab is shown and hidden only.
+     * Sets the panel to one of the three sizes the corner button's menu offers: hidden, beside the chat (`half`), or in the chat's place (`wide`). Hiding keeps the choice of
+     * the expanded size, so the panel comes back in it by the keys. The Tasks tab has no size of its own to choose: any size but hidden shows it, in the chat's place, and the
+     * project's choice for the other tabs is left as it was.
      */
-    stepSidePanel(): void {
-        if (!this.sidePanelOpen) {
-            this.sidePanelOpen = true;
-        }
-        else if (!this.sidePanelIsFull) {
-            this.sidePanelExpanded = true;
-        }
-        else {
-            this.sidePanelOpen = false;
+    setSidePanelSize(size: SidePanelSize): void {
+        this.sidePanelOpen = size !== 'hide';
 
-            // A full tab has no expanded size of its own to give back: the choice for the other tabs is left as it was.
-            if (!this.sidePanelTabIsFull) this.sidePanelExpanded = false;
-        }
+        if (size !== 'hide' && !this.sidePanelTabIsFull) this.sidePanelExpanded = size === 'wide';
     }
 
     /** The tab the panel shows is always the size of the chat's place (the Tasks tab), so it has no expanded size to choose. */

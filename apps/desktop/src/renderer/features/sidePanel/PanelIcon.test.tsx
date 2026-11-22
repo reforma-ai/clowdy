@@ -10,9 +10,9 @@ import { PanelIcon, type PanelIconState } from './PanelIcon';
 let container: HTMLDivElement;
 let root: Root;
 
-const draw = (state: PanelIconState, next: PanelIconState) => act(() => root.render(<PanelIcon state={ state } next={ next } />));
+const draw = (state: PanelIconState) => act(() => root.render(<PanelIcon state={ state } />));
 const svg = () => container.querySelector('svg')!;
-const vars = () => Object.fromEntries(['from-x', 'from-width', 'from-rx', 'to-x', 'to-width', 'to-rx'].map(name => [name, svg().style.getPropertyValue(`--${ name }`)]));
+const vars = () => Object.fromEntries(['x', 'width', 'rx'].map(name => [name, svg().style.getPropertyValue(`--${ name }`)]));
 
 beforeEach(() => {
     container = document.createElement('div');
@@ -27,7 +27,7 @@ afterEach(() => {
 
 describe('PanelIcon', () => {
     it('is one 14px icon in the colour of the text, hidden from assistive technology, with a frame and the panel in it', () => {
-        draw('small', 'large');
+        draw('small');
 
         expect(svg().getAttribute('width')).toBe('14');
         expect(svg().getAttribute('aria-hidden')).toBe('true');
@@ -37,24 +37,24 @@ describe('PanelIcon', () => {
         expect(svg().querySelectorAll('rect')).toHaveLength(1);
     });
 
-    it('draws the state it is in and the one it moves to, by the left edge, the width and the radius of the panel', () => {
-        draw('none', 'small');
+    it('draws the state it is in, by the left edge, the width and the radius of the panel', () => {
+        draw('none');
 
-        expect([svg().dataset.state, svg().dataset.next]).toEqual(['none', 'small']);
-        expect(vars()).toEqual({ 'from-x': '10px', 'from-width': '1px', 'from-rx': '0.5px', 'to-x': '7px', 'to-width': '4px', 'to-rx': '1px' });
+        expect(svg().dataset.state).toBe('none');
+        expect(vars()).toEqual({ x: '10px', width: '1px', rx: '0.5px' });
 
-        draw('small', 'large');
-        expect(vars()).toEqual({ 'from-x': '7px', 'from-width': '4px', 'from-rx': '1px', 'to-x': '4px', 'to-width': '7px', 'to-rx': '1px' });
+        draw('small');
+        expect(vars()).toEqual({ x: '7px', width: '4px', rx: '1px' });
 
-        draw('large', 'none');
-        expect(vars()).toEqual({ 'from-x': '4px', 'from-width': '7px', 'from-rx': '1px', 'to-x': '10px', 'to-width': '1px', 'to-rx': '0.5px' });
+        draw('large');
+        expect(vars()).toEqual({ x: '4px', width: '7px', rx: '1px' });
     });
 
     it('keeps the right edge of the panel where it was in the three states, so it grows and shrinks to the left', () => {
         for (const state of ['none', 'small', 'large'] as const) {
-            draw(state, state);
+            draw(state);
 
-            expect(Number.parseFloat(vars()['from-x']) + Number.parseFloat(vars()['from-width'])).toBe(11);
+            expect(Number.parseFloat(vars().x) + Number.parseFloat(vars().width)).toBe(11);
         }
     });
 });
