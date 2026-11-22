@@ -3,8 +3,8 @@
     --plate-inset: var(--spacing-6);
     --plate-gap: var(--spacing-4);
     --plate-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
-    /* The rail at the window's right edge (`SidePanelRail`), which the title band stops short of. */
-    --side-rail-width: 58px;
+    /* The rail at the window's right edge (`SidePanelRail`), which the title band stops short of. As wide as the band is tall, so its corner is a square. */
+    --side-rail-width: 48px;
 
     display: flex;
     height: 100vh;
