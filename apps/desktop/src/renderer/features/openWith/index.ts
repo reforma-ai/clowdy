@@ -4,3 +4,4 @@ export { absolutePath, openActions, type FolderGit, type OpenAction, type OpenEf
 export { actionIcon, OpenWithMenu } from './OpenWithMenu';
 export { openWithPreferences } from './openWithPreferences';
 export { useFolderGit } from './useFolderGit';
+export { useFolderRepair, type FolderRepair } from './useFolderRepair';

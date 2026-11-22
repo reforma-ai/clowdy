@@ -291,8 +291,8 @@ export function ensurePersonalProject(store: Store, config: Config): Project | u
 /** A settings field set to `null` is cleared. */
 type SettingsPatch = { [K in keyof ProjectSettings]?: ProjectSettings[K] | null };
 
-/** An entry of a project's new folder list: `{ id }` keeps a folder the project has, `{ path }` adds one. */
-export type FolderEntry = { id: string } | { path: string };
+/** An entry of a project's new folder list: `{ id }` keeps a folder the project has, `{ path }` adds one, `{ id, path }` keeps the folder at another place. */
+export type FolderEntry = { id: string } | { path: string } | { id: string; path: string };
 
 export interface ProjectPatch {
     name?: string;
@@ -323,7 +323,10 @@ function mergeSettings(current: ProjectSettings, patch: SettingsPatch = {}): Pro
 
 const stillWorking = () => conflict('The agents of this project are still working. Stop them first.');
 
-/** The folders `entries` describe: the project's own for an id, a new folder for a path (the one it has when it has that path already). */
+/**
+ * The folders `entries` describe: the project's own for an id (at the path it is given with the id, when it is moved: it keeps its id, and so its chats), a new folder
+ * for a path (the one it has when it has that path already).
+ */
 function nextFolders(current: Project, entries: readonly FolderEntry[]): ProjectFolder[] {
     if (entries.length === 0) {
         throw invalid('A project needs at least one folder');
@@ -337,7 +340,8 @@ function nextFolders(current: Project, entries: readonly FolderEntry[]): Project
                 throw invalid(`Folder ${ entry.id } is not one of the project's`);
             }
 
-            return folder;
+            // The folder is the same one at another place, so what it was given (its settings) stays with it.
+            return 'path' in entry ? { ...folder, path: realDirectory(entry.path) } : folder;
         }
 
         const path = realDirectory(entry.path);
@@ -353,8 +357,8 @@ function nextFolders(current: Project, entries: readonly FolderEntry[]): Project
 const sameFolders = (a: readonly ProjectFolder[], b: readonly ProjectFolder[]) => a.length === b.length && a.every((folder, index) => folder.id === b[index]?.id && folder.path === b[index]?.path);
 
 /**
- * Renames the project, gives it another list of folders, or changes its settings. New folders take the checks of `addProject`; a new main
- * folder waits until no agent of the project is working, as the agents work in it. The personal space keeps its name and its one folder.
+ * Renames the project, gives it another list of folders, or changes its settings. New folders, and a folder moved to another path, take the checks of `addProject`;
+ * a new main folder, or the main folder moved, waits until no agent of the project is working, as the agents work in it. The personal space keeps its name and its one folder.
  */
 export function updateProject(store: Store, projectId: string, patch: ProjectPatch, { skills }: ProjectWatchers): Project {
     return store.tx(() => {
@@ -378,7 +382,8 @@ export function updateProject(store: Store, projectId: string, patch: ProjectPat
             throw conflict(`${ twin.name } has these folders already`);
         }
 
-        const mainChanged = mainFolder({ folders }).id !== mainFolder(current).id;
+        // A new main folder, and the main folder at another place: the agents work in it.
+        const mainChanged = mainFolder({ folders }).id !== mainFolder(current).id || mainFolder({ folders }).path !== mainFolder(current).path;
 
         if (mainChanged && hasUnfinishedRuns(store.db, projectId)) {
             throw stillWorking();
