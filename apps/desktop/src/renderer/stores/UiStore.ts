@@ -5,7 +5,8 @@ import { revealTask, type RevealTasks } from './taskReveal';
 
 import type { ChatId, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
 
-export const SECTIONS = ['agents', 'tasks'] as const;
+/** Agents is the one section left: Tasks is a tab of the side panel. It goes with the left rail, which had nothing else to choose. */
+export const SECTIONS = ['agents'] as const;
 
 export type Section = typeof SECTIONS[number];
 
@@ -16,22 +17,22 @@ export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
 
 /** The tabs of the side panel's header, in the order they appear there. */
-export const SIDE_PANEL_TABS = ['info', 'files', 'docs', 'terminal'] as const;
+export const SIDE_PANEL_TABS = ['info', 'files', 'docs', 'terminal', 'tasks'] as const;
 
 export type SidePanelTab = typeof SIDE_PANEL_TABS[number];
 
-/** Where a project's window is: the section and what is open in it. History walks these; the view options of a section are not places. */
+/** The tabs whose view is always the size of the chat's place, whatever the project chose for the others (`ProjectUi.sidePanelIsFull`). */
+const FULL_TABS: readonly SidePanelTab[] = ['tasks'];
+
+/** Where a project's window is: the section and the chat or run open in it. History walks these; the view options of a section, the side panel and what it shows are not places. */
 export interface ProjectView {
     section: Section;
     chatId: ChatId | null;
-    taskId: TaskId | null;
     runId: RunId | null;
     /** Agents: the new-chat row is selected, and no chat exists yet. */
     draft: boolean;
     /** Agents: the folder the new chat is for, `null` for the main folder. Meaningful only with `draft`. */
     draftFolderId: FolderId | null;
-    /** Tasks: the task whose insides the screen shows, `null` for the project's roots. It is a place: back and forward bring it back. */
-    tasksScope: TaskId | null;
 }
 
 interface StoredProjectUi {
@@ -63,7 +64,7 @@ const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
-/** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
+/** What a page URL may preselect in fixtures mode, for screenshots and demos: `?panel=open&panelTab=tasks&task=t-24&view=list`. */
 export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'sidePanelOpen' | 'sidePanelTab' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
@@ -127,7 +128,7 @@ export class ProjectUi {
     sidePanelTab: SidePanelTab = 'info';
     /**
      * The side panel takes the place of the chat, and only the list of chats stays beside it. It is the project's choice, kept for it and apart from whether the panel is open:
-     * a shut panel shows the chat in full and brings the panel back expanded. Choosing a chat while the panel covers it shuts the panel and leaves the choice (`#showChat`).
+     * a shut panel shows the chat in full and brings the panel back expanded. Choosing a chat while the panel covers it shuts the panel and leaves the choice (`showChat`).
      */
     sidePanelExpanded = false;
     tasksView: TasksView = 'board';
@@ -210,30 +211,26 @@ export class ProjectUi {
         return {
             section: this.section,
             chatId: this.chatId,
-            taskId: this.taskId,
             runId: this.runId,
             draft: this.draft,
             draftFolderId: this.draftFolderId,
-            tasksScope: this.tasksScope,
         };
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ section, chatId, taskId, runId, draft, draftFolderId, tasksScope }: ProjectView): void {
-        if (chatId !== this.chatId || runId !== this.runId || draft !== this.draft) this.#showChat();
+    show({ section, chatId, runId, draft, draftFolderId }: ProjectView): void {
+        if (chatId !== this.chatId || runId !== this.runId || draft !== this.draft) this.showChat();
 
         this.section = section;
         this.chatId = chatId;
-        this.taskId = taskId;
         this.runId = runId;
         this.draft = draft;
         this.draftFolderId = draftFolderId;
-        this.tasksScope = tasksScope;
     }
 
     /** Shows the chat, in the Agents section; `null` leaves none selected. */
     openChat(chatId: ChatId | null): void {
-        this.#showChat();
+        this.showChat();
         this.section = 'agents';
         this.chatId = chatId;
         this.runId = null;
@@ -247,7 +244,7 @@ export class ProjectUi {
      * of the project the chat is made for, `null` for the main folder.
      */
     openDraft(attach: readonly File[] = [], folderId: FolderId | null = null): void {
-        this.#showChat();
+        this.showChat();
         this.section = 'agents';
         this.runId = null;
         this.draft = true;
@@ -273,15 +270,16 @@ export class ProjectUi {
     }
 
     /**
-     * Shows the task in the Tasks section; `null` closes its detail panel. The task is made visible in one change with the opening, so history has one entry for both:
+     * Shows the task in the Tasks tab of the side panel, which it opens; `null` closes the task's detail, and leaves the panel as it is. The task is made visible in one change with the opening:
      * the scope stays when the task is inside it and moves to the task's parent when it is not (`revealTask`), and the folds above the task open.
      * `reveal: false` is for the Tasks screen opening a task it draws already (a click on a card, a key on the cursor task): with a filter on, a card can be drawn away
      * from its parent, and opening it must not move the screen. `madeIn` is for a task that was just made inside a task (`null`: a root) and may not have reached the
      * project yet, since the daemon's event can come after the reply to the command: the screen is put where the task will show, and not left where it is.
      */
     openTask(taskId: TaskId | null, { reveal = true, madeIn }: { reveal?: boolean; madeIn?: TaskId | null } = {}): void {
-        this.section = 'tasks';
         this.taskId = taskId;
+
+        if (taskId !== null) this.openSidePanelTab('tasks');
 
         if (taskId !== null && reveal) this.#reveal(taskId, madeIn);
     }
@@ -306,7 +304,7 @@ export class ProjectUi {
 
     /** Shows the run in the Agents section, below its chat; a root run is its chat. */
     openRun(runId: RunId | null): void {
-        this.#showChat();
+        this.showChat();
         this.section = 'agents';
         this.runId = runId;
         this.draft = false;
@@ -356,27 +354,45 @@ export class ProjectUi {
 
     /**
      * The next of the panel's three states, the one the button in the title band's corner leads to: a shut panel opens in the size it was left in, an open one beside the chat
-     * is expanded, and an expanded one is hidden, and starts beside the chat when it comes back by this button again.
+     * is expanded, and an expanded one is hidden, and starts beside the chat when it comes back by this button again. The Tasks tab is shown and hidden only.
      */
     stepSidePanel(): void {
         if (!this.sidePanelOpen) {
             this.sidePanelOpen = true;
         }
-        else if (!this.sidePanelExpanded) {
+        else if (!this.sidePanelIsFull) {
             this.sidePanelExpanded = true;
         }
         else {
             this.sidePanelOpen = false;
-            this.sidePanelExpanded = false;
+
+            // A full tab has no expanded size of its own to give back: the choice for the other tabs is left as it was.
+            if (!this.sidePanelTabIsFull) this.sidePanelExpanded = false;
         }
     }
 
+    /** The tab the panel shows is always the size of the chat's place (the Tasks tab), so it has no expanded size to choose. */
+    get sidePanelTabIsFull(): boolean {
+        return FULL_TABS.includes(this.sidePanelTab);
+    }
+
+    /** The panel is, or comes back, in the place of the chat: the project has it expanded, or the tab is a full one. */
+    get sidePanelIsFull(): boolean {
+        return this.sidePanelExpanded || this.sidePanelTabIsFull;
+    }
+
+    /** The panel is drawn in the place of the chat: it is open, and full. */
+    get sidePanelCoversChat(): boolean {
+        return this.sidePanelOpen && this.sidePanelIsFull;
+    }
+
     /**
-     * A chat is chosen: an open panel that covers the chat is shut, so the chat shows, and the choice of the expanded size stays as the person made it: the panel comes
-     * back in it. A panel beside the chat, or a shut one, is left as it is.
+     * The chat is wanted on screen: a panel that covers it is shut, and the choice of the expanded size stays as the person made it, so the panel comes back in it. A panel
+     * beside the chat, or a shut one, is left as it is. Every way of choosing a chat does this; so does a press on the row of the chat that is open already, which the list
+     * does not report as a selection.
      */
-    #showChat(): void {
-        if (this.sidePanelOpen && this.sidePanelExpanded) this.sidePanelOpen = false;
+    showChat(): void {
+        if (this.sidePanelCoversChat) this.sidePanelOpen = false;
     }
 
     /** Shuts the side panel; nothing when it is shut. */
@@ -411,8 +427,8 @@ export class ProjectUi {
     }
 
     /**
-     * Shows the insides of a task on the Tasks screen, or the project's roots with `null`. Only the scope: the section stays as it is, and so does the open task.
-     * A scope is a place, so back and forward bring it back.
+     * Shows the insides of a task on the Tasks screen, or the project's roots with `null`. Only the scope: the panel stays as it is, and so does the open task.
+     * Not a place of the history: the side panel's state is not.
      */
     setTasksScope(scope: TaskId | null): void {
         this.tasksScope = scope;

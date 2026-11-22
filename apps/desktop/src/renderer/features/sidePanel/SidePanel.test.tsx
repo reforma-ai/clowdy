@@ -36,6 +36,8 @@ vi.mock('../files/FilesTab', async () => {
 });
 // So has the terminal.
 vi.mock('../terminal/TerminalTab', () => ({ default: () => <p>The terminal</p> }));
+// And the tasks.
+vi.mock('../tasks', () => ({ Screen: () => <p>The tasks</p> }));
 // The babel plugin that makes the app's components observers does not run under Vitest: the panel is one, to follow the tab that is chosen.
 vi.mock('./SidePanel', async (importOriginal) => ({ SidePanel: observer((await importOriginal<typeof import('./SidePanel')>()).SidePanel) }));
 
@@ -165,6 +167,24 @@ describe('the corner over the rail', () => {
         expect(panel()?.hasAttribute('data-expanded')).toBe(true);
         expect(pressed()).toBe('true');
         expect(icon()).toBe('large > none');
+    });
+
+    it('steps a panel on the Tasks tab through shown and hidden, and leaves the expanded choice alone', async () => {
+        act(() => ui().showSidePanelTab('tasks'));
+        await draw(<><Layout><p>The page</p></Layout><Corner /></>);
+
+        // Shut, the panel comes back full on this tab.
+        expect(icon()).toBe('none > large');
+
+        await press(expandButton()!);
+
+        expect(panel()?.hasAttribute('data-expanded')).toBe(true);
+        expect(icon()).toBe('large > none');
+
+        await press(expandButton()!);
+
+        expect([ui().sidePanelOpen, ui().sidePanelExpanded]).toEqual([false, false]);
+        expect(panel()).toBeNull();
     });
 
     it('is as wide as the rail even with no project, and has no button there', async () => {
@@ -322,7 +342,7 @@ describe('the side panel of the window', () => {
 
         const names = [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].map(button => button.textContent);
 
-        expect(names).toEqual(['Files', 'Docs', 'Terminal', 'Info']);
+        expect(names).toEqual(['Files', 'Docs', 'Terminal', 'Tasks', 'Info']);
 
         await press(tab('Terminal')!);
         await settle();
@@ -331,6 +351,24 @@ describe('the side panel of the window', () => {
         expect(tab('Terminal')?.getAttribute('aria-current')).toBe('page');
         expect(panel()?.querySelector('[aria-label="Terminal"][class*="plate"]')?.textContent).toBe('The terminal');
         expect(panel()?.textContent).not.toContain('The files');
+    });
+
+    it('has a Tasks tab after Terminal, which shows the tasks over the chat and leaves the expanded choice as it was', async () => {
+        await draw(<Frame />);
+
+        await press(tab('Tasks')!);
+        await settle();
+
+        expect(ui().sidePanelTab).toBe('tasks');
+        expect(tab('Tasks')?.getAttribute('aria-current')).toBe('page');
+        expect(panel()?.querySelector('[aria-label="Tasks"][class*="plate"]')?.textContent).toBe('The tasks');
+        expect(panel()?.hasAttribute('data-expanded')).toBe(true);
+        expect(ui().sidePanelExpanded).toBe(false);
+
+        await press(tab('Files')!);
+        await settle();
+
+        expect(panel()?.hasAttribute('data-expanded')).toBe(false);
     });
 
     it('keeps the chosen tab for the project, and starts another project on Info', async () => {
@@ -356,7 +394,7 @@ describe('the rail of the side panel', () => {
         await draw(<Frame />);
 
         expect(panel()).toBeNull();
-        expect([...rail()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Info']);
+        expect([...rail()!.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Tasks', 'Info']);
         expect(rail()!.querySelector('[aria-current]')).toBeNull();
 
         act(() => ui().toggleSidePanel());
@@ -415,7 +453,7 @@ describe('the rail of the side panel', () => {
 
         const items = [...container.querySelectorAll<HTMLButtonElement>('button')];
 
-        expect(items.map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Info', 'Settings']);
+        expect(items.map(button => button.textContent)).toEqual(['Files', 'Docs', 'Terminal', 'Tasks', 'Info', 'Settings']);
         // Info is the one tab that is pushed to the bottom of the column, so that it sits above Settings.
         expect(tab('Info')!.className).toMatch(/bottom/);
         expect(tab('Files')!.className).not.toMatch(/bottom/);
@@ -467,9 +505,7 @@ describe('the folder the Info tab names', () => {
         expect(currentFolder(project, { ...idle, draft: true }).path).toBe('/Users/dev/web');
     });
 
-    it('is the main folder when no chat is open, and in the sections that belong to the project and not to a folder', () => {
+    it('is the main folder when no chat is open', () => {
         expect(currentFolder(project, idle).path).toBe('/Users/dev/web');
-        expect(currentFolder(project, { ...idle, section: 'tasks', chatId: 'c1' }).path).toBe('/Users/dev/web');
-        expect(currentFolder(project, { ...idle, section: 'tasks', draft: true, draftFolderId: 'f2' }).path).toBe('/Users/dev/web');
     });
 });

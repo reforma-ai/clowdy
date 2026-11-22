@@ -11,10 +11,9 @@ export const navCommandId = (section: Section) => `nav.${ section }`;
 /** The id of the command that starts a chat, which the New chat row asks for its hint. */
 export const NEW_CHAT_COMMAND = 'chats.new';
 
-/** `G` then a letter, the way Linear goes places: A for Agents (the chats and the runs below them) and T for Tasks. */
+/** `G` then a letter, the way Linear goes places: A for Agents (the chats and the runs below them). Tasks is a tab of the side panel and has a key of its own. */
 const SECTION_CHORDS: Record<Section, { title: string; keys: string }> = {
     agents: { title: 'Go to Agents', keys: 'g a' },
-    tasks: { title: 'Go to Tasks', keys: 'g t' },
 };
 
 /** The brackets by their physical keys: on a Cyrillic layout the key at `[` types a letter, and the key event names no bracket. */
@@ -27,8 +26,8 @@ export interface ShellCommandsRoot extends Pick<RootStore, 'phase' | 'selectedPr
 }
 
 /**
- * The commands that work in every section, for `useCommands('app', …)`: the shortcuts page of Settings, the `G` chords that switch sections, `Cmd+,` for the Settings window, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
- * the side panel, `Cmd+Shift+Enter` (`Ctrl+Shift+Enter`) for its expanded view, `Ctrl+`` for its terminal, `Cmd+0`, `Cmd+1` and `Cmd+2` for its tabs, and back and forward.
+ * The commands that work in every section, for `useCommands('app', …)`: the shortcuts page of Settings, the `G` chord that goes to Agents, `Cmd+,` for the Settings window, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
+ * the side panel, `Cmd+Shift+Enter` (`Ctrl+Shift+Enter`) for its expanded view, `Ctrl+`` for its terminal, `Cmd+0` to `Cmd+4` for its tabs, and back and forward.
  * `?` opens Settings on its Shortcuts page, once the window shows anything to open it over: while the app loads or cannot reach its daemon, the key reaches the page.
  * A section chord and a new chat need a selected project, as the Rail's buttons do, and also leave Settings.
  * `Cmd+N` shows the new-chat page of the Agents section whichever section is open, and works from a text field too: the message box is the place it is most wanted.
@@ -101,7 +100,8 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
             keys: SIDE_PANEL_EXPAND_KEYS,
             inInputs: true,
             // Only with the panel open, as the button in the title band's corner: with it shut there is nothing to expand, and the key reaches the page.
-            when: () => root.showsProjectScreen && root.selectedProjectUi?.sidePanelOpen === true,
+            // And not on a tab that is full already (Tasks).
+            when: () => root.showsProjectScreen && root.selectedProjectUi?.sidePanelOpen === true && !root.selectedProjectUi.sidePanelTabIsFull,
             handler: () => root.selectedProjectUi?.toggleSidePanelExpanded(),
         },
         {

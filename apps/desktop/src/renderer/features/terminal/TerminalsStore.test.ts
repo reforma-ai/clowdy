@@ -255,14 +255,14 @@ describe('isAppShortcut', () => {
         expect(isAppShortcut(key({ code: 'Enter', shiftKey: true }), 'win32')).toBe(false);
     });
 
-    it('lets the panel\'s tabs through where Ctrl is the app\'s modifier: Ctrl+0, 1 and 2', () => {
-        for (const code of ['Digit0', 'Digit1', 'Digit2', 'Numpad1']) {
+    it('lets the panel\'s tabs through where Ctrl is the app\'s modifier: Ctrl+0 to 4', () => {
+        for (const code of ['Digit0', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Numpad1']) {
             expect(isAppShortcut(key({ code, ctrlKey: true }), 'win32')).toBe(true);
             // On a Mac the shell keeps Ctrl+digit, and the tabs are on Cmd, which xterm never takes.
             expect(isAppShortcut(key({ code, ctrlKey: true }), 'darwin')).toBe(false);
         }
 
-        expect(isAppShortcut(key({ code: 'Digit3', ctrlKey: true }), 'win32')).toBe(false);
+        expect(isAppShortcut(key({ code: 'Digit5', ctrlKey: true }), 'win32')).toBe(false);
         expect(isAppShortcut(key({ code: 'Digit1', ctrlKey: true, shiftKey: true }), 'win32')).toBe(false);
         expect(isAppShortcut(key({ code: 'Digit1', ctrlKey: true, altKey: true }), 'win32')).toBe(false);
         expect(isAppShortcut(key({ code: 'Digit1' }), 'win32')).toBe(false);

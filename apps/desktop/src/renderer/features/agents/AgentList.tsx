@@ -166,6 +166,9 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
 
         if (!(target instanceof HTMLElement) || target.getAttribute('role') !== 'row') return;
 
+        // Enter or Space on the row of the chat that is open selects nothing new, and the list reports no selection: the chat is still wanted on screen.
+        if ((event.key === 'Enter' || event.key === ' ') && target.dataset.key === selectedId) ui.showChat();
+
         const folded = foldOf(target.dataset.key);
 
         if (!folded) return;
@@ -175,6 +178,13 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
             event.preventDefault();
             event.stopPropagation();
         }
+    };
+
+    // A press on the row of the chat that is open, and not on a control of the row: the same as above, for the pointer. Read in the capture phase: a row stops the click it takes.
+    const onClick = (event: MouseEvent) => {
+        const target = event.target as Element;
+
+        if (!target.closest('button') && target.closest('[role="row"]')?.getAttribute('data-key') === selectedId) ui.showChat();
     };
 
     const select = (id: string) => {
@@ -291,7 +301,7 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
             </SidebarHeading>
 
             <PanelContent contentClass={ styles.content }>
-                <div ref={ list } onContextMenu={ openContextMenu } onKeyDownCapture={ onKeyDownCapture }>
+                <div ref={ list } onClickCapture={ onClick } onContextMenu={ openContextMenu } onKeyDownCapture={ onKeyDownCapture }>
                     <GridList
                         aria-label="Agents"
                         size="md"

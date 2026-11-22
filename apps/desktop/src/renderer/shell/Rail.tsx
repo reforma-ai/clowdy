@@ -1,4 +1,3 @@
-import { Checkbox } from '@clowdy/icons/14';
 import { Team } from '@clowdy/icons/16';
 
 import { commandTooltip } from '../hotkeys';
@@ -12,7 +11,6 @@ import type { ComponentType, SVGProps } from 'react';
 /** Each icon is drawn at its own size: the 16 pack where it has the glyph, else the 14 pack, never scaled. */
 const SECTION_VIEWS: Record<Section, { label: string; icon: ComponentType<SVGProps<SVGSVGElement>>; size: number }> = {
     agents: { label: 'Agents', icon: Team, size: 16 },
-    tasks: { label: 'Tasks', icon: Checkbox, size: 14 },
 };
 
 /** The left rail: the sections of the project. */

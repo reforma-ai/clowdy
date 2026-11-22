@@ -518,7 +518,7 @@ describe('Open the linked chat', () => {
         expect(ui().chatId).toBe('c-4');
     });
 
-    it('says so for a task no chat discusses, and stays on the Tasks screen', async () => {
+    it('says so for a task no chat discusses, and leaves the window as it was', async () => {
         await mount();
         ui().openTask(null);
         goTo('t-30');
@@ -526,7 +526,7 @@ describe('Open the linked chat', () => {
         press('c');
 
         expect(project().chatsOfTask('t-30')).toEqual([]);
-        expect(ui().section).toBe('tasks');
+        expect(ui().chatId).toBeNull();
         expect(notices).toEqual([{ message: 'CAR-30 has no chat yet', tone: undefined }]);
     });
 });
@@ -584,22 +584,9 @@ describe('Open the latest document', () => {
     });
 });
 
-describe('Back and forward', () => {
-    /** How many steps Back can take from here. */
-    function stepsBack(): number {
-        let steps = 0;
-
-        while (root.history.canGoBack) {
-            root.history.back();
-            steps++;
-        }
-
-        return steps;
-    }
-
-    it('records the open panel following the cursor as one entry, however far the cursor goes', async () => {
+describe('The open task and the cursor', () => {
+    it('follows the cursor while a task is open, however far the cursor goes', async () => {
         await mount();
-        root.ui.showSection(ui(), 'tasks');
         ui().openTask('t-20');
         goTo('t-20');
         press('j');
@@ -608,19 +595,10 @@ describe('Back and forward', () => {
         press('End');
 
         expect(ui().taskId).toBe('t-37');
-        // Agents, the Tasks screen and the open task: the tasks the cursor passed are not stops.
-        expect(stepsBack()).toBe(2);
-        expect(ui().section).toBe('agents');
-
-        root.history.forward();
-        root.history.forward();
-
-        expect(ui().taskId).toBe('t-37');
     });
 
-    it('records Enter as an entry of its own, and the following of the cursor after it as no more', async () => {
+    it('opens the task under the cursor on Enter, and the following of the cursor goes on from there', async () => {
         await mount();
-        root.ui.showSection(ui(), 'tasks');
         press('Enter');
 
         expect(ui().taskId).toBe('t-20');
@@ -629,11 +607,6 @@ describe('Back and forward', () => {
         press('j');
 
         expect(ui().taskId).toBe('t-22');
-
-        root.history.back();
-
-        expect(ui().section).toBe('tasks');
-        expect(ui().taskId).toBeNull();
     });
 });
 

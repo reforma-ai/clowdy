@@ -120,22 +120,6 @@ describe('going into a task', () => {
         expect(drawn()).toHaveLength(12);
     });
 
-    it('makes every move a place of the history, so Back returns to the scope it left', async () => {
-        await mountScreen();
-        await click(chipOf('t-31'));
-        await click(buttonNamed('Tasks'));
-
-        page.store.history.back();
-        await draw();
-
-        expect(ui().tasksScope).toBe('t-31');
-        expect(pathText()).toEqual(['Tasks', 'CAR-31']);
-
-        page.store.history.back();
-        await draw();
-
-        expect(ui().tasksScope).toBeNull();
-    });
 });
 
 describe('the header of a scope', () => {
@@ -317,33 +301,9 @@ describe('a scope that is gone', () => {
         expect(pathText()).toEqual(['Tasks', 'CAR-31']);
     });
 
-    it('settles on the roots when the person acts, so Back returns to the place they saw and not to the one that is gone', async () => {
-        await mountScreen({
-            prepare: (window) => {
-                page.store.ui.showSection(window, 'tasks');
-                window.setTasksScope('t-31');
-            },
-        });
-        await archivePayments();
-        await click(itemOf('t-24')!.querySelector('button'));
-
-        expect(ui().taskId).toBe('t-24');
-        expect(ui().tasksScope).toBeNull();
-        expect(page.store.history.canGoBack).toBe(true);
-
-        page.store.history.back();
-        await draw();
-
-        expect([ui().taskId, ui().tasksScope]).toEqual([null, null]);
-        expect(drawn()).toHaveLength(11);
-    });
-
     it('settles before the New task dialog opens, which is the person acting', async () => {
         await mountScreen({
-            prepare: (window) => {
-                page.store.ui.showSection(window, 'tasks');
-                window.setTasksScope('t-32');
-            },
+            prepare: window => window.setTasksScope('t-32'),
         });
         await change({ type: 'task.archive', taskId: 't-32', cancel: true });
 
@@ -374,22 +334,12 @@ describe('opening a task from elsewhere', () => {
         expect(itemOf('t-33')?.hasAttribute('data-open')).toBe(true);
     });
 
-    it('moves to the roots for a root task, with Back returning to the scope it left', async () => {
-        await mountScreen({
-            prepare: (window) => {
-                page.store.ui.showSection(window, 'tasks');
-                window.setTasksScope('t-32');
-            },
-        });
+    it('moves to the roots for a root task, and the task shows there', async () => {
+        await mountScreen({ prepare: window => window.setTasksScope('t-32') });
         await draw(() => ui().openTask('t-24'));
 
         expect(ui().tasksScope).toBeNull();
         expect(itemOf('t-24')?.hasAttribute('data-open')).toBe(true);
-
-        page.store.history.back();
-        await draw();
-
-        expect([ui().tasksScope, ui().taskId]).toEqual(['t-32', null]);
     });
 });
 

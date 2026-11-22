@@ -39,7 +39,8 @@
 /* The editor and the file tree scroll for themselves, and fill the plate; so do the documents, which are the same view, and the terminal. */
 .plate[data-tab='files'],
 .plate[data-tab='docs'],
-.plate[data-tab='terminal'] {
+.plate[data-tab='terminal'],
+.plate[data-tab='tasks'] {
     display: flex;
     flex-direction: column;
     overflow: hidden;

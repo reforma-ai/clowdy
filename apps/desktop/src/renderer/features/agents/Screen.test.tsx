@@ -192,6 +192,64 @@ describe('what is open', () => {
     });
 });
 
+describe('a side panel that covers the chat', () => {
+    const cover = async (open: () => void) => {
+        await draw(() => {
+            open();
+            ui().openSidePanelTab('tasks');
+        });
+
+        expect(ui().sidePanelCoversChat).toBe(true);
+    };
+    const covering = () => ui().sidePanelCoversChat;
+
+    it('is shut by a press on the row of the chat that is open already, which the list does not report as a selection', async () => {
+        await cover(() => ui().openChat('c-3'));
+        await press(rowOf('c-3'));
+
+        expect(covering()).toBe(false);
+        expect(ui().sidePanelOpen).toBe(false);
+        expect(ui().chatId).toBe('c-3');
+    });
+
+    it('is shut by Enter or Space on that row, and by a press on the new-chat row while the new chat is open', async () => {
+        await cover(() => ui().openChat('c-3'));
+        await act(async () => rowOf('c-3').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+
+        expect(covering()).toBe(false);
+
+        await cover(() => ui().openDraft());
+        await press(rowOf('@new-chat'));
+
+        expect(covering()).toBe(false);
+    });
+
+    it('is shut by a press on another chat', async () => {
+        await cover(() => ui().openChat('c-3'));
+        await press(rowOf('c-5'));
+
+        expect(covering()).toBe(false);
+        expect(ui().chatId).toBe('c-5');
+    });
+
+    it('stays when a control of the open chat\'s row is pressed, which is not a press on the chat', async () => {
+        await cover(() => ui().openChat('c-3'));
+        await press(rowOf('c-3').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+
+        expect(covering()).toBe(true);
+    });
+
+    it('leaves a panel beside the chat alone when the open chat\'s row is pressed', async () => {
+        await draw(() => {
+            ui().openChat('c-3');
+            ui().openSidePanelTab('files');
+        });
+        await press(rowOf('c-3'));
+
+        expect([ui().sidePanelOpen, ui().sidePanelTab]).toEqual([true, 'files']);
+    });
+});
+
 describe('the new-chat row', () => {
     const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]');
     const editor = () => (field() as HTMLElement & { editor: Editor }).editor;

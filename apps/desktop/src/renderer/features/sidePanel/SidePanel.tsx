@@ -10,6 +10,8 @@ import styles from './SidePanel.module.css';
 const FilesTab = lazy(() => import('../files/FilesTab'));
 // Likewise for the terminal: xterm is loaded when the tab is first shown.
 const TerminalTab = lazy(() => import('../terminal/TerminalTab'));
+// And for the tasks, whose screen is the heaviest after the editor.
+const TasksTab = lazy(() => import('../tasks').then(({ Screen }) => ({ default: Screen })));
 
 /**
  * The column at the right of the window, beside the page, as a second sidebar: a paper plate on the window's chrome that shows the tab that is chosen, which the
@@ -19,13 +21,14 @@ const TerminalTab = lazy(() => import('../terminal/TerminalTab'));
  * width for the panel to come back to.
  */
 export function SidePanel() {
-    const { sidePanelTab: chosen, sidePanelExpanded } = useProjectUi();
+    const { sidePanelTab: chosen, sidePanelCoversChat } = useProjectUi();
 
     return (
-        <aside className={ styles.panel } aria-label="Panel" data-side-panel="" data-expanded={ sidePanelExpanded || undefined }>
+        <aside className={ styles.panel } aria-label="Panel" data-side-panel="" data-expanded={ sidePanelCoversChat || undefined }>
             <section className={ styles.plate } data-tab={ chosen } aria-label={ SIDE_PANEL_TAB_LABELS[chosen] }>
                 { (chosen === 'files' || chosen === 'docs') && <Suspense fallback={ <PanelLoadingState /> }><FilesTab variant={ chosen } /></Suspense> }
                 { chosen === 'terminal' && <Suspense fallback={ <PanelLoadingState /> }><TerminalTab /></Suspense> }
+                { chosen === 'tasks' && <Suspense fallback={ <PanelLoadingState /> }><TasksTab /></Suspense> }
                 { chosen === 'info' && <InfoTab /> }
             </section>
         </aside>

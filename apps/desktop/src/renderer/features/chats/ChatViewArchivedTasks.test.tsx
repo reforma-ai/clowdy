@@ -96,7 +96,7 @@ describe('a task key in a message', () => {
 
         await act(async () => container.querySelector<HTMLElement>('[data-task-chip="t-22"]')!.click());
 
-        expect([ui().section, ui().taskId]).toEqual(['tasks', 't-22']);
+        expect([ui().sidePanelOpen, ui().sidePanelTab, ui().taskId]).toEqual([true, 'tasks', 't-22']);
         // The window knows it, so Back and Forward may return to it.
         expect(project().archivedKnown.has('t-22')).toBe(true);
     });
@@ -148,6 +148,6 @@ describe('TaskChip', () => {
         });
         await act(async () => container.querySelector('button')!.click());
 
-        expect([ui().section, ui().taskId]).toEqual(['tasks', 't-38']);
+        expect([ui().sidePanelOpen, ui().sidePanelTab, ui().taskId]).toEqual([true, 'tasks', 't-38']);
     });
 });

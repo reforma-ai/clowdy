@@ -1,4 +1,4 @@
-import { Terminal } from '@clowdy/icons/14';
+import { Checkbox, Terminal } from '@clowdy/icons/14';
 import { File, Folder, Info, Settings } from '@clowdy/icons/16';
 
 import { commandTooltip } from '../../hotkeys';
@@ -16,6 +16,7 @@ const TABS: ReadonlyArray<{ tab: SidePanelTab; icon: typeof Info; size: number }
     { tab: 'files', icon: Folder, size: 16 },
     { tab: 'docs', icon: File, size: 16 },
     { tab: 'terminal', icon: Terminal, size: 14 },
+    { tab: 'tasks', icon: Checkbox, size: 14 },
     { tab: 'info', icon: Info, size: 16 },
 ];
 
@@ -26,7 +27,7 @@ const AT_BOTTOM: SidePanelTab = 'info';
  * The rail at the right edge of the window, whether the side panel is open or not, as the sections are at the left: an item for each tab of the panel, and Settings
  * pinned at the bottom (Info, the one tab that is not a tool, goes down with it). A click on a tab opens the panel on it, or shuts it when that tab is the one it shows,
  * and the key of the tab does the same (`ProjectUi.toggleSidePanelTab`; `Cmd+Esc` shuts or opens the panel whatever tab it shows). Only the tab the panel shows is
- * current, and none is while the panel is shut. The tabs are not drawn where the window shows no project; Settings, which is the window's and not a project's, always is.
+ * current (in the primary colour, as the open chat is in Reforma's rail), and none is while the panel is shut. The tabs are not drawn where the window shows no project; Settings, which is the window's and not a project's, always is.
  */
 export function SidePanelRail() {
     const root = useRootStore();
@@ -46,6 +47,7 @@ export function SidePanelRail() {
                             icon={ icon }
                             size={ size }
                             current={ open && tab === shown }
+                            accent
                             tooltip={ commandTooltip(SIDE_PANEL_TAB_LABELS[tab], sidePanelTabCommand(tab)) }
                             tooltipPlacement="left"
                             onPress={ () => toggleTab(tab) }
@@ -60,6 +62,7 @@ export function SidePanelRail() {
                 icon={ Settings }
                 size={ 16 }
                 current={ root.ui.settingsOpen }
+                accent
                 tooltip={ commandTooltip('Settings', SETTINGS_COMMAND) }
                 tooltipPlacement="left"
                 onPress={ () => root.ui.openSettings() }

@@ -63,17 +63,20 @@ afterEach(() => {
 });
 
 describe('section chords', () => {
-    it.each([
-        ['a', 'agents'],
-        ['t', 'tasks'],
-    ] as const)('G then %s shows the %s section of the selected project', (second, section) => {
-        ui.forProject('p').section = section === 'agents' ? 'tasks' : 'agents';
-
+    it('G then A shows the Agents section of the selected project', () => {
         press({ key: 'g' });
-        press({ key: second });
+        press({ key: 'a' });
 
-        expect(sectionOf()).toBe(section);
+        expect(sectionOf()).toBe('agents');
         expect(registry.pending).toBeNull();
+    });
+
+    it('has no chord for Tasks, which is a tab of the side panel with a key of its own', () => {
+        press({ key: 'g' });
+        press({ key: 't' });
+
+        expect(registry.pending).toBeNull();
+        expect(ui.forProject('p').sidePanelOpen).toBe(false);
     });
 
     it('does nothing after a G alone, and leaves a chord after its timeout', () => {
@@ -82,7 +85,7 @@ describe('section chords', () => {
         try {
             press({ key: 'g' });
 
-            expect(registry.pending?.candidates.map(({ command }) => command.id).sort()).toEqual(['nav.agents', 'nav.tasks']);
+            expect(registry.pending?.candidates.map(({ command }) => command.id).sort()).toEqual(['nav.agents']);
             expect(sectionOf()).toBe('agents');
 
             vi.advanceTimersByTime(1000);
@@ -111,10 +114,10 @@ describe('section chords', () => {
         ui.openSettings('providers');
 
         press({ key: 'g' });
-        press({ key: 't' });
+        press({ key: 'a' });
 
         expect(ui.settingsOpen).toBe(false);
-        expect(sectionOf()).toBe('tasks');
+        expect(sectionOf()).toBe('agents');
     });
 
     it('needs a selected project, and does not even start the chord without one', () => {
@@ -389,15 +392,13 @@ describe('the keymap', () => {
         for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'settings.open', 'nav.agents', 'nav.tasks', 'chats.new', 'sidePanel.toggle', 'sidePanel.expand', 'sidePanel.terminal', 'sidePanel.tab.info', 'sidePanel.tab.files', 'sidePanel.tab.docs', 'sidePanel.tab.terminal', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
-        expect(navCommandId('tasks')).toBe('nav.tasks');
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'settings.open', 'nav.agents', 'chats.new', 'sidePanel.toggle', 'sidePanel.expand', 'sidePanel.terminal', 'sidePanel.tab.info', 'sidePanel.tab.files', 'sidePanel.tab.docs', 'sidePanel.tab.terminal', 'sidePanel.tab.tasks', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
+        expect(navCommandId('agents')).toBe('nav.agents');
     });
 });
 
 describe('new chat', () => {
-    it('shows the new-chat page of the Agents section on Cmd+N, from any section', () => {
-        ui.forProject('p').section = 'tasks';
-
+    it('shows the new-chat page of the Agents section on Cmd+N', () => {
         const event = press({ key: 'n', code: 'KeyN', metaKey: true });
 
         expect(sectionOf()).toBe('agents');
@@ -617,6 +618,16 @@ describe('the expanded side panel', () => {
         }
     });
 
+    it('does nothing on the Tasks tab, which is full already, and leaves the key to the page', () => {
+        ui.forProject('p').openSidePanelTab('tasks');
+
+        const event = expand();
+
+        expect(expanded()).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+        expect(commandHint('sidePanel.expand', registry)).toBeUndefined();
+    });
+
     it('does nothing, and leaves the key to the page, while the panel is shut or the window shows no project', () => {
         const shut = expand();
 
@@ -642,7 +653,7 @@ describe('the tabs of the side panel', () => {
     const state = () => ({ open: ui.forProject('p').sidePanelOpen, tab: ui.forProject('p').sidePanelTab });
     const digit = (value: string, extra: KeyboardEventInit = {}, target?: EventTarget) => press({ key: value, code: `Digit${ value }`, metaKey: true, ...extra }, target);
 
-    it('shows Info on Cmd+0, Files on Cmd+1, Terminal on Cmd+2 and Docs on Cmd+3, opening the panel when it is shut', () => {
+    it('shows Info on Cmd+0, Files on Cmd+1, Terminal on Cmd+2, Docs on Cmd+3 and Tasks on Cmd+4, opening the panel when it is shut', () => {
         const first = digit('1');
 
         expect(state()).toEqual({ open: true, tab: 'files' });
@@ -657,8 +668,11 @@ describe('the tabs of the side panel', () => {
         digit('3');
         expect(state()).toEqual({ open: true, tab: 'docs' });
 
+        digit('4');
+        expect(state()).toEqual({ open: true, tab: 'tasks' });
+
         runInAction(() => ui.forProject('p').toggleSidePanel());
-        expect(state()).toEqual({ open: false, tab: 'docs' });
+        expect(state()).toEqual({ open: false, tab: 'tasks' });
 
         digit('2');
         expect(state()).toEqual({ open: true, tab: 'terminal' });
@@ -710,7 +724,7 @@ describe('the tabs of the side panel', () => {
         runInAction(() => {
             screen.shown = true;
         });
-        digit('4');
+        digit('5');
         digit('1', { shiftKey: true });
         digit('1', { metaKey: false });
         digit('1', { altKey: true });
@@ -721,6 +735,7 @@ describe('the tabs of the side panel', () => {
     it('has Cmd on a Mac and Ctrl elsewhere, and shows the key as the hint of the tab', () => {
         expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.info }, 'darwin')).toEqual([['meta', '0']]);
         expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.terminal }, 'win32')).toEqual([['ctrl', '2']]);
+        expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.tasks }, 'win32')).toEqual([['ctrl', '4']]);
         expect(commandHint('sidePanel.tab.files', registry)).toEqual([['meta', '1']]);
 
         runInAction(() => {
