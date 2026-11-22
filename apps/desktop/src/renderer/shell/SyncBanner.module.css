@@ -6,7 +6,7 @@
     /* In the title band, which is empty at its middle: centred on the window across and on the band's height down. */
     position: fixed;
     z-index: var(--z-popover);
-    top: calc(var(--spacing-48) / 2);
+    top: calc(var(--title-band-height) / 2);
     left: 50%;
     display: flex;
     align-items: center;

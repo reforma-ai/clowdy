@@ -3,7 +3,7 @@
     flex-shrink: 0;
     align-items: center;
     gap: var(--spacing-md);
-    height: var(--spacing-48);
+    height: var(--title-band-height);
     padding-left: calc(var(--titlebar-inset) + var(--spacing-lg));
     /*
      * The band stops where the rail begins, so on macOS the usage status ends in line with the right edge of the plate below. The Windows caption buttons are wider than the

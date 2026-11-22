@@ -3,8 +3,10 @@
     --plate-inset: var(--spacing-6);
     --plate-gap: var(--spacing-4);
     --plate-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
-    /* The rail at the window's right edge (`SidePanelRail`), which the title band stops short of. As wide as the band is tall, so its corner is a square. */
-    --side-rail-width: 48px;
+    /* The title band across the top: its height is the one the window's chrome reports (`TITLE_BAR_HEIGHT` and the traffic lights' place in `src/main/security.ts`). */
+    --title-band-height: var(--spacing-44);
+    /* The rail at the window's right edge (`SidePanelRail`), which the title band stops short of. */
+    --side-rail-width: 56px;
 
     display: flex;
     height: 100vh;

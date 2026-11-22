@@ -34,8 +34,8 @@ function chromeOptions() {
     if (!options.overlay) return {};
 
     return process.platform === 'win32'
-        ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#00000000', symbolColor: '#000000', height: 48 } }
-        : { titleBarStyle: 'hidden', titleBarOverlay: true, trafficLightPosition: { x: 17, y: 17 } };
+        ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#00000000', symbolColor: '#000000', height: 44 } }
+        : { titleBarStyle: 'hidden', titleBarOverlay: true, trafficLightPosition: { x: 17, y: 15 } };
 }
 
 async function waitFor(contents, selector) {

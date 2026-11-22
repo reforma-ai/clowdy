@@ -3,7 +3,7 @@
 .bar {
     position: fixed;
     z-index: var(--z-confirm);
-    top: calc(var(--spacing-48) + var(--spacing-sm));
+    top: calc(var(--title-band-height) + var(--spacing-sm));
     right: var(--spacing-lg);
     box-sizing: border-box;
     display: flex;
