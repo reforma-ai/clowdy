@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { COLLAPSED_TASKS_LIMIT, initialUiFromSearch, UiStore } from './UiStore';
+import { COLLAPSED_TASKS_LIMIT, COMMENT_DRAFTS_LIMIT, initialUiFromSearch, UiStore } from './UiStore';
 
 import type { KeyValueStorage } from './storage';
 
@@ -251,6 +251,67 @@ describe('UiStore', () => {
             store.forgetProject('p1');
 
             expect(new UiStore(storage).forProject('p1').tasksScope).toBeNull();
+        });
+    });
+
+    describe('the comment a task\'s composer holds and has not sent', () => {
+        it('is kept per task, and is empty for a task that has none', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.setCommentDraft('t-32', 'Half a thought');
+            ui.setCommentDraft('t-35', 'Another');
+
+            expect([ui.commentDraft('t-32'), ui.commentDraft('t-35'), ui.commentDraft('t-36')]).toEqual(['Half a thought', 'Another', '']);
+            expect(new UiStore().forProject('p1').commentDraft('t-32')).toBe('');
+        });
+
+        it('is forgotten when its text is emptied, or holds only whitespace', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.setCommentDraft('t-32', 'Half a thought');
+            ui.setCommentDraft('t-32', '');
+
+            expect(ui.commentDraft('t-32')).toBe('');
+
+            ui.setCommentDraft('t-32', 'Again');
+            ui.setCommentDraft('t-32', ' \n ');
+
+            expect(ui.commentDraft('t-32')).toBe('');
+        });
+
+        it('is not stored, so a restart starts without it, and is no part of the place history shows', () => {
+            const storage = memoryStorage();
+            const ui = new UiStore(storage).forProject('p1');
+
+            ui.setCommentDraft('t-32', 'Half a thought');
+            ui.openTask('t-32');
+
+            expect(JSON.stringify(storage.data)).not.toContain('Half a thought');
+            expect(JSON.stringify(ui.view)).not.toContain('Half a thought');
+            expect(new UiStore(storage).forProject('p1').commentDraft('t-32')).toBe('');
+        });
+
+        it('is one per project', () => {
+            const store = new UiStore();
+
+            store.forProject('p1').setCommentDraft('t-32', 'Half a thought');
+
+            expect(store.forProject('p2').commentDraft('t-32')).toBe('');
+        });
+
+        it('keeps no more than the limit: the draft written longest ago goes, and writing again makes a draft the newest', () => {
+            const ui = new UiStore().forProject('p1');
+
+            for (let index = 0; index < COMMENT_DRAFTS_LIMIT; index++) ui.setCommentDraft(`t-${ index }`, `Draft ${ index }`);
+
+            // The oldest is written again and so is the newest now: the next one in line goes instead.
+            ui.setCommentDraft('t-0', 'Draft 0, longer');
+            ui.setCommentDraft('t-new', 'One more');
+
+            expect(ui.commentDraft('t-1')).toBe('');
+            expect(ui.commentDraft('t-0')).toBe('Draft 0, longer');
+            expect(ui.commentDraft('t-new')).toBe('One more');
+            expect(ui.commentDraft(`t-${ COMMENT_DRAFTS_LIMIT - 1 }`)).toBe(`Draft ${ COMMENT_DRAFTS_LIMIT - 1 }`);
         });
     });
 

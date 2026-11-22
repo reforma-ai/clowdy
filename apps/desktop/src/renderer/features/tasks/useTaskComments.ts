@@ -12,9 +12,21 @@ export const COMMENTS_PAGE_SIZE = 100;
 /** The most comments the panel loads. A task with more shows the first of them and says so; the rest stay in the daemon. */
 export const MAX_COMMENTS = 1000;
 
+/** How long a change of the comments waits for the next one before they are read again: a burst of events (one per comment) makes one read. */
+export const REFRESH_DELAY_MS = 150;
+
 export type TaskComments =
     | { status: 'loading' }
-    | { status: 'ready'; comments: TaskComment[]; /** How many the task has, whatever is loaded. */ total: number; /** The task has more than `MAX_COMMENTS`, and the rest are not loaded. */ isCut: boolean }
+    | {
+        status: 'ready';
+        comments: TaskComment[];
+        /** How many the task has, whatever is loaded. */
+        total: number;
+        /** The task has more than `MAX_COMMENTS`, and the rest are not loaded. */
+        isCut: boolean;
+        /** Why the last read for a change of the comments failed. These are the comments as they were before it, and may be out of date. */
+        refreshError?: string;
+    }
     | { status: 'failed'; message: string };
 
 const LOADING: TaskComments = { status: 'loading' };
@@ -45,7 +57,8 @@ async function readComments(
  * The comments of the task, oldest first, read from the daemon when the task is shown and again whenever `ProjectState.commentsRevision` of the task changes
  * (a comment added, edited or deleted by anyone, the task deleted, a snapshot taken in again). Comments are paged: every page is read, `COMMENTS_PAGE_SIZE` at a time,
  * up to `MAX_COMMENTS`. The first read waits a moment, as the artifacts do, so that a task the person is passing by with a held key is not read; a read for
- * a change of the comments does not wait, and the old comments stay on show until the new ones are there. An answer for a task that is no longer the one shown is dropped.
+ * a change of the comments waits `REFRESH_DELAY_MS` after the last change, so a burst of events (one per comment) is one read. The old comments stay on show until
+ * the new ones are there, and after a read that fails (`refreshError` says so). An answer for a task that is no longer the one shown is dropped.
  */
 export function useTaskComments(taskId: TaskId): { state: TaskComments; retry: () => void } {
     const { transport } = useRootStore();
@@ -53,7 +66,7 @@ export function useTaskComments(taskId: TaskId): { state: TaskComments; retry: (
     const revision = project.commentsRevision(taskId);
     const [result, setResult] = useState<{ taskId: TaskId; state: TaskComments }>();
     const [attempt, setAttempt] = useState(0);
-    // The task whose comments are on show: a read for another change of its comments is not worth a pause.
+    // The task whose comments are on show: a read for another change of its comments waits less than the first read.
     const shown = useRef<TaskId>(undefined);
 
     useEffect(() => {
@@ -67,10 +80,17 @@ export function useTaskComments(taskId: TaskId): { state: TaskComments; retry: (
                     setResult({ taskId, state });
                 },
                 (error) => {
-                    if (isCurrent) setResult({ taskId, state: { status: 'failed', message: error instanceof Error ? error.message : String(error) } });
+                    if (!isCurrent) return;
+
+                    const message = error instanceof Error ? error.message : String(error);
+
+                    // Comments that are on show stay, with the failure beside them: only a first read that fails takes their place.
+                    setResult(current => (current?.taskId === taskId && current.state.status === 'ready'
+                        ? { taskId, state: { ...current.state, refreshError: message } }
+                        : { taskId, state: { status: 'failed', message } }));
                 }
             );
-        }, shown.current === taskId ? 0 : FETCH_DELAY_MS);
+        }, shown.current === taskId ? REFRESH_DELAY_MS : FETCH_DELAY_MS);
 
         return () => {
             isCurrent = false;
@@ -82,8 +102,15 @@ export function useTaskComments(taskId: TaskId): { state: TaskComments; retry: (
         // What was read for another task is not this task's.
         state: result?.taskId === taskId ? result.state : LOADING,
         retry: () => {
-            shown.current = undefined;
-            setResult(undefined);
+            if (result?.taskId === taskId && result.state.status === 'ready') {
+                // The comments on show stay, without the failure of the read that is tried again.
+                setResult({ taskId, state: { ...result.state, refreshError: undefined } });
+            }
+            else {
+                shown.current = undefined;
+                setResult(undefined);
+            }
+
             setAttempt(count => count + 1);
         },
     };

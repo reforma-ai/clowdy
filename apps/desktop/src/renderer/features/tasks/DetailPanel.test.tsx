@@ -10,6 +10,7 @@ import { undoStack } from '../../hotkeys/undo';
 import { openCreateTask } from './CreateTaskDialog';
 import { buttonNamed, click, closePage, draw, mountScreen, openPage, page, press, project, ui, wait } from './screenHarness';
 import { DEPTH_LIMIT_HINT } from './taskTree';
+import { REFRESH_DELAY_MS } from './useTaskComments';
 
 import type { CommandResult, TaskComment } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
@@ -467,11 +468,11 @@ describe('the Comments section', () => {
     const commentIds = () => articles().map(found => found.dataset.commentId);
     const composer = () => panel('CAR-32').querySelector<HTMLElement & { editor: Editor }>('[contenteditable][aria-label="Write a comment"]')!;
     const write = (text: string) => act(async () => void composer().editor.chain().focus('end').insertContent(text).run());
-    /** What the section needs to hear a change of the comments and read them again: the screen drawn, and the read that follows. */
+    /** What the section needs to hear a change of the comments and read them again: the screen drawn, the pause that lets a burst of changes be one read, and the read. */
     const refresh = async () => {
         await wait(30);
         await draw();
-        await wait(30);
+        await wait(REFRESH_DELAY_MS + 50);
     };
     const scrolled = () => vi.mocked(Element.prototype.scrollIntoView).mock.contexts as Element[];
 
@@ -643,6 +644,25 @@ describe('the Comments section', () => {
         await draw();
 
         expect(panel('CAR-33').textContent).toContain('No comments yet');
+    });
+
+    it('keeps the comment typed and not sent when another task opens, and puts it back when the task opens again', async () => {
+        await mountScreen({ prepare: window => window.openTask('t-32'), transport: daemon });
+        await wait(250);
+        await draw();
+        await write('Half a thought');
+        await act(async () => ui().openTask('t-33'));
+        await draw();
+
+        const otherComposer = () => panel('CAR-33').querySelector<HTMLElement & { editor: Editor }>('[contenteditable][aria-label="Write a comment"]')!;
+
+        expect(otherComposer().editor.getMarkdown()).toBe('');
+
+        await act(async () => ui().openTask('t-32'));
+        await draw();
+
+        expect(composer().editor.getMarkdown()).toBe('Half a thought');
+        expect(sent.filter(input => input.type === 'task.comment.add')).toEqual([]);
     });
 
     it('reads every page of a task with more than a hundred comments', async () => {

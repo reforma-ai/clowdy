@@ -6,8 +6,12 @@ import styles from './CommentEditor.module.css';
 import { MarkdownPlate } from './MarkdownPlate';
 
 export interface CommentEditorProps {
-    /** What the editor starts with: nothing for a new comment, the body for an edit. */
+    /** What the editor starts with, and goes back to once a send was taken: nothing for a new comment, the body for an edit. */
     initial?: string;
+    /** An unsent text kept elsewhere, which the editor starts with in place of `initial` (read once, when the editor appears). */
+    draft?: string;
+    /** Hears the text of the editor each time it changes, and `initial` once a send was taken, to keep it as a `draft`. */
+    onDraftChange?: (text: string) => void;
     'aria-label': string;
     /** What the button that sends says: `Send`, `Save`. */
     submitLabel: string;
@@ -24,9 +28,9 @@ export interface CommentEditorProps {
  * sent. A text the daemon took leaves the editor as it started, which is empty for a composer. The editor takes the key first, so the line break it would make
  * of `Cmd+Enter` is not made.
  */
-export function CommentEditor({ initial = '', 'aria-label': ariaLabel, submitLabel, onSubmit, onCancel, autoFocus }: CommentEditorProps) {
+export function CommentEditor({ initial = '', draft, onDraftChange, 'aria-label': ariaLabel, submitLabel, onSubmit, onCancel, autoFocus }: CommentEditorProps) {
     const frame = useRef<HTMLDivElement>(null);
-    const [text, setText] = useState(initial);
+    const [text, setText] = useState(draft ?? initial);
     const [isPending, setIsPending] = useState(false);
     const body = text.trim();
     const canSubmit = body !== '' && !isPending;
@@ -44,13 +48,18 @@ export function CommentEditor({ initial = '', 'aria-label': ariaLabel, submitLab
         selection?.collapseToEnd();
     }, [autoFocus]);
 
+    const change = (value: string) => {
+        setText(value);
+        onDraftChange?.(value);
+    };
+
     const submit = async () => {
         if (!canSubmit) return;
 
         setIsPending(true);
 
         try {
-            if (await onSubmit(body)) setText(initial);
+            if (await onSubmit(body)) change(initial);
         }
         finally {
             setIsPending(false);
@@ -78,7 +87,7 @@ export function CommentEditor({ initial = '', 'aria-label': ariaLabel, submitLab
 
     return (
         <div ref={ frame } className={ styles.editor } onKeyDownCapture={ onKeyDownCapture }>
-            <MarkdownPlate isBounded value={ text } aria-label={ ariaLabel } onChange={ setText } />
+            <MarkdownPlate isBounded value={ text } aria-label={ ariaLabel } onChange={ change } />
             <div className={ styles.actions }>
                 { onCancel && <Button size="sm" variant="bordered" isDisabled={ isPending } onPress={ onCancel }>Cancel</Button> }
                 <Button size="sm" color="primary" isDisabled={ !canSubmit } isPending={ isPending } tooltip={ tooltipWithHotkey(submitLabel, ['mod', 'enter']) } onPress={ () => void submit() }>{ submitLabel }</Button>

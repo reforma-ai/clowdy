@@ -3,7 +3,7 @@ import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { useLayoutEffect, useRef, useState } from 'react';
 
-import { useProjectState, useRootStore } from '../../stores';
+import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { StreamLinksContext, type StreamLinks } from '../../stream/StreamLinks';
 import { sendCommand } from './commands';
 import { Comment } from './Comment';
@@ -26,13 +26,16 @@ export interface CommentsSectionProps {
 }
 
 /**
- * The task's comments, oldest first, with a composer under them. They are read when the panel opens and again when anyone changes them (`useTaskComments`).
- * The list does not move when a comment arrives, since it grows at its end; the person's own comment brings the composer back into view once it is in the list,
- * and nothing else scrolls. The person edits and deletes their own comments, and an agent's are read only; those of an archived task are all read only.
+ * The task's comments, oldest first, with a composer under them. They are read when the panel opens and again when anyone changes them (`useTaskComments`);
+ * a read that fails leaves the comments on show and says so under them, with Retry. The list does not move when a comment arrives, since it grows at its end;
+ * the person's own comment brings the composer back into view once it is in the list, and nothing else scrolls. The person edits and deletes their own comments,
+ * and an agent's are read only; those of an archived task are all read only. What the person has typed in the composer and not sent is kept for the task
+ * (`ProjectUi.commentDraft`), so it is there when the task's panel opens again.
  */
 export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = false }: CommentsSectionProps) {
     const root = useRootStore();
     const project = useProjectState();
+    const ui = useProjectUi();
     const { state, retry } = useTaskComments(taskId);
     const composer = useRef<HTMLDivElement>(null);
     // The comment the person has just sent, which the composer is brought into view for once it is in the list, and the one it was done for.
@@ -119,9 +122,23 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = fa
 
             { state.status === 'ready' && state.isCut && <None>{ `Showing the first ${ MAX_COMMENTS } comments` }</None> }
 
+            { state.status === 'ready' && state.refreshError !== undefined && (
+                <div className={ styles.failed } role="alert">
+                    <None>Comments did not refresh</None>
+                    <Button size="xs" variant="bordered" onPress={ retry }>Retry</Button>
+                </div>
+            ) }
+
             { !isReadOnly && (
                 <div ref={ composer }>
-                    <CommentEditor aria-label="Write a comment" submitLabel="Send" onSubmit={ send } />
+                    <CommentEditor
+                        key={ taskId }
+                        aria-label="Write a comment"
+                        submitLabel="Send"
+                        draft={ ui.commentDraft(taskId) }
+                        onDraftChange={ text => ui.setCommentDraft(taskId, text) }
+                        onSubmit={ send }
+                    />
                 </div>
             ) }
         </Section>

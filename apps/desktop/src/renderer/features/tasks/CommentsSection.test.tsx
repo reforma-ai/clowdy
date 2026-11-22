@@ -46,9 +46,9 @@ let onOpenTask: ReturnType<typeof vi.fn<(taskId: string) => void>>;
 const accepted = (data: unknown = {}): CommandResult => ({ ok: true, requestId: 'r', data });
 const refused = (message: string): CommandResult => ({ ok: false, requestId: 'r', error: { code: 'invalid', message } });
 
-const draw = () => act(async () => reactRoot.render(
+const draw = (taskId = 't-32') => act(async () => reactRoot.render(
     <RootStoreProvider value={ store }>
-        <CommentsSection taskId="t-32" onOpenRun={ onOpenRun } onOpenTask={ onOpenTask } />
+        <CommentsSection taskId={ taskId } onOpenRun={ onOpenRun } onOpenTask={ onOpenTask } />
     </RootStoreProvider>
 ));
 
@@ -123,6 +123,28 @@ describe('what the section shows while it waits and when it cannot', () => {
         await press(named('Retry'));
 
         expect(feed.retry).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the comments on show when a read for a change failed, says so under them and offers Retry, which the hook answers', async () => {
+        await show(ready([MINE, AGENTS], { refreshError: 'The daemon cannot be reached' }));
+
+        expect([...container.querySelectorAll('article')].map(found => found.dataset.commentId)).toEqual(['c-mine', 'c-agent']);
+        expect(container.querySelector('[role="alert"]')!.textContent).toContain('Comments did not refresh');
+        expect(container.textContent).not.toContain('Comments did not load');
+        // The composer is there as before.
+        expect(container.querySelector('[contenteditable][aria-label="Write a comment"]')).not.toBeNull();
+
+        await press(named('Retry'));
+
+        expect(feed.retry).toHaveBeenCalledTimes(1);
+    });
+
+    it('says nothing about a refresh when none failed, and drops the line once the comments are read again', async () => {
+        await show(ready([MINE], { refreshError: 'The daemon cannot be reached' }));
+        await show(ready([MINE, AGENTS]));
+
+        expect(container.querySelector('[role="alert"]')).toBeNull();
+        expect(container.textContent).not.toContain('did not refresh');
     });
 
     it('says there are none yet, with no count in the header', async () => {
@@ -514,6 +536,85 @@ describe('the composer', () => {
         expect(sent).toHaveLength(1);
 
         await act(async () => take(accepted()));
+    });
+});
+
+describe('the unsent comment of a task', () => {
+    const draftOf = (taskId: string) => store.ui.forProject(store.selectedProjectId!).commentDraft(taskId);
+    const closePanel = () => act(async () => reactRoot.render(null));
+
+    it('is kept when the panel goes away, and is in the composer when it opens again', async () => {
+        await show(ready([]));
+        await type('Write a comment', 'Half a thought');
+        await closePanel();
+
+        expect(draftOf('t-32')).toBe('Half a thought');
+
+        await draw();
+
+        expect(editorOf('Write a comment').getMarkdown()).toBe('Half a thought');
+        expect(named('Send')!.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('belongs to its task: another task\'s composer starts empty, and the first task\'s comes back with it', async () => {
+        await show(ready([]));
+        await type('Write a comment', 'For CAR-32');
+        await draw('t-35');
+
+        expect(editorOf('Write a comment').getMarkdown()).toBe('');
+
+        await type('Write a comment', 'For CAR-35');
+        await draw('t-32');
+
+        expect(editorOf('Write a comment').getMarkdown()).toBe('For CAR-32');
+        expect([draftOf('t-32'), draftOf('t-35')]).toEqual(['For CAR-32', 'For CAR-35']);
+    });
+
+    it('is gone once the comment is sent, and the composer is empty when the panel opens again', async () => {
+        await show(ready([]));
+        await type('Write a comment', 'Looks good.');
+        await press(named('Send'));
+
+        expect(draftOf('t-32')).toBe('');
+
+        await closePanel();
+        await draw();
+
+        expect(editorOf('Write a comment').getMarkdown()).toBe('');
+    });
+
+    it('is kept when the daemon refuses the send', async () => {
+        vi.spyOn(toast, 'error');
+        answer = () => refused('The daemon is busy');
+        await show(ready([]));
+        await type('Write a comment', 'One');
+        await press(named('Send'));
+        await closePanel();
+        await draw();
+
+        expect(editorOf('Write a comment').getMarkdown()).toBe('One');
+    });
+
+    it('is gone when the person empties the composer', async () => {
+        await show(ready([]));
+        await type('Write a comment', 'One');
+        await act(async () => void editorOf('Write a comment').commands.setContent('', { emitUpdate: true }));
+
+        expect(draftOf('t-32')).toBe('');
+
+        await closePanel();
+        await draw();
+
+        expect(editorOf('Write a comment').getMarkdown()).toBe('');
+    });
+
+    it('is not made by the edit of a comment, and does not take its text', async () => {
+        await show(ready([MINE]));
+        await press(named('Edit comment'));
+        await type('Edit comment', '!');
+
+        expect(draftOf('t-32')).toBe('');
+        expect(editorOf('Write a comment').getMarkdown()).toBe('');
     });
 });
 

@@ -66,6 +66,9 @@ interface StoredProjectUi {
 /** The most folded tasks a project keeps: the newest folds stay, so a project that folded tasks for months does not carry them all. */
 export const COLLAPSED_TASKS_LIMIT = 200;
 
+/** The most tasks a project holds an unsent comment for: past it, the draft written longest ago goes. */
+export const COMMENT_DRAFTS_LIMIT = 20;
+
 const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
@@ -161,6 +164,8 @@ export class ProjectUi {
 
     /** The tasks the project holds, for `openTask` to reveal a task in. Read when a task is opened, not kept. */
     readonly #tasks: (() => RevealTasks | undefined) | undefined;
+    /** Tasks: the comment each task's composer holds and has not sent, the one written last at the end. Not kept between sessions, and no place of the history. */
+    readonly #commentDrafts = new Map<TaskId, string>();
 
     constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}, tasks?: () => RevealTasks | undefined) {
         const key = uiKey(projectId);
@@ -420,6 +425,29 @@ export class ProjectUi {
     /** Folds the insides of a task in the tree list, or opens them again. */
     toggleTaskCollapsed(taskId: TaskId): void {
         this.tasksCollapsed = this.tasksCollapsed.includes(taskId) ? this.tasksCollapsed.filter(id => id !== taskId) : [...this.tasksCollapsed, taskId].slice(-COLLAPSED_TASKS_LIMIT);
+    }
+
+    /** The comment the person started on the task and has not sent, `''` when there is none. */
+    commentDraft(taskId: TaskId): string {
+        return this.#commentDrafts.get(taskId) ?? '';
+    }
+
+    /**
+     * Keeps the unsent text of a task's composer, so it is in the composer again when the task's panel opens again. Text with nothing in it (a comment that was sent, or a
+     * draft the person emptied) forgets the draft, and past `COMMENT_DRAFTS_LIMIT` the draft written longest ago goes.
+     */
+    setCommentDraft(taskId: TaskId, text: string): void {
+        this.#commentDrafts.delete(taskId);
+
+        if (text.trim() === '') return;
+
+        this.#commentDrafts.set(taskId, text);
+
+        for (const oldest of this.#commentDrafts.keys()) {
+            if (this.#commentDrafts.size <= COMMENT_DRAFTS_LIMIT) break;
+
+            this.#commentDrafts.delete(oldest);
+        }
     }
 
     /** Opens the insides of these tasks, for a task below them that was opened from elsewhere. Nothing changes when all are open already. */

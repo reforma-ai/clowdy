@@ -30,6 +30,8 @@ function saveUnsaved({ draft, value }: { draft: string; value: string }, saver: 
  * quick ticks arrive in order. A change from outside (an agent ticked a line) shows at once, unless the person has text of their own that is not saved: it is kept and
  * saved when they leave the field, like `EditableText`. A save the daemon refuses puts the stored text back.
  *
+ * An empty description shows the hint `Add a description`, which is drawn and never part of the text.
+ *
  * Text the editor cannot write back without changing it (HTML, footnotes, reference links) shows read-only with the editor's reason and **Edit as text**, and text it will not load
  * (over 256 KB) with its reason: both are edited as plain text, as the description was before the editor.
  */
@@ -100,6 +102,7 @@ export function DescriptionField({ value, onSave }: DescriptionFieldProps) {
             <MarkdownPlate
                 value={ draft }
                 aria-label="Description"
+                placeholder="Add a description"
                 onChange={ edit }
                 onUnsupported={ reason => setPlain({ reason }) }
                 unsupportedAction={ <Button size="sm" variant="bordered" onPress={ () => setPlain({ reason: null }) }>Edit as text</Button> }

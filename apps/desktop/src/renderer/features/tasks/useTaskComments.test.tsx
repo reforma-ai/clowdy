@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RootStoreProvider, type RootStore } from '../../stores';
 import { FETCH_DELAY_MS } from './useTaskArtifacts';
-import { COMMENTS_PAGE_SIZE, MAX_COMMENTS, useTaskComments } from './useTaskComments';
+import { COMMENTS_PAGE_SIZE, MAX_COMMENTS, REFRESH_DELAY_MS, useTaskComments } from './useTaskComments';
 
 import type { TaskComment, TaskCommentsPage } from '@clowdy/protocol';
 import type { PageQuery } from '../../daemon/transport';
@@ -58,6 +58,7 @@ const advance = (ms: number) => act(async () => {
 });
 
 const readyComments = () => (latest.state.status === 'ready' ? latest.state.comments : []);
+const refreshError = () => (latest.state.status === 'ready' ? latest.state.refreshError : undefined);
 
 beforeEach(() => {
     vi.useFakeTimers();
@@ -127,7 +128,7 @@ describe('useTaskComments', () => {
         expect(latest.state).toMatchObject({ total: 1000, isCut: false });
     });
 
-    it('reads the comments again at once when their revision changes, and keeps the old ones on show meanwhile', async () => {
+    it('reads the comments again a moment after their revision changes, and keeps the old ones on show meanwhile', async () => {
         await render('t-1');
         await advance(FETCH_DELAY_MS);
 
@@ -138,8 +139,12 @@ describe('useTaskComments', () => {
         }));
         revisions.set('t-1', 1);
         await render('t-1');
-        // No pause for a change of what is on show.
-        await advance(0);
+        await advance(REFRESH_DELAY_MS - 1);
+
+        expect(getTaskComments).toHaveBeenCalledTimes(1);
+        expect(readyComments()).toHaveLength(3);
+
+        await advance(1);
 
         expect(getTaskComments).toHaveBeenCalledTimes(2);
         expect(readyComments()).toHaveLength(3);
@@ -148,6 +153,122 @@ describe('useTaskComments', () => {
 
         expect(readyComments()).toHaveLength(4);
         expect(latest.state).toMatchObject({ total: 4 });
+    });
+
+    it('reads once for a burst of changes, a moment after the last of them', async () => {
+        await render('t-1');
+        await advance(FETCH_DELAY_MS);
+
+        // A comment event for each comment of a task an agent is writing to.
+        for (const revision of [1, 2, 3, 4]) {
+            revisions.set('t-1', revision);
+            await render('t-1');
+            await advance(REFRESH_DELAY_MS - 50);
+        }
+
+        expect(getTaskComments).toHaveBeenCalledTimes(1);
+
+        await advance(49);
+
+        expect(getTaskComments).toHaveBeenCalledTimes(1);
+
+        await advance(1);
+
+        expect(getTaskComments).toHaveBeenCalledTimes(2);
+        expect(readyComments()).toHaveLength(3);
+    });
+
+    it('does not show an answer to a read that a later change has replaced', async () => {
+        await render('t-1');
+        await advance(FETCH_DELAY_MS);
+
+        let stale: (page: TaskCommentsPage) => void = () => {};
+
+        getTaskComments.mockImplementationOnce(() => new Promise((resolve) => {
+            stale = resolve;
+        }));
+        revisions.set('t-1', 1);
+        await render('t-1');
+        await advance(REFRESH_DELAY_MS);
+
+        revisions.set('t-1', 2);
+        await render('t-1');
+        await act(async () => stale({ comments: [comment(1)], total: 1 }));
+
+        expect(readyComments()).toHaveLength(3);
+
+        await advance(REFRESH_DELAY_MS);
+
+        expect(getTaskComments).toHaveBeenCalledTimes(3);
+        expect(readyComments()).toHaveLength(3);
+    });
+
+    it('keeps the comments on show when a read for a change fails, and says why beside them', async () => {
+        await render('t-1');
+        await advance(FETCH_DELAY_MS);
+        getTaskComments.mockRejectedValueOnce(new Error('The daemon cannot be reached'));
+        revisions.set('t-1', 1);
+        await render('t-1');
+        await advance(REFRESH_DELAY_MS);
+
+        expect(latest.state).toMatchObject({ status: 'ready', total: 3, refreshError: 'The daemon cannot be reached' });
+        expect(readyComments().map(found => found.body)).toEqual(['Comment 1', 'Comment 2', 'Comment 3']);
+    });
+
+    it('reads again on Retry after a failed refresh without taking the comments from the screen, and drops the failure at once', async () => {
+        await render('t-1');
+        await advance(FETCH_DELAY_MS);
+        getTaskComments.mockRejectedValueOnce(new Error('The daemon cannot be reached'));
+        revisions.set('t-1', 1);
+        await render('t-1');
+        await advance(REFRESH_DELAY_MS);
+
+        expect(refreshError()).toBe('The daemon cannot be reached');
+
+        await act(async () => latest.retry());
+
+        // Never the loader: the comments are still on show, and the line about the failure is gone while the read is on its way.
+        expect(latest.state).toMatchObject({ status: 'ready', total: 3 });
+        expect(refreshError()).toBeUndefined();
+
+        await advance(REFRESH_DELAY_MS);
+
+        expect(getTaskComments).toHaveBeenCalledTimes(3);
+        expect(latest.state).toMatchObject({ status: 'ready', total: 3 });
+        expect(refreshError()).toBeUndefined();
+    });
+
+    it('shows the failure again when the read after Retry fails too', async () => {
+        await render('t-1');
+        await advance(FETCH_DELAY_MS);
+        getTaskComments.mockRejectedValueOnce(new Error('First'));
+        revisions.set('t-1', 1);
+        await render('t-1');
+        await advance(REFRESH_DELAY_MS);
+
+        expect(refreshError()).toBe('First');
+
+        getTaskComments.mockRejectedValueOnce(new Error('Second'));
+        await act(async () => latest.retry());
+        await advance(REFRESH_DELAY_MS);
+
+        expect(latest.state).toMatchObject({ status: 'ready', refreshError: 'Second' });
+        expect(readyComments()).toHaveLength(3);
+    });
+
+    it('clears the failure when the next change is read', async () => {
+        await render('t-1');
+        await advance(FETCH_DELAY_MS);
+        getTaskComments.mockRejectedValueOnce(new Error('The daemon cannot be reached'));
+        revisions.set('t-1', 1);
+        await render('t-1');
+        await advance(REFRESH_DELAY_MS);
+        revisions.set('t-1', 2);
+        await render('t-1');
+        await advance(REFRESH_DELAY_MS);
+
+        expect(latest.state).toMatchObject({ status: 'ready', total: 3 });
+        expect(refreshError()).toBeUndefined();
     });
 
     it('does not read again for the revision of another task', async () => {

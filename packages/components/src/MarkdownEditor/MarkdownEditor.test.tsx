@@ -107,6 +107,56 @@ describe('MarkdownEditor', () => {
         expect(host.querySelector('[role="toolbar"]')).not.toBeNull();
     });
 
+    describe('placeholder', () => {
+        const hint = () => host.querySelector<HTMLElement>('p.is-editor-empty[data-placeholder]');
+
+        it('should mark the empty document\'s paragraph with the hint, and leave it out of the markdown', async() => {
+            const onChange = vi.fn();
+
+            await render({ value: '', placeholder: 'Add a description', onChange });
+
+            expect(hint()?.dataset.placeholder).toBe('Add a description');
+            expect(mountedEditor().getMarkdown()).toBe('');
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
+        it('should drop the hint while there is text, bring it back when the text is gone, and never write it', async() => {
+            const onChange = vi.fn();
+
+            await render({ value: '', placeholder: 'Add a description', onChange });
+            await typeAtEnd('Plain text');
+
+            expect(hint()).toBeNull();
+            expect(onChange).toHaveBeenLastCalledWith('Plain text');
+            expect(host.textContent).not.toContain('Add a description');
+
+            // The owner of the text follows the editor, then the text is emptied from outside.
+            await render({ value: 'Plain text', placeholder: 'Add a description', onChange });
+            await render({ value: '', placeholder: 'Add a description', onChange });
+
+            expect(hint()?.dataset.placeholder).toBe('Add a description');
+        });
+
+        it('should show the hint over an empty value that came with front matter only', async() => {
+            await render({ value: '---\ntitle: x\n---\n', placeholder: 'Add a description' });
+
+            expect(hint()).not.toBeNull();
+        });
+
+        it('should add nothing to an editor without it', async() => {
+            await render({ value: '' });
+
+            expect(host.querySelector('[data-placeholder]')).toBeNull();
+            expect(host.querySelector('.is-editor-empty, .is-empty')).toBeNull();
+        });
+
+        it('should not show it where the text cannot be edited', async() => {
+            await render({ value: '', placeholder: 'Add a description', editable: false });
+
+            expect(hint()).toBeNull();
+        });
+    });
+
     it('should apply markdown input rules and formatting shortcuts', async() => {
         const onChange = vi.fn();
 

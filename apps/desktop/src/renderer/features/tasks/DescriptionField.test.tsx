@@ -87,6 +87,25 @@ describe('the description field', () => {
         expect(checkboxes().map(box => box.checked)).toEqual([false, false, false]);
     });
 
+    it('says "Add a description" in an empty one, and drops it once something is typed, without writing it into the text', async () => {
+        await mount('');
+
+        expect(container.querySelector('p.is-editor-empty')?.getAttribute('data-placeholder')).toBe('Add a description');
+        expect(editor().getMarkdown()).toBe('');
+
+        await type('Steps.');
+        await leave();
+
+        expect(container.querySelector('p.is-editor-empty')).toBeNull();
+        expect(saves).toEqual(['Steps.']);
+    });
+
+    it('shows no hint over a description that has text', async () => {
+        await mount(CHECKLIST);
+
+        expect(container.querySelector('[data-placeholder]')).toBeNull();
+    });
+
     it('saves typing when the editor loses focus, and not before', async () => {
         await mount('Steps for the form.');
         await type(' More.');

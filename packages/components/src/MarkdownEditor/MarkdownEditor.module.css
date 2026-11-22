@@ -100,6 +100,18 @@
             margin-bottom: 0;
         }
 
+        /*
+         * The hint of an empty editor (the `placeholder` prop): TipTap marks the empty document's one paragraph and puts the text in its `data-placeholder`.
+         * It floats with no height, so the caret stays at the start of the line, and the pointer goes through to the editor.
+         */
+        p:global(.is-editor-empty)::before {
+            float: left;
+            height: 0;
+            color: var(--color-secondary-muted-text);
+            content: attr(data-placeholder);
+            pointer-events: none;
+        }
+
         p,
         ul,
         ol,
