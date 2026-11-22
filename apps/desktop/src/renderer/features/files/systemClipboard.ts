@@ -20,7 +20,10 @@ export function pathInside(root: string, file: string): string | undefined {
     if (!target.startsWith(`${ base }/`)) return undefined;
 
     // The case of the file's own name is kept: only the folder's part was compared in lower case.
-    return file.replaceAll('\\', '/').slice(base.length + 1);
+    const relative = file.replaceAll('\\', '/').slice(base.length + 1);
+
+    // The folder's own address with a separator at its end is the folder, not something in it.
+    return relative === '' ? undefined : relative;
 }
 
 /** What main said, without the wrapper Electron puts around an error that crossed the bridge (`Error invoking remote method 'desktop:paste-files': Error: <message>`). */

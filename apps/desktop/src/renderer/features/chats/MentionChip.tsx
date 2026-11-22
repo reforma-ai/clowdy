@@ -17,8 +17,12 @@ export function mentionIcon({ kind, data }: Pick<ComposerMentionAttrs, 'kind' | 
             return <Box width={ size } height={ size } />;
         case 'doc':
             return <Page width={ size } height={ size } />;
-        case 'file':
-            return <FileIcon path={ String((data as { path?: unknown } | null)?.path ?? '') } kind="file" />;
+        case 'file': {
+            const { path, directory } = (data ?? {}) as { path?: unknown; directory?: unknown };
+
+            // A folder pasted from Finder or the tree is a chip of this kind too.
+            return <FileIcon path={ String(path ?? '') } kind={ directory === true ? 'directory' : 'file' } />;
+        }
         default:
             return null;
     }

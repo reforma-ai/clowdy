@@ -15,7 +15,7 @@ export function mentionedFiles(clipboard: readonly ClipboardFile[], folders: rea
             const relative = pathInside(folder.path, file.path);
 
             if (relative !== undefined) {
-                return [{ id: `file:${ folder.id }:${ relative }`, label: file.name, kind: 'file', trigger: '@', data: { path: index === 0 ? relative : file.path } }];
+                return [{ id: `file:${ folder.id }:${ relative }`, label: file.name, kind: 'file', trigger: '@', data: { path: index === 0 ? relative : file.path, ...file.kind === 'directory' && { directory: true } } }];
             }
         }
 
@@ -48,9 +48,14 @@ export async function pasteFiles(files: readonly File[], { folders, mention, att
     }
 
     const chips = mentionedFiles(held, folders);
-    // The browser names a pasted file or folder by its name only.
-    const mentioned = new Set(held.filter(file => chips.some(chip => chip.label === file.name)).map(file => file.name));
-    const rest = files.filter(file => !mentioned.has(file.name));
+    // The browser names a pasted file or folder by its name only, so each chip takes one pasted file of its name: an outside file of the same name stays to be attached.
+    const rest = [...files];
+
+    for (const chip of chips) {
+        const index = rest.findIndex(file => file.name === chip.label);
+
+        if (index !== -1) rest.splice(index, 1);
+    }
 
     for (const chip of chips) mention(chip);
 

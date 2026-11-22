@@ -17,6 +17,7 @@ describe('the path of a file inside a folder', () => {
 
     test.each([
         ['/Users/dev/web', '/Users/dev/web'],
+        ['/Users/dev/web', '/Users/dev/web/'],
         ['/Users/dev/web', '/Users/dev/website/a.ts'],
         ['/Users/dev/web', '/Users/dev/Downloads/a.ts'],
         ['/Users/dev/web', '/users/dev/web/a.ts'],

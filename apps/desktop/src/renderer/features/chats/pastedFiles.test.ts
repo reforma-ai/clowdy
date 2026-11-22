@@ -18,7 +18,7 @@ describe('the chips for the files on the clipboard', () => {
         expect(mentionedFiles([file('/Users/dev/web/src/a.ts'), file('/Users/dev/api/src/b.ts'), file('/Users/dev/web/docs', 'directory')], folders)).toEqual([
             { id: 'file:f1:src/a.ts', label: 'a.ts', kind: 'file', trigger: '@', data: { path: 'src/a.ts' } },
             { id: 'file:f2:src/b.ts', label: 'b.ts', kind: 'file', trigger: '@', data: { path: '/Users/dev/api/src/b.ts' } },
-            { id: 'file:f1:docs', label: 'docs', kind: 'file', trigger: '@', data: { path: 'docs' } },
+            { id: 'file:f1:docs', label: 'docs', kind: 'file', trigger: '@', data: { path: 'docs', directory: true } },
         ]);
     });
 
@@ -54,6 +54,18 @@ describe('files pasted into the message box', () => {
         const outside = new File(['r'], 'report.pdf');
 
         clipboard(file('/Users/dev/web/a.ts'), file('/Users/dev/Downloads/report.pdf'));
+        await pasteFiles([inside, outside], { mention, attach, ...rest });
+
+        expect(mention).toHaveBeenCalledTimes(1);
+        expect(attach).toHaveBeenCalledWith([outside]);
+    });
+
+    it('leave a file of the same name from outside the project to be attached, and take a folder\'s trailing separator for the folder', async () => {
+        const { mention, attach, ...rest } = targets();
+        const inside = new File(['a'], 'README.md');
+        const outside = new File(['b'], 'README.md');
+
+        clipboard(file('/Users/dev/web/README.md'), file('/Users/dev/Downloads/README.md'), file('/Users/dev/web/', 'directory'));
         await pasteFiles([inside, outside], { mention, attach, ...rest });
 
         expect(mention).toHaveBeenCalledTimes(1);
