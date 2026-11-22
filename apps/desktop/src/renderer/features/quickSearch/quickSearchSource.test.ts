@@ -18,6 +18,11 @@ describe('the files of two lists as one', () => {
         ]);
     });
 
+    it('puts a hidden file after the others that name the words as well, whatever the length', () => {
+        expect(mergeFiles('plan', ['.briefback/plan.md', 'docs/plan.md'])).toEqual(['docs/plan.md', '.briefback/plan.md']);
+        expect(mergeFiles('plan', ['src/.cache/plan.ts', 'a/b/c/plan.ts', 'plan-notes-long.md'])).toEqual(['a/b/c/plan.ts', 'plan-notes-long.md', 'src/.cache/plan.ts']);
+    });
+
     it('keeps the first list ahead of the second where they tie', () => {
         expect(mergeFiles('a b', ['aa.ts'], ['ab.ts'])).toEqual(['aa.ts', 'ab.ts']);
         expect(mergeFiles('', ['b.ts'], ['a.ts'])).toEqual(['b.ts', 'a.ts']);
@@ -29,7 +34,7 @@ describe('the names the palette looks for', () => {
     const OTHER = 'f2';
 
     /** A folder whose project list says `listed` and whose tree has `files`; a folder that cannot be listed with `files` left out. */
-    function source({ listed, files }: { listed: () => Promise<Array<{ folderId: string; path: string }>>; files?: Record<string, string> }) {
+    function source({ listed, files }: { listed: (projectId: string, query: string) => Promise<Array<{ folderId: string; path: string }>>; files?: Record<string, string> }) {
         const fileSystem = vi.fn(() => {
             if (!files) throw new Error('unreachable');
 
@@ -58,13 +63,38 @@ describe('the names the palette looks for', () => {
         expect(await files('booking price')).toEqual(['src/booking/price.ts']);
     });
 
-    it('leave out the hidden files, since the tree does', async () => {
+    it('leave out the hidden files that only the tree knows, since it does not show them: git ignores those, such as caches and a local .env', async () => {
         const files = source({
-            listed: async () => [{ folderId: FOLDER.id, path: 'src/.cache/e.ts' }],
-            files: { '.env': '', 'src/.cache/e.ts': '', 'node_modules/x/e.js': '', 'src/e.ts': '' },
+            listed: async () => [],
+            files: { '.env': '', '.DS_Store': '', 'src/.cache/e.ts': '', 'node_modules/x/e.js': '', 'src/e.ts': '' },
         });
 
         expect(await files('e')).toEqual(['src/e.ts']);
+    });
+
+    it('have the hidden files git tracks, which are part of the project, after the ones that are not hidden where they match alike', async () => {
+        // The project's list answers for the words, as the daemon's does.
+        const tracked = ['.briefback/acp/plan.md', '.github/workflows/ci.yml', 'plan.md', 'src/plan-view.ts'];
+        const files = source({
+            listed: async (_project, query) => tracked.filter(path => query.split(/\s+/).every(word => path.includes(word))).map(path => ({ folderId: FOLDER.id, path })),
+            files: { '.briefback/acp/plan.md': '', 'plan.md': '', 'src/plan-view.ts': '', '.DS_Store': '' },
+        });
+
+        // Typed nearly as it is written, the hidden file is the one.
+        expect(await files('acp/plan.md')).toEqual(['.briefback/acp/plan.md']);
+        expect(await files('workflows ci')).toEqual(['.github/workflows/ci.yml']);
+
+        // Its name starts with the word as the two others do, and it comes after them.
+        expect(await files('plan')).toEqual(['plan.md', 'src/plan-view.ts', '.briefback/acp/plan.md']);
+    });
+
+    it('do not have what the project\'s list has in a folder of dependencies, which is vendored code, nor the files the system\'s file manager leaves', async () => {
+        const files = source({
+            listed: async () => ['node_modules/x/e.js', '.DS_Store', 'docs/Thumbs.db', 'src/e.js'].map(path => ({ folderId: FOLDER.id, path })),
+            files: { 'src/e.js': '' },
+        });
+
+        expect(await files('e')).toEqual(['src/e.js']);
     });
 
     it('are the answer of the one list that came, when the other failed', async () => {

@@ -22,13 +22,13 @@ function scoreOf(path: string, first: string): number {
 }
 
 /**
- * The files of two lists, as one: the ones that name the words best first, then the shorter paths, the project's list before the other where they tie (the sort is
- * stable), each file once.
+ * The files of two lists, as one: the ones that name the words best first, then the ones that are not hidden (a file in a dot folder, a dotfile) before the ones that are,
+ * then the shorter paths, the project's list before the other where they tie (the sort is stable), each file once.
  */
 export function mergeFiles(query: string, ...lists: ReadonlyArray<readonly string[]>): string[] {
     const first = query.trim().toLowerCase().split(/\s+/)[0] ?? '';
 
-    return [...new Set(lists.flat())].toSorted((a, b) => scoreOf(a, first) - scoreOf(b, first) || a.length - b.length);
+    return [...new Set(lists.flat())].toSorted((a, b) => scoreOf(a, first) - scoreOf(b, first) || Number(isHiddenPath(a)) - Number(isHiddenPath(b)) || a.length - b.length);
 }
 
 /** The documents whose path has every word of `query` (any case), ranked as file names are. The paths are below the docs folder: the folder's own name is not part of them. */
@@ -76,9 +76,16 @@ export async function selectedText(root: RootStore, projectId: ProjectId, folder
 }
 
 /**
+ * Whether a path of the project's list is not what a person looks for by name: a file in a folder of dependencies (vendored code, if git tracks it) or one the file
+ * manager of the system leaves behind, which a folder outside a repository lists as it lists every file.
+ */
+const isNoise = (path: string) => path.split('/').some(name => name === 'node_modules' || name === '.DS_Store' || name === 'Thumbs.db');
+
+/**
  * The palette's search of one folder of a project. The names come from the daemon's list of the project's files (git's tracked and unignored ones) and from the folder's
- * file tree, so a file the tree shows is found whether git ignores it or not; the content from the folder's file manager, which searches through the daemon (ripgrep) and, where a provider has no search, reads the files itself. Hidden files are left out
- * unless the tree shows them: what the tree does not show is not searched either.
+ * file tree, so a file the tree shows is found whether git ignores it or not; the content from the folder's file manager, which searches through the daemon (ripgrep) and, where a provider has no search, reads the files itself. A hidden file that git
+ * tracks (`.briefback/acp/plan.md`, `.github/workflows/ci.yml`, `.eslintrc`) is found by its name though the tree does not show it, after the files that are not hidden where they match
+ * alike: it is part of the project. The hidden files that only the tree knows (git ignores them: caches, `.DS_Store`, a local `.env`) are left out unless the tree shows them.
  */
 export function quickSearchSource(root: RootStore, project: ProjectState, folder: ProjectFolder): QuickSearchSource {
     const projectId = project.id;
@@ -101,9 +108,9 @@ export function quickSearchSource(root: RootStore, project: ProjectState, folder
             if (listed.status === 'rejected' && shown.status === 'rejected') throw listed.reason;
 
             const tracked = listed.status === 'fulfilled' ? listed.value.filter(match => match.folderId === folder.id).map(match => match.path) : [];
-            const files = mergeFiles(query, tracked, shown.status === 'fulfilled' ? shown.value : []);
 
-            return treeLayout.showHidden ? files : files.filter(path => !isHiddenPath(path));
+            // What the tree lists is already as the tree shows it, hidden files or not.
+            return mergeFiles(query, treeLayout.showHidden ? tracked : tracked.filter(path => !isNoise(path)), shown.status === 'fulfilled' ? shown.value : []);
         },
         docs: async (query) => {
             // The daemon reads the folder's `.clowdy/docs` from the disk, which the file names leave out: the Docs tab's own tree is the same files.
