@@ -1,0 +1,38 @@
+@reference '@clowdy/styles/rulesets';
+
+/* The select's pill with nothing to press: its height, its inset, its type and its icon's gap, in the muted colour, with no plate (a clear border keeps the box the same). */
+.folder {
+    @ruleset typography-button-sm;
+
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-width: 0;
+    max-width: min(100%, 16rem);
+    height: var(--spacing-30);
+    padding: var(--spacing-4) var(--spacing-10);
+    border: 1px solid transparent;
+    color: var(--color-secondary-muted-text);
+    cursor: default;
+}
+
+.folder[data-missing] {
+    color: var(--color-warning-text);
+}
+
+.folder svg {
+    flex-shrink: 0;
+}
+
+/* The branch after the folder: the same line and type as the folder, in the muted colour, with nothing to press. */
+.branch {
+    @ruleset typography-button-sm;
+
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 12rem;
+    height: var(--spacing-30);
+    color: var(--color-secondary-muted-text);
+    cursor: default;
+}

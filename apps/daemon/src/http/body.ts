@@ -1,3 +1,7 @@
+import { invalid } from '../errors';
+
+import type { z } from 'zod';
+
 /** The most a JSON route reads (`/v1/commands`). An upload has its own, larger limit: see `maxBody` of its route. */
 export const JSON_BODY_LIMIT = 8 * 1024 * 1024;
 
@@ -34,4 +38,28 @@ export async function readText(request: Request, limit: number): Promise<string>
     }
 
     return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
+/** A JSON body, read within the limit and checked against the schema: what a route that takes one starts with. */
+export async function readJson<S extends z.ZodType>(request: Request, schema: S): Promise<z.output<S>> {
+    let body: unknown;
+
+    try {
+        body = JSON.parse(await readText(request, JSON_BODY_LIMIT));
+    }
+    catch (error) {
+        if (error instanceof BodyTooLarge) {
+            throw error;
+        }
+
+        throw invalid('The body is not valid JSON');
+    }
+
+    const parsed = schema.safeParse(body);
+
+    if (!parsed.success) {
+        throw invalid('The request is not valid', parsed.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })));
+    }
+
+    return parsed.data;
 }

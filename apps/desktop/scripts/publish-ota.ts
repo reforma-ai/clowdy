@@ -52,6 +52,7 @@ export const SHELL_PATHS = [
     'apps/desktop/package.json',
     'apps/desktop/scripts/build.ts',
     'apps/desktop/scripts/bun-runtime.ts',
+    'apps/desktop/scripts/ripgrep.ts',
     'apps/desktop/scripts/main-bundle.ts',
     'packages/protocol/src/paths.ts',
     'packages/constants/src/theme.ts',

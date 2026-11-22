@@ -9,8 +9,9 @@ const [owner, repo] = releaseRepo?.split('/') ?? [];
 
 /**
  * What the daemon needs outside the ASAR, where Bun can read and run it (`scripts/build.ts`): the daemon and the system
- * skills of the app's own bundle, and the Bun for the arch being packaged. The app copies both out of the install folder
- * before it starts the daemon (`src/main/bundle.ts`). Named per platform here: `${platform}` would expand to the build host's.
+ * skills of the app's own bundle, and the runtime for the arch being packaged: Bun and the ripgrep beside it. The app
+ * copies both out of the install folder before it starts the daemon (`src/main/bundle.ts`). Named per platform here:
+ * `${platform}` would expand to the build host's.
  */
 function daemonResources(platform: 'darwin' | 'win32'): FileSet[] {
     return [
@@ -61,7 +62,7 @@ export default {
         icon: 'build/icon.png',
         hardenedRuntime: true,
         entitlements: 'build/entitlements.mac.plist',
-        // Every other Mach-O in the bundle, Bun included, is signed with these.
+        // Every other Mach-O in the bundle, Bun and ripgrep included, is signed with these.
         entitlementsInherit: 'build/entitlements.mac.inherit.plist',
         notarize: false,
         target: ['dmg', 'zip'],

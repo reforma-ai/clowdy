@@ -35,7 +35,7 @@ import type { ChainedCommands, Editor } from '@tiptap/core';
 
 interface FormatAction {
     label: string;
-    /** TipTap's default shortcut for the command. */
+    /** The shortcut the editor gives the command: TipTap's default, or the one `markdownDocument.ts` sets in its place. */
     hotkey: string[];
     icon: ComponentType;
     isActive: (editor: Editor) => boolean;
@@ -114,7 +114,7 @@ const GROUPS: FormatAction[][] = [
     [
         {
             label: 'Quote',
-            hotkey: ['mod', 'shift', 'b'],
+            hotkey: ['mod', 'shift', '.'],
             icon: Quote,
             isActive: editor => editor.isActive('blockquote'),
             run: chain => chain.toggleBlockquote(),

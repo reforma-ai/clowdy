@@ -15,17 +15,21 @@ import type {
     StreamItem,
     StreamItemBody,
     Task,
+    TaskComment,
     TaskStatus,
 } from '@clowdy/protocol';
 
 /** Everything the fixture daemon holds. Plain data: the transport mutates it and announces the changes. */
 export interface FixtureData {
     projects: Project[];
-    /** What `git` says in each folder, by the folder's path: the `origin` address; a folder without an entry has no remote. */
-    git: Record<string, { remoteUrl?: string }>;
+    /** What `git` says in each folder, by the folder's path: the `origin` address and the branch (a short hash with `detached`); a folder without an entry has neither. */
+    git: Record<string, { remoteUrl?: string; branch?: string; detached?: true }>;
     statuses: Record<string, TaskStatus[]>;
     chats: Chat[];
+    /** Every task of every project, the archived ones too: the snapshot leaves those out, and `getTaskDetail` and the archive's pages read them. */
     tasks: Task[];
+    /** The comments of the tasks, in no order: the transport sorts what it answers. */
+    comments: TaskComment[];
     runs: Run[];
     chatTaskLinks: ChatTaskLink[];
     runTaskLinks: RunTaskLink[];
@@ -434,6 +438,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         },
     ];
 
+    // A closed task has the time it closed, as the daemon's migration gives a task that was already closed (its last change).
     const task = (number: number, title: string, statusId: string, rest: Partial<Task> = {}): Task => ({
         id: `t-${ number }`,
         projectId,
@@ -446,8 +451,11 @@ export function createFixtureData(now = Date.now()): FixtureData {
         createdBy: { kind: 'user' },
         createdAt: ago(300 - number),
         updatedAt: ago(number),
+        ...(['done', 'canceled'].includes(statusId) && { closedAt: ago(number) }),
         ...rest,
     });
+    // One archive batch, as `task.archive` writes it: every task of it carries the same time.
+    const archivedAt = ago(60 * 24 * 2);
 
     const tasks: Task[] = [
         task(20, 'Remove the legacy booking page', 'done', { description: 'The old three-step page is replaced by the single form.' }),
@@ -468,6 +476,34 @@ export function createFixtureData(now = Date.now()): FixtureData {
             createdBy: { kind: 'provider', provider: 'linear' },
             external: { provider: 'linear', externalId: 'ENG-412', url: 'https://linear.app/example/issue/ENG-412' },
         }),
+        // A tree of tasks, as `task create --parent` makes it: Payments holds four tasks and one of them holds two, over most of the workflow, and the canceled
+        // one is left out of the roll-up. Refund flow carries a checklist in its description, Card checkout the comments.
+        task(31, 'Payments', 'active', { description: 'Take card payments at checkout, and give the money back.\n\nThe tasks inside it are the stages.' }),
+        task(32, 'Card checkout', 'active', { parentId: 't-31', createdBy: { kind: 'run', runId: 'r-orch-1' }, description: 'The card form and the payment call.' }),
+        task(33, 'Tokenize the card in the browser', 'done', { parentId: 't-32' }),
+        task(34, 'Handle a declined card', 'todo', { parentId: 't-32', dependsOn: ['t-33'], description: 'Show the reason and keep what the person typed.' }),
+        task(35, 'Refund flow', 'todo', {
+            parentId: 't-31',
+            description: 'Steps to cover:\n\n- [x] Refund a whole booking\n- [x] Refund after a cancel\n- [ ] Refund part of a booking\n- [ ] Tell the person by email\n- [ ] Show the refund in the booking list',
+        }),
+        task(36, 'Payment receipts by email', 'review', { parentId: 't-31' }),
+        task(37, 'Split a payment between two cards', 'canceled', { parentId: 't-31', description: 'Dropped: nobody asked for it.' }),
+        // An archived piece: a finished task with two tasks inside it, archived together. The snapshot leaves them out; the archive's page lists them.
+        task(38, 'Clean up the admin pages', 'done', { archivedAt }),
+        task(39, 'Remove the old reports page', 'done', { parentId: 't-38', archivedAt }),
+        task(40, 'Drop the admin theme switch', 'canceled', { parentId: 't-38', archivedAt }),
+    ];
+
+    const comments: TaskComment[] = [
+        { id: 'cmt_A001', taskId: 't-32', author: { kind: 'user' }, body: 'Use the sandbox keys until the checkout is reviewed.', createdAt: ago(60 * 5) },
+        {
+            id: 'cmt_A002',
+            taskId: 't-32',
+            author: { kind: 'run', runId: 'r-orch-1' },
+            body: 'The form posts to `/api/pay`.\n\n- the card number never reaches our server\n- a declined card answers `402`\n\nNext: the declined state (`CAR-34`).',
+            createdAt: ago(60 * 4),
+        },
+        { id: 'cmt_A003', taskId: 't-32', author: { kind: 'user' }, body: 'Looks right. Keep the amount in cents.', createdAt: ago(60 * 3), editedAt: ago(60 * 2) },
     ];
 
     const chats: Chat[] = [
@@ -864,9 +900,9 @@ export function createFixtureData(now = Date.now()): FixtureData {
     return {
         projects,
         git: {
-            '/Users/dev/car-rental': { remoteUrl: 'git@github.com:acme/car-rental.git' },
-            '/Users/dev/clowdy': { remoteUrl: 'https://github.com/acme/clowdy.git' },
-            '/Users/dev/car-rental-api': { remoteUrl: 'git@github.com:acme/car-rental-api.git' },
+            '/Users/dev/car-rental': { remoteUrl: 'git@github.com:acme/car-rental.git', branch: 'main' },
+            '/Users/dev/clowdy': { remoteUrl: 'https://github.com/acme/clowdy.git', branch: 'next' },
+            '/Users/dev/car-rental-api': { remoteUrl: 'git@github.com:acme/car-rental-api.git', branch: 'feature/payments' },
         },
         statuses: { [projectId]: DEFAULT_STATUSES, [FIXTURE_EMPTY_PROJECT_ID]: DEFAULT_STATUSES, [FIXTURE_PERSONAL_PROJECT_ID]: DEFAULT_STATUSES },
         // As the daemon's migration leaves them: a chat that has an orchestrator records the engine and model it runs on.
@@ -876,6 +912,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
             return orchestrator ? { ...chat, engine: orchestrator.engine, ...(orchestrator.model && { model: orchestrator.model }) } : chat;
         }),
         tasks,
+        comments,
         runs,
         chatTaskLinks,
         runTaskLinks,

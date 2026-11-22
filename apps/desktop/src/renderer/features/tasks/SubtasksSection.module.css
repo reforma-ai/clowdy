@@ -1,0 +1,61 @@
+@reference '@clowdy/styles/rulesets';
+
+/* Rows line up with the heading, and the hover plate reaches into the panel's padding, as in the panel's other lists. */
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    margin-inline: calc(var(--spacing-md) * -1);
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    width: 100%;
+    min-width: 0;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: 0;
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition: background-color 150ms ease-out;
+}
+
+.row:hover {
+    background-color: var(--color-secondary-muted-light);
+}
+
+.row:focus-visible {
+    outline: var(--spacing-2) solid var(--color-primary-muted-border);
+}
+
+/* Keeps the keys in a column when a status the workflow no longer has has no icon. */
+.noStatus {
+    flex-shrink: 0;
+    width: var(--spacing-14);
+    height: var(--spacing-14);
+}
+
+.key {
+    @ruleset typography-text-xs;
+
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+    font-weight: 500;
+}
+
+.title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.action {
+    display: flex;
+}

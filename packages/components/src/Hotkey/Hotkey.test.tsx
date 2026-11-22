@@ -40,6 +40,16 @@ describe('Hotkey', () => {
         expect(container.querySelector('[data-hotkey-sequence]')?.textContent).toBe('GthenT');
     });
 
+    it('says its size on the capsule and on a sequence, which whatever holds one places it by', () => {
+        render(<Hotkey hotkey="k" size="sm" />);
+
+        expect(container.querySelector('[data-hotkey]')?.getAttribute('data-size')).toBe('sm');
+
+        render(<Hotkey sequence={ [['g'], ['t']] } />);
+
+        expect(container.querySelector('[data-hotkey-sequence]')?.getAttribute('data-size')).toBe('xs');
+    });
+
     it('shows a press with modifiers inside a sequence as one capsule', () => {
         render(<Hotkey sequence={ [['shift', 'm'], ['b']] } />);
 

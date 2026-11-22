@@ -22,7 +22,8 @@ vi.mock('./CreateTaskDialog', () => ({ openCreateTask: vi.fn() }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /*
- * The Tasks screen on the fixture project (CAR-20 to CAR-30): done 20 21 22, review 23, active 24 25, todo 26 27, backlog 28, canceled 29, backlog 30.
+ * The Tasks screen on the fixture project, at the roots as a board of one level: CAR-20 to CAR-31, with done 20 21 22, review 23, active 24 25 31, todo 26 27, backlog 28, canceled 29, backlog 30
+ * (the tasks inside CAR-31 are drawn by its own scope: `ScreenScope.test.tsx` and `ScreenViews.test.tsx`).
  * The test build has no MobX observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
  */
 

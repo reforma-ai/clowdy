@@ -1,18 +1,24 @@
 import { makeAutoObservable, observableRef, reaction } from 'mobx';
 
 import { readStored, removeStored, writeStored, type KeyValueStorage } from './storage';
+import { revealTask, type RevealTasks } from './taskReveal';
 
-import type { ChatId, FolderId, ProjectId, RunId, TaskId } from '@clowdy/protocol';
+import type { ChatId, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
 
 export const SECTIONS = ['agents', 'tasks', 'docs'] as const;
 
 export type Section = typeof SECTIONS[number];
 
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
-export const SETTINGS_PAGES = ['appearance', 'chat', 'projects', 'providers', 'skills'] as const;
+export const SETTINGS_PAGES = ['appearance', 'chat', 'files', 'shortcuts', 'projects', 'providers', 'skills'] as const;
 
 export type SettingsPage = typeof SETTINGS_PAGES[number];
 export type TasksView = 'board' | 'list';
+
+/** The tabs of the side panel's header, in the order they appear there. */
+export const SIDE_PANEL_TABS = ['info', 'files', 'terminal'] as const;
+
+export type SidePanelTab = typeof SIDE_PANEL_TABS[number];
 
 /** Where a project's window is: the section and what is open in it. History walks these; the view options of a section are not places. */
 export interface ProjectView {
@@ -27,6 +33,8 @@ export interface ProjectView {
     draft: boolean;
     /** Agents: the folder the new chat is for, `null` for the main folder. Meaningful only with `draft`. */
     draftFolderId: FolderId | null;
+    /** Tasks: the task whose insides the screen shows, `null` for the project's roots. It is a place: back and forward bring it back. */
+    tasksScope: TaskId | null;
 }
 
 /** Whether Settings covers the window, and on which page. The page is `null` while Settings is closed, because it does not show then. */
@@ -46,15 +54,27 @@ interface StoredProjectUi {
     groupByFolder: boolean;
     collapsedFolders: FolderId[];
     agentsFolded: boolean;
+    sidePanelOpen: boolean;
+    sidePanelTab: SidePanelTab;
     tasksView: TasksView;
+    tasksScope: TaskId | null;
+    tasksSubtasks: boolean;
+    taskPageView: TasksView;
+    tasksCollapsed: TaskId[];
 }
+
+/** The most folded tasks a project keeps: the newest folds stay, so a project that folded tasks for months does not carry them all. */
+export const COLLAPSED_TASKS_LIMIT = 200;
+
+/** The most tasks a project holds an unsent comment for: past it, the draft written longest ago goes. */
+export const COMMENT_DRAFTS_LIMIT = 20;
 
 const uiKey = (projectId: ProjectId) => `clowdy:ui:${ projectId }`;
 
 const idOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /** What a page URL may preselect in fixtures mode, for screenshots and demos: `?section=tasks&task=t-24&view=list`. */
-export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'tasksView'>>;
+export type InitialProjectUi = Partial<Pick<StoredProjectUi, 'section' | 'chatId' | 'taskId' | 'runId' | 'docPath' | 'docFolderId' | 'expandedChats' | 'groupByFolder' | 'collapsedFolders' | 'agentsFolded' | 'sidePanelOpen' | 'sidePanelTab' | 'tasksView'>>;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
     const params = new URLSearchParams(search);
@@ -81,6 +101,12 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
     if (params.get('collapsed')) initial.collapsedFolders = params.get('collapsed')!.split(',').filter(Boolean);
 
     if (params.has('agents')) initial.agentsFolded = params.get('agents') === 'folded';
+
+    if (params.has('panel')) initial.sidePanelOpen = params.get('panel') === 'open';
+
+    const panelTab = SIDE_PANEL_TABS.find(candidate => candidate === params.get('panelTab'));
+
+    if (panelTab) initial.sidePanelTab = panelTab;
 
     if (view === 'board' || view === 'list') initial.tasksView = view;
 
@@ -112,12 +138,39 @@ export class ProjectUi {
     collapsedFolders: readonly FolderId[] = [];
     /** Chats: the strip of running agents over the message box shows its line only, with the rows folded away. Kept for every chat of the project. */
     agentsFolded = false;
+    /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat or section is on show. */
+    sidePanelOpen = false;
+    /** The tab the side panel shows, kept for the project: the one it was left on. */
+    sidePanelTab: SidePanelTab = 'info';
     tasksView: TasksView = 'board';
+    /**
+     * Tasks: the task whose insides the screen shows, `null` for the project's roots. It names a task the project may no longer hold, which is why the screen
+     * reads it through `resolveTasksScope` and not as it is.
+     */
+    tasksScope: TaskId | null = null;
+    /** Tasks: the board shows every task of the scope at any depth, flattened onto it, and not only the tasks directly inside it. */
+    tasksSubtasks = false;
+    /** Tasks: the view a task's own scope is drawn in, whatever the project's `tasksView` is. */
+    taskPageView: TasksView = 'board';
+    /** Tasks: the tasks whose insides are folded in the tree list, the newest folds last. A task that is not here is open, which is how every task starts. */
+    tasksCollapsed: readonly TaskId[] = [];
+    /**
+     * Tasks: the screen shows the project's archive in place of the scope (the scope and the view stay as they were, and come back when it is left). Not kept between
+     * sessions, and not a place in the history: it is an option of the screen, as the view is.
+     */
+    tasksArchive = false;
     /** Agents: files that a hand-off from another chat left for the new-chat page, which takes them once it is open. Not kept between sessions. */
     pendingFiles: readonly File[] = [];
 
-    constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}) {
+    /** The tasks the project holds, for `openTask` to reveal a task in. Read when a task is opened, not kept. */
+    readonly #tasks: (() => RevealTasks | undefined) | undefined;
+    /** Tasks: the comment each task's composer holds and has not sent, the one written last at the end. Not kept between sessions, and no place of the history. */
+    readonly #commentDrafts = new Map<TaskId, string>();
+
+    constructor(readonly projectId: ProjectId, storage?: KeyValueStorage, initial: InitialProjectUi = {}, tasks?: () => RevealTasks | undefined) {
         const key = uiKey(projectId);
+
+        this.#tasks = tasks;
         const stored = readStored(storage, key) as Partial<Record<keyof StoredProjectUi, unknown>> | undefined;
 
         if (stored && typeof stored === 'object') {
@@ -131,11 +184,17 @@ export class ProjectUi {
             this.groupByFolder = stored.groupByFolder !== false;
             this.collapsedFolders = Array.isArray(stored.collapsedFolders) ? stored.collapsedFolders.filter(id => typeof id === 'string') : [];
             this.agentsFolded = stored.agentsFolded === true;
+            this.sidePanelOpen = stored.sidePanelOpen === true;
+            this.sidePanelTab = SIDE_PANEL_TABS.find(tab => tab === stored.sidePanelTab) ?? this.sidePanelTab;
             this.tasksView = stored.tasksView === 'list' ? 'list' : 'board';
+            this.tasksScope = idOrNull(stored.tasksScope);
+            this.tasksSubtasks = stored.tasksSubtasks === true;
+            this.taskPageView = stored.taskPageView === 'list' ? 'list' : 'board';
+            this.tasksCollapsed = Array.isArray(stored.tasksCollapsed) ? [...new Set(stored.tasksCollapsed.filter(id => typeof id === 'string'))].slice(-COLLAPSED_TASKS_LIMIT) : [];
         }
 
         Object.assign(this, initial);
-        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, expandedChats: observableRef, collapsedFolders: observableRef });
+        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, expandedChats: observableRef, collapsedFolders: observableRef, tasksCollapsed: observableRef });
         reaction(
             (): StoredProjectUi => ({
                 section: this.section,
@@ -148,7 +207,13 @@ export class ProjectUi {
                 groupByFolder: this.groupByFolder,
                 collapsedFolders: [...this.collapsedFolders],
                 agentsFolded: this.agentsFolded,
+                sidePanelOpen: this.sidePanelOpen,
+                sidePanelTab: this.sidePanelTab,
                 tasksView: this.tasksView,
+                tasksScope: this.tasksScope,
+                tasksSubtasks: this.tasksSubtasks,
+                taskPageView: this.taskPageView,
+                tasksCollapsed: [...this.tasksCollapsed],
             }),
             value => writeStored(storage, key, value)
         );
@@ -156,11 +221,21 @@ export class ProjectUi {
 
     /** The place the window shows, as a value that can be kept and shown again with `show`. */
     get view(): ProjectView {
-        return { section: this.section, chatId: this.chatId, taskId: this.taskId, runId: this.runId, docPath: this.docPath, docFolderId: this.docFolderId, draft: this.draft, draftFolderId: this.draftFolderId };
+        return {
+            section: this.section,
+            chatId: this.chatId,
+            taskId: this.taskId,
+            runId: this.runId,
+            docPath: this.docPath,
+            docFolderId: this.docFolderId,
+            draft: this.draft,
+            draftFolderId: this.draftFolderId,
+            tasksScope: this.tasksScope,
+        };
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ section, chatId, taskId, runId, docPath, docFolderId, draft, draftFolderId }: ProjectView): void {
+    show({ section, chatId, taskId, runId, docPath, docFolderId, draft, draftFolderId, tasksScope }: ProjectView): void {
         this.section = section;
         this.chatId = chatId;
         this.taskId = taskId;
@@ -169,6 +244,7 @@ export class ProjectUi {
         this.docFolderId = docFolderId;
         this.draft = draft;
         this.draftFolderId = draftFolderId;
+        this.tasksScope = tasksScope;
     }
 
     /** Shows the chat, in the Agents section; `null` leaves none selected. */
@@ -194,6 +270,13 @@ export class ProjectUi {
         if (attach.length > 0) this.pendingFiles = [...this.pendingFiles, ...attach];
     }
 
+    /** Changes the folder the new-chat page is for, `null` for the main folder. Only with that page open: the folder is no part of any other place. */
+    setDraftFolder(folderId: FolderId | null): void {
+        if (!this.draft) return;
+
+        this.draftFolderId = folderId;
+    }
+
     /** The files `openDraft` was given, handed over once: the next call finds none. */
     takePendingFiles(): readonly File[] {
         const files = this.pendingFiles;
@@ -203,10 +286,36 @@ export class ProjectUi {
         return files;
     }
 
-    /** Shows the task in the Tasks section; `null` closes its detail panel. */
-    openTask(taskId: TaskId | null): void {
+    /**
+     * Shows the task in the Tasks section; `null` closes its detail panel. The task is made visible in one change with the opening, so history has one entry for both:
+     * the scope stays when the task is inside it and moves to the task's parent when it is not (`revealTask`), and the folds above the task open.
+     * `reveal: false` is for the Tasks screen opening a task it draws already (a click on a card, a key on the cursor task): with a filter on, a card can be drawn away
+     * from its parent, and opening it must not move the screen. `madeIn` is for a task that was just made inside a task (`null`: a root) and may not have reached the
+     * project yet, since the daemon's event can come after the reply to the command: the screen is put where the task will show, and not left where it is.
+     */
+    openTask(taskId: TaskId | null, { reveal = true, madeIn }: { reveal?: boolean; madeIn?: TaskId | null } = {}): void {
         this.section = 'tasks';
         this.taskId = taskId;
+
+        if (taskId !== null && reveal) this.#reveal(taskId, madeIn);
+    }
+
+    /** Puts the screen where the task shows: its scope, and its folds. Nothing changes without the project's tasks, or for a task they do not hold. */
+    #reveal(taskId: TaskId, madeIn: TaskId | null | undefined): void {
+        const tasks = this.#tasks?.();
+
+        if (!tasks) return;
+
+        const scope = this.resolveTasksScope(tasks);
+        const view = scope === null ? this.tasksView : this.taskPageView;
+        const reveal = revealTask(tasks, scope, taskId, { oneLevel: view === 'board' && !this.tasksSubtasks, madeIn });
+
+        if (!reveal) return;
+
+        // A task of the board, opened from elsewhere, is not in the archive: the screen goes where it shows.
+        this.tasksArchive = false;
+        this.tasksScope = reveal.scope;
+        this.expandTasks(reveal.unfold);
     }
 
     /** Shows the run in the Agents section, below its chat; a root run is its chat. */
@@ -255,8 +364,106 @@ export class ProjectUi {
         this.agentsFolded = !this.agentsFolded;
     }
 
+    /** Opens the side panel at the right of the window, or shuts it. */
+    toggleSidePanel(): void {
+        this.sidePanelOpen = !this.sidePanelOpen;
+    }
+
+    /** Shows a tab of the side panel. */
+    showSidePanelTab(tab: SidePanelTab): void {
+        this.sidePanelTab = tab;
+    }
+
+    /** Opens the side panel on a tab and leaves it open when it already shows that tab: a key that picks a tab does not shut the panel. */
+    openSidePanelTab(tab: SidePanelTab): void {
+        this.sidePanelOpen = true;
+        this.sidePanelTab = tab;
+    }
+
+    /** Opens the side panel on a tab, or shuts the panel when it already shows that tab: one key to get a tool and to get rid of it. */
+    toggleSidePanelTab(tab: SidePanelTab): void {
+        if (this.sidePanelOpen && this.sidePanelTab === tab) {
+            this.sidePanelOpen = false;
+        }
+        else {
+            this.sidePanelOpen = true;
+            this.sidePanelTab = tab;
+        }
+    }
+
     setTasksView(view: TasksView): void {
         this.tasksView = view;
+    }
+
+    /**
+     * Shows the insides of a task on the Tasks screen, or the project's roots with `null`. Only the scope: the section stays as it is, and so does the open task.
+     * A scope is a place, so back and forward bring it back.
+     */
+    setTasksScope(scope: TaskId | null): void {
+        this.tasksScope = scope;
+    }
+
+    /**
+     * The scope the screen shows, given the tasks the project holds: the remembered one while that task is on the board, the roots when it is gone, deleted
+     * or archived. Nothing is written, so the remembered scope comes back with a task that is restored, and no history entry is made by the screen finding it gone.
+     */
+    resolveTasksScope(tasks: ReadonlyMap<TaskId, Pick<Task, 'archivedAt'>>): TaskId | null {
+        const task = this.tasksScope === null ? undefined : tasks.get(this.tasksScope);
+
+        return task && task.archivedAt === undefined ? this.tasksScope : null;
+    }
+
+    /** Shows the project's archive in place of the scope, or the scope again. */
+    setTasksArchive(show: boolean): void {
+        this.tasksArchive = show;
+    }
+
+    /** Shows the sub-tasks of the scope flattened onto the board, or only the tasks directly inside it. */
+    setTasksSubtasks(show: boolean): void {
+        this.tasksSubtasks = show;
+    }
+
+    /** Sets the view a task's own scope is drawn in. */
+    setTaskPageView(view: TasksView): void {
+        this.taskPageView = view;
+    }
+
+    /** Folds the insides of a task in the tree list, or opens them again. */
+    toggleTaskCollapsed(taskId: TaskId): void {
+        this.tasksCollapsed = this.tasksCollapsed.includes(taskId) ? this.tasksCollapsed.filter(id => id !== taskId) : [...this.tasksCollapsed, taskId].slice(-COLLAPSED_TASKS_LIMIT);
+    }
+
+    /** The comment the person started on the task and has not sent, `''` when there is none. */
+    commentDraft(taskId: TaskId): string {
+        return this.#commentDrafts.get(taskId) ?? '';
+    }
+
+    /**
+     * Keeps the unsent text of a task's composer, so it is in the composer again when the task's panel opens again. Text with nothing in it (a comment that was sent, or a
+     * draft the person emptied) forgets the draft, and past `COMMENT_DRAFTS_LIMIT` the draft written longest ago goes.
+     */
+    setCommentDraft(taskId: TaskId, text: string): void {
+        this.#commentDrafts.delete(taskId);
+
+        if (text.trim() === '') return;
+
+        this.#commentDrafts.set(taskId, text);
+
+        for (const oldest of this.#commentDrafts.keys()) {
+            if (this.#commentDrafts.size <= COMMENT_DRAFTS_LIMIT) break;
+
+            this.#commentDrafts.delete(oldest);
+        }
+    }
+
+    /** Opens the insides of these tasks, for a task below them that was opened from elsewhere. Nothing changes when all are open already. */
+    expandTasks(taskIds: readonly TaskId[]): void {
+        if (taskIds.some(id => this.tasksCollapsed.includes(id))) this.tasksCollapsed = this.tasksCollapsed.filter(id => !taskIds.includes(id));
+    }
+
+    /** Lets go of the folds of tasks the project no longer holds (deleted ones, archived ones), so what is kept stays as small as the folds that matter. */
+    forgetCollapsedTasks(tasks: ReadonlyMap<TaskId, unknown>): void {
+        if (this.tasksCollapsed.some(id => !tasks.has(id))) this.tasksCollapsed = this.tasksCollapsed.filter(id => tasks.has(id));
     }
 }
 
@@ -268,15 +475,16 @@ export class UiStore {
     settingsProjectId: ProjectId | null = null;
     readonly #projects = new Map<ProjectId, ProjectUi>();
 
-    constructor(private readonly storage?: KeyValueStorage, private readonly initial?: InitialProjectUi) {
-        makeAutoObservable<UiStore, 'storage' | 'initial'>(this, { storage: false, initial: false });
+    /** `tasksOf` gives the tasks a project holds, which `ProjectUi.openTask` needs to reveal a task: the root store hands them over, a test of the window state alone has none. */
+    constructor(private readonly storage?: KeyValueStorage, private readonly initial?: InitialProjectUi, private readonly tasksOf?: (projectId: ProjectId) => RevealTasks | undefined) {
+        makeAutoObservable<UiStore, 'storage' | 'initial' | 'tasksOf'>(this, { storage: false, initial: false, tasksOf: false });
     }
 
     forProject(projectId: ProjectId): ProjectUi {
         let ui = this.#projects.get(projectId);
 
         if (!ui) {
-            ui = new ProjectUi(projectId, this.storage, this.initial);
+            ui = new ProjectUi(projectId, this.storage, this.initial, () => this.tasksOf?.(projectId));
             this.#projects.set(projectId, ui);
         }
 

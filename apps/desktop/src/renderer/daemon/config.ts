@@ -1,6 +1,9 @@
+import { FileSystemError } from '@clowdy/file-manager/provider';
+
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
-import { TransportError, type Transport } from './transport';
+import { TransportError, type ProjectFileSystem, type Transport } from './transport';
+
 
 export type DaemonConfig =
     | { kind: 'daemon'; url: string; token: string }
@@ -29,6 +32,13 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
 
 const noDaemon = () => Promise.reject(new TransportError('No daemon is configured'));
 
+/** A file system whose every request fails, as the daemon's would while it is out of reach. */
+const noFiles = (): ProjectFileSystem => {
+    const fail = () => Promise.reject(new FileSystemError('Unavailable', 'No daemon is configured'));
+
+    return { list: fail, read: fail, write: fail, createDirectory: fail, move: fail, copy: fail, delete: fail };
+};
+
 /** Answers every request with a failure, so the UI shows its "cannot reach" screen like for any unreachable daemon. */
 const unconfigured: Transport = {
     getRootSnapshot: noDaemon,
@@ -38,9 +48,12 @@ const unconfigured: Transport = {
     command: noDaemon,
     getItems: noDaemon,
     getTaskDetail: noDaemon,
+    getTaskComments: noDaemon,
+    getArchivedTasks: noDaemon,
     getDocsTree: noDaemon,
     getDocFile: noDaemon,
     getProjectFiles: noDaemon,
+    fileSystem: noFiles,
     uploadAttachment: noDaemon,
     getAttachment: noDaemon,
     deleteAttachment: noDaemon,
@@ -48,6 +61,14 @@ const unconfigured: Transport = {
     getSkills: noDaemon,
     getAgents: noDaemon,
     getAgentModels: noDaemon,
+    listTerminals: noDaemon,
+    createTerminal: noDaemon,
+    closeTerminal: noDaemon,
+    openTerminal: (_id, handlers) => {
+        handlers.onGone();
+
+        return { write: () => false, resize: () => undefined, close: () => undefined };
+    },
 };
 
 export function createTransport(config: DaemonConfig): Transport {

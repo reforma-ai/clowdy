@@ -35,6 +35,307 @@ const items = [
 const draw = (props: { active?: boolean; working?: boolean }) => act(async () => root.render(<StreamView items={ items } { ...props } />));
 const worked = () => [...container.querySelectorAll('button')].find(button => button.textContent?.startsWith('Worked for'));
 
+describe('the agent\'s reasoning', () => {
+    const thought = (n: number, text: string, done = true, durationMs?: number) => item(n, { kind: 'reasoning', text, done, ...(durationMs !== undefined && { durationMs }) });
+    const said = (n: number, text: string, done = true) => item(n, { kind: 'assistant', text, done });
+    const bash = (n: number, command: string, state: 'done' | 'running' = 'done') => item(n, { kind: 'tool', toolCallId: `b${ n }`, name: 'Bash', input: { command }, state });
+    const asked = item(0, { kind: 'user', text: 'Check the box' });
+    const line = (label: string) => [...container.querySelectorAll('button')].find(button => button.textContent === label);
+
+    it('is a line that says how long it took, closed, and a press opens the words', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'The box is the one named in the task.', true, 3200), said(2, 'It is the right one.', false)] } active working />));
+
+        expect(line('Thought 3s')).toBeDefined();
+        expect(line('Thought 3s')!.getAttribute('aria-expanded')).toBe('false');
+        expect(container.textContent).not.toContain('named in the task');
+
+        await act(async () => line('Thought 3s')!.click());
+
+        expect(line('Thought 3s')!.getAttribute('aria-expanded')).toBe('true');
+        expect(container.textContent).toContain('The box is the one named in the task.');
+    });
+
+    it('says Thinking while it goes on, shimmering, without the Working line under it', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'Let me see', false)] } active working />));
+
+        expect(line('Thinking…')).toBeDefined();
+        expect(line('Thinking…')!.querySelector('[style*="shimmer"]')).not.toBeNull();
+        expect(container.textContent).not.toContain('Working…');
+
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'Let me see', true, 800)] } active working />));
+
+        // Done, and the agent has not gone on yet: the working line is back.
+        expect(line('Thought')).toBeDefined();
+        expect(container.textContent).toContain('Working…');
+    });
+
+    it('stands in the fold of a finished turn with the rest of the work, and the answer stays out', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'First I will check.', true, 2000), said(2, 'Checking.'), bash(3, 'pwd'), bash(4, 'whoami'), said(5, 'All fine.')] } />));
+
+        // Under the fold, so out of sight until it is opened.
+        expect(line('Thought 2s')).toBeUndefined();
+
+        await act(async () => worked()!.click());
+
+        expect(line('Thought 2s')).toBeDefined();
+        expect(container.textContent).toContain('Checking.');
+        expect(container.textContent).toContain('All fine.');
+    });
+
+    it('goes in the group of the calls it is between, which counts only the calls', async () => {
+        const stream = [asked, bash(1, 'pwd'), thought(2, 'Now the user.', true, 1500), bash(3, 'whoami'), said(4, 'Fine.', false)];
+
+        await act(async () => root.render(<StreamView items={ stream } active working />));
+
+        expect(line('Ran 2 commands')).toBeDefined();
+        expect(container.textContent).not.toContain('Thought');
+
+        await act(async () => line('Ran 2 commands')!.click());
+
+        expect(line('Thought 2s')).toBeDefined();
+        expect(container.textContent).toContain('pwd');
+        expect(container.textContent).toContain('whoami');
+    });
+
+    it('is open in the live group while the agent thinks after its calls', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami'), thought(3, 'What next?', false)] } active working />));
+
+        expect(line('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('true');
+        expect(line('Thinking…')).toBeDefined();
+    });
+
+    it('keeps the line of a group the person closed shimmering while the agent thinks in it, since no Working line stands in for it then', async () => {
+        const stream = [asked, bash(1, 'pwd'), bash(2, 'whoami')];
+
+        await act(async () => root.render(<StreamView items={ [...stream, thought(3, 'What next?', false)] } active working />));
+        await act(async () => line('Ran 2 commands')!.click());
+
+        expect(line('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('false');
+        expect(container.textContent).not.toContain('Working…');
+        expect(line('Ran 2 commands')!.querySelector('[style*="shimmer"]')).not.toBeNull();
+
+        // The thought ends: the line rests and the Working line is back.
+        await act(async () => root.render(<StreamView items={ [...stream, thought(3, 'What next?', true, 2000)] } active working />));
+
+        expect(line('Ran 2 commands')!.querySelector('[style*="shimmer"]')).toBeNull();
+        expect(container.textContent).toContain('Working…');
+    });
+
+    it('leaves a thought and a single call as two rows of the fold, with no group around them', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'One call only.', true, 2000), bash(2, 'pwd'), said(3, 'Done.')] } />));
+
+        expect(line('Thought 2s')).toBeUndefined();
+
+        await act(async () => worked()!.click());
+
+        expect(line('Thought 2s')).toBeDefined();
+        expect(container.textContent).toContain('pwd');
+        expect([...container.querySelectorAll('button')].some(button => button.textContent?.startsWith('Ran'))).toBe(false);
+    });
+
+    it('takes a thought that trails the answer into the fold: no loose line under the answer', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami'), said(3, 'All fine.'), thought(4, 'Anything else?', true, 1000)] } />));
+
+        expect(line('Thought 1s')).toBeUndefined();
+
+        await act(async () => worked()!.click());
+
+        // The group of the two calls holds the thought, since it ends their run.
+        expect(line('Ran 2 commands')).toBeDefined();
+        expect(container.textContent).not.toContain('Anything else?');
+        expect((container.textContent ?? '').indexOf('Worked for')).toBeLessThan((container.textContent ?? '').indexOf('All fine.'));
+    });
+
+    it('is one row for thoughts that follow one another: the words together, the time added', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'Reading the form first.', true, 2000), thought(2, 'Then the price helper.', true, 1500), said(3, 'On it.', false)] } active working />));
+
+        expect(container.querySelectorAll('button[aria-expanded]')).toHaveLength(1);
+        expect(line('Thought 4s')).toBeDefined();
+
+        await act(async () => line('Thought 4s')!.click());
+
+        expect(container.textContent).toContain('Reading the form first.');
+        expect(container.textContent).toContain('Then the price helper.');
+    });
+
+    it('folds a turn whose only work is a thought, and puts the divider of a fork after the answer that a thought precedes', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, thought(1, 'Easy one.', true, 4000), said(2, 'Yes.')] } forkedFrom={ { atSeq: 2, title: 'Check the box' } } />));
+
+        expect(worked()).toBeDefined();
+        expect(line('Thought 4s')).toBeUndefined();
+        expect(container.querySelector<HTMLElement>('[data-slot="fork-divider"]')?.previousElementSibling?.textContent).toContain('Yes.');
+    });
+});
+
+describe('runs of tool calls', () => {
+    const bash = (n: number, command: string, state: 'done' | 'running' = 'done') => item(n, { kind: 'tool', toolCallId: `b${ n }`, name: 'Bash', input: { command }, state });
+    const said = (n: number, text: string, done = true) => item(n, { kind: 'assistant', text, done });
+    const group = (label: string) => [...container.querySelectorAll('button')].find(button => button.textContent === label);
+    const asked = item(0, { kind: 'user', text: 'Check the box' });
+
+    it('draws calls that follow one another under one line, closed once the agent has gone on, and a press opens them', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, said(1, 'Checking.'), bash(2, 'pwd'), bash(3, 'whoami'), said(4, 'Looks fine.', false)] } active />));
+
+        expect(group('Ran 2 commands')).toBeDefined();
+        expect(container.textContent).not.toContain('pwd');
+
+        await act(async () => group('Ran 2 commands')!.click());
+
+        expect(container.textContent).toContain('pwd');
+        expect(container.textContent).toContain('whoami');
+    });
+
+    it('leaves a call alone as it is', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), said(2, 'Fine.', false)] } active />));
+
+        expect(container.textContent).toContain('pwd');
+        expect([...container.querySelectorAll('button')].some(button => button.textContent?.startsWith('Ran'))).toBe(false);
+    });
+
+    it('keeps the run at the end of a stream that is going open, tells what runs now, and closes it once the agent goes on', async () => {
+        const going = [asked, bash(1, 'pwd'), bash(2, 'bun test', 'running')];
+
+        await act(async () => root.render(<StreamView items={ going } active working />));
+
+        expect(group('Running 2 commands')).toBeDefined();
+        expect(container.textContent).toContain('bun test');
+
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'bun test'), said(3, 'Tests pass.', false)] } active working />));
+
+        expect(group('Ran 2 commands')).toBeDefined();
+        expect(container.textContent).not.toContain('bun test');
+    });
+
+    it('is closed in a stream that is over, whatever it ends with', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami')] } />));
+
+        expect(group('Ran 2 commands')).toBeDefined();
+        expect(container.textContent).not.toContain('whoami');
+    });
+
+    it('keeps what the person chose when the run goes on', async () => {
+        const stream = (extra: StreamItem[] = []) => [asked, bash(1, 'pwd'), bash(2, 'whoami', 'running'), ...extra];
+
+        await act(async () => root.render(<StreamView items={ stream() } active working />));
+        await act(async () => group('Running 2 commands')!.click());
+
+        expect(container.textContent).not.toContain('whoami');
+
+        // A third call joins the group: it stays closed, for the person closed it.
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami'), bash(3, 'date', 'running')] } active working />));
+
+        expect(group('Running 3 commands')).toBeDefined();
+        expect(container.textContent).not.toContain('date');
+    });
+
+    it('groups the calls inside the fold of a finished turn, closed', async () => {
+        const stream = [asked, said(1, 'Checking.'), bash(2, 'pwd'), bash(3, 'whoami'), said(4, 'All fine.')];
+
+        await act(async () => root.render(<StreamView items={ stream } />));
+        await act(async () => worked()!.click());
+
+        expect(container.textContent).toContain('Checking.');
+        expect(group('Ran 2 commands')).toBeDefined();
+        expect(container.textContent).not.toContain('whoami');
+
+        await act(async () => group('Ran 2 commands')!.click());
+
+        expect(container.textContent).toContain('whoami');
+    });
+
+    it('closes the run when the agent stops to ask the person, though the stream is still going', async () => {
+        const question = item(3, { kind: 'question', questionId: 'q1', text: 'Which one?', options: [] });
+
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami')] } active working />));
+
+        expect(container.textContent).toContain('whoami');
+
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami'), question] } active />));
+
+        expect(group('Ran 2 commands')).toBeDefined();
+        expect(container.textContent).toContain('Which one?');
+        expect(container.textContent).not.toContain('whoami');
+    });
+
+    it('closes the run while the stream waits for something other than the agent: background work, a free slot, the person', async () => {
+        const stream = [asked, bash(1, 'pwd'), bash(2, 'bun test', 'running')];
+
+        await act(async () => root.render(<StreamView items={ stream } active working />));
+
+        expect(container.textContent).toContain('bun test');
+
+        // Waiting on background work (what `RunDetail` says), a free slot, or a run that is going on without working.
+        await act(async () => root.render(<StreamView items={ stream } active working="Waiting for background work…" />));
+
+        expect(container.textContent).not.toContain('bun test');
+        expect(group('Running 2 commands')!.getAttribute('aria-expanded')).toBe('false');
+
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'bun test')] } active />));
+
+        expect(container.textContent).not.toContain('bun test');
+        expect(group('Ran 2 commands')).toBeDefined();
+    });
+
+    it('draws two phases with the commentary between them, and only the one at the end open while the agent works', async () => {
+        const stream = [asked, bash(1, 'pwd'), bash(2, 'whoami'), said(3, 'That is the right box. Now the build.'), bash(4, 'bun run build'), bash(5, 'bun test', 'running')];
+
+        await act(async () => root.render(<StreamView items={ stream } active working />));
+
+        const text = container.textContent ?? '';
+
+        expect(group('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('false');
+        expect(group('Running 2 commands')!.getAttribute('aria-expanded')).toBe('true');
+        expect(text.indexOf('Ran 2 commands')).toBeLessThan(text.indexOf('That is the right box'));
+        expect(text.indexOf('That is the right box')).toBeLessThan(text.indexOf('Running 2 commands'));
+        expect(text).not.toContain('whoami');
+        expect(text).toContain('bun run build');
+
+        // The agent writes more: the second phase closes too, and a third begins.
+        await act(async () => root.render(<StreamView items={ [...stream.slice(0, 5), bash(5, 'bun test'), said(6, 'Green. One last check.'), bash(7, 'git status'), bash(8, 'git diff', 'running')] } active working />));
+
+        expect(container.querySelectorAll('button[aria-expanded]').length).toBeGreaterThanOrEqual(3);
+        expect(container.textContent).not.toContain('bun run build');
+        expect(container.textContent).toContain('git status');
+    });
+
+    it('says on the line whether the calls show, and shimmers it only while a call runs', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'bun test', 'running')] } active working />));
+
+        const running = group('Running 2 commands')!;
+
+        expect(running.getAttribute('aria-expanded')).toBe('true');
+        expect(running.querySelector('[style*="shimmer"]')).not.toBeNull();
+
+        await act(async () => running.click());
+
+        expect(group('Running 2 commands')!.getAttribute('aria-expanded')).toBe('false');
+
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'bun test')] } active />));
+
+        expect(group('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('false');
+        expect(group('Ran 2 commands')!.querySelector('[style*="shimmer"]')).toBeNull();
+    });
+
+    it('keeps the group a person opened open when the agent goes on', async () => {
+        const going = [asked, bash(1, 'pwd'), bash(2, 'whoami')];
+
+        await act(async () => root.render(<StreamView items={ [...going, said(3, 'Next.', false)] } active />));
+        await act(async () => group('Ran 2 commands')!.click());
+        await act(async () => root.render(<StreamView items={ [...going, said(3, 'Next.'), bash(4, 'date'), bash(5, 'uptime', 'running')] } active working />));
+
+        expect(container.textContent).toContain('whoami');
+        expect(group('Running 2 commands')).toBeDefined();
+    });
+
+    it('puts the divider of a fork after the group that holds its point', async () => {
+        await act(async () => root.render(<StreamView items={ [asked, bash(1, 'pwd'), bash(2, 'whoami'), bash(3, 'date')] } forkedFrom={ { atSeq: 2, title: 'Check the box' } } />));
+
+        const divider = container.querySelector<HTMLElement>('[data-slot="fork-divider"]');
+
+        expect(divider?.previousElementSibling?.textContent).toContain('Ran 3 commands');
+    });
+});
+
 describe('StreamView', () => {
     it('folds the work of a finished turn under one line, and keeps the message and the answer', async () => {
         await draw({ active: false });
@@ -130,6 +431,33 @@ describe('StreamView', () => {
         await act(async () => rail?.querySelector<HTMLButtonElement>('[data-tick="i-4"]')?.click());
 
         expect(scrolled).toHaveBeenCalledWith({ top: 224, behavior: 'auto' });
+    });
+
+    it('makes the last tick current once the stream is scrolled to its end, though the last message has not reached the top', async () => {
+        const many = Array.from({ length: 7 }, (_, n) => item(n, { kind: 'user', text: `Ask ${ n }` }));
+
+        await act(async () => root.render(<StreamView items={ many } />));
+
+        const rail = container.querySelector('[aria-label="Messages"]');
+        const scroll = container.querySelector<HTMLElement>('[data-turn="i-4"]')?.parentElement?.parentElement as HTMLElement;
+        const box = (top: number): DOMRect => ({ top, bottom: top + 40, left: 0, right: 0, width: 0, height: 40, x: 0, y: top, toJSON: () => ({}) });
+        const current = () => rail?.querySelector('[aria-current]')?.getAttribute('data-tick');
+        const scrollTo = async (top: number) => {
+            Object.defineProperty(scroll, 'scrollTop', { configurable: true, value: top });
+            await act(async () => void scroll.dispatchEvent(new Event('scroll')));
+        };
+
+        // Every message sits below the top of the stream, as the last ones do when the answers are short.
+        scroll.getBoundingClientRect = () => box(0);
+        container.querySelectorAll<HTMLElement>('[data-turn]').forEach((message, n) => void (message.getBoundingClientRect = () => box(300 + n * 100)));
+        Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 2000 });
+        Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 700 });
+
+        await scrollTo(0);
+        expect(current()).toBe('i-0');
+
+        await scrollTo(1299);
+        expect(current()).toBe('i-6');
     });
 
     it('keeps one card and swaps its text as the pointer moves across ticks', async () => {
@@ -454,17 +782,17 @@ describe('StreamView', () => {
                 expect(editButtons()).toHaveLength(0);
             });
 
-            it('is off, and says so, on every row while the agent works', async () => {
+            it('is not drawn on any row while the agent works', async () => {
                 const onEdit = vi.fn();
 
                 await drawWith(editable, { active: true, messageActions: { onEdit, editBusy: true } });
 
-                expect(editButtons().map(button => button.disabled)).toEqual([true, true]);
-                expect(container.querySelectorAll('[role="button"][aria-disabled][aria-label="Edit message"]')).toHaveLength(2);
+                expect(editButtons()).toHaveLength(0);
+                expect(container.querySelector('[aria-label="Edit message"]')).toBeNull();
 
-                await act(async () => editButtons().forEach(button => button.click()));
+                await drawWith(editable, { active: false, messageActions: { onEdit, editBusy: false } });
 
-                expect(onEdit).not.toHaveBeenCalled();
+                expect(editButtons()).toHaveLength(2);
             });
 
             it('puts the frame where the bubble stood, with the turn rail\'s mark, and keeps everything around it', async () => {

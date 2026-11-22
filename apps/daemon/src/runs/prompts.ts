@@ -17,6 +17,12 @@ const THREAD_SKILL = 'thread';
 
 const INTRO = 'You are the orchestrator of a Clowdy chat. Follow clowdy:orchestrate; it names the other system skills (clowdy:autopilot, clowdy:semi-manual, clowdy:scaffold, clowdy:docs).';
 
+/**
+ * What every orchestrator is told about the task tools. Most agents have them as the shell command `clowdy task`; one that uses the MCP door
+ * (`AgentSpec.taskTools`) has them as tools of the same names and fields, and this line serves both, so the prompt does not depend on the door.
+ */
+const TASKS = 'Tasks: read, change, comment on and archive them with the shell command `clowdy task` (`clowdy task --help`). Where your tool list has `task_get`, `task_list`, `task_create`, `task_update` and the other `task_` tools, those are the same commands, with the flags as camelCase fields. `clowdy task list` shows only the work in flight and pages long answers: never list everything.';
+
 /** What every chat's orchestrator is told about threads; clowdy:orchestrate says how to delegate. */
 const THREADS = [
     'Threads: you can hand work to other agents as threads, chats below yours that run alongside you, with the shell command `clowdy thread` (`clowdy thread --help` lists its commands; `"$CLOWDY_CLI"` is the same command if your shell does not find `clowdy`). It reaches the Clowdy daemon over a loopback connection: if a sandboxed shell refuses it (`EPERM`), run the same command again with escalated permissions, outside the sandbox.',
@@ -87,6 +93,7 @@ export function systemPrompt(mode: ChatMode, project: Project, cwd = mainFolder(
         chat?.parent && threadIntro(chat.parent),
         `Mode: ${ modeLabel(mode) }.`,
         projectFacts(project, cwd),
+        TASKS,
         chat && THREADS,
     ].filter(Boolean).join('\n');
 }
@@ -140,7 +147,7 @@ export function taskMessage(task: Task): string {
     return [
         `Complete task ${ task.key }: ${ task.title }`,
         description && `Description:\n${ description }`,
-        `This chat is bound to ${ task.key }; read it with task_get, do the work, and finish with a short report.`,
+        `This chat is bound to ${ task.key }; read it with \`clowdy task get ${ task.key }\`, do the work, and finish with a short report.`,
     ].filter(Boolean).join('\n\n');
 }
 

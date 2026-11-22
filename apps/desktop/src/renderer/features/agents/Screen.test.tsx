@@ -11,13 +11,21 @@ import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 
 import type { Editor } from '@tiptap/core';
+import type { ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
 
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
 vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
 
-// The pages beside the list are drawn by their own tests; here they only say which one was asked for.
-vi.mock('../chats/ChatView', () => ({ ChatView: ({ chat }: { chat: { id: string; title: string } }) => <div data-testid="chat" data-chat-id={ chat.id }>{ chat.title }</div> }));
+// The pages beside the list are drawn by their own tests; here they only say which one was asked for. A chat's `controls` stand beside it, as the line under its message box.
+vi.mock('../chats/ChatView', () => ({
+    ChatView: ({ chat, controls }: { chat: { id: string; title: string }; controls?: ReactNode }) => (
+        <>
+            <div data-testid="chat" data-chat-id={ chat.id }>{ chat.title }</div>
+            { controls }
+        </>
+    ),
+}));
 vi.mock('./RunDetail', () => ({ RunDetail: ({ run }: { run: { id: string; name: string } }) => <div data-testid="run" data-run-id={ run.id }>{ run.name }</div> }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -259,9 +267,16 @@ describe('the new-chat row', () => {
 describe('grouped by folder', () => {
     const API = { id: 'fld_api', path: '/Users/dev/car-rental-api' };
     const MAIN = 'fld_car_rental';
+    /** The name of the one folder of the fixture project. */
+    const SINGLE = 'car-rental';
     const head = (folderId: string) => `@folder:${ folderId }`;
     const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]');
     const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
+    /** The select under the new-chat page's message box, and the rows of its list. */
+    const folderSelect = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
+    /** The read only line of a chat that is made, in the place the select had. */
+    const folderLine = () => container.querySelector<HTMLElement>('[role="group"][aria-label="Folder"]');
+    const folderItem = (name: string) => [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === name)!;
     const filtersMenu = async () => {
         await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
 
@@ -413,33 +428,24 @@ describe('grouped by folder', () => {
         expect(isSelected('c-2')).toBe(true);
     });
 
-    it('has a button in each heading for a chat in that folder: the main folder\'s starts as the new-chat row does, and the page says where', async () => {
+    it('has a button in each heading for a chat in that folder: the page says where, and the new-chat row stays the open one', async () => {
         await restart();
         await press(buttonNamed('New chat in car-rental-api'));
         await draw();
 
         expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
-        expect(container.textContent).toContain('in car-rental-api');
-        // The page of another folder is marked on its heading, and the row at the top is free to start one in the main folder.
-        expect(isSelected('@new-chat')).toBe(false);
-        expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(true);
-
-        await press(rowOf('@new-chat'));
-        await draw();
-
-        expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
+        expect(folderSelect()?.textContent).toBe('car-rental-api');
+        // Whatever folder the page is for, the row at the top is the one marked, and no heading is.
         expect(isSelected('@new-chat')).toBe(true);
-        expect(container.textContent).toContain('in car-rental');
-        expect(container.textContent).not.toContain('in car-rental-api');
         expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
 
         // The main group's button is the same page as the row at the top.
-        await press(buttonNamed('New chat in car-rental-api'));
         await press(buttonNamed('New chat in car-rental'));
         await draw();
 
         expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
         expect(isSelected('@new-chat')).toBe(true);
+        expect(folderSelect()?.textContent).toBe('car-rental');
     });
 
     it('shows the main folder\'s page when the folder the new-chat page was for left the project', async () => {
@@ -448,25 +454,261 @@ describe('grouped by folder', () => {
 
         expect(isSelected('@new-chat')).toBe(true);
         expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
-        expect(container.textContent).toContain('in car-rental');
+        expect(folderSelect()?.textContent).toBe('car-rental');
         expect(container.textContent).not.toContain('fld_gone');
     });
 
-    it('reads what the daemon knows of the folders only while grouped, once, and not again on a timer', async () => {
+    describe('the folder select of the new-chat page', () => {
+        it('lists the folders of the project by name and ticks the one the chat is for, and picking another changes it', async () => {
+            await restart();
+            await press(rowOf('@new-chat'));
+            await draw();
+
+            expect(folderSelect()?.getAttribute('aria-label')).toBe('Folder: car-rental');
+
+            await press(folderSelect()!);
+
+            // The names are all of it: no path.
+            expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual(['car-rental', 'car-rental-api']);
+            // The chosen folder is told to assistive technology, not only drawn as a tick, and the other is not.
+            expect(folderItem('car-rental').getAttribute('aria-checked')).toBe('true');
+            expect(folderItem('car-rental-api').getAttribute('aria-checked')).toBe('false');
+            expect(folderItem('car-rental-api').getAttribute('aria-disabled')).not.toBe('true');
+
+            await press(folderItem('car-rental-api'));
+            await draw();
+
+            expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
+            expect(folderSelect()?.textContent).toBe('car-rental-api');
+            // The new-chat row stays the open one, as when the heading's own button opened the page.
+            expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
+            expect(isSelected('@new-chat')).toBe(true);
+
+            await press(folderSelect()!);
+
+            expect(folderItem('car-rental').getAttribute('aria-checked')).toBe('false');
+            expect(folderItem('car-rental-api').getAttribute('aria-checked')).toBe('true');
+
+            // The main folder is no folder of its own: it is the page the row at the top opens.
+            await press(folderItem('car-rental'));
+            await draw();
+
+            expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
+            expect(folderSelect()?.textContent).toBe('car-rental');
+            expect(isSelected('@new-chat')).toBe(true);
+        });
+
+        it('keeps the words of the message when another folder is picked', async () => {
+            await restart();
+            await press(rowOf('@new-chat'));
+            await draw();
+            editor().commands.insertContent('Fix the endpoint');
+
+            // The draft of the project may hold words of an earlier test: what is there is what must stay.
+            const words = editor().getText();
+
+            expect(words).toContain('Fix the endpoint');
+
+            await press(folderSelect()!);
+            await press(folderItem('car-rental-api'));
+            await draw();
+
+            expect(ui().draftFolderId).toBe(API.id);
+            expect(editor().getText()).toBe(words);
+        });
+
+        it('adds no read of what the daemon knows of the folders when the page opens: the list and the page share the one', async () => {
+            const transport = new FixtureTransport({ data: twoFolders() });
+            const read = vi.spyOn(transport, 'getProjectsInfo');
+            // The folder line reads the git facts of its one project (the branch): that is a read of its own, cheap, and not the one of every project that these tests watch.
+            const allProjects = () => read.mock.calls.filter(([projectId]) => projectId === undefined).length;
+
+            await restart({ transport });
+
+            const reads = allProjects();
+
+            expect(reads).toBe(1);
+
+            await press(rowOf('@new-chat'));
+            await draw();
+            await press(buttonNamed('New chat in car-rental-api'));
+            await draw();
+            await draw(() => ui().openChat('c-2'));
+            await press(rowOf('@new-chat'));
+            await draw();
+
+            expect(folderSelect()).not.toBeNull();
+            expect(allProjects()).toBe(reads);
+        });
+
+        it('makes the chat in the folder that was picked there', async () => {
+            const before = new Set(project().chats.keys());
+
+            await restart();
+            await press(rowOf('@new-chat'));
+            await draw();
+            await press(folderSelect()!);
+            await press(folderItem('car-rental-api'));
+            await draw();
+            editor().commands.insertContent('Fix the endpoint');
+            await act(async () => {
+                field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            });
+            await draw();
+
+            const made = [...project().chats.values()].filter(chat => !before.has(chat.id));
+
+            expect(made).toHaveLength(1);
+            expect(made[0]?.folderId).toBe(API.id);
+        });
+
+        it('is only on the new-chat page, grouped or flat, and a project of one folder has its folder read only in its place', async () => {
+            await restart();
+            await draw(() => ui().openChat('c-2'));
+
+            expect(folderSelect()).toBeNull();
+
+            await draw(() => ui().openDraft());
+
+            expect(folderSelect()).not.toBeNull();
+
+            await draw(() => ui().setGroupByFolder(false));
+
+            expect(folderSelect()).not.toBeNull();
+
+            // The fixture project has one folder: nothing to pick, so the line only says where the chat will work.
+            act(() => reactRoot.unmount());
+            store.dispose();
+            reactRoot = createRoot(container);
+            store = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
+            await store.load();
+            await draw(() => {
+                ui().setGroupByFolder(true);
+                ui().openDraft();
+            });
+
+            expect(folderSelect()).toBeNull();
+            expect(folderLine()?.textContent).toBe(SINGLE);
+            expect(container.textContent).toContain('What should we work on?');
+        });
+
+        it('lists a folder that is gone from the disk, and does not let it be picked', async () => {
+            const transport = new FixtureTransport({ data: twoFolders() });
+            const info = await transport.getProjectsInfo();
+
+            vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(info.map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })) } : entry)));
+            await restart({ transport });
+            await press(rowOf('@new-chat'));
+            await draw();
+            await press(folderSelect()!);
+
+            // Its line says why it is not to be picked.
+            const gone = [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent?.startsWith('car-rental-api'))!;
+
+            expect(gone.textContent).toBe('car-rental-apiThis folder no longer exists');
+            expect(gone.getAttribute('aria-disabled')).toBe('true');
+
+            await press(gone);
+
+            expect(ui().draftFolderId).toBeNull();
+        });
+    });
+
+    describe('the folder of a chat that is made', () => {
+        it('stays under the message box with no select: the name, and the path on hover', async () => {
+            await restart();
+            await draw(() => ui().openChat('c-2'));
+
+            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api');
+            // Read only: nothing in it opens a list or takes a press.
+            expect(folderSelect()).toBeNull();
+            expect(folderLine()?.querySelector('button, [tabindex]')).toBeNull();
+
+            // A chat with no folder works in the main one.
+            await draw(() => ui().openChat('c-1'));
+
+            expect(folderLine()?.textContent).toBe('car-rental');
+        });
+
+        it('is under the message box of the chat the page made, in the folder picked there', async () => {
+            const before = new Set(project().chats.keys());
+
+            await restart();
+            await press(rowOf('@new-chat'));
+            await draw();
+            await press(folderSelect()!);
+            await press(folderItem('car-rental-api'));
+            await draw();
+            editor().commands.insertContent('Fix the endpoint');
+            await act(async () => {
+                field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            });
+            await draw();
+
+            expect([...project().chats.keys()].some(id => !before.has(id))).toBe(true);
+            expect(folderSelect()).toBeNull();
+            expect(folderLine()?.textContent).toBe('car-rental-api');
+        });
+
+        it('says when the folder is gone from the disk', async () => {
+            const transport = new FixtureTransport({ data: twoFolders() });
+            const info = await transport.getProjectsInfo();
+
+            vi.spyOn(transport, 'getProjectsInfo').mockResolvedValue(info.map(entry => (entry.projectId === FIXTURE_PROJECT_ID ? { ...entry, folders: entry.folders.map(folder => ({ ...folder, exists: folder.folderId !== API.id })) } : entry)));
+            await restart({ transport });
+            await draw(() => ui().openChat('c-2'));
+
+            expect(folderLine()?.hasAttribute('data-missing')).toBe(true);
+            expect(folderLine()?.getAttribute('title')).toBe('This folder no longer exists');
+
+            await draw(() => ui().openChat('c-1'));
+
+            expect(folderLine()?.hasAttribute('data-missing')).toBe(false);
+        });
+
+        it('is there in a chat that is made, grouped or flat, and in a project of one folder', async () => {
+            await restart({ grouping: false });
+            await draw(() => ui().openChat('c-2'));
+
+            expect(folderLine()?.textContent).toBe('car-rental-api');
+
+            await draw(() => ui().setGroupByFolder(true));
+
+            expect(folderLine()?.textContent).toBe('car-rental-api');
+
+            // The fixture project has one folder.
+            act(() => reactRoot.unmount());
+            store.dispose();
+            reactRoot = createRoot(container);
+            store = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
+            await store.load();
+            await draw(() => {
+                ui().setGroupByFolder(true);
+                ui().openChat('c-1');
+            });
+
+            expect(folderLine()?.textContent).toBe(SINGLE);
+        });
+    });
+
+    it('reads what the daemon knows of the folders once, when the screen opens, whether the list is grouped or not, and not again on a timer', async () => {
         vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
 
         try {
             const transport = new FixtureTransport({ data: twoFolders() });
             const read = vi.spyOn(transport, 'getProjectsInfo');
+            // The folder line's own read of its project (the branch) is not counted: this is about the read of every project.
+            const allProjects = () => read.mock.calls.filter(([projectId]) => projectId === undefined).length;
 
             await restart({ grouping: false, transport });
-            expect(read).not.toHaveBeenCalled();
+            expect(allProjects()).toBe(1);
 
             await draw(() => ui().setGroupByFolder(true));
-            expect(read).toHaveBeenCalledTimes(1);
+            expect(allProjects()).toBe(1);
 
             await act(async () => void vi.advanceTimersByTime(60_000));
-            expect(read).toHaveBeenCalledTimes(1);
+            expect(allProjects()).toBe(1);
         }
         finally {
             vi.useRealTimers();
@@ -507,11 +749,11 @@ describe('grouped by folder', () => {
 });
 
 describe('the heading', () => {
-    it('has the archive, as a button, to the left of the filters', () => {
+    it('has the history, as a button, to the left of the filters', () => {
         // The rows have an Archive of their own, as a quick action: the heading's buttons are the ones outside the list.
-        const buttons = [...container.querySelectorAll<HTMLElement>('button[aria-label="Archive"], button[aria-label="Filters"]')].filter(button => !button.closest('[role="grid"]'));
+        const buttons = [...container.querySelectorAll<HTMLElement>('button[aria-label="History"], button[aria-label="Filters"]')].filter(button => !button.closest('[role="grid"]'));
 
-        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['Archive', 'Filters']);
+        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['History', 'Filters']);
         expect(buttons[0].parentElement).toBe(buttons[1].parentElement);
     });
 
@@ -553,14 +795,14 @@ describe('the archive', () => {
         expect(rowKeys()).toEqual(expect.not.arrayContaining(['c-2', 'c-4']));
         expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-6', 'c-5', 'c-3']);
 
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(titles()).toEqual([expect.stringMatching(/^New chat/), expect.stringMatching(/^First version/)]);
         expect(titles()[0]).toMatch(/now$/);
     });
 
     it('opens under the heading and is as wide as it, not wider than the column', async () => {
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         const popover = document.body.querySelector<HTMLElement>('[data-modal-clickout-layer]')!;
 
@@ -570,7 +812,7 @@ describe('the archive', () => {
     it('shows the mark of the provider each chat runs on, as the list does, and the speech bubble for a chat that never started', async () => {
         await archive('c-2', true);
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(archiveRow('First version').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe(project().runs.get('r-orch-2')?.engine);
         expect(archiveRow('New chat').querySelector('[data-provider]')).toBeNull();
@@ -578,7 +820,7 @@ describe('the archive', () => {
     });
 
     it('says so when there is nothing in it', async () => {
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(titles()).toEqual([]);
         expect(document.body.textContent).toContain('No archived chats');
@@ -586,7 +828,7 @@ describe('the archive', () => {
 
     it('brings a chat back into the list and opens it when it is picked', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
         await press(archiveRow('New chat'));
         await vi.waitFor(() => expect(project().chats.get('c-4')?.archivedAt).toBeUndefined());
         await draw();
@@ -599,7 +841,7 @@ describe('the archive', () => {
 
     it('keeps the row of an open menu as if hovered here too', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(archiveRow('New chat').hasAttribute('data-open')).toBe(false);
 
@@ -610,7 +852,7 @@ describe('the archive', () => {
 
     it('has a menu in each row, with Unarchive and Delete', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
 
         expect([...document.body.querySelectorAll('[role="menuitem"]')].map(row => row.textContent)).toEqual(['Unarchive', 'Delete']);
@@ -618,7 +860,7 @@ describe('the archive', () => {
 
     it('puts a chat back in the list from its menu, without opening it', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
         await press(menuItem('Unarchive'));
         await vi.waitFor(() => expect(project().chats.get('c-4')?.archivedAt).toBeUndefined());
@@ -631,7 +873,7 @@ describe('the archive', () => {
 
     it('deletes an archived chat from its menu', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
         await press(menuItem('Delete'));
         // The chat never ran, so nothing asks first.
@@ -681,7 +923,7 @@ describe('the archive', () => {
 
         expect(menuItem('Archive').querySelector('svg')?.outerHTML).toBe(rowIcon.outerHTML);
         // The 16px history mark, where the others are 14px.
-        expect(buttonNamed('Archive').querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 16 16');
+        expect(buttonNamed('History').querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 16 16');
         expect(rowIcon.getAttribute('viewBox')).toBe('0 0 14 14');
     });
 });
@@ -819,16 +1061,16 @@ describe('threads', () => {
         await store.command({ type: 'chat.setArchived', chatId: 'c-6b', archived: true });
         await vi.waitFor(() => expect(project().chats.get('c-6b')?.archivedAt).toBeDefined());
         await draw();
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(archiveTitles()).toEqual([expect.stringMatching(/^Write the refund tests/)]);
 
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
         await stopThreads();
         await store.command({ type: 'chat.setArchived', chatId: 'c-6', archived: true });
         await vi.waitFor(() => expect(project().chats.get('c-6')?.archivedAt).toBeDefined());
         await draw();
-        await press(buttonNamed('Archive'));
+        await press(buttonNamed('History'));
 
         expect(archiveTitles()).toEqual([expect.stringMatching(/^Ship the checkout/)]);
         expect(rowKeys().some(key => key?.startsWith('c-6'))).toBe(false);

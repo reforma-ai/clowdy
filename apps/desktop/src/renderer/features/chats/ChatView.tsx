@@ -9,6 +9,7 @@ import { useMemo, useRef } from 'react';
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { StreamView } from '../../stream';
 import { openChat } from './archiveChat';
+import { ChatControls } from './ChatControls';
 import { ChatDropZone } from './ChatDropZone';
 import { canCompactChat, chatWritability } from './chatProvider';
 import { isRunActive, liveLine, overflowed } from './chatRun';
@@ -25,19 +26,22 @@ import { useEditMessage } from './useEditMessage';
 import { useFork } from './useFork';
 
 import type { Attachment, Chat } from '@clowdy/protocol';
+import type { ReactNode } from 'react';
 
 /**
  * One chat: the orchestrator's stream with the progress card in it, and the composer. When the chat's provider cannot run
  * (switched off, not installed, signed out) the stream stays as it is and a notice stands in place of the composer. A thread is a chat like
- * any other, with a slim line over its stream that names the chat it belongs to and opens it.
+ * any other, with a slim line over its stream that names the chat it belongs to and opens it. `controls` are what the line under the message box holds at its
+ * start (where the chat works, read only), the line the new-chat page drew with controls that change; the composer adds the mode at the end of that line, so a chat
+ * that can be written to always has the line, and a read only one has it only when the caller has `controls`.
  */
-export function ChatView({ chat }: { chat: Chat }) {
+export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode }) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
-    // A task key in a message is a chip that opens the task; a thread's card opens that thread.
+    // A task key in a message is a chip that opens the task, an archived one the window knows too (`ProjectState.taskOfKey`); a thread's card opens that thread.
     const links = useMemo(() => ({
-        taskOfKey: (key: string) => project.taskList.find(task => task.key === key),
+        taskOfKey: (key: string) => project.taskOfKey(key),
         onOpenTask: (taskId: string) => ui.openTask(taskId),
         attachmentBlob: (attachment: Attachment) => root.transport.getAttachment(project.id, attachment.id),
         hasChat: (chatId: string) => project.chats.has(chatId),
@@ -62,7 +66,7 @@ export function ChatView({ chat }: { chat: Chat }) {
     const overflowAt = overflowed(run) && writability.writable && canCompactChat(chat, run, agents) ? items.findLast(item => item.body.kind === 'error')?.id : undefined;
 
     return (
-        <ChatDropZone disabled={ !writability.writable } onFiles={ files => composer.current?.addFiles(files) }>
+        <ChatDropZone disabled={ !writability.writable } onFiles={ files => composer.current?.addFiles(files) } onPasteFiles={ files => composer.current?.pasteFiles(files) }>
             { parent && <ThreadCrumb parent={ parent } onOpen={ () => links.onOpenChat(parent.id) } /> }
 
             { stream?.status === 'failed' && (
@@ -91,7 +95,7 @@ export function ChatView({ chat }: { chat: Chat }) {
                     working={ isRunActive(run) && liveLine(run.status) }
                     links={ links }
                     // Reply puts a message in the message box as a card, or quotes selected words into the draft; a fork is a conversation to go on in, and an edit sends the
-                    // message again: a chat that is read only has none of them. The chat is rewritten from a message only at rest, so while the agent works Edit is drawn off.
+                    // message again: a chat that is read only has none of them. The chat is rewritten from a message only at rest, so while the agent works Edit is not drawn.
                     messageActions={ writability.writable
                         ? {
                             onReply: message => composer.current?.reply(message),
@@ -125,9 +129,16 @@ export function ChatView({ chat }: { chat: Chat }) {
 
             <ContentColumn className={ styles.composer }>
                 <RunningAgents chat={ chat } />
+                { /* The composer draws the line under its box itself, with the mode at the end of it; a chat that is read only has no mode to show. */ }
                 { writability.writable
-                    ? <Composer ref={ composer } chat={ chat } run={ run } />
-                    : <ReadOnlyNotice chat={ chat } run={ run } message={ writability.message } /> }
+                    ? <Composer ref={ composer } chat={ chat } run={ run } controls={ controls } />
+                    : (
+                        <>
+                            <ReadOnlyNotice chat={ chat } run={ run } message={ writability.message } />
+
+                            { controls && <ChatControls>{ controls }</ChatControls> }
+                        </>
+                    ) }
             </ContentColumn>
         </ChatDropZone>
     );

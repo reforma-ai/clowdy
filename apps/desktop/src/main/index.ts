@@ -1,5 +1,5 @@
 import { PROTOCOL_VERSION } from '@clowdy/protocol';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, session, shell, autoUpdater as squirrel, type MessageBoxOptions } from 'electron';
+import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, session, shell, autoUpdater as squirrel, type MessageBoxOptions } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { watch } from 'node:fs';
 import { release } from 'node:os';
@@ -7,14 +7,17 @@ import path from 'node:path';
 
 import { IPC_CHANNELS } from '../shared/bridge';
 import { DEV_BUILD_MARKER } from '../shared/dev';
+import { createAppIcon } from './appIcon';
 import { showBootWindow, type BootWindow } from './bootWindow';
-import { bundleRuntime, installBun, installOwnBundle, pruneBunCopies, readBundleInfo, updatesDir, type BundleInfo } from './bundle';
+import { bundleRuntime, installBun, installedRipgrep, installOwnBundle, pruneBunCopies, readBundleInfo, updatesDir, type BundleInfo } from './bundle';
+import { createClipboardFiles, systemClipboardFilesDeps } from './clipboardFiles';
 import { attachDaemon, currentContext, daemonAddress, ensureDaemon, environmentRuntime, findRunning, type DaemonContext, type DaemonRuntime } from './daemon';
 import { askToReplaceDaemon, showDaemonError } from './daemonDialog';
 import { daemonHoldsLock } from './daemonFiles';
 import { daemonBundle, fromOlderBundle, keepDaemonFresh, newestSourceTime, sourcesChangedSince, type DaemonKeeper, type KeeperOptions } from './daemonKeeper';
 import { registerIpc } from './ipc';
 import { createAppMenu } from './menu';
+import { createOpenWith, systemOpenWithDeps } from './openWith';
 import { createOta, type Ota, type RunningBundle } from './ota';
 import { createProtocolHandler } from './protocol';
 import { releaseConfig, type ReleaseConfig } from './releaseConfig';
@@ -33,6 +36,21 @@ const ownRendererRoot = app.isPackaged
     ? path.join(app.getAppPath(), 'renderer')
     : process.env.CLOWDY_RENDERER_DIR ?? path.join(app.getAppPath(), 'dist/renderer');
 const trustedOrigin = APP_ORIGIN;
+
+/** The editors, terminals and file managers a folder or a file can be opened in: the page asks which this computer has, and which one to use. */
+const openWith = createOpenWith(systemOpenWithDeps(
+    path => shell.openPath(path),
+    createAppIcon({
+        platform: process.platform,
+        thumbnail: (file, size) => nativeImage.createThumbnailFromPath(file, { width: size, height: size }),
+        fileIcon: file => app.getFileIcon(file, { size: 'normal' }),
+    }),
+    path => shell.showItemInFolder(path)
+));
+
+/** The files and folders on the system clipboard: copied in the app they paste into Finder or Explorer, and copied there they paste into the file tree. */
+const clipboardFiles = createClipboardFiles(systemClipboardFilesDeps(clipboard, ClipboardItem));
+
 /** The OTA bundle installed during this run, which every page that loads is told about. */
 let updateReady: number | undefined;
 
@@ -168,6 +186,11 @@ function start(): void {
             },
             ready: () => ota.ready(),
             restartToUpdate: () => ota.restart(),
+            listOpenApps: openWith.listApps,
+            openPath: openWith.openPath,
+            readClipboardFiles: clipboardFiles.read,
+            writeClipboardFiles: clipboardFiles.write,
+            pasteClipboardFiles: clipboardFiles.paste,
         });
 
         /**
@@ -313,9 +336,10 @@ function startUpdates(release: ReleaseConfig, ota: Ota, bundle: RunningBundle): 
 }
 
 /**
- * What runs the daemon of the chosen bundle. A packaged app copies the Bun it ships out of its install folder, and runs
- * an installed OTA bundle's daemon from its folder, or its own bundle's from a copy (`bundle.ts`). A development run
- * takes the Bun and the checkout `./clowdy dev` names, or that Bun and a bundle from the test feed.
+ * What runs the daemon of the chosen bundle. A packaged app copies the Bun it ships, and the ripgrep beside it, out of its
+ * install folder, and runs an installed OTA bundle's daemon from its folder, or its own bundle's from a copy (`bundle.ts`).
+ * A development run takes the Bun and the checkout `./clowdy dev` names, or that Bun and a bundle from the test feed; it
+ * has no ripgrep of its own, so the daemon uses the one on the PATH.
  */
 async function daemonRuntime(bundle: RunningBundle, own: BundleInfo | undefined, updates: string): Promise<DaemonRuntime | undefined> {
     if (!app.isPackaged) {
@@ -326,12 +350,13 @@ async function daemonRuntime(bundle: RunningBundle, own: BundleInfo | undefined,
 
     const resources = process.resourcesPath;
     const bun = await installBun({ resources, updates });
+    const rg = await installedRipgrep(bun);
 
-    if (bundle.dir) return bundleRuntime(bun, bundle.dir);
+    if (bundle.dir) return bundleRuntime(bun, bundle.dir, rg);
 
     if (!own) throw new Error('The app\'s own bundle is unreadable');
 
-    return bundleRuntime(bun, await installOwnBundle({ resources, updates, version: own.version }));
+    return bundleRuntime(bun, await installOwnBundle({ resources, updates, version: own.version }), rg);
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { Artifact, Chat, ChatTaskLink, DocsFolder, FolderId, Project, Run, RunId, RunTaskLink, StreamItem, Task, TaskId, TaskStatus } from './domain';
+import type { Artifact, Chat, ChatTaskLink, DocsFolder, FolderId, Project, Run, RunId, RunTaskLink, StreamItem, Task, TaskComment, TaskId, TaskStatus } from './domain';
 
 /**
  * The daemon's change feed. Every event has a strictly increasing `cursor`; a client that stores the cursor of
@@ -20,8 +20,17 @@ export type EventData =
     | { type: 'chat.upserted'; chat: Chat }
     /** The chat and `runIds` (its orchestrator and every run below it, with their streams and task links) are gone. */
     | { type: 'chat.deleted'; chatId: string; runIds: string[] }
+    /**
+     * A task was made or changed. One carrying `archivedAt` is in the archive and a client takes it off the board (a task archived with what is inside it
+     * gets one event each); the event of a task that came back has no `archivedAt`.
+     */
     | { type: 'task.upserted'; task: Task }
+    /** The task is gone, its comments with it (there is no `task.comment.deleted` for each): a client drops what it holds of them. */
     | { type: 'task.deleted'; taskId: TaskId }
+    /** A comment was added or its body changed. A client that has loaded the task's comments puts it in; one that has not ignores it. */
+    | { type: 'task.comment.upserted'; comment: TaskComment }
+    /** A comment was deleted (the person's command). A task that goes takes its comments with `task.deleted` instead. */
+    | { type: 'task.comment.deleted'; taskId: TaskId; commentId: string }
     | { type: 'run.upserted'; run: Run }
     /** A stream item was appended or updated in place (streaming text, a tool changing state, an answered question). */
     | { type: 'stream.item'; item: StreamItem }
@@ -53,7 +62,7 @@ export type EventType = EventData['type'];
 /** `GET /v1/events` frame names. */
 export const SSE_EVENT = 'clowdy';
 
-/** Events for a project plus the docs tree: what `GET /v1/projects/:id/snapshot` returns, as of `cursor`. */
+/** Events for a project plus the docs tree: what `GET /v1/projects/:id/snapshot` returns, as of `cursor`. `tasks` leaves out the archived ones (`TaskArchivePage`). */
 export interface ProjectSnapshot {
     cursor: number;
     project: Project;
@@ -68,6 +77,8 @@ export interface ProjectSnapshot {
 export interface RootSnapshot {
     cursor: number;
     projects: Project[];
+    /** The home folder of the person the daemon runs as: where a path is shown as `~`. Absent from a daemon that does not tell it. */
+    home?: string;
 }
 
 /**

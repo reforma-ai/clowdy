@@ -1,29 +1,9 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { agentCommands } from '../features/agents/agentCommands';
-import { docSaveCommand, docTreeCommands } from '../features/docs/docCommands';
-import { taskCommands, type TaskCommandDeps } from '../features/tasks/taskCommands';
-import { shellCommands } from '../shell/shellCommands';
+import { shortcutEntries, wholeKeymap } from '../shell/keymap';
+import { groupHelpEntries } from './helpEntries';
 import { createRegistry, findKeyConflicts, type Command, type Platform } from './registry';
-
-/**
- * Every section's commands as the app registers them, built with stand-ins for what they read at run time. The builders only read their
- * dependencies inside handlers and `when`, so the stand-ins are never called: this test is about the keys.
- */
-function wholeKeymap(): Command[] {
-    const nothing = new Proxy({}, { get: () => () => undefined }) as never;
-    const shell = shellCommands(nothing, vi.fn()).map((command): Command => ({ ...command, scope: 'app' }));
-    const list = { ids: () => [], openId: () => null };
-
-    return [
-        ...shell,
-        ...taskCommands(nothing as TaskCommandDeps),
-        ...agentCommands({ list: () => null, ids: () => [], openId: () => undefined }),
-        ...docTreeCommands({ tree: () => null, ...list }),
-        docSaveCommand(nothing),
-    ];
-}
 
 const PLATFORMS: Platform[] = ['darwin', 'win32'];
 
@@ -46,7 +26,13 @@ describe('the whole keymap', () => {
         const commands = wholeKeymap();
 
         expect(new Set(commands.map(({ id }) => id)).size).toBe(commands.length);
-        expect(new Set(commands.map(({ scope }) => scope))).toEqual(new Set(['app', 'tasks', 'agents', 'docs']));
+        expect(new Set(commands.map(({ scope }) => scope))).toEqual(new Set(['app', 'tasks', 'agents', 'docs', 'files']));
+    });
+
+    it('holds the commands the shell, the find bar and the quick search register in the app scope, with the ones of every section', () => {
+        const ids = wholeKeymap().map(({ id }) => id);
+
+        expect(ids).toEqual(expect.arrayContaining(['help.open', 'chats.new', 'sidePanel.toggle', 'find.open', 'tasks.create', 'agents.cursor.down', 'docs.cursor.down', 'docs.search', 'docs.save', 'files.showHidden', 'search.open', 'search.chats', 'search.files', 'search.text']));
     });
 
     it('has J in every section, so the no-collision check above is what lets them share it', () => {
@@ -62,5 +48,30 @@ describe('the whole keymap', () => {
         expect(conflicts.length).toBeGreaterThan(0);
         expect(conflicts.every(({ a, b }) => a.id === 'app.j' || b.id === 'app.j')).toBe(true);
         expect(new Set(conflicts.flatMap(({ a, b }) => [a.scope, b.scope]))).toEqual(new Set(['app', 'tasks', 'agents', 'docs']));
+    });
+});
+
+describe('the shortcuts page entries', () => {
+    it('list every command of the keymap once, so Settings shows what a section that is not mounted offers', () => {
+        const ids = shortcutEntries('darwin').map(({ command }) => command.id);
+
+        expect(ids).toEqual(wholeKeymap().map(({ id }) => id));
+        expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('group by section, with General and Navigation first', () => {
+        const names = groupHelpEntries(shortcutEntries('darwin')).map(({ name }) => name);
+
+        expect(names.slice(0, 2)).toEqual(['General', 'Navigation']);
+        expect(names).toEqual(expect.arrayContaining(['Agents', 'Tasks', 'Documents']));
+    });
+
+    it.each([
+        ['darwin', [['?'], ['meta', '/'], ['meta', '?']]],
+        ['win32', [['?'], ['ctrl', '/'], ['ctrl', '?']]],
+    ] as const)('write the keys of the platform, %s', (platform, presses) => {
+        const help = shortcutEntries(platform).find(({ command }) => command.id === 'help.open');
+
+        expect(help?.sequences).toEqual(presses.map(press => [press]));
     });
 });

@@ -106,4 +106,4 @@ Rules:
 
 - A convention that is not written here does not exist for the next agent.
 - `Layout` and `Commands` are copied from the real repository, not from intent. Re-check them when you change the structure.
-- A contract section is the way to let two tasks build against each other in parallel: change it only with a note in the affected tasks.
+- A contract section is the way to let two tasks build against each other in parallel: change it only with a comment on each affected task.

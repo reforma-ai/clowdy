@@ -5,7 +5,7 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 /** The app's own origin, which the desktop shell serves its files from. Anything else must be named in `CLOWDY_CORS_ORIGINS`. */
 const APP_ORIGIN = 'app://clowdy';
 
-export const ALLOWED_HEADERS = 'Authorization, Content-Type, x-clowdy-protocol, Last-Event-ID';
+export const ALLOWED_HEADERS = 'Authorization, Content-Type, x-clowdy-protocol, Last-Event-ID, If-Match, If-None-Match';
 
 /** DNS-rebinding guard: a request is served only when it was addressed to a loopback name. */
 export function isLoopbackHost(host: string | null): boolean {

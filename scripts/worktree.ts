@@ -1,23 +1,29 @@
 /**
- * Extra checkouts for work that should not share the current branch.
+ * Extra checkouts for work that should not share the working branch (GITFLOW.md, Worktrees).
+ * `add` starts from `origin/main`, fetched first, or from `--from <ref>` (`--from next` for the working branch's own
+ * commits, pushed or not).
  *
- *   ./clowdy worktree add <slug>
+ *   ./clowdy worktree add <slug> [--from <ref>]
  *   ./clowdy worktree remove <slug>
  */
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const USAGE = 'Usage: ./clowdy worktree add <kebab-case-slug> [--from <ref>] | remove <kebab-case-slug>';
+
+/** What an isolated branch starts from unless it is told otherwise: what is released, not what a checkout holds. */
+const DEFAULT_BASE = 'origin/main';
 
 export async function worktreeCommand(repoRoot: string, args: string[]): Promise<void> {
     const [sub, slug, ...rest] = args;
 
-    if ((sub !== 'add' && sub !== 'remove') || rest.length > 0 || !slug || !SLUG.test(slug)) {
-        die('Usage: ./clowdy worktree <add|remove> <kebab-case-slug>');
+    if ((sub !== 'add' && sub !== 'remove') || !slug || !SLUG.test(slug)) {
+        die(USAGE);
     }
 
     if (sub === 'add') {
-        const created = await addWorktree(repoRoot, slug);
+        const created = await addWorktree(repoRoot, slug, parseFrom(rest));
         const install = Bun.spawn(['bun', 'install', '--frozen-lockfile'], {
             cwd: created.path,
             stdio: ['inherit', 'inherit', 'inherit'],
@@ -29,12 +35,30 @@ export async function worktreeCommand(repoRoot: string, args: string[]): Promise
         }
 
         console.log(`Branch: ${ created.branch }`);
+        console.log(`From:   ${ created.from } (${ created.base })`);
         console.log(`Path:   ${ created.path }`);
         return;
     }
 
+    if (rest.length > 0) {
+        die(USAGE);
+    }
+
     const removed = await removeWorktree(repoRoot, slug);
     console.log(`Removed ${ removed }`);
+}
+
+/** The ref after `--from`, or nothing for the default base. */
+function parseFrom(rest: string[]): string | undefined {
+    if (rest.length === 0) {
+        return undefined;
+    }
+
+    if (rest.length === 2 && rest[0] === '--from' && rest[1]) {
+        return rest[1];
+    }
+
+    return die(USAGE);
 }
 
 /** `git config user.name` as one kebab-case branch segment. */
@@ -48,12 +72,32 @@ export function nicknameFromGitName(name: string): string {
     return nick;
 }
 
-export async function addWorktree(repoRoot: string, slug: string): Promise<{ branch: string, path: string }> {
+export async function addWorktree(
+    repoRoot: string,
+    slug: string,
+    from = DEFAULT_BASE
+): Promise<{ branch: string, path: string, from: string, base: string }> {
     const nick = nicknameFromGitName(await gitName(repoRoot));
     const branch = `${ nick }/${ slug }`;
     const destination = worktreePath(repoRoot, slug);
 
-    await git(repoRoot, ['fetch', 'origin', '--prune']);
+    // A ref of origin is only as new as the last fetch. A fetch needs the owner's SSH key, which an agent session may
+    // not be allowed to use; then the branch starts from the last fetched ref, and the warning says so.
+    if (from.startsWith('origin/')) {
+        const fetched = await gitResult(repoRoot, ['fetch', 'origin', '--prune']);
+
+        if (fetched.code !== 0) {
+            const reason = fetched.stderr.trim().split('\n')[0] || `git fetch exited with ${ fetched.code }`;
+
+            console.error(`Could not fetch origin, so ${ from } is as of the last fetch: ${ reason }`);
+        }
+    }
+
+    const base = await gitResult(repoRoot, ['rev-parse', '--verify', '--quiet', '--short', `${ from }^{commit}`]);
+
+    if (base.code !== 0) {
+        die(`There is no ${ from } to start from. Name another ref: ./clowdy worktree add ${ slug } --from <ref>`);
+    }
 
     if (await gitOk(repoRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${ branch }`])) {
         die(`Branch ${ branch } already exists.`);
@@ -67,10 +111,10 @@ export async function addWorktree(repoRoot: string, slug: string): Promise<{ bra
         die(`Path already exists: ${ destination }`);
     }
 
-    // --no-track: a start point of origin/main would otherwise set that as upstream.
-    await git(repoRoot, ['worktree', 'add', '--no-track', '-b', branch, destination, 'origin/main']);
+    // --no-track keeps the new branch off any upstream, which a start point of origin/... would set.
+    await git(repoRoot, ['worktree', 'add', '--no-track', '-b', branch, destination, from]);
 
-    return { branch, path: destination };
+    return { branch, path: destination, from, base: base.stdout.trim() };
 }
 
 export async function removeWorktree(repoRoot: string, slug: string): Promise<string> {

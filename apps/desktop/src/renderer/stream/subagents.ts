@@ -80,7 +80,7 @@ export function activityOf(body: StreamItemBody | undefined): string | undefined
     }
 }
 
-/** The latest item of a stream that says what its agent is doing: notes and errors are about it, not by it. */
+/** The latest item of a stream that says what its agent is doing: notes and errors are about it, not by it, and its thoughts are left out (the card says the operation, not the musing). */
 export function latestActivity(items: readonly StreamItem[]): string | undefined {
     for (let index = items.length - 1; index >= 0; index--) {
         const { body } = items[index];

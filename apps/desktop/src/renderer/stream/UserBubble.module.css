@@ -17,6 +17,16 @@
     align-items: flex-end;
     gap: var(--spacing-xs);
     padding-left: var(--spacing-10);
+    /*
+     * A message of the person's starts a turn, so the stream gives it more air than it gives the blocks inside a turn: much before it, where
+     * an answer ends, and a little after it. Two in a row (a queued one) keep one gap between them, and the first has the stream's own padding.
+     */
+    margin-block: var(--spacing-20) var(--spacing-md);
+}
+
+.row:first-child,
+.row + .row {
+    margin-block-start: 0;
 }
 
 .row[data-animate] {

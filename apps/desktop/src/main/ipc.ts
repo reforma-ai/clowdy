@@ -1,7 +1,7 @@
 import { THEMES, type Theme } from '@clowdy/constants';
 import { BrowserWindow, dialog } from 'electron';
 
-import { IPC_CHANNELS, type DesktopBridge, type FindOptions, type FindRect, type FindResult } from '../shared/bridge';
+import { IPC_CHANNELS, type ClipboardFile, type DesktopBridge, type FindOptions, type FindRect, type FindResult, type OpenApps } from '../shared/bridge';
 import { isTrustedUrl } from './security';
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
@@ -27,12 +27,22 @@ export interface IpcActions {
     ready: () => Promise<void>;
     /** Restarts into the OTA bundle installed during this run; without one, nothing happens. */
     restartToUpdate: () => void;
+    /** The editors and file managers this computer has. */
+    listOpenApps: () => Promise<OpenApps>;
+    /** Opens a folder or a file in one of them; it checks what the page sent. */
+    openPath: (path: unknown, app: unknown) => Promise<void>;
+    /** The files and folders on the system clipboard. */
+    readClipboardFiles: () => Promise<ClipboardFile[]>;
+    /** Puts files and folders on the system clipboard; it checks what the page sent. */
+    writeClipboardFiles: (paths: unknown) => Promise<void>;
+    /** Copies files and folders of the system clipboard into a folder; it checks what the page sent. */
+    pasteClipboardFiles: (folder: unknown, items: unknown) => Promise<void>;
 }
 
 export function registerIpc(
     ipcMain: Pick<IpcMain, 'handle' | 'on'>,
     trustedOrigin: string,
-    { setThemeSource, getDaemon, ready, restartToUpdate }: IpcActions
+    { setThemeSource, getDaemon, ready, restartToUpdate, listOpenApps, openPath, readClipboardFiles, writeClipboardFiles, pasteClipboardFiles }: IpcActions
 ): void {
     // The preload asks while the page loads and cannot wait for a promise, so this one is synchronous for it.
     // The reply may come later: the renderer blocks until `returnValue` is set. Anyone else gets `null`.
@@ -77,6 +87,36 @@ export function registerIpc(
         const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
 
         return result.canceled ? [] : result.filePaths;
+    });
+
+    ipcMain.handle(IPC_CHANNELS.openApps, (event) => {
+        assertTrustedSender(event, trustedOrigin);
+
+        return listOpenApps();
+    });
+
+    ipcMain.handle(IPC_CHANNELS.openPath, (event, path: unknown, app: unknown) => {
+        assertTrustedSender(event, trustedOrigin);
+
+        return openPath(path, app);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.clipboardFiles, (event) => {
+        assertTrustedSender(event, trustedOrigin);
+
+        return readClipboardFiles();
+    });
+
+    ipcMain.handle(IPC_CHANNELS.copyFiles, (event, paths: unknown) => {
+        assertTrustedSender(event, trustedOrigin);
+
+        return writeClipboardFiles(paths);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.pasteFiles, (event, folder: unknown, items: unknown) => {
+        assertTrustedSender(event, trustedOrigin);
+
+        return pasteClipboardFiles(folder, items);
     });
 
     ipcMain.handle(IPC_CHANNELS.findInPage, (event, text: unknown, options: unknown) => {

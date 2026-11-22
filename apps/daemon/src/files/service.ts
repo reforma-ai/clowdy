@@ -46,7 +46,8 @@ export class FilesService {
         return searchPaths([...byKey.keys()], query, limit).map(key => byKey.get(key) as ProjectFileMatch);
     }
 
-    private list(root: string): Promise<string[]> {
+    /** The files of a folder, as paths relative to it, from the cache: one listing per folder every few seconds. */
+    list(root: string): Promise<string[]> {
         const now = Date.now();
         const known = this.lists.get(root);
 

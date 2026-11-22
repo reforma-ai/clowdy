@@ -19,6 +19,19 @@ describe('HttpTransport.getProjectsInfo', () => {
         expect(await transport.getProjectsInfo()).toEqual([]);
         expect(urls).toEqual(['http://127.0.0.1:4310/v1/projects/info']);
     });
+
+    it('limits the question to one project when it names it', async () => {
+        const urls: string[] = [];
+        const fetchImpl = (async (input: RequestInfo | URL) => {
+            urls.push(String(input));
+
+            return new Response(JSON.stringify([]), { status: 200 });
+        }) as typeof fetch;
+        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
+
+        await transport.getProjectsInfo('prj_a b');
+        expect(urls).toEqual(['http://127.0.0.1:4310/v1/projects/info?project=prj_a%20b']);
+    });
 });
 
 async function connected() {
@@ -45,9 +58,15 @@ describe('FixtureTransport projects', () => {
         expect(info.map(entry => entry.projectId)).toEqual([FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID]);
         expect(info[0]).toMatchObject({ folders: [{ folderId: 'fld_personal', exists: true }], chats: 0, tasks: 0, activeRuns: 0 });
         expect(info[0].folders[0].remoteUrl).toBeUndefined();
-        expect(info[1].folders).toEqual([{ folderId: 'fld_car_rental', exists: true, remoteUrl: 'git@github.com:acme/car-rental.git', chats: 0 }]);
+        expect(info[1].folders).toEqual([{ folderId: 'fld_car_rental', exists: true, remoteUrl: 'git@github.com:acme/car-rental.git', branch: 'main', chats: 0 }]);
         expect(info[1].chats).toBeGreaterThan(0);
         expect(info[1].activeRuns).toBeGreaterThan(0);
+    });
+
+    it('reads one project alone when it is asked for', async () => {
+        const info = await new FixtureTransport().getProjectsInfo(FIXTURE_PROJECT_ID);
+
+        expect(info.map(entry => entry.projectId)).toEqual([FIXTURE_PROJECT_ID]);
     });
 
     it('refuses to rename the personal space or give it other folders, and takes its settings', async () => {

@@ -1,0 +1,174 @@
+// @vitest-environment happy-dom
+import { observer } from 'mobx-react-lite';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { FixtureTransport } from '../../daemon/fixtureTransport';
+import { RootStore, RootStoreProvider } from '../../stores';
+import { treeLayout } from '../files';
+import { openWithPreferences } from '../openWith';
+import { FilesPage } from './FilesPage';
+
+import type { OpenApps } from '../../../shared/bridge';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// The babel plugin that makes the app's components observers does not run under Vitest.
+const Page = observer(FilesPage);
+
+const APPS: OpenApps = {
+    editors: [{ id: 'cursor', name: 'Cursor' }, { id: 'zed', name: 'Zed' }],
+    terminals: [{ id: 'ghostty', name: 'Ghostty' }, { id: 'terminal', name: 'Terminal' }],
+    fileManagers: [{ id: 'finder', name: 'Finder' }, { id: 'path-finder', name: 'Path Finder' }],
+};
+
+let container: HTMLDivElement;
+let root: Root;
+let store: RootStore;
+
+const settle = () => act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+});
+const press = async (target: HTMLElement) => act(async () => {
+    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+    target.click();
+});
+/** The buttons that open the selects, in the order of the rows: the editor, the file manager, the terminal. */
+const triggers = () => [...container.querySelectorAll<HTMLButtonElement>('button')];
+
+async function draw(bridge: Partial<NonNullable<Window['desktop']>> | undefined) {
+    window.desktop = bridge as never;
+    act(() => root.render(<RootStoreProvider value={ store }><Page /></RootStoreProvider>));
+    await settle();
+}
+
+beforeEach(async () => {
+    store = new RootStore(new FixtureTransport(), { storage: undefined });
+    await store.load();
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    openWithPreferences.editor = undefined;
+    openWithPreferences.terminal = undefined;
+    openWithPreferences.fileManager = undefined;
+    treeLayout.setShowHidden(false);
+});
+
+afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    store.dispose();
+    window.desktop = undefined;
+});
+
+describe('FilesPage', () => {
+    it('has the switch for the hidden files of the file tree, off to start, which is the same choice as the key of the Files tab', async () => {
+        await draw({ getOpenApps: async () => APPS });
+
+        const hidden = () => container.querySelector<HTMLInputElement>('input[aria-label="Show hidden files"]')!;
+
+        expect(container.textContent).toContain('Files that start with a dot, and node_modules');
+        expect(hidden().checked).toBe(false);
+
+        await press(hidden());
+
+        expect(treeLayout.showHidden).toBe(true);
+        expect(hidden().checked).toBe(true);
+
+        act(() => treeLayout.setShowHidden(false));
+
+        expect(hidden().checked).toBe(false);
+    });
+
+    it('shows the first program of each list until one is picked', async () => {
+        await draw({ getOpenApps: async () => APPS });
+
+        expect(container.textContent).toContain('Default IDE');
+        expect(container.textContent).toContain('Default file manager');
+        expect(container.textContent).toContain('Default terminal');
+        expect(triggers().map(button => button.textContent)).toEqual(['Cursor', 'Finder', 'Ghostty']);
+    });
+
+    it('draws the icon of a program in the select and in its list, and a plain one for a program with none', async () => {
+        const cursor = 'data:image/png;base64,Y3Vyc29y';
+        const zed = 'data:image/png;base64,emVk';
+
+        await draw({ getOpenApps: async () => ({ editors: [{ id: 'cursor', name: 'Cursor', icon: cursor }, { id: 'zed', name: 'Zed', icon: zed }], terminals: [{ id: 'terminal', name: 'Terminal' }], fileManagers: [{ id: 'finder', name: 'Finder' }] }) });
+
+        const source = (target: ParentNode) => target.querySelector('img')?.getAttribute('src');
+
+        expect(source(triggers()[0]!)).toBe(cursor);
+        expect(triggers()[1]!.querySelector('img')).toBeNull();
+        expect(triggers()[1]!.querySelector('svg[width="14"]')).not.toBeNull();
+        expect(triggers()[2]!.querySelector('img')).toBeNull();
+        expect(triggers()[2]!.querySelector('svg[width="14"]')).not.toBeNull();
+
+        await press(triggers()[0]!);
+
+        const options = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')];
+
+        expect(options.map(option => [option.textContent, source(option)])).toEqual([['Cursor', cursor], ['Zed', zed]]);
+
+        await press(options[1]!);
+
+        expect(source(triggers()[0]!)).toBe(zed);
+    });
+
+    it('shows the program that was picked, and keeps a pick', async () => {
+        await draw({ getOpenApps: async () => APPS });
+        await press(triggers()[0]!);
+
+        const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(row => row.textContent === 'Zed')!;
+
+        await press(option);
+
+        expect(openWithPreferences.editor).toBe('zed');
+        expect(triggers()[0]!.textContent).toBe('Zed');
+        expect(openWithPreferences.fileManager).toBeUndefined();
+    });
+
+    it('keeps the terminal that was picked, apart from the other choices', async () => {
+        await draw({ getOpenApps: async () => APPS });
+        await press(triggers()[2]!);
+
+        const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(row => row.textContent === 'Terminal')!;
+
+        await press(option);
+
+        expect(openWithPreferences.terminal).toBe('terminal');
+        expect(triggers()[2]!.textContent).toBe('Terminal');
+        expect([openWithPreferences.editor, openWithPreferences.fileManager]).toEqual([undefined, undefined]);
+    });
+
+    it('falls back to the first program when the one that was picked is not installed any more, and keeps the pick', async () => {
+        openWithPreferences.setEditor('webstorm');
+        await draw({ getOpenApps: async () => APPS });
+
+        expect(triggers()[0]!.textContent).toBe('Cursor');
+        expect(openWithPreferences.editor).toBe('webstorm');
+    });
+
+    it('is off, and says none were found, for a list that is empty: a computer with no editor', async () => {
+        await draw({ getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }) });
+
+        expect(triggers().map(button => [button.textContent, button.disabled])).toEqual([['None found', true], ['Finder', false], ['None found', true]]);
+    });
+
+    it('finds no program in a page that is not the desktop app', async () => {
+        await draw(undefined);
+
+        expect(triggers().map(button => [button.textContent, button.disabled])).toEqual([['None found', true], ['None found', true], ['None found', true]]);
+    });
+
+    it('reads the computer once when it is opened', async () => {
+        const getOpenApps = vi.fn(async () => APPS);
+
+        await draw({ getOpenApps });
+
+        expect(getOpenApps).toHaveBeenCalledOnce();
+    });
+});

@@ -39,7 +39,7 @@ export interface ListMoveOptions {
     scope: string;
     /** `chats` makes the ids `chats.cursor.down` and `chats.cursor.up`. */
     prefix: string;
-    /** The help overlay's section. */
+    /** The group of the shortcuts page. */
     group: string;
     /** The items in the order the list shows them. */
     ids: () => readonly string[];
@@ -57,7 +57,7 @@ export interface ListMoveOptions {
  * to the open item without moving it, so it cannot skip an item the person has not seen.
  */
 export function listMoveCommands({ scope, prefix, group, ids, focus, openId, focusItem, follow }: ListMoveOptions): Command[] {
-    // The zone is a focus gate and not part of `when`: the help overlay's search field has the focus while it lists these commands, and it must not show them as dead.
+    // The zone is a focus gate and not part of `when`: the key hints show these commands wherever the focus sits, and must not show them as dead.
     const inList = () => focus().zone !== 'other';
     const hasItems = () => ids().length > 0;
 

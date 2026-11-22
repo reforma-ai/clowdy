@@ -1,4 +1,5 @@
 import { cn } from '@clowdy/lib';
+import Placeholder from '@tiptap/extension-placeholder';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
@@ -33,6 +34,11 @@ export interface MarkdownEditorProps {
     resolveImageSrc?: ResolveImageSrc;
     /** `false` shows the file without the toolbar and takes no edits. */
     editable?: boolean;
+    /**
+     * A hint the editor shows while it is empty and editable, in the first paragraph. It is drawn by CSS from the paragraph's `data-placeholder`, so it is never in the
+     * text. Read when the editor is created; without it the editor is as it was (no extension, no attribute).
+     */
+    placeholder?: string;
     'aria-label'?: string;
     className?: string;
 }
@@ -51,6 +57,7 @@ export function MarkdownEditor({
     unsupportedAction,
     resolveImageSrc,
     editable = true,
+    placeholder,
     'aria-label': ariaLabel = 'Markdown',
     className,
 }: MarkdownEditorProps): ReactNode {
@@ -62,9 +69,12 @@ export function MarkdownEditor({
     });
 
     // eslint-disable-next-line react-hooks/refs -- image node views call the resolver, after render
-    const [extensions] = useState(() => markdownExtensions(
-        src => latest.current.resolveImageSrc?.(src) ?? Promise.resolve(src)
-    ));
+    const [extensions] = useState(() => {
+        const schema = markdownExtensions(src => latest.current.resolveImageSrc?.(src) ?? Promise.resolve(src));
+
+        // Not part of `markdownExtensions`: the support check reads the file with that list, and a hint has nothing to do with the text.
+        return placeholder === undefined ? schema : [...schema, Placeholder.configure({ placeholder })];
+    });
     // Created during the first render, so that render already knows whether `value` is supported.
     const editor = useEditor({
         extensions,

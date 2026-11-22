@@ -10,7 +10,7 @@ export interface FindActions {
 /**
  * Find in the window, for the `app` scope: `Cmd/Ctrl+F` opens the bar, `Cmd/Ctrl+G` the next match, `Cmd/Ctrl+Shift+G` the previous.
  * They work from a text field and from a dialog, which is where a person is when they want to search a chat or a settings page.
- * The Edit menu has the same shortcuts. In the app the menu takes the key, and these commands are what the help overlay lists
+ * The Edit menu has the same shortcuts. In the app the menu takes the key, and these commands are what the shortcuts page lists
  * and what a page without that menu runs.
  */
 export function findCommands({ open, next, previous }: FindActions): ScopedCommand[] {

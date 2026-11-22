@@ -5,7 +5,8 @@
  * holds it (the message's root): the pointer on any part of that element shows it, and so does the keyboard's focus
  * (`:focus-visible`, so a press with the pointer on Copy or on a link in the message does not pin the row open
  * after the pointer has left). Out of sight it takes no presses, so the pointer has to be on the message first, and
- * it is no part of a selection that crosses the message.
+ * it is no part of a selection that crosses the message. It stands a little way off the bubble or the text, so the buttons read as a
+ * line of their own and do not touch what they act on.
  */
 .row {
     display: flex;
@@ -13,6 +14,7 @@
     align-items: center;
     gap: var(--spacing-xs);
     height: var(--spacing-24);
+    margin-block-start: var(--spacing-md);
     opacity: 0;
     pointer-events: none;
     user-select: none;
@@ -38,22 +40,13 @@
     }
 }
 
-/* The buttons are side by side in one group, in the order they are tabbed in. */
+/*
+ * The buttons are side by side in one group, in the order they are tabbed in. The group is flush with the message: the square of the button on the
+ * outside lines up with the edge of the text or the bubble, so its plate on hover stays inside the column (the 14px icon sits a little in from the edge).
+ */
 .buttons {
     display: flex;
     align-items: center;
-}
-
-/*
- * The icon is 14px in a 24px square: the group steps out so the icon of the button on the outside, not the square, lines up with the edge of the
- * message: the first button on an agent's side, the last on the person's, whichever they are.
- */
-.row[data-align='start'] .buttons {
-    margin-inline-start: calc((var(--spacing-24) - var(--spacing-14)) / -2);
-}
-
-.row[data-align='end'] .buttons {
-    margin-inline-end: calc((var(--spacing-24) - var(--spacing-14)) / -2);
 }
 
 .time {

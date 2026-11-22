@@ -3,6 +3,7 @@ import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { Close, Folder } from '@clowdy/icons/14';
 
+import { PathText } from '../shared/PathText';
 import styles from './FolderRow.module.css';
 
 import type { ReactNode } from 'react';
@@ -35,7 +36,7 @@ export function FolderRow({ name, path, isMain = false, children, actions, onRem
                     <Text weight="medium" truncate>{ name }</Text>
                     { isMain && <Badge size="xs" textValue="Main">Main</Badge> }
                 </span>
-                <Text variant="sm" color="secondary" truncate title={ path }>{ path }</Text>
+                <PathText path={ path } variant="sm" color="secondary" />
                 { children }
             </span>
             { (actions || onRemove) && (

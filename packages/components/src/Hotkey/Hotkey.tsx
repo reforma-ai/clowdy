@@ -55,6 +55,7 @@ export function Hotkey({
                 { ...props }
                 ref={ ref }
                 data-hotkey-sequence=""
+                data-size={ size }
                 className={ cn(styles.sequence, className) }
             >
                 { sequence.map((press, index) => (

@@ -19,4 +19,4 @@ Vitest specs live under `packages/lib/specs/` (not beside `src/` modules). Run f
 
 ## Other modules
 
-The package also exports from: `array`, `async`, `clsx` (as `cn`), `comparers`, `dom`, `events`, `files` (`formatFileSize` with optional `round: 'up'`, `createObjectURL`, `revokeObjectURL`, `extensionForMediaType`, `mediaTypeForExtension`, `filesFromDataTransfer`), `logger`, `math`, `objects`, `observers`, `path`, `raf`, `string`, `url` (`isHttpUrl`), `values`. Prefer these over ad-hoc implementations.
+The package also exports from: `array`, `async`, `checklist` (`parseChecklist`: the ticked and all `- [ ]` and `- [x]` lines of a Markdown text, outside code fences; the one parser for the daemon and any client, imported as `@clowdy/lib/checklist` where React must not load), `clsx` (as `cn`), `comparers`, `dom`, `events`, `files` (`formatFileSize` with optional `round: 'up'`, `createObjectURL`, `revokeObjectURL`, `extensionForMediaType`, `mediaTypeForExtension`, `filesFromDataTransfer`), `logger`, `math`, `objects`, `observers`, `path`, `raf`, `string`, `url` (`isHttpUrl`), `values`. Prefer these over ad-hoc implementations.

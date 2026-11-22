@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+
 import { listArtifactsOfTask } from '../db/artifacts';
 import { chatIdsOfTask, listChats, listChatTaskLinks } from '../db/chats';
 import { listProjects, listStatuses } from '../db/projects';
@@ -11,7 +13,7 @@ import type { Store } from '../store';
 
 /** The cursor and the state are read in one transaction, so a client resuming at `cursor` misses and repeats nothing. */
 export function rootSnapshot(store: Store): RootSnapshot {
-    return store.read(() => ({ cursor: store.headCursor(), projects: listProjects(store.db) }));
+    return store.read(() => ({ cursor: store.headCursor(), projects: listProjects(store.db), home: homedir() }));
 }
 
 export function projectSnapshot(store: Store, projectId: string): ProjectSnapshot {
@@ -27,12 +29,14 @@ export function projectSnapshot(store: Store, projectId: string): ProjectSnapsho
     }));
 }
 
+/** A task with its chats, runs and artifacts. The task is read whether or not it is archived: the snapshot has no archived tasks, and this is how a client opens one. */
 export function taskDetail(store: Store, taskId: string): TaskDetail {
     return store.read(() => {
-        requireTask(store, taskId);
+        const task = requireTask(store, taskId);
 
         return {
             taskId,
+            task,
             chatIds: chatIdsOfTask(store.db, taskId),
             runIds: runIdsOfTask(store.db, taskId),
             artifacts: listArtifactsOfTask(store.db, taskId),

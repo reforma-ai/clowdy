@@ -160,6 +160,11 @@ export type EngineEvent =
      * which the runtime keeps for the turn's final message. Absent for an agent that names none, and for a sub-agent's messages.
      */
     | { type: 'text'; delta: string; done: boolean; agentId?: string; messageId?: string }
+    /**
+     * A piece of what the agent thought (its reasoning, in its own words). `done: true` ends the thought, and so does anything else the session says (a message,
+     * a tool call): the next piece starts a new one. Only an agent that shows its reasoning sends them. `agentId` names the sub-agent that thought, as for `text`.
+     */
+    | { type: 'thought'; delta: string; done: boolean; agentId?: string }
     | { type: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string; agentId?: string }
     /**
      * A sub-agent that lives inside the session (an agent's own `Agent` or `Task`, when the engine can tell). The runtime shows it as a child run;
@@ -203,9 +208,10 @@ export interface ToolDefinition {
     /**
      * Set on a tool that is also a shell command for the agent (`thread_tell` is `clowdy thread tell`): its input is flat, so each field is a flag.
      * `positional` names the fields that may come as plain arguments instead, in their order (`clowdy thread tell <thread> <message>`). Absent on a tool
-     * that is only a tool.
+     * that is only a tool. `stdin` names the positional field that reads its text from stdin when it is a bare `-` (the message of `thread_tell`), which the
+     * help of the command says for that field only.
      */
-    cli?: { positional?: readonly string[] };
+    cli?: { positional?: readonly string[]; stdin?: string };
     /** Validates `input` and runs the tool. Rejects with an Error whose message the model may read. */
     execute(input: unknown, signal: AbortSignal): Promise<unknown>;
 }

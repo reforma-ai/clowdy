@@ -14,6 +14,7 @@ UI text that is a phrase or a single sentence ends without a period: a label, de
 | `apps/desktop` | Electron app: main, preload, and the React + Vite renderer. The only target (macOS, Windows). Read its `AGENTS.md` first. |
 | `packages/components` | Design system components (React Aria based). Read its `AGENTS.md` before writing UI. |
 | `packages/styles` | Design tokens, reset, fonts, UnoCSS config. |
+| `packages/file-manager` | File tree and text editor over any file system provider (forked from Reforma): the side panel's Files tab. Read its `AGENTS.md`. |
 | `packages/icons` | Icon packs, generated into `dist/` by `bun run build`. |
 | `packages/lib`, `packages/constants` | Shared helpers and constants, consumed as source. |
 | `packages/config-typescript`, `packages/eslint-config` | Shared tsconfig and ESLint presets. |

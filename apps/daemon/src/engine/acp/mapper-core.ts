@@ -199,6 +199,68 @@ export class ToolLedger {
 }
 
 /**
+ * The agent's reasoning as it streams, one thought at a time. A chunk under another id than the open thought's starts a new one, and so does anything
+ * that closes it (the mappers close it when a message or a tool call begins, so a thought never runs into what follows). The runtime's writer ends a thought
+ * on its own when anything else of the session comes, so a missed close shows no wrong item.
+ */
+export class Thought {
+    private text = '';
+    private open = false;
+    private openId?: string;
+    /** The ids of the thoughts that were closed, so a whole thought that comes again is not shown twice. */
+    private closed = new Set<string>();
+
+    /** Adds `delta` to the thought called `messageId` (an agent may name none). A new id is a new thought, even with nothing between. */
+    append(delta: string, messageId?: string, agentId?: string): EngineEvent[] {
+        const events: EngineEvent[] = [];
+
+        if (this.open && messageId !== undefined && this.openId !== undefined && messageId !== this.openId) {
+            events.push(...this.close(agentId));
+        }
+
+        if (!delta) {
+            return events;
+        }
+
+        this.open = true;
+        this.openId ??= messageId;
+        this.text += delta;
+        events.push({ type: 'thought', delta, done: false, ...(agentId !== undefined && { agentId }) });
+
+        return events;
+    }
+
+    /**
+     * A thought the agent sends whole, as it has it now (ACP v2 upserts them): the stream only grows, so what shows is what the open thought lacks. One that
+     * was shown and closed already, or that does not continue the open thought, adds nothing.
+     */
+    upsert(messageId: string, text: string, agentId?: string): EngineEvent[] {
+        if (this.open && this.openId === messageId) {
+            return text.startsWith(this.text) ? this.append(text.slice(this.text.length), messageId, agentId) : [];
+        }
+
+        return this.closed.has(messageId) ? [] : this.append(text, messageId, agentId);
+    }
+
+    /** Ends the open thought, if there is one. */
+    close(agentId?: string): EngineEvent[] {
+        if (!this.open) {
+            return [];
+        }
+
+        if (this.openId !== undefined) {
+            this.closed.add(this.openId);
+        }
+
+        this.text = '';
+        this.open = false;
+        this.openId = undefined;
+
+        return [{ type: 'thought', delta: '', done: true, ...(agentId !== undefined && { agentId }) }];
+    }
+}
+
+/**
  * An assistant message as it streams. The session's own and each sub-agent's are kept apart (one `Message` each), so one never closes or joins
  * another.
  */

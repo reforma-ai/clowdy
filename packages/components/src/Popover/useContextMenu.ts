@@ -4,10 +4,13 @@ import type { MouseEvent, RefObject } from 'react';
 import type { PopoverProps } from './Popover';
 
 export interface UseContextMenuResult {
-    /** Spread onto the element that should respond to right-click. */
+    /** Spread onto the element that should respond to right-click (a long touch too: see `installLongPressContextMenu`). */
     areaProps: {
         onContextMenu: (e: MouseEvent) => void;
     };
+
+    /** Opens the menu at a point of the window, for a press that is not a right-click (a click with ⌘ or Ctrl held, say). */
+    openAt: (clientX: number, clientY: number) => void;
 
     /** Spread onto `<Popover>` to control open state and positioning. */
     popoverProps: Pick<PopoverProps, 'isOpen' | 'onOpenChange'> & {
@@ -73,17 +76,20 @@ export function useContextMenu(): UseContextMenuResult {
     const triggerRef = useRef<Element>(null);
     const [isOpen, setIsOpen] = useState(false);
 
-    const onContextMenu = useCallback((e: MouseEvent) => {
-        e.preventDefault();
-
+    const openAt = useCallback((clientX: number, clientY: number) => {
         // Remove previous virtual trigger if any
         if (triggerRef.current?.parentNode) {
             triggerRef.current.parentNode.removeChild(triggerRef.current);
         }
 
-        (triggerRef as { current: Element }).current = createVirtualTrigger(e.clientX, e.clientY);
+        (triggerRef as { current: Element }).current = createVirtualTrigger(clientX, clientY);
         setIsOpen(true);
     }, []);
+
+    const onContextMenu = useCallback((e: MouseEvent) => {
+        e.preventDefault();
+        openAt(e.clientX, e.clientY);
+    }, [openAt]);
 
     const close = useCallback(() => {
         setIsOpen(false);
@@ -106,6 +112,7 @@ export function useContextMenu(): UseContextMenuResult {
 
     return {
         areaProps: { onContextMenu },
+        openAt,
         popoverProps: { triggerRef, isOpen, onOpenChange: handleOpenChange },
         isOpen,
         close,

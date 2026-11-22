@@ -43,6 +43,11 @@ const desktop: DesktopBridge = {
 
         return () => void ipcRenderer.removeListener(IPC_CHANNELS.findCommand, handler);
     },
+    getOpenApps: () => ipcRenderer.invoke(IPC_CHANNELS.openApps),
+    openPath: (path, app) => ipcRenderer.invoke(IPC_CHANNELS.openPath, path, app),
+    readClipboardFiles: () => ipcRenderer.invoke(IPC_CHANNELS.clipboardFiles),
+    writeClipboardFiles: paths => ipcRenderer.invoke(IPC_CHANNELS.copyFiles, paths),
+    pasteClipboardFiles: (folder, items) => ipcRenderer.invoke(IPC_CHANNELS.pasteFiles, folder, items),
     ...daemon && { daemon },
 };
 

@@ -1,6 +1,6 @@
 import type { Command, HotkeyRegistry } from './registry';
 
-/** A command as the help overlay lists it. */
+/** A command as the shortcuts page lists it. */
 export interface HelpEntry {
     command: Command;
     /** Every way to type the command, each as presses of key names for `Hotkey`. */
@@ -12,10 +12,10 @@ export interface HelpGroup {
     entries: HelpEntry[];
 }
 
-/** Sections the overlay puts first, in this order. The others follow in the order their first command was defined. */
+/** Groups the shortcuts page puts first, in this order. The others follow in the order their first command was defined. */
 const GROUP_ORDER = ['General', 'Navigation'];
 
-/** Every defined command, which the overlay lists as it is whether or not it can run right now. Reads the registry's observables, so call it while rendering. */
+/** Every defined command, which the shortcuts page lists as it is whether or not it can run right now. Reads the registry's observables, so call it while rendering. */
 export function helpEntries(registry: HotkeyRegistry): HelpEntry[] {
     return registry.entries.map(entry => ({
         command: entry.command,

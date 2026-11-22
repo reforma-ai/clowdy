@@ -97,7 +97,7 @@ export function installShimOrWarn(dataDir: string): Shim | undefined {
         return installShim(dataDir);
     }
     catch (error) {
-        console.warn(`[clowdy] the clowdy command could not be written, so agents cannot use threads: ${ errorMessage(error) }`);
+        console.warn(`[clowdy] the clowdy command could not be written, so agents cannot use tasks or threads:${ errorMessage(error) }`);
 
         return undefined;
     }

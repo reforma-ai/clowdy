@@ -132,14 +132,14 @@ describe('MessageActions', () => {
             expect(container.querySelector('time')).not.toBeNull();
         });
 
-        it('sits after Copy, with the time first on the person\'s side and last on an agent\'s, so the tab order is the reading order', async () => {
+        it('sits before Copy, with the time first on the person\'s side and last on an agent\'s, so the tab order is the reading order', async () => {
             await act(async () => root.render(<MessageActions text="Hello" at={ at } align="end" actions={ { show: 'hover', onReply: vi.fn() } } />));
 
-            expect(order()).toEqual(['time', 'Copy message', 'Reply']);
+            expect(order()).toEqual(['time', 'Reply', 'Copy message']);
 
             await act(async () => root.render(<MessageActions text="Hello" at={ at } align="start" actions={ { show: 'hover', onReply: vi.fn() } } />));
 
-            expect(order()).toEqual(['Copy message', 'Reply', 'time']);
+            expect(order()).toEqual(['Reply', 'Copy message', 'time']);
         });
 
         it('keeps the message root marked for the selection toolbar, with the row inside it', async () => {
@@ -170,10 +170,10 @@ describe('MessageActions', () => {
             expect(onFork).toHaveBeenCalledOnce();
         });
 
-        it('sits after Reply and before the time on an answer, so the tab order is the reading order', async () => {
+        it('sits after Copy and before the time on an answer, so the tab order is the reading order', async () => {
             await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onReply: vi.fn(), onFork: vi.fn() } } />));
 
-            expect(order()).toEqual(['Copy message', 'Reply', 'Fork into new chat', 'time']);
+            expect(order()).toEqual(['Reply', 'Copy message', 'Fork into new chat', 'time']);
         });
 
         it('spins and takes no press while its fork is being made', async () => {
@@ -211,10 +211,6 @@ describe('MessageActions', () => {
     describe('Edit', () => {
         const editButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Edit message"]');
         const order = () => [...container.querySelectorAll('time, button')].map(node => (node.tagName === 'TIME' ? 'time' : node.getAttribute('aria-label')));
-        const tooltip = () => document.querySelector('[role="tooltip"]')?.textContent;
-        /** The stand-in a disabled Edit has for the pointer and the keyboard, which the disabled button takes neither of. */
-        const standIn = () => container.querySelector<HTMLElement>('[role="button"][aria-disabled]');
-        const settle = () => act(async () => new Promise(resolve => setTimeout(resolve, 0)));
 
         it('is drawn only where a handler is given, and calls it when pressed', async () => {
             const onEdit = vi.fn();
@@ -229,10 +225,10 @@ describe('MessageActions', () => {
             expect(onEdit).toHaveBeenCalledOnce();
         });
 
-        it('sits between Copy and Reply, with the time first on the person\'s side, so the tab order is the reading order', async () => {
+        it('sits between Reply and Copy, with the time first on the person\'s side, so the tab order is the reading order', async () => {
             await act(async () => root.render(<MessageActions text="Hello" at={ at } align="end" actions={ { show: 'hover', onEdit: vi.fn(), onReply: vi.fn() } } />));
 
-            expect(order()).toEqual(['time', 'Copy message', 'Edit message', 'Reply']);
+            expect(order()).toEqual(['time', 'Reply', 'Edit message', 'Copy message']);
         });
 
         it('stays for a message of files alone, which can be given words: only Copy and Reply have nothing to work on', async () => {
@@ -243,58 +239,10 @@ describe('MessageActions', () => {
             expect(order()).toEqual(['time', 'Edit message']);
         });
 
-        it('is off while the agent works, and says why on the stand-in that takes its place for the pointer and the keyboard', async () => {
-            const onEdit = vi.fn();
-
-            await act(async () => root.render(<MessageActions text="Hello" at={ at } align="end" actions={ { show: 'hover', onEdit, editState: 'busy' } } />));
-
-            expect(editButton()?.disabled).toBe(true);
-            expect(standIn()?.getAttribute('aria-label')).toBe('Edit message');
-            expect(standIn()?.contains(editButton())).toBe(true);
-
-            await act(async () => editButton()!.click());
-
-            expect(onEdit).not.toHaveBeenCalled();
-            expect(tooltip()).toBeUndefined();
-
-            // The keyboard: a tooltip opens at once on a focus that came from a key.
-            await act(async () => {
-                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-                standIn()!.focus();
-            });
-            await settle();
-
-            expect(tooltip()).toBe('Stop the agent to edit');
-        });
-
-        it('says why on a hover of the stand-in too, after the tooltip\'s delay', async () => {
-            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-
-            try {
-                await act(async () => root.render(<MessageActions text="Hello" at={ at } align="end" actions={ { show: 'hover', onEdit: vi.fn(), editState: 'busy' } } />));
-                await act(async () => {
-                    // The tooltip counts a hover only when the last thing the person did was with the pointer, not the keyboard.
-                    standIn()!.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'mouse', bubbles: true }));
-                    standIn()!.dispatchEvent(new PointerEvent('pointerover', { pointerType: 'mouse', bubbles: true }));
-                });
-                await act(async () => vi.advanceTimersByTimeAsync(100));
-
-                expect(tooltip()).toBeUndefined();
-
-                await act(async () => vi.advanceTimersByTimeAsync(600));
-
-                expect(tooltip()).toBe('Stop the agent to edit');
-            }
-            finally {
-                vi.useRealTimers();
-            }
-        });
-
         it('is a plain button with its own tooltip when the agent is at rest', async () => {
             await act(async () => root.render(<MessageActions text="Hello" at={ at } align="end" actions={ { show: 'hover', onEdit: vi.fn() } } />));
 
             expect(editButton()?.disabled).toBe(false);
-            expect(standIn()).toBeNull();
         });
     });
 });

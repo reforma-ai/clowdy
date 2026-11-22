@@ -26,3 +26,8 @@ export function commandResponse(result: CommandResult): Response {
 export function forbidden(message: string): Response {
     return json({ ok: false, error: { code: 'unauthorized', message } }, 403);
 }
+
+/** No token, or a wrong one: the caller must send the daemon's bearer token. */
+export function unauthorized(): Response {
+    return Response.json({ ok: false, requestId: '', error: { code: 'unauthorized', message: 'A valid bearer token is required' } }, { status: 401, headers: { 'www-authenticate': 'Bearer' } });
+}

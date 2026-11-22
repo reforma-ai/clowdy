@@ -1,6 +1,6 @@
-import { isTerminalRunStatus } from '@clowdy/protocol';
+import { isClosedCategory, isTerminalRunStatus } from '@clowdy/protocol';
 
-import type { Actor, Artifact, Chat, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId, TaskStatus } from '@clowdy/protocol';
+import type { Actor, Artifact, Chat, Run, RunId, RunTaskLink, Task, TaskExternalRef, TaskId, TaskStatus, TaskStatusCategory } from '@clowdy/protocol';
 import type { StatusTone } from '../../shared';
 import type { TasksView } from '../../stores';
 
@@ -37,7 +37,7 @@ export function startBlockedReason(taskRuns: readonly Run[] = []): string | null
 
     if (active.length === 0) return null;
 
-    return active.length === 1 ? `${ active[0].name } is already working on this task.` : `${ active.length } agents are already working on this task.`;
+    return active.length === 1 ? `${ active[0].name } is already working on this task` : `${ active.length } agents are already working on this task`;
 }
 
 /* --------------------------------- Filters -------------------------------- */
@@ -101,7 +101,8 @@ export function boardColumns(statuses: readonly TaskStatus[], tasks: readonly Ta
 
 /**
  * The ids the cursor walks, in the order the view draws them: the board's columns in workflow order, or the list's one column in the order it is given.
- * `tasks` is what the view shows, in task order.
+ * `tasks` is what the view shows: a board's tasks in any order (the columns group them), and the tree list's rows top to bottom with the insides of folded rows left out,
+ * which is the order the cursor must walk (`scopeContent` makes both).
  */
 export function taskGrid(view: TasksView, tasks: readonly Task[], statuses: readonly TaskStatus[]): TaskId[][] {
     if (view === 'board') return boardColumns(statuses, tasks).map(column => column.tasks.map(task => task.id));
@@ -165,6 +166,16 @@ export function blockingOptions(tasks: readonly Task[], task: Pick<Task, 'id'>):
     const listed = new Set([...tasks.filter(({ dependsOn }) => dependsOn.includes(task.id)), ...blockingCandidates(tasks, { taskId: task.id })].map(({ id }) => id));
 
     return tasks.filter(({ id }) => listed.has(id));
+}
+
+/**
+ * Whether a dependency no longer holds its dependents back, and what to call it: a closed task is resolved, Done or Canceled alike, as the daemon counts it
+ * (`isClosedCategory`). A task whose status the workflow lost counts as not done.
+ */
+export function dependencyState(category: TaskStatusCategory | undefined): { resolved: boolean; label: 'Done' | 'Canceled' | 'Not done' } {
+    if (category === undefined || !isClosedCategory(category)) return { resolved: false, label: 'Not done' };
+
+    return { resolved: true, label: category === 'canceled' ? 'Canceled' : 'Done' };
 }
 
 /** The dependency list with `id` taken out when it is there and added at the end when it is not. `task.update` replaces the whole list, so this is what to send. */
@@ -349,9 +360,16 @@ export function newestChat<T extends Pick<Chat, 'updatedAt'>>(chats: readonly T[
     return chats.reduce<T | undefined>((newest, chat) => (newest === undefined || chat.updatedAt > newest.updatedAt ? chat : newest), undefined);
 }
 
-/** The id of the task a `task.create` answered with. The daemon answers `{ task }`, the fixture daemon the task itself. */
+/** The id of the comment a `task.comment.add` answered with: `{ comment }`. */
+export function createdCommentId(data: unknown): string | undefined {
+    const comment = data && typeof data === 'object' && 'comment' in data ? data.comment : undefined;
+
+    return comment && typeof comment === 'object' && 'id' in comment && typeof comment.id === 'string' ? comment.id : undefined;
+}
+
+/** The id of the task a `task.create` answered with: the daemon and the fixture daemon answer `{ task }`. */
 export function createdTaskId(data: unknown): TaskId | undefined {
-    const task = data && typeof data === 'object' && 'task' in data ? data.task : data;
+    const task = data && typeof data === 'object' && 'task' in data ? data.task : undefined;
 
     return task && typeof task === 'object' && 'id' in task && typeof task.id === 'string' ? task.id : undefined;
 }

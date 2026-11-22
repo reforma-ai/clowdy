@@ -2,9 +2,10 @@ import { Button } from '@clowdy/components/Button';
 import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { Check, ChevronDown, Folder, Home, Plus, Sliders } from '@clowdy/icons/14';
+import { AddFolder, Check, ChevronDown, Folder, Home, Sliders } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
+import { PathText } from '../shared/PathText';
 import { ProjectIcon } from '../shared/ProjectIcon';
 import { useRootStore } from '../stores';
 import { openAddProject } from './projectDialogs';
@@ -15,11 +16,16 @@ import type { Project } from '@clowdy/protocol';
 const ADD = 'add-project';
 const MANAGE = 'manage-projects';
 
-/** Where a project is: its main folder, and `+N` for the folders it has besides. */
-function whereLine(project: Pick<Project, 'folders'>): string {
+/** Where a project is: its main folder (the path gives way to the count), and `+N` for the folders it has besides. */
+function Where({ project }: { project: Pick<Project, 'folders'> }) {
     const more = project.folders.length - 1;
 
-    return more > 0 ? `${ mainFolder(project).path } +${ more }` : mainFolder(project).path;
+    return (
+        <span className={ styles.where }>
+            <PathText path={ mainFolder(project).path } />
+            { more > 0 && <span className={ styles.more }>{ `+${ more }` }</span> }
+        </span>
+    );
 }
 
 /**
@@ -57,7 +63,7 @@ export function ProjectSelect() {
                             key={ project.id }
                             id={ project.id }
                             text={ project.name }
-                            description={ whereLine(project) }
+                            description={ <Where project={ project } /> }
                             icon={ <ProjectIcon project={ project } /> }
                             stacked
                             data-align="center"
@@ -65,7 +71,7 @@ export function ProjectSelect() {
                         />
                     )) }
                     { root.projects.length > 0 && <MenuSeparator /> }
-                    <MenuItem id={ ADD } text="Add project…" icon={ <Plus /> } />
+                    <MenuItem id={ ADD } text="Add project…" icon={ <AddFolder /> } />
                     <MenuItem id={ MANAGE } text="Manage projects…" icon={ <Sliders /> } />
                 </Menu>
             </Popover>

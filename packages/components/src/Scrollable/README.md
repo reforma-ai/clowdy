@@ -39,6 +39,8 @@ Axes are independent (different elements or element + remote).
 
 Props: `alwaysShowScrollbar`, `scrollbar` (`false` draws no thumb; wheel and `edgeFade` stay), `gap`, `edgeFade`, `onScroll`, `stickToBottom`, `containerClass` / `contentClass`.
 
+`edgeFade` fades the edges where there is more to scroll to: top and bottom, or left and right for a scroller that scrolls sideways only (`horizontal vertical={false}`, a strip of tabs). With both axes on it is the vertical fade.
+
 Root edge attrs when an axis is enabled: `data-scroll-v-start|end`, `data-scroll-h-start|end`, `data-scroll-show-v|h`.
 
 ## Overlay

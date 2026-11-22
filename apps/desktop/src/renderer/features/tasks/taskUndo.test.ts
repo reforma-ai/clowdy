@@ -28,7 +28,7 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
 
 /*
  * What the panel sends: one `task.update` per edit, with the field it edits, through the store and the fixture daemon.
- * The fixture project (CAR-20 to CAR-30): CAR-24 In progress, CAR-26 To do and depends on CAR-24 and CAR-25.
+ * The fixture project (CAR-20 to CAR-37): CAR-24 In progress, CAR-26 To do and depends on CAR-24 and CAR-25; CAR-33 is inside CAR-32, which is inside CAR-31.
  */
 
 const memoryStorage = (): KeyValueStorage => {
@@ -148,6 +148,67 @@ describe('what is recorded', () => {
         expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-26', dependsOn: was });
     });
 
+    it('records a move under another task with the previous parent, and puts a root back as a root with null', async () => {
+        expect(task('t-26').parentId).toBeUndefined();
+
+        await edit(update('t-26', { parentId: 't-35' }));
+
+        expect(task('t-26').parentId).toBe('t-35');
+        expect(stack.entries.map(entry => entry.label)).toEqual(['Parent of CAR-26 changed']);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        // An absent parentId would leave the task where it is: the command that detaches says null.
+        expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-26', parentId: null });
+        expect('parentId' in task('t-26')).toBe(false);
+    });
+
+    it('records a detach with the parent the task left, and moves it back under that parent', async () => {
+        expect(task('t-33').parentId).toBe('t-32');
+
+        await edit(update('t-33', { parentId: null }));
+
+        expect('parentId' in task('t-33')).toBe(false);
+        expect(stack.entries.map(entry => entry.label)).toEqual(['Parent of CAR-33 changed']);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-33', parentId: 't-32' });
+        expect(task('t-33').parentId).toBe('t-32');
+    });
+
+    it('records a move from one parent to another with the first one, and calls a move with a status change an update', async () => {
+        await edit(update('t-34', { parentId: 't-35' }));
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(sent.at(-1)).toEqual({ type: 'task.update', taskId: 't-34', parentId: 't-32' });
+
+        await edit(update('t-34', { parentId: 't-36', statusId: 'review' }));
+
+        expect(stack.entries.map(entry => entry.label)).toEqual(['CAR-34 updated']);
+    });
+
+    it('takes a detach of a root, and a parent sent unchanged, for no change: nothing is recorded and the command is sent all the same', async () => {
+        await edit(update('t-24', { parentId: null }));
+        await edit(update('t-33', { parentId: 't-32' }));
+
+        expect(sent.map(input => input.type)).toEqual(['task.update', 'task.update']);
+        expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
+        expect(toasts.show).not.toHaveBeenCalled();
+    });
+
+    it('records nothing when the daemon refuses the move, and says why', async () => {
+        const results = await edit(update('t-31', { parentId: 't-33' }));
+
+        expect(results[0].ok).toBe(false);
+        expect(toasts.error).toHaveBeenCalledWith({ message: 'Task CAR-33 is inside CAR-31, so it cannot be its parent' });
+        expect(stack.canUndo(FIXTURE_PROJECT_ID)).toBe(false);
+        expect(task('t-31').parentId).toBeUndefined();
+    });
+
     it('records only the fields that changed: a title sent unchanged next to a new status is not part of the undo', async () => {
         const { title } = task('t-24');
 
@@ -242,6 +303,28 @@ describe('what an undo checks', () => {
         expect(task('t-26').dependsOn).toEqual(['t-24', 't-27']);
     });
 
+    it('refuses to put back a parent that was changed since, and does not touch the task', async () => {
+        await edit(update('t-26', { parentId: 't-35' }));
+        await daemon.command({ type: 'task.update', taskId: 't-26', parentId: 't-36' });
+        await settle();
+        sent.length = 0;
+
+        expect(await stack.undoLatest(FIXTURE_PROJECT_ID)).toBe(false);
+        expect(sent).toEqual([]);
+        expect(task('t-26').parentId).toBe('t-36');
+        expect(toasts.error).toHaveBeenCalledWith({ message: 'CAR-26 changed since, so this cannot be undone' });
+    });
+
+    it('does not put back a parent over a task that was detached since: a root is not the parent the change gave it', async () => {
+        await edit(update('t-26', { parentId: 't-35' }));
+        await daemon.command({ type: 'task.update', taskId: 't-26', parentId: null });
+        await settle();
+        sent.length = 0;
+
+        expect(await stack.undoLatest(FIXTURE_PROJECT_ID)).toBe(false);
+        expect(sent).toEqual([]);
+    });
+
     it('keeps the entry\'s own toast in step: the offer is replaced by the next change\'s, and closed when its entry is undone', async () => {
         await edit(update('t-24', { title: 'Booking form v2' }));
 
@@ -271,5 +354,142 @@ describe('what an undo checks', () => {
         expect(task('t-24').title).not.toBe('Booking form v2');
         expect(task('t-27').description).toBe('Cover glass.');
         expect(stack.entries.map(entry => entry.label)).toEqual(['Description of CAR-27 changed']);
+    });
+});
+
+describe('a run of description edits', () => {
+    const description = (text: string) => update('t-35', { description: text });
+    const original = () => task('t-35').description;
+
+    it('is one entry while the offer to undo is on screen: the later edits join the first, which keeps what the description was before it', async () => {
+        const was = original();
+        const ticked = was.replace('- [ ] Refund part of a booking', '- [x] Refund part of a booking');
+        const both = ticked.replace('- [ ] Tell the person by email', '- [x] Tell the person by email');
+
+        await edit(description(ticked));
+        await vi.advanceTimersByTimeAsync(2000);
+        await edit(description(both));
+
+        expect(task('t-35').description).toBe(both);
+        expect(stack.entries.map(entry => entry.label)).toEqual(['Description of CAR-35 changed']);
+
+        // The offer is made again, and the one it replaces is closed.
+        expect(toasts.show).toHaveBeenCalledTimes(2);
+        expect(toasts.queue.close).toHaveBeenCalledWith(toasts.show.mock.results[0].value);
+
+        sent.length = 0;
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe(was);
+        expect(sent).toEqual([{ type: 'task.update', taskId: 't-35', description: was }]);
+        expect(stack.entries).toEqual([]);
+        expect(toasts.queue.close).toHaveBeenCalledWith(toasts.show.mock.results[1].value);
+    });
+
+    it('stays joined for as long as each edit comes within the window of the one before it', async () => {
+        const was = original();
+
+        for (const step of ['one', 'two', 'three', 'four']) {
+            await edit(description(`${ was }\n\n${ step }`));
+            await vi.advanceTimersByTimeAsync(3000);
+        }
+
+        expect(stack.entries).toHaveLength(1);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe(was);
+    });
+
+    it('starts a new entry once the window has passed', async () => {
+        await edit(description('First.'));
+        await vi.advanceTimersByTimeAsync(5000);
+        await edit(description('Second.'));
+
+        expect(stack.entries).toHaveLength(2);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe('First.');
+    });
+
+    it('does not join the description of another task, nor an edit after another change', async () => {
+        await edit(description('First.'));
+        await edit(update('t-27', { description: 'Other task.' }));
+        await edit(description('Second.'));
+
+        expect(stack.entries).toHaveLength(3);
+
+        await edit(update('t-35', { title: 'Refunds' }));
+        await edit(description('Third.'));
+
+        expect(stack.entries).toHaveLength(5);
+    });
+
+    it('does not join an entry that was undone already', async () => {
+        await edit(description('First.'));
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+        await edit(description('Second.'));
+
+        expect(stack.entries).toHaveLength(1);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe(original());
+        expect(task('t-35').description).not.toBe('First.');
+    });
+
+    it('does not join an edit that starts from a text someone else wrote in between, so one undo does not take their text away', async () => {
+        const was = original();
+
+        await edit(description('First.'));
+        await daemon.command({ type: 'task.update', taskId: 't-35', description: 'An agent wrote this.' });
+        await settle();
+        await edit(description('Second.'));
+
+        expect(stack.entries).toHaveLength(2);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        // The agent's text is what the edit started from, and what it comes back to; the person's first edit is still its own step.
+        expect(task('t-35').description).toBe('An agent wrote this.');
+        expect(task('t-35').description).not.toBe(was);
+        expect(stack.entries).toHaveLength(1);
+    });
+
+    it('joins an edit that was sent before the project showed the one before it, which still starts from a text the entry has held', async () => {
+        const was = original();
+
+        // Both read the description as it is now, as two saves in a row do when the daemon's event comes after its reply.
+        await Promise.all([edit(description('First.')), edit(description('Second.'))]);
+
+        expect(stack.entries).toHaveLength(1);
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe(was);
+    });
+
+    it('refuses to put back a description that was changed by someone else since, and says so', async () => {
+        const was = original();
+
+        await edit(description('First.'));
+        await edit(description('Second.'));
+        await daemon.command({ type: 'task.update', taskId: 't-35', description: 'An agent wrote this.' });
+        await settle();
+
+        await stack.undoLatest(FIXTURE_PROJECT_ID);
+        await settle();
+
+        expect(task('t-35').description).toBe('An agent wrote this.');
+        expect(task('t-35').description).not.toBe(was);
+        expect(toasts.error).toHaveBeenCalledWith({ message: 'CAR-35 changed since, so this cannot be undone' });
     });
 });

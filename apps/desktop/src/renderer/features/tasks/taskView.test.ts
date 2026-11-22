@@ -8,8 +8,10 @@ import {
     blockingCandidates,
     blockingOptions,
     boardColumns,
+    createdCommentId,
     createdTaskId,
     dependencyCandidates,
+    dependencyState,
     externalLink,
     facetCount,
     filterTasks,
@@ -80,10 +82,23 @@ describe('runsByTask', () => {
     });
 });
 
+describe('dependencyState', () => {
+    it('resolves a dependency that is done or canceled, and names which', () => {
+        expect(dependencyState('done')).toEqual({ resolved: true, label: 'Done' });
+        expect(dependencyState('canceled')).toEqual({ resolved: true, label: 'Canceled' });
+    });
+
+    it('holds back on every open category and on a status the workflow lost', () => {
+        for (const category of ['backlog', 'todo', 'active', 'review'] as const) expect(dependencyState(category)).toEqual({ resolved: false, label: 'Not done' });
+
+        expect(dependencyState(undefined)).toEqual({ resolved: false, label: 'Not done' });
+    });
+});
+
 describe('start', () => {
     it('is blocked by an active assigned run, and names it', () => {
-        expect(startBlockedReason([run('07', 'running', { name: 'Orchestrator 07' })])).toBe('Orchestrator 07 is already working on this task.');
-        expect(startBlockedReason([run('a', 'queued'), run('b', 'waiting_user')])).toBe('2 agents are already working on this task.');
+        expect(startBlockedReason([run('07', 'running', { name: 'Orchestrator 07' })])).toBe('Orchestrator 07 is already working on this task');
+        expect(startBlockedReason([run('a', 'queued'), run('b', 'waiting_user')])).toBe('2 agents are already working on this task');
     });
 
     it('is open when the runs finished, or there are no runs', () => {
@@ -413,11 +428,21 @@ describe('newestChat', () => {
 });
 
 describe('createdTaskId', () => {
-    it('reads the id from the daemon answer and from the fixture answer', () => {
+    it('reads the id from the { task } answer of the daemon and of the fixture daemon, and from nothing else', () => {
         expect(createdTaskId({ task: { id: 't-9' } })).toBe('t-9');
-        expect(createdTaskId({ id: 't-9' })).toBe('t-9');
+        expect(createdTaskId({ id: 't-9' })).toBeUndefined();
         expect(createdTaskId(undefined)).toBeUndefined();
         expect(createdTaskId({ task: {} })).toBeUndefined();
+    });
+});
+
+describe('createdCommentId', () => {
+    it('reads the id from the { comment } answer of the daemon and of the fixture daemon, and from nothing else', () => {
+        expect(createdCommentId({ comment: { id: 'cmt_A001' } })).toBe('cmt_A001');
+        expect(createdCommentId({ task: { id: 't-9' } })).toBeUndefined();
+        expect(createdCommentId({ id: 'cmt_A001' })).toBeUndefined();
+        expect(createdCommentId(undefined)).toBeUndefined();
+        expect(createdCommentId({ comment: {} })).toBeUndefined();
     });
 });
 

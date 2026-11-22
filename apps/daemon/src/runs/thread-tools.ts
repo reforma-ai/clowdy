@@ -31,7 +31,7 @@ export function threadTools({ threads }: ToolDeps, run: Run): ToolDefinition[] {
             model: z.string().optional().describe('The model, in the agent\'s own spelling; default yours when the agent is yours'),
             effort: z.string().optional().describe('The reasoning level, in the agent\'s own spelling'),
             mode: z.enum(['autopilot', 'semi']).optional().describe('autopilot decides alone; semi asks the person at significant forks. Default your mode'),
-            tasks: z.array(taskRef).optional().describe('Tasks the thread works on: it is assigned to them, and waits while their dependencies are not Done'),
+            tasks: z.array(taskRef).optional().describe('Tasks the thread works on: it is assigned to them, and waits while their dependencies are not closed (Done or Canceled)'),
             cwd: z.string().optional().describe('Absolute path of an existing folder the thread works in (a git worktree you made, say); default the folder this chat works in'),
         }), input => ({
             ...threads.spawn(run, input),
@@ -42,7 +42,7 @@ export function threadTools({ threads }: ToolDeps, run: Run): ToolDefinition[] {
             thread,
             message: z.string().min(1).describe('What to tell it'),
             mode: z.enum(['steer', 'queue']).optional().describe('steer (default) joins a running turn when the agent can; queue waits for the next turn'),
-        }), input => threads.tell(run, input), { cli: { positional: ['thread', 'message'] } }),
+        }), input => threads.tell(run, input), { cli: { positional: ['thread', 'message'], stdin: 'message' } }),
 
         defineTool('thread_stop', 'Stops a thread below you as the person\'s Stop does: its running turn and the work it has open in the background end, and messages waiting for it are held. Threads below it are not stopped; stop each one you want stopped. Use it when the work is no longer needed or went wrong. The thread is not restarted by itself; a thread_tell starts it again. Returns stopped: false, with its state, when its work was over already.', z.object({
             thread,

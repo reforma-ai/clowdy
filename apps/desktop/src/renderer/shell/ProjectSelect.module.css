@@ -1,3 +1,14 @@
 .trigger {
     max-width: 18rem;
 }
+
+/* The main folder's path gives way to the count of the others, which always shows. */
+.where {
+    display: flex;
+    gap: var(--spacing-xs);
+    min-width: 0;
+}
+
+.more {
+    flex-shrink: 0;
+}

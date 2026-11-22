@@ -1,15 +1,18 @@
 import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
 import { Panel, PanelContent } from '@clowdy/components/Panel';
-import { Book, Folder, Message, PaintBucket, Robot } from '@clowdy/icons/14';
+import { Book, Folder, Message, Page, PaintBucket, Robot } from '@clowdy/icons/14';
+import { Keyboard } from '@clowdy/icons/16';
 import { Fragment } from 'react';
 
 import { SidebarHeading, SidebarLayout } from '../../shared';
 import { useRootStore, type SettingsPage } from '../../stores';
 import { AppearancePage } from './AppearancePage';
 import { ChatPage } from './ChatPage';
+import { FilesPage } from './FilesPage';
 import { ProjectsPage } from './projects';
 import { ProvidersPage } from './providers';
 import styles from './Screen.module.css';
+import { ShortcutsPage } from './ShortcutsPage';
 import { SkillsSection } from './skills';
 
 import type { ReactNode } from 'react';
@@ -29,6 +32,8 @@ const GROUPS: ReadonlyArray<{ id: string; label: string; pages: readonly PageVie
         pages: [
             { id: 'appearance', label: 'Appearance', icon: <PaintBucket />, render: () => <AppearancePage /> },
             { id: 'chat', label: 'Chat', icon: <Message />, render: () => <ChatPage /> },
+            { id: 'files', label: 'Files', icon: <Page />, render: () => <FilesPage /> },
+            { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard size={ 14 } />, render: () => <ShortcutsPage /> },
         ],
     },
     {

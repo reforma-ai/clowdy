@@ -12,6 +12,9 @@ import type { PointerEvent, RefObject } from 'react';
 /** How wide the lengthening reaches, in pixels: a few ticks either side of the pointer. */
 const WAVE = 16;
 
+/** How far from its end a stream still counts as scrolled to it, in pixels: a fractional scroll position never lands on the exact end. */
+const AT_END = 2;
+
 /** Room between the card and the rail, and between the card and the window edge. */
 const CARD_GAP = 8;
 
@@ -148,6 +151,11 @@ export function TurnRail({ marks, scroller }: TurnRailProps) {
                 if (message.getBoundingClientRect().top <= edge) next = mark.id;
                 else break;
             }
+
+            // A stream scrolled to its end shows the last turn, even when that turn is too short to have reached the top.
+            const isScrollable = scroll.scrollHeight > scroll.clientHeight;
+
+            if (isScrollable && scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= AT_END && list.length > 0) next = list[list.length - 1].id;
 
             setActiveId(current => (current === next ? current : next));
         };

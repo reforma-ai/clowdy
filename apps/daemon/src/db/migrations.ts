@@ -418,4 +418,49 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 20,
+        up(db) {
+            // A task inside a task (see `Task.parentId`): NULL for a root, which every task of an older database is. The foreign key clears the column of
+            // a task whose parent row goes (the domain moves the children up first, so this only guards a bypass). `closed_at` is when the task entered a closed status
+            // (`Task.closedAt`); a task that is closed already gets the time of its last change, the closest thing an older database knows.
+            db.run(`
+                ALTER TABLE tasks ADD COLUMN parent_id TEXT REFERENCES tasks(id) ON DELETE SET NULL;
+                CREATE INDEX tasks_parent ON tasks(parent_id) WHERE parent_id IS NOT NULL;
+                ALTER TABLE tasks ADD COLUMN closed_at INTEGER;
+                UPDATE tasks SET closed_at = updated_at
+                    WHERE status_id IN (SELECT id FROM task_statuses WHERE category IN ('done', 'canceled'));
+            `);
+        },
+    },
+    {
+        version: 21,
+        up(db) {
+            // The comments on a task (see `TaskComment`); a task that goes takes them along. `author` is an `Actor` as JSON, `edited_at` stays NULL until a
+            // body is changed. The index serves the paged read, which goes by `created_at` (the id settles a tie).
+            db.run(`
+                CREATE TABLE task_comments (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                    author TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    edited_at INTEGER
+                );
+                CREATE INDEX task_comments_task ON task_comments(task_id, created_at);
+            `);
+        },
+    },
+    {
+        version: 22,
+        up(db) {
+            // When a task went into the archive (see `Task.archivedAt`): NULL for a task that is not archived, which every task of an older database is. The
+            // tasks archived together share the value. Partial, so the live tasks, which are nearly all of them, keep out of the index that serves the archive's
+            // paging and count.
+            db.run(`
+                ALTER TABLE tasks ADD COLUMN archived_at INTEGER;
+                CREATE INDEX tasks_archived ON tasks(project_id, archived_at) WHERE archived_at IS NOT NULL;
+            `);
+        },
+    },
 ];

@@ -852,6 +852,7 @@ export class RunDriver {
                 switch (event.type) {
                     case 'session':
                         runs.setSessionId(run.id, event.sessionId);
+                        writer.heard();
                         break;
                     case 'process':
                         runs.setProcess(run.id, describeProcess({ pid: event.pid, pgid: event.pgid, startedAt: event.startedAt }));
@@ -865,6 +866,15 @@ export class RunDriver {
                             }
 
                             writer.text(event.delta, event.done, event.messageId);
+                        }
+                        else {
+                            native.stream({ ...event, agentId: event.agentId });
+                        }
+
+                        break;
+                    case 'thought':
+                        if (event.agentId === undefined) {
+                            writer.reasoning(event.delta, event.done);
                         }
                         else {
                             native.stream({ ...event, agentId: event.agentId });

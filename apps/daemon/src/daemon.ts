@@ -12,6 +12,7 @@ import { createEngines } from './engine';
 import { CHAT_TITLE_SETTING } from './engine/acp/catalog';
 import { AgentRegistry } from './engine/acp/registry';
 import { FilesService } from './files/service';
+import { FsService } from './fs/service';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
 import { announceAgentsChanged } from './providers/announce';
@@ -25,6 +26,7 @@ import { ThreadService } from './runs/threads';
 import { toolsFor } from './runs/tools';
 import { SkillsService } from './skills/service';
 import { Store } from './store';
+import { TerminalService } from './terminals/service';
 
 import type { DaemonInfo } from '@clowdy/protocol';
 import type { Services } from './commands';
@@ -53,6 +55,8 @@ export interface DaemonOptions {
     providers?: ProvidersService;
     /** Replaces the reader of model lists; tests use it to keep the real programs out of the run. */
     models?: ModelCatalog;
+    /** Replaces the terminal service; tests use it to run a shell of their own on a PTY of their own. */
+    terminals?: TerminalService;
     heartbeatMs?: number;
     /** Called once the daemon has stopped because a client asked (`POST /v1/shutdown`); the entry point exits the process here. */
     onShutdown?: () => void;
@@ -82,7 +86,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
 
         const runs = new RunService(store, config, engines);
         // A turn asks for its tools when it starts, by which time the thread service below exists.
-        const driver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, threads }, run, mode), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
+        const driver = new RunDriver({ store, config, runs, engines, tools: (run, mode) => toolsFor({ store, runs, threads }, run, mode, agents.taskChannel(run.engine)), compactCommand: engine => agents.compactCommand(engine), namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING) });
         const docs = new DocsService(store);
         const attachments = new AttachmentsService(store, config.dataDir);
         // Before the recovery: a turn the restart interrupted holds its chat's queue.
@@ -94,7 +98,8 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             registry: agents,
             announce: () => announceAgentsChanged(store),
         });
-        const services: Services = { config, store, runs, driver, queue, threads, docs, files: new FilesService(), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }) };
+        const files = new FilesService();
+        const services: Services = { config, store, runs, driver, queue, threads, docs, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }), terminals: options.terminals ?? new TerminalService() };
 
         await runs.recover();
         attachments.sweep();
@@ -111,11 +116,13 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             // Notices still in their window are lost: their timers must not write to a store that is closing.
             notices.stop();
             await server.stop(true);
+            services.terminals.stop();
             await driver.stop();
             created?.stop();
             providers.stop();
             services.models.stop();
             docs.stop();
+            services.fs.stop();
             skills.stop();
             store.db.close();
             removeInfo();

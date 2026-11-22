@@ -2,7 +2,10 @@ import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:tes
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { getTask } from '../src/db/tasks';
 import { cleanTempDirs, git, Harness, makeRepo, startHarness, tempDir } from './helpers';
+
+import type { ProjectSnapshot, TaskDetail } from '@clowdy/protocol';
 
 afterAll(cleanTempDirs);
 
@@ -272,15 +275,35 @@ describe('tasks', () => {
         expect(failure(h.send('task.delete', { taskId: a.id })).code).toBe('not_found');
     });
 
-    test('the task detail lists chats, runs and artifacts', async () => {
+    test('the task detail has the task itself, and lists chats, runs and artifacts', async () => {
         const { projectId, create } = setup();
         const { chat } = h.ok('chat.create', { projectId });
         const task = create('Detail', { chatId: chat.id });
         const { runId, chatId } = h.ok('task.start', { taskId: task.id });
-        const detail = await (await h.fetch(`/v1/tasks/${ task.id }/detail`)).json();
+        const detail = await (await h.fetch(`/v1/tasks/${ task.id }/detail`)).json() as TaskDetail;
 
-        // Starting a task opens its own chat next to the one that discussed it.
-        expect(detail).toEqual({ taskId: task.id, chatIds: [chat.id, chatId], runIds: [runId], artifacts: [] });
+        // Starting a task opens its own chat next to the one that discussed it, and the run moves the task, so the task is read as it is now.
+        expect(detail).toEqual({ taskId: task.id, task: getTask(h.store.db, task.id)!, chatIds: [chat.id, chatId], runIds: [runId], artifacts: [] });
+        expect(detail.task).toMatchObject({ id: task.id, key: task.key, title: 'Detail' });
         expect((await h.fetch('/v1/tasks/tsk_nope/detail')).status).toBe(404);
+    });
+
+    test('the task detail reads an archived task, which the project snapshot leaves out', async () => {
+        const { projectId, create } = setup();
+        const done = h.statuses(projectId).find(status => status.category === 'done')!.id;
+        const epic = create('Epic');
+        const stage = h.ok('task.create', { projectId, title: 'Stage', parentId: epic.id, statusId: done }).task;
+
+        h.ok('task.update', { taskId: epic.id, statusId: done });
+        h.ok('task.archive', { taskId: epic.id });
+
+        const snapshot = await (await h.fetch(`/v1/projects/${ projectId }/snapshot`)).json() as ProjectSnapshot;
+        const detail = await (await h.fetch(`/v1/tasks/${ stage.id }/detail`)).json() as TaskDetail;
+
+        expect(snapshot.tasks.map(entry => entry.id)).not.toContain(stage.id);
+        expect(detail).toEqual({ taskId: stage.id, task: getTask(h.store.db, stage.id)!, chatIds: [], runIds: [], artifacts: [] });
+        expect(detail.task).toMatchObject({ id: stage.id, parentId: epic.id });
+        expect(detail.task.archivedAt).toBeGreaterThan(0);
+        expect(detail.task.closedAt).toBeGreaterThan(0);
     });
 });

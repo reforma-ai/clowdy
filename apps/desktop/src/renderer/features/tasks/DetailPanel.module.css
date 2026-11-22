@@ -53,6 +53,10 @@
     align-self: flex-start;
 }
 
+.subtasks {
+    align-self: flex-start;
+}
+
 .statusList {
     min-width: 12rem;
 }
@@ -75,4 +79,9 @@
 
 .spacer {
     flex: 1;
+}
+
+/* Under the title: what the description says about the work, as the cards say it. */
+.chips {
+    display: flex;
 }

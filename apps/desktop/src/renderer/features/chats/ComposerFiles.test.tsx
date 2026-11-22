@@ -42,7 +42,7 @@ async function mount(result: CommandResult = accepted, page: 'chat' | { projectI
 
         return result;
     });
-    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p' }, taskList: [] }, ...await modelStore() };
+    const store = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...await modelStore() };
 
     await act(async () => {
         root.render(
@@ -205,6 +205,34 @@ describe('Composer files', () => {
         expect(uploads).toHaveBeenCalledTimes(1);
         expect(tiles()).toHaveLength(1);
         expect(editor().getText()).toBe('');
+    });
+
+    it('cites a file pasted from the project\'s folder by its path, and attaches one from anywhere else', async () => {
+        await mount();
+
+        window.desktop = {
+            platform: 'darwin',
+            readClipboardFiles: async () => [
+                { path: '/Users/dev/web/src/a.ts', name: 'a.ts', kind: 'file' },
+                { path: '/Users/dev/Downloads/report.pdf', name: 'report.pdf', kind: 'file' },
+            ],
+        } as unknown as typeof window.desktop;
+
+        try {
+            const paste = new Event('paste', { bubbles: true, cancelable: true });
+
+            Object.defineProperty(paste, 'clipboardData', { value: { files: [new File(['a'], 'a.ts'), new File(['r'], 'report.pdf')], items: [], types: ['Files'], getData: () => '' } });
+            await act(async () => void field().dispatchEvent(paste));
+
+            const chips = (editor().getJSON().content ?? []).flatMap(block => block.content ?? []).filter(node => node.type === 'composerMention');
+
+            expect(chips.map(chip => chip.attrs?.data)).toEqual([{ path: 'src/a.ts' }]);
+            expect(uploads.mock.calls.map(call => (call[1] as File).name)).toEqual(['report.pdf']);
+            expect(tiles()).toHaveLength(1);
+        }
+        finally {
+            delete window.desktop;
+        }
     });
 
     it('keeps the files of the new-chat page per project, because a file belongs to the project it was uploaded to', async () => {

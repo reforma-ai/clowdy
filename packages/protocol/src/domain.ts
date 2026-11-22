@@ -91,6 +91,13 @@ export interface ProjectFolderInfo {
     exists: boolean;
     /** The `origin` remote as git prints it (`git@github.com:acme/app.git`); absent without a remote, or when the folder is not a repository. */
     remoteUrl?: string;
+    /**
+     * The branch the folder has checked out, or on a detached HEAD the short hash of the commit (with `detached`); absent when the folder is not a repository or is
+     * missing.
+     */
+    branch?: string;
+    /** `branch` is a short commit hash, since HEAD points at a commit and not at a branch. */
+    detached?: true;
     /** How many chats work in this folder by choice (`Chat.folderId`): they go back to the main folder when the folder leaves the project. */
     chats: number;
 }
@@ -255,6 +262,19 @@ export interface TaskStatus {
 
 export type TaskStatusCategory = 'backlog' | 'todo' | 'active' | 'review' | 'done' | 'canceled';
 
+/** A task in one of these categories is finished: it releases the tasks that wait for it and no longer counts as work in flight. */
+export const CLOSED_TASK_CATEGORIES: readonly TaskStatusCategory[] = ['done', 'canceled'];
+
+export function isClosedCategory(category: TaskStatusCategory): boolean {
+    return CLOSED_TASK_CATEGORIES.includes(category);
+}
+
+/**
+ * How many levels a tree of tasks may have through the daemon's commands and tools: a root is level 1. It is GitHub's limit, so a tracker imported later
+ * fits. The store itself has no limit; moving a task checks the deepest task of its subtree too.
+ */
+export const MAX_TASK_DEPTH = 8;
+
 /** Where a task came from or is mirrored to. The internal list is the source of truth; providers are optional. */
 export interface TaskExternalRef {
     provider: string;
@@ -271,15 +291,41 @@ export interface Task {
     title: string;
     description: string;
     statusId: string;
-    /** Tasks that must be done before this one can start. */
+    /** Tasks that must be closed (done or canceled) before this one can start. */
     dependsOn: TaskId[];
+    /** The task this one is part of; absent for a root. A task may hold tasks down to `MAX_TASK_DEPTH` levels. */
+    parentId?: TaskId;
     createdBy: Actor;
     external?: TaskExternalRef;
     createdAt: number;
     updatedAt: number;
+    /** When the task entered a closed status (`isClosedCategory`); absent while it is open. Unlike `updatedAt` it does not move with every edit. */
+    closedAt?: number;
+    /**
+     * When the task was archived; absent for a task that is not. An archived task is closed, is not in the project snapshot or in the roll-ups of the board,
+     * and is still found by its key or id (a dependency or a mention on it resolves). The tasks archived together, a task and what is inside it, share one
+     * `archivedAt`, and restoring the task restores exactly those. A client treats a task with `archivedAt` as off the board.
+     */
+    archivedAt?: number;
 }
 
 export type Actor = { kind: 'user' } | { kind: 'run'; runId: RunId } | { kind: 'provider'; provider: string };
+
+/**
+ * A Markdown note on a task, from the person or from a run. Comments are not in the project snapshot (a task may collect any number): a client reads
+ * them from `GET /v1/tasks/:id/comments` when it shows a task, and follows `task.comment.upserted` and `task.comment.deleted` after that.
+ */
+export interface TaskComment {
+    id: string;
+    taskId: TaskId;
+    /** Who wrote it: the person for a command of the app, the run for a comment an agent left. */
+    author: Actor;
+    /** Markdown, never empty. */
+    body: string;
+    createdAt: number;
+    /** When the body was last changed; absent until it is. */
+    editedAt?: number;
+}
 
 /** A chat discusses a task, many-to-many. */
 export interface ChatTaskLink {
@@ -467,6 +513,11 @@ export type StreamItemBody =
     /** `text` is what the person wrote, and may be empty when files are attached; the line that tells the agent where the files are is not part of it. */
     | { kind: 'user'; text: string; attachments?: Attachment[]; from?: MessageSource }
     | { kind: 'assistant'; text: string; done: boolean }
+    /**
+     * What the agent thought between its other steps, in its own words as it streams (`done` once it moved on to something else), and how long it took
+     * (`durationMs`, set with `done`). Not part of the story the agent is told again, and not an answer: it is shown folded, as the work of a turn.
+     */
+    | { kind: 'reasoning'; text: string; done: boolean; durationMs?: number }
     | { kind: 'tool'; toolCallId: string; name: string; input: unknown; state: ToolState; output?: unknown; error?: string }
     /** A system line such as "Background command finished: bun test". */
     | { kind: 'note'; text: string }

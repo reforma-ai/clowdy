@@ -10,6 +10,7 @@ import { ListCursor } from '../../hotkeys/listCursor';
 import { createRegistry } from '../../hotkeys/registry';
 import { createUndoStack, type UndoStack } from '../../hotkeys/undo';
 import { RootStore } from '../../stores';
+import { archiveTasks } from './archiveActions';
 import { startTask } from './commands';
 import { taskCommands, TASKS_SCOPE, type TaskCommandDeps } from './taskCommands';
 import { sendWithUndo } from './taskUndo';
@@ -38,7 +39,8 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
 /*
  * The Tasks commands against a real RootStore and the fixture daemon, the way `Screen` wires them: the cursor follows the store's grid,
  * and the commands send what they send through `sendEach`. Checks what the project shows once the daemon's events have come in.
- * The fixture project (CAR-20 to CAR-30): done 20 21 22, review 23, active 24 25, todo 26 27, backlog 28, canceled 29, backlog 30.
+ * The fixture project (CAR-20 to CAR-37 on the board): done 20 21 22, review 23, active 24 25, todo 26 27, backlog 28, canceled 29, backlog 30, then the tree of
+ * Payments: active 31 32, done 33, todo 34 35, review 36, canceled 37 (the archived CAR-38 to CAR-40 are not on the board).
  * In the list the tasks run in task order, so the cursor starts on CAR-20.
  */
 
@@ -88,7 +90,7 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         getTaskDetail: async (taskId): Promise<TaskDetail> => {
             if (resultsFail) throw new Error('The daemon is not answering');
 
-            return { taskId, chatIds: [], runIds: [], artifacts: artifactsOf[taskId] ?? [] };
+            return { ...(await base.getTaskDetail(taskId)), chatIds: [], runIds: [], artifacts: artifactsOf[taskId] ?? [] };
         },
     });
 
@@ -108,6 +110,14 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         ui: ui(),
         hasTask: id => project().tasks.has(id),
         view: () => 'list',
+        setView: view => ui().setTasksView(view),
+        scope: () => null,
+        isArchive: () => false,
+        rows: () => [],
+        setFolded: () => undefined,
+        openScope: () => undefined,
+        goUp: () => undefined,
+        canHaveChildren: () => true,
         focusZone: () => 'list',
         isCursorFocused: () => true,
         revealCursor: () => undefined,
@@ -116,6 +126,7 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         startBlocked: id => startBlockedReason(runsByTask(project().runTaskLinks.values(), project().runs).get(id)),
         send: inputs => sendWithUndo(root, project(), inputs, stack),
         undo: { canUndo: () => stack.canUndo(FIXTURE_PROJECT_ID), undoLatest: () => stack.undoLatest(FIXTURE_PROJECT_ID) },
+        archive: tasks => archiveTasks({ root, project: project(), ui: ui(), confirm: options => confirms.push(options), stack }, tasks),
         start: id => startTask(root, id),
         openPicker: request => pickers.push(request),
         confirm: options => confirms.push(options),
@@ -386,7 +397,7 @@ describe('Rename and start', () => {
 describe('Delete', () => {
     it('asks once, then deletes every selected task and puts the cursor on the nearest one left', async () => {
         await mount();
-        goTo('t-28');
+        goTo('t-35');
         press('x');
         press('ArrowDown', { shiftKey: true });
         press('ArrowDown', { shiftKey: true });
@@ -399,10 +410,10 @@ describe('Delete', () => {
         await confirms[0].onConfirm();
         await settle();
 
-        expect(['t-28', 't-29', 't-30'].map(id => project().tasks.has(id))).toEqual([false, false, false]);
-        expect(project().tasks.size).toBe(8);
+        expect(['t-35', 't-36', 't-37'].map(id => project().tasks.has(id))).toEqual([false, false, false]);
+        expect(project().tasks.size).toBe(15);
         // The three were the last in the list: the cursor falls back to the one above them.
-        expect(cursor.cursorId).toBe('t-27');
+        expect(cursor.cursorId).toBe('t-34');
         expect(cursor.selected.size).toBe(0);
         expect(sent.map(input => input.type)).toEqual(['task.delete', 'task.delete', 'task.delete']);
     });
@@ -582,7 +593,7 @@ describe('Back and forward', () => {
         press('ArrowDown');
         press('End');
 
-        expect(ui().taskId).toBe('t-30');
+        expect(ui().taskId).toBe('t-37');
         // Agents, the Tasks screen and the open task: the tasks the cursor passed are not stops.
         expect(stepsBack()).toBe(2);
         expect(ui().section).toBe('agents');
@@ -590,7 +601,7 @@ describe('Back and forward', () => {
         root.history.forward();
         root.history.forward();
 
-        expect(ui().taskId).toBe('t-30');
+        expect(ui().taskId).toBe('t-37');
     });
 
     it('records Enter as an entry of its own, and the following of the cursor after it as no more', async () => {

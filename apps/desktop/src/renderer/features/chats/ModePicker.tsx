@@ -22,7 +22,7 @@ export interface ModePickerProps {
     onPick: (mode: ChatMode) => void;
 }
 
-/** The pill in the composer that says how the orchestrator works, and opens the two modes with what each does. */
+/** The pill at the end of the line under the message box that says how the orchestrator works, and opens the two modes with what each does. */
 export function ModePicker({ mode, isDisabled, onPick }: ModePickerProps) {
     return (
         <MenuTrigger>

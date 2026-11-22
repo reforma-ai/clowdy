@@ -51,6 +51,9 @@ function entryOf(item: StreamItem): string | undefined {
 
             return `Tool ${ body.name } (${ body.state })${ input ? `: ${ input }` : '' }${ result ? ` → ${ result }` : '' }`;
         }
+        // What the agent thought is not part of the story it is told again.
+        case 'reasoning':
+            return undefined;
         case 'note':
             return `Clowdy: ${ clip(body.text) }`;
         case 'question':
@@ -66,7 +69,8 @@ function entryOf(item: StreamItem): string | undefined {
  * the budget keeps its first entries and the newest ones, with a line that says how many were left out. Nothing to tell gives `undefined`.
  */
 export function conversationRecord(items: StreamItem[], incoming: string[]): string | undefined {
-    const earlier = [...items];
+    // A thought that came after the person's message (a turn that began and was cut short) must not hide that message from the trim below.
+    const earlier = items.filter(item => item.body.kind !== 'reasoning');
 
     while (earlier.length > 0) {
         const last = earlier[earlier.length - 1]!.body;

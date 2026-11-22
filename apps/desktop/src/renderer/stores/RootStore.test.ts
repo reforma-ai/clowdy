@@ -29,6 +29,44 @@ afterEach(() => {
 });
 
 describe('RootStore', () => {
+    it('shows a project\'s screen only once the projects are loaded, the selected project has arrived, and Settings is shut', async () => {
+        const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
+
+        expect(root.showsProjectScreen).toBe(false);
+
+        await root.load();
+        await settle();
+
+        expect(root.showsProjectScreen).toBe(true);
+
+        root.ui.openSettings();
+        expect(root.showsProjectScreen).toBe(false);
+
+        root.ui.closeSettings();
+        expect(root.showsProjectScreen).toBe(true);
+    });
+
+    it('shows no project\'s screen while the selected project is still loading, nor when it failed to load', async () => {
+        let fail: (error: Error) => void = () => undefined;
+        const getProjectSnapshot = () => new Promise<never>((_resolve, reject) => {
+            fail = reject;
+        });
+        const root = new RootStore(overrideTransport(new FixtureTransport(), { getProjectSnapshot }), { storage: memoryStorage() });
+
+        await root.load();
+        await settle();
+
+        expect(root.phase).toBe('ready');
+        expect(root.selectedProject?.status).toBe('loading');
+        expect(root.showsProjectScreen).toBe(false);
+
+        fail(new Error('offline'));
+        await settle();
+
+        expect(root.selectedProject?.status).toBe('failed');
+        expect(root.showsProjectScreen).toBe(false);
+    });
+
     it('loads the projects with the personal space first, and selects the first project of the person\'s own, with its snapshot', async () => {
         const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
 
@@ -39,7 +77,8 @@ describe('RootStore', () => {
         expect(root.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental', 'Clowdy']);
         expect(root.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
         expect(root.selectedProject?.status).toBe('ready');
-        expect(root.selectedProject?.tasks.size).toBe(11);
+        // The eleven tasks of the board, the seven of the tree of Payments; the three archived tasks are not in the snapshot.
+        expect(root.selectedProject?.tasks.size).toBe(18);
         root.dispose();
     });
 
@@ -83,7 +122,7 @@ describe('RootStore', () => {
         await settle();
 
         expect(result.ok).toBe(true);
-        expect([...root.selectedProject!.tasks.values()].find(task => task.title === 'Write the release notes')?.key).toBe('CAR-31');
+        expect([...root.selectedProject!.tasks.values()].find(task => task.title === 'Write the release notes')?.key).toBe('CAR-41');
         root.dispose();
     });
 

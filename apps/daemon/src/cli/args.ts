@@ -17,8 +17,10 @@ export interface CliTool {
     name: string;
     description: string;
     inputSchema: { properties?: Record<string, Property>; required?: string[] };
-    /** The fields a bare word fills, in order; the last one, when it is text, takes every word that is left. */
+    /** The fields a bare word fills, in order; the last one, when it is text or a list, takes every word that is left. */
     positional?: string[];
+    /** The positional field whose bare `-` reads the text from stdin (a message): the help says so for it alone, not for an id or a title. */
+    stdin?: string;
 }
 
 /** A command line that cannot be understood: the message says what to fix, and the program exits with 2. */
@@ -197,7 +199,8 @@ export function parseCommand(tool: CliTool, words: readonly string[]): ParsedCom
     }
 
     const order = tool.positional ?? [];
-    const lastTakesRest = order.length > 0 && properties[order.at(-1) as string]?.type === 'string';
+    const lastType = properties[order.at(-1) as string]?.type;
+    const lastTakesRest = lastType === 'string' || lastType === 'array';
 
     if (bare.length > order.length && !lastTakesRest) {
         throw new UsageError(`Unexpected ${ bare.slice(order.length).map(word => `"${ word }"`).join(', ') }. ${ order.length > 0 ? `Expected ${ order.map(name => `<${ kebab(name) }>`).join(' ') }` : 'This command takes no bare words; give every value with its option' }`);
@@ -215,10 +218,23 @@ export function parseCommand(tool: CliTool, words: readonly string[]): ParsedCom
         }
 
         const property = properties[name] ?? {};
+
+        // A list takes every word that is left, each of which may hold several items with commas, as the option does (`archive CLW-1 CLW-2,CLW-3`).
+        if (property.type === 'array') {
+            const items = rest.flatMap(word => word.split(',')).map(item => item.trim()).filter(Boolean);
+
+            // Words that hold no item, a lone comma, are no list: a required one is missing.
+            if (items.length > 0) {
+                input[name] = items.map(item => coerce(property.items ?? {}, kebab(name), item));
+            }
+
+            return;
+        }
+
         const text = property.type === 'string' ? rest.join(' ') : rest[0];
 
-        // Only the text that takes the rest of the words, a message, comes from stdin; a `-` anywhere else is a value like any other.
-        if (text === STDIN && property.type === 'string' && position === order.length - 1) {
+        // Only the field the tool names for stdin, a message, reads it from there; a `-` anywhere else is a value like any other.
+        if (text === STDIN && property.type === 'string' && name === tool.stdin) {
             fromSource(name, STDIN);
         }
         else {
@@ -286,8 +302,10 @@ export function helpOf(tool: CliTool, tools: readonly CliTool[] = [tool], exampl
     const required = new Set(tool.inputSchema.required ?? []);
     const order = tool.positional ?? [];
     const text = (value: string | undefined) => commandText(value ?? '', tools);
-    const usage = [`clowdy ${ group } ${ command }`, ...order.map(name => (required.has(name) ? `<${ kebab(name) }>` : `[${ kebab(name) }]`)), '[options]'].join(' ');
-    const positional = order.map((name, position) => row(`<${ kebab(name) }>`, [text(properties[name]?.description), position === order.length - 1 && properties[name]?.type === 'string' && '(- reads it from stdin)'].filter(Boolean).join(' ')));
+    // A list is written `<name>...`: one word or more.
+    const spelled = (name: string) => (properties[name]?.type === 'array' ? `<${ kebab(name) }>...` : `<${ kebab(name) }>`);
+    const usage = [`clowdy ${ group } ${ command }`, ...order.map(name => (required.has(name) ? spelled(name) : `[${ kebab(name) }]`)), '[options]'].join(' ');
+    const positional = order.map((name, position) => row(spelled(name), [text(properties[name]?.description), name === tool.stdin && properties[name]?.type === 'string' && '(- reads it from stdin)'].filter(Boolean).join(' ')));
     const options = Object.entries(properties).filter(([name]) => !order.includes(name)).flatMap(([name, property]) => {
         const flag = property.type === 'boolean' ? `--${ kebab(name) }` : `--${ kebab(name) } <${ placeholder(property) }>`;
         const note = [text(property.description), property.type === 'array' && '(comma-separated, or the option repeated)', required.has(name) && '(required)'].filter(Boolean).join(' ');

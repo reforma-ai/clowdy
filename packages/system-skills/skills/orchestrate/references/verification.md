@@ -25,7 +25,7 @@ Rules that always apply:
    - **Passed**: every criterion verified by something you ran, and no probe found a defect.
    - **Failed**: any criterion or probe failed, or the result is incomplete. Defects only: a style preference is a note, not a failure.
    - **Blocked**: an essential criterion cannot be run for an external reason (credentials, a service down, a missing tool). Say what is needed.
-7. **Record.** Write one check report per significant verification, in the project's main checkout, in the shape clowdy:docs defines for `checks/` (load it first). File: `.clowdy/docs/checks/<date>-<what-was-checked>.md`, date from `date +%F`. Never edit an older report: a re-verification is a new file (`...-recheck`). List the probes as rows in "What was run", passed ones too. Facts only; label a guess "Hypothesis:". Link it in `index.md`. Append one line to each verified task with `task_update({ taskId, description })` (read the description first, add at the end, never replace): `Verification <date>: passed|failed|blocked - <reason> (checks/<file>)`.
+7. **Record.** Write one check report per significant verification, in the project's main checkout, in the shape clowdy:docs defines for `checks/` (load it first). File: `.clowdy/docs/checks/<date>-<what-was-checked>.md`, date from `date +%F`. Never edit an older report: a re-verification is a new file (`...-recheck`). List the probes as rows in "What was run", passed ones too. Facts only; label a guess "Hypothesis:". Link it in `index.md`. Leave one comment on each verified task: `clowdy task comment <key> "Verification <date>: passed|failed|blocked - <reason> (checks/<file>)"`.
 8. **Act on the verdict.** Passed: set the tasks Done. Failed: reopen them (In progress) with the reason, fix, and verify again. Blocked: keep them out of Done and report what is needed.
 
 A failure entry always has: the criterion, expected, actual (exact command and output), a repro in three steps or fewer, and where to look if you know (marked as a hypothesis). Most serious first.
@@ -36,7 +36,7 @@ After a fix, verify again from step 1: all gates, not only the failed criterion,
 
 ## Compact steps
 
-For a small change or a foundation task that others wait on: write the 2-4 criteria in the task, run the nearest gates (build, typecheck, the affected tests), run the user-visible flow once, try one probe (the nastiest input), read your own diff. Put the evidence in a task note (command and result). Write a check report only when the check was significant: a risky area, a long flow, or a result the manager may question. If anything fails, fix it and run steps 3-5 again. The final result of a larger cycle gets the full steps.
+For a small change or a foundation task that others wait on: write the 2-4 criteria in the task, run the nearest gates (build, typecheck, the affected tests), run the user-visible flow once, try one probe (the nastiest input), read your own diff. Leave the evidence as a comment on the task (command and result). Write a check report only when the check was significant: a risky area, a long flow, or a result the manager may question. If anything fails, fix it and run steps 3-5 again. The final result of a larger cycle gets the full steps.
 
 ## Example
 

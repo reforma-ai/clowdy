@@ -1,0 +1,47 @@
+/* The editor area in what is left, and the sidebar at its width at the right. */
+.root {
+    display: flex;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    color: var(--color-text);
+}
+
+/* The panel library puts these on the element inside its panel, which is a block: make it a column that the parts fill. */
+.editor,
+.side {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* The panel's own width and its slide-in are the host's to give up: the edge to drag sets the width. */
+.sidebar {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    animation: none;
+}
+
+/* The same distance from the right edge in both places (the sidebar header's last control sits 6px off the edge), so the button does not move when the sidebar opens. */
+.toggle {
+    flex: none;
+    margin-inline-end: var(--spacing-6);
+}
+
+/* In the sidebar header it is the last of the actions, which already sit 6px off the edge. */
+.sidebar .toggle {
+    margin-inline-end: 0;
+}
+
+/* The filter is the header's title: it takes the room the toggle leaves. Its icon is 13px from the edge, as in the filter field of Reforma's tree (the header's own side
+   padding and the input's). */
+.filter[data-size][data-variant] {
+    --clowdy-input-radius: var(--radius-md);
+    --clowdy-input-height: var(--spacing-30);
+
+    flex: 1;
+    min-width: 0;
+    width: auto;
+}

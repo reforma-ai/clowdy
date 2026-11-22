@@ -5,7 +5,6 @@ import { Show } from '@clowdy/components/Show';
 import { EditPen, Split as ForkIcon, Reply } from '@clowdy/icons/14';
 
 import { formatFullTime, formatMessageTime } from '../shared/time';
-import { Unavailable } from '../shared/Unavailable';
 import styles from './MessageActions.module.css';
 
 /** A whole message handed to Reply: who wrote it (the person, or the agent whose answer it is), and its source Markdown. */
@@ -29,8 +28,6 @@ export interface MessageActionsConfig {
     swipeToReply?: boolean;
     /** Edit the message in place: drawn only where it is given (`StreamView` gives it to a message of the person's that the agent can rewrite the chat from, and to none while one is being edited). */
     onEdit?: () => void;
-    /** `busy`: the agent is working, and the chat can be rewritten only at rest. The button is drawn off, with the reason on a tooltip. */
-    editState?: 'busy';
     /** Fork into a new chat, at this message: drawn only where it is given (`StreamView` gives it to an answer the agent can fork at). */
     onFork?: () => void;
     /** A fork is being made: `pending` on the button that started it, `blocked` on the others, so there is one at a time. */
@@ -49,12 +46,12 @@ export interface MessageActionsProps {
 
 /**
  * The row under a message: what can be done with it and when it was written. The buttons are in the order they are read and tabbed in, and the time
- * sits on the outside: first on the person's side (`22:54`, Copy, Edit, Reply), last on an agent's (Copy, Reply, Fork, `22:54`). It keeps its height whether it shows
+ * sits on the outside: first on the person's side (`22:54`, Reply, Edit, Copy), last on an agent's (Reply, Copy, Fork, `22:54`). It keeps its height whether it shows
  * or not, so showing it never moves the messages around it. Put it as the last child of the element that holds the message: that element is what the
  * pointer or the focus has to be on (see the stylesheet).
  */
 export function MessageActions({ text, at, align, actions }: MessageActionsProps) {
-    const { show, onReply, onEdit, editState, onFork, forkState } = actions;
+    const { show, onReply, onEdit, onFork, forkState } = actions;
     const time = <time className={ styles.time } dateTime={ new Date(at).toISOString() } title={ formatFullTime(at) }>{ formatMessageTime(at) }</time>;
     const hasText = text.trim() !== '';
 
@@ -64,31 +61,22 @@ export function MessageActions({ text, at, align, actions }: MessageActionsProps
             { /* A message of files alone has nothing to copy or quote, so no group of those: its empty box would still move the time. Edit stays, since it can be given words. */ }
             <Show when={ hasText || onEdit }>
                 <div className={ styles.buttons }>
-                    <Show when={ hasText }>
-                        <CopyButton value={ text } variant="filling" size="xs" tooltip="Copy message" tooltipPlacement="bottom" aria-label="Copy message" />
-                    </Show>
-                    <Show when={ onEdit }>
-                        { edit => (editState === 'busy'
-                            ? (
-                                // A disabled button takes no pointer and no focus, so the reason is on a stand-in that does.
-                                <Unavailable label="Edit message" hint="Stop the agent to edit" placement="bottom">
-                                    <Button variant="filling" size="xs" iconOnly aria-label="Edit message" isDisabled>
-                                        <EditPen />
-                                    </Button>
-                                </Unavailable>
-                            )
-                            : (
-                                <Button variant="filling" size="xs" iconOnly tooltip="Edit message" tooltipPlacement="bottom" aria-label="Edit message" onPress={ edit }>
-                                    <EditPen />
-                                </Button>
-                            )) }
-                    </Show>
                     <Show when={ hasText && onReply }>
                         { reply => (
                             <Button variant="filling" size="xs" iconOnly tooltip="Reply" tooltipPlacement="bottom" aria-label="Reply" onPress={ () => reply(text) }>
                                 <Reply />
                             </Button>
                         ) }
+                    </Show>
+                    <Show when={ onEdit }>
+                        { edit => (
+                            <Button variant="filling" size="xs" iconOnly tooltip="Edit message" tooltipPlacement="bottom" aria-label="Edit message" onPress={ edit }>
+                                <EditPen />
+                            </Button>
+                        ) }
+                    </Show>
+                    <Show when={ hasText }>
+                        <CopyButton value={ text } variant="filling" size="xs" tooltip="Copy message" tooltipPlacement="bottom" aria-label="Copy message" />
                     </Show>
                     <Show when={ onFork }>
                         { fork => (

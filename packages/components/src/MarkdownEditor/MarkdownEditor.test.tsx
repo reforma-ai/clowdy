@@ -107,6 +107,56 @@ describe('MarkdownEditor', () => {
         expect(host.querySelector('[role="toolbar"]')).not.toBeNull();
     });
 
+    describe('placeholder', () => {
+        const hint = () => host.querySelector<HTMLElement>('p.is-editor-empty[data-placeholder]');
+
+        it('should mark the empty document\'s paragraph with the hint, and leave it out of the markdown', async() => {
+            const onChange = vi.fn();
+
+            await render({ value: '', placeholder: 'Add a description', onChange });
+
+            expect(hint()?.dataset.placeholder).toBe('Add a description');
+            expect(mountedEditor().getMarkdown()).toBe('');
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
+        it('should drop the hint while there is text, bring it back when the text is gone, and never write it', async() => {
+            const onChange = vi.fn();
+
+            await render({ value: '', placeholder: 'Add a description', onChange });
+            await typeAtEnd('Plain text');
+
+            expect(hint()).toBeNull();
+            expect(onChange).toHaveBeenLastCalledWith('Plain text');
+            expect(host.textContent).not.toContain('Add a description');
+
+            // The owner of the text follows the editor, then the text is emptied from outside.
+            await render({ value: 'Plain text', placeholder: 'Add a description', onChange });
+            await render({ value: '', placeholder: 'Add a description', onChange });
+
+            expect(hint()?.dataset.placeholder).toBe('Add a description');
+        });
+
+        it('should show the hint over an empty value that came with front matter only', async() => {
+            await render({ value: '---\ntitle: x\n---\n', placeholder: 'Add a description' });
+
+            expect(hint()).not.toBeNull();
+        });
+
+        it('should add nothing to an editor without it', async() => {
+            await render({ value: '' });
+
+            expect(host.querySelector('[data-placeholder]')).toBeNull();
+            expect(host.querySelector('.is-editor-empty, .is-empty')).toBeNull();
+        });
+
+        it('should not show it where the text cannot be edited', async() => {
+            await render({ value: '', placeholder: 'Add a description', editable: false });
+
+            expect(hint()).toBeNull();
+        });
+    });
+
     it('should apply markdown input rules and formatting shortcuts', async() => {
         const onChange = vi.fn();
 
@@ -131,6 +181,43 @@ describe('MarkdownEditor', () => {
         });
 
         expect(onChange).toHaveBeenLastCalledWith('## **Title**');
+    });
+
+    it('should make a quote on Cmd+Shift+. and leave Cmd+Shift+B alone, which the desktop app keeps for its side panel', async() => {
+        const onChange = vi.fn();
+
+        await render({ value: 'quoted', onChange });
+
+        const editor = mountedEditor();
+        const mac = /Mac|iP(hone|[oa]d)/.test(navigator.platform);
+        const key = (init: KeyboardEventInit & { keyCode: number }) => {
+            const event = new KeyboardEvent('keydown', { shiftKey: true, metaKey: mac, ctrlKey: !mac, bubbles: true, cancelable: true, ...init });
+
+            // A key event of a real browser has its `keyCode`, which the editor's keymap falls back on when a modifier changes what the key types.
+            Object.defineProperty(event, 'keyCode', { value: init.keyCode });
+            editor.view.someProp('handleKeyDown', handle => handle(editor.view, event));
+        };
+
+        await act(async() => {
+            editor.commands.focus('end');
+            key({ key: 'B', code: 'KeyB', keyCode: 66 });
+        });
+
+        expect(editor.isActive('blockquote')).toBe(false);
+        expect(onChange).not.toHaveBeenCalled();
+
+        await act(async() => {
+            key({ key: '>', code: 'Period', keyCode: 190 });
+        });
+
+        expect(editor.isActive('blockquote')).toBe(true);
+        expect(onChange).toHaveBeenLastCalledWith('> quoted');
+
+        await act(async() => {
+            key({ key: '>', code: 'Period', keyCode: 190 });
+        });
+
+        expect(editor.isActive('blockquote')).toBe(false);
     });
 
     it('should never emit or add an undo step on load or when the value is replaced', async() => {

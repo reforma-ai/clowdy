@@ -191,6 +191,15 @@ describe('where a new chat starts', () => {
         await pressEnter();
     }
 
+    it('draws the mode on the line under the message box, not inside its card', async () => {
+        await mount();
+
+        const card = container.querySelector('[contenteditable="true"]')!.closest('[class*="surface"]')!;
+
+        expect(card.contains(modeTrigger())).toBe(false);
+        expect(card.nextElementSibling?.contains(modeTrigger())).toBe(true);
+    });
+
     it('starts in Hands-off when the project asks for no mode and none was picked before', async () => {
         await mount();
 

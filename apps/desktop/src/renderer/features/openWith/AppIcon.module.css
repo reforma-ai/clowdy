@@ -1,0 +1,5 @@
+/* A program's icon already has its own shape and its clear corners, so it is drawn as it is. */
+.picture {
+    flex-shrink: 0;
+    object-fit: contain;
+}

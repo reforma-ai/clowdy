@@ -1,0 +1,204 @@
+.root {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.body {
+    flex: 1;
+    min-height: 0;
+}
+
+/* A row-flex item of ScrollChromeRoot: without `flex: 1` it shrinks to its padding and the tree measures 0 wide. */
+.treeHost {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    padding: var(--spacing-4);
+}
+
+/* Files dragged in from outside over the root. */
+.treeHost[data-drop-target] {
+    background-color: var(--color-primary-muted-light);
+}
+
+/* Over the emptied tree, which stays mounted to keep its open folders. */
+.empty {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+/* react-arborist's container and rows take focus; the selection shows where it is. */
+.treeHost :global([role='tree']),
+.treeHost :global([role='treeitem']) {
+    outline: none;
+}
+
+/* The scrolling list. One plate slides under the hovered row (useListHoverHighlight), 1px inside it as in Layers. */
+.list {
+    --clowdy-listbox-highlight-top: 0px;
+    --clowdy-listbox-highlight-left: 0px;
+    --clowdy-listbox-highlight-width: 0px;
+    --clowdy-listbox-highlight-height: 0px;
+    --clowdy-listbox-highlight-opacity: 0;
+    --clowdy-listbox-highlight-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+    position: relative;
+    scrollbar-width: none;
+}
+
+.list::-webkit-scrollbar {
+    display: none;
+}
+
+.list::before {
+    content: '';
+    position: absolute;
+    top: calc(var(--clowdy-listbox-highlight-top) + 1px);
+    left: var(--clowdy-listbox-highlight-left);
+    width: var(--clowdy-listbox-highlight-width);
+    height: calc(var(--clowdy-listbox-highlight-height) - 2px);
+    opacity: var(--clowdy-listbox-highlight-opacity);
+    border-radius: var(--radius-md);
+    background-color: var(--color-secondary-muted-light);
+    pointer-events: none;
+    transition: opacity 0.1s;
+}
+
+.list[data-highlight-ready]::before {
+    transition:
+        top var(--transition-duration-fast) var(--clowdy-listbox-highlight-ease),
+        height var(--transition-duration-fast) var(--clowdy-listbox-highlight-ease),
+        opacity 0.1s;
+}
+
+/* Row */
+
+.row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-8);
+    height: 100%;
+    padding-block: 1px;
+    padding-right: var(--spacing-28);
+    border-radius: var(--radius-md);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    line-height: var(--leading-md);
+    cursor: pointer;
+    user-select: none;
+    isolation: isolate;
+}
+
+/* The ⋯ menu is hidden while the name is edited, so the field takes its room. */
+.row[data-editing] {
+    padding-right: var(--spacing-8);
+}
+
+/* Selection and drop target paint under the row's content. */
+.row::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.row[data-selected]::before {
+    background-color: var(--color-secondary-muted-light);
+}
+
+.row[data-drop-target]::before {
+    background-color: var(--color-primary-muted-light);
+}
+
+.row[data-joined-start] {
+    border-start-start-radius: 0;
+    border-start-end-radius: 0;
+}
+
+.row[data-joined-end] {
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+}
+
+/* The icon; the chevron hangs into the indent on its left. */
+.toggleArea {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    height: 100%;
+}
+
+.toggleArea .icon {
+    width: var(--spacing-14);
+    height: var(--spacing-14);
+}
+
+.name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Inline rename and new-row input */
+
+.nameField {
+    flex: 1;
+    min-width: 0;
+}
+
+/* A name problem floats beside the field on a Popover. */
+.nameProblem {
+    border-color: var(--color-danger);
+    color: var(--color-danger-text);
+    font-size: var(--text-xs);
+}
+
+/* The ⋯ menu shows on hover, on the only selected row and while open. */
+
+.actions {
+    position: absolute;
+    z-index: 1;
+    right: var(--spacing-4);
+    top: 50%;
+    translate: 0 -50%;
+    display: flex;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.row:hover .actions,
+.row[data-sole-selected] .actions,
+.row[data-open] .actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.dragPreview {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-6);
+    padding: var(--spacing-4) var(--spacing-8);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface-float);
+    box-shadow: var(--shadow-md);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    pointer-events: none;
+}

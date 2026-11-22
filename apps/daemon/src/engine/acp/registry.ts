@@ -7,7 +7,7 @@ import { Discovery } from './discovery';
 import { buildAgentEnv } from './env';
 
 import type { AgentInfo, AgentSetting } from '@clowdy/protocol';
-import type { AgentOverride, AgentProtocol, AgentSettingSpec, AgentSpec, CustomAgent, SettingEffect } from './catalog';
+import type { AgentOverride, AgentProtocol, AgentSettingSpec, AgentSpec, CustomAgent, SettingEffect, TaskChannel } from './catalog';
 
 /** Detection results are reused this long, so a settings screen can poll without spawning a probe each time. */
 const INFO_TTL_MS = 30_000;
@@ -115,6 +115,11 @@ export class AgentRegistry {
     /** The message that makes the agent compact its conversation, or `undefined` for an agent with no such command. */
     compactCommand(id: string): string | undefined {
         return this.spec(id)?.compact;
+    }
+
+    /** The door the agent uses for the task tools (`AgentSpec.taskTools`, or `CustomAgent.taskTools` for an agent the person added); the shell for every agent that does not say otherwise. */
+    taskChannel(id: string): TaskChannel {
+        return this.spec(id)?.taskTools ?? this.stored.agents.find(agent => agent.id === id)?.taskTools ?? 'cli';
     }
 
     /** Whether Fork and Edit may be offered for chats of the agent (`AgentSpec.fork`); a custom agent has neither. */
@@ -450,6 +455,7 @@ function parseStored(data: unknown): Stored {
             command: entry.command.trim(),
             args: Array.isArray(entry.args) ? entry.args.map(String) : [],
             ...(isStrings(entry.env) && { env: entry.env }),
+            ...((entry.taskTools === 'cli' || entry.taskTools === 'mcp') && { taskTools: entry.taskTools }),
         });
     }
 

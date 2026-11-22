@@ -17,6 +17,7 @@ import { swipeToReply } from './swipeReplyPreference';
 
 import type { Attachment, CommandResult, StreamItem, StreamItemBody } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
+import type { ReactNode } from 'react';
 import type { CommandInput } from '../../daemon/transport';
 import type { KeyValueStorage } from '../../stores/storage';
 
@@ -48,14 +49,14 @@ let transport: FixtureTransport;
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
 const chatOf = (id: string) => store.selectedProject!.chats.get(id)!;
 
-const render = (chatId: string) => act(async () => {
-    reactRoot.render(<RootStoreProvider value={ store }><ChatView key={ chatId } chat={ chatOf(chatId) } /></RootStoreProvider>);
+const render = (chatId: string, controls?: ReactNode) => act(async () => {
+    reactRoot.render(<RootStoreProvider value={ store }><ChatView key={ chatId } chat={ chatOf(chatId) } controls={ controls } /></RootStoreProvider>);
 });
 
 /** Draws the chat, then again once its messages have been fetched. */
-async function draw(chatId: string) {
-    await render(chatId);
-    await render(chatId);
+async function draw(chatId: string, controls?: ReactNode) {
+    await render(chatId, controls);
+    await render(chatId, controls);
 }
 
 const field = () => container.querySelector('[contenteditable="true"]');
@@ -102,6 +103,30 @@ afterEach(() => {
     act(() => reactRoot.unmount());
     container.remove();
     store.dispose();
+});
+
+describe('the line under the message box', () => {
+    const line = () => container.querySelector<HTMLElement>('[data-testid="line"]');
+
+    it('holds what the caller gives it, below the message box', async () => {
+        await start();
+        await draw('c-1', <span data-testid="line">Where it works</span>);
+
+        expect(line()?.textContent).toBe('Where it works');
+        expect(field()!.compareDocumentPosition(line()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('is there under the notice of a chat that is read only, and not there when the caller gives nothing', async () => {
+        await start(claudeOff);
+        await draw('c-1', <span data-testid="line">Where it works</span>);
+
+        expect(notice()).not.toBeNull();
+        expect(notice()!.compareDocumentPosition(line()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+        await draw('c-1');
+
+        expect(line()).toBeNull();
+    });
 });
 
 describe('a chat on a provider that cannot run', () => {
@@ -679,8 +704,8 @@ describe('Fork in a chat', () => {
         const row = forkButtons()[0].closest('[data-message]')!;
 
         expect(row.textContent).toContain(ANSWER);
-        // Reply stays before it.
-        expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Copy message', 'Reply', 'Fork into new chat']);
+        // Reply and Copy stay before it.
+        expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Reply', 'Copy message', 'Fork into new chat']);
     });
 
     it('draws none in a chat whose answers carry no flag', async () => {
@@ -982,7 +1007,7 @@ describe('Edit in a chat', () => {
     });
 
     describe('the button', () => {
-        it('is drawn under the person\'s messages the daemon marked, between Copy and Reply, and under no other', async () => {
+        it('is drawn under the person\'s messages the daemon marked, between Reply and Copy, and under no other', async () => {
             await start(undefined, withTurns());
             await draw('c-2');
 
@@ -991,7 +1016,7 @@ describe('Edit in a chat', () => {
             const row = editButtons()[0].closest('[data-message]')!;
 
             expect(row.textContent).toContain(FIRST);
-            expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Copy message', 'Edit message', 'Reply']);
+            expect([...row.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Reply', 'Edit message', 'Copy message']);
             // The steer has a row and no flag.
             expect([...container.querySelectorAll('[data-message]')].find(message => message.textContent?.includes(STEER))?.querySelector('button[aria-label="Edit message"]')).toBeNull();
         });
@@ -1012,26 +1037,12 @@ describe('Edit in a chat', () => {
             expect(editButtons()).toHaveLength(0);
         });
 
-        it('is off while the agent works, and says why on the stand-in that stands for it', async () => {
+        it('is not drawn while the agent works', async () => {
             await start();
             await draw('c-1');
 
-            expect(editButtons()).toHaveLength(1);
-            expect(editButtons()[0].disabled).toBe(true);
-
-            await act(async () => editButtons()[0].click());
-
-            expect(frame()).toBeNull();
-
-            const standIn = container.querySelector<HTMLElement>('[role="button"][aria-disabled][aria-label="Edit message"]')!;
-
-            await act(async () => {
-                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-                standIn.focus();
-            });
-            await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
-
-            expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Stop the agent to edit');
+            expect(editButtons()).toHaveLength(0);
+            expect(container.querySelector('[aria-label="Edit message"]')).toBeNull();
         });
     });
 
@@ -1202,8 +1213,8 @@ describe('Edit in a chat', () => {
             expect(toast.error).not.toHaveBeenCalled();
             // Nothing says the message was lost: the edit itself removed it.
             expect(toast.warning).not.toHaveBeenCalled();
-            // The agent works on the new turn, so the new message offers Edit off.
-            expect(editButtons().map(button => button.disabled)).toEqual([true]);
+            // The agent works on the new turn, so the new message offers no Edit.
+            expect(editButtons()).toHaveLength(0);
             // The session is released.
             expect(messageOf(draftOf(editDraftKey('c-2', first)))).toBe('');
         });

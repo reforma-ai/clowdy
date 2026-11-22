@@ -1,7 +1,7 @@
 import { BackgroundWork, ContentBlock, IdleStateUpdate, StateUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import { STOPPED_TOOL } from '@clowdy/protocol';
 
-import { Message, patched } from './mapper-core';
+import { Message, patched, Thought } from './mapper-core';
 
 import type { SessionMessage, SubagentUpdate } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 import type { EngineEvent } from '../types';
@@ -43,6 +43,8 @@ interface Child {
     card?: { state: 'running' | 'done' | 'error' | 'cancelled'; signature: string };
     /** What it says on its own, and the last message it sent its parent. */
     message: Message;
+    /** What it thinks, which its run shows (its card in the parent's stream does not). */
+    thought: Thought;
     report?: string;
 }
 
@@ -121,7 +123,7 @@ export class Children {
         let child = this.byId.get(update.sessionId);
 
         if (!child) {
-            child = { sessionId: update.sessionId, ...(parent !== undefined && { parent }), cancellable: false, announced: false, working: false, listed: false, ended: false, settled: false, message: new Message() };
+            child = { sessionId: update.sessionId, ...(parent !== undefined && { parent }), cancellable: false, announced: false, working: false, listed: false, ended: false, settled: false, message: new Message(), thought: new Thought() };
             this.byId.set(update.sessionId, child);
         }
 
@@ -165,7 +167,7 @@ export class Children {
 
         if (from && text && !asked) {
             // Its report is the last thing it says: it is shown in its own stream and ends the card.
-            events.push(...this.show(from), ...from.message.upsert(update.messageId, text, from.sessionId), ...from.message.close(from.sessionId));
+            events.push(...this.show(from), ...from.thought.close(from.sessionId), ...from.message.upsert(update.messageId, text, from.sessionId), ...from.message.close(from.sessionId));
             from.report = text;
         }
 
@@ -188,6 +190,11 @@ export class Children {
     /** What a child says on its own, as the message it speaks (its assistant message), or the one it has open to close. */
     messageOf(sessionId: string): Message | undefined {
         return this.byId.get(sessionId)?.message;
+    }
+
+    /** What a child thinks, as the thought it has open. */
+    thoughtOf(sessionId: string): Thought | undefined {
+        return this.byId.get(sessionId)?.thought;
     }
 
     /** The child's own state: the same thing its parent mirrors in `subagent_update`, said again on its session. */
@@ -245,7 +252,7 @@ export class Children {
         switch (state.stopReason) {
             case 'end_turn':
                 // A message it left open is over, whether or not the sub-agent is.
-                return child.listed ? child.message.close(child.sessionId) : this.end(child, 'done');
+                return child.listed ? [...child.thought.close(child.sessionId), ...child.message.close(child.sessionId)] : this.end(child, 'done');
             case 'cancelled':
                 return this.end(child, 'cancelled');
             default:
@@ -255,7 +262,7 @@ export class Children {
 
     /** The child's run is over: its own message closes, the card ends with its report, and the runtime is told. */
     private end(child: Child, state: 'done' | 'error' | 'cancelled', failure?: string): EngineEvent[] {
-        const events = [...this.show(child), ...child.message.close(child.sessionId)];
+        const events = [...this.show(child), ...child.thought.close(child.sessionId), ...child.message.close(child.sessionId)];
         const report = child.report ?? child.message.result();
 
         child.ended = true;

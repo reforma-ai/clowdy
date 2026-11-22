@@ -1,5 +1,6 @@
 import { makeAutoObservable, observableRef, runInAction } from 'mobx';
 
+import { homeFolder } from '../shared/homeFolder';
 import { ModelsStore } from './ModelsStore';
 import { NavHistory } from './NavHistory';
 import { ProjectIconsStore } from './ProjectIconsStore';
@@ -81,7 +82,7 @@ export class RootStore {
     constructor(readonly transport: Transport, { storage = browserStorage(), notify, initialUi }: RootStoreOptions = {}) {
         this.#storage = storage;
         this.#notify = notify;
-        this.ui = new UiStore(storage, initialUi);
+        this.ui = new UiStore(storage, initialUi, projectId => this.projectState(projectId)?.tasks);
         this.streams = new StreamStore(transport);
         this.models = new ModelsStore(transport);
         this.projectIcons = new ProjectIconsStore(transport);
@@ -93,6 +94,11 @@ export class RootStore {
     /** The selected project, once it has a state (it may still be loading). */
     get selectedProject(): ProjectState | undefined {
         return this.selectedProjectId ? this.#states.get(this.selectedProjectId) : undefined;
+    }
+
+    /** A project's own screen is on show: the projects are loaded, Settings is shut, and the selected project has arrived. */
+    get showsProjectScreen(): boolean {
+        return this.phase === 'ready' && !this.ui.settingsOpen && this.selectedProject?.status === 'ready';
     }
 
     /** A project's state, once the project was selected. */
@@ -107,6 +113,7 @@ export class RootStore {
         try {
             const snapshot = await this.transport.getRootSnapshot();
 
+            homeFolder.set(snapshot.home);
             runInAction(() => {
                 this.projects = sortProjects(snapshot.projects);
                 this.phase = 'ready';
@@ -336,6 +343,7 @@ export class RootStore {
         try {
             const snapshot = await this.transport.getRootSnapshot();
 
+            homeFolder.set(snapshot.home);
             // A project removed while the feed was away has no snapshot to load.
             runInAction(() => {
                 for (const id of [...this.#states.keys()]) {

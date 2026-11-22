@@ -47,7 +47,7 @@ export interface BridgeAccess {
 }
 
 /** A tool as `GET /cli/tools` lists it for the `clowdy` command (`cli/args.ts` reads it). */
-const cliEntry = ({ name, description, inputSchema, cli }: ToolDefinition) => ({ name, description, inputSchema, positional: [...cli?.positional ?? []] });
+const cliEntry = ({ name, description, inputSchema, cli }: ToolDefinition) => ({ name, description, inputSchema, positional: [...cli?.positional ?? []], ...(cli?.stdin && { stdin: cli.stdin }) });
 
 /**
  * How an agent calls the runtime's tools. ACP has no way to register a tool, only to name MCP servers, and stdio is the

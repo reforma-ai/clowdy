@@ -1,0 +1,51 @@
+.area {
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* The markdown view toggle, at the end of the tab strip */
+
+.viewToggle {
+    flex: none;
+    margin-inline-end: var(--spacing-4);
+}
+
+/* Below the tabs */
+
+.bar {
+    flex: none;
+    margin: var(--spacing-8);
+}
+
+.content {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+}
+
+.pane {
+    position: absolute;
+    inset: 0;
+}
+
+.media {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+/* The browser's PDF viewer has its own toolbar and margins, so it takes the whole pane. */
+.pdf {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* A faint watermark over the empty editor. */
+.emptyLogo {
+    margin-bottom: var(--spacing-16);
+    color: var(--color-secondary-muted);
+}

@@ -16,7 +16,7 @@ const BATCH_MS = 30;
 const TEXT_THROTTLE_MS = 250;
 
 type SubagentEvent = Extract<EngineEvent, { type: 'subagent' }>;
-type StreamEvent = Extract<EngineEvent, { type: 'text' | 'tool' }> & { agentId: string };
+type StreamEvent = Extract<EngineEvent, { type: 'text' | 'tool' | 'thought' }> & { agentId: string };
 
 interface Agent {
     run: Run;
@@ -57,7 +57,7 @@ export class NativeAgents {
         this.push(() => this.applyState(event));
     }
 
-    /** Text or a tool call of a sub-agent. */
+    /** Text, a thought or a tool call of a sub-agent. */
     stream(event: StreamEvent): void {
         this.push(() => this.applyStream(event));
     }
@@ -277,6 +277,9 @@ export class NativeAgents {
             }
 
             agent.writer.text(event.delta, event.done);
+        }
+        else if (event.type === 'thought') {
+            agent.writer.reasoning(event.delta, event.done);
         }
         else {
             agent.writer.tool(event);

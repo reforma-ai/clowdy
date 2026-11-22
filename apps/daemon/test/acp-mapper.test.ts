@@ -53,8 +53,8 @@ describe('messages', () => {
         expect(mapper.result()).toBe('two');
     });
 
-    test('thoughts, plans and the rest are not shown', () => {
-        const { events } = run([{ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'hmm' } }, { sessionUpdate: 'current_mode_update', currentModeId: 'x' }]);
+    test('modes and the rest are not shown', () => {
+        const { events } = run([{ sessionUpdate: 'current_mode_update', currentModeId: 'x' }]);
 
         expect(events).toEqual([]);
     });
@@ -368,6 +368,60 @@ describe('the context window', () => {
     });
 });
 
+const think = (text: string, messageId?: string): SessionUpdate => ({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text }, ...(messageId && { messageId }) });
+const thoughts = (events: EngineEvent[]) => events.filter(event => event.type === 'thought' || event.type === 'text').map(event => (event.type === 'thought' ? ['thought', event.delta, event.done] : ['text', event.delta, event.done]));
+
+describe('thoughts', () => {
+    test('chunks stream as they come, and the thought closes when the message begins', () => {
+        const { events } = run([think('Let me '), think('see.'), chunk('Hello')]);
+
+        expect(thoughts(events)).toEqual([['thought', 'Let me ', false], ['thought', 'see.', false], ['thought', '', true], ['text', 'Hello', false], ['text', '', true]]);
+    });
+
+    test('a tool call ends the thought before it, and a thought after it is a new one', () => {
+        const { events } = run([think('First.'), { sessionUpdate: 'tool_call', toolCallId: 'a', title: 'Read file', kind: 'read' }, think('Second.')]);
+
+        expect(events.map(event => event.type)).toEqual(['thought', 'thought', 'tool', 'thought', 'thought']);
+        expect(thoughts(events)).toEqual([['thought', 'First.', false], ['thought', '', true], ['thought', 'Second.', false], ['thought', '', true]]);
+    });
+
+    test('a new message id is a new thought even with nothing between, and the prompt ending closes the open one', () => {
+        const { events } = run([think('one', 't1'), think('two', 't2')]);
+
+        expect(thoughts(events)).toEqual([['thought', 'one', false], ['thought', '', true], ['thought', 'two', false], ['thought', '', true]]);
+    });
+
+    test('says nothing for an empty chunk, a thought that is not text, or a prompt with no thought', () => {
+        const { events } = run([think(''), { sessionUpdate: 'agent_thought_chunk', content: { type: 'image', data: 'x', mimeType: 'image/png' } }]);
+
+        expect(events.filter(event => event.type === 'thought')).toEqual([]);
+    });
+
+    test('is no part of the result, which is the last message', () => {
+        const { mapper } = run([chunk('Done.'), think('Afterthought.')]);
+
+        expect(mapper.result()).toBe('Done.');
+    });
+
+    test('a sub-agent\'s thoughts go to its own stream under its agentId, apart from the session\'s own', () => {
+        const claude = { claudeCode: { parentToolUseId: 'agent-1' } };
+        const { events } = run([
+            think('Session thinks.'),
+            { sessionUpdate: 'tool_call', toolCallId: 'agent-1', title: 'Agent', rawInput: { subagent_type: 'Explore', description: 'Look' } },
+            { ...think('Child thinks.'), _meta: claude } as SessionUpdate,
+            { ...chunk('Child says.'), _meta: claude } as SessionUpdate,
+        ]);
+
+        expect(events.filter(event => event.type === 'thought' || event.type === 'text').map(event => (event.type === 'thought' ? ['thought', event.delta, event.done, event.agentId] : ['text', event.delta, event.done, event.agentId]))).toEqual([
+            ['thought', 'Session thinks.', false, undefined],
+            ['thought', '', true, undefined],
+            ['thought', 'Child thinks.', false, 'agent-1'],
+            ['thought', '', true, 'agent-1'],
+            ['text', 'Child says.', false, 'agent-1'],
+        ]);
+    });
+});
+
 describe('updates of ACP v2', () => {
     const chunk2 = (text: string, messageId = 'm1'): SessionUpdateV2 => ({ sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text } });
     const whole = (text: string, messageId = 'm1'): SessionUpdateV2 => ({ sessionUpdate: 'agent_message', messageId, content: [{ type: 'text', text }] });
@@ -385,6 +439,48 @@ describe('updates of ACP v2', () => {
 
         return { mapper, events };
     }
+
+    describe('thoughts', () => {
+        const think2 = (text: string, messageId = 't1'): SessionUpdateV2 => ({ sessionUpdate: 'agent_thought_chunk', messageId, content: { type: 'text', text } });
+        const wholeThought = (text: string, messageId = 't1'): SessionUpdateV2 => ({ sessionUpdate: 'agent_thought', messageId, content: [{ type: 'text', text }] });
+
+        test('chunks of a thought append, a thought with another id is another thought, and a message ends the open one', () => {
+            const { events } = run2([think2('Hel'), think2('lo'), think2('Bye', 't2'), chunk2('Answer')]);
+
+            expect(thoughts(events)).toEqual([['thought', 'Hel', false], ['thought', 'lo', false], ['thought', '', true], ['thought', 'Bye', false], ['thought', '', true], ['text', 'Answer', false], ['text', '', true]]);
+        });
+
+        test('a thought sent whole shows what the stream lacks of it, and one it showed already shows nothing again', () => {
+            const { events } = run2([think2('Hel'), wholeThought('Hello'), wholeThought('Hello'), wholeThought('Other', 't2'), wholeThought('Other', 't2')]);
+
+            expect(thoughts(events)).toEqual([['thought', 'Hel', false], ['thought', 'lo', false], ['thought', '', true], ['thought', 'Other', false], ['thought', '', true]]);
+        });
+
+        test('a whole thought that does not continue the open one adds nothing, and one with no content leaves it as it is', () => {
+            const { events } = run2([think2('Hello'), wholeThought('Different'), { sessionUpdate: 'agent_thought', messageId: 't1', content: null }]);
+
+            expect(thoughts(events)).toEqual([['thought', 'Hello', false], ['thought', '', true]]);
+        });
+
+        test('a whole message ends the open thought before it, and a thought that ended and comes again whole adds nothing', () => {
+            const { events } = run2([think2('Hmm'), whole('Answer'), wholeThought('Hmm')]);
+
+            expect(thoughts(events)).toEqual([['thought', 'Hmm', false], ['thought', '', true], ['text', 'Answer', false], ['text', '', true]]);
+        });
+
+        test('a tool call ends the thought before it', () => {
+            const { events } = run2([think2('Hmm.'), call({ toolCallId: 'a', title: 'Read file', kind: 'read', status: 'in_progress' })]);
+
+            expect(events.map(event => event.type)).toEqual(['thought', 'thought', 'tool']);
+            expect(thoughts(events)).toEqual([['thought', 'Hmm.', false], ['thought', '', true]]);
+        });
+
+        test('is no part of the result, which is the last message', () => {
+            const { mapper } = run2([chunk2('Done.'), think2('Afterthought.')]);
+
+            expect(mapper.result()).toBe('Done.');
+        });
+    });
 
     describe('messages', () => {
         test('chunks of a message append, and a message with another id is another message', () => {
@@ -430,10 +526,9 @@ describe('updates of ACP v2', () => {
             expect(events).toEqual([{ type: 'text', delta: 'Hello', done: false }, { type: 'text', delta: '', done: true }]);
         });
 
-        test('a message with no content, thoughts, plans, user messages and unknown kinds are not shown', () => {
+        test('a message with no content, plans, user messages and unknown kinds are not shown', () => {
             const { events } = run2([
                 { sessionUpdate: 'agent_message', messageId: 'm1' },
-                { sessionUpdate: 'agent_thought_chunk', messageId: 't1', content: { type: 'text', text: 'hmm' } },
                 { sessionUpdate: 'user_message', messageId: 'u1', content: [{ type: 'text', text: 'hi' }] },
                 { sessionUpdate: 'plan_update', planId: 'p', plan: { type: 'items', entries: [] } },
                 { sessionUpdate: 'state_update', state: 'running' },
@@ -1093,6 +1188,48 @@ describe('sub-agents of ACP v2', () => {
 
             // The grandchildren end `done` with their reports at their own `idle`; the middle one is left to the list, which loses it when its own work is over.
             expect(subagents(events).flatMap(event => event.type === 'subagent' && event.state !== 'running' ? [[event.agentId === middleId ? 'middle' : 'grandchild', event.state]] : [])).toEqual([['grandchild', 'done'], ['grandchild', 'done']]);
+        });
+    });
+
+    describe('a sub-agent\'s thoughts', () => {
+        const announce = (): SessionUpdateV2 => ({ sessionUpdate: 'subagent_update', sessionId: 'child-1', title: 'Look around', description: 'Explore' });
+        const kinds = (events: EngineEvent[]) => events.filter(event => event.type === 'thought' || event.type === 'text').map(event => (event.type === 'thought' ? ['thought', event.delta, event.done, event.agentId] : ['text', event.delta, event.done, event.agentId]));
+
+        test('go to its own stream under its session id: a message ends the open one, a whole thought shows what the stream lacks', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(announce());
+
+            const events = [
+                ...mapper.update({ sessionUpdate: 'agent_thought_chunk', messageId: 't1', content: { type: 'text', text: 'Hel' } }, 'child-1'),
+                ...mapper.update({ sessionUpdate: 'agent_thought', messageId: 't1', content: [{ type: 'text', text: 'Hello' }] }, 'child-1'),
+                ...mapper.update({ sessionUpdate: 'agent_message_chunk', messageId: 'm1', content: { type: 'text', text: 'Found it' } }, 'child-1'),
+            ];
+
+            expect(kinds(events)).toEqual([
+                ['thought', 'Hel', false, 'child-1'],
+                ['thought', 'lo', false, 'child-1'],
+                ['thought', '', true, 'child-1'],
+                ['text', 'Found it', false, 'child-1'],
+            ]);
+        });
+
+        test('are apart from the session\'s own, and the sub-agent\'s end closes the one it has open', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(announce());
+
+            const events = [
+                ...mapper.update({ sessionUpdate: 'agent_thought_chunk', messageId: 'own', content: { type: 'text', text: 'Session' } }),
+                ...mapper.update({ sessionUpdate: 'agent_thought_chunk', messageId: 'c', content: { type: 'text', text: 'Child' } }, 'child-1'),
+                ...mapper.update({ sessionUpdate: 'state_update', state: 'idle', stopReason: 'end_turn' }, 'child-1'),
+            ];
+
+            expect(kinds(events)).toEqual([
+                ['thought', 'Session', false, undefined],
+                ['thought', 'Child', false, 'child-1'],
+                ['thought', '', true, 'child-1'],
+            ]);
         });
     });
 

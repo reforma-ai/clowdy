@@ -1,11 +1,23 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { FixtureTransport } from '../daemon/fixtureTransport';
+import { RootStore, RootStoreProvider } from '../stores';
 import { Markdown } from './Markdown';
 import { StreamLinksContext, type StreamLinks } from './StreamLinks';
 
+// A file chip knows the project's folders, so the text is drawn inside a window that has a project selected.
+let store: RootStore;
+
+beforeAll(async () => {
+    store = new RootStore(new FixtureTransport());
+    await store.load();
+});
+
+afterAll(() => store.dispose());
+
 const html = (text: string, links: StreamLinks = {}, props: { streaming?: boolean; fromPerson?: boolean } = {}) => renderToStaticMarkup(
-    <StreamLinksContext value={ links }><Markdown text={ text } { ...props } /></StreamLinksContext>
+    <RootStoreProvider value={ store }><StreamLinksContext value={ links }><Markdown text={ text } { ...props } /></StreamLinksContext></RootStoreProvider>
 );
 
 describe('Markdown', () => {

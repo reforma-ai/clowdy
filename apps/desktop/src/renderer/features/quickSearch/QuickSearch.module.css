@@ -1,0 +1,186 @@
+@reference '@clowdy/styles/rulesets';
+
+/* A fixed size whatever is listed, so the window keeps its place as the results come and go. The width is its own and not the window's: a window that sizes itself to what is in it
+   would grow with the longest line found, and the rows would no longer fit in it. */
+.palette {
+    /* The field's bar and the tabs' bar are as high as a button and the same space above and below it, and that space is also what is left of it: the plate of a pressed tab
+       and the plate of the row the keys are on start the same distance from the window's edge. The search icon keeps the wider gutter of a field. */
+    --palette-gap: var(--spacing-8);
+    --palette-bar: calc(var(--spacing-30) + 2 * var(--palette-gap));
+
+    display: flex;
+    flex-direction: column;
+    width: min(42.5rem, calc(100vw - 2 * var(--spacing-lg)));
+    height: min(30rem, calc(100vh - 8rem));
+}
+
+.field {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--spacing-10);
+    height: var(--palette-bar);
+    padding-inline: var(--spacing-lg);
+    border-bottom: 1px solid var(--color-surface-border);
+}
+
+.lens {
+    flex: none;
+    color: var(--color-secondary-muted-text);
+}
+
+.input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text);
+    outline: none;
+    @ruleset typography-text-md;
+}
+
+.input::placeholder {
+    color: var(--color-secondary-muted-text);
+}
+
+.spinner {
+    flex: none;
+}
+
+.results {
+    flex: 1;
+    min-height: 0;
+}
+
+.content {
+    padding: var(--palette-gap);
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.title {
+    padding: var(--spacing-6) var(--spacing-12) var(--spacing-4);
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-10);
+    min-height: var(--spacing-36);
+    padding-inline: var(--spacing-12);
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    color: var(--color-text);
+    cursor: pointer;
+    @ruleset typography-text-sm;
+}
+
+.row[data-active] {
+    background-color: var(--color-secondary-muted-light);
+}
+
+.icon {
+    flex: none;
+    width: var(--spacing-14);
+    height: var(--spacing-14);
+}
+
+.chatIcon {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-14);
+    height: var(--spacing-14);
+}
+
+.main {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The line of code takes what the row has, and its place (file and line) keeps the little it needs. */
+.code {
+    flex: 1 1 auto;
+    @ruleset typography-text-code-xs;
+}
+
+.meta {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+/* The place of a result (the file and line of a match, the folder of a chat) is at the row's far end, and keeps the little it needs. */
+.row .end {
+    flex: none;
+    max-width: 12rem;
+    margin-inline-start: auto;
+    text-align: end;
+}
+
+.main mark {
+    border-radius: var(--radius-xs);
+    background-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+    color: inherit;
+}
+
+/* What the list says when it has nothing to show: in the middle of the room the rows would have. */
+.empty {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    padding: var(--spacing-lg);
+    color: var(--color-secondary-muted-text);
+    text-align: center;
+    @ruleset typography-text-sm;
+}
+
+/* As tall as the field above. */
+.footer {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-12);
+    height: var(--palette-bar);
+    padding-inline: var(--palette-gap);
+    border-top: 1px solid var(--color-surface-border);
+}
+
+.tabs {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
+}
+
+.folder {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-6);
+    min-width: 0;
+    margin-inline-end: var(--palette-gap);
+}
+
+.folder span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

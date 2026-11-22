@@ -1,4 +1,4 @@
-/* The badges sit together, left of the shortcuts button. */
+/* The badges sit together, left of the side panel's toggle. */
 .group {
     display: flex;
     align-items: center;
@@ -87,15 +87,20 @@
     min-width: 0;
 }
 
-/* The refresh button is at the far end of the account line, whatever the length of the e-mail. */
+/*
+ * The refresh button is at the far end of the account line, whatever the length of the e-mail. It is pulled out by the plate's inset around its icon (a 30px button
+ * holds a 14px icon), on the right and above, so the icon, not the plate, stands at the popover's inset, in line with the ends of the bars.
+ */
 .refresh {
     flex-shrink: 0;
-    margin-inline-start: auto;
+    margin-inline: auto calc((var(--spacing-30) - 14px) / -2);
+    margin-block: calc((var(--spacing-30) - 14px) / -2);
 }
 
-/* The plan is short and says what the account is: a long e-mail gives way to it. */
+/* The plan is short and says what the account is: a long e-mail gives way to it. The chip is 20px tall and the rest of the line 16px: its margin takes the 2px back, so it does not make the line taller. */
 .plan {
     flex-shrink: 0;
+    margin-block: calc(var(--spacing-2) * -1);
 }
 
 .note {

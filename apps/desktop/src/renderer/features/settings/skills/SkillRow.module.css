@@ -58,3 +58,14 @@
     width: var(--spacing-32);
     color: var(--color-secondary-muted-text);
 }
+
+/* Which agents have the skill, and where it lives: the path gives way, the agents do not. */
+.source {
+    display: flex;
+    gap: var(--spacing-xs);
+    min-width: 0;
+}
+
+.engines {
+    flex-shrink: 0;
+}

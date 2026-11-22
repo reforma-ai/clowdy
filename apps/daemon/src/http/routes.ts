@@ -8,12 +8,15 @@ import { streamItems } from '../domain/items';
 import { findProjectIcon } from '../domain/projectIcon';
 import { projectsInfo, requireProject } from '../domain/projects';
 import { projectSnapshot, rootSnapshot, taskDetail } from '../domain/snapshots';
+import { archivedTasksPage } from '../domain/taskArchive';
+import { taskCommentsPage } from '../domain/taskComments';
+import { DEFAULT_LIMIT } from '../domain/taskQuery';
 import { CommandError, invalid, notFound } from '../errors';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body';
 import { commandResponse, failure, json } from './responses';
 import { eventStream } from './sse';
 
-import type { Health } from '@clowdy/protocol';
+import type { Health, TaskArchivePage, TaskCommentsPage } from '@clowdy/protocol';
 import type { Services } from '../commands';
 
 export interface RouteContext {
@@ -26,7 +29,7 @@ export interface RouteContext {
     keepOpen(request: Request): void;
 }
 
-interface Route {
+export interface Route {
     method: 'GET' | 'POST' | 'DELETE';
     pattern: RegExp;
     /** Only the health check is open. */
@@ -81,7 +84,7 @@ export function createRoutes(context: RouteContext): Route[] {
         },
         { method: 'GET', pattern: /^\/v1\/snapshot$/, handle: () => json(rootSnapshot(store)) },
         // `info` is not a project id (they all start with `prj_`), and the pattern is exact, so no route below can take it for one.
-        { method: 'GET', pattern: /^\/v1\/projects\/info$/, handle: async () => json(await projectsInfo(store)) },
+        { method: 'GET', pattern: /^\/v1\/projects\/info$/, handle: async (_request, url) => json(await projectsInfo(store, url.searchParams.get('project') ?? undefined)) },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/snapshot$/, handle: (_request, _url, [id]) => json(projectSnapshot(store, id)) },
         {
             method: 'GET',
@@ -154,6 +157,30 @@ export function createRoutes(context: RouteContext): Route[] {
             },
         },
         { method: 'GET', pattern: /^\/v1\/tasks\/([^/]+)\/detail$/, handle: (_request, _url, [id]) => json(taskDetail(store, id)) },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/tasks\/([^/]+)\/comments$/,
+            handle: (_request, url, [id]) => {
+                const { comments, total, nextCursor } = taskCommentsPage(store, id, {
+                    limit: integerParam(url.searchParams.get('limit'), 'limit', DEFAULT_LIMIT),
+                    cursor: url.searchParams.get('cursor') ?? undefined,
+                });
+
+                return json({ comments, total, ...(nextCursor !== undefined && { nextCursor }) } satisfies TaskCommentsPage);
+            },
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/archived-tasks$/,
+            handle: (_request, url, [id]) => {
+                const { tasks, total, nextCursor } = archivedTasksPage(store, id, {
+                    limit: integerParam(url.searchParams.get('limit'), 'limit', DEFAULT_LIMIT),
+                    cursor: url.searchParams.get('cursor') ?? undefined,
+                });
+
+                return json({ tasks, total, ...(nextCursor !== undefined && { nextCursor }) } satisfies TaskArchivePage);
+            },
+        },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/docs$/, handle: (_request, _url, [id]) => json(docs.tree(requireProject(store, id))) },
         {
             method: 'GET',

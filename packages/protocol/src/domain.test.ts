@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 
-import { ACTIVE_RUN_STATUSES, folderNames, isBusyRunStatus, isTerminalRunStatus } from './domain';
+import { ACTIVE_RUN_STATUSES, folderNames, isBusyRunStatus, isClosedCategory, isTerminalRunStatus, MAX_TASK_DEPTH } from './domain';
+
+import type { TaskStatusCategory } from './domain';
 
 const named = (...paths: string[]) => folderNames(paths.map(path => ({ path })));
 
@@ -31,5 +33,17 @@ describe('run statuses', () => {
         for (const status of ['waiting_background', 'succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
             expect(isBusyRunStatus(status)).toBe(false);
         }
+    });
+});
+
+describe('task categories', () => {
+    test('done and canceled are closed; everything else, the parked backlog included, is not', () => {
+        const categories: TaskStatusCategory[] = ['backlog', 'todo', 'active', 'review', 'done', 'canceled'];
+
+        expect(categories.filter(category => isClosedCategory(category))).toEqual(['done', 'canceled']);
+    });
+
+    test('a tree of tasks has at most 8 levels, the limit of GitHub', () => {
+        expect(MAX_TASK_DEPTH).toBe(8);
     });
 });

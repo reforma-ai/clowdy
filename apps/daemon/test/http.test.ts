@@ -1,5 +1,6 @@
 import { SSE_EVENT } from '@clowdy/protocol';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { homedir } from 'node:os';
 
 import { isAllowedOrigin, isLoopbackHost, tokenMatches } from '../src/http/guard';
 import { cleanTempDirs, command, Harness, startHarness } from './helpers';
@@ -53,7 +54,7 @@ describe('auth', () => {
     });
 
     test('everything else needs the bearer token', async () => {
-        const paths = ['/v1/snapshot', '/v1/projects/p/snapshot', '/v1/events', '/v1/runs/r/items', '/v1/chats/c/items', '/v1/tasks/t/detail', '/v1/projects/p/docs', '/v1/projects/p/docs/file?path=a.md'];
+        const paths = ['/v1/snapshot', '/v1/projects/p/snapshot', '/v1/events', '/v1/runs/r/items', '/v1/chats/c/items', '/v1/tasks/t/detail', '/v1/tasks/t/comments', '/v1/projects/p/docs', '/v1/projects/p/docs/file?path=a.md'];
 
         for (const path of paths) {
             for (const headers of [{}, { authorization: 'Bearer wrong' }, { authorization: 'test-token' }, { authorization: 'Basic dGVzdC10b2tlbg==' }] as Record<string, string>[]) {
@@ -65,6 +66,13 @@ describe('auth', () => {
         }
 
         expect((await fetch(`${ h.url }/v1/snapshot`, { headers: bearer })).status).toBe(200);
+    });
+
+    test('the root snapshot says the home folder of the person the daemon runs as, which the app shows as ~', async () => {
+        const snapshot = await (await fetch(`${ h.url }/v1/snapshot`, { headers: bearer })).json() as { cursor: number; projects: unknown[]; home?: string };
+
+        expect(snapshot.home).toBe(homedir());
+        expect(snapshot.cursor).toBe(h.store.headCursor());
     });
 
     test('an unauthorized command gets a CommandResult-shaped error and does nothing', async () => {
@@ -167,11 +175,11 @@ describe('CORS', () => {
 
         expect(response.status).toBe(204);
         expect(response.headers.get('access-control-allow-origin')).toBe('app://clowdy');
-        expect(response.headers.get('access-control-allow-methods')).toBe('GET, POST, DELETE, OPTIONS');
+        expect(response.headers.get('access-control-allow-methods')).toBe('GET, POST, PUT, DELETE, OPTIONS');
 
         const allowed = response.headers.get('access-control-allow-headers')!.toLowerCase();
 
-        for (const header of ['authorization', 'content-type', 'x-clowdy-protocol', 'last-event-id']) {
+        for (const header of ['authorization', 'content-type', 'x-clowdy-protocol', 'last-event-id', 'if-match', 'if-none-match']) {
             expect(allowed).toContain(header);
         }
 

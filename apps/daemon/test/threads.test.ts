@@ -12,6 +12,7 @@ import { toolsFor } from '../src/runs/tools';
 import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, tempDir, untilAborted, waitFor } from './helpers';
 
 import type { Chat, MessageSource, Run, StreamItemBody, ThreadNotice } from '@clowdy/protocol';
+import type { EngineEvent } from '../src/engine/types';
 import type { Harness, Script } from './helpers';
 
 afterAll(cleanTempDirs);
@@ -239,7 +240,7 @@ describe('thread_spawn', () => {
         // The run of a chat started from a task may give the task to a thread of its own; then the thread has it.
         const { task: c } = await exec(parent.run, 'task_create', { title: 'C' });
 
-        on(`This chat is bound to ${ c.key }; read it with task_get, do the work, and finish with a short report.`, held(latch()));
+        on(`This chat is bound to ${ c.key }; read it with \`clowdy task get ${ c.key }\`, do the work, and finish with a short report.`, held(latch()));
 
         const started = h.ok('task.start', { taskId: c.id });
 
@@ -249,6 +250,24 @@ describe('thread_spawn', () => {
 
         expect(handed.state).toBe('working');
         await expect(exec(h.run(started.runId), 'thread_spawn', { prompt: 'Do C twice', tasks: [c.key] })).rejects.toMatchObject({ code: 'already_running' });
+    });
+});
+
+describe('thread_spawn on an archived task', () => {
+    test('refuses the task, says to restore it first, opens no thread, and takes it once it is restored', async () => {
+        const { h, exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const { task } = await exec(parent.run, 'task_create', { title: 'Finished', status: 'done' });
+
+        await exec(parent.run, 'task_archive', { taskId: [task.key] });
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Do it again', tasks: [task.key] })).rejects.toMatchObject({ code: 'invalid', message: `Task ${ task.key } is archived: restore it first` });
+        expect((await exec(parent.run, 'thread_list')).threads).toEqual([]);
+
+        h.ok('task.unarchive', { taskId: task.id });
+
+        const thread = await spawn(parent.run, 'Do it again', held(latch()), { tasks: [task.key] });
+
+        expect(thread.state).toBe('working');
     });
 });
 
@@ -462,6 +481,32 @@ describe('thread_output and thread_log', () => {
 
         // The thread reads its parent's log too: any chat of the tree.
         expect((await exec(thread.run(), 'thread_log', { thread: parent.chat.id })).lines[0]).toBe('#1 person: Plan the release');
+    });
+});
+
+describe('thread_log and reasoning', () => {
+    test('leaves out what the thread thought, and the limit counts the lines it shows', async () => {
+        const { exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const thought = (text: string): EngineEvent[] => [{ type: 'thought', delta: text, done: false }, { type: 'thought', delta: '', done: true }];
+        const thread = await spawn(parent.run, 'Check the tasks', async function* (turn) {
+            yield { type: 'session', sessionId: `s-${ turn.number }` };
+            yield* thought('Let me look at the tasks first.');
+            yield* turn.call('task_list');
+            yield* thought('Nothing to do.');
+            yield* thought('Really nothing.');
+            yield { type: 'text', delta: 'All clear', done: true };
+            yield { type: 'done', result: 'All clear' };
+        });
+
+        await waitFor(() => thread.run().status === 'succeeded', 'the thread to answer');
+
+        const { lines } = await exec(parent.run, 'thread_log', { thread: thread.threadId });
+
+        // Items 2, 4 and 5 are thoughts: the numbers keep their place in the stream.
+        expect(lines).toEqual([`#1 thread "Plan the release" (${ parent.chat.id }): Check the tasks`, '#3 tool task_list (done)', '#6 assistant: All clear']);
+        // The two lines of the rest, though the last two items of the stream are a thought and a message.
+        expect((await exec(parent.run, 'thread_log', { thread: thread.threadId, limit: 2 })).lines).toEqual(lines.slice(1));
     });
 });
 

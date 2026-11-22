@@ -8,10 +8,13 @@ import { openDatabase } from '../src/db/connection';
 import { getItem, itemRef, setItemRef } from '../src/db/items';
 import { MIGRATIONS } from '../src/db/migrations';
 import { getRun, getRunWork } from '../src/db/runs';
+import { countTaskComments, getTaskComment, insertTaskComment, latestTaskComments, listTaskComments, updateTaskCommentBody } from '../src/db/taskComments';
+import { childIdsOf, countArchivedTasks, deleteTask, getTask, latestArchiveTime, listAllTasks, listArchivedTasks, listTasks, upsertTask } from '../src/db/tasks';
 import { newId } from '../src/ids';
 import { Store } from '../src/store';
 import { cleanTempDirs, tempDir } from './helpers';
 
+import type { Task, TaskComment } from '@clowdy/protocol';
 import type { Migration } from '../src/db/migrations';
 
 afterAll(cleanTempDirs);
@@ -271,6 +274,180 @@ describe('migrations', () => {
         expect(itemRef(db, 'run_1', 1)).toBe('msg_1');
         // The point is the daemon's own: the item a client reads has no trace of it.
         expect(JSON.stringify(getItem(db, 'run_1', 1))).not.toContain('msg_1');
+        db.close();
+    });
+
+    test('version 20 gives the tasks of an older database no parent and, when they are closed, a closing time taken from their last change', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 20));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+
+        for (const [index, category] of ['todo', 'active', 'review', 'done', 'canceled'].entries()) {
+            before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run(`sts_${ category }`, 'prj_1', category, category, index);
+            before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(`tsk_${ category }`, 'prj_1', index + 1, category, `sts_${ category }`, '{"kind":"user"}', 10, 100 + index);
+        }
+
+        before.close();
+
+        const db = openDatabase(path);
+        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(indexes).toContain('tasks_parent');
+
+        for (const category of ['todo', 'active', 'review']) {
+            expect(getTask(db, `tsk_${ category }`)).not.toHaveProperty('closedAt');
+        }
+
+        expect(getTask(db, 'tsk_done')).toMatchObject({ closedAt: 103, updatedAt: 103 });
+        expect(getTask(db, 'tsk_canceled')).toMatchObject({ closedAt: 104, updatedAt: 104 });
+        expect(db.query('SELECT COUNT(*) AS n FROM tasks WHERE parent_id IS NOT NULL').get()).toEqual({ n: 0 });
+        expect(getTask(db, 'tsk_todo')).not.toHaveProperty('parentId');
+        db.close();
+    });
+
+    test('a task keeps its parent and closing time through writes, and a parent that goes clears the column of the tasks inside it', () => {
+        const db = openDatabase(join(tempDir(), 'clowdy.db'));
+
+        db.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'New', 'NEW', 1);
+        db.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_1', 'prj_1', 'To do', 'todo', 0);
+
+        const base: Omit<Task, 'id' | 'number' | 'key'> = { projectId: 'prj_1', title: 'T', description: '', statusId: 'sts_1', dependsOn: [], createdBy: { kind: 'user' }, createdAt: 1, updatedAt: 1 };
+
+        upsertTask(db, { ...base, id: 'tsk_a', number: 1, key: 'NEW-1' });
+        upsertTask(db, { ...base, id: 'tsk_b', number: 2, key: 'NEW-2', parentId: 'tsk_a', closedAt: 5 });
+        expect(getTask(db, 'tsk_b')).toMatchObject({ parentId: 'tsk_a', closedAt: 5 });
+        expect(childIdsOf(db, 'tsk_a')).toEqual(['tsk_b']);
+
+        // The next write replaces both: a task that was reopened and made a root again has neither.
+        upsertTask(db, { ...base, id: 'tsk_b', number: 2, key: 'NEW-2', updatedAt: 2 });
+        expect(getTask(db, 'tsk_b')).not.toHaveProperty('parentId');
+        expect(getTask(db, 'tsk_b')).not.toHaveProperty('closedAt');
+
+        upsertTask(db, { ...base, id: 'tsk_b', number: 2, key: 'NEW-2', parentId: 'tsk_a' });
+        deleteTask(db, 'tsk_a');
+        expect(getTask(db, 'tsk_b')).toBeDefined();
+        expect(getTask(db, 'tsk_b')).not.toHaveProperty('parentId');
+        db.close();
+    });
+
+    test('version 21 adds the comments table to an older database, leaves its tasks as they were, and a task that goes takes its comments', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 21));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_1', 'prj_1', 'To do', 'todo', 0);
+
+        for (const number of [1, 2]) {
+            before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(`tsk_${ number }`, 'prj_1', number, `Task ${ number }`, 'sts_1', '{"kind":"user"}', 10, 20);
+        }
+
+        expect((before.query('SELECT name FROM sqlite_master WHERE name = \'task_comments\'').all())).toEqual([]);
+        before.close();
+
+        const db = openDatabase(path);
+        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+        const columns = (db.query('PRAGMA table_info(task_comments)').all() as { name: string; notnull: number }[]).map(column => [column.name, column.notnull]);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(MIGRATIONS.length).toBeGreaterThanOrEqual(21);
+        expect(indexes).toContain('task_comments_task');
+        expect(columns).toEqual([['id', 0], ['task_id', 1], ['author', 1], ['body', 1], ['created_at', 1], ['edited_at', 0]]);
+        expect((db.query('PRAGMA index_info(task_comments_task)').all() as { name: string }[]).map(column => column.name)).toEqual(['task_id', 'created_at']);
+        expect(getTask(db, 'tsk_1')).toMatchObject({ title: 'Task 1', updatedAt: 20 });
+        expect(db.query('SELECT COUNT(*) AS n FROM task_comments').get()).toEqual({ n: 0 });
+
+        const comment: TaskComment = { id: 'cmt_1', taskId: 'tsk_1', author: { kind: 'run', runId: 'run_1' }, body: '**Markdown**', createdAt: 30 };
+
+        insertTaskComment(db, comment);
+        insertTaskComment(db, { ...comment, id: 'cmt_2', author: { kind: 'user' }, createdAt: 31 });
+        insertTaskComment(db, { ...comment, id: 'cmt_3', taskId: 'tsk_2' });
+
+        expect(getTaskComment(db, 'cmt_1')).toEqual(comment);
+        expect(getTaskComment(db, 'cmt_1')).not.toHaveProperty('editedAt');
+        expect(db.query('SELECT edited_at FROM task_comments WHERE id = ?').get('cmt_1')).toEqual({ edited_at: null });
+
+        updateTaskCommentBody(db, 'cmt_1', 'Changed', 40);
+        expect(getTaskComment(db, 'cmt_1')).toEqual({ ...comment, body: 'Changed', editedAt: 40 });
+        expect(listTaskComments(db, 'tsk_1', 10).map(row => row.id)).toEqual(['cmt_1', 'cmt_2']);
+        expect(latestTaskComments(db, 'tsk_1', 1).map(row => row.id)).toEqual(['cmt_2']);
+        expect(countTaskComments(db, 'tsk_1')).toBe(2);
+
+        // A comment needs its task, and the task takes the comments along when its row goes.
+        expect(() => insertTaskComment(db, { ...comment, id: 'cmt_4', taskId: 'tsk_nope' })).toThrow();
+        deleteTask(db, 'tsk_1');
+        expect(getTaskComment(db, 'cmt_1')).toBeUndefined();
+        expect(getTaskComment(db, 'cmt_2')).toBeUndefined();
+        expect(getTaskComment(db, 'cmt_3')).toBeDefined();
+        db.close();
+    });
+
+    test('version 22 adds the archive column to an older database: its tasks are not archived, the archive is indexed, and the reads tell the two apart', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(path, MIGRATIONS.filter(migration => migration.version < 22));
+
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_1', 'Old', 'OLD', 1);
+        before.query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)').run('prj_2', 'Other', 'OTH', 1);
+        before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_1', 'prj_1', 'Done', 'done', 0);
+        before.query('INSERT INTO task_statuses (id, project_id, name, category, position) VALUES (?, ?, ?, ?, ?)').run('sts_2', 'prj_2', 'Done', 'done', 0);
+
+        for (const number of [1, 2, 3, 4]) {
+            before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(`tsk_${ number }`, 'prj_1', number, `Task ${ number }`, 'sts_1', '{"kind":"user"}', 10, 20, 30);
+        }
+
+        before.query('INSERT INTO task_deps (task_id, depends_on_id) VALUES (?, ?)').run('tsk_2', 'tsk_1');
+        before.query('INSERT INTO tasks (id, project_id, number, title, status_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('tsk_o', 'prj_2', 1, 'Elsewhere', 'sts_2', '{"kind":"user"}', 10, 20);
+        expect((before.query('PRAGMA table_info(tasks)').all() as { name: string }[]).map(column => column.name)).not.toContain('archived_at');
+        before.close();
+
+        const db = openDatabase(path);
+        const indexes = (db.query('SELECT name FROM sqlite_master WHERE type = \'index\'').all() as { name: string }[]).map(row => row.name);
+        const column = (db.query('PRAGMA table_info(tasks)').all() as { name: string; notnull: number }[]).find(entry => entry.name === 'archived_at');
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(MIGRATIONS.length).toBeGreaterThanOrEqual(22);
+        expect(column).toMatchObject({ name: 'archived_at', notnull: 0 });
+        expect(indexes).toContain('tasks_archived');
+        expect((db.query('PRAGMA index_info(tasks_archived)').all() as { name: string }[]).map(entry => entry.name)).toEqual(['project_id', 'archived_at']);
+        // The index holds the archive only: every task of an older database is on the board.
+        expect(db.query('SELECT COUNT(*) AS n FROM tasks WHERE archived_at IS NOT NULL').get()).toEqual({ n: 0 });
+        expect(listTasks(db, 'prj_1').map(task => task.id)).toEqual(['tsk_1', 'tsk_2', 'tsk_3', 'tsk_4']);
+        expect(getTask(db, 'tsk_1')).not.toHaveProperty('archivedAt');
+        expect(getTask(db, 'tsk_1')).toMatchObject({ title: 'Task 1', updatedAt: 20, closedAt: 30 });
+        expect(countArchivedTasks(db, 'prj_1')).toBe(0);
+        expect(latestArchiveTime(db, 'prj_1')).toBe(0);
+        expect(listArchivedTasks(db, 'prj_1', 10)).toEqual([]);
+
+        // Archiving is a write of the same task with a time: the board and the archive part ways, the dependencies and the other project stay.
+        upsertTask(db, { ...getTask(db, 'tsk_1') as Task, archivedAt: 500 });
+        upsertTask(db, { ...getTask(db, 'tsk_2') as Task, archivedAt: 500 });
+        upsertTask(db, { ...getTask(db, 'tsk_4') as Task, archivedAt: 400 });
+        upsertTask(db, { ...getTask(db, 'tsk_o') as Task, archivedAt: 900 });
+
+        expect(listTasks(db, 'prj_1').map(task => task.id)).toEqual(['tsk_3']);
+        expect(listAllTasks(db, 'prj_1').map(task => task.id)).toEqual(['tsk_1', 'tsk_2', 'tsk_3', 'tsk_4']);
+        expect(getTask(db, 'tsk_1')).toMatchObject({ archivedAt: 500 });
+        expect(countArchivedTasks(db, 'prj_1')).toBe(3);
+        expect(latestArchiveTime(db, 'prj_1')).toBe(500);
+        // The latest batch first, a batch by number, the dependencies of each task kept.
+        expect(listArchivedTasks(db, 'prj_1', 10).map(task => task.id)).toEqual(['tsk_1', 'tsk_2', 'tsk_4']);
+        expect(listArchivedTasks(db, 'prj_1', 10)[1]).toMatchObject({ dependsOn: ['tsk_1'], archivedAt: 500 });
+        expect(listArchivedTasks(db, 'prj_1', 2).map(task => task.id)).toEqual(['tsk_1', 'tsk_2']);
+        expect(listArchivedTasks(db, 'prj_1', 10, { archivedAt: 500, number: 1 }).map(task => task.id)).toEqual(['tsk_2', 'tsk_4']);
+        expect(listArchivedTasks(db, 'prj_1', 10, { archivedAt: 500, number: 2 }).map(task => task.id)).toEqual(['tsk_4']);
+        expect(listArchivedTasks(db, 'prj_1', 10, { archivedAt: 400, number: 4 })).toEqual([]);
+        expect(listArchivedTasks(db, 'prj_2', 10).map(task => task.id)).toEqual(['tsk_o']);
+
+        // The next write of the task without the time brings it back, and a row keeps the time through writes of other fields.
+        upsertTask(db, { ...getTask(db, 'tsk_4') as Task, title: 'Renamed' });
+        expect(getTask(db, 'tsk_4')).toMatchObject({ title: 'Renamed', archivedAt: 400 });
+
+        const { archivedAt: _, ...restored } = getTask(db, 'tsk_4') as Task;
+
+        upsertTask(db, restored);
+        expect(getTask(db, 'tsk_4')).not.toHaveProperty('archivedAt');
+        expect(db.query('SELECT archived_at FROM tasks WHERE id = ?').get('tsk_4')).toEqual({ archived_at: null });
         db.close();
     });
 

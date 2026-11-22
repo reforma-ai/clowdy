@@ -1,7 +1,7 @@
 import { daemonDataDir, type EngineId } from '@clowdy/protocol';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, isAbsolute, join } from 'node:path';
 
 export interface Config {
     dataDir: string;
@@ -34,6 +34,11 @@ export interface Config {
     agentPermissions: 'allow' | 'reject';
     /** Multiplier of the fake engine's delays; 0 removes them (tests). */
     fakeSpeed: number;
+    /**
+     * The ripgrep the file search runs (`CLOWDY_RG`): the absolute path of an `rg` executable, which the desktop app gives a packaged run;
+     * `false` (`CLOWDY_RG=off`) for none, so the daemon scans the files itself; absent, the `rg` found on the PATH.
+     */
+    ripgrep?: string | false;
     /** The system skills plugin folder (manifest and `skills/`) to copy into the data folder; the repository's `packages/system-skills` when absent. */
     systemSkillsSource?: string;
     /** The user's skill folders, weakest first (a skill in a later one hides the same name in an earlier one). Absent means none. */
@@ -96,6 +101,24 @@ function permissions(env: Env): Config['agentPermissions'] {
     return raw;
 }
 
+function ripgrepFrom(env: Env): Config['ripgrep'] {
+    const raw = env.CLOWDY_RG?.trim();
+
+    if (!raw) {
+        return undefined;
+    }
+
+    if (raw === 'off') {
+        return false;
+    }
+
+    if (!isAbsolute(raw)) {
+        throw new ConfigError(`CLOWDY_RG must be the absolute path of an rg executable, or off, got "${ raw }"`);
+    }
+
+    return raw;
+}
+
 export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = process.platform): Config {
     // Any agent id: whether the daemon can run it is decided at start, against the agents it finds.
     const engine = (env.CLOWDY_ENGINE || 'fake').trim();
@@ -125,6 +148,7 @@ export function loadConfig(env: Env = process.env, platform: NodeJS.Platform = p
         },
         agentPermissions: permissions(env),
         fakeSpeed: numberFrom(env, 'CLOWDY_FAKE_SPEED', 1, v => v >= 0, 'a number of at least 0'),
+        ripgrep: ripgrepFrom(env),
         systemSkillsSource: env.CLOWDY_SYSTEM_SKILLS_DIR || undefined,
         userSkillRoots: env.CLOWDY_USER_SKILLS_DIRS ? env.CLOWDY_USER_SKILLS_DIRS.split(delimiter).filter(Boolean) : [join(homedir(), '.claude', 'skills'), join(homedir(), '.agents', 'skills')],
     };

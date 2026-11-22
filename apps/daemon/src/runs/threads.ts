@@ -5,7 +5,7 @@ import { getChat, listChatDescendants, listChildChats } from '../db/chats';
 import { lastUserSeq, listItems, nextSeq } from '../db/items';
 import { getRun } from '../db/runs';
 import { chatDepth, createChat, inSameTree, isBelow, requireChat } from '../domain/chats';
-import { linkChatTask, resolveTask } from '../domain/tasks';
+import { linkChatTask, requireNotArchived, resolveTask } from '../domain/tasks';
 import { CommandError, conflict, invalid, notFound } from '../errors';
 import { isFolder } from './driver';
 import { sendMessage } from './messages';
@@ -347,9 +347,18 @@ export class ThreadService {
         const { db } = this.deps.store;
         const target = this.inTree(caller, threadId);
         const run = this.runOf(target);
-        const items = run ? listItems(db, run.id, Math.max(0, nextSeq(db, run.id) - 1 - limit)) : [];
+        // What the thread thought is not for the agent that reads its log (it is a good deal of words, and not what the thread did or said): the last `limit`
+        // lines are of the rest, so the window widens until it holds that many or reaches the start.
+        const shown = (from: number) => run ? listItems(db, run.id, from).filter(item => item.body.kind !== 'reasoning') : [];
+        let from = run ? Math.max(0, nextSeq(db, run.id) - 1 - limit) : 0;
+        let items = shown(from);
 
-        return { threadId: target.id, title: target.title, state: threadState(run), lines: items.map(item => `#${ item.seq } ${ describeItem(item) }`) };
+        while (items.length < limit && from > 0) {
+            from = Math.max(0, from - limit);
+            items = shown(from);
+        }
+
+        return { threadId: target.id, title: target.title, state: threadState(run), lines: items.slice(-limit).map(item => `#${ item.seq } ${ describeItem(item) }`) };
     }
 
     /** The caller's threads: the ones its chat started, or with `all` every chat below it, a parent before its threads. */
@@ -472,13 +481,15 @@ export class ThreadService {
 
     /**
      * The tasks a new thread is assigned to, each once. A task that another run works on is refused: the caller's own run may hand its task on (a chat
-     * started from the task spawns a thread on it), but two threads on one task would do the work twice.
+     * started from the task spawns a thread on it), but two threads on one task would do the work twice. So is an archived task, as for `task.start`.
      */
     private freeTasks(caller: Run, references: readonly string[]): Task[] {
         const { store, runs } = this.deps;
         const tasks = new Map(references.map(reference => resolveTask(store, caller.projectId, reference)).map(task => [task.id, task]));
 
         for (const task of tasks.values()) {
+            requireNotArchived(task);
+
             const [active] = runs.activeRunsOfTask(task.id, caller.id);
 
             if (active) {

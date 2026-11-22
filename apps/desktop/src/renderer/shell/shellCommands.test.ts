@@ -2,9 +2,10 @@
 import { observable, runInAction } from 'mobx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SIDE_PANEL_KEYS, SIDE_PANEL_TAB_KEYS } from '../features/sidePanel';
 import { installDispatcher } from '../hotkeys/dispatcher';
 import { commandHint } from '../hotkeys/react';
-import { createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
+import { commandPresses, createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
 import { UiStore } from '../stores';
 import { findCommands } from './findCommands';
 import { navCommandId, NEW_CHAT_COMMAND, shellCommands, type ShellCommandsRoot } from './shellCommands';
@@ -12,9 +13,12 @@ import { navCommandId, NEW_CHAT_COMMAND, shellCommands, type ShellCommandsRoot }
 let registry: HotkeyRegistry;
 let uninstall: () => void;
 let ui: UiStore;
+/** Whether the window shows a project: what the real root works out from its phase, Settings and the selected project. */
+let screen: { shown: boolean };
+/** How far the window has loaded, as the real root's `phase` says. */
+let loading: { phase: ShellCommandsRoot['phase'] };
 let root: ShellCommandsRoot;
 let history: ShellCommandsRoot['history'] & { canGoBack: boolean; canGoForward: boolean };
-let openHelp: () => void;
 
 const press = (init: KeyboardEventInit & { key: string }, target: EventTarget = document.body) => {
     const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
@@ -31,10 +35,21 @@ beforeEach(() => {
     // A stand-in for the real history, which has its own tests: only what the commands read and call.
     history = observable({ canGoBack: false, canGoForward: false, back: vi.fn(), forward: vi.fn() }, { back: false, forward: false });
     // `ui` and `history` stay out of the observable: they are stores of their own, like on the real `RootStore`.
-    root = observable({ selectedProjectId: 'p' as string | null, ui, history }, { ui: false, history: false });
-    openHelp = vi.fn();
+    screen = observable({ shown: true });
+    loading = observable({ phase: 'ready' as ShellCommandsRoot['phase'] });
+    root = observable({
+        get phase() {
+            return loading.phase;
+        },
+        selectedProjectId: 'p' as string | null,
+        get showsProjectScreen() {
+            return screen.shown;
+        },
+        ui,
+        history,
+    }, { ui: false, history: false });
 
-    for (const command of shellCommands(root, openHelp)) registry.defineCommand({ ...command, scope: 'app' });
+    for (const command of shellCommands(root)) registry.defineCommand({ ...command, scope: 'app' });
 
     uninstall = installDispatcher(registry);
 });
@@ -152,34 +167,37 @@ describe('section chords', () => {
 });
 
 describe('help.open', () => {
-    it('opens on ?, which is Shift+/ on a US keyboard, and on Cmd+/', () => {
+    const shown = () => [ui.settingsOpen, ui.settingsPage];
+
+    it('opens Settings on the Shortcuts page on ?, which is Shift+/ on a US keyboard', () => {
         press({ key: '?', shiftKey: true });
+
+        expect(shown()).toEqual([true, 'shortcuts']);
+    });
+
+    it('opens it on Cmd+/ too, and from another page of Settings', () => {
+        ui.openSettings('providers');
+
         press({ key: '/', metaKey: true });
 
-        expect(openHelp).toHaveBeenCalledTimes(2);
+        expect(shown()).toEqual([true, 'shortcuts']);
     });
 
-    it('opens on Cmd+? too, which is Cmd+Shift+/ on a US keyboard: Shift turns the key into "?", so `$mod+/` alone does not match it', () => {
+    it('opens it on Cmd+? too, which is Cmd+Shift+/ on a US keyboard: Shift turns the key into "?", so `$mod+/` alone does not match it', () => {
         const event = press({ key: '?', code: 'Slash', metaKey: true, shiftKey: true });
 
-        expect(openHelp).toHaveBeenCalledTimes(1);
+        expect(shown()).toEqual([true, 'shortcuts']);
         expect(event.defaultPrevented).toBe(true);
-    });
-
-    it('calls openHelp with nothing, not with the key event it would take for a registry', () => {
-        press({ key: '?', shiftKey: true });
-
-        expect(openHelp).toHaveBeenCalledWith();
     });
 
     it('does not open on Ctrl+/ on macOS, or on a bare slash', () => {
         press({ key: '/', ctrlKey: true });
         press({ key: '/' });
 
-        expect(openHelp).not.toHaveBeenCalled();
+        expect(ui.settingsOpen).toBe(false);
     });
 
-    it('stays shut while a text field has focus, so the search field of the overlay can take a ?', () => {
+    it('stays shut while a text field has focus, so the field can take a ?', () => {
         const input = document.createElement('input');
 
         document.body.append(input);
@@ -187,12 +205,23 @@ describe('help.open', () => {
         try {
             const event = press({ key: '?', shiftKey: true }, input);
 
-            expect(openHelp).not.toHaveBeenCalled();
+            expect(ui.settingsOpen).toBe(false);
             expect(event.defaultPrevented).toBe(false);
         }
         finally {
             input.remove();
         }
+    });
+
+    it('stays shut until the window has loaded, because Settings shows over nothing before then', () => {
+        runInAction(() => {
+            loading.phase = 'unreachable';
+        });
+
+        const event = press({ key: '?', shiftKey: true });
+
+        expect(ui.settingsOpen).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
     });
 });
 
@@ -289,12 +318,12 @@ describe('the keymap', () => {
     it('has no key conflicts and unique ids', () => {
         const probe = createRegistry('win32');
 
-        for (const command of shellCommands(root, openHelp)) probe.defineCommand({ ...command, scope: 'app' });
+        for (const command of shellCommands(root)) probe.defineCommand({ ...command, scope: 'app' });
 
         for (const command of findCommands({ open() {}, next() {}, previous() {} })) probe.defineCommand({ ...command, scope: 'app' });
 
         expect(() => probe.assertNoConflicts()).not.toThrow();
-        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
+        expect(probe.entries.map(({ command }) => command.id)).toEqual(['help.open', 'nav.agents', 'nav.tasks', 'nav.docs', 'chats.new', 'sidePanel.toggle', 'sidePanel.terminal', 'sidePanel.show.info', 'sidePanel.show.files', 'sidePanel.show.terminal', 'nav.back', 'nav.forward', 'find.open', 'find.next', 'find.previous']);
         expect(navCommandId('tasks')).toBe('nav.tasks');
     });
 });
@@ -376,5 +405,200 @@ describe('new chat', () => {
 
     it('shows its keys as the hint of the New chat row', () => {
         expect(commandHint(NEW_CHAT_COMMAND, registry)).toEqual([['meta', 'n']]);
+    });
+});
+
+describe('the terminal key', () => {
+    const state = () => ({ open: ui.forProject('p').sidePanelOpen, tab: ui.forProject('p').sidePanelTab });
+    const press_ = (target?: EventTarget) => press({ key: '`', code: 'Backquote', ctrlKey: true }, target);
+
+    it('opens the panel on the Terminal tab, goes back to the tab it was on when pressed over another one, and shuts the panel on a second press', () => {
+        const first = press_();
+
+        expect(state()).toEqual({ open: true, tab: 'terminal' });
+        expect(first.defaultPrevented).toBe(true);
+
+        ui.forProject('p').showSidePanelTab('files');
+        press_();
+        expect(state()).toEqual({ open: true, tab: 'terminal' });
+
+        press_();
+        expect(state()).toEqual({ open: false, tab: 'terminal' });
+    });
+
+    it('works from a text field, which is where the terminal\'s own input is', () => {
+        const input = document.createElement('textarea');
+
+        document.body.append(input);
+
+        try {
+            press_(input);
+            expect(state().open).toBe(true);
+        }
+        finally {
+            input.remove();
+        }
+    });
+
+    it('does nothing where the window shows no project, and shows its key as a hint where it can run', () => {
+        expect(commandHint('sidePanel.terminal', registry)).toEqual([['ctrl', '`']]);
+
+        runInAction(() => {
+            screen.shown = false;
+        });
+        press_();
+
+        expect(state().open).toBe(false);
+        expect(commandHint('sidePanel.terminal', registry)).toBeUndefined();
+    });
+});
+
+describe('the side panel', () => {
+    const panelOpen = () => ui.forProject('p').sidePanelOpen;
+
+    it('opens and shuts the selected project\'s panel on Cmd+Esc', () => {
+        const first = press({ key: 'Escape', code: 'Escape', metaKey: true });
+
+        expect(panelOpen()).toBe(true);
+        expect(first.defaultPrevented).toBe(true);
+
+        press({ key: 'Escape', code: 'Escape', metaKey: true });
+
+        expect(panelOpen()).toBe(false);
+        expect(ui.forProject('other').sidePanelOpen).toBe(false);
+    });
+
+    it('has Cmd+Esc on a Mac and Ctrl+Shift+B elsewhere, where Ctrl+Esc is the Start menu', () => {
+        expect(commandPresses({ keys: SIDE_PANEL_KEYS }, 'darwin')).toEqual([['meta', 'escape']]);
+        expect(commandPresses({ keys: SIDE_PANEL_KEYS }, 'win32')).toEqual([['ctrl', 'shift', 'b']]);
+    });
+
+    it('works from a text field, since the message box is where a hand is', () => {
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        try {
+            press({ key: 'Escape', code: 'Escape', metaKey: true }, input);
+
+            expect(panelOpen()).toBe(true);
+        }
+        finally {
+            input.remove();
+        }
+    });
+
+    it('does nothing, and leaves the key to the page, where the window shows no project (Settings, loading), and takes neither a plain Esc nor Cmd+Shift+B', () => {
+        runInAction(() => {
+            screen.shown = false;
+        });
+
+        const event = press({ key: 'Escape', code: 'Escape', metaKey: true });
+
+        expect(panelOpen()).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+
+        runInAction(() => {
+            screen.shown = true;
+        });
+
+        const plain = press({ key: 'Escape', code: 'Escape' });
+
+        press({ key: 'B', code: 'KeyB', metaKey: true, shiftKey: true });
+
+        expect(panelOpen()).toBe(false);
+        expect(plain.defaultPrevented).toBe(false);
+    });
+
+    it('shows its key as the hint of the toggle button, and none where it cannot run', () => {
+        expect(commandHint('sidePanel.toggle', registry)).toEqual([['meta', 'escape']]);
+
+        runInAction(() => {
+            screen.shown = false;
+        });
+
+        expect(commandHint('sidePanel.toggle', registry)).toBeUndefined();
+    });
+});
+
+describe('the tabs of the side panel', () => {
+    const state = () => ({ open: ui.forProject('p').sidePanelOpen, tab: ui.forProject('p').sidePanelTab });
+    const digit = (value: string, extra: KeyboardEventInit = {}, target?: EventTarget) => press({ key: value, code: `Digit${ value }`, metaKey: true, ...extra }, target);
+
+    it('shows Info on Cmd+0, Files on Cmd+1 and Terminal on Cmd+2, opening the panel when it is shut', () => {
+        const first = digit('1');
+
+        expect(state()).toEqual({ open: true, tab: 'files' });
+        expect(first.defaultPrevented).toBe(true);
+
+        digit('2');
+        expect(state()).toEqual({ open: true, tab: 'terminal' });
+
+        digit('0');
+        expect(state()).toEqual({ open: true, tab: 'info' });
+
+        runInAction(() => ui.forProject('p').toggleSidePanel());
+        expect(state()).toEqual({ open: false, tab: 'info' });
+
+        digit('2');
+        expect(state()).toEqual({ open: true, tab: 'terminal' });
+        expect(ui.forProject('other').sidePanelOpen).toBe(false);
+    });
+
+    it('keeps the panel open when the tab that is shown is picked again', () => {
+        digit('1');
+        digit('1');
+
+        expect(state()).toEqual({ open: true, tab: 'files' });
+    });
+
+    it('works from a text field', () => {
+        const input = document.createElement('input');
+
+        document.body.append(input);
+
+        try {
+            digit('1', {}, input);
+            expect(state()).toEqual({ open: true, tab: 'files' });
+
+            digit('2', {}, input);
+            expect(state().tab).toBe('terminal');
+        }
+        finally {
+            input.remove();
+        }
+    });
+
+    it('does nothing, and leaves the key to the page, where the window shows no project, and takes no other digit or modifier', () => {
+        runInAction(() => {
+            screen.shown = false;
+        });
+
+        const event = digit('1');
+
+        expect(state().open).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+
+        runInAction(() => {
+            screen.shown = true;
+        });
+        digit('3');
+        digit('1', { shiftKey: true });
+        digit('1', { metaKey: false });
+        digit('1', { altKey: true });
+
+        expect(state().open).toBe(false);
+    });
+
+    it('has Cmd on a Mac and Ctrl elsewhere, and shows the key as the hint of the tab', () => {
+        expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.info }, 'darwin')).toEqual([['meta', '0']]);
+        expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.terminal }, 'win32')).toEqual([['ctrl', '2']]);
+        expect(commandHint('sidePanel.show.files', registry)).toEqual([['meta', '1']]);
+
+        runInAction(() => {
+            screen.shown = false;
+        });
+
+        expect(commandHint('sidePanel.show.files', registry)).toBeUndefined();
     });
 });

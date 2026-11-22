@@ -13,26 +13,37 @@ import { useTaskArtifacts } from './useTaskArtifacts';
 
 import type { Artifact, Chat, Run, TaskId } from '@clowdy/protocol';
 
-export function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+export interface SectionProps {
+    title: string;
+    /** Shown after the title when it is above zero. */
+    count?: number;
+    /** What else the header says, after the title and the count: a roll-up chip. */
+    aside?: ReactNode;
+    children: ReactNode;
+}
+
+export function Section({ title, count, aside, children }: SectionProps) {
     return (
         <section className={ styles.section }>
             <div className={ styles.head }>
                 <Text variant="heading-6">{ title }</Text>
                 { count !== undefined && count > 0 && <span className={ styles.badge }>{ count }</span> }
+                { aside }
             </div>
             { children }
         </section>
     );
 }
 
-const None = ({ children }: { children: ReactNode }) => <span className={ styles.none }>{ children }</span>;
+/** The line a section says when it has nothing to list. */
+export const None = ({ children }: { children: ReactNode }) => <span className={ styles.none }>{ children }</span>;
 
 /** The agents on the task, each with its status. A press selects the run in Agents. */
 export function Executors({ taskRuns, onOpen }: { taskRuns: readonly Run[]; onOpen: (runId: string) => void }) {
     return (
         <Section title="Executors" count={ taskRuns.length }>
             { taskRuns.length === 0
-                ? <None>No agent has worked on this task yet.</None>
+                ? <None>No agent has worked on this task yet</None>
                 : (
                     <div className={ styles.rows }>
                         { taskRuns.map(run => (
@@ -56,7 +67,7 @@ export function RelatedChats({ chats, onOpen }: { chats: readonly Chat[]; onOpen
     return (
         <Section title="Related chats" count={ chats.length }>
             { chats.length === 0
-                ? <None>No chat is linked to this task.</None>
+                ? <None>No chat is linked to this task</None>
                 : (
                     <div className={ styles.rows }>
                         { chats.map(chat => (
@@ -102,7 +113,7 @@ export function Results({ taskId, expectChecks, onOpenDoc }: { taskId: TaskId; e
             { state.status === 'loading' && <Spinner size="sm" aria-label="Loading results" /> }
             { state.status === 'failed' && (
                 <div className={ styles.failed }>
-                    <None>Results did not load.</None>
+                    <None>Results did not load</None>
                     <Button size="xs" variant="bordered" onPress={ retry }>Retry</Button>
                 </div>
             ) }

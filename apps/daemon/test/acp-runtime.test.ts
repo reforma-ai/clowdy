@@ -21,11 +21,11 @@ afterEach(async () => {
 });
 
 /** A whole daemon whose only real engine is the fake ACP agent, added the way a user adds a custom agent. */
-async function setup(agentEnv: Record<string, string> = {}) {
+async function setup(agentEnv: Record<string, string> = {}, taskTools?: 'cli' | 'mcp') {
     const config = testConfig({ engine: 'fake-acp' });
 
     mkdirSync(config.dataDir, { recursive: true });
-    writeFileSync(join(config.dataDir, 'agents.json'), JSON.stringify({ agents: [{ id: 'fake-acp', name: 'Fake ACP', command: process.execPath, args: [FAKE_AGENT], env: agentEnv }], overrides: {} }));
+    writeFileSync(join(config.dataDir, 'agents.json'), JSON.stringify({ agents: [{ id: 'fake-acp', name: 'Fake ACP', command: process.execPath, args: [FAKE_AGENT], env: agentEnv, taskTools }], overrides: {} }));
 
     const h = new Harness(await startDaemon(config, { agents: testAgents(config) }), config);
 
@@ -86,7 +86,8 @@ describe('runs on an ACP agent, through the real runtime', () => {
         say('info');
         await waitFor(() => texts(runId).length === 3, 'the second turn', 15_000);
 
-        expect(JSON.parse(texts(runId)[2])).toMatchObject({ servers: ['clowdy'], model: 'fast' });
+        // Every tool of an autopilot chat is a shell command for this agent, so the session names no MCP server.
+        expect(JSON.parse(texts(runId)[2])).toMatchObject({ servers: [], model: 'fast' });
         expect(h.run(runId).sessionId).toBe('fake-1');
     });
 
@@ -98,8 +99,14 @@ describe('runs on an ACP agent, through the real runtime', () => {
         expect(h.run(runId).context).toEqual({ used: 40_100, size: 200_000 });
     });
 
-    test('the agent calls the runtime\'s own tools through the bridge', async () => {
-        const { h, project, say, texts } = await setup();
+    test('an agent that uses the MCP door calls the task tools through the bridge, and one on the shell door has no MCP server for them', async () => {
+        const shell = await setup();
+        const noServer = shell.say('call task_get {"taskId":"REP-1"}');
+
+        await waitFor(() => shell.h.run(noServer).status === 'succeeded', 'the turn', 15_000);
+        expect(shell.texts(noServer).join('\n')).toContain('no mcp server');
+
+        const { h, project, say, texts } = await setup({}, 'mcp');
         const task = h.ok('task.create', { projectId: project.id, title: 'Fix the footer' }).task;
         const runId = say(`call task_get {"taskId":"${ task.key }"}`);
 

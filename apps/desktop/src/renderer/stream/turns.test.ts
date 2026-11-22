@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { foldFinishedWork, forkPointId, hasMessageActions, workedForLabel, type StreamBlock } from './turns';
+import { foldFinishedWork, forkPointId, groupToolRuns, hasMessageActions, workedForLabel, type ItemBlock, type StreamBlock } from './turns';
 
 import type { StreamItem, StreamItemBody } from '@clowdy/protocol';
 
@@ -9,17 +9,33 @@ const item = (body: StreamItemBody, at: number): StreamItem => ({ id: `i-${ ++se
 const user = (at: number, text = 'Do it') => item({ kind: 'user', text }, at);
 const said = (at: number, text = 'Done.') => item({ kind: 'assistant', text, done: true }, at);
 const tool = (at: number) => item({ kind: 'tool', toolCallId: `t-${ at }`, name: 'Read', input: {}, state: 'done' }, at);
+const thought = (at: number, done = true) => item({ kind: 'reasoning', text: 'Hm.', done, ...(done && { durationMs: 2000 }) }, at);
 const note = (at: number) => item({ kind: 'note', text: 'started' }, at);
 const failure = (at: number) => item({ kind: 'error', text: 'It failed' }, at);
 const asking = (at: number) => item({ kind: 'question', questionId: `q-${ at }`, text: 'Which one?', options: [] }, at);
 
-const shape = (blocks: StreamBlock[]) => blocks.map(block => (block.kind === 'worked' ? `worked(${ block.items.length }): ${ block.label }` : block.item.body.kind));
+const shape = (blocks: StreamBlock[]) => blocks.map((block) => {
+    if (block.kind === 'worked') return `worked(${ block.items.length }): ${ block.label }`;
+
+    return block.kind === 'tools' ? `tools(${ block.items.length })` : block.item.body.kind;
+});
 
 describe('foldFinishedWork', () => {
     it('folds the work between the person\'s message and the answer of a finished turn', () => {
         const items = [user(0), said(1000, 'Looking.'), tool(2000), tool(3000), note(4000), said(125_000, 'All done.')];
 
         expect(shape(foldFinishedWork(items, false))).toEqual(['user', 'worked(4): Worked for 2m 5s', 'assistant']);
+    });
+
+    it('folds a thought as work, and a thought that trails the answer too: it was thought before it', () => {
+        expect(shape(foldFinishedWork([user(0), thought(500), said(1000)], false))).toEqual(['user', 'worked(1): Worked for 1s', 'assistant']);
+        expect(shape(foldFinishedWork([user(0), thought(500), said(1000), thought(1500)], false))).toEqual(['user', 'worked(2): Worked for 1s', 'assistant']);
+        // Only a thought after the answer: the fold holds it, and the answer is still last.
+        expect(shape(foldFinishedWork([user(0), said(1000), thought(1500)], false))).toEqual(['user', 'worked(1): Worked for 1s', 'assistant']);
+        // What else follows the answer stays where it came, a note for one.
+        expect(shape(foldFinishedWork([user(0), said(1000), thought(1500), note(2000)], false))).toEqual(['user', 'worked(1): Worked for 1s', 'assistant', 'note']);
+        // A turn that went on past the person's next message is folded whole, even when it is only a thought.
+        expect(shape(foldFinishedWork([user(0), thought(500), user(2000), said(3000)], true))).toEqual(['user', 'worked(1): Worked for 1s', 'user', 'assistant']);
     });
 
     it('keeps the answer and the message out of the fold', () => {
@@ -177,5 +193,92 @@ describe('workedForLabel', () => {
     it('says only "Worked" when the times do not make a duration', () => {
         expect(workedForLabel(5, 1)).toBe('Worked');
         expect(workedForLabel(Number.NaN, 1)).toBe('Worked');
+    });
+});
+
+describe('groupToolRuns', () => {
+    const named = (name: string, at: number) => item({ kind: 'tool', toolCallId: `t-${ at }`, name, input: {}, state: 'done' }, at);
+
+    it('puts two or more calls in a row under one block, in order, and leaves a call alone as it is', () => {
+        const items = [user(0), tool(1000), tool(2000), tool(3000), said(4000, 'Half way.'), tool(5000), said(6000, 'More.')];
+        const blocks = groupToolRuns(foldFinishedWork(items, true));
+
+        expect(shape(blocks)).toEqual(['user', 'tools(3)', 'assistant', 'tool', 'assistant']);
+        expect(blocks[1]).toEqual({ kind: 'tools', key: `tools-${ items[1].id }`, items: [items[1], items[2], items[3]] });
+    });
+
+    it('makes a phase of each run of calls, with the commentary of the agent between them', () => {
+        const items = [user(0), tool(1000), tool(2000), said(3000, 'Now the build.'), tool(4000), tool(5000), said(6000, 'Green.'), tool(7000), tool(8000)];
+
+        expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tools(2)', 'assistant', 'tools(2)', 'assistant', 'tools(2)']);
+    });
+
+    it('keeps the thoughts of a run in it: the one that starts it, those between the calls and the one that ends it', () => {
+        const items = [user(0), thought(500), tool(1000), thought(1500), tool(2000), thought(2500, false)];
+        const blocks = groupToolRuns(foldFinishedWork(items, true));
+
+        expect(shape(blocks)).toEqual(['user', 'tools(5)']);
+        expect(blocks[1]).toMatchObject({ kind: 'tools', items: items.slice(1) });
+    });
+
+    it('leaves a thought alone as it is, and with a single call: a group is for two calls or more', () => {
+        expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), said(1000, 'Looking.'), thought(1500), tool(2000), tool(3000)], true)))).toEqual(['user', 'reasoning', 'assistant', 'tools(3)']);
+        expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), tool(1000), said(2000, 'Looked.'), tool(3000), thought(3500)], true)))).toEqual(['user', 'reasoning', 'tool', 'assistant', 'tool', 'reasoning']);
+    });
+
+    it('reads thoughts that follow one another as one thought, with the words joined and the times added, going on while its last piece is', () => {
+        const pieces = [item({ kind: 'reasoning', text: '**Reading the form**', done: true, durationMs: 2000 }, 500), item({ kind: 'reasoning', text: '\nThe price is set late.\n', done: true, durationMs: 1500 }, 1000)];
+        const [, merged] = groupToolRuns(foldFinishedWork([user(0), ...pieces], true));
+
+        expect(merged).toEqual({ kind: 'item', item: { ...pieces[0], body: { kind: 'reasoning', text: '**Reading the form**\n\nThe price is set late.', done: true, durationMs: 3500 } } });
+
+        const [, going] = groupToolRuns(foldFinishedWork([user(0), pieces[0], item({ kind: 'reasoning', text: 'And then', done: false }, 1000)], true));
+
+        expect(going).toMatchObject({ item: { body: { kind: 'reasoning', text: '**Reading the form**\n\nAnd then', done: false } } });
+        expect(going).not.toMatchObject({ item: { body: { durationMs: expect.anything() } } });
+    });
+
+    it('does not join thoughts that something stands between, and a run takes the merged thought as one row', () => {
+        expect(shape(groupToolRuns(foldFinishedWork([user(0), thought(500), thought(600), said(1000, 'Looking.'), thought(1500), thought(1600), tool(2000), thought(2500), thought(2600), tool(3000)], true)))).toEqual(['user', 'reasoning', 'assistant', 'tools(4)']);
+        expect(groupToolRuns(foldFinishedWork([user(0), thought(500), thought(600), tool(1000), tool(2000)], true)).map(block => block.kind === 'tools' ? block.items.length : 0)).toEqual([0, 3]);
+    });
+
+    it('ends a run that holds a thought at a sub-agent\'s card or a compaction, the thought staying with the calls it follows or precedes', () => {
+        const items = [user(0), tool(1000), tool(2000), thought(2500), named('Agent', 3000), thought(3500), tool(4000), tool(5000), thought(5500), named('compact', 6000)];
+
+        expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tools(3)', 'tool', 'tools(4)', 'tool']);
+    });
+
+    it('ends a run at anything that is not a call: a note, an error, a question', () => {
+        const items = [user(0), tool(1000), tool(2000), note(3000), tool(4000), tool(5000), failure(6000), tool(7000), tool(8000), asking(9000)];
+
+        expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tools(2)', 'note', 'tools(2)', 'error', 'tools(2)', 'question']);
+    });
+
+    it('keeps a sub-agent\'s card and a compaction out of a run: each is a line of its own', () => {
+        const items = [user(0), tool(1000), named('Agent', 2000), tool(3000), tool(4000), named('compact', 5000), tool(6000)];
+
+        expect(shape(groupToolRuns(foldFinishedWork(items, true)))).toEqual(['user', 'tool', 'tool', 'tools(2)', 'tool', 'tool']);
+    });
+
+    it('leaves the calls of a fold in it, for the view to group when the fold opens, and groups the same calls outside one', () => {
+        const items = [user(0), tool(1000), tool(2000), said(3000, 'Done.')];
+        const [, worked] = groupToolRuns(foldFinishedWork(items, false));
+
+        expect(worked).toMatchObject({ kind: 'worked', items: [items[1], items[2]] });
+        expect(shape(groupToolRuns(foldFinishedWork(items.slice(0, 3), true)))).toEqual(['user', 'tools(2)']);
+    });
+
+    it('groups the items of a fold when it is given them as blocks, as the view does', () => {
+        const items = [tool(1000), tool(2000), said(3000, 'Half way.'), tool(4000)];
+        const blocks = groupToolRuns(items.map((entry): ItemBlock => ({ kind: 'item', item: entry })));
+
+        expect(shape(blocks)).toEqual(['tools(2)', 'assistant', 'tool']);
+    });
+
+    it('does not take the final answer of a turn, which is an item with no tool in it', () => {
+        const items = [user(0), tool(1000), tool(2000), said(3000, 'Done.')];
+
+        expect(shape(groupToolRuns(foldFinishedWork(items, false)))).toEqual(['user', 'worked(2): Worked for 3s', 'assistant']);
     });
 });

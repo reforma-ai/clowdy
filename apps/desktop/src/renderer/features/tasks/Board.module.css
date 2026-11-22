@@ -1,5 +1,14 @@
 @reference '@clowdy/styles/rulesets';
 
+/* The board and, over its bottom edge, the Archive target while a card is dragged. */
+.root {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}
+
 .board {
     display: flex;
     flex: 1;

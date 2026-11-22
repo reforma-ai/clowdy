@@ -1,7 +1,11 @@
+@reference '@clowdy/styles/rulesets';
+
 /* One surface, the same card Settings uses. Rows bring no border of their own. */
 .card {
-    /* A folder row is two lines (name, path) plus its padding. Add and the empty note use the same height. */
+    /* A folder row is two lines (name, path) plus its padding. The empty note uses the same height. */
     --folder-row-min: calc(var(--leading-md) + var(--spacing-xxs) + var(--leading-sm) + var(--spacing-lg) * 2);
+    /* Add folders… is one line: the name's line plus the padding of a folder row. */
+    --folder-add-height: calc(var(--leading-md) + var(--spacing-lg) * 2);
 
     display: flex;
     flex-direction: column;
@@ -48,21 +52,21 @@
     text-wrap: balance;
 }
 
-/* The last row of the card, as tall as a folder row. It does not grow when the dialog is tall. */
+/* The last row of the card: one line, in the size of a folder's name, not the two lines of a folder row. It does not grow when the dialog is tall. */
 .add {
+    @ruleset typography-text-md;
     display: flex;
     flex: none;
     align-items: center;
     gap: var(--spacing-md);
     box-sizing: border-box;
     width: 100%;
-    height: var(--folder-row-min);
+    height: var(--folder-add-height);
     margin: 0;
     padding: 0 var(--spacing-xl);
     border: 0;
     background: none;
     color: var(--color-text);
-    font: inherit;
     font-weight: 500;
     text-align: start;
     cursor: pointer;

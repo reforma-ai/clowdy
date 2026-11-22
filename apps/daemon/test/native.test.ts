@@ -77,6 +77,30 @@ describe('native sub-agents as child runs', () => {
         expect(h.run(runId).result).toBe('Looked into it.');
     });
 
+    test('what a sub-agent thinks is a reasoning item of its own stream, between its other steps, and not of the parent\'s', async () => {
+        const { h, runId, natives, items } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'thought', delta: 'The parent thinks.', done: true };
+            yield { type: 'subagent', agentId: 'a1', parentToolCallId: 't1', name: 'Explore', description: 'Look at the callers', state: 'running' };
+            yield { type: 'thought', delta: '\n\nThe callers are in the router.', done: false, agentId: 'a1' };
+            yield { type: 'tool', toolCallId: 'c1', name: 'grep', input: { pattern: 'x' }, state: 'done', output: { matches: 3 }, agentId: 'a1' };
+            yield { type: 'thought', delta: 'Three is enough.', done: false, agentId: 'a1' };
+            yield { type: 'text', delta: 'Found three callers.', done: true, agentId: 'a1' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'done', summary: 'Three callers.' };
+            yield { type: 'done', result: 'Looked into it.' };
+        });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
+        await waitFor(() => natives()[0]?.status === 'succeeded', 'the sub-agent to finish');
+
+        const [explore] = natives();
+
+        expect(items(explore.id).map(item => item.body.kind)).toEqual(['reasoning', 'tool', 'reasoning', 'assistant']);
+        expect(items(explore.id).flatMap(item => (item.body.kind === 'reasoning' ? [[item.body.text, item.body.done]] : []))).toEqual([['The callers are in the router.', true], ['Three is enough.', true]]);
+        // The parent's own thought is in the parent's stream.
+        expect(items(runId).flatMap(item => (item.body.kind === 'reasoning' ? [item.body.text] : []))).toEqual(['The parent thinks.']);
+    });
+
     test('they take no slot, do not count as active work, and are not numbered', async () => {
         const gate = latch();
         const { h, engine, project, runId, natives } = await setup(async function* ({ signal }) {

@@ -14,6 +14,7 @@ import { ErrorLine } from './ErrorLine';
 import { ForkDivider, type ForkOrigin } from './ForkDivider';
 import { NoteLine } from './NoteLine';
 import { QuestionCard } from './QuestionCard';
+import { ReasoningLine } from './ReasoningLine';
 import { SelectionReply } from './SelectionReply';
 import { NO_LINKS, StreamLinksContext, type StreamLinks } from './StreamLinks';
 import styles from './StreamView.module.css';
@@ -21,9 +22,10 @@ import { SubagentCard } from './SubagentCard';
 import { isSubagentTool } from './subagents';
 import { ThreadMessageCard, ThreadNoticeCards } from './ThreadCards';
 import { ToolCard } from './ToolCard';
+import { ToolGroup } from './ToolGroup';
 import { turnMarks } from './turnMarks';
 import { TurnRail } from './TurnRail';
-import { foldFinishedWork, forkPointId, hasMessageActions, type StreamBlock } from './turns';
+import { foldFinishedWork, forkPointId, groupToolRuns, hasMessageActions, type ItemBlock, type StreamBlock } from './turns';
 import { UserBubble } from './UserBubble';
 import { Worked } from './Worked';
 import { WorkingLine } from './WorkingLine';
@@ -36,7 +38,7 @@ import type { MessageActionsConfig, ReplyMessage } from './MessageActions';
  * What `StreamView` is given for the row under a message: `MessageActionsConfig`, except that a reply names who wrote the message and a fork and an edit are told
  * by the item they are made at.
  */
-export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onReply' | 'onFork' | 'forkState' | 'onEdit' | 'editState'> {
+export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' | 'onReply' | 'onFork' | 'forkState' | 'onEdit'> {
     /** Reply to a whole message, from its row or by swiping it: called with who wrote it and its source Markdown. */
     onReply?: (message: ReplyMessage) => void;
     /** Quote the words selected inside one message (the floating Reply button of `SelectionReply`): called with them as they are drawn. Not drawn without it. */
@@ -47,7 +49,7 @@ export interface StreamMessageActions extends Omit<MessageActionsConfig, 'show' 
     forkingId?: string;
     /** Edit a message of the person's (the id of its item): drawn under one that the daemon marked `canEdit`, and under none while a message is being edited (`StreamView` `editing`). */
     onEdit?: (itemId: string) => void;
-    /** The agent is working: Edit is drawn off, with the reason on a tooltip, since the chat can be rewritten only at rest. */
+    /** The agent is working: Edit is not drawn at all, since the chat can be rewritten only at rest. */
     editBusy?: boolean;
 }
 
@@ -65,7 +67,10 @@ export interface StreamViewProps {
     items: StreamItem[];
     /** The run is going, or waits for the person: its latest turn stays open. Once it is over, that turn folds its work too. */
     active?: boolean;
-    /** The run is going: ends the stream with a live line. A string replaces the default "Working…". */
+    /**
+     * The run is going: ends the stream with a live line. A string replaces the default "Working…", and says the run waits for something else (a free slot, background
+     * work) instead of working. `true` is the agent at work: the run of tool calls at the end of the stream stays open to be watched, and any other value closes it.
+     */
     working?: boolean | string;
     /** The person answered a `question` item. */
     onAnswer?: (questionId: string, answer: string) => void | Promise<void>;
@@ -107,12 +112,12 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
     const marks = useMemo(() => turnMarks(items), [items]);
     // What was there when the stream first showed is not news: only a message that comes later rises into place.
     const [shown] = useState(() => new Set(items.map(item => item.id)));
-    const blocks = useMemo(() => foldFinishedWork(items, active), [items, active]);
+    const blocks = useMemo(() => groupToolRuns(foldFinishedWork(items, active)), [items, active]);
     const lastWithActions = messageActions ? blocks.findLast(hasMessageActions)?.item.id : undefined;
     const forkPoint = forkedFrom && forkPointId(items, forkedFrom.atSeq);
     const last = items.at(-1)?.body;
-    // A message that is still arriving carries its own marker, and so does a compaction that runs (Reforma hides its pending line the same way).
-    const live = (last?.kind === 'assistant' && !last.done) || (last?.kind === 'tool' && last.name === COMPACT_TOOL && last.state === 'running');
+    // A message or a thought that is still arriving carries its own marker, and so does a compaction that runs (Reforma hides its pending line the same way).
+    const live = ((last?.kind === 'assistant' || last?.kind === 'reasoning') && !last.done) || (last?.kind === 'tool' && last.name === COMPACT_TOOL && last.state === 'running');
     const showWorking = Boolean(working) && !live;
 
     // The frame of an edit stands in for a bubble that is drawn again when the frame goes. That bubble is no news, so it must not rise into place a second time,
@@ -157,12 +162,8 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
             if (forkingId !== undefined) actions.forkState = forkingId === id ? 'pending' : 'blocked';
         }
 
-        // One message is edited at a time: while its frame is open the others offer no Edit.
-        if (onEdit && canEdit && body.kind === 'user' && !editing) {
-            actions.onEdit = () => onEdit(id);
-
-            if (editBusy) actions.editState = 'busy';
-        }
+        // One message is edited at a time: while its frame is open the others offer no Edit. None while the agent works either: a button that cannot be pressed is only noise.
+        if (onEdit && canEdit && body.kind === 'user' && !editing && !editBusy) actions.onEdit = () => onEdit(id);
 
         return actions;
     };
@@ -170,7 +171,7 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
     const divider = forkedFrom && <ForkDivider title={ forkedFrom.title } onOpen={ forkedFrom.onOpen } />;
 
     /** The divider of a fork goes after the block that holds its fork point: the answer itself, or the fold the point is inside. */
-    const endsHistory = (block: StreamBlock) => forkPoint !== undefined && (block.kind === 'worked' ? block.items.some(item => item.id === forkPoint) : block.item.id === forkPoint);
+    const endsHistory = (block: StreamBlock) => forkPoint !== undefined && (block.kind === 'item' ? block.item.id === forkPoint : block.items.some(item => item.id === forkPoint));
 
     const renderItem = (item: StreamItem, actions?: MessageActionsConfig): ReactNode => {
         const { body } = item;
@@ -187,6 +188,8 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
                 return <UserBubble turn={ item.id } text={ body.text } attachments={ body.attachments } at={ item.at } actions={ actions } animate={ !shown.has(item.id) } />;
             case 'assistant':
                 return <AssistantMessage text={ body.text } streaming={ !body.done } at={ item.at } actions={ actions } />;
+            case 'reasoning':
+                return <ReasoningLine body={ body } />;
             case 'tool':
                 // A call that started a sub-agent is that agent's card, a compaction is a quiet line of its own; every other call is a tool line.
                 if (body.name === COMPACT_TOOL) return <CompactionLine call={ body } active={ active } />;
@@ -207,22 +210,37 @@ export function StreamView({ items, active = false, working, onAnswer, emptyStat
                 <div ref={ scrollRef } className={ styles.scroll }>
                     <ContentColumn ref={ contentRef } className={ styles.content }>
                         { items.length === 0 && emptyState }
-                        { blocks.map(block => (block.kind === 'worked'
-                            ? (
-                                <Fragment key={ block.key }>
-                                    <Worked label={ block.label }>
-                                        { block.items.map(item => <Fragment key={ item.id }>{ renderItem(item) }</Fragment>) }
-                                    </Worked>
-                                    { endsHistory(block) && divider }
-                                </Fragment>
-                            )
-                            : (
-                                <Fragment key={ block.item.id }>
-                                    { renderItem(block.item, actionsOf(block)) }
-                                    { endsHistory(block) && divider }
-                                    { decorate?.(block.item) }
-                                </Fragment>
-                            ))) }
+                        { blocks.map((block, index) => {
+                            switch (block.kind) {
+                                case 'worked':
+                                    return (
+                                        <Fragment key={ block.key }>
+                                            <Worked label={ block.label }>
+                                                { groupToolRuns(block.items.map((item): ItemBlock => ({ kind: 'item', item }))).map(part => (part.kind === 'tools'
+                                                    ? <ToolGroup key={ part.key } items={ part.items } />
+                                                    : <Fragment key={ part.item.id }>{ renderItem(part.item) }</Fragment>)) }
+                                            </Worked>
+                                            { endsHistory(block) && divider }
+                                        </Fragment>
+                                    );
+                                case 'tools':
+                                    // The run at the end, while the agent is at work, is what it is doing now: it stays open, and closes when the agent goes on or waits for something else.
+                                    return (
+                                        <Fragment key={ block.key }>
+                                            <ToolGroup items={ block.items } live={ working === true && index === blocks.length - 1 } />
+                                            { endsHistory(block) && divider }
+                                        </Fragment>
+                                    );
+                                case 'item':
+                                    return (
+                                        <Fragment key={ block.item.id }>
+                                            { renderItem(block.item, actionsOf(block)) }
+                                            { endsHistory(block) && divider }
+                                            { decorate?.(block.item) }
+                                        </Fragment>
+                                    );
+                            }
+                        }) }
                         { showWorking && <WorkingLine text={ typeof working === 'string' ? working : undefined } /> }
                     </ContentColumn>
                 </div>

@@ -8,8 +8,8 @@ import type { ProjectView, SettingsPage, UiStore } from './UiStore';
 export const HISTORY_LIMIT = 100;
 
 /**
- * Everything the window shows, as one history entry: the selected project, its place (section and what is open in it) and Settings.
- * The options of a section (the Tasks view, finished runs, filters, the cursor and the selection) are not part of it.
+ * Everything the window shows, as one history entry: the selected project, its place (section and what is open in it, the scope of the Tasks screen
+ * among it) and Settings. The options of a section (the Tasks view and its sub-tasks toggle, finished runs, filters, the cursor and the selection) are not part of it.
  */
 interface NavSnapshot extends ProjectView {
     projectId: ProjectId;
@@ -118,8 +118,21 @@ export class NavHistory {
             return;
         }
 
+        // The window is leaving this place. Whatever caused it (the rail, a shortcut) may not have settled a scope that is gone, and Back skips an entry whose
+        // scope is gone, so the place is kept as the roots the screen was showing.
+        if (current) this.entries[this.index] = this.#withoutGoneScope(current);
+
         this.entries.splice(this.index + 1);
         this.#push(snapshot);
+    }
+
+    /** The entry with the roots of the Tasks screen in place of a scope that has left the board; the entry itself when the scope is there, or the entry is not a Tasks one. */
+    #withoutGoneScope(entry: NavSnapshot): NavSnapshot {
+        if (entry.section !== 'tasks' || entry.tasksScope === null || entry.settingsOpen) return entry;
+
+        const state = this.host.projectState(entry.projectId);
+
+        return state?.status === 'ready' && !state.tasks.has(entry.tasksScope) ? { ...entry, tasksScope: null } : entry;
     }
 
     #push(snapshot: NavSnapshot): void {
@@ -143,8 +156,12 @@ export class NavHistory {
         return undefined;
     }
 
-    /** Whether what the entry shows is still there: its project, and the chat, task or run of its section. Documents are always there, the tree may list them again. */
-    #exists({ projectId, section, chatId, taskId, runId, settingsOpen }: NavSnapshot): boolean {
+    /**
+     * Whether what the entry shows is still there: its project, and the chat, task or run of its section, and for the Tasks screen the task whose insides it
+     * showed (a scope that is gone or archived is not a place to go back to), and a task it had open, which may be an archived one the window has read
+     * (`ProjectState.archivedKnown`, bounded: one let go of is no longer a place). Documents are always there, the tree may list them again.
+     */
+    #exists({ projectId, section, chatId, taskId, runId, tasksScope, settingsOpen }: NavSnapshot): boolean {
         if (!this.host.projects.some(project => project.id === projectId)) return false;
 
         const state = this.host.projectState(projectId);
@@ -154,7 +171,8 @@ export class NavHistory {
 
         switch (section) {
             case 'agents': return (chatId === null || state.chats.has(chatId)) && (runId === null || state.runs.has(runId));
-            case 'tasks': return taskId === null || state.tasks.has(taskId);
+            // An archived task the window has read is a place too, and a scope is never one (the screen shows the roots for it).
+            case 'tasks': return (taskId === null || state.tasks.has(taskId) || state.archivedKnown.has(taskId)) && (tasksScope === null || state.tasks.has(tasksScope));
             case 'docs': return true;
         }
     }

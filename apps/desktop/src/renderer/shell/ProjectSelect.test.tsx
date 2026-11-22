@@ -91,8 +91,9 @@ describe('ProjectSelect', () => {
         data.projects.find(project => project.id === FIXTURE_PROJECT_ID)!.folders.push({ id: 'fld_api', path: '/Users/dev/car-rental-api' }, { id: 'fld_web', path: '/Users/dev/car-rental-web' });
         await open(data);
 
-        expect(items()[1].textContent).toContain('/Users/dev/car-rental +2');
-        expect(items()[2].textContent).toContain('/Users/dev/clowdy');
+        // The path stands as `~` in the home folder the fixture daemon names, and the count of the other folders beside it.
+        expect(items()[1].textContent).toContain('~/car-rental+2');
+        expect(items()[2].textContent).toContain('~/clowdy');
         expect(items()[2].textContent).not.toContain('+');
     });
 

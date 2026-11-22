@@ -1,4 +1,4 @@
-import type { FolderId } from './domain';
+import type { FolderId, Task, TaskComment } from './domain';
 
 /** Version of this contract. The daemon refuses clients that send a different major in `x-clowdy-protocol`. */
 export const PROTOCOL_VERSION = 1;
@@ -12,8 +12,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/snapshot                       -> RootSnapshot
  * GET  /v1/projects/:id/snapshot          -> ProjectSnapshot
  * GET  /v1/projects/info                  -> ProjectInfo[] (one per project, in the order of the snapshot: whether each of its folders exists, its
- *                                            git remote and how many chats chose it, and how many chats, tasks and unfinished runs the project has;
- *                                            read when asked, never announced)
+ *                                            git remote and branch and how many chats chose it, and how many chats, tasks and unfinished runs the
+ *                                            project has; read when asked, never announced); `?project=ID` answers that project alone (404 when
+ *                                            there is none)
  * GET  /v1/events?cursor=N                -> text/event-stream of ClowdyEvent (frame name `clowdy`, id = cursor); without a
  *                                            cursor the stream is live only; `Last-Event-ID` also resumes; `&projectId=ID`
  *                                            limits it to one project. 410 when the cursor is ahead of the log (the log is not pruned
@@ -21,7 +22,13 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * POST /v1/commands                       -> body Command, answers CommandResult
  * GET  /v1/runs/:id/items?after=SEQ       -> StreamItem[] (a run's stream, also an orchestrator's chat)
  * GET  /v1/chats/:id/items?after=SEQ      -> StreamItem[] (the chat's orchestrator stream)
- * GET  /v1/tasks/:id/detail               -> TaskDetail
+ * GET  /v1/tasks/:id/detail               -> TaskDetail (the task itself, an archived one too, so a client can open a task its snapshot does not hold,
+ *                                            with the ids of its chats and runs and its artifacts; `not_found` for no such task)
+ * GET  /v1/tasks/:id/comments?limit=&cursor= -> TaskCommentsPage (the task's comments, oldest first; `limit` 1 to 100, default 25; `cursor` is the
+ *                                            `nextCursor` of the page before, which is absent on the last page. Comments are not in the snapshot)
+ * GET  /v1/projects/:id/archived-tasks?limit=&cursor= -> TaskArchivePage (the project's archived tasks, the ones the snapshot leaves out, newest archived
+ *                                            first; `limit` 1 to 100, default 25; `cursor` is the `nextCursor` of the page before, which is absent on the
+ *                                            last page)
  * GET  /v1/projects/:id/docs              -> DocsTree (one entry per folder in the project's order, its documents under `.clowdy/docs`; a folder
  *                                            without that docs folder has no nodes and is not given one. A missing main folder is
  *                                            `unavailable`, one whose docs folder leads out of it `invalid`; another folder whose
@@ -40,6 +47,10 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            512 KB), with its media type; `not_found` when there is none, and for the personal space. The
  *                                            icon the person uploaded is `ProjectSettings.icon`, which the app shows first
  * DELETE /v1/projects/:id/attachments/:attachmentId -> { ok: true }; only for a file that was not sent yet (`conflict` otherwise)
+ * /v1/projects/:id/fs/*                  -> the files of one of the project's folders: list, find, read, write, make a folder, move, copy,
+ *                                            delete, watch. The routes are described in `fs.ts`
+ * /v1/terminals/*                         -> the shells the daemon runs for the app's terminal: list, create, close, and a WebSocket stream of one. The
+ *                                            routes are described in `terminals.ts`
  * POST /v1/shutdown                       -> { ok: true }; stops the daemon gracefully (live engines are aborted, their runs
  *                                            come back `interrupted` at the next start, nothing is marked cancelled)
  * GET  /v1/skills?projectId=              -> SkillCatalog (system and user skills; with `projectId` also that project's skills)
@@ -58,12 +69,18 @@ export const ROUTES = {
     runItems: (runId: string) => `/v1/runs/${ encodeURIComponent(runId) }/items`,
     chatItems: (chatId: string) => `/v1/chats/${ encodeURIComponent(chatId) }/items`,
     taskDetail: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/detail`,
+    taskComments: (taskId: string) => `/v1/tasks/${ encodeURIComponent(taskId) }/comments`,
+    projectArchivedTasks: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/archived-tasks`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
     docsFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs/file`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,
     projectIcon: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/icon`,
+    projectFs: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/fs`,
+    terminals: '/v1/terminals',
+    terminal: (terminalId: string) => `/v1/terminals/${ encodeURIComponent(terminalId) }`,
+    terminalStream: (terminalId: string) => `/v1/terminals/${ encodeURIComponent(terminalId) }/stream`,
     skills: '/v1/skills',
     agents: '/v1/agents',
     agentModels: (agentId: string) => `/v1/agents/${ encodeURIComponent(agentId) }/models`,
@@ -108,7 +125,31 @@ export interface DaemonInfo {
 
 export interface TaskDetail {
     taskId: string;
+    /** The task as it is now, an archived one included: the project snapshot leaves archived tasks out, so this is how a client reads one it does not hold. */
+    task: Task;
     chatIds: string[];
     runIds: string[];
     artifacts: import('./domain').Artifact[];
+}
+
+/**
+ * One page of a project's archived tasks, newest archived first (the tasks of one archive batch share their `archivedAt` and follow each other in the order
+ * of their numbers). Each is a `Task` with `archivedAt` set; the tree of a batch is rebuilt from `parentId`, whose parent may be on this page, on another,
+ * or not archived at all.
+ */
+export interface TaskArchivePage {
+    tasks: Task[];
+    /** How many tasks the project has in the archive, whatever the page holds. */
+    total: number;
+    /** Passed as `cursor` it gives the next page; absent on the last one. */
+    nextCursor?: string;
+}
+
+/** One page of a task's comments, oldest first. */
+export interface TaskCommentsPage {
+    comments: TaskComment[];
+    /** How many comments the task has, whatever the page holds. */
+    total: number;
+    /** Passed as `cursor` it gives the next page; absent on the last one. */
+    nextCursor?: string;
 }

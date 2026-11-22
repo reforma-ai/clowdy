@@ -55,6 +55,8 @@ describe('a working agent\'s activity', () => {
     it('says the agent writes or thinks without printing its words, and waits on an open question', () => {
         expect(activityOf({ kind: 'assistant', text: 'Half a', done: false })).toBe('Finishing reply');
         expect(activityOf({ kind: 'assistant', text: 'Done thinking.', done: true })).toBe('Thinking…');
+        // What it thinks is for its own stream, not the card's line.
+        expect(activityOf({ kind: 'reasoning', text: 'Hm.', done: false })).toBeUndefined();
         expect(activityOf({ kind: 'question', questionId: 'q', text: 'Which?', options: [] })).toBe('Waiting for you');
         expect(activityOf({ kind: 'question', questionId: 'q', text: 'Which?', options: [], answer: 'a' })).toBeUndefined();
         expect(activityOf(undefined)).toBeUndefined();
@@ -62,6 +64,8 @@ describe('a working agent\'s activity', () => {
 
     it('comes from the latest thing the agent did, past the notes about it, and from nothing before its first step', () => {
         expect(latestActivity([item(1, { kind: 'user', text: 'Go' }), item(2, { kind: 'tool', toolCallId: 't', name: 'Read', input: { path: 'a.ts' }, state: 'running' }), item(3, { kind: 'note', text: 'Noted' })])).toBe('Reading a.ts');
+        // A thought after a call changes nothing: the card says the call, not the musing.
+        expect(latestActivity([item(1, { kind: 'tool', toolCallId: 't', name: 'Read', input: { path: 'a.ts' }, state: 'running' }), item(2, { kind: 'reasoning', text: 'Hm.', done: false })])).toBe('Reading a.ts');
         expect(latestActivity([item(1, { kind: 'user', text: 'Go' })])).toBeUndefined();
         expect(latestActivity([])).toBeUndefined();
     });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { initialUiFromSearch, UiStore } from './UiStore';
+import { COLLAPSED_TASKS_LIMIT, COMMENT_DRAFTS_LIMIT, initialUiFromSearch, UiStore } from './UiStore';
 
 import type { KeyValueStorage } from './storage';
 
@@ -101,6 +101,390 @@ describe('UiStore', () => {
         expect(second.forProject('p1')).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list' });
         expect(second.forProject('p2')).toMatchObject({ section: 'agents', chatId: 'c3', tasksView: 'board' });
         expect(second.forProject('p3').section).toBe('agents');
+    });
+
+    describe('the scope of the Tasks screen and its options', () => {
+        const held = (...ids: string[]) => new Map(ids.map(id => [id, {} as { archivedAt?: number }]));
+
+        it('starts at the roots, with the sub-tasks hidden, the board on a task\'s page and nothing folded', () => {
+            const ui = new UiStore().forProject('p1');
+
+            expect([ui.tasksScope, ui.tasksSubtasks, ui.taskPageView, ui.tasksCollapsed]).toEqual([null, false, 'board', []]);
+        });
+
+        it('keeps the scope, the sub-tasks toggle, the task page view and the folds per project across a restart', () => {
+            const storage = memoryStorage();
+            const first = new UiStore(storage);
+
+            first.forProject('p1').setTasksScope('t-31');
+            first.forProject('p1').setTasksSubtasks(true);
+            first.forProject('p1').setTaskPageView('list');
+            first.forProject('p1').toggleTaskCollapsed('t-32');
+            first.forProject('p1').toggleTaskCollapsed('t-35');
+            first.forProject('p2').setTasksScope('t-9');
+
+            const second = new UiStore(storage);
+
+            expect(second.forProject('p1')).toMatchObject({ tasksScope: 't-31', tasksSubtasks: true, taskPageView: 'list', tasksCollapsed: ['t-32', 't-35'], tasksView: 'board' });
+            expect(second.forProject('p2')).toMatchObject({ tasksScope: 't-9', tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+            expect(second.forProject('p3')).toMatchObject({ tasksScope: null, tasksSubtasks: false, tasksCollapsed: [] });
+        });
+
+        it('reads a project stored before they existed: the defaults, and the rest as it was', () => {
+            const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"section":"tasks","taskId":"t7","tasksView":"list"}' })).forProject('p1');
+
+            expect(ui).toMatchObject({ section: 'tasks', taskId: 't7', tasksView: 'list', tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+        });
+
+        it('takes what it can from a stored value of a shape it does not know, and the defaults for the rest', () => {
+            const damaged = (value: object) => new UiStore(memoryStorage({ 'clowdy:ui:p1': JSON.stringify(value) })).forProject('p1');
+
+            expect(damaged({ tasksScope: 5, tasksSubtasks: 'yes', taskPageView: 'cards', tasksCollapsed: 't-1' })).toMatchObject({ tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+            expect(damaged({ tasksScope: { id: 't-1' }, tasksSubtasks: 1, taskPageView: null, tasksCollapsed: null })).toMatchObject({ tasksScope: null, tasksSubtasks: false, taskPageView: 'board', tasksCollapsed: [] });
+            // A list with something else in it keeps its ids, once each.
+            expect(damaged({ tasksCollapsed: ['t-1', 7, null, 't-2', 't-1', {}] }).tasksCollapsed).toEqual(['t-1', 't-2']);
+        });
+
+        it('keeps no more folds than the limit, the newest ones, from storage and as they are made', () => {
+            const many = Array.from({ length: COLLAPSED_TASKS_LIMIT + 50 }, (_, index) => `t-${ index }`);
+            const ui = new UiStore(memoryStorage({ 'clowdy:ui:p1': JSON.stringify({ tasksCollapsed: many }) })).forProject('p1');
+
+            expect(ui.tasksCollapsed).toHaveLength(COLLAPSED_TASKS_LIMIT);
+            expect(ui.tasksCollapsed.at(-1)).toBe(many.at(-1));
+
+            ui.toggleTaskCollapsed('t-new');
+
+            expect(ui.tasksCollapsed).toHaveLength(COLLAPSED_TASKS_LIMIT);
+            expect(ui.tasksCollapsed.at(-1)).toBe('t-new');
+            expect(ui.tasksCollapsed).not.toContain('t-50');
+        });
+
+        it('is a place of the window: the scope is in the view and a restored view brings it back; the options are not', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.setTasksScope('t-31');
+            ui.setTasksSubtasks(true);
+
+            const view = ui.view;
+
+            expect(view.tasksScope).toBe('t-31');
+            expect(view).not.toHaveProperty('tasksSubtasks');
+
+            ui.setTasksScope(null);
+            ui.setTasksSubtasks(false);
+            ui.show(view);
+
+            expect([ui.tasksScope, ui.tasksSubtasks]).toEqual(['t-31', false]);
+        });
+
+        it('sets the scope without moving the window or closing the open task', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.openChat('c1');
+            ui.setTasksScope('t-31');
+
+            expect([ui.section, ui.chatId, ui.taskId]).toEqual(['agents', 'c1', null]);
+
+            ui.openTask('t-33');
+            ui.setTasksScope('t-32');
+            expect([ui.section, ui.taskId, ui.tasksScope]).toEqual(['tasks', 't-33', 't-32']);
+
+            ui.openTask('t-24');
+            expect(ui.tasksScope).toBe('t-32');
+        });
+
+        it('resolves the scope against the tasks the project holds: the roots when its task is gone, deleted or archived, without forgetting it', () => {
+            const ui = new UiStore().forProject('p1');
+
+            expect(ui.resolveTasksScope(held('t-31'))).toBeNull();
+
+            ui.setTasksScope('t-31');
+
+            expect(ui.resolveTasksScope(held('t-31', 't-32'))).toBe('t-31');
+            expect(ui.resolveTasksScope(held('t-32'))).toBeNull();
+            expect(ui.resolveTasksScope(new Map([['t-31', { archivedAt: 5000 }]]))).toBeNull();
+            // Nothing was written: the task comes back with its scope.
+            expect(ui.tasksScope).toBe('t-31');
+            expect(ui.resolveTasksScope(held('t-31'))).toBe('t-31');
+        });
+
+        it('folds and opens the insides of a task, and opens several at once', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.toggleTaskCollapsed('t-32');
+            ui.toggleTaskCollapsed('t-35');
+            expect(ui.tasksCollapsed).toEqual(['t-32', 't-35']);
+
+            ui.toggleTaskCollapsed('t-32');
+            expect(ui.tasksCollapsed).toEqual(['t-35']);
+
+            ui.toggleTaskCollapsed('t-32');
+            ui.expandTasks(['t-35', 't-99']);
+            expect(ui.tasksCollapsed).toEqual(['t-32']);
+
+            const before = ui.tasksCollapsed;
+
+            ui.expandTasks(['t-99']);
+            expect(ui.tasksCollapsed).toBe(before);
+        });
+
+        it('lets go of the folds of tasks the project no longer holds, and only of those', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.toggleTaskCollapsed('t-32');
+            ui.toggleTaskCollapsed('t-35');
+            ui.toggleTaskCollapsed('t-gone');
+            ui.forgetCollapsedTasks(held('t-32', 't-35', 't-36'));
+            expect(ui.tasksCollapsed).toEqual(['t-32', 't-35']);
+
+            const before = ui.tasksCollapsed;
+
+            ui.forgetCollapsedTasks(held('t-32', 't-35'));
+            expect(ui.tasksCollapsed).toBe(before);
+        });
+
+        it('forgets them with the project', () => {
+            const storage = memoryStorage();
+            const store = new UiStore(storage);
+
+            store.forProject('p1').setTasksScope('t-31');
+            store.forgetProject('p1');
+
+            expect(new UiStore(storage).forProject('p1').tasksScope).toBeNull();
+        });
+    });
+
+    describe('the comment a task\'s composer holds and has not sent', () => {
+        it('is kept per task, and is empty for a task that has none', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.setCommentDraft('t-32', 'Half a thought');
+            ui.setCommentDraft('t-35', 'Another');
+
+            expect([ui.commentDraft('t-32'), ui.commentDraft('t-35'), ui.commentDraft('t-36')]).toEqual(['Half a thought', 'Another', '']);
+            expect(new UiStore().forProject('p1').commentDraft('t-32')).toBe('');
+        });
+
+        it('is forgotten when its text is emptied, or holds only whitespace', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.setCommentDraft('t-32', 'Half a thought');
+            ui.setCommentDraft('t-32', '');
+
+            expect(ui.commentDraft('t-32')).toBe('');
+
+            ui.setCommentDraft('t-32', 'Again');
+            ui.setCommentDraft('t-32', ' \n ');
+
+            expect(ui.commentDraft('t-32')).toBe('');
+        });
+
+        it('is not stored, so a restart starts without it, and is no part of the place history shows', () => {
+            const storage = memoryStorage();
+            const ui = new UiStore(storage).forProject('p1');
+
+            ui.setCommentDraft('t-32', 'Half a thought');
+            ui.openTask('t-32');
+
+            expect(JSON.stringify(storage.data)).not.toContain('Half a thought');
+            expect(JSON.stringify(ui.view)).not.toContain('Half a thought');
+            expect(new UiStore(storage).forProject('p1').commentDraft('t-32')).toBe('');
+        });
+
+        it('is one per project', () => {
+            const store = new UiStore();
+
+            store.forProject('p1').setCommentDraft('t-32', 'Half a thought');
+
+            expect(store.forProject('p2').commentDraft('t-32')).toBe('');
+        });
+
+        it('keeps no more than the limit: the draft written longest ago goes, and writing again makes a draft the newest', () => {
+            const ui = new UiStore().forProject('p1');
+
+            for (let index = 0; index < COMMENT_DRAFTS_LIMIT; index++) ui.setCommentDraft(`t-${ index }`, `Draft ${ index }`);
+
+            // The oldest is written again and so is the newest now: the next one in line goes instead.
+            ui.setCommentDraft('t-0', 'Draft 0, longer');
+            ui.setCommentDraft('t-new', 'One more');
+
+            expect(ui.commentDraft('t-1')).toBe('');
+            expect(ui.commentDraft('t-0')).toBe('Draft 0, longer');
+            expect(ui.commentDraft('t-new')).toBe('One more');
+            expect(ui.commentDraft(`t-${ COMMENT_DRAFTS_LIMIT - 1 }`)).toBe(`Draft ${ COMMENT_DRAFTS_LIMIT - 1 }`);
+        });
+    });
+
+    describe('opening a task reveals it on the Tasks screen', () => {
+        /** 31 holds 32 and 35, 32 holds 33; 24 is a root; 38 is archived. */
+        const tasks = new Map<string, { id: string; parentId?: string; archivedAt?: number }>([
+            ['t-24', { id: 't-24' }],
+            ['t-31', { id: 't-31' }],
+            ['t-32', { id: 't-32', parentId: 't-31' }],
+            ['t-33', { id: 't-33', parentId: 't-32' }],
+            ['t-35', { id: 't-35', parentId: 't-31' }],
+            ['t-38', { id: 't-38', archivedAt: 5 }],
+        ]);
+        const open = () => new UiStore(undefined, undefined, () => tasks).forProject('p1');
+
+        it('keeps the scope for a task inside it, and opens the folds above the task', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-31');
+            ui.toggleTaskCollapsed('t-32');
+            ui.toggleTaskCollapsed('t-35');
+            // The through board and the tree list draw every level.
+            ui.setTasksSubtasks(true);
+            ui.openTask('t-33');
+
+            expect([ui.section, ui.taskId, ui.tasksScope]).toEqual(['tasks', 't-33', 't-31']);
+            expect(ui.tasksCollapsed).toEqual(['t-35']);
+        });
+
+        it('moves the scope to the parent of a task outside it, and to the roots for a root', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-35');
+            ui.openTask('t-33');
+
+            expect(ui.tasksScope).toBe('t-32');
+
+            ui.openTask('t-24');
+
+            expect(ui.tasksScope).toBeNull();
+        });
+
+        it('keeps the scope for the roots with the list or the through board, which draw every level, and goes to the parent on a board of one level', () => {
+            const ui = open();
+
+            ui.setTasksView('list');
+            ui.openTask('t-33');
+
+            expect(ui.tasksScope).toBeNull();
+
+            ui.setTasksView('board');
+            ui.openTask('t-33');
+
+            // The first level of the roots has no card for it.
+            expect(ui.tasksScope).toBe('t-32');
+
+            ui.setTasksScope(null);
+            ui.setTasksSubtasks(true);
+            ui.openTask('t-33');
+
+            expect(ui.tasksScope).toBeNull();
+        });
+
+        it('reads the view of the task page inside a task, and the project\'s own view at the roots', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-31');
+            ui.setTasksView('list');
+            ui.openTask('t-33');
+
+            // The task page is a board of one level, whatever the project's view is.
+            expect(ui.tasksScope).toBe('t-32');
+
+            ui.setTasksScope('t-31');
+            ui.setTaskPageView('list');
+            ui.openTask('t-33');
+
+            expect(ui.tasksScope).toBe('t-31');
+        });
+
+        it('shows a remembered scope that is gone as the roots, and writes the one it settled on', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-gone');
+            ui.openTask('t-24');
+
+            expect(ui.tasksScope).toBeNull();
+        });
+
+        it('puts the screen where a task that was just made will show, though the project does not hold it yet', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-31');
+            // Made inside CAR-32: a card of the level of CAR-32, so the board of one level goes there.
+            ui.openTask('t-new', { madeIn: 't-32' });
+
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-new', 't-32']);
+
+            // Made at the roots, from inside a task.
+            ui.openTask('t-newer', { madeIn: null });
+
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-newer', null]);
+
+            // Made inside the scope: it stays.
+            ui.setTasksScope('t-31');
+            ui.openTask('t-newest', { madeIn: 't-31' });
+
+            expect([ui.taskId, ui.tasksScope]).toEqual(['t-newest', 't-31']);
+        });
+
+        it('leaves the screen where it is when the screen opens a task it draws itself', () => {
+            const ui = open();
+
+            ui.openTask('t-33', { reveal: false });
+
+            expect([ui.taskId, ui.tasksScope, ui.section]).toEqual(['t-33', null, 'tasks']);
+        });
+
+        it('leaves the scope alone for a task the project does not hold, and for the one that closes the panel', () => {
+            const ui = open();
+
+            ui.setTasksScope('t-31');
+            ui.openTask('t-38');
+            ui.openTask('t-missing');
+
+            expect(ui.tasksScope).toBe('t-31');
+
+            ui.openTask(null);
+
+            expect([ui.taskId, ui.tasksScope]).toEqual([null, 't-31']);
+        });
+
+        it('leaves the archive view for a task of the board opened from elsewhere, and stays in it for an archived task and for the screen\'s own clicks', () => {
+            const ui = open();
+
+            ui.setTasksArchive(true);
+            ui.openTask('t-38');
+            ui.openTask('t-missing');
+            ui.openTask('t-24', { reveal: false });
+            ui.openTask(null);
+
+            expect(ui.tasksArchive).toBe(true);
+
+            ui.openTask('t-24');
+
+            expect([ui.tasksArchive, ui.taskId]).toEqual([false, 't-24']);
+
+            ui.setTasksArchive(true);
+            // A task just made, which the project does not hold yet, is where the person looks next.
+            ui.openTask('t-new', { madeIn: null });
+
+            expect(ui.tasksArchive).toBe(false);
+        });
+
+        it('does not keep the archive view between sessions, and it is no place of the history', () => {
+            const storage = memoryStorage();
+            const ui = new UiStore(storage).forProject('p1');
+
+            ui.setTasksArchive(true);
+
+            expect(ui.tasksArchive).toBe(true);
+            expect(Object.keys(ui.view)).not.toContain('tasksArchive');
+            expect(new UiStore(storage).forProject('p1').tasksArchive).toBe(false);
+        });
+
+        it('does nothing to the scope without the project\'s tasks, as a window state of its own has none', () => {
+            const ui = new UiStore().forProject('p1');
+
+            ui.setTasksScope('t-35');
+            ui.openTask('t-24');
+
+            expect(ui.tasksScope).toBe('t-35');
+        });
     });
 
     it('starts from defaults when the stored value is damaged', () => {
@@ -211,6 +595,83 @@ describe('UiStore', () => {
         expect(new UiStore(storage).forProject('p1').agentsFolded).toBe(false);
     });
 
+    it('keeps the side panel closed until the person opens it, and remembers it per project', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        expect(ui.sidePanelOpen).toBe(false);
+
+        ui.toggleSidePanel();
+        expect(ui.sidePanelOpen).toBe(true);
+        expect(store.forProject('p2').sidePanelOpen).toBe(false);
+        expect(new UiStore(storage).forProject('p1').sidePanelOpen).toBe(true);
+
+        ui.toggleSidePanel();
+        expect(new UiStore(storage).forProject('p1').sidePanelOpen).toBe(false);
+    });
+
+    it('reads the side panel from the page URL', () => {
+        expect(initialUiFromSearch('?panel=open')).toEqual({ sidePanelOpen: true });
+        expect(initialUiFromSearch('?panel=closed')).toEqual({ sidePanelOpen: false });
+        expect(new UiStore(memoryStorage(), initialUiFromSearch('?panel=open')).forProject('p1').sidePanelOpen).toBe(true);
+    });
+
+    it('starts the side panel on its Info tab, and keeps the tab the person left it on per project', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        expect(ui.sidePanelTab).toBe('info');
+
+        ui.showSidePanelTab('files');
+        expect(ui.sidePanelTab).toBe('files');
+        expect(store.forProject('p2').sidePanelTab).toBe('info');
+        expect(new UiStore(storage).forProject('p1').sidePanelTab).toBe('files');
+    });
+
+    it('opens the side panel on a tab and keeps it open on a second pick of the same tab', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.openSidePanelTab('files');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'files']);
+
+        ui.openSidePanelTab('files');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'files']);
+
+        ui.openSidePanelTab('terminal');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'terminal']);
+
+        ui.toggleSidePanel();
+        ui.openSidePanelTab('info');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'info']);
+    });
+
+    it('opens the side panel on a tab, and shuts it when that tab is already shown', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+
+        ui.toggleSidePanelTab('terminal');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'terminal']);
+
+        ui.showSidePanelTab('files');
+        ui.toggleSidePanelTab('terminal');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'terminal']);
+
+        ui.toggleSidePanelTab('terminal');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([false, 'terminal']);
+
+        ui.toggleSidePanelTab('files');
+        expect([ui.sidePanelOpen, ui.sidePanelTab]).toEqual([true, 'files']);
+    });
+
+    it('reads the side panel tab from the page URL, and drops a tab that is not one', () => {
+        expect(initialUiFromSearch('?panel=open&panelTab=files')).toEqual({ sidePanelOpen: true, sidePanelTab: 'files' });
+        expect(initialUiFromSearch('?panelTab=terminal')).toEqual({ sidePanelTab: 'terminal' });
+        expect(initialUiFromSearch('?panelTab=changes')).toEqual({});
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"terminal"}' })).forProject('p1').sidePanelTab).toBe('terminal');
+        expect(new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"changes"}' })).forProject('p1').sidePanelTab).toBe('info');
+    });
+
     it('reads the fold of the strip from the page URL, and drops what is damaged in storage', () => {
         expect(initialUiFromSearch('?agents=folded')).toEqual({ agentsFolded: true });
         expect(initialUiFromSearch('?agents=open')).toEqual({ agentsFolded: false });
@@ -277,6 +738,28 @@ describe('UiStore', () => {
 
         ui.openRun('r1');
         expect(ui.draftFolderId).toBeNull();
+    });
+
+    it('changes the folder of the open new-chat page without opening another page, and null is the main folder', () => {
+        const ui = new UiStore().forProject('p1');
+
+        ui.openDraft([], 'fld-api');
+        ui.setDraftFolder('fld-notes');
+        expect([ui.draft, ui.draftFolderId]).toEqual([true, 'fld-notes']);
+
+        // The folder is part of the place the window shows (`view`).
+        expect(ui.view).toMatchObject({ draft: true, draftFolderId: 'fld-notes' });
+
+        ui.setDraftFolder(null);
+        expect([ui.draft, ui.draftFolderId]).toEqual([true, null]);
+    });
+
+    it('keeps no folder when no new-chat page is open', () => {
+        const ui = new UiStore().forProject('p1');
+
+        ui.openChat('c1');
+        ui.setDraftFolder('fld-api');
+        expect([ui.draft, ui.draftFolderId]).toEqual([false, null]);
     });
 
     it('ignores URL values that name no section or view', () => {

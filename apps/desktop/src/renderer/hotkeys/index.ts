@@ -7,7 +7,7 @@
  * `useHotkeyScope('tasks')` makes the commands of the `tasks` scope live while a component is mounted; `app` is always live.
  * When two live commands share keys the innermost scope wins, and `defineCommand` throws when keys collide inside one scope or against `app`.
  * `when` says whether a command exists for the screen now; `focus` says whether the keyboard focus is where its keys belong. Both gate the dispatcher,
- * but only `when` reaches the help overlay and the key hints, which must not change while the focus sits in the overlay's search field.
+ * but only `when` reaches the key hints, which must not change with where the focus sits.
  *
  * Single keys are off while a text field has focus and while a dialog, popover or `Modal` overlay is open (the key came from inside one),
  * unless the command sets `inInputs` or `inOverlays`. IME composition is ignored. A held key runs only a command with `repeat`.
@@ -17,8 +17,8 @@
  * `commandSequences(command)` lists every alternative, `listCommands()` the live and all commands, `hotkeys.pending` the chord waiting for its next key.
  * Key hints: `commandHint(id)` is the keys to show for a command, and `undefined` while it cannot run (a hint on a dead action is noise); it is reactive,
  * so call it while rendering. `<CommandHotkey id />` draws it (a menu item's `endAffix`), `commandTooltip(label, id)` is tooltip content (`undefined` without a hint).
- * `<ChordHud />` shows a pending chord; the shell mounts it. `openHelp()` (`./openHelp`) opens the shortcuts overlay (`./HelpOverlay`) in a `Modal`;
- * it is not exported here because `Modal` cannot load under the desktop's Vitest, which would break every test that imports this module.
+ * `<ChordHud />` shows a pending chord; the shell mounts it. `helpEntries(registry)` (`./helpEntries`) lists the commands with their keys, by group, for the shortcuts page of Settings,
+ * which reads the whole keymap (`shortcutEntries` in `shell/keymap.ts`) and not the live registry: a section registers its commands while it is mounted, and Settings takes its place.
  * Tests build an isolated `createRegistry(platform)` and pass it to `installDispatcher`, `useCommands`, `useHotkeyScope`, `commandHint` and `<CommandHotkey registry />`.
  */
 
@@ -27,7 +27,7 @@ import { hotkeys } from './registry';
 import type { Command } from './registry';
 
 export { ChordHud } from './ChordHud';
-export { CommandHotkey } from './CommandHotkey';
+export { CommandHotkey, PressesHotkey } from './CommandHotkey';
 export { installDispatcher } from './dispatcher';
 export { commandHint, commandTooltip, useCommands, useHotkeyScope, type ScopedCommand } from './react';
 export {

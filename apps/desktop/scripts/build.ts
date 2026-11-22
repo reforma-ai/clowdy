@@ -8,9 +8,9 @@
  *   app/dist/preload/index.cjs
  *   app/renderer/            the renderer, served from `app://clowdy`
  *   bundle/                  the daemon and the system skills (`Resources/bundle`)
- *   runtime/<target>/        the Bun that runs the daemon (`Resources/bun`, `bun-runtime.ts`)
+ *   runtime/<target>/        the Bun that runs the daemon, with the ripgrep it searches with (`Resources/bun`, `bun-runtime.ts`)
  *
- *   bun scripts/build.ts [target...]    the Bun targets to ship; default: this machine's
+ *   bun scripts/build.ts [target...]    the runtime targets to ship; default: this machine's
  *
  * A release build (`.github/workflows/release-shell.yml`) bakes in where updates come from:
  *

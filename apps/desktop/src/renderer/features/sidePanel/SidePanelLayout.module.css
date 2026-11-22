@@ -1,0 +1,15 @@
+/* Fills the window. */
+.layout {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* The panel library puts these on the element inside its panel, which is a block: make it a column that the window's parts fill. Its own inline `overflow: auto` stays, as nothing in them is taller or wider than the column. */
+.window,
+.side {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}

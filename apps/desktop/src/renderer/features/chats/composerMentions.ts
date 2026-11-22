@@ -21,7 +21,7 @@ function pathMention(path: string): string {
 /**
  * What a mention says to the agent. Over ACP a message is plain text and only an agent knows how to call its own skills
  * (`/name` for one, `$name` for another, none for a third), so a skill is asked for in words every agent follows.
- * A task goes by its key, which the orchestrator resolves with `task_get`; documents and files by their path.
+ * A task goes by its key, which the orchestrator resolves with `clowdy task get`; documents and files by their path.
  */
 export function serializeMention({ kind, data }: ComposerMentionAttrs): string {
     switch (kind) {

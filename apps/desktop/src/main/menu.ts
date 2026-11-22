@@ -85,7 +85,8 @@ export function createAppMenu({ checkForUpdates }: AppMenuOptions = {}): Menu {
                 { role: 'forceReload' },
                 { role: 'toggleDevTools' },
                 { type: 'separator' },
-                { role: 'resetZoom' },
+                // Not Cmd+0 (Ctrl+0): the side panel's Info tab has it.
+                { role: 'resetZoom', accelerator: 'CmdOrCtrl+Alt+0' },
                 { role: 'zoomIn' },
                 { role: 'zoomOut' },
                 { type: 'separator' },

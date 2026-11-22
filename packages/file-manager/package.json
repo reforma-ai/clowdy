@@ -1,0 +1,72 @@
+{
+    "name": "@clowdy/file-manager",
+    "private": true,
+    "description": "File manager and text editor over any file system provider",
+    "type": "module",
+    "version": "0.0.0",
+    "license": "UNLICENSED",
+    "sideEffects": [
+        "**/*.css"
+    ],
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "import": "./src/index.ts",
+            "default": "./src/index.ts"
+        },
+        "./react": {
+            "types": "./src/react/index.ts",
+            "import": "./src/react/index.ts",
+            "default": "./src/react/index.ts"
+        },
+        "./editor-search": {
+            "types": "./src/react/editor/editorSearch.ts",
+            "import": "./src/react/editor/editorSearch.ts",
+            "default": "./src/react/editor/editorSearch.ts"
+        },
+        "./memory": {
+            "types": "./src/memory/MemoryFileSystem.ts",
+            "import": "./src/memory/MemoryFileSystem.ts",
+            "default": "./src/memory/MemoryFileSystem.ts"
+        },
+        "./provider": {
+            "types": "./src/provider.ts",
+            "import": "./src/provider.ts",
+            "default": "./src/provider.ts"
+        },
+        "./paths": {
+            "types": "./src/paths.ts",
+            "import": "./src/paths.ts",
+            "default": "./src/paths.ts"
+        }
+    },
+    "scripts": {
+        "clean": "rm -rf node_modules/{*,.*} .turbo 2>/dev/null || true",
+        "lint": "eslint .",
+        "test": "vitest run",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@clowdy/components": "workspace:*",
+        "@clowdy/icons": "workspace:*",
+        "@clowdy/lib": "workspace:*",
+        "@codemirror/autocomplete": "^6.20.4",
+        "@codemirror/commands": "^6.11.1",
+        "@codemirror/language": "^6.13.1",
+        "@codemirror/search": "^6.7.2",
+        "@codemirror/state": "^6.7.6",
+        "@codemirror/view": "^6.43.15",
+        "minimatch": "^10.2.4",
+        "mobx": "^7.0.3",
+        "mobx-react-lite": "^5.0.3",
+        "react-arborist": "^3.16.0",
+        "use-resize-observer": "^9.1.0"
+    },
+    "devDependencies": {
+        "@clowdy/styles": "workspace:*"
+    },
+    "peerDependencies": {
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8"
+    }
+}

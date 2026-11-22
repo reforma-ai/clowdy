@@ -38,7 +38,7 @@ If the decision contradicts an existing record, write a new record that supersed
 
 ## 3. State assumptions
 
-When the brief leaves a gap you must fill to proceed, fill it with the most likely reading and write it down where the next reader will see it: an `Assumptions:` list in the description of each task it affects (`task_update`). One line each, written so a check can prove or break it. An assumption that is also a significant fork gets a decision record as well.
+When the brief leaves a gap you must fill to proceed, fill it with the most likely reading and write it down where the next reader will see it: an `Assumptions:` list on each task it affects, in its description when you create the task and as a comment (`clowdy task comment <key> <text>`) when you find the gap later. One line each, written so a check can prove or break it. An assumption that is also a significant fork gets a decision record as well.
 
 A vague request ("make it better") gets the smallest slice with clear value, stated as your reading in the plan. Do not stretch it to cover every reading.
 
@@ -50,7 +50,7 @@ Nobody approves each step in this mode, so the scope is yours to guard.
 
 - Do what the brief and the task ask. Nothing nearby that "would be nice".
 - A problem you find that blocks the task: fix the minimum, say so in the report.
-- A problem you find that does not block it: `task_list` to check it is not already there, then `task_create` with a clear title, the evidence, and `dependsOn` when it needs this work. Do not fix it now.
+- A problem you find that does not block it: `clowdy task list --query "<its words>"` to check it is not already there (a query searches closed tasks too), then `clowdy task create` with a clear title, the evidence, and `--depends-on` when it needs this work. Do not fix it now.
 - A fix of a few lines in a file you are already changing, with no behaviour change, may ride along. Anything bigger is a task.
 - Every extra thing you do is something the manager did not ask for and must now review.
 
@@ -65,7 +65,7 @@ A blocker is one of three things:
 A blocker is never a reason to stop everything. Order of action:
 
 1. Finish all work that does not depend on it, and leave the blocked part in a clean, resumable state.
-2. Make the blocker visible on the task with `task_update`: what is needed, from whom, what unblocks it. Put it at the top of the description. There is no blocked column, so do not invent a status.
+2. Make the blocker visible on the task with `clowdy task update <key> --description-file -` (read it first with `clowdy task get <key>` and keep what is there): what is needed, from whom, what unblocks it. Put it at the top of the description. There is no blocked column, so do not invent a status.
 3. Say it in the final report. Never report blocked work as done, and never guess past a blocker.
 
 ## 6. Sub-agents and threads

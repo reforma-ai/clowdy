@@ -1,7 +1,7 @@
-import { ACTIVE_RUN_STATUSES, isTerminalRunStatus, projectEngine, STOPPED_TOOL } from '@clowdy/protocol';
+import { ACTIVE_RUN_STATUSES, isClosedCategory, isTerminalRunStatus, projectEngine, STOPPED_TOOL } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
-import { findQuestion, listRunningTools } from '../db/items';
+import { findQuestion, listOpenThoughts, listRunningTools } from '../db/items';
 import { getProject } from '../db/projects';
 import { activeSubtree, countActiveRuns, countRunsWithRole, getRun, getRunWork, linksOfRun, linksOfTask, listActiveRuns, listEnginePauses, listRunsWithProcess, saveEnginePause, setRunWork, upsertRun } from '../db/runs';
 import { getTask } from '../db/tasks';
@@ -312,7 +312,7 @@ export class RunService {
             .filter(run => isActive(run.status));
     }
 
-    /** Unfinished dependencies of `tasks`, not counting tasks inside the same set. */
+    /** Dependencies of `tasks` that are not closed (done or canceled), not counting tasks inside the same set. */
     private unfinishedDependencies(tasks: Task[]): Task[] {
         const own = new Set(tasks.map(task => task.id));
         const found = new Map<string, Task>();
@@ -321,7 +321,7 @@ export class RunService {
             for (const id of task.dependsOn) {
                 const dependency = getTask(this.store.db, id);
 
-                if (dependency && !own.has(id) && categoryOf(this.store, dependency) !== 'done') {
+                if (dependency && !own.has(id) && !isClosedCategory(categoryOf(this.store, dependency))) {
                     found.set(id, dependency);
                 }
             }
@@ -385,7 +385,7 @@ export class RunService {
         });
     }
 
-    /** A run created `blocked` waits until every dependency of its tasks is done, then returns. Other runs return at once. */
+    /** A run created `blocked` waits until every dependency of its tasks is closed (done or canceled), then returns. Other runs return at once. */
     async waitUnblocked(runId: string, signal: AbortSignal): Promise<void> {
         while (this.require(runId).status === 'blocked') {
             const blockers = this.unfinishedDependencies(linksOfRun(this.store.db, runId).filter(link => link.relation === 'assigned').map(link => requireTask(this.store, link.taskId)));
@@ -654,6 +654,13 @@ export class RunService {
                 for (const { seq, body } of listRunningTools(this.store.db, run.id)) {
                     if (body.kind === 'tool') {
                         updateItem(this.store, run.id, seq, { ...body, state: 'error', error: STOPPED_TOOL });
+                    }
+                }
+
+                // A thought the crash cut short is over: the app shows an open one as still going.
+                for (const { seq, body } of listOpenThoughts(this.store.db, run.id)) {
+                    if (body.kind === 'reasoning') {
+                        updateItem(this.store, run.id, seq, { ...body, done: true });
                     }
                 }
             }

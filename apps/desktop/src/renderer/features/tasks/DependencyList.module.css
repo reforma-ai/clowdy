@@ -62,6 +62,14 @@
     white-space: nowrap;
 }
 
+/* An archived dependency is done and off the board: a quiet word after its title says why it is not there. */
+.archived {
+    @ruleset typography-text-xs;
+
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
 .gone {
     flex: 1;
     color: var(--color-secondary-muted-text);

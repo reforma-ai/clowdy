@@ -657,7 +657,7 @@ describe('GET /v1/projects/info', () => {
         expect((await h.fetch(`/v1/projects/${ project.id }/snapshot`)).status).toBe(200);
     });
 
-    test('lists every project in list order with each folder, its remote, and the counts', async () => {
+    test('lists every project in list order with each folder, its remote and branch, and the counts', async () => {
         const h = await setup();
         const repo = h.openRepo('repo');
         const bare = h.openRepo('bare');
@@ -680,10 +680,60 @@ describe('GET /v1/projects/info', () => {
         const [goneFolder] = folderIds(gone.id);
 
         expect(projects.map(entry => entry.projectId)).toEqual(rootSnapshot(h.store).projects.map(project => project.id));
-        expect(projects[0]).toEqual({ projectId: h.personal.id, folders: [{ folderId: personalFolder, exists: true, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 });
-        expect(projects[1]).toEqual({ projectId: repo.id, folders: [{ folderId: repoFolder, exists: true, remoteUrl: 'git@github.com:acme/app.git', chats: 0 }], chats: 2, tasks: 1, activeRuns: 0 });
-        expect(projects[2]).toEqual({ projectId: bare.id, folders: [{ folderId: bareMain, exists: true, chats: 0 }, { folderId: bareNotes, exists: true, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects[0]).toEqual({ projectId: h.personal.id, folders: [{ folderId: personalFolder, exists: true, branch: 'main', chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 });
+        expect(projects[1]).toEqual({ projectId: repo.id, folders: [{ folderId: repoFolder, exists: true, remoteUrl: 'git@github.com:acme/app.git', branch: 'main', chats: 0 }], chats: 2, tasks: 1, activeRuns: 0 });
+        expect(projects[2]).toEqual({ projectId: bare.id, folders: [{ folderId: bareMain, exists: true, branch: 'main', chats: 0 }, { folderId: bareNotes, exists: true, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 });
         expect(projects[3]).toEqual({ projectId: gone.id, folders: [{ folderId: goneFolder, exists: false, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 });
+    });
+
+    test('tells the branch a folder has checked out, and the short hash on a detached HEAD', async () => {
+        const h = await setup();
+        const project = h.openRepo('branches');
+        const folder = projectOf(h, project.id).folders[0].id;
+        const folderInfo = async () => (await info(h)).find(entry => entry.projectId === project.id)?.folders.find(entry => entry.folderId === folder);
+
+        expect(await folderInfo()).toMatchObject({ branch: 'main' });
+        expect(await folderInfo()).not.toHaveProperty('detached');
+
+        git(project.path, 'checkout', '-q', '-b', 'feature/open-menu');
+        expect(await folderInfo()).toMatchObject({ branch: 'feature/open-menu' });
+
+        git(project.path, 'checkout', '-q', '--detach');
+        expect(await folderInfo()).toMatchObject({ branch: git(project.path, 'rev-parse', '--short', 'HEAD'), detached: true });
+    });
+
+    test('has no branch for a folder that is not a repository, or that is gone', async () => {
+        const h = await setup();
+        const plain = h.openRepo('plain');
+        const gone = h.openRepo('gone');
+        const folders = (id: string) => projectOf(h, id).folders;
+
+        // A folder in a temporary directory, away from any repository.
+        const outside = join(tempDir(), 'outside');
+
+        mkdirSync(outside);
+        h.ok('project.update', { projectId: plain.id, folders: [{ path: outside }, { id: folders(plain.id)[0].id }] });
+        rmSync(gone.path, { recursive: true, force: true });
+
+        const projects = await info(h);
+        const foldersOf = (id: string) => projects.find(entry => entry.projectId === id)!.folders;
+
+        expect(foldersOf(plain.id).map(entry => entry.branch)).toEqual([undefined, 'main']);
+        expect(foldersOf(gone.id)[0]).not.toHaveProperty('branch');
+    });
+
+    test('reads one project alone with ?project, and answers not found for one that is not there', async () => {
+        const h = await setup();
+        const first = h.openRepo('first');
+
+        h.openRepo('second');
+
+        const one = await (await h.fetch(`/v1/projects/info?project=${ first.id }`)).json() as ProjectInfo[];
+
+        expect(one.map(entry => entry.projectId)).toEqual([first.id]);
+        expect(one[0].folders[0]).toMatchObject({ exists: true, branch: 'main' });
+        expect((await info(h)).length).toBeGreaterThan(1);
+        expect((await h.fetch('/v1/projects/info?project=prj_missing')).status).toBe(404);
     });
 
     test('a path that is a file and not a folder does not count as one', async () => {

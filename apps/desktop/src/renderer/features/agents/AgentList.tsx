@@ -5,8 +5,7 @@ import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Plus } from '@clowdy/icons/14';
-import { ChevronDown as FoldDown, ChevronRight as FoldRight } from '@clowdy/icons/8';
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type SyntheticEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, type SyntheticEvent } from 'react';
 
 import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
 import { SidebarHeading } from '../../shared';
@@ -18,10 +17,9 @@ import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
 import { deleteChat } from '../chats/deleteChat';
 import { threadsAtWork } from '../chats/runningAgentRows';
-import { useProjectsInfo } from '../settings/projects/useProjectsInfo';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
-import { agentGroups, agentRows, ancestorChats, draftTarget, groupFolderOf, isActiveThread, orchestratorOf, type AgentGroup, type AgentRow, type AgentSelection } from './agentTree';
+import { agentGroups, agentRows, ancestorChats, groupFolderOf, isActiveThread, orchestratorOf, type AgentGroup, type AgentRow, type AgentSelection } from './agentTree';
 import { ArchiveButton } from './ArchiveButton';
 import { ChatIcon } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
@@ -66,10 +64,10 @@ interface ChatActions {
 /**
  * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the heading's `⋯` asks for), each with the
  * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
- * in the heading, beside the filters), and take their threads with them. With the menu's Group chats by folder on (it is, until the person turns it off), in a project of several folders, the
+ * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), in a project of several folders, the
  * chats stand in a group for the folder they work in, under a heading that folds the group and has a button for a chat in that folder.
  */
-export function AgentList({ selection, chats }: { selection: AgentSelection; chats: readonly Chat[] }) {
+export function AgentList({ selection, chats, missing }: { selection: AgentSelection; chats: readonly Chat[]; missing: ReadonlySet<FolderId> }) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -98,13 +96,8 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
     const openChatId = selection.draft ? undefined : selection.chat?.id;
     const { folders } = project.project;
     const grouped = ui.groupByFolder && folders.length > 1;
-    // The new-chat page of another folder than the main one belongs to that folder's heading, not to the row at the top: the row stays free to be pressed.
-    const draftFolder = selection.draft && grouped ? draftTarget(folders, ui.draftFolderId) : undefined;
-    const draftElsewhere = draftFolder !== undefined && !draftFolder.isMain;
-    const selectedId = selection.draft ? (draftElsewhere ? undefined : NEW_CHAT_ROW) : openChatId;
-    // A group's folder is told missing from what the daemon last read, which is read once when grouping turns on and when the projects change.
-    const { info } = useProjectsInfo({ enabled: grouped, poll: false });
-    const missing = new Set(info.get(project.id)?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
+    // The new-chat row is the open one on every new-chat page, whatever folder it is for: the folder is told by the select under the message box.
+    const selectedId = selection.draft ? NEW_CHAT_ROW : openChatId;
     const rowsOf = (roots: readonly Chat[]) => agentRows({
         roots,
         threadsOf: chatId => project.threadsOf(chatId),
@@ -141,7 +134,7 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
         list: () => list.current,
         // The headings are rows the arrows stop on, so they are in the order J and K step through; a group's note has no focus.
         ids: () => [NEW_CHAT_ROW, ...entries.filter(entry => entry.kind !== 'empty').map(entryKey)],
-        openId: () => selectedId ?? (draftFolder && groupKey(draftFolder.folder.id)),
+        openId: () => selectedId,
     }));
 
     // Right-click anywhere on a chat's row: the rows are the list's own elements, so the click is found by its row's key.
@@ -219,8 +212,6 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
                         </Button>
                     </span>
                 ) }
-                // The heading of the folder the open new-chat page is for stays as if hovered, with its button, like the row of an open menu.
-                data-open={ (draftElsewhere && draftFolder.folder.id === group.folder.id) || undefined }
                 data-collapsed={ isCollapsed || undefined }
                 data-missing={ isMissing || undefined }
             >
@@ -264,18 +255,17 @@ export function AgentList({ selection, chats }: { selection: AgentSelection; cha
 
     const renderRow = (row: AgentRow) => {
         const { chat } = row;
-        // Only a row with threads below it has a chevron, and it takes no room: the icons stay where the list puts them.
-        const fold = row.childCount > 0 ? <Fold row={ row } onToggle={ () => ui.toggleChatExpanded(chat.id) } /> : undefined;
         // The same threads the strip above its message box lists.
         const threadsWorking = threadsAtWork(project.threadsOf(chat.id), project.runs).length > 0;
+        const icon = <ChatIcon chat={ chat } run={ runOf(chat) } threadsWorking={ threadsWorking } />;
 
         return (
             <GridListItem
                 key={ chat.id }
                 id={ chat.id }
                 text={ chat.title }
-                startAffix={ fold }
-                icon={ <ChatIcon chat={ chat } run={ runOf(chat) } threadsWorking={ threadsWorking } /> }
+                // Only a row with threads below it has a chevron: on hover it takes the place of the icon, so the row needs no room for it.
+                icon={ row.childCount > 0 ? <Fold row={ row } icon={ icon } onToggle={ () => ui.toggleChatExpanded(chat.id) } /> : icon }
                 endAffix={ renamingId === chat.id ? undefined : <RowEnd chat={ chat } actions={ actions } isOpen={ menuOpenId === chat.id } onOpenChange={ open => setMenuOpenId(open ? chat.id : null) } /> }
                 className={ row.depth > 0 ? styles.nested : undefined }
                 style={ { '--depth': row.depth } as CSSProperties }
@@ -409,21 +399,27 @@ function FilterMenu() {
     );
 }
 
-/** The chevron of a row that has threads below it, drawn in the row's left padding. */
-function Fold({ row, onToggle }: { row: AgentRow; onToggle: () => void }) {
+/** The icon of a row that has threads below it: on hover the chevron that folds them takes its place, in the same room. */
+function Fold({ row, icon, onToggle }: { row: AgentRow; icon: ReactNode; onToggle: () => void }) {
     return (
-        // The button is a React child of the row, so its clicks and keys would reach the row through the tree.
-        <span className={ styles.fold } { ...ownEvents }>
-            <button
-                type="button"
-                tabIndex={ -1 }
-                className={ styles.chevron }
-                aria-label={ row.isExpanded ? `Collapse ${ row.chat.title } threads` : `Expand ${ row.chat.title } threads` }
-                aria-expanded={ row.isExpanded }
-                onClick={ onToggle }
-            >
-                { row.isExpanded ? <FoldDown aria-hidden /> : <FoldRight aria-hidden /> }
-            </button>
+        <span className={ styles.foldIcon }>
+            <span className={ styles.restIcon } data-show={ listBoxItemDataShow.itemRest }>{ icon }</span>
+            {/* The button is a React child of the row, so its clicks and keys would reach the row through the tree. */}
+            <span className={ styles.fold } data-show={ listBoxItemDataShow.itemHover } { ...ownEvents }>
+                <Button
+                    variant="filling"
+                    color="secondary"
+                    size="xs"
+                    iconOnly
+                    tabIndex={ -1 }
+                    aria-label={ row.isExpanded ? `Collapse ${ row.chat.title } threads` : `Expand ${ row.chat.title } threads` }
+                    aria-expanded={ row.isExpanded }
+                    preventFocusOnPress
+                    onPress={ onToggle }
+                >
+                    { row.isExpanded ? <ChevronDown /> : <ChevronRight /> }
+                </Button>
+            </span>
         </span>
     );
 }

@@ -123,6 +123,8 @@ export const commandSchema = z.discriminatedUnion('type', [
         description: z.string().optional(),
         statusId: z.string().optional(),
         dependsOn: z.array(z.string()).optional(),
+        /** The task the new one is part of (same project, at most `MAX_TASK_DEPTH` levels deep, not an archived task: restore it first). */
+        parentId: z.string().optional(),
         /** Link the new task to this chat, as if the orchestrator had created it there. */
         chatId: z.string().optional(),
     }),
@@ -132,12 +134,45 @@ export const commandSchema = z.discriminatedUnion('type', [
         taskId: z.string(),
         title: z.string().min(1).optional(),
         description: z.string().optional(),
+        /** Refused (`invalid`) for an open status on an archived task, which stays closed until it is restored. */
         statusId: z.string().optional(),
         dependsOn: z.array(z.string()).optional(),
+        /**
+         * Moves the task, with everything inside it, under this task; `null` makes it a root. Refused (`invalid`) for a task of another project, the task
+         * itself, one of its own descendants, a result deeper than `MAX_TASK_DEPTH` levels, counting the task's own subtree, and an archived parent for a task
+         * that is not archived.
+         */
+        parentId: z.string().nullable().optional(),
     }),
+    /** Deletes the task; the tasks inside it move up to its own parent (a root's become roots). */
     z.object({ ...base, type: z.literal('task.delete'), taskId: z.string() }),
-    /** Opens a new chat bound to the task, with an orchestrator run that starts on it now; answers `{ runId, chatId }`. One active run per task unless `force`. */
+    /**
+     * Archives the task with everything inside it, all with one `archivedAt`; answers `{ task, archived, canceled }`: the task, the ids of the tasks that went
+     * into the archive with this call (the task first, then those inside it; none for a task that was archived already, which changes nothing) and the
+     * ids among them that `cancel` moved to Canceled. Only closed tasks (`done`, `canceled`) can be archived: a task with an open task inside it is refused
+     * (`invalid`, the message names them) unless `cancel` is set, which moves the task and every open task inside it to the project's first Canceled status
+     * and archives them together, one `task.upserted` each. A task with an active run, or with a task inside it that has one, is refused (`conflict`) whatever
+     * `cancel` says: stop the run first. Dependencies are left as they are, and a task that waited for an archived one is already free, since a closed task
+     * resolves its dependents.
+     */
+    z.object({ ...base, type: z.literal('task.archive'), taskId: z.string(), cancel: z.boolean().optional() }),
+    /**
+     * Brings an archived task back, with the tasks inside it that were archived with it (the ones with the same `archivedAt`; a task inside it that was
+     * archived on its own earlier stays archived). Answers `{ task, restored }`: the task and the ids of every task that came back (none for a task that is
+     * not archived, which changes nothing). Refused (`invalid`) while the task's own parent is archived: restore the parent first.
+     */
+    z.object({ ...base, type: z.literal('task.unarchive'), taskId: z.string() }),
+    /** Opens a new chat bound to the task, with an orchestrator run that starts on it now; answers `{ runId, chatId }`. One active run per task unless `force`. Refused (`invalid`) for an archived task: restore it first. */
     z.object({ ...base, type: z.literal('task.start'), taskId: z.string(), engine: engine.optional(), force: z.boolean().optional() }),
+    /** Adds a Markdown comment from the person to the task; answers `{ comment }`. Refused (`invalid`) for a body with nothing in it but whitespace. */
+    z.object({ ...base, type: z.literal('task.comment.add'), taskId: z.string(), body: z.string() }),
+    /**
+     * Replaces the body of one of the task's comments and sets its `editedAt`; a body that is the same changes nothing. Answers `{ comment }`. Refused
+     * (`invalid`) for a body with nothing in it, `not_found` for a comment the task does not have. Any comment may be edited, an agent's included.
+     */
+    z.object({ ...base, type: z.literal('task.comment.edit'), taskId: z.string(), commentId: z.string(), body: z.string() }),
+    /** Deletes one of the task's comments (`not_found` when the task has no such one); answers `{ taskId, commentId }`. */
+    z.object({ ...base, type: z.literal('task.comment.delete'), taskId: z.string(), commentId: z.string() }),
 
     /* Runs */
     z.object({ ...base, type: z.literal('run.cancel'), runId: z.string() }),

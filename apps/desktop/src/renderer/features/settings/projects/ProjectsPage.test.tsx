@@ -179,9 +179,10 @@ describe('ProjectsPage list', () => {
             expect.stringContaining('Clowdy'),
         ]);
         // The main folder, and how many the project has besides.
-        expect(rows[1]).toContain('/Users/dev/car-rental+2 folders');
+        expect(rows[1]).toContain('~/car-rental+2 folders');
         // What a project holds is marks after its name, with no count of none.
-        expect(rows[1]).toContain('Car Rental11 chats11 tasks');
+        // The archived tasks are counted: deleting the project takes them too.
+        expect(rows[1]).toContain('Car Rental11 chats21 tasks');
         expect(rows[2]).not.toContain('folder');
         expect(rows[2]).not.toContain('chat');
     });

@@ -4,6 +4,7 @@ import type { Config } from '../config';
 import type { DocsService } from '../docs/service';
 import type { AgentRegistry } from '../engine/acp/registry';
 import type { FilesService } from '../files/service';
+import type { FsService } from '../fs/service';
 import type { ModelCatalog } from '../providers/models';
 import type { ProvidersService } from '../providers/service';
 import type { RunDriver } from '../runs/driver';
@@ -12,6 +13,7 @@ import type { RunService } from '../runs/service';
 import type { ThreadService } from '../runs/threads';
 import type { SkillsService } from '../skills/service';
 import type { Store } from '../store';
+import type { TerminalService } from '../terminals/service';
 
 /** What a command handler may use. */
 export interface Services {
@@ -25,11 +27,15 @@ export interface Services {
     threads: ThreadService;
     docs: DocsService;
     files: FilesService;
+    /** The files of a project's folders for the file manager. */
+    fs: FsService;
     attachments: AttachmentsService;
     skills: SkillsService;
     agents: AgentRegistry;
     providers: ProvidersService;
     models: ModelCatalog;
+    /** The shells the app's terminal runs. */
+    terminals: TerminalService;
 }
 
 export type CommandOf<T extends CommandType> = Extract<Command, { type: T }>;
