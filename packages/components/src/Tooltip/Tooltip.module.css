@@ -6,33 +6,32 @@
    ============================================ */
     .tooltip {
         @ruleset typography-text-sm;
-        border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+        border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
         corner-shape: superellipse(var(--squircle-value));
         background: var(--color-tooltip);
         color: var(--color-tooltip-foreground);
-        padding: var(--spacing-xs) var(--spacing-md);
+        padding: var(--spacing-md) var(--spacing-lg);
         max-width: min(20rem, calc(100vw - var(--spacing-16)));
         overflow-wrap: anywhere;
         overflow: hidden;
         box-shadow: var(--shadow-xs);
         z-index: var(--z-tooltip) !important;
-        forced-color-adjust: none;
+        text-box-trim: trim-both;
+        text-box-edge: auto;
         transform: translate3d(0, 0, 0);
         transition:
             transform var(--transition-duration-fast),
             opacity var(--transition-duration-fast);
+        forced-color-adjust: none;
 
         --hotkey-background: color-mix(in oklab, currentColor 20%, transparent);
     }
 
-    .tooltip :global([data-hotkey]) {
-        margin-inline-end: calc(-1 * var(--spacing-xs));
-    }
-
-    /* The capsule has its own padding, so the label needs more room than the space between them to read as separate from it. */
+    /* Only the capsule that sits beside the label (a key, or a whole sequence): the keys inside a sequence keep their own gaps. */
     .tooltip > :global([data-hotkey]),
     .tooltip > :global([data-hotkey-sequence]) {
         margin-inline-start: var(--spacing-sm);
+        margin-inline-end: calc(-1 * var(--spacing-md));
     }
 
     .tooltip[data-entering],

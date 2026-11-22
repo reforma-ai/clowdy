@@ -9,7 +9,7 @@ export function tooltipWithHotkey(label: string, hotkey: HotkeyValue): ReactNode
         <>
             { label }
             { ' ' }
-            <Hotkey hotkey={ hotkey } size="xs" />
+            <Hotkey hotkey={ hotkey } size="sm" />
         </>
     );
 }
@@ -20,7 +20,7 @@ export function tooltipWithSequence(label: string, sequence: readonly HotkeyValu
         <>
             { label }
             { ' ' }
-            <Hotkey sequence={ sequence } size="xs" />
+            <Hotkey sequence={ sequence } size="sm" />
         </>
     );
 }
