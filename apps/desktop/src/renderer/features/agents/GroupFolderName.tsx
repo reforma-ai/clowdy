@@ -31,7 +31,7 @@ export function GroupFolderName({ name, folder, missing, onOpen }: { name: strin
     if (!canOpenPaths()) return <span className={ cn(styles.title, styles.groupPlainName) }>{ name }</span>;
 
     return (
-        <MenuTrigger onOpenChange={ (isOpen) => { if (isOpen) onOpen?.(); } }>
+        <MenuTrigger onOpenChange={ isOpen => isOpen && onOpen?.() }>
             <Button
                 variant="filling"
                 color="inherit"
