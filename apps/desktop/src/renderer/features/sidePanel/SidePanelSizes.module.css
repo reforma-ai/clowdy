@@ -28,9 +28,11 @@
     line-height: var(--spacing-16);
 }
 
+/* The row stands as far under the text as the menu's edge stands from it at the sides (the hover card's own padding). */
 .sizes {
     display: flex;
     gap: var(--spacing-xs);
+    margin-top: var(--spacing-md);
 }
 
 /* A tile of a picture and a name: quiet until the pointer is over it, and in the primary colour for the size the panel is in, as the rail's current tab is. */
