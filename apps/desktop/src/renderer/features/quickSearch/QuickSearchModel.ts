@@ -2,14 +2,28 @@ import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, runInAction } from 'mobx';
 
 import type { SearchResult } from '@clowdy/file-manager/provider';
+import type { Chat, ChatId, Run } from '@clowdy/protocol';
 
-export type QuickSearchTab = 'all' | 'files' | 'text';
+export type QuickSearchTab = 'all' | 'chats' | 'files' | 'text';
 
 export const QUICK_SEARCH_TABS: ReadonlyArray<{ value: QuickSearchTab; label: string }> = [
     { value: 'all', label: 'All' },
+    { value: 'chats', label: 'Chats' },
     { value: 'files', label: 'Files' },
     { value: 'text', label: 'Text' },
 ];
+
+/** A chat of the project whose title has the words typed, or, with nothing typed, one of the latest. */
+export interface FoundChat {
+    kind: 'chat';
+    id: string;
+    chatId: ChatId;
+    chat: Chat;
+    /** The run that answers the chat, for the icon of its row. */
+    run: Run | undefined;
+    /** What the row says at its right: the folder of the chat when the project has several, or that it is in the archive. */
+    note?: string;
+}
 
 /** A file whose name matches. */
 export interface FoundFile {
@@ -29,16 +43,21 @@ export interface FoundLine {
     ranges: ReadonlyArray<{ start: number; end: number }>;
 }
 
-export type Found = FoundFile | FoundLine;
+export type Found = FoundChat | FoundFile | FoundLine;
 
 export interface FoundSection {
-    id: 'files' | 'text';
+    id: 'chats' | 'files' | 'text';
     title: string;
     items: Found[];
 }
 
 /** Where the search looks and what choosing a result does. A source fails with an `Error` whose message the palette shows. */
 export interface QuickSearchSource {
+    /**
+     * The chats that answer `query`, best first, all of them: the model takes as many as its tab shows. Read at once and not waited for, from what the app holds, so the
+     * list follows the chats as they change; a blank query is the chats of the person's latest work.
+     */
+    chats: (query: string) => FoundChat[];
     /** The paths of the files whose name or folder matches `query`, the best match first. */
     files: (query: string) => Promise<string[]>;
     /** The lines of the files' content that have `query`. */
@@ -51,8 +70,12 @@ export interface QuickSearchSource {
 /** Typing searches once it pauses this long. */
 export const TYPING_DELAY = 150;
 /** The rows of each list: the tab of one kind lists up to its own, the All tab a few of each. */
+export const CHAT_ROWS = 50;
 export const FILE_ROWS = 50;
 export const LINE_ROWS = 200;
+export const ALL_CHAT_ROWS = 4;
+/** With nothing typed the All tab lists the latest chats and nothing else, so it has room for more of them. */
+export const ALL_RECENT_CHAT_ROWS = 8;
 export const ALL_FILE_ROWS = 6;
 export const ALL_LINE_ROWS = 12;
 
@@ -115,6 +138,12 @@ export class QuickSearchModel {
         const all = this.tab === 'all';
         const sections: FoundSection[] = [];
 
+        if (this.#wantsChats) {
+            const chats = this.source.chats(this.query).slice(0, all ? (this.blank ? ALL_RECENT_CHAT_ROWS : ALL_CHAT_ROWS) : CHAT_ROWS);
+
+            if (chats.length > 0) sections.push({ id: 'chats', title: this.blank ? 'Recent chats' : 'Chats', items: chats });
+        }
+
         if (this.#wantsFiles && this.files) {
             const paths = this.files.value.slice(0, all ? ALL_FILE_ROWS : FILE_ROWS);
 
@@ -150,6 +179,7 @@ export class QuickSearchModel {
 
     setQuery(query: string): void {
         this.query = query;
+        this.activeId = null;
         clearTimeout(this.#typing);
 
         if (this.blank) {
@@ -210,12 +240,16 @@ export class QuickSearchModel {
         this.source.dispose?.();
     }
 
+    get #wantsChats(): boolean {
+        return this.tab === 'all' || this.tab === 'chats';
+    }
+
     get #wantsFiles(): boolean {
-        return this.tab !== 'text';
+        return this.tab === 'all' || this.tab === 'files';
     }
 
     get #wantsLines(): boolean {
-        return this.tab !== 'files';
+        return this.tab === 'all' || this.tab === 'text';
     }
 
     #clear(): void {

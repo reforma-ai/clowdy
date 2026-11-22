@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mergeFiles, quickSearchSource } from './quickSearchSource';
 
 import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
-import type { RootStore } from '../../stores';
+import type { ProjectState, RootStore } from '../../stores';
 
 describe('the files of two lists as one', () => {
     it('puts the names that start with the word first, then the ones that have it, then the paths, the shorter first, each file once', () => {
@@ -37,7 +37,9 @@ describe('the names the palette looks for', () => {
         });
         const root = { transport: { getProjectFiles: vi.fn(listed), fileSystem } } as unknown as RootStore;
 
-        return quickSearchSource(root, 'p1' as ProjectId, FOLDER).files;
+        const project = { id: 'p1' as ProjectId, chats: new Map(), runs: new Map(), project: { folders: [FOLDER] } } as unknown as ProjectState;
+
+        return quickSearchSource(root, project, FOLDER).files;
     }
 
     it('are the project\'s files of this folder and the ones in the folder\'s tree, such as a file that git ignores', async () => {

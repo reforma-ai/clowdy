@@ -97,6 +97,15 @@
     height: var(--spacing-14);
 }
 
+.chatIcon {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-14);
+    height: var(--spacing-14);
+}
+
 .main {
     flex: 0 1 auto;
     min-width: 0;
@@ -116,7 +125,8 @@
     min-width: 0;
 }
 
-.row .code + .meta {
+/* The place of a result (the file and line of a match, the folder of a chat) is at the row's far end, and keeps the little it needs. */
+.row .end {
     flex: none;
     max-width: 12rem;
     margin-inline-start: auto;

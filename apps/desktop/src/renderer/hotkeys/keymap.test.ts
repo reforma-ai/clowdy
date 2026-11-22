@@ -32,7 +32,7 @@ describe('the whole keymap', () => {
     it('holds the commands the shell, the find bar and the quick search register in the app scope, with the ones of every section', () => {
         const ids = wholeKeymap().map(({ id }) => id);
 
-        expect(ids).toEqual(expect.arrayContaining(['help.open', 'chats.new', 'sidePanel.toggle', 'find.open', 'tasks.create', 'agents.cursor.down', 'docs.cursor.down', 'docs.search', 'docs.save', 'files.showHidden', 'search.open', 'search.files', 'search.text']));
+        expect(ids).toEqual(expect.arrayContaining(['help.open', 'chats.new', 'sidePanel.toggle', 'find.open', 'tasks.create', 'agents.cursor.down', 'docs.cursor.down', 'docs.search', 'docs.save', 'files.showHidden', 'search.open', 'search.chats', 'search.files', 'search.text']));
     });
 
     it('has J in every section, so the no-collision check above is what lets them share it', () => {

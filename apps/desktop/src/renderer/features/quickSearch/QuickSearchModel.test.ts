@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ALL_FILE_ROWS, ALL_LINE_ROWS, FILE_ROWS, QuickSearchModel, TYPING_DELAY, type Found, type QuickSearchSource } from './QuickSearchModel';
+import { ALL_CHAT_ROWS, ALL_FILE_ROWS, ALL_LINE_ROWS, ALL_RECENT_CHAT_ROWS, CHAT_ROWS, FILE_ROWS, QuickSearchModel, TYPING_DELAY, type Found, type FoundChat, type QuickSearchSource } from './QuickSearchModel';
 
 import type { SearchResult } from '@clowdy/file-manager/provider';
 
@@ -21,8 +21,14 @@ function deferred<T>(): Deferred<T> {
     return out;
 }
 
+const chat = (id: string, title: string): FoundChat => ({ kind: 'chat', id: `chat:${ id }`, chatId: id, chat: { id, title } as FoundChat['chat'], run: undefined });
+
+/** The path of a result, or the id of a chat. */
+const pathOf = (found: Found | undefined) => (found === undefined ? undefined : found.kind === 'chat' ? found.chatId : found.path);
+
 function source(overrides: Partial<QuickSearchSource> = {}) {
     const found = {
+        chats: vi.fn((_query: string): FoundChat[] => []),
         files: vi.fn(async (query: string) => [`${ query }.ts`, 'docs/guide.md']),
         text: vi.fn(async () => result(['src/a.ts', [3, 9]], ['src/b.ts', [1]])),
         open: vi.fn<(found: Found) => void>(),
@@ -117,12 +123,12 @@ describe('searching as the person types', () => {
         model.setQuery('two');
         await settle();
 
-        expect(model.rows.map(({ path }) => path)).toEqual(['second.ts']);
+        expect(model.rows.map(pathOf)).toEqual(['second.ts']);
 
         first.resolve(['first.ts']);
         await vi.advanceTimersByTimeAsync(0);
 
-        expect(model.rows.map(({ path }) => path)).toEqual(['second.ts']);
+        expect(model.rows.map(pathOf)).toEqual(['second.ts']);
     });
 
     it('clears what was found when the text is emptied, and ignores an answer that is still on its way', async () => {
@@ -194,6 +200,8 @@ describe('the tabs', () => {
         const model = new QuickSearchModel(source());
 
         model.stepTab(1);
+        expect(model.tab).toBe('chats');
+        model.stepTab(1);
         expect(model.tab).toBe('files');
         model.stepTab(1);
         expect(model.tab).toBe('text');
@@ -222,6 +230,82 @@ describe('the tabs', () => {
     });
 });
 
+describe('the chats', () => {
+    const titles = (model: QuickSearchModel) => model.rows.map(row => (row.kind === 'chat' ? row.chat.title : row.kind));
+
+    it('are the first list on the All tab, and the only one on the Chats tab, which searches nothing else', async () => {
+        const quick = source({ chats: vi.fn(() => [chat('c1', 'Booking form'), chat('c2', 'Price rules')]) });
+        const model = new QuickSearchModel(quick);
+
+        model.setQuery('b');
+        await settle();
+
+        expect(model.sections.map(({ id }) => id)).toEqual(['chats', 'files', 'text']);
+        expect(quick.chats).toHaveBeenLastCalledWith('b');
+
+        const only = source({ chats: quick.chats });
+        const chats = new QuickSearchModel(only, 'chats');
+
+        chats.setQuery('b');
+        await settle();
+
+        expect(chats.sections.map(({ id }) => id)).toEqual(['chats']);
+        expect(only.files).not.toHaveBeenCalled();
+        expect(only.text).not.toHaveBeenCalled();
+        expect(chats.pending).toBe(false);
+        expect(chats.answered).toBe(true);
+    });
+
+    it('are listed at once, as they are typed, without waiting for the pause that the files wait for', () => {
+        const quick = source({ chats: vi.fn((query: string) => (query === 'pr' ? [chat('c2', 'Price rules')] : [chat('c1', 'Booking form'), chat('c2', 'Price rules')])) });
+        const model = new QuickSearchModel(quick, 'chats', 'x');
+
+        expect(titles(model)).toEqual(['Booking form', 'Price rules']);
+
+        model.setQuery('pr');
+
+        expect(titles(model)).toEqual(['Price rules']);
+    });
+
+    it('are the latest ones while nothing is typed, on the tabs that list chats, and the hint is for the others', () => {
+        const recent = Array.from({ length: 20 }, (_, index) => chat(`c${ index }`, `Chat ${ index }`));
+        const model = new QuickSearchModel(source({ chats: () => recent }));
+
+        expect(model.blank).toBe(true);
+        expect(model.sections).toMatchObject([{ id: 'chats', title: 'Recent chats' }]);
+        expect(model.rows).toHaveLength(ALL_RECENT_CHAT_ROWS);
+
+        model.setTab('chats');
+        expect(model.rows).toHaveLength(20);
+
+        model.setTab('files');
+        expect(model.rows).toEqual([]);
+    });
+
+    it('are a few on the All tab, with the files and lines below them, and all of them on their own', async () => {
+        const many = Array.from({ length: CHAT_ROWS + 10 }, (_, index) => chat(`c${ index }`, `Chat ${ index }`));
+        const model = new QuickSearchModel(source({ chats: () => many }));
+
+        model.setQuery('chat');
+        await settle();
+
+        expect(model.sections.map(({ id, items }) => [id, items.length])).toEqual([['chats', ALL_CHAT_ROWS], ['files', 2], ['text', 3]]);
+
+        model.setTab('chats');
+        expect(model.rows).toHaveLength(CHAT_ROWS);
+    });
+
+    it('start the row the keys are on at the first again when the query changes', () => {
+        const model = new QuickSearchModel(source({ chats: () => [chat('c1', 'One'), chat('c2', 'Two')] }), 'chats');
+
+        model.move(1);
+        expect(pathOf(model.active)).toBe('c2');
+
+        model.setQuery('o');
+        expect(pathOf(model.active)).toBe('c1');
+    });
+});
+
 describe('the row the keys are on', () => {
     async function listed() {
         const quick = source();
@@ -236,21 +320,21 @@ describe('the row the keys are on', () => {
     it('is the first, moves with the arrows round to the other end, and is the first again for a new answer', async () => {
         const { model } = await listed();
 
-        expect(model.active?.path).toBe('ab.ts');
+        expect(pathOf(model.active)).toBe('ab.ts');
 
         model.move(1);
-        expect(model.active?.path).toBe('docs/guide.md');
+        expect(pathOf(model.active)).toBe('docs/guide.md');
 
         model.move(1);
-        expect(model.active?.path).toBe('ab.ts');
+        expect(pathOf(model.active)).toBe('ab.ts');
 
         model.move(-1);
-        expect(model.active?.path).toBe('docs/guide.md');
+        expect(pathOf(model.active)).toBe('docs/guide.md');
 
         model.setQuery('abc');
         await settle();
 
-        expect(model.active?.path).toBe('abc.ts');
+        expect(pathOf(model.active)).toBe('abc.ts');
     });
 
     it('follows the pointer', async () => {
@@ -258,7 +342,7 @@ describe('the row the keys are on', () => {
 
         model.activate(model.rows[1]!);
 
-        expect(model.active?.path).toBe('docs/guide.md');
+        expect(pathOf(model.active)).toBe('docs/guide.md');
     });
 
     it('opens the row it is on, or the one it is given, and reports that there was none', async () => {

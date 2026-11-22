@@ -11,10 +11,11 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useId, useRef, type KeyboardEvent } from 'react';
 
 import { CommandHotkey } from '../../hotkeys';
+import { ChatIcon } from '../agents/ChatIcon';
 import { Marked, visiblePreview, wordRanges } from './preview';
 import styles from './QuickSearch.module.css';
 import { TAB_COMMANDS } from './quickSearchCommands';
-import { QUICK_SEARCH_TABS, type Found, type QuickSearchModel, type QuickSearchTab } from './QuickSearchModel';
+import { QUICK_SEARCH_TABS, type Found, type FoundChat, type FoundFile, type FoundLine, type QuickSearchModel, type QuickSearchTab } from './QuickSearchModel';
 
 export interface QuickSearchProps {
     model: QuickSearchModel;
@@ -23,19 +24,23 @@ export interface QuickSearchProps {
 }
 
 const PLACEHOLDERS: Record<QuickSearchTab, string> = {
-    all: 'Search files and the text in them',
+    all: 'Search chats, files and the text in them',
+    chats: 'Search chats by title',
     files: 'Search files by name',
     text: 'Search the text in files',
 };
 
+/** What an empty list says while nothing is typed: the chats tabs list the latest chats, so they say so only when there are none. */
 const HINTS: Record<QuickSearchTab, string> = {
-    all: 'Find a file by its name, or a line by its words',
+    all: 'Find a chat by its title, a file by its name, or a line by its words',
+    chats: 'No chats yet',
     files: 'Type the name of a file, or a part of its path',
     text: 'Type the words to find in your files',
 };
 
 const EMPTY: Record<QuickSearchTab, string> = {
     all: 'Nothing found',
+    chats: 'No chats found',
     files: 'No files found',
     text: 'No matches',
 };
@@ -44,11 +49,6 @@ const EMPTY: Record<QuickSearchTab, string> = {
 const rowId = (list: string, index: number) => `${ list }-${ index }`;
 
 function Row({ id, found, query, active, onOpen, onHover }: { id: string; found: Found; query: string; active: boolean; onOpen: () => void; onHover: () => void }) {
-    const folder = dirname(found.path);
-    const name = basename(found.path);
-    const line = found.kind === 'line' ? found : null;
-    const preview = line ? visiblePreview(line) : null;
-
     return (
         <div
             id={ id }
@@ -59,21 +59,43 @@ function Row({ id, found, query, active, onOpen, onHover }: { id: string; found:
             onClick={ onOpen }
             onMouseMove={ onHover }
         >
-            <FileIcon path={ found.path } kind="file" className={ styles.icon } />
-            { line && preview
-                ? (
-                    <>
-                        <span className={ cn(styles.main, styles.code) }><Marked text={ preview.text } ranges={ preview.ranges } /></span>
-                        <Text truncate variant="xs" color="secondary" className={ styles.meta }>{ `${ name }:${ line.line }` }</Text>
-                    </>
-                )
-                : (
-                    <>
-                        <span className={ styles.main }><Marked text={ name } ranges={ wordRanges(name, query) } /></span>
-                        { folder && <Text truncate variant="xs" color="secondary" className={ styles.meta }>{ folder }</Text> }
-                    </>
-                ) }
+            { found.kind === 'chat' ? <ChatRow found={ found } query={ query } /> : found.kind === 'line' ? <LineRow found={ found } /> : <FileRow found={ found } query={ query } /> }
         </div>
+    );
+}
+
+function ChatRow({ found: { chat, run, note }, query }: { found: FoundChat; query: string }) {
+    return (
+        <>
+            <span className={ styles.chatIcon }><ChatIcon chat={ chat } run={ run } /></span>
+            <span className={ styles.main }><Marked text={ chat.title } ranges={ wordRanges(chat.title, query) } /></span>
+            { note && <Text truncate variant="xs" color="secondary" className={ cn(styles.meta, styles.end) }>{ note }</Text> }
+        </>
+    );
+}
+
+function FileRow({ found: { path }, query }: { found: FoundFile; query: string }) {
+    const folder = dirname(path);
+    const name = basename(path);
+
+    return (
+        <>
+            <FileIcon path={ path } kind="file" className={ styles.icon } />
+            <span className={ styles.main }><Marked text={ name } ranges={ wordRanges(name, query) } /></span>
+            { folder && <Text truncate variant="xs" color="secondary" className={ styles.meta }>{ folder }</Text> }
+        </>
+    );
+}
+
+function LineRow({ found }: { found: FoundLine }) {
+    const preview = visiblePreview(found);
+
+    return (
+        <>
+            <FileIcon path={ found.path } kind="file" className={ styles.icon } />
+            <span className={ cn(styles.main, styles.code) }><Marked text={ preview.text } ranges={ preview.ranges } /></span>
+            <Text truncate variant="xs" color="secondary" className={ cn(styles.meta, styles.end) }>{ `${ basename(found.path) }:${ found.line }` }</Text>
+        </>
     );
 }
 

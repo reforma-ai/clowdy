@@ -1,9 +1,11 @@
+import { openChat } from '../chats/archiveChat';
 import { isHiddenPath, treeLayout } from '../files';
+import { foundChats } from './quickSearchChats';
 
 import type { FileManager } from '@clowdy/file-manager';
 import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
-import type { RootStore } from '../../stores';
-import type { Found, QuickSearchSource } from './QuickSearchModel';
+import type { ProjectState, RootStore } from '../../stores';
+import type { Found, FoundChat, QuickSearchSource } from './QuickSearchModel';
 
 /** The most files the daemon is asked for by the project's list: its own cap. */
 const FILE_LIMIT = 100;
@@ -48,7 +50,7 @@ async function managerOf(root: RootStore, projectId: ProjectId, folder: ProjectF
  * Opens a result in the side panel's Files tab: the panel shows, the tab is the Files one, and the file is in a tab of the editor, with the match selected
  * when the result is a line. The tab shows the folder the window is working in, which is the one the palette searched.
  */
-export async function openFound(root: RootStore, projectId: ProjectId, folder: ProjectFolder, found: Found): Promise<void> {
+export async function openFound(root: RootStore, projectId: ProjectId, folder: ProjectFolder, found: Exclude<Found, FoundChat>): Promise<void> {
     const ui = root.ui.forProject(projectId);
 
     if (!ui.sidePanelOpen) ui.toggleSidePanel();
@@ -83,10 +85,12 @@ export async function selectedText(root: RootStore, projectId: ProjectId, folder
  * file tree, so a file the tree shows is found whether git ignores it or not; the content from the folder's file manager, which searches through the daemon (ripgrep) and, where a provider has no search, reads the files itself. Hidden files are left out
  * unless the tree shows them: what the tree does not show is not searched either.
  */
-export function quickSearchSource(root: RootStore, projectId: ProjectId, folder: ProjectFolder): QuickSearchSource {
+export function quickSearchSource(root: RootStore, project: ProjectState, folder: ProjectFolder): QuickSearchSource {
+    const projectId = project.id;
     let manager: FileManager | undefined;
 
     return {
+        chats: query => foundChats(project, query),
         files: async (query) => {
             // Two answers: the project's list (git's tracked and unignored files, the words matched one by one), and the files the tree has, which is what the person
             // sees: a file that git ignores is in the tree and not in that list. Either one on its own is an answer; a failure is one only when both fail.
@@ -115,7 +119,10 @@ export function quickSearchSource(root: RootStore, projectId: ProjectId, folder:
 
             return search.result ?? { files: [], truncated: false };
         },
-        open: found => void openFound(root, projectId, folder, found),
+        open: (found) => {
+            if (found.kind === 'chat') void openChat(root, project, root.ui.forProject(projectId), found.chatId);
+            else void openFound(root, projectId, folder, found);
+        },
         dispose: () => manager?.search.dispose(),
     };
 }

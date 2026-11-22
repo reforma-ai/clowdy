@@ -33,7 +33,7 @@ export function openQuickSearch(root: RootStore, tab: QuickSearchTab = 'all'): v
     const ui = root.ui.forProject(projectId);
     const folder = currentFolder(project, ui);
     const { folders } = project.project;
-    const model = new QuickSearchModel(quickSearchSource(root, projectId, folder), tab);
+    const model = new QuickSearchModel(quickSearchSource(root, project, folder), tab);
 
     current = model;
     showQuickSearch(

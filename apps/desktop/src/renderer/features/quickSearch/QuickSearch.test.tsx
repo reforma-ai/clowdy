@@ -112,13 +112,55 @@ describe('the quick search palette', () => {
         expect(note()).toBe('No matches');
     });
 
-    it('shows the files and the lines in one list on the All tab, with a heading for each', async () => {
+    it('shows the chats, the files and the lines in one list on the All tab, with a heading for each', async () => {
         await open('all');
-        await search('price');
+        await search('booking');
 
         const headings = [...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'));
 
-        expect(headings).toEqual(['Files', 'Text']);
+        expect(headings).toEqual(['Chats', 'Files', 'Text']);
+    });
+
+    it('lists the latest chats of the project before anything is typed, and finds the ones whose title has the words', async () => {
+        await open('chats');
+
+        const latest = [...store.selectedProject!.chats.values()].filter(chat => chat.archivedAt === undefined && chat.parentChatId === undefined).toSorted((a, b) => b.updatedAt - a.updatedAt).map(chat => chat.title);
+
+        expect(names()).toEqual(latest);
+        expect(field().placeholder).toBe('Search chats by title');
+
+        await search('architecture');
+
+        expect(names()).toEqual(['Architecture questions']);
+        expect(rows()[0]!.querySelector('mark')?.textContent).toBe('Architecture');
+
+        await search('no chat has these words');
+
+        expect(rows()).toEqual([]);
+        expect(note()).toBe('No chats found');
+    });
+
+    it('shows the latest chats on the All tab while nothing is typed, and nothing of the files', async () => {
+        await open('all');
+
+        expect(names().length).toBeGreaterThan(0);
+        expect([...document.body.querySelectorAll('[role="listbox"] [role="group"]')].map(group => group.getAttribute('aria-label'))).toEqual(['Recent chats']);
+    });
+
+    it('opens the chat of the row on Enter, in the Agents section, and leaves the side panel as it was', async () => {
+        const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
+        const target = [...store.selectedProject!.chats.values()].find(chat => chat.title === 'Architecture questions')!;
+
+        act(() => store.ui.showSection(ui, 'tasks'));
+        await open('chats');
+        await search('architecture');
+        press('Enter');
+        await settle(200);
+
+        expect(document.body.querySelector('[role="combobox"]')).toBeNull();
+        expect(ui.chatId).toBe(target.id);
+        expect(ui.section).toBe('agents');
+        expect(ui.sidePanelOpen).toBe(false);
     });
 
     it('moves the row with the arrows, and opens the file of the row on Enter in the side panel\'s Files tab, which it shows', async () => {
@@ -170,10 +212,16 @@ describe('the quick search palette', () => {
         press('Tab');
         await settle();
 
+        expect(field().placeholder).toBe('Search chats by title');
+
+        press('Tab');
+        await settle();
+
         expect(field().placeholder).toBe('Search files by name');
         expect(document.activeElement).toBe(field());
         expect(document.body.querySelectorAll('[role="listbox"] [role="group"]')).toHaveLength(1);
 
+        press('Tab', { shiftKey: true });
         press('Tab', { shiftKey: true });
         press('Tab', { shiftKey: true });
         await settle();
