@@ -1044,6 +1044,28 @@ describe('threads', () => {
         expect(rowOf('c-6e').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe('codex');
     });
 
+    it('lists a thread that waits for the person under its folded chat, with the dot on both, and the other threads stay folded away', async () => {
+        // The thread rests for its background work while its agent asks: its card is the only sign (`Run.awaitingUser`).
+        await draw(() => project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: true }));
+
+        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-6e', 'c-5', 'c-3', 'c-2']);
+        expect(['c-6', 'c-6e'].map(depthOf)).toEqual(['0', '1']);
+        expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('false');
+        expect(dotOf('c-6')).toBe('A thread is waiting for you');
+        expect(dotOf('c-6e')).toBe('Waiting');
+
+        // Opening the fold lists every thread, the asking one in its place.
+        await act(async () => foldOf('c-6')!.click());
+        await draw();
+        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e', 'c-5', 'c-3', 'c-2']);
+
+        // Decided: the thread goes back behind the fold, and the chat's dot to its threads working.
+        await act(async () => foldOf('c-6')!.click());
+        await draw(() => project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: undefined }));
+        expect(rowKeys()).not.toContain('c-6e');
+        expect(dotOf('c-6')).toBe('Threads working');
+    });
+
     it('offers no Archive on a chat whose threads work, and offers it on a finished thread', async () => {
         await draw(() => ui().toggleChatExpanded('c-6'));
 

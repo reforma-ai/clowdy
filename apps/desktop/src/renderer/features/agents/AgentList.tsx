@@ -19,7 +19,7 @@ import { deleteChat } from '../chats/deleteChat';
 import { threadsAtWork } from '../chats/runningAgentRows';
 import { agentCommands, AGENTS_SCOPE } from './agentCommands';
 import styles from './AgentList.module.css';
-import { agentGroups, agentRows, ancestorChats, groupFolderOf, isActiveThread, orchestratorOf, type AgentGroup, type AgentRow, type AgentSelection } from './agentTree';
+import { agentGroups, agentRows, ancestorChats, asksThePerson, groupFolderOf, isActiveThread, orchestratorOf, type AgentGroup, type AgentRow, type AgentSelection } from './agentTree';
 import { ArchiveButton } from './ArchiveButton';
 import { ChatIcon } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
@@ -255,9 +255,12 @@ export function AgentList({ selection, chats, missing }: { selection: AgentSelec
 
     const renderRow = (row: AgentRow) => {
         const { chat } = row;
-        // The same threads the strip above its message box lists.
-        const threadsWorking = threadsAtWork(project.threadsOf(chat.id), project.runs).length > 0;
-        const icon = <ChatIcon chat={ chat } run={ runOf(chat) } threadsWorking={ threadsWorking } />;
+        // A thread below the chat, at any depth, that waits for the person: its row is listed under a folded chat too, and the chat's dot says so. Else the
+        // same threads the strip above the message box lists, when they work.
+        const threads = project.threadsBelow(chat.id).some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
+            ? 'asking' as const
+            : threadsAtWork(project.threadsOf(chat.id), project.runs).length > 0 ? 'working' as const : undefined;
+        const icon = <ChatIcon chat={ chat } run={ runOf(chat) } threads={ threads } />;
 
         return (
             <GridListItem

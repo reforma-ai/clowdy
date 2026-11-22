@@ -125,7 +125,15 @@ export type StripRow =
     | { kind: 'agent'; id: RunId; run: Run }
     | { kind: 'thread'; id: ChatId; chat: Chat; run: Run };
 
-/** The rows of the strip, oldest first, sub-agents and threads together: a sub-agent by when its run was made, a thread by when it was made. */
+/** Whether the row's agent or thread waits for the person (`shownRunStatus`, so also while its run rests for background work with a card open). */
+export function needsPerson(row: StripRow): boolean {
+    return shownRunStatus(row.run) === 'waiting_user';
+}
+
+/**
+ * The rows of the strip, those that wait for the person first and then the rest, each group oldest first, sub-agents and threads together: a sub-agent by
+ * when its run was made, a thread by when it was made. A question comes to the top, so the cap on the rows never hides it.
+ */
 export function stripRows(agents: readonly Run[], threads: readonly ThreadAtWork[]): StripRow[] {
     const rows: StripRow[] = [
         ...agents.map(run => ({ kind: 'agent' as const, id: run.id, run })),
@@ -133,7 +141,15 @@ export function stripRows(agents: readonly Run[], threads: readonly ThreadAtWork
     ];
     const madeAt = (row: StripRow) => (row.kind === 'agent' ? row.run.createdAt : row.chat.createdAt);
 
-    return rows.sort((a, b) => madeAt(a) - madeAt(b) || a.id.localeCompare(b.id));
+    return rows.sort((a, b) => Number(needsPerson(b)) - Number(needsPerson(a)) || madeAt(a) - madeAt(b) || a.id.localeCompare(b.id));
+}
+
+/**
+ * The rows to draw: all of them, or, while the person has folded the strip, only those that wait for them. A fold hides work that goes on, never a
+ * question: a thread that asks stays on the folded line.
+ */
+export function drawnRows(rows: readonly StripRow[], folded: boolean): StripRow[] {
+    return folded ? rows.filter(needsPerson) : [...rows];
 }
 
 /**

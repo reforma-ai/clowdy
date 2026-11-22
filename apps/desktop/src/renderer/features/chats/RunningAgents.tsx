@@ -14,6 +14,7 @@ import {
     backgroundRows,
     backgroundRowText,
     canStopAlone,
+    drawnRows,
     MAX_AGENT_ROWS,
     offersStopAll,
     openBackground,
@@ -165,16 +166,18 @@ export function RunningAgents({ chat }: { chat: Chat }) {
     const orchestrator = chat.orchestratorRunId === undefined ? undefined : project.runs.get(chat.orchestratorRunId);
     // A sub-agent with a child run is one of the rows above, and is not counted again here; a command that can be stopped alone has a row of its own.
     const { own, counted: background } = backgroundRows(openBackground(orchestrator), agents);
-    const hidden = rows.length - MAX_AGENT_ROWS;
     const folded = ui.agentsFolded && rows.length > 0;
+    // A fold hides what goes on, not what waits for the person.
+    const drawn = drawnRows(rows, folded);
+    const hidden = drawn.length - MAX_AGENT_ROWS;
 
     if (rows.length === 0 && own.length === 0 && background.length === 0) return null;
 
     return (
         <ComposerBanner role="group" aria-label="Work in progress">
             { rows.length > 0 && <AgentsHeader orchestrator={ orchestrator } agents={ agents } threads={ threads } /> }
-            { !folded && rows.slice(0, MAX_AGENT_ROWS).map(row => <Row key={ row.id } row={ row } />) }
-            { !folded && hidden > 0 && <ComposerBannerStatus icon={ <Robot /> }>{ `${ hidden } more ${ hidden === 1 ? 'agent' : 'agents' } at work` }</ComposerBannerStatus> }
+            { drawn.slice(0, MAX_AGENT_ROWS).map(row => <Row key={ row.id } row={ row } />) }
+            { hidden > 0 && <ComposerBannerStatus icon={ <Robot /> }>{ `${ hidden } more ${ hidden === 1 ? 'agent' : 'agents' } at work` }</ComposerBannerStatus> }
             { !folded && orchestrator && own.map(item => <BackgroundItemRow key={ item.id } runId={ orchestrator.id } item={ item } />) }
             { !folded && orchestrator && background.length > 0 && <BackgroundRow runId={ orchestrator.id } count={ background.length } /> }
         </ComposerBanner>

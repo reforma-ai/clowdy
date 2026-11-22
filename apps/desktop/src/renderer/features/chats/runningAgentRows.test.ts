@@ -7,6 +7,7 @@ import {
     backgroundRows,
     backgroundRowText,
     canStopAlone,
+    drawnRows,
     MAX_AGENT_ROWS,
     offersStopAll,
     openBackground,
@@ -194,6 +195,25 @@ describe('threads in the strip', () => {
         const runs = new Map([['run-a', orchestrator('a', 'running')]]);
 
         expect(threadsAtWork([thread('a', 1, { archivedAt: 2 }), thread('fresh', 2, { orchestratorRunId: undefined })], runs)).toEqual([]);
+    });
+
+    it('puts what waits for the person first, then the rest oldest first, so a cap never hides a question', () => {
+        const runs = new Map([['run-old', orchestrator('old', 'running')], ['run-new', orchestrator('new', 'waiting_background')], ['run-later', orchestrator('later', 'waiting_user')]]);
+        // A thread that rests for its background work while its agent asks reads as asking too.
+        runs.set('run-new', { ...runs.get('run-new')!, awaitingUser: true });
+
+        const rows = stripRows([run('agent', 'running', { createdAt: 5 })], threadsAtWork([thread('old', 1), thread('new', 2), thread('later', 3)], runs));
+
+        expect(rows.map(row => row.id)).toEqual(['new', 'later', 'old', 'agent']);
+    });
+
+    it('draws every row, or while folded only those that wait for the person', () => {
+        const runs = new Map([['run-a', orchestrator('a', 'running')], ['run-b', { ...orchestrator('b', 'waiting_background'), awaitingUser: true }]]);
+        const rows = stripRows([], threadsAtWork([thread('a', 1), thread('b', 2)], runs));
+
+        expect(drawnRows(rows, false).map(row => row.id)).toEqual(['b', 'a']);
+        expect(drawnRows(rows, true).map(row => row.id)).toEqual(['b']);
+        expect(drawnRows(stripRows([], threadsAtWork([thread('a', 1)], new Map([['run-a', orchestrator('a', 'running')]]))), true)).toEqual([]);
     });
 
     it('puts sub-agents and threads in one list, by when each was made', () => {
