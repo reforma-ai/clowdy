@@ -26,13 +26,13 @@ describe('the whole keymap', () => {
         const commands = wholeKeymap();
 
         expect(new Set(commands.map(({ id }) => id)).size).toBe(commands.length);
-        expect(new Set(commands.map(({ scope }) => scope))).toEqual(new Set(['app', 'tasks', 'agents', 'docs']));
+        expect(new Set(commands.map(({ scope }) => scope))).toEqual(new Set(['app', 'tasks', 'agents', 'docs', 'files']));
     });
 
     it('holds the commands the shell and the find bar register in the app scope, with the ones of every section', () => {
         const ids = wholeKeymap().map(({ id }) => id);
 
-        expect(ids).toEqual(expect.arrayContaining(['help.open', 'chats.new', 'sidePanel.toggle', 'find.open', 'tasks.create', 'agents.cursor.down', 'docs.cursor.down', 'docs.search', 'docs.save']));
+        expect(ids).toEqual(expect.arrayContaining(['help.open', 'chats.new', 'sidePanel.toggle', 'find.open', 'tasks.create', 'agents.cursor.down', 'docs.cursor.down', 'docs.search', 'docs.save', 'files.showHidden']));
     });
 
     it('has J in every section, so the no-collision check above is what lets them share it', () => {

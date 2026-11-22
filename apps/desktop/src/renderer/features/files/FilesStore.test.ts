@@ -34,24 +34,19 @@ describe('FilesStore', () => {
         other.dispose();
     });
 
-    it('lists the folder through the provider of the transport, leaving out Git\'s folder and what the system litters, and keeping node_modules back until asked', async () => {
-        const provider = new MemoryFileSystem({ 'a.ts': '', '.git/config': '', '.DS_Store': '', 'src/.DS_Store': '', 'node_modules/x/index.js': '', '.clowdy/docs/a.md': '' });
+    it('lists the folder through the provider and keeps the hidden files back until asked: the names that start with a dot, and node_modules', async () => {
+        const provider = new MemoryFileSystem({ 'a.ts': '', '.git/config': '', '.DS_Store': '', 'src/.env': '', 'src/b.ts': '', 'node_modules/x/index.js': '', '.clowdy/docs/a.md': '' });
         const store = new FilesStore({ fileSystem: () => provider }, memory());
         const manager = store.managerOf('p', 'f');
 
         await settle();
 
-        expect(manager.tree.isVisible('a.ts')).toBe(true);
-        expect(manager.tree.isVisible('.git')).toBe(false);
-        expect(manager.tree.isVisible('.DS_Store')).toBe(false);
-        expect(manager.tree.isVisible('src/.DS_Store')).toBe(false);
-        expect(manager.tree.isVisible('node_modules')).toBe(false);
-        expect(manager.tree.isVisible('.clowdy')).toBe(false);
+        expect(['a.ts', 'src', 'src/b.ts'].map(path => manager.tree.isVisible(path))).toEqual([true, true, true]);
+        expect(['.git', '.DS_Store', 'src/.env', 'node_modules', '.clowdy', '.clowdy/docs/a.md'].map(path => manager.tree.isVisible(path))).toEqual([false, false, false, false, false, false]);
 
         manager.tree.setShowHidden(true);
 
-        expect(manager.tree.isVisible('node_modules')).toBe(true);
-        expect(manager.tree.isVisible('.git')).toBe(false);
+        expect(['.git', '.DS_Store', 'src/.env', 'node_modules', '.clowdy', '.clowdy/docs/a.md'].map(path => manager.tree.isVisible(path))).toEqual([true, true, true, true, true, true]);
 
         store.dispose();
     });

@@ -16,13 +16,17 @@ describe('TreeLayout', () => {
         expect(layout.open).toBe(true);
         expect(layout.width).toBe(TREE_DEFAULT_WIDTH);
 
+        expect(layout.showHidden).toBe(false);
+
         layout.toggle();
         layout.setWidth(301.4);
+        layout.setShowHidden(true);
 
         const next = new TreeLayout(storage);
 
         expect(next.open).toBe(false);
         expect(next.width).toBe(301);
+        expect(next.showHidden).toBe(true);
     });
 
     it('shows a hidden tree when asked to, and leaves a shown one as it is', () => {

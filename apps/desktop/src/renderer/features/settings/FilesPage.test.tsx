@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { treeLayout } from '../files';
 import { openWithPreferences } from '../openWith';
 import { FilesPage } from './FilesPage';
 
@@ -54,6 +55,7 @@ beforeEach(async () => {
     openWithPreferences.editor = undefined;
     openWithPreferences.terminal = undefined;
     openWithPreferences.fileManager = undefined;
+    treeLayout.setShowHidden(false);
 });
 
 afterEach(() => {
@@ -64,6 +66,24 @@ afterEach(() => {
 });
 
 describe('FilesPage', () => {
+    it('has the switch for the hidden files of the file tree, off to start, which is the same choice as the key of the Files tab', async () => {
+        await draw({ getOpenApps: async () => APPS });
+
+        const hidden = () => container.querySelector<HTMLInputElement>('input[aria-label="Show hidden files"]')!;
+
+        expect(container.textContent).toContain('Files that start with a dot, and node_modules');
+        expect(hidden().checked).toBe(false);
+
+        await press(hidden());
+
+        expect(treeLayout.showHidden).toBe(true);
+        expect(hidden().checked).toBe(true);
+
+        act(() => treeLayout.setShowHidden(false));
+
+        expect(hidden().checked).toBe(false);
+    });
+
     it('shows the first program of each list until one is picked', async () => {
         await draw({ getOpenApps: async () => APPS });
 

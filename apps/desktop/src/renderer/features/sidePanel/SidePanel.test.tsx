@@ -165,14 +165,12 @@ describe('the side panel of the window', () => {
         expect(panel()?.textContent).toContain('Folder');
         expect(panel()?.textContent).toContain('car-rental');
         expect(mainFolder(project).path).toBe('/Users/dev/car-rental');
-        expect(panel()?.querySelector('button[aria-label="File tree"]')).toBeNull();
-
         await press(panel()!.querySelector<HTMLButtonElement>('button[aria-label="Side panel"]')!);
 
         expect(ui().sidePanelOpen).toBe(false);
     });
 
-    it('shows the Files tab when it is chosen, with the button for the file tree beside the one that shuts the panel, and goes back to Info', async () => {
+    it('shows the Files tab when it is chosen, and goes back to Info', async () => {
         act(() => ui().toggleSidePanel());
         await draw(<Layout><p>The page</p></Layout>);
 
@@ -183,13 +181,11 @@ describe('the side panel of the window', () => {
         expect(tab('Files')?.getAttribute('aria-pressed')).toBe('true');
         expect(tab('Info')?.getAttribute('aria-pressed')).toBe('false');
         expect(panel()?.querySelector('[aria-label="Files"][class*="plate"]')?.textContent).toBe('The files');
-        expect(panel()?.querySelector('button[aria-label="File tree"]')).not.toBeNull();
 
         await press(tab('Info')!);
 
         expect(panel()?.querySelector('[aria-label="Info"][class*="plate"]')).not.toBeNull();
         expect(panel()?.textContent).not.toContain('The files');
-        expect(panel()?.querySelector('button[aria-label="File tree"]')).toBeNull();
     });
 
     it('keeps the chosen tab for the project, and starts another project on Info', async () => {

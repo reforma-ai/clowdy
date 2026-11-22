@@ -113,3 +113,50 @@ describe('the shortcuts of the view', () => {
         expect(onSidebarRequest).not.toHaveBeenCalled();
     });
 });
+
+describe('the button that shows and hides the file tree', () => {
+    const buttons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="File tree"]')];
+    const press = (target: HTMLElement) => act(async () => {
+        target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+        target.click();
+    });
+
+    it('is not there when the host gives no way to toggle the tree', () => {
+        expect(buttons()).toHaveLength(0);
+    });
+
+    it('is one button, pressed in the sidebar\'s header while the tree shows, and in the editor\'s strip while it is hidden, which has it with no file open too', async () => {
+        const onSidebarToggle = vi.fn();
+
+        draw({ onSidebarToggle });
+        await settle();
+
+        expect(buttons()).toHaveLength(1);
+        expect(buttons()[0]!.getAttribute('aria-pressed')).toBe('true');
+        expect(buttons()[0]!.closest('aside')).not.toBeNull();
+
+        await press(buttons()[0]!);
+
+        expect(onSidebarToggle).toHaveBeenCalledTimes(1);
+
+        draw({ onSidebarToggle, sidebarOpen: false });
+        await settle();
+
+        expect(buttons()).toHaveLength(1);
+        expect(buttons()[0]!.getAttribute('aria-pressed')).toBe('false');
+        expect(buttons()[0]!.closest('aside')).toBeNull();
+        expect(container.querySelector('[role="tree"]')).toBeNull();
+    });
+
+    it('stays in the sidebar\'s header on the Search tab, which has no filter beside it', async () => {
+        draw({ onSidebarToggle: () => undefined });
+        await act(async () => manager.showPanel('search'));
+        await settle();
+
+        expect(buttons()).toHaveLength(1);
+        expect(buttons()[0]!.closest('aside')).not.toBeNull();
+    });
+});

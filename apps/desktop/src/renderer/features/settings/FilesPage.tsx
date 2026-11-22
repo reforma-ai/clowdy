@@ -1,6 +1,8 @@
 import { ListBoxItem } from '@clowdy/components/List';
 import { Select } from '@clowdy/components/Select';
+import { Switch } from '@clowdy/components/Switch';
 
+import { treeLayout } from '../files';
 import { AppIcon, chosenApp, openWithPreferences, useOpenApps } from '../openWith';
 import styles from './FilesPage.module.css';
 import { SettingsCard } from './ui/SettingsCard';
@@ -13,6 +15,7 @@ import type { OpenApp, OpenFolderApp } from '../../../shared/bridge';
 const EDITOR_LABEL = 'Default IDE';
 const TERMINAL_LABEL = 'Default terminal';
 const FILE_MANAGER_LABEL = 'Default file manager';
+const HIDDEN_LABEL = 'Show hidden files';
 
 function AppSelect({ label, kind, apps, selectedId, onSelect }: { label: string; kind: OpenFolderApp['kind']; apps: readonly OpenApp[]; selectedId: string | undefined; onSelect: (id: string) => void }) {
     const selected = chosenApp(apps, selectedId);
@@ -35,14 +38,21 @@ function AppSelect({ label, kind, apps, selectedId, onSelect }: { label: string;
 }
 
 /**
- * Settings > Files: the programs that open a folder, from the line under the message box of a chat. Only the programs this computer has are offered, the
- * first of each list until the person picks another; a page outside the desktop app finds none.
+ * Settings > Files: how the file tree of the side panel shows a folder, and the programs that open a folder, from the line under the message box of a chat.
+ * Only the programs this computer has are offered, the first of each list until the person picks another; a page outside the desktop app finds none.
  */
 export function FilesPage() {
     const apps = useOpenApps();
 
     return (
-        <SettingsPage title="Files" description="Choose the programs that open your folders">
+        <SettingsPage title="Files" description="Choose how files are shown, and the programs that open your folders">
+            <SettingsSection title="File tree">
+                <SettingsCard>
+                    <SettingsRow title={ HIDDEN_LABEL } description="Files that start with a dot, and node_modules">
+                        <Switch size="sm" isSelected={ treeLayout.showHidden } aria-label={ HIDDEN_LABEL } onChange={ show => treeLayout.setShowHidden(show) } />
+                    </SettingsRow>
+                </SettingsCard>
+            </SettingsSection>
             <SettingsSection title="Open with">
                 <SettingsCard divided>
                     <SettingsRow title={ EDITOR_LABEL } description="The editor that opens a folder as a workspace">

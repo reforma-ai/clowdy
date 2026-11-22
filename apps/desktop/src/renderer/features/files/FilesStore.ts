@@ -8,9 +8,8 @@ import { readStored, writeStored, type KeyValueStorage } from '../../stores/stor
 import type { FolderId, ProjectId } from '@clowdy/protocol';
 import type { Transport } from '../../daemon/transport';
 
-/** What the tree never shows, and what it shows only when asked to ("Show hidden files"). Git's own folder and the system's litter are noise; the rest is real but is rarely what a person came for. */
-const EXCLUDE = ['**/.git', '**/.DS_Store'];
-const HIDDEN = ['**/node_modules', '.clowdy'];
+/** The hidden files, which the tree shows only when asked to (`TreeLayout.showHidden`): every name that starts with a dot, as on macOS and Linux (a Windows folder has them too), and `node_modules`. Nothing is left out for good. */
+const HIDDEN = ['**/.*', '**/node_modules'];
 
 const tabsKey = (projectId: ProjectId, folderId: FolderId) => `clowdy:files:${ projectId }:${ folderId }`;
 
@@ -65,7 +64,6 @@ export class FilesStore {
         const manager = new FileManager({
             provider: files,
             search: files.search?.bind(files),
-            exclude: EXCLUDE,
             hidden: HIDDEN,
             notify: (message, error) => void toast.error({ title: message, message: error === undefined ? undefined : errorMessage(error) }),
         });

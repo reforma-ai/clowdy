@@ -4,7 +4,6 @@ import { Folder, Info } from '@clowdy/icons/16';
 import { lazy, Suspense } from 'react';
 
 import { useProjectUi } from '../../stores';
-import { FilesTreeToggle } from '../files';
 import { InfoTab } from './InfoTab';
 import styles from './SidePanel.module.css';
 import { SidePanelToggle } from './SidePanelToggle';
@@ -41,7 +40,6 @@ export function SidePanel() {
                     )) }
                 </div>
                 <div className={ styles.end }>
-                    { chosen === 'files' && <FilesTreeToggle /> }
                     <SidePanelToggle />
                 </div>
             </header>

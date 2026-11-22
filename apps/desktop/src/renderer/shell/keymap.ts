@@ -1,5 +1,6 @@
 import { agentCommands } from '../features/agents/agentCommands';
 import { docSaveCommand, docSearchCommand, docTreeCommands } from '../features/docs/docCommands';
+import { filesCommands } from '../features/files/filesCommands';
 import { taskCommands, type TaskCommandDeps } from '../features/tasks/taskCommands';
 import { createRegistry, hotkeys, type Command, type Platform } from '../hotkeys';
 import { helpEntries, type HelpEntry } from '../hotkeys/helpEntries';
@@ -26,6 +27,7 @@ export function wholeKeymap(): Command[] {
         ...taskCommands(nothing as TaskCommandDeps),
         ...agentCommands({ list: () => null, ids: () => [], openId: () => undefined }),
         ...docTreeCommands({ tree: () => null, ...list }),
+        ...filesCommands({ toggleHidden: () => undefined }),
         docSearchCommand(() => undefined),
         docSaveCommand(nothing),
     ];
