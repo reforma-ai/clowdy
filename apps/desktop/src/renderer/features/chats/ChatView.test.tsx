@@ -1589,7 +1589,7 @@ describe('Edit in a chat', () => {
 describe('requests for permission', () => {
     const withApprovals = (fixtures: FixtureData) => void withFixtureApprovals(fixtures);
     /** The last card that asks for this (`Run this command`, `Change these files`, `Use <tool>`): the chat has an answered request for a command before its open one. */
-    const card = (heading: string) => [...container.querySelectorAll<HTMLElement>(`section[aria-label="${ heading }"]`)].at(-1) ?? null;
+    const card = (heading: string) => [...container.querySelectorAll<HTMLElement>(`div[role="group"][aria-label="${ heading }"]`)].at(-1) ?? null;
     const cardButton = (heading: string, label: string) => [...card(heading)?.querySelectorAll<HTMLButtonElement>('button') ?? []].find(candidate => candidate.textContent === label);
 
     it('draws each request in the stream, and a click on a decision sends it with the run and the request, and the card keeps it', async () => {

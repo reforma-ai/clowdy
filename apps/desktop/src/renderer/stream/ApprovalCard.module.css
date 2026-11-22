@@ -54,6 +54,7 @@
 
 .more {
     align-self: flex-start;
+    gap: var(--spacing-xxs);
     margin: 0 var(--spacing-lg) var(--spacing-md);
 }
 

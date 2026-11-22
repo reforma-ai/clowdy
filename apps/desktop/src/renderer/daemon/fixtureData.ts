@@ -420,26 +420,20 @@ export function withFixtureApprovals(data: FixtureData, now = Date.now()): Fixtu
         state: 'open',
         ...fields,
     });
+    const checks = 'set -e\ncd src/booking\nbun run test -- --coverage\nbun run typecheck\ngit diff --stat\necho "all checks passed"';
+    const paths = ['src/booking/price.ts', 'src/booking/steps/confirmation/summary.tsx', 'src/booking/__tests__/price.test.ts'];
     const entries: Array<[number, StreamItemBody]> = [
         [20, { kind: 'user', text: 'Run the booking tests and the type check, then update the price helper and publish the rules.' }],
         [19, { kind: 'assistant', done: true, text: 'I will ask before anything that changes your files or leaves this machine.' }],
-        [18, approval(1, { title: 'bun run test src/booking', subject: { kind: 'command', command: 'bun run test src/booking' }, state: 'decided', decision: 'allow_always' })],
-        [17, { kind: 'tool', toolCallId: 'tc-o8-1', name: 'Bash', state: 'done', input: { command: 'bun run test src/booking' }, output: '12 pass, 0 fail' }],
-        [
-            5,
-            approval(2, {
-                title: 'Run the checks',
-                subject: { kind: 'command', command: 'set -e\ncd src/booking\nbun run test -- --coverage\nbun run typecheck\ngit diff --stat\necho "all checks passed"', cwd: '/Users/dev/car-rental' },
-            }),
-        ],
-        [
-            4,
-            approval(3, {
-                title: 'Edit src/booking/price.ts',
-                subject: { kind: 'file_change', paths: ['src/booking/price.ts', 'src/booking/steps/confirmation/summary.tsx', 'src/booking/__tests__/price.test.ts'] },
-            }),
-        ],
-        [3, approval(4, { title: 'Publish the booking rules', subject: { kind: 'tool_use', tool: 'mcp__docs__publish', detail: 'Publish "Booking rules" to the shared docs' }, decisions: ['allow_once', 'reject'] })],
+        // A call comes first, as the daemon writes it, and the request about it after it; the call of an open request is still running.
+        [18, { kind: 'tool', toolCallId: 'tc-o8-1', name: 'Bash', state: 'done', input: { command: 'bun run test src/booking' }, output: '12 pass, 0 fail' }],
+        [18, approval(1, { toolCallId: 'tc-o8-1', title: 'bun run test src/booking', subject: { kind: 'command', command: 'bun run test src/booking' }, state: 'decided', decision: 'allow_always' })],
+        [5, { kind: 'tool', toolCallId: 'tc-o8-2', name: 'Bash', state: 'running', input: { command: checks } }],
+        [5, approval(2, { toolCallId: 'tc-o8-2', title: 'Run the checks', subject: { kind: 'command', command: checks, cwd: '/Users/dev/car-rental' } })],
+        [4, { kind: 'tool', toolCallId: 'tc-o8-3', name: 'Edit', state: 'running', input: { file_path: paths[0], old_string: 'const SURCHARGE = 0.1', new_string: 'const SURCHARGE = 0.15' } }],
+        [4, approval(3, { toolCallId: 'tc-o8-3', title: 'Edit src/booking/price.ts', subject: { kind: 'file_change', paths } })],
+        [3, { kind: 'tool', toolCallId: 'tc-o8-4', name: 'mcp__docs__publish', state: 'running', input: { title: 'Booking rules' } }],
+        [3, approval(4, { toolCallId: 'tc-o8-4', title: 'Publish the booking rules', subject: { kind: 'tool_use', tool: 'mcp__docs__publish', detail: 'Publish "Booking rules" to the shared docs' }, decisions: ['allow_once', 'reject'] })],
     ];
 
     data.items[FIXTURE_APPROVALS_RUN_ID] = entries.map(([minutes, body], index): StreamItem => ({ id: `${ FIXTURE_APPROVALS_RUN_ID }-${ index + 1 }`, runId: FIXTURE_APPROVALS_RUN_ID, seq: index + 1, at: ago(minutes), body }));

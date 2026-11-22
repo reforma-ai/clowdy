@@ -56,12 +56,12 @@ describe('ApprovalCard', () => {
             await draw({ subject: { kind: 'command', command } }, vi.fn());
 
             expect(code()).toBe('$ one\ntwo\nthree\nfour');
-            expect(button('Show 2 more lines')).toBeDefined();
+            expect(button('Show 2 more lines')?.getAttribute('aria-expanded')).toBe('false');
 
             await act(async () => button('Show 2 more lines')!.click());
 
             expect(code()).toBe(`$ ${ command }`);
-            expect(button('Show less')).toBeDefined();
+            expect(button('Show less')?.getAttribute('aria-expanded')).toBe('true');
 
             await act(async () => button('Show less')!.click());
 

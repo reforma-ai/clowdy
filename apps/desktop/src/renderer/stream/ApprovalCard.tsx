@@ -1,6 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
 import { Check, Close, Page, Terminal, Tool } from '@clowdy/icons/14';
+import { ChevronDown } from '@clowdy/icons/8';
 import { Fragment, useState } from 'react';
 
 import styles from './ApprovalCard.module.css';
@@ -62,8 +63,10 @@ function CommandBlock({ command, cwd }: { command: string; cwd?: string }) {
             <pre className={ styles.code }>{ `$ ${ visible }` }</pre>
 
             { hidden > 0 && (
-                <Button type="button" variant="inline" color="secondary" size="sm" className={ styles.more } aria-expanded={ showsAll } onPress={ () => setShowsAll(value => !value) }>
+                // In the text's own color, not the muted one: on the block's tint the muted words fall below the 4.5:1 a small control needs.
+                <Button type="button" variant="inline" size="sm" className={ styles.more } aria-expanded={ showsAll } onPress={ () => setShowsAll(value => !value) }>
                     { showsAll ? 'Show less' : hidden === 1 ? 'Show 1 more line' : `Show ${ hidden } more lines` }
+                    <ChevronDown className="chevron" aria-expanded={ showsAll } aria-hidden />
                 </Button>
             ) }
 
@@ -149,7 +152,8 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
     };
 
     return (
-        <section className={ styles.card } data-settled={ isOpen ? undefined : '' } aria-label={ headingOf(subject) }>
+        // A group, not a `section`: a labelled section is a landmark, and a chat holds many cards.
+        <div role="group" className={ styles.card } data-settled={ isOpen ? undefined : '' } aria-label={ headingOf(subject) }>
             <div className={ styles.heading }>
                 <Icon className={ styles.headingIcon } aria-hidden />
                 <Text weight="medium">{ headingOf(subject) }</Text>
@@ -180,6 +184,6 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
                     )) }
                 </div>
             ) }
-        </section>
+        </div>
     );
 }
