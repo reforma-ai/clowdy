@@ -13,33 +13,36 @@ export interface OpenInMenuInput {
     programs: OpenPrograms;
     git: FolderGit | undefined;
     effects?: OpenEffects;
+    /** Starts a shell of the Terminal tab in a folder of the tree, given its path inside the folder the tree shows; without it the row menu has no such item. */
+    inTerminal?: (relative: string) => void;
 }
 
 /** What each copy of the path is called in the submenu that holds them, where the word Copy is already said by the submenu. */
 const COPY_LABELS: Partial<Record<OpenAction['id'], string>> = { copyPath: 'Absolute path', copyRelative: 'Relative path' };
 
 /**
- * What the Files tree's row menu gets besides its own items, at the end of them, before Delete: `Copy path`, a submenu with the choice of which path to copy
- * (absolute or relative), and `Open in…`, a submenu of the editor, the file manager (it shows a file), the terminal (a folder only) and GitHub. The items are those
- * of `openActions`, as the folder pill's menu has them, minus Open in Files: the tree is the built-in file manager. A selection of several rows gets none of them,
- * and `Open in…` is left out when nothing is left to open the row in.
+ * What the Files tree's row menu gets besides its own items, at the end of them, before Delete, as the folder pill's menu has them (`openActions`) minus Open in
+ * Files, since the tree is the built-in file manager: `Open in Terminal` (a folder row, the Terminal tab), `Copy path`, a submenu with the choice of which path to
+ * copy (absolute or relative), and `Open in…`, a submenu of what leaves the app: the editor, the file manager (it shows a file), the terminal program (a folder
+ * only) and GitHub. A selection of several rows gets none of them, and `Open in…` is left out when nothing is left to open the row in.
  */
-export function openInMenuItems({ projectId, folder, programs, git, effects = openEffects }: OpenInMenuInput): (targets: readonly FileEntry[]) => FileMenuItem[] {
+export function openInMenuItems({ projectId, folder, programs, git, effects = openEffects, inTerminal }: OpenInMenuInput): (targets: readonly FileEntry[]) => FileMenuItem[] {
     return (targets) => {
         const [entry] = targets;
 
         if (targets.length !== 1 || !entry) return [];
 
         const target: OpenTarget = { projectId, folder, path: absolutePath(folder.path, entry.path), relative: entry.path, kind: entry.kind };
-        const items = (group: OpenAction['group']): FileMenuItem[] => openActions({ target, programs, git, effects })
+        const items = (group: OpenAction['group']): FileMenuItem[] => openActions({ target, programs, git, effects, inTerminal: inTerminal && (() => inTerminal(entry.path)) })
             .filter(action => action.group === group)
-            .map(action => ({ id: action.id, label: COPY_LABELS[action.id] ?? action.label, icon: group === 'open' ? actionIcon(action) : undefined, onAction: action.run }));
+            .map(action => ({ id: action.id, label: COPY_LABELS[action.id] ?? action.label, icon: group === 'copy' ? undefined : actionIcon(action), onAction: action.run }));
         const copying = items('copy');
-        const opening = items('open');
+        const outside = items('outside');
 
         return [
+            ...items('inside'),
             ...(copying.length > 0 ? [{ id: 'copy-path', label: 'Copy path', icon: <Copy aria-hidden="true" />, onAction: () => undefined, children: copying }] : []),
-            ...(opening.length > 0 ? [{ id: 'open-in', label: 'Open in…', icon: <Follow aria-hidden="true" />, onAction: () => undefined, children: opening }] : []),
+            ...(outside.length > 0 ? [{ id: 'open-in', label: 'Open in…', icon: <Follow aria-hidden="true" />, onAction: () => undefined, children: outside }] : []),
         ];
     };
 }

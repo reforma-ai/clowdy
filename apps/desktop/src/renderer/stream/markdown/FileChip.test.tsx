@@ -37,6 +37,19 @@ const press = () => act(async () => chip().click());
 const rightClick = () => act(async () => void chip().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 12, clientY: 8 })));
 const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(row => row.textContent);
 const item = (text: string) => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(row => row.textContent === text)!;
+// What leaves the app is in a submenu of the menu, opened by pressing its row.
+const MENU = ['Open in Files', 'Copy path', 'Copy relative path', 'Open in…'];
+const pressRow = (target: HTMLElement) => act(async () => {
+    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+    target.click();
+});
+const openGitHub = async () => {
+    await pressRow(item('Open in…'));
+    await pressRow(item('Open in GitHub'));
+};
 
 beforeEach(async () => {
     writeText.mockClear();
@@ -90,7 +103,7 @@ describe('FileChip', () => {
         await press();
         await settle();
 
-        expect(items()).toEqual(['Open in Files', 'Open in GitHub', 'Copy path', 'Copy relative path']);
+        expect(items()).toEqual(MENU);
     });
 
     it('opens the menu on a right-click: Files, GitHub on the branch that is checked out, and the two copies', async () => {
@@ -101,12 +114,20 @@ describe('FileChip', () => {
         await settle();
 
         expect(openInFiles).not.toHaveBeenCalled();
-        expect(items()).toEqual(['Open in Files', 'Open in GitHub', 'Copy path', 'Copy relative path']);
+        expect(items()).toEqual(MENU);
 
-        await act(async () => item('Open in GitHub').click());
+        await openGitHub();
 
         expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental/blob/main/src/booking/price.ts', '_blank', 'noopener');
         open.mockRestore();
+    });
+
+    it('has Open in Terminal for a folder, and not for a file', async () => {
+        await draw('src/booking/');
+        await rightClick();
+        await settle();
+
+        expect(items()).toEqual(['Open in Files', 'Open in Terminal', 'Copy path', 'Copy relative path', 'Open in…']);
     });
 
     it('opens the menu on a click with ⌘ or Ctrl held, in place of opening the file', async () => {
@@ -115,7 +136,7 @@ describe('FileChip', () => {
         await settle();
 
         expect(openInFiles).not.toHaveBeenCalled();
-        expect(items()).toEqual(['Open in Files', 'Open in GitHub', 'Copy path', 'Copy relative path']);
+        expect(items()).toEqual(MENU);
 
         await act(async () => item('Copy path').click());
         await act(async () => void chip().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true, clientX: 12, clientY: 8, detail: 1 })));
@@ -155,7 +176,7 @@ describe('FileChip', () => {
         uninstall();
 
         expect(openInFiles).not.toHaveBeenCalled();
-        expect(items()).toEqual(['Open in Files', 'Open in GitHub', 'Copy path', 'Copy relative path']);
+        expect(items()).toEqual(MENU);
     });
 
     it('takes a path with no trailing slash for the folder it is on the disk: the page of GitHub is its tree', async () => {
@@ -165,7 +186,7 @@ describe('FileChip', () => {
         await draw('src/booking');
         await rightClick();
         await settle();
-        await act(async () => item('Open in GitHub').click());
+        await openGitHub();
 
         expect(kindOnDisk).toHaveBeenCalledExactlyOnceWith(store, FIXTURE_PROJECT_ID, FOLDER, 'src/booking');
         expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental/tree/main/src/booking', '_blank', 'noopener');
@@ -178,7 +199,7 @@ describe('FileChip', () => {
         await draw('src/gone');
         await rightClick();
         await settle();
-        await act(async () => item('Open in GitHub').click());
+        await openGitHub();
 
         expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental/blob/main/src/gone', '_blank', 'noopener');
         open.mockRestore();
