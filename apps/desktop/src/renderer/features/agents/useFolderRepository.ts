@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { TransportError } from '../../daemon/transport';
 import { useRootStore } from '../../stores';
 
 import type { FolderGit, FolderId, ProjectId } from '@clowdy/protocol';
@@ -8,7 +9,7 @@ import type { FolderGit, FolderId, ProjectId } from '@clowdy/protocol';
 export type FolderRepository =
     /** No answer yet for this folder. */
     | { status: 'loading' }
-    /** The daemon could not say: git is not installed or did not answer, or the folder is gone. `reason` is its own words, when it gave any. */
+    /** The daemon could not say: git is not installed or did not answer, or the folder is gone. `reason` is its own words (its `unavailable`), and nothing for any other failure, whose text is a route or the network's. */
     | { status: 'failed'; reason: string }
     | { status: 'ready'; git: FolderGit };
 
@@ -38,7 +39,8 @@ export function useFolderRepository(projectId: ProjectId, folderId: FolderId): F
                 (error: unknown) => {
                     if (request !== latest) return;
 
-                    const reason = error instanceof Error ? error.message : '';
+                    // The daemon says why in a 503 (`unavailable`); any other failure has nothing a person should read.
+                    const reason = error instanceof TransportError && error.status === 503 ? error.message : '';
 
                     setRead(known => (known?.key === key && known.repository.status === 'ready' ? known : { key, repository: { status: 'failed', reason } }));
                 }

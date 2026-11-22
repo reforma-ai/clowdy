@@ -40,6 +40,8 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     // What git says of that folder, and of the choice made for it only what that bears out: nothing is sent for a folder that is no repository, or while the read has not answered.
     const repository = useFolderRepository(project.id, target.folder.id);
     const workspace = effectiveChoice(ui.draftWorkspace, repository);
+    // A choice made for the folder (a worktree) is sent only once the read bears it out, so the first message waits for it rather than go to the folder itself.
+    const waiting = ui.draftWorkspace !== null && repository.status === 'loading' ? 'Wait until the folder\'s worktrees are read' : undefined;
 
     // Files a hand-off left here join the message as if they were picked: the box uploads them to this project. What the effect adds is
     // what the store hands over, so a second run of it (strict mode) finds nothing and adds nothing.
@@ -63,7 +65,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                             chat={ undefined }
                             run={ undefined }
                             minLines={ 3 }
-                            start={ { projectId: project.id, folderId, workspace, onStarted: chatId => ui.openChat(chatId), defaults } }
+                            start={ { projectId: project.id, folderId, workspace, waiting, onStarted: chatId => ui.openChat(chatId), defaults } }
                             controls={ (
                                 <>
                                     { folders.length > 1

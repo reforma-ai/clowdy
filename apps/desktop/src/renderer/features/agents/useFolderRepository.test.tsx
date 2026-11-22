@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { TransportError } from '../../daemon/transport';
 import { RootStoreProvider, type RootStore } from '../../stores';
 import { useFolderRepository } from './useFolderRepository';
 
@@ -20,7 +21,7 @@ function transport() {
     return {
         getFolderGit,
         answer: (read: number, answer: FolderGit) => act(async () => reads[read]!.resolve(answer)),
-        refuse: (read: number, message: string) => act(async () => reads[read]!.reject(new Error(message))),
+        refuse: (read: number, message: string, status = 503) => act(async () => reads[read]!.reject(new TransportError(message, status))),
     };
 }
 
@@ -78,6 +79,15 @@ describe('useFolderRepository', () => {
         act(() => void window.dispatchEvent(new Event('focus')));
         await daemon.answer(1, { isRepository: false });
         expect(shown()).toBe('ready none');
+    });
+
+    it('gives no reason for a failure that is not the daemon saying it cannot read the folder, whose words are a route or the network\'s', async () => {
+        const daemon = transport();
+        const store = { transport: daemon } as unknown as RootStore;
+
+        draw(store, 'f-a');
+        await daemon.refuse(0, 'The daemon answered 502 for /v1/projects/p-1/git?folderId=f-a', 502);
+        expect(shown()).toBe('failed ');
     });
 
     it('keeps what it knew of the folder when a later read fails', async () => {

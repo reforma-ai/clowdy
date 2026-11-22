@@ -106,7 +106,7 @@ function ModeChip({ repository, git, choice, chats, onChoose }: ModeChipProps) {
         const why = whyNoWorktrees(repository);
         const pill = <ChipLabel label={ MODE_LABELS.checkout } aria-label={ `Where it runs: ${ MODE_LABELS.checkout }` } />;
 
-        return why ? <Unavailable label="Where it runs" hint={ why } placement="bottom">{ pill }</Unavailable> : pill;
+        return why ? <Unavailable label={ `Where it runs: ${ MODE_LABELS.checkout }` } hint={ why } placement="bottom">{ pill }</Unavailable> : pill;
     }
 
     const worktrees = pickableWorktrees(git);
@@ -116,7 +116,9 @@ function ModeChip({ repository, git, choice, chats, onChoose }: ModeChipProps) {
     return (
         <>
             <MenuTrigger onOpenChange={ (isOpen) => {
-                if (!isOpen && listWanted.current) {
+                // A wish left over from a menu that was shut some other way is not one for this opening.
+                if (isOpen) listWanted.current = false;
+                else if (listWanted.current) {
                     listWanted.current = false;
                     setIsListOpen(true);
                 }
@@ -139,6 +141,8 @@ function ModeChip({ repository, git, choice, chats, onChoose }: ModeChipProps) {
                     >
                         <MenuItem
                             id="checkout"
+                            // Every item shuts the menu, from the keyboard's Space too, which a single choice list leaves open: the list of worktrees opens as the menu closes.
+                            shouldCloseOnSelect
                             text={ MODE_LABELS.checkout }
                             description="Work in the folder as it is"
                             stacked
@@ -146,6 +150,7 @@ function ModeChip({ repository, git, choice, chats, onChoose }: ModeChipProps) {
                         />
                         <MenuItem
                             id="new"
+                            shouldCloseOnSelect
                             text={ MODE_LABELS.new }
                             description={ git.defaultBranch === undefined ? 'The repository has no commit yet' : 'A separate checkout on a branch of its own' }
                             stacked
@@ -154,6 +159,7 @@ function ModeChip({ repository, git, choice, chats, onChoose }: ModeChipProps) {
                         />
                         <MenuItem
                             id="existing"
+                            shouldCloseOnSelect
                             text={ `${ MODE_LABELS.existing }…` }
                             description={ worktrees.length === 0 ? 'The folder has no other worktrees' : 'Pick one the folder already has' }
                             stacked

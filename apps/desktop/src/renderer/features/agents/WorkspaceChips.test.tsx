@@ -149,6 +149,51 @@ describe('the mode chip', () => {
         expect(menuItem('New worktree').getAttribute('aria-checked')).toBe('true');
     });
 
+    // A single choice list shuts for Enter, and leaves itself open for Space unless its items say otherwise.
+    it('shuts for Space as for Enter, and opens the list of worktrees only for the item that asks it, as the menu closes', async () => {
+        const key = async (target: HTMLElement, name: string, code: string) => act(async () => {
+            target.focus();
+            target.dispatchEvent(new KeyboardEvent('keydown', { key: name, code, bubbles: true, cancelable: true }));
+            target.dispatchEvent(new KeyboardEvent('keyup', { key: name, code, bubbles: true, cancelable: true }));
+            render();
+        });
+
+        await press(modeChip()!);
+        await key(menuItem('New worktree'), ' ', 'Space');
+        await settle();
+
+        expect(ui().draftWorkspace).toEqual({ mode: 'new' });
+        expect(menuItems()).toEqual([]);
+        expect(options()).toEqual([]);
+
+        await press(modeChip()!);
+        await key(menuItem('Existing worktree'), ' ', 'Space');
+        await settle();
+
+        expect(menuItems()).toEqual([]);
+        expect(options().map(row => row.textContent)).toEqual(['clowdy/ab12cd34No chat uses itChanges']);
+    });
+
+    it('does not open the list of worktrees for a menu that was shut some other way after Existing worktree was asked for', async () => {
+        await press(modeChip()!);
+        await press(menuItem('Existing worktree'));
+        await settle();
+        await act(async () => {
+            search().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        });
+        await settle();
+
+        expect(options()).toEqual([]);
+
+        // The next time the menu opens and shuts, no list comes with it.
+        await press(modeChip()!);
+        await press(menuItem('Project checkout'));
+        await settle();
+
+        expect(options()).toEqual([]);
+        expect(ui().draftWorkspace).toBeNull();
+    });
+
     it('goes back to Project checkout from a worktree', async () => {
         await chooseMode('New worktree');
         await chooseMode('Project checkout');
@@ -278,7 +323,7 @@ describe('a folder that offers no worktree', () => {
     const hint = async () => {
         await act(async () => {
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-            container.querySelector<HTMLElement>('[role="button"][aria-disabled][aria-label="Where it runs"]')!.focus();
+            container.querySelector<HTMLElement>('[role="button"][aria-disabled][aria-label="Where it runs: Project checkout"]')!.focus();
         });
         await settle();
 
@@ -322,7 +367,51 @@ describe('a folder that offers no worktree', () => {
 
         expect(modeChip()).toBeNull();
         expect(container.querySelector('[aria-label="Where it runs: Project checkout"]')).not.toBeNull();
-        expect(container.querySelector('[role="button"][aria-label="Where it runs"]')).toBeNull();
+        expect(container.querySelector('[role="button"][aria-label^="Where it runs"]')).toBeNull();
+    });
+
+    it('holds the first message while a choice that was made waits for the read, rather than send the chat to the folder itself, and lets it go once the read answers', async () => {
+        const transport = new FixtureTransport();
+        let answer: (git: FolderGit) => void = () => undefined;
+
+        vi.spyOn(transport, 'getFolderGit').mockReturnValue(new Promise<FolderGit>((resolve) => {
+            answer = resolve;
+        }));
+        await start({ transport });
+        // The page comes back from another chat (back, forward) with its choice, and the read is on its way again.
+        await draw(() => ui().setDraftWorkspace({ mode: 'new', base: 'dev' }));
+
+        const before = new Set(store.selectedProject!.chats.keys());
+
+        await send('Fix it');
+        expect(made(before)).toHaveLength(0);
+        expect(editor().getText()).toContain('Fix it');
+
+        const sentWith = await FixtureTransport.prototype.getFolderGit.call(transport, FIXTURE_PROJECT_ID, 'fld_car_rental');
+
+        await act(async () => answer(sentWith));
+        await settle();
+        await act(async () => {
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+        await settle();
+
+        expect(made(before)).toHaveLength(1);
+        expect(made(before)[0]?.workspace?.managed).toBe(true);
+    });
+
+    it('holds nothing back while the read is on its way and Project checkout is what was chosen', async () => {
+        const transport = new FixtureTransport();
+
+        vi.spyOn(transport, 'getFolderGit').mockReturnValue(new Promise<FolderGit>(() => undefined));
+        await start({ transport });
+
+        const before = new Set(store.selectedProject!.chats.keys());
+
+        await send('Fix it');
+
+        expect(made(before)).toHaveLength(1);
+        expect(made(before)[0]?.workspace).toBeUndefined();
     });
 
     it('sends the chat to the folder itself, whatever had been chosen, while the read does not bear the choice out', async () => {

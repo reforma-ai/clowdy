@@ -77,9 +77,10 @@ export interface ComposerProps {
     /**
      * For the new-chat page: the project the chat is made in, the folder of it the chat works in (none: the main folder) and where in that folder (`workspace`: a
      * worktree the chat makes or one that exists; none: the folder's own checkout), what to do once its first message is sent, and what the project asks a new chat to
-     * start with (its agent and its mode; what it leaves out starts where the last chat left off).
+     * start with (its agent and its mode; what it leaves out starts where the last chat left off). `waiting` is why the first message cannot be sent yet, when what it is sent
+     * with is not known until an answer comes (the folder's worktrees are being read): the chat is not made, and Send says why.
      */
-    start?: { projectId: ProjectId; folderId?: FolderId; workspace?: ChatWorkspaceChoice; onStarted: (chatId: ChatId) => void; defaults?: { engine?: string; mode?: ChatMode } };
+    start?: { projectId: ProjectId; folderId?: FolderId; workspace?: ChatWorkspaceChoice; waiting?: string; onStarted: (chatId: ChatId) => void; defaults?: { engine?: string; mode?: ChatMode } };
     /** How many lines the empty field is tall (it still grows with the text). One by default. */
     minLines?: number;
     /** The box of an edit frame (see `EditMode`) in place of the chat's message box. */
@@ -137,7 +138,7 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
     // Submit waits for it to stop, as it waits for a file, rather than sending what is refused.
     const blocked = editMode
         ? running ? 'Stop the agent to edit' : uploadHint
-        : model.noProvider ? NO_PROVIDER_HINT : uploadHint;
+        : model.noProvider ? NO_PROVIDER_HINT : uploadHint ?? (target ? undefined : start?.waiting);
 
     const edit = (next: ComposerDoc) => {
         saveDraft(key, next);
@@ -179,7 +180,7 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
         const message = messageOf(from);
         const held = filesOf(key);
 
-        if ((!message && held.length === 0) || held.some(file => file.status !== 'ready') || model.noProvider) return;
+        if ((!message && held.length === 0) || held.some(file => file.status !== 'ready') || model.noProvider || (!target && start?.waiting !== undefined)) return;
 
         edit(emptyComposerDoc());
 

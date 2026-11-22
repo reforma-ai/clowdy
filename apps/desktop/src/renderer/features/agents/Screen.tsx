@@ -26,8 +26,10 @@ export function Screen() {
     const { chat, run } = selection;
     // The folders gone from the disk are told from what the daemon last read, when the screen opens, when the projects change and when the window gets focus again. The list
     // and the new-chat page share that one read: it costs a `git` call for each folder of each project, so each of them reading it would repeat it. The branches of the chats'
-    // worktrees (`ProjectInfo.workspaces`) are in it too, which is why it follows the focus: an agent switches branches in a terminal or in the background.
-    const { info } = useProjectsInfo({ poll: false, refreshOnFocus: true });
+    // worktrees (`ProjectInfo.workspaces`) are in it too, which is why it follows the focus (an agent switches branches in a terminal or in the background) and the worktrees that get
+    // made: a read taken while a worktree was being made says it is not there, and would make the list call it gone once it is.
+    const madeWorkspaces = [...project.chats.values()].flatMap(chat => (chat.workspace?.ready ? [chat.workspace.id] : [])).sort().join();
+    const { info } = useProjectsInfo({ poll: false, refreshOnFocus: true, reloadKey: madeWorkspaces });
     const projectInfo = info.get(project.id);
     const missing = new Set(projectInfo?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
 

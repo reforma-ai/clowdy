@@ -1271,6 +1271,29 @@ describe('a chat that works in a worktree', () => {
         expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector('[role="img"]')?.getAttribute('title')).toBe('The worktree no longer exists');
     });
 
+    it('reads again when a worktree gets made, so a read taken while it was being made does not make the row call it gone', async () => {
+        await restart(new FixtureTransport({ data: createFixtureData() }));
+
+        const created = await store.command({ type: 'chat.create', projectId: FIXTURE_PROJECT_ID, workspace: { mode: 'new' } });
+        const { chat } = (created as { data: { chat: { id: string } } }).data;
+
+        await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(false));
+        await draw();
+
+        // The window gets focus while the worktree is being made: the read says there is none yet, and the row, which names the branch it will be made on, is not wrong.
+        await act(async () => {
+            window.dispatchEvent(new Event('focus'));
+        });
+        await draw();
+        expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${ chat.id.slice(-8) }`);
+
+        await store.command({ type: 'chat.send', chatId: chat.id, text: 'Go' });
+        await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(true));
+        await draw();
+        await vi.waitFor(() => expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${ chat.id.slice(-8) }`));
+        expect(mark(chat.id)?.hasAttribute('data-gone')).toBe(false);
+    });
+
     it('falls back to the branch it was made with when the read has no word on the worktree, and to a plain line when it was made with none', async () => {
         await restart(reading(undefined).transport);
 
