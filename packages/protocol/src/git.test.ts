@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { commitScope, parseGitScope, ROUTES } from './index';
+import { commitScope, parseGitScope, ROUTES, type GitStatus } from './index';
 
 describe('parseGitScope', () => {
     test('takes the three words and a commit by its hash, short or whole, in any case', () => {
@@ -38,5 +38,26 @@ describe('ROUTES git writes', () => {
         expect(ROUTES.projectGitRemote('prj_1', 'fetch')).toBe('/v1/projects/prj_1/git/fetch');
         expect(ROUTES.projectGitRemote('prj_1', 'pull')).toBe('/v1/projects/prj_1/git/pull');
         expect(ROUTES.projectGitRemote('a/b?c', 'push')).toBe('/v1/projects/a%2Fb%3Fc/git/push');
+    });
+});
+
+describe('GitStatus.lastFetchedAt', () => {
+    const repository = { isRepository: true, head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) }, origin: true, base: { state: 'unborn' } } as const;
+
+    test('is the time of the last fetch in milliseconds, and is left out of a repository that has never fetched', () => {
+        const fetched: GitStatus = { ...repository, entries: [], lastFetchedAt: 1_700_000_000_000 };
+        const never: GitStatus = { ...repository, entries: [] };
+
+        expect(fetched).toHaveProperty('lastFetchedAt', 1_700_000_000_000);
+        expect(never).not.toHaveProperty('lastFetchedAt');
+    });
+
+    test('is a number, and a place that is no repository has none', () => {
+        // @ts-expect-error a time is a number of milliseconds, not a text
+        const text: GitStatus = { ...repository, entries: [], lastFetchedAt: '3 minutes ago' };
+        // @ts-expect-error a place that is no repository says nothing else
+        const none: GitStatus = { isRepository: false, lastFetchedAt: 1 };
+
+        expect([text, none]).toHaveLength(2);
     });
 });

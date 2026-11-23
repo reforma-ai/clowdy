@@ -7,15 +7,26 @@ import type { GitRemoteAction, GitRemoteResult, GitUpstream } from '@clowdy/prot
  * How the fixture's fetch, pull and push end, beyond going through: each starts the place in the state its name says, or fails the way git does.
  * - `slow`: every action takes a while, for a look at the running state;
  * - `behind`: the branch is published and origin has 2 commits that it lacks, so Pull has something to take;
+ * - `ahead`: published, with 2 commits of its own that origin lacks, so Push has something to send;
+ * - `level`: published and level with its upstream, last fetched 3 minutes ago (what a checkout is without a script);
+ * - `never`: published and level, and the repository has never fetched;
  * - `diverged`: published, 1 commit of its own and 2 of origin's: Pull answers `diverged`, Push is rejected;
  * - `rejected`: published with 1 commit of its own, and origin has moved on: Push is rejected with git's line;
  * - `signing`: published with 1 commit to push, and the signing agent cannot be reached, with its hint;
- * - `offline`: published with 1 commit to push, and every action fails as git does with no network.
+ * - `offline`: published with 1 commit to push, and every action fails as git does with no network;
+ * - `renamed`: the branch tracks `origin/main`, as one made with `git switch -c feat origin/main` does, with 2 commits of its own and origin's 1 more: it is not published under its own
+ *   name, so Pull is refused and Push publishes it as `origin/<branch>`;
+ * - `no_origin`: the repository has no remote called `origin`, so there is nothing to sync with;
+ * - `detached`: HEAD is on no branch;
+ * - `unborn`: the branch has no commit yet.
  */
-export type FixtureRemoteScript = 'slow' | 'behind' | 'diverged' | 'rejected' | 'signing' | 'offline';
+export type FixtureRemoteScript = 'slow' | 'behind' | 'ahead' | 'level' | 'never' | 'diverged' | 'rejected' | 'signing' | 'offline' | 'renamed' | 'no_origin' | 'detached' | 'unborn';
 
 /** The words the page's `&remote=` switch knows. */
-export const FIXTURE_REMOTE_SCRIPTS: readonly FixtureRemoteScript[] = ['slow', 'behind', 'diverged', 'rejected', 'signing', 'offline'];
+export const FIXTURE_REMOTE_SCRIPTS: readonly FixtureRemoteScript[] = ['slow', 'behind', 'ahead', 'level', 'never', 'diverged', 'rejected', 'signing', 'offline', 'renamed', 'no_origin', 'detached', 'unborn'];
+
+/** How long before the page was opened the fixture's repository last fetched, when its script does not say it never did. */
+const FETCHED_AGO_MS = 3 * 60_000;
 
 /** How long a `slow` action takes: long enough for a screenshot of its running state. */
 const SLOW_MS = 2500;
@@ -39,6 +50,8 @@ interface RemoteState {
     published: boolean;
     ahead: number;
     behind: number;
+    /** The branch of origin the branch tracks when it is not the one of its own name (`main`): until it is published under its own name. */
+    tracks?: string;
 }
 
 /**
@@ -50,9 +63,29 @@ interface RemoteState {
 export class FixtureGitRemote {
     readonly #states = new Map<string, RemoteState>();
     readonly #script: FixtureRemoteScript | undefined;
+    readonly #now: () => number;
+    /** When the repository last fetched: the fixture has one repository, so its places share the time, as the daemon's places of one repository do. */
+    #fetchedAt: number | undefined;
 
-    constructor(script?: FixtureRemoteScript) {
+    constructor(script?: FixtureRemoteScript, now: () => number = Date.now) {
         this.#script = script;
+        this.#now = now;
+        this.#fetchedAt = script === 'never' ? undefined : now() - FETCHED_AGO_MS;
+    }
+
+    /** When the repository last fetched; nothing when it never has. A fetch and a pull set it to now. */
+    get lastFetchedAt(): number | undefined {
+        return this.#fetchedAt;
+    }
+
+    /** The script has no `origin` in the repository. */
+    get hasOrigin(): boolean {
+        return this.#script !== 'no_origin';
+    }
+
+    /** The script takes HEAD off its branch (`detached`), or leaves the branch with no commit (`unborn`). */
+    get head(): 'detached' | 'unborn' | undefined {
+        return this.#script === 'detached' || this.#script === 'unborn' ? this.#script : undefined;
     }
 
     /** The upstream the place has now, nothing for a branch that is not published yet and for a HEAD on no branch. */
@@ -61,7 +94,7 @@ export class FixtureGitRemote {
 
         const state = this.#stateOf(place);
 
-        return state.published ? { name: `origin/${ place.branch }`, ahead: state.ahead, behind: state.behind } : undefined;
+        return state.published ? { name: `origin/${ state.tracks ?? place.branch }`, ahead: state.ahead, behind: state.behind } : undefined;
     }
 
     /** A commit was made in the place: a published branch is one ahead further. */
@@ -74,7 +107,11 @@ export class FixtureGitRemote {
     async run(action: GitRemoteAction, place: FixtureRemotePlace): Promise<GitRemoteResult> {
         const script = this.#script;
 
+        if (!this.hasOrigin) throw new TransportError('The repository has no origin', 400);
+
         if (action !== 'fetch' && place.branch === undefined) throw new TransportError('HEAD is detached, switch to a branch to ' + action, 400);
+
+        if (action !== 'fetch' && script === 'unborn') throw new TransportError('The branch has no commits yet', 400);
 
         if (script === 'slow') await sleep(SLOW_MS);
 
@@ -83,10 +120,19 @@ export class FixtureGitRemote {
         const state = this.#stateOf(place);
         const branch = place.branch ?? '';
 
-        if (action === 'fetch') return { state: 'done', action, ...this.#upstream(place) };
+        if (action === 'fetch') {
+            this.#fetchedAt = this.#now();
+
+            return { state: 'done', action, ...this.#upstream(place) };
+        }
 
         if (action === 'pull') {
             if (!state.published) throw new TransportError(`${ branch } has no upstream to pull from, publish it first`, 400);
+
+            if (state.tracks !== undefined) throw new TransportError(`${ branch } tracks origin/${ state.tracks }, not a branch of its own, publish it first`, 400);
+
+            // A pull fetches first, whatever it finds.
+            this.#fetchedAt = this.#now();
 
             if (state.ahead > 0 && state.behind > 0) return { state: 'diverged', upstream: this.upstreamOf(place)! };
 
@@ -97,9 +143,12 @@ export class FixtureGitRemote {
             return { state: 'done', action, pulled, ...this.#upstream(place) };
         }
 
-        if (!state.published) {
+        // A branch is sent only to the branch of its own name: one that tracks another is published under its own, which is its upstream from then on.
+        if (!state.published || state.tracks !== undefined) {
             state.published = true;
+            state.tracks = undefined;
             state.ahead = 0;
+            state.behind = 0;
 
             return { state: 'done', action, published: true, ...this.#upstream(place) };
         }
@@ -131,8 +180,9 @@ export class FixtureGitRemote {
 
             state = {
                 published: !place.worktree || scripted,
-                ahead: script === 'diverged' || script === 'rejected' || script === 'signing' || script === 'offline' ? 1 : 0,
-                behind: script === 'behind' || script === 'diverged' ? 2 : 0,
+                ahead: script === 'ahead' || script === 'renamed' ? 2 : script === 'diverged' || script === 'rejected' || script === 'signing' || script === 'offline' ? 1 : 0,
+                behind: script === 'behind' || script === 'diverged' ? 2 : script === 'renamed' ? 1 : 0,
+                ...(script === 'renamed' && { tracks: 'main' }),
             };
             this.#states.set(place.key, state);
         }

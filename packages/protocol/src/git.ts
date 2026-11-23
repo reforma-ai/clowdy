@@ -6,7 +6,8 @@
  * person's own `git` with their configuration, signing included, one at a time for a place; the last three are the only routes that reach `origin`.
  *
  * GET  /v1/projects/:id/git/status?folderId=&workspaceId=
- *                                      -> GitStatus. The branch (or the detached or unborn HEAD), its upstream with ahead and behind, the files that are not
+ *                                      -> GitStatus. The branch (or the detached or unborn HEAD), its upstream with ahead and behind and when the repository last
+ *                                         fetched (`lastFetchedAt`, the time of the newest non-empty `FETCH_HEAD`), the files that are not
  *                                         committed (one entry per path, at most `MAX_GIT_STATUS_ENTRIES`, a new file listed one by one) and `base`, the
  *                                         comparison with the branch the work is meant for (see `GitBase`). A folder that is not the root of a working tree
  *                                         answers `isRepository: false` and nothing else, as `FolderGit` does.
@@ -60,11 +61,13 @@
  *
  * POST /v1/projects/:id/git/fetch    -> GitRemoteResult. Body `GitRemoteRequest` (`folderId`, `workspaceId?`). `git fetch --no-recurse-submodules origin` and nothing else: no `--prune` of its own, no other
  *                                         remote, no submodule's. The answer carries the branch's upstream as it stands after the fetch (`upstream`, with `ahead` and `behind`), when it has one.
- * POST /v1/projects/:id/git/pull     -> GitRemoteResult. Same body. Fetches `origin`, then takes what the upstream has with `git merge --ff-only`: nothing is merged, rebased, reset or
+ * POST /v1/projects/:id/git/pull     -> GitRemoteResult. Same body. Fetches `origin`, then takes what the upstream has with `git merge --ff-only` (only for a branch whose upstream is the branch of its own
+ *                                         name: one that tracks another, as `git switch -c feat origin/main` does, is `invalid`, since it is not published): nothing is merged, rebased, reset or
  *                                         discarded. A branch that has commits of its own and falls behind its upstream as well has diverged: the answer is `state: 'diverged'` (not an
  *                                         error) and the branch is left as it was. `pulled` says how many commits came in (0: already up to date).
- * POST /v1/projects/:id/git/push     -> GitRemoteResult. Same body. Sends the branch to its upstream (`git push origin refs/heads/<branch>:<the upstream's ref>`), and when the branch has none it
- *                                         publishes it: `git push -u origin refs/heads/<branch>:refs/heads/<branch>`, with `published: true` in the answer. Never forced, never with `--no-verify`, never with a tag.
+ * POST /v1/projects/:id/git/push     -> GitRemoteResult. Same body. Sends the branch to the branch of its own name (`git push origin refs/heads/<branch>:refs/heads/<branch>`) when that is its upstream, and
+ *                                         publishes it in every other case, when it has no upstream, its upstream is gone or its upstream is a branch of another name (`feat` made from `origin/main`
+ *                                         is never sent to `main`): `git push -u origin refs/heads/<branch>:refs/heads/<branch>`, with `published: true` in the answer. Never forced, never with `--no-verify`, never with a tag.
  *                                         The three refuse (`invalid`) a place that is not a repository, a repository with no `origin` and, for pull and push, a detached HEAD, a branch with no
  *                                         commit and a branch whose upstream is not on `origin`. A refusal by git (a push that is rejected, a hook, no permission, no network) is `conflict`
  *                                         with git's own line as the message (the line that says what went wrong, not the summary that follows it), and a `details.hint` when it names the
@@ -202,6 +205,14 @@ export type GitStatus = { isRepository: false } | {
     upstream?: GitUpstream;
     /** The repository has a remote called `origin`, the only remote the app pushes to. */
     origin: boolean;
+    /**
+     * When the repository last fetched, in milliseconds: the newest `FETCH_HEAD` of the repository that has something in it, so a fetch made in any worktree of it, by the app
+     * or by the person in a terminal or another program, counts (the remote-tracking refs, and with them `GitUpstream`'s counts, are shared by every worktree), or the time of the
+     * daemon's own last fetch that went through, which it keeps in memory because a fetch that fails afterwards empties the files (git empties `FETCH_HEAD` before it connects). Absent
+     * when nothing has fetched yet, when the repository has no `origin`, and when the only fetch since is a failed one that the daemon did not make or did before it started. A fetch of
+     * another remote counts too, as the file's time.
+     */
+    lastFetchedAt?: number;
     /** The uncommitted paths, sorted as git lists them, at most `MAX_GIT_STATUS_ENTRIES`. Empty for a clean tree. */
     entries: GitStatusEntry[];
     /** `entries` was cut: the tree has more uncommitted paths than are listed. */
@@ -385,7 +396,7 @@ export type GitPullRequestInfo = { isRepository: false } | {
     pullRequest?: GitPullRequest;
 };
 
-/** The three ways a branch is moved to and from `origin`. Publishing a branch is a `push` of one that has no upstream. */
+/** The three ways a branch is moved to and from `origin`. Publishing a branch is a `push` of one that is not on origin under its own name. */
 export type GitRemoteAction = 'fetch' | 'pull' | 'push';
 
 /** The body of `POST /v1/projects/:id/git/fetch`, `.../pull` and `.../push`: the place. */
@@ -404,7 +415,7 @@ export interface GitRemoteDone {
     upstream?: GitUpstream;
     /** `pull`: how many commits came in; 0 when the branch was up to date already. */
     pulled?: number;
-    /** `push`: the branch had no upstream, so it was published and now tracks `origin/<name>`. */
+    /** `push`: the branch was not on origin under its own name (no upstream, a gone one, or another branch's), so it was published and now tracks `origin/<name>`. */
     published?: true;
 }
 
