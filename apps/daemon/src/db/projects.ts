@@ -1,6 +1,7 @@
 import { TERMINAL_RUN_STATUSES } from '@clowdy/protocol';
 
 import { parseJson, toJson } from './json';
+import { deleteViewedOfProject } from './viewed';
 import { deleteWorkspacesOfProject } from './workspaces';
 
 import type { FolderSettings, Project, ProjectFolder, ProjectSettings, TaskStatus } from '@clowdy/protocol';
@@ -113,9 +114,10 @@ export function nextPosition(db: Database): number {
     return (db.query('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM projects WHERE personal = 0').get() as { position: number }).position;
 }
 
-/** Removes the project; its chats, runs, tasks, statuses, artifacts and attachments go with it through the foreign keys, its worktrees' rows (which have none) by hand. The worktrees stay on disk. */
+/** Removes the project; its chats, runs, tasks, statuses, artifacts and attachments go with it through the foreign keys, its worktrees' rows and its marks of viewed files (which have none) by hand. The worktrees stay on disk. */
 export function deleteProjectRow(db: Database, projectId: string): void {
     deleteWorkspacesOfProject(db, projectId);
+    deleteViewedOfProject(db, projectId);
     db.query('DELETE FROM projects WHERE id = ?').run(projectId);
 }
 

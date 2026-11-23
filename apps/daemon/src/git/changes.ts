@@ -520,7 +520,7 @@ export async function placeChanges(place: Place, scope: GitScope, options: BaseO
 }
 
 /** A path as a client writes it: one the repository can have, relative, with `/` separators and no `.` or `..` in it. */
-function checkPath(path: string): void {
+export function checkPath(path: string): void {
     if (path === '' || path.includes('\0') || isAbsolute(path) || path.endsWith('/') || path.split('/').some(part => part === '' || part === '.' || part === '..')) {
         throw invalid('The path is not a path inside the repository');
     }
