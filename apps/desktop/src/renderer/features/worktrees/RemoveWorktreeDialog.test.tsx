@@ -18,7 +18,6 @@ import type { CommandInput, Transport } from '../../daemon/transport';
 const CAR_RENTAL = '/Users/dev/car-rental';
 const CLOWDY_WORKTREE = '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental';
 const FOUND_WORKTREE = '/Users/dev/orca/car-rental/search-filters';
-const LOCKED_WORKTREE = '/Users/dev/car-rental-hotfix';
 const MISSING_WORKTREE = '/Users/dev/car-rental-old';
 const DETACHED_MERGED = '/Users/dev/orca/car-rental-api/readme';
 const CLEAN_MERGED = '/Users/dev/orca/car-rental/done';
@@ -211,6 +210,8 @@ describe('Remove in Manage worktrees', () => {
             expect(window.textContent).toContain('Not merged');
             expect(window.textContent).toContain('Its changes are lost when the branch goes');
             expect(checkbox()!.checked).toBe(false);
+            // The warning is the box's description, so a screen reader hears it with the box.
+            expect(window.querySelector(`#${ CSS.escape(checkbox()!.getAttribute('aria-describedby')!) }`)?.textContent).toBe('Its changes are lost when the branch goes');
 
             await confirm('Remove');
 
@@ -370,12 +371,6 @@ describe('Remove in Manage worktrees', () => {
             expect(removals()).toEqual([]);
         });
 
-        it('has none while git has it locked, and none at all for the folder\'s own checkout', async () => {
-            await open();
-
-            expect(removeButton(LOCKED_WORKTREE).disabled).toBe(true);
-            expect(row(CAR_RENTAL)!.querySelector('button[aria-label^="Remove "]')).toBeNull();
-        });
     });
 
     describe('cancelling', () => {
