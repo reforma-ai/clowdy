@@ -17,15 +17,13 @@ export interface ForkAgent {
 }
 
 export interface ForkMenuProps {
-    /** Fork the chat at this answer: a copy of the agent's own session, cut there, in a new chat. Drawn only where it is given: the agent has to be able to cut its session at this answer. */
-    onFork?: () => void;
+    /**
+     * Fork the chat at this answer, in a new chat. For an agent that can cut its session there it is a copy of the session; for one that cannot (Cursor has no `session/fork`, an
+     * answer from before the rewind points or one of a stopped turn has none) the caller hands the conversation to the chat's own agent as a file, which the person sees as the same Fork.
+     */
+    onFork: () => void;
     /** A fork is being made: `pending` on the menu that started it, `blocked` on the others, so there is one at a time. */
     state?: 'pending' | 'blocked';
-    /**
-     * Hand the conversation up to this answer to the chat's own agent, in a new-chat page, for an answer `onFork` is not given for (Cursor has no `session/fork`, an answer from before the
-     * rewind points or one of a stopped turn has none): the conversation goes in as a file, which is a hand-off, not a fork. Drawn only without `onFork`, and then the button reads `Hand off`.
-     */
-    onHandoffHere?: () => void;
     /** Hand the conversation up to this answer to another agent, in a new-chat page. The item is drawn only where it is given. */
     onHandoff?: (agentId: string) => void;
     /** The agents `onHandoff` can take: the signed-in ones other than the chat's own. None leaves the item off, with the reason under it. */
@@ -33,39 +31,30 @@ export interface ForkMenuProps {
 }
 
 const FORK = 'fork';
-const HERE = 'here';
 const OTHER_AGENT = 'agent';
 
 /**
- * The button of an answer's menu, which opens on a press (not on hover). **Fork** makes a copy of the agent's session in a new chat. **Hand off to a new chat** and **Hand off to
- * another agent…** open a new-chat page with the conversation up to this answer attached as a file, on the same agent and on the one picked from the list. Fork is a copy of the
- * thread and a hand-off is a file, so an answer the agent cannot cut its session at has the hand-offs only, and its button reads `Hand off`.
+ * The Fork button of an answer, as a menu that opens on a press (not on hover): **Fork** makes a new chat from the thread up to this answer, and **Hand off to another agent…**
+ * opens the list of the other agents, whose pick opens a new-chat page on that agent with the conversation up to this answer attached as a file.
  */
-export function ForkMenu({ onFork, state, onHandoffHere, onHandoff, agents = [] }: ForkMenuProps) {
-    const label = onFork ? 'Fork' : 'Hand off';
-
+export function ForkMenu({ onFork, state, onHandoff, agents = [] }: ForkMenuProps) {
     return (
         <MenuTrigger>
             <Button
                 variant="filling"
                 size="xs"
                 iconOnly
-                tooltip={ label }
+                tooltip="Fork"
                 tooltipPlacement="bottom"
-                aria-label={ label }
+                aria-label="Fork"
                 isPending={ state === 'pending' }
                 isDisabled={ state === 'blocked' }
             >
-                { onFork ? <ForkIcon /> : <NewChat /> }
+                <ForkIcon />
             </Button>
             <Popover placement="bottom start" spacing="xs" width={ 240 }>
-                <Menu aria-label={ label } size="sm" onAction={ key => (key === FORK ? onFork?.() : key === HERE && onHandoffHere?.()) }>
-                    <Show when={ onFork }>
-                        <MenuItem id={ FORK } icon={ <ForkIcon /> } text="Fork" />
-                    </Show>
-                    <Show when={ !onFork && onHandoffHere }>
-                        <MenuItem id={ HERE } icon={ <NewChat /> } text="Hand off to a new chat" />
-                    </Show>
+                <Menu aria-label="Fork" size="sm" onAction={ key => key === FORK && onFork() }>
+                    <MenuItem id={ FORK } icon={ <ForkIcon /> } text="Fork" />
                     <Show when={ onHandoff }>
                         { handoff => (
                             <SubmenuTrigger>

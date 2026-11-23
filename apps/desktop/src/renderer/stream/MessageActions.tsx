@@ -28,13 +28,11 @@ export interface MessageActionsConfig {
     swipeToReply?: boolean;
     /** Edit the message in place: drawn only where it is given (`StreamView` gives it to a message of the person's that the agent can rewrite the chat from, and to none while one is being edited). */
     onEdit?: () => void;
-    /** Fork into a new chat, at this message: a copy of the agent's session, cut there. The Fork item is drawn only where it is given (`StreamView` gives it to an answer the agent can fork at). */
-    onFork?: () => void;
     /**
-     * Hand the conversation up to this message to the chat's own agent, as a file in a new-chat page: the menu's `Hand off to a new chat`, for an answer that has no `onFork` (`StreamView` gives it
-     * to a final answer the agent cannot cut its session at). The menu is drawn where either is given, and then reads `Hand off` instead of `Fork`.
+     * Fork into a new chat, at this message: the Fork menu is drawn only where it is given. `StreamView` gives it to every final answer: a copy of the session where the agent can cut it
+     * there, and where it cannot, a hand-off of the conversation to the chat's own agent.
      */
-    onHandoffHere?: () => void;
+    onFork?: () => void;
     /** A fork is being made: `pending` on the button that started it, `blocked` on the others, so there is one at a time. */
     forkState?: 'pending' | 'blocked';
     /** Hand the conversation up to this message to another agent (the id of the one picked): the Fork menu's `Hand off to another agent…`, drawn only where it is given, beside `onFork`. */
@@ -60,7 +58,7 @@ export interface MessageActionsProps {
  * pointer or the focus has to be on (see the stylesheet).
  */
 export function MessageActions({ text, at, align, actions }: MessageActionsProps) {
-    const { show, onReply, onEdit, onFork, onHandoffHere, forkState, onHandoff, handoffAgents } = actions;
+    const { show, onReply, onEdit, onFork, forkState, onHandoff, handoffAgents } = actions;
     const time = <time className={ styles.time } dateTime={ new Date(at).toISOString() } title={ formatFullTime(at) }>{ formatMessageTime(at) }</time>;
     const hasText = text.trim() !== '';
 
@@ -87,8 +85,8 @@ export function MessageActions({ text, at, align, actions }: MessageActionsProps
                     <Show when={ hasText }>
                         <CopyButton value={ text } variant="filling" size="xs" tooltip="Copy message" tooltipPlacement="bottom" aria-label="Copy message" />
                     </Show>
-                    <Show when={ onFork || onHandoffHere }>
-                        <ForkMenu onFork={ onFork } state={ forkState } onHandoffHere={ onHandoffHere } onHandoff={ onHandoff } agents={ handoffAgents } />
+                    <Show when={ onFork }>
+                        { fork => <ForkMenu onFork={ fork } state={ forkState } onHandoff={ onHandoff } agents={ handoffAgents } /> }
                     </Show>
                 </div>
             </Show>

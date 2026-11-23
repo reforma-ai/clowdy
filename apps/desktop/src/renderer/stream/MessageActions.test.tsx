@@ -220,33 +220,6 @@ describe('MessageActions', () => {
             expect(items().map(item => item.textContent)).toEqual(['Fork', 'Hand off to another agent…']);
         });
 
-        it('is a Hand off, not a Fork, where the session cannot be cut: its button, its menu and its one item say so, and the item hands off to the chat\'s own agent', async () => {
-            const onHandoffHere = vi.fn();
-            const onHandoff = vi.fn();
-
-            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onHandoffHere, onHandoff, handoffAgents: agents } } />));
-
-            expect(forkButton()).toBeNull();
-
-            await press(container.querySelector<HTMLButtonElement>('button[aria-label="Hand off"]')!);
-
-            expect(document.body.querySelector('[role="menu"][aria-label="Hand off"]')).not.toBeNull();
-            expect(items().map(item => item.textContent)).toEqual(['Hand off to a new chat', 'Hand off to another agent…']);
-
-            await press(itemNamed('Hand off to a new chat'));
-
-            expect(onHandoffHere).toHaveBeenCalledOnce();
-            expect(onHandoff).not.toHaveBeenCalled();
-            expect(document.body.querySelector('[role="menu"]')).toBeNull();
-        });
-
-        it('has the Fork and no Hand off to a new chat where the session can be cut, whatever else is given', async () => {
-            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork: vi.fn(), onHandoffHere: vi.fn(), onHandoff: vi.fn(), handoffAgents: agents } } />));
-            await press(forkButton()!);
-
-            expect(items().map(item => item.textContent)).toEqual(['Fork', 'Hand off to another agent…']);
-        });
-
         it('lists the other agents under Hand off to another agent… and hands the conversation to the one picked', async () => {
             const onFork = vi.fn();
             const onHandoff = vi.fn();

@@ -1030,22 +1030,20 @@ describe('Fork in a chat', () => {
 
             fixtures.items['r-orch-2'][5] = answer;
         };
-        const handoffButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Hand off"]')];
 
-        it('draws a Hand off, and no Fork, on the answer, which opens a new-chat page on the chat\'s own agent with the conversation up to the answer attached', async () => {
+        it('draws the same Fork on the answer, which opens a new-chat page on the chat\'s own agent with the conversation up to the answer attached', async () => {
             await start(undefined, unflagged);
             await draw('c-2');
 
-            expect(forkButtons()).toHaveLength(0);
-            expect(handoffButtons()).toHaveLength(1);
+            expect(forkButtons()).toHaveLength(1);
 
             const command = vi.spyOn(store, 'command');
 
-            await press(handoffButtons()[0]);
+            await press(forkButtons()[0]);
 
-            expect(menuItems().map(row => row.textContent)).toEqual(['Hand off to a new chat', 'Hand off to another agent…']);
+            expect(menuItems().map(row => row.textContent)).toEqual(['Fork', 'Hand off to another agent…']);
 
-            await press(menuItem('Hand off to a new chat'));
+            await press(menuItem('Fork'));
             await vi.waitFor(() => expect(ui().draft).toBe(true));
 
             expect(ui().draftEngine).toBe('claude');
@@ -1058,7 +1056,7 @@ describe('Fork in a chat', () => {
         it('still offers the other agents', async () => {
             await start(undefined, unflagged);
             await draw('c-2');
-            await press(handoffButtons()[0]);
+            await press(forkButtons()[0]);
             await press(menuItem('Hand off to another agent'));
 
             expect([...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Hand off to another agent"] [role="menuitem"]')].map(row => row.textContent)).toEqual(['Codex', 'Cursor']);
@@ -1069,7 +1067,6 @@ describe('Fork in a chat', () => {
             await draw('c-2');
 
             expect(forkButtons()).toHaveLength(0);
-            expect(handoffButtons()).toHaveLength(0);
         });
     });
 
