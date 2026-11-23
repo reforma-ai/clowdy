@@ -21,6 +21,8 @@ export interface ListedWorktree {
     bare: boolean;
     /** The worktree's folder is gone, and `git worktree prune` would forget it. */
     prunable: boolean;
+    /** Git has it locked, with the reason it was locked for (empty when none was given): `initializing` while `git worktree add` makes it, which a crash leaves behind. */
+    locked?: string;
 }
 
 /** `git worktree list --porcelain`: one block per worktree, `worktree <path>` first, then `HEAD`, `branch` or `detached`, and optional `bare`, `locked`, `prunable` lines. */
@@ -43,6 +45,9 @@ export function parseWorktrees(output: string): ListedWorktree[] {
         }
         else if (current && line === 'bare') {
             current.bare = true;
+        }
+        else if (current && (line === 'locked' || line.startsWith('locked '))) {
+            current.locked = line.slice('locked'.length).trim();
         }
         else if (current && (line === 'prunable' || line.startsWith('prunable '))) {
             current.prunable = true;

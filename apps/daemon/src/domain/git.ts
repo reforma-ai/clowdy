@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import { unavailable } from '../errors';
+import { CommandError, unavailable } from '../errors';
 
 const run = promisify(execFile);
 
@@ -14,15 +14,22 @@ export interface GitResult {
     stderr: string;
 }
 
-/** Runs git synchronously. Only for short commands (rev-parse, init, a commit). */
-export function git(cwd: string, args: string[]): GitResult {
+/**
+ * Runs git synchronously. Only for short commands (rev-parse, init, a commit). With `timeoutMs` a git that does not answer in time is `unavailable`, not a
+ * "no": a caller that holds up the whole daemon while it waits (a command inside a transaction) says how long it may.
+ */
+export function git(cwd: string, args: string[], timeoutMs?: number): GitResult {
     try {
-        const result = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+        const result = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, ...(timeoutMs !== undefined && { timeout: timeoutMs, killSignal: 'SIGKILL' }) });
+
+        if (result.exitedDueToTimeout) {
+            throw unavailable('git did not answer');
+        }
 
         return { ok: result.exitCode === 0, stdout: result.stdout.toString().trim(), stderr: result.stderr.toString().trim() };
     }
-    catch {
-        throw unavailable('git is not installed or not on PATH');
+    catch (error) {
+        throw error instanceof CommandError ? error : unavailable('git is not installed or not on PATH');
     }
 }
 

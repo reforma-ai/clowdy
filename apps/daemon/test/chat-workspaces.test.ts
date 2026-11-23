@@ -132,7 +132,8 @@ describe('chat.create with a workspace', () => {
 
         git(repo, 'tag', 'v1');
 
-        for (const base of ['v1', 'dev', 'nowhere', 'refs/heads/main', '--help']) {
+        // A base is a branch's own name: not a revision that git would read from it (`main~1`, `main^`, `main@{1}`, the commit of a tag).
+        for (const base of ['v1', 'dev', 'nowhere', 'refs/heads/main', '--help', 'main~1', 'main^', 'main@{1}', 'origin/main~0', 'main^{commit}']) {
             expect(create({ mode: 'new', base })).toMatchObject({ ok: false, error: { code: 'invalid', message: `${ base } is not a branch of this repository` } });
         }
 
@@ -342,7 +343,8 @@ describe('Prepare workspace', () => {
 
         const failed = await send(chat, 'Start', 'failed');
 
-        expect(failed.error).toMatch(/^Couldn't fetch origin\/dev: /);
+        // The reason is git's first fatal line, not its last line (which is advice for someone at a terminal).
+        expect(failed.error).toMatch(/^Couldn't fetch origin\/dev: .* does not appear to be a git repository$/);
         expect(engine.turns).toHaveLength(0);
         expect(existsSync(chat.workspace!.path)).toBe(false);
         expect(chatOf(chat.id).workspace?.ready).toBe(false);
@@ -561,6 +563,46 @@ describe('Prepare workspace', () => {
         expect(git(repo, 'worktree', 'list', '--porcelain')).toContain('prunable');
     });
 
+    test('refuses a worktree git still has locked as being made, which a crash leaves, and leaves it as it is', async () => {
+        const { engine, repo, store, make, send, stepOf, chatOf } = await setup();
+        const chat = make({ mode: 'new' });
+        const { path } = chat.workspace!;
+
+        await send(chat, 'Start');
+        writeFileSync(join(path, 'half.txt'), 'who knows\n');
+        // What `git worktree add` leaves when the process dies in the middle of the checkout.
+        git(repo, 'worktree', 'lock', '--reason', 'initializing', path);
+        store.tx(() => updateWorkspace(store.db, chat.workspace!.id, { ready: false }));
+
+        const before = stateOf(path);
+        const failed = await send(chat, 'Again', 'failed');
+
+        expect(failed.error).toBe(`A previous attempt to make the worktree ${ path } was cut off, and git still has it locked, so it was left alone`);
+        expect(stateOf(path)).toEqual(before);
+        expect(git(repo, 'worktree', 'list', '--porcelain')).toContain('locked initializing');
+        expect(engine.turns).toHaveLength(1);
+        expect(chatOf(chat.id).workspace?.ready).toBe(false);
+        expect(stepOf(chat).map(body => body.state)).toEqual(['done', 'error']);
+    });
+
+    test('does not force the record of a missing worktree that is locked: the turn fails with git\'s reason and nothing is made', async () => {
+        const { repo, make, send, chatOf } = await setup();
+        const chat = make({ mode: 'new' });
+        const { path, branch } = chat.workspace!;
+
+        await send(chat, 'Start');
+        git(repo, 'worktree', 'lock', path);
+        rmSync(path, { recursive: true });
+
+        const failed = await send(chat, 'Again', 'failed');
+
+        expect(failed.error).toMatch(/^Couldn't forget the missing worktree: cannot remove a locked working tree/);
+        expect(failed.error).not.toContain('-f -f');
+        expect(existsSync(path)).toBe(false);
+        expect(git(repo, 'worktree', 'list', '--porcelain')).toContain(`branch refs/heads/${ branch }`);
+        expect(chatOf(chat.id).workspace?.ready).toBe(true);
+    });
+
     test('is made once when two chats come to one worktree together, and the second finds it ready', async () => {
         const { h, repo, project, store, make } = await setup();
         const chat = make({ mode: 'new' });
@@ -585,7 +627,7 @@ describe('Prepare workspace', () => {
         expect(getWorkspace(store.db, chat.workspace!.id)?.ready).toBe(true);
     });
 
-    test('is ended by a stop: git is killed, the step ends as stopped and nothing is left half made', async () => {
+    test('is ended by a stop that came first: nothing is written and nothing is made', async () => {
         const { h, project, store, make } = await setup();
         const chat = make({ mode: 'new' });
         const run = h.daemon.services.runs.createRun({ project, role: 'orchestrator', chatId: chat.id, summary: 'Stop', engine: 'fake', nextPrompt: 'Go' });
@@ -593,10 +635,53 @@ describe('Prepare workspace', () => {
 
         stop.abort();
 
-        await expect(prepareWorkspace(store, chat.workspace!.id, { runId: run.id, signal: stop.signal })).rejects.toThrow(STOPPED_TOOL);
+        await expect(prepareWorkspace(store, chat.workspace!.id, { runId: run.id, signal: stop.signal })).rejects.toThrow();
+        expect(listItems(store.db, run.id, 0)).toEqual([]);
+        expect(existsSync(chat.workspace!.path)).toBe(false);
+        expect(getWorkspace(store.db, chat.workspace!.id)?.ready).toBe(false);
+    });
+
+    test.skipIf(process.platform === 'win32')('is ended by a stop in the middle of a fetch that hangs: git and what it started are killed, and the step ends as stopped', async () => {
+        const { h, project, repo, remote, store, make } = await setup({ origin: true });
+        const chat = make({ mode: 'new' });
+        const run = h.daemon.services.runs.createRun({ project, role: 'orchestrator', chatId: chat.id, summary: 'Stop', engine: 'fake', nextPrompt: 'Go' });
+        const stop = new AbortController();
+
+        // A remote whose transport never answers (git runs the command as the transport, once it is let to).
+        const allowed = process.env.GIT_ALLOW_PROTOCOL;
+
+        process.env.GIT_ALLOW_PROTOCOL = 'ext';
+        git(repo, 'remote', 'set-url', 'origin', 'ext::sleep 30');
+
+        const startedAt = Date.now();
+        const preparing = prepareWorkspace(store, chat.workspace!.id, { runId: run.id, signal: stop.signal });
+
+        try {
+            await waitFor(() => listItems(store.db, run.id, 0).some(item => item.body.kind === 'tool' && String(item.body.output).includes('Fetching origin/main')), 'the fetch to start');
+            // The fetch is running: it has had time to start its transport.
+            await Bun.sleep(300);
+            stop.abort();
+
+            await expect(preparing).rejects.toThrow(STOPPED_TOOL);
+        }
+        finally {
+            if (allowed === undefined) {
+                delete process.env.GIT_ALLOW_PROTOCOL;
+            }
+            else {
+                process.env.GIT_ALLOW_PROTOCOL = allowed;
+            }
+        }
+
+        expect(Date.now() - startedAt).toBeLessThan(8000);
         expect(listItems(store.db, run.id, 0).map(item => item.body)).toEqual([expect.objectContaining({ kind: 'tool', name: 'workspace', state: 'error', error: STOPPED_TOOL })]);
         expect(existsSync(chat.workspace!.path)).toBe(false);
         expect(getWorkspace(store.db, chat.workspace!.id)?.ready).toBe(false);
+
+        // Nobody holds the place any more: a later turn is not kept waiting.
+        git(repo, 'remote', 'set-url', 'origin', remote!.origin);
+        await prepareWorkspace(store, chat.workspace!.id, { runId: run.id });
+        expect(existsSync(join(chat.workspace!.path, 'README.md'))).toBe(true);
     });
 });
 
@@ -764,6 +849,11 @@ describe('the layout of a worktree', () => {
         // Two folders of one name are told apart as everywhere else.
         expect(workspaceLayout(config, project, project.folders[1], chatId).path).toBe(join(config.workspacesDir, 'shop', 'XZCBJ2Y7', 'shop-web-2'));
         expect(workspaceLayout(config, project, project.folders[2], chatId).path.endsWith(`${ sep }api`)).toBe(true);
+        // A name Windows does not allow for a folder, and characters it does not allow in one.
+        const odd = { id: 'prj_X', name: 'Shop', folders: [{ id: 'fld_1', path: '/code/aux' }, { id: 'fld_2', path: '/code/a:b?' }] } as Project;
+
+        expect(workspaceLayout(config, odd, odd.folders[0], chatId).path.endsWith(`${ sep }aux-folder`)).toBe(true);
+        expect(workspaceLayout(config, odd, odd.folders[1], chatId).path.endsWith(`${ sep }a-b-`)).toBe(true);
     });
 
     test('names the project in kebab case, by its id when the name has nothing a folder can take, and not with a name Windows reserves', () => {
@@ -803,5 +893,47 @@ describe('what a stopped or slow program comes to', () => {
         expect(lines.sort()).toEqual(['one', 'two']);
         expect(await runLines(program, { cwd: tempDir(), onLine: () => undefined, timeoutMs: 300 })).toEqual({ code: null, timedOut: true, aborted: false });
         expect(await runLines([process.execPath, '-e', 'process.exit(3)'], { cwd: tempDir(), onLine: () => undefined })).toEqual({ code: 3, timedOut: false, aborted: false });
+    });
+
+    test.skipIf(process.platform === 'win32')('a stop ends what the program started and does not wait for it, and one that is stopped already starts nothing', async () => {
+        const root = tempDir('chat-workspaces-lines');
+        const stop = new AbortController();
+        const timer = setTimeout(() => stop.abort(), 200);
+        const startedAt = Date.now();
+        // A program that starts another and waits for it, both holding the pipes: the stop has to reach both, or the call would wait the thirty seconds out.
+        const stopped = await runLines(['sh', '-c', 'sleep 30 & sleep 30'], { cwd: root, onLine: () => undefined, signal: stop.signal });
+
+        clearTimeout(timer);
+        expect(stopped).toEqual({ code: null, timedOut: false, aborted: true });
+        expect(Date.now() - startedAt).toBeLessThan(5000);
+
+        const timedAt = Date.now();
+
+        expect(await runLines(['sh', '-c', 'sleep 30 & sleep 30'], { cwd: root, onLine: () => undefined, timeoutMs: 200 })).toEqual({ code: null, timedOut: true, aborted: false });
+        expect(Date.now() - timedAt).toBeLessThan(5000);
+
+        // A program that ends and leaves a child holding its pipes: the call waits a moment for the lines, not for the child.
+        const leftAt = Date.now();
+
+        expect(await runLines(['sh', '-c', 'echo bye; sleep 4 &'], { cwd: root, onLine: () => undefined })).toEqual({ code: 0, timedOut: false, aborted: false });
+        expect(Date.now() - leftAt).toBeLessThan(3500);
+
+        const aborted = new AbortController();
+
+        aborted.abort();
+        expect(await runLines(['sh', '-c', 'touch started'], { cwd: root, onLine: () => undefined, signal: aborted.signal })).toEqual({ code: null, timedOut: false, aborted: true });
+        expect(existsSync(join(root, 'started'))).toBe(false);
+    });
+
+    test.skipIf(process.platform === 'win32')('a line its reader cannot take ends the program and is thrown', async () => {
+        const startedAt = Date.now();
+
+        await expect(runLines(['sh', '-c', 'echo first; sleep 30'], {
+            cwd: tempDir(),
+            onLine() {
+                throw new Error('the log is gone');
+            },
+        })).rejects.toThrow('the log is gone');
+        expect(Date.now() - startedAt).toBeLessThan(5000);
     });
 });

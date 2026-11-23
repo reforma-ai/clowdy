@@ -149,6 +149,8 @@ function promptChat(store: Store, chat: Chat | undefined): PromptChat | undefine
     return chat.parentChatId ? { parent: { id: chat.parentChatId, title: parent?.title ?? chat.parentChatId } } : {};
 }
 
+const missingEngine = (engine: EngineId) => new EngineFailure(`The ${ engine } engine is not available in this daemon`);
+
 /** What the system prompt says of the worktree: only for a turn that works in it, and with the main checkout it was made from. */
 function promptWorkspace(project: Project, chat: Chat | undefined, cwd: string): PromptWorkspace | undefined {
     const workspace = chat?.workspace;
@@ -568,6 +570,13 @@ export class RunDriver {
         // The stream as it is before this turn adds its own lines: what the agent was told so far.
         const told = nextSeq(store.db, runId) - 1;
 
+        // A run that cannot start would only leave a worktree made for nothing.
+        const named = runs.require(runId).engine;
+
+        if (!engines.has(named)) {
+            throw missingEngine(named);
+        }
+
         // Before anything that counts a session: the step waits for git, and no session is open yet.
         await this.prepareWorkspace(runId, signal);
 
@@ -587,7 +596,7 @@ export class RunDriver {
         const engine = engines.get(run.engine);
 
         if (!engine) {
-            throw new EngineFailure(`The ${ run.engine } engine is not available in this daemon`);
+            throw missingEngine(run.engine);
         }
 
         const work = getRunWork(store.db, runId);
@@ -730,7 +739,11 @@ export class RunDriver {
         const workspace = chatId && !getRunWork(store.db, runId).cwd ? getChat(store.db, chatId)?.workspace : undefined;
 
         if (workspace && needsPreparing(workspace)) {
-            await prepareWorkspace(store, workspace.id, { runId, signal: AbortSignal.any([signal, this.stopping.signal]) });
+            const stopped = AbortSignal.any([signal, this.stopping.signal]);
+
+            await prepareWorkspace(store, workspace.id, { runId, signal: stopped });
+            // A Stop that came while nothing was running git (the wait for another chat, the reads) must not start a session.
+            stopped.throwIfAborted();
         }
     }
 

@@ -273,7 +273,7 @@ describe('parseWorktrees', () => {
 
         expect(parseWorktrees(output)).toEqual([
             { path: '/work/my app', head: '1111111111111111111111111111111111111111', branch: 'main', bare: false, prunable: false },
-            { path: '/work/linked', head: '2222222222222222222222222222222222222222', bare: false, prunable: false },
+            { path: '/work/linked', head: '2222222222222222222222222222222222222222', bare: false, prunable: false, locked: 'reason' },
             { path: '/work/gone', head: '3333333333333333333333333333333333333333', branch: 'feature/x', bare: false, prunable: true },
             { path: '/work/bare.git', head: '', bare: true, prunable: false },
         ]);

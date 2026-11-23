@@ -30,6 +30,12 @@ const ADD_TIMEOUT_MS = 10 * 60_000;
 /** A `worktree remove` of a record whose folder is gone does no checking out. */
 const FORGET_TIMEOUT_MS = 60_000;
 
+/** The reads `chat.create` makes of the repository hold up the whole daemon while they run, inside a transaction: a git that takes longer than this is `unavailable`. */
+const SYNC_READ_TIMEOUT_MS = 10_000;
+
+/** A synchronous read of git for `chat.create`, with the time it may take. */
+const readGit = (cwd: string, args: string[]) => git(cwd, args, SYNC_READ_TIMEOUT_MS);
+
 /** The longest project slug in a worktree's path: paths on Windows are short, and the ids in them stay short for the same reason. */
 const MAX_SLUG_LENGTH = 32;
 
@@ -79,15 +85,24 @@ export function placeOf(path: string): string {
 /** Whether two paths are the same place. */
 export const samePlace = (a: string, b: string): boolean => pathKey(placeOf(a)) === pathKey(placeOf(b));
 
-/** Whether something is there on the disk at the path, a folder, a file or a link (a dangling one included). */
+/**
+ * Whether something is there on the disk at the path, a folder, a file or a link (a dangling one included). Only "no such file" and "a parent is no folder" say it
+ * is not: a path that cannot be looked at (no permission, a stale network disk) may well be there, and is a failure, not a place to make a worktree in.
+ */
 async function isThere(path: string): Promise<boolean> {
     try {
         await lstat(path);
 
         return true;
     }
-    catch {
-        return false;
+    catch (error) {
+        const { code } = error as { code?: string };
+
+        if (code === 'ENOENT' || code === 'ENOTDIR') {
+            return false;
+        }
+
+        throw new WorkspaceError(`Couldn't look at ${ path }: ${ code ?? (error instanceof Error ? error.message : String(error)) }`);
     }
 }
 
@@ -111,7 +126,11 @@ export const chatKey = (chatId: string): string => chatId.slice(-8);
 function folderSegment(name: string): string {
     const clean = [...name.replace(/[<>:"/\\|?*]/g, '-')].map(character => (character.charCodeAt(0) < 32 ? '-' : character)).join('').replace(/[. ]+$/, '');
 
-    return clean === '' || clean === '.' || clean === '..' ? 'folder' : clean;
+    if (clean === '' || clean === '.' || clean === '..') {
+        return 'folder';
+    }
+
+    return RESERVED_NAMES.test(clean.toLowerCase()) ? `${ clean }-folder` : clean;
 }
 
 /**
@@ -133,34 +152,34 @@ export function workspaceLayout(config: Pick<Config, 'workspacesDir'>, project: 
 
 /** Whether the folder is the root of a working tree: a worktree is made of the whole repository, so a folder inside one has none of its own. */
 function isRepositoryRoot(folder: string): boolean {
-    const top = git(folder, ['rev-parse', '--show-toplevel']);
+    const top = readGit(folder, ['rev-parse', '--show-toplevel']);
 
     return top.ok && top.stdout !== '' && samePlace(top.stdout, folder);
 }
 
 /** Where the folder's HEAD is: its branch, or on a detached HEAD the short hash and the full one. */
 function headOf(folder: string): { branch: string; detached?: true; commit: string } | undefined {
-    const commit = git(folder, ['rev-parse', 'HEAD']);
+    const commit = readGit(folder, ['rev-parse', 'HEAD']);
 
     if (!commit.ok) {
         return undefined;
     }
 
-    const branch = git(folder, ['branch', '--show-current']);
+    const branch = readGit(folder, ['branch', '--show-current']);
 
     if (branch.ok && branch.stdout) {
         return { branch: branch.stdout, commit: commit.stdout };
     }
 
-    const short = git(folder, ['rev-parse', '--short', 'HEAD']);
+    const short = readGit(folder, ['rev-parse', '--short', 'HEAD']);
 
     return short.ok ? { branch: short.stdout, detached: true, commit: commit.stdout } : undefined;
 }
 
 /** The folder's default base, as `defaultBranchOf` says it (`origin/HEAD`, `origin/main`, `main`… the branch checked out), read synchronously. */
 function defaultBaseOf(folder: string): string | undefined {
-    const remoteHead = git(folder, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
-    const refs = git(folder, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes']);
+    const remoteHead = readGit(folder, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
+    const refs = readGit(folder, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes']);
     const head = headOf(folder);
 
     return pickDefaultBranch(remoteHead.ok && remoteHead.stdout ? remoteHead.stdout : undefined, parseBranches(refs.ok ? refs.stdout : ''), head && { branch: head.branch, ...(head.detached && { detached: true as const }) });
@@ -181,7 +200,8 @@ interface ResolvedBase {
 /** A base resolved in the folder's repository, read synchronously for `chat.create`; a hash counts only when it is the commit the folder has checked out on a detached HEAD. */
 function resolveBaseSync(folder: string, base: string): ResolvedBase | undefined {
     for (const [ref, remote] of baseRefs(base)) {
-        const found = git(folder, ['rev-parse', '--verify', '--quiet', `${ ref }^{commit}`]);
+        // `show-ref --verify` takes the ref exactly: `rev-parse` would also read `main~1` or `main@{1}` as a branch.
+        const found = readGit(folder, ['show-ref', '--verify', '--hash', ref]);
 
         if (found.ok && found.stdout) {
             return { commit: found.stdout, remote };
@@ -196,7 +216,7 @@ function resolveBaseSync(folder: string, base: string): ResolvedBase | undefined
 /** A base resolved in the repository when the worktree is made. A hash is any commit of it: it was checked when the chat was made. */
 async function resolveBase(folder: string, base: string): Promise<ResolvedBase | undefined> {
     for (const [ref, remote] of baseRefs(base)) {
-        const found = (await gitOutput(folder, ['rev-parse', '--verify', '--quiet', `${ ref }^{commit}`]))?.trim();
+        const found = (await gitOutput(folder, ['show-ref', '--verify', '--hash', ref]))?.trim();
 
         if (found) {
             return { commit: found, remote };
@@ -275,7 +295,7 @@ function createExistingWorkspace(store: Store, project: Project, folder: Project
         throw invalid('The path of a worktree must be absolute');
     }
 
-    const listed = git(folder.path, ['worktree', 'list', '--porcelain']);
+    const listed = readGit(folder.path, ['worktree', 'list', '--porcelain']);
     const entry = parseWorktrees(listed.ok ? listed.stdout : '').find(candidate => !candidate.bare && samePlace(candidate.path, path));
 
     if (!entry) {
@@ -332,8 +352,8 @@ export function needsPreparing(workspace: Pick<ChatWorkspace, 'path' | 'managed'
 /** What a git run printed, and how it ended. */
 interface GitRun {
     ok: boolean;
-    /** The last line git printed, which is the reason when it fails. */
-    last: string;
+    /** Why it failed, in the words git said it in: its first `fatal:` or `error:` line, else its last line that is no hint. Empty when it printed nothing. */
+    reason: string;
     aborted: boolean;
     timedOut: boolean;
 }
@@ -343,11 +363,15 @@ interface Step {
     signal?: AbortSignal;
 }
 
-/** A line of git's as a reason a person reads: no `fatal: `, no closing period. */
-const reasonOf = (line: string): string => line.replace(/^(fatal|error): /, '').trim().replace(/\.+$/, '');
+/** The reason in what git printed, as a person reads it: its first `fatal:` or `error:` line (a later `hint:` or `use … to override` is advice for someone at a terminal), with no prefix and no closing period. */
+function reasonOf(lines: readonly string[]): string {
+    const line = lines.find(candidate => /^(fatal|error): /.test(candidate)) ?? lines.filter(candidate => !candidate.startsWith('hint:')).at(-1) ?? '';
+
+    return line.replace(/^(fatal|error): /, '').trim().replace(/\.+$/, '');
+}
 
 async function runGit(cwd: string, args: string[], step: Step, timeoutMs: number): Promise<GitRun> {
-    let last = '';
+    const lines: string[] = [];
 
     try {
         const result = await runLines(['git', ...args], {
@@ -358,13 +382,13 @@ async function runGit(cwd: string, args: string[], step: Step, timeoutMs: number
             timeoutMs,
             onLine(line) {
                 if (line.trim() !== '') {
-                    last = line;
+                    lines.push(line);
                     step.log(line);
                 }
             },
         });
 
-        return { ok: result.code === 0, last, aborted: result.aborted, timedOut: result.timedOut };
+        return { ok: result.code === 0, reason: reasonOf(lines), aborted: result.aborted, timedOut: result.timedOut };
     }
     catch (error) {
         // A program that is not there; anything else (the stream's own write failing, say) is not a reason to blame git.
@@ -385,7 +409,7 @@ async function mustGit(cwd: string, args: string[], step: Step, timeoutMs: numbe
     }
 
     if (!result.ok) {
-        throw new WorkspaceError(`Couldn't ${ what }: ${ reasonOf(result.last) || 'git gave no reason' }`);
+        throw new WorkspaceError(`Couldn't ${ what }: ${ result.reason || 'git gave no reason' }`);
     }
 }
 
@@ -431,6 +455,11 @@ export async function ensureWorktree(options: EnsureWorktreeOptions): Promise<'t
 
     if (await isThere(path)) {
         if (entry && !entry.prunable) {
+            // Git locks a worktree while it makes it, and a crash leaves the lock: what is in the folder may be a checkout that stopped half way.
+            if (entry.locked === 'initializing') {
+                throw new WorkspaceError(`A previous attempt to make the worktree ${ path } was cut off, and git still has it locked, so it was left alone`);
+            }
+
             options.log(`The worktree ${ path } is there already, left as it is`);
 
             return 'there';
@@ -460,6 +489,12 @@ export async function ensureWorktree(options: EnsureWorktreeOptions): Promise<'t
     }
 
     const commit = exists.ok ? undefined : await baseCommit(folder, base, options);
+
+    // The fetch above may have taken minutes: whatever was put at the path meanwhile is somebody's, and neither the record's removal (which deletes a tree that is
+    // there and clean, ignored files included) nor the checkout is run over it.
+    if (await isThere(path)) {
+        throw new WorkspaceError(`${ path } appeared while the worktree was being made, so it was left alone`);
+    }
 
     if (entry) {
         options.log(`Forgetting the record of the worktree ${ path }, which is gone from the disk`);
@@ -499,7 +534,7 @@ async function baseCommit(folder: string, base: string | undefined, step: Step):
 
             if (!fetched.ok) {
                 if (!before) {
-                    throw new WorkspaceError(`Couldn't fetch ${ base }: ${ fetched.timedOut ? 'it took too long' : reasonOf(fetched.last) || 'git gave no reason' }`);
+                    throw new WorkspaceError(`Couldn't fetch ${ base }: ${ fetched.timedOut ? 'it took too long' : fetched.reason || 'git gave no reason' }`);
                 }
 
                 step.log(`Could not fetch, using the last fetched ${ base }`);
@@ -568,23 +603,55 @@ class StepItem {
         this.write(failure === undefined ? { state: 'done' } : { state: 'error', error: failure });
     }
 
+    /** A stream that is gone (its run was deleted meanwhile) has nobody to show the log to: the step goes on without it, since it is the worktree that matters. */
     private write(end?: { state: 'done' } | { state: 'error'; error: string }): void {
         const output = this.lines.join('\n');
         const { error: _, ...rest } = this.body;
 
         this.body = { ...rest, ...(end ?? {}), ...(output !== '' && { output }) };
-        updateItem(this.store, this.runId, this.seq, this.body);
         this.writtenAt = Date.now();
+
+        try {
+            updateItem(this.store, this.runId, this.seq, this.body);
+        }
+        catch (error) {
+            console.warn(`[clowdy] the log of the workspace step could not be written: ${ error instanceof Error ? error.message : String(error) }`);
+        }
     }
 }
 
 /** The workspaces being prepared, by place: two chats that come to one worktree together wait for each other, so it is made once. */
 const preparing = new WeakMap<Store, Map<string, Promise<unknown>>>();
 
-async function exclusive<T>(store: Store, key: string, work: () => Promise<T>): Promise<T> {
+/** Resolves when the promise does, or rejects with the signal's reason when it aborts first. */
+function until<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+    if (!signal) {
+        return promise;
+    }
+
+    return new Promise<T>((resolve, reject) => {
+        const abort = () => reject(signal.reason);
+
+        if (signal.aborted) {
+            abort();
+
+            return;
+        }
+
+        signal.addEventListener('abort', abort, { once: true });
+        promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+    });
+}
+
+/**
+ * Runs `work` once nothing else holds `key`, one after another in the order they asked. A caller whose `signal` aborts while it waits leaves the line without
+ * running, and the ones behind it still wait for whoever it was waiting for.
+ */
+async function exclusive<T>(store: Store, key: string, signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
     const queue = preparing.get(store) ?? new Map<string, Promise<unknown>>();
-    const run = (queue.get(key) ?? Promise.resolve()).catch(() => undefined).then(work);
-    const tail = run.catch(() => undefined);
+    const before = (queue.get(key) ?? Promise.resolve()).catch(() => undefined);
+    const run = until(before, signal).then(work);
+    const tail = Promise.all([before, run.catch(() => undefined)]).then(() => undefined);
 
     preparing.set(store, queue);
     queue.set(key, tail);
@@ -593,9 +660,11 @@ async function exclusive<T>(store: Store, key: string, work: () => Promise<T>): 
         return await run;
     }
     finally {
-        if (queue.get(key) === tail) {
-            queue.delete(key);
-        }
+        void tail.then(() => {
+            if (queue.get(key) === tail) {
+                queue.delete(key);
+            }
+        });
     }
 }
 
@@ -634,7 +703,7 @@ export async function prepareWorkspace(store: Store, workspaceId: string, option
         throw new WorkspaceError(`The workspace ${ workspaceId } is gone`);
     }
 
-    await exclusive(store, pathKey(first.path), async () => {
+    await exclusive(store, pathKey(first.path), options.signal, async () => {
         const record = getWorkspace(store.db, workspaceId);
 
         // Another chat made it while this one waited.
