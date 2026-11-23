@@ -182,6 +182,79 @@ describe('GitFacts', () => {
         expect(daemon.calls).toEqual({ status: 3, changes: 3, pullRequest: 3 });
     });
 
+    it('counts the rounds of reads of a place, for a view that keeps more than the store does to read again with them', async () => {
+        const daemon = stub();
+
+        facts = new GitFacts(daemon.transport);
+        facts.observe(KEY);
+        await settle();
+
+        const place = facts.of(KEY);
+
+        expect(place.generation).toBe(1);
+
+        // A refresh, and a focus, each start one; the poll of the pull request alone does not, nor does a place nobody observes.
+        facts.refresh(KEY);
+        await settle();
+        expect(place.generation).toBe(2);
+
+        vi.advanceTimersByTime(GIT_COALESCE_MS + 1);
+        focus();
+        await settle();
+        expect(place.generation).toBe(3);
+
+        vi.advanceTimersByTime(GIT_POLL_MS);
+        await settle();
+        expect(place.generation).toBe(3);
+
+        facts.refresh(OTHER);
+        expect(facts.of(OTHER).generation).toBe(0);
+    });
+
+    it('counts no round while the window is hidden, and one when it is visible again', async () => {
+        const daemon = stub();
+
+        facts = new GitFacts(daemon.transport);
+        facts.observe(KEY);
+        await settle();
+        setHidden(true);
+        facts.refresh(KEY);
+        await settle();
+
+        expect(facts.of(KEY).generation).toBe(1);
+
+        setHidden(false);
+        becomeVisible();
+        await settle();
+
+        expect(facts.of(KEY).generation).toBe(2);
+    });
+
+    it('keeps the daemon\'s status of a read that failed with one, and none for another failure', async () => {
+        const daemon = stub();
+
+        facts = new GitFacts(daemon.transport);
+        facts.observe(KEY);
+        await settle();
+
+        const place = facts.of(KEY);
+
+        expect(place.status.errorStatus).toBeUndefined();
+
+        daemon.failWith({ status: 'The worktree is missing' });
+        facts.refresh(KEY);
+        await settle();
+
+        expect(place.status.errorStatus).toBe(503);
+
+        daemon.failWith({});
+        vi.advanceTimersByTime(1);
+        facts.refresh(KEY);
+        await settle();
+
+        expect(place.status.errorStatus).toBeUndefined();
+    });
+
     it('reads when it is asked to, at once, and not for a place nobody observes', async () => {
         const daemon = stub();
 
