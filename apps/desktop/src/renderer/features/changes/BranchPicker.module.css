@@ -6,7 +6,7 @@
     justify-content: flex-start;
     min-width: 0;
     max-width: 100%;
-    padding-inline: var(--spacing-6);
+    padding-inline: var(--spacing-sm);
 }
 
 /* The off button is in a stand-in that carries its tooltip: the stand-in gives way to the header's buttons as the button does, or the name would push them out of the sidebar. */
@@ -24,7 +24,7 @@
 
 .content {
     min-width: 0;
-    gap: var(--spacing-6);
+    gap: var(--spacing-sm);
 }
 
 .icon,
@@ -40,7 +40,7 @@
 /* At the sidebar's narrowest the name needs the room: the mark before it goes, and the chevron and the tooltip say the rest. */
 @container (max-width: 200px) {
     .trigger[data-size][data-variant] {
-        padding-inline: var(--spacing-4);
+        padding-inline: var(--spacing-xs);
     }
 
     .icon {
@@ -48,24 +48,27 @@
     }
 }
 
-/* The popover of the branches, and its form of a new one: one column, as wide as the popover is. */
+/*
+ * The popover of the branches, and its form of a new one: one column, as wide as the popover is. Every line of words in it (the title, a reason, the form) starts where the
+ * list's rows have theirs, 12px inside the popover's own inset, as the list's group headings do.
+ */
 .body {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-6);
+    gap: var(--spacing-sm);
     min-width: 0;
 }
 
 .title {
-    padding: var(--spacing-4) var(--spacing-6) 0;
+    padding: var(--spacing-xs) var(--spacing-lg) 0;
 }
 
 /* What the daemon says is the person's to copy: why a switch was refused, git's own line, the hook's. */
 .reason {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-2);
-    padding: var(--spacing-4) var(--spacing-6);
+    gap: var(--spacing-xxs);
+    padding: var(--spacing-xs) var(--spacing-lg);
     overflow-wrap: anywhere;
     user-select: text;
 }
@@ -73,40 +76,48 @@
 .status {
     display: flex;
     align-items: center;
-    gap: var(--spacing-6);
-    padding: var(--spacing-4) var(--spacing-6);
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-lg);
 }
 
 .footer {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-4);
+    gap: var(--spacing-xs);
 }
 
+/* New branch… is a row of the list's size under it: its mark and words where the rows have theirs. */
 .action[data-size][data-variant] {
     justify-content: flex-start;
+    padding-inline: var(--spacing-lg);
+}
+
+.actionContent {
+    flex: 1;
+    justify-content: flex-start;
+    gap: var(--spacing-md);
 }
 
 /* The form of a new branch. */
 .form {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-8);
+    gap: var(--spacing-md);
     min-width: 0;
-    padding: var(--spacing-2) var(--spacing-6) var(--spacing-6);
+    padding: var(--spacing-xxs) var(--spacing-lg) var(--spacing-lg);
 }
 
 .formHeader {
     display: flex;
     align-items: center;
-    gap: var(--spacing-4);
-    margin-inline-start: calc(var(--spacing-4) * -1);
+    gap: var(--spacing-xs);
+    margin-inline-start: calc(var(--spacing-xs) * -1);
 }
 
 .choices {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-8);
+    gap: var(--spacing-md);
 }
 
 /* The form's own padding is the content's edge: a reason in it has none of its own. */
@@ -123,7 +134,7 @@
 .choice {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-2);
+    gap: var(--spacing-xxs);
     min-width: 0;
 }
 

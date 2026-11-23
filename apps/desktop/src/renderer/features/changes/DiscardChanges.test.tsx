@@ -33,7 +33,10 @@ import type { FixtureGitWritesOptions } from '../../daemon/fixtureGitWrites';
 const PLACE = { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' };
 
 // happy-dom has no layout: the view builds its resizable group once its box has a width, which it is told.
-vi.mock('./useBoxWidth', () => ({ useBoxWidth: () => [() => undefined, 900] }));
+vi.mock('./useBoxWidth', () => ({
+    useBoxWidth: () => [() => undefined, 900],
+    useBoxHeight: () => [() => undefined, 900],
+}));
 // The diff view has specs of its own (`packages/file-manager/specs`); here it only has to be given the right texts.
 vi.mock('@clowdy/file-manager/react', () => ({
     DiffView: ({ path }: { path: string }) => <pre data-diff={path} />,
@@ -57,6 +60,9 @@ vi.mock('./ChangesSidebar', async importOriginal => ({
 }));
 vi.mock('./CommitBox', async importOriginal => ({
     CommitBox: observer((await importOriginal<typeof import('./CommitBox')>()).CommitBox),
+}));
+vi.mock('./BranchCommits', async importOriginal => ({
+    BranchCommits: observer((await importOriginal<typeof import('./BranchCommits')>()).BranchCommits),
 }));
 vi.mock('./DiffCard', async importOriginal => ({
     DiffCard: observer((await importOriginal<typeof import('./DiffCard')>()).DiffCard),
@@ -105,7 +111,7 @@ const press = (target: Element) =>
 const cardPaths = () => [...container.querySelectorAll<HTMLElement>('[data-card]')].map(card => card.dataset.card);
 const card = (path: string) => container.querySelector<HTMLElement>(`[data-card="${path}"]`)!;
 const rowPaths = () =>
-    [...container.querySelectorAll('[aria-label="Changed files"] button:not([data-discard])')].map(
+    [...container.querySelectorAll('[aria-label="Changed files"] [role="row"]')].map(
         row => row.querySelector('[class*="name"]')?.textContent
     );
 /** The `Discard changes…` buttons of the sidebar's rows and of the cards, by the path of the file they name. */
@@ -234,9 +240,11 @@ describe('Discard changes… on the rows and the cards', () => {
         const button = rowButton('notes.md');
 
         expect(button.getAttribute('aria-label')).toBe('Discard changes to notes.md');
-        // Reachable with Tab, shown by the CSS when the row has the focus.
+        // Reachable from its row with the right arrow, as the list's row actions are, and shown by the list while the row has the pointer or the focus.
         expect(button.disabled).toBe(false);
         expect(button.getAttribute('tabindex')).not.toBe('-1');
+        expect(button.closest('[data-show]')?.getAttribute('data-show')).toBe('item-both');
+        expect(button.getAttribute('data-variant')).toBe('filling');
     });
 
     it('is on the same files in Uncommitted, and on none in Branch or in a commit', async () => {
@@ -585,5 +593,75 @@ describe('the confirmation', () => {
         expect(all.isViewed(file.path)).toBe(false);
         // And the file is no longer one whose changes can be discarded.
         expect(discardPathsIn(sidebar())).toEqual(['notes.md', 'src/limits.ts']);
+    });
+});
+
+describe('the focus after a discard', () => {
+    /** Discards a file through its button and the confirmation, and waits for the place to be read again and the focus to settle. */
+    const discardThrough = async (button: HTMLButtonElement) => {
+        await press(button);
+        await settleDialog();
+        await press(dialogButton('Discard changes'));
+        await settleDialog();
+        await settle();
+        await untilClosed();
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        });
+    };
+    const rowOf = (path: string) => sidebar().querySelector<HTMLElement>(`[data-path="${path}"]`);
+
+    it("goes to the next row of the sidebar's list when the file's row goes", async () => {
+        await start();
+        await discardThrough(rowButton('notes.md'));
+
+        expect(rowOf('notes.md')).toBeNull();
+        expect(document.activeElement).toBe(rowOf('src/booking/price.test.ts'));
+    });
+
+    it('goes to the row before it when the row that went was the last', async () => {
+        await start();
+        await discardThrough(rowButton('src/limits.ts'));
+
+        expect(rowOf('src/limits.ts')).toBeNull();
+        expect(document.activeElement).toBe(rowOf('src/booking/weekend.ts'));
+    });
+
+    it('goes to the list of files when the row that went was the only one', async () => {
+        await start();
+        act(() => model().setFilter('src/limits.ts'));
+        await settle();
+
+        await discardThrough(rowButton('src/limits.ts'));
+
+        expect(sidebar().querySelector('[data-path]')).toBeNull();
+        expect(document.activeElement).toBe(sidebar().querySelector('section[aria-label="Changed files"]'));
+    });
+
+    it("goes to the next card's fold button when the file's card goes", async () => {
+        await start();
+        await discardThrough(cardButton('notes.md'));
+
+        expect(cardPaths()).not.toContain('notes.md');
+        expect(document.activeElement).toBe(card('src/booking/price.test.ts').querySelector('button[aria-expanded]'));
+    });
+
+    it('goes to the filter field above the cards when the card that went was the only one', async () => {
+        await start();
+        act(() => model().setFilter('src/limits.ts'));
+        await settle();
+
+        await discardThrough(cardButton('src/limits.ts'));
+
+        expect(cardPaths()).toEqual([]);
+        expect(document.activeElement).toBe(container.querySelector('input[aria-label="Filter files"]'));
+    });
+
+    it('stays on the row of a file that keeps its row, whose button went with its changes', async () => {
+        await start();
+        await discardThrough(rowButton('src/booking/price.ts'));
+
+        expect(rowButton('src/booking/price.ts')).toBeNull();
+        expect(document.activeElement).toBe(rowOf('src/booking/price.ts'));
     });
 });

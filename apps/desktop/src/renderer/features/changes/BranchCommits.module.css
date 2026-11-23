@@ -1,0 +1,85 @@
+@reference '@clowdy/styles/rulesets';
+
+/* What the facts leave of the sidebar: the files and the commit box, and the commits' box under them when it is open. */
+.column {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+/* The panel library puts these on the element inside its panel, which is a block: make it a column that the parts fill. */
+.panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* The open commits: the edge to drag is their top border. */
+.content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    border-top: 1px solid var(--color-surface-border);
+}
+
+.scroller {
+    flex: 1;
+    min-height: 0;
+}
+
+/* The list's plates stand off the sidebar's edges by the inset of the files' list. */
+.rows {
+    padding: var(--spacing-xs);
+}
+
+/* Under a commit's message: its short hash and when it was made. */
+.meta {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.sha {
+    @ruleset typography-text-code-xs;
+}
+
+/* The note under a list that was cut, in line with the rows' words. */
+.more {
+    padding: var(--spacing-xs) var(--spacing-lg);
+}
+
+/* The bar at the foot: one row of the lists, inset as their rows are, under a hairline. */
+.bar {
+    flex-shrink: 0;
+    padding: var(--spacing-xs);
+    border-top: 1px solid var(--color-surface-border);
+}
+
+/* The whole bar is the button: its words where the files' title has its words, the chevron at the end where the rows have their counts. */
+.barButton[data-size][data-variant] {
+    justify-content: flex-start;
+    width: 100%;
+    min-width: 0;
+    padding-inline: var(--spacing-lg);
+}
+
+.barContent {
+    flex: 1;
+    justify-content: space-between;
+    min-width: 0;
+    gap: var(--spacing-md);
+}
+
+.barTitle {
+    display: flex;
+    min-width: 0;
+}
+
+/* Its words keep their own spaces (` · 3`), so the count stands as far from the words as in the bar's whole line. */
+.barCount {
+    flex-shrink: 0;
+    white-space: pre;
+}

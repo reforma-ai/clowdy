@@ -66,6 +66,7 @@ export function BranchList({
                     size="sm"
                     fullWidth
                     className={styles.action}
+                    contentClassName={styles.actionContent}
                     isDisabled={!listing}
                     onPress={onCreate}
                 >

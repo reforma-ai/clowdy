@@ -11,3 +11,30 @@ export const CHANGES_SIDEBAR_DEFAULT_WIDTH = 240;
 
 /** The narrowest the whole view can be: the reading area and the sidebar at their narrowest, side by side. */
 export const CHANGES_MIN_WIDTH = CHANGES_READING_MIN_WIDTH + CHANGES_SIDEBAR_MIN_WIDTH;
+
+/**
+ * The commits of the branch at the foot of the sidebar, a list that is shut until it is opened and as tall as the person drags it. A row is the design system's two-line option
+ * (`ListBoxItem` stacked: 8px above and below two 16px lines with 1px between), 2px apart, and the list stands 4px inside its box at the top and the bottom, under the box's 1px
+ * top border.
+ */
+export const CHANGES_COMMIT_ROW_HEIGHT = 49;
+const COMMIT_ROWS_GAP = 2;
+const COMMIT_LIST_PADDING = 8;
+const COMMIT_BOX_BORDER = 1;
+
+/** The height of the commits' box that shows `rows` rows whole, with no scroll. */
+export const commitListHeight = (rows: number): number =>
+    rows * CHANGES_COMMIT_ROW_HEIGHT +
+    Math.max(0, rows - 1) * COMMIT_ROWS_GAP +
+    COMMIT_LIST_PADDING +
+    COMMIT_BOX_BORDER;
+
+/** The least the commits' box can be dragged to: two rows. */
+export const CHANGES_COMMITS_MIN_HEIGHT = commitListHeight(2);
+
+/** What the box opens at until the person drags it: five rows (fewer for a branch with fewer commits, two at the least), and never more than this share of its column. */
+export const CHANGES_COMMITS_DEFAULT_ROWS = 5;
+export const CHANGES_COMMITS_DEFAULT_SHARE = 0.4;
+
+/** The least the changed files keep above the commit box and the commits, their title included, so the commits' box can never be dragged over them. */
+export const CHANGES_FILES_MIN_HEIGHT = 96;
