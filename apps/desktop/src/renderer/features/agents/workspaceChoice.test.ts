@@ -94,6 +94,40 @@ describe('what a new chat is sent with', () => {
     });
 });
 
+describe("what a new chat is sent with, for a branch of the folder's own checkout", () => {
+    it('keeps the branch while the folder is on another, and sends nothing for the one it is on', () => {
+        expect(effectiveChoice({ mode: 'main', branch: 'dev' }, ready(git))).toEqual({ mode: 'main', branch: 'dev' });
+        expect(effectiveChoice({ mode: 'main', branch: 'main' }, ready(git))).toBeUndefined();
+    });
+
+    it('sends a copy, so the store keeps the choice it holds', () => {
+        const choice = { mode: 'main' as const, branch: 'dev' };
+
+        expect(effectiveChoice(choice, ready(git))).not.toBe(choice);
+    });
+
+    it('leaves a branch that is only on origin to the daemon, which takes it as the local branch that tracks it', () => {
+        expect(effectiveChoice({ mode: 'main', branch: 'feature/search' }, ready(git))).toEqual({
+            mode: 'main',
+            branch: 'feature/search',
+        });
+    });
+
+    it('is a branch to go to from a detached HEAD, whose name is the commit the folder is on', () => {
+        const detached = ready({ ...git, branch: '5c4d3e2', detached: true });
+
+        expect(effectiveChoice({ mode: 'main', branch: 'main' }, detached)).toEqual({ mode: 'main', branch: 'main' });
+    });
+
+    it('sends nothing for a folder that is no repository, one that could not be read and one still being read', () => {
+        const choice = { mode: 'main' as const, branch: 'dev' };
+
+        expect(effectiveChoice(choice, ready({ isRepository: false }))).toBeUndefined();
+        expect(effectiveChoice(choice, { status: 'failed', reason: '' })).toBeUndefined();
+        expect(effectiveChoice(choice, { status: 'loading' })).toBeUndefined();
+    });
+});
+
 describe('paths', () => {
     it('are the same one with or without a trailing separator, and on Windows in any case and either kind of separator', () => {
         expect(samePath('/work/api', '/work/api/')).toBe(true);

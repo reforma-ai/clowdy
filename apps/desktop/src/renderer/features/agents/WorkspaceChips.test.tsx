@@ -256,8 +256,8 @@ describe('the control', () => {
     it('gives each row of the menu an icon and ticks none: the row that is on is the one the menu has selected', async () => {
         await press(chip()!);
 
-        // An icon each, and the chevron too on the two rows that open something beside the menu.
-        expect(menuItems().map(iconsOf)).toEqual([1, 2, 2, 1]);
+        // An icon each, and the chevron too on the three rows that open something beside the menu (the branch of the main worktree and the base of a new one are chips with a chevron of their own).
+        expect(menuItems().map(iconsOf)).toEqual([2, 2, 2, 1]);
         expect(document.body.querySelector('[role="menu"] [aria-label="Current"]')).toBeNull();
         expect(menuItems().map(row => row.getAttribute('aria-checked'))).toEqual(['true', 'false', null, null]);
     });
@@ -448,7 +448,7 @@ describe('the branch a new worktree starts from', () => {
         expect(baseButton()?.getAttribute('tabindex')).toBe('-1');
     });
 
-    it('opens the list for the right arrow on the row of a new worktree, and only on that row', async () => {
+    it('opens the list of the base for the right arrow on the row of a new worktree, and on no row of Manage worktrees', async () => {
         const key = async (target: HTMLElement) =>
             act(async () => {
                 target.focus();
@@ -464,7 +464,6 @@ describe('the branch a new worktree starts from', () => {
             });
 
         await press(chip()!);
-        await key(menuItem('Main worktree'));
         await key(menuItem('Manage worktrees'));
         await settle();
 

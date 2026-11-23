@@ -15,6 +15,7 @@ import styles from './DraftChat.module.css';
 import { DraftFolderSelect } from './DraftFolderSelect';
 import { useDraftWorkspaceRow } from './useDraftWorkspaceRow';
 import { useFolderRepository } from './useFolderRepository';
+import { useMainBranch } from './useMainBranch';
 import { WorkspaceChips } from './WorkspaceChips';
 import { effectiveChoice } from './workspaceChoice';
 
@@ -26,7 +27,8 @@ import type { FolderId } from '@clowdy/protocol';
  * with its words already in the box's draft and its conversation as a file in `ui.pendingFiles`. A line under the box (drawn by the composer, with the mode at its end) says which folder the chat is for
  * (`ui.draftFolderId`, the main folder's when none): a select that changes it in a project of several folders, the folder read only (`DraftFolder`) in one of a
  * single folder. After the folder comes the one control of where it works in it (`WorkspaceChips`: the branch of the folder's checkout, a new worktree, or an existing one), from what git says of the folder (`useFolderRepository`) and what the person
- * chose (`ui.draftWorkspace`); the first message sends what that read bears out (`effectiveChoice`). A worktree that exists, once chosen, is also the place of the window's tabs (`useDraftWorkspaceRow`). `missing` are the folders gone from the disk, which the select lists and does not let be
+ * chose (`ui.draftWorkspace`); the first message sends what that read bears out (`effectiveChoice`). A branch picked for the folder's own checkout is switched by the daemon as the chat is made
+ * (`useMainBranch`): the message goes only once that is done, and a refusal keeps the words in the box and says why in the pill. A worktree that exists, once chosen, is also the place of the window's tabs (`useDraftWorkspaceRow`). `missing` are the folders gone from the disk, which the select lists and does not let be
  * picked. The chat this page makes keeps the line, with the folder and the place read only (`ChatFolder`).
  */
 export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
@@ -49,6 +51,8 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     const repository = useFolderRepository(project.id, target.folder.id);
     const workspace = effectiveChoice(ui.draftWorkspace, repository);
 
+    // The branch of the folder's own checkout, when the person picked one: the daemon switches it as the chat is made.
+    const mainBranch = useMainBranch(project.id, target.folder.id, workspace);
     // A worktree that exists is the place of the page (its files, shells and `@` list) as soon as it is chosen, and the chat the first message makes works in the same row.
     useDraftWorkspaceRow(project.id, target.folder.id, workspace);
 
@@ -60,6 +64,12 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
         ui.draftWorkspace !== null && repository.status === 'loading'
             ? "Wait until the folder's worktrees are read"
             : undefined;
+
+    // A project with no chat shows this page whether or not the store says the new-chat page is open (`resolveSelection`), and the store keeps what is chosen here (the folder, where it works, the
+    // branch) only while the page is open: an empty project's first chat would otherwise ignore every pick of the pill. Opening it changes nothing the person sees.
+    useEffect(() => {
+        if (!ui.draft) ui.openDraft();
+    }, [ui]);
 
     // Files a hand-off left here join the message as if they were picked: the box uploads them to this project. What the effect adds is
     // what the store hands over, so a second run of it (strict mode) finds nothing and adds nothing.
@@ -88,6 +98,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                                 folderId,
                                 workspace,
                                 ...(workspaceRow && { workspaceRow }),
+                                ...(mainBranch.around && { around: mainBranch.around }),
                                 waiting,
                                 onStarted: chatId => ui.openChat(chatId),
                                 defaults,
@@ -118,6 +129,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                                         repository={repository}
                                         choice={workspace}
                                         chats={project.chats}
+                                        main={mainBranch.controls}
                                         onChoose={choice => ui.setDraftWorkspace(choice)}
                                         onManage={() =>
                                             openManageWorktrees({

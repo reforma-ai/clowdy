@@ -17,7 +17,7 @@ export interface ChipTriggerProps {
     /** What a screen reader says of the pill: its kind and the label (`Folder: web`). */
     'aria-label': string;
     tooltip?: string;
-    /** In the warning colour: what the pill names is gone. */
+    /** In the warning colour: what the pill names is gone, or cannot be had (a branch the daemon would not switch to). */
     missing?: boolean;
     /** What the pill opens is open, for a list that is not in a trigger's context (a `PickerPopover` drawn beside the pill). Inside a trigger the pill reads it from there. */
     isOpen?: boolean;

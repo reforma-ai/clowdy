@@ -36,6 +36,12 @@
     max-width: 7rem;
 }
 
+/* The chip at the end of a row (the base of a new worktree, the branch of the main worktree): a long name is cut, and the row's own words keep their room. */
+.base[data-size][data-variant] {
+    min-width: 0;
+    max-width: 10rem;
+}
+
 .baseContent {
     min-width: 0;
 }

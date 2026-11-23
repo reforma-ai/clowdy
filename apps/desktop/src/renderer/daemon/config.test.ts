@@ -205,3 +205,19 @@ describe('createTransport', () => {
         await expect(transport.command({ type: 'run.cancel', runId: 'r' })).rejects.toThrow('No daemon is configured');
     });
 });
+
+describe('resolveDaemonConfig and the words of &branches=', () => {
+    it('reads each word of the branches switch the fixtures know, in the order given, and leaves out the others', () => {
+        expect(resolveDaemonConfig('?fixtures=static&branches=idle,dirty,warned,nope,remote')).toEqual({
+            kind: 'fixtures',
+            timeline: false,
+            branches: ['idle', 'dirty', 'warned', 'remote'],
+        });
+        expect(resolveDaemonConfig('?fixtures=static&branches=')).toEqual({ kind: 'fixtures', timeline: false });
+        expect(resolveDaemonConfig('?fixtures=static&branches=held,refused,slow')).toEqual({
+            kind: 'fixtures',
+            timeline: false,
+            branches: ['held', 'refused', 'slow'],
+        });
+    });
+});
