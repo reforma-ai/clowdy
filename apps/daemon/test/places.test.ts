@@ -466,12 +466,48 @@ describe('the workspaces in the info of the projects', () => {
 
         expect(await infoOf()).toEqual([feature.id, tuning.id]);
 
-        // Deleting the chat leaves the worktree's row where it is; nobody points at it then, and nobody can ask about it.
+        // The row goes with the last chat that points at it.
         for (const { id } of h.store.db.query('SELECT id FROM chats WHERE workspace_id = ?').all(feature.id) as Array<{ id: string }>) {
             h.ok('chat.delete', { chatId: id });
         }
 
         expect(await infoOf()).toEqual([tuning.id]);
+    });
+
+    test('reports a worktree a new-chat page opened before any chat works in it, while it is on the disk, and as the one entry once a chat does', async () => {
+        const { h, project, folder, shop, root } = await setup();
+        const found = join(root, 'shop-found');
+
+        git(shop, 'worktree', 'add', '-q', '-b', 'found', found);
+
+        const { workspace } = h.ok('workspace.open', { projectId: project.id, folderId: folder.id, path: found }) as { workspace: { id: string } };
+        const infoOf = async () => ((await (await h.fetch(`/v1/projects/info?project=${ project.id }`)).json()) as ProjectInfo[])[0].workspaces?.filter(entry => entry.workspaceId === workspace.id);
+
+        expect(await infoOf()).toEqual([{ workspaceId: workspace.id, exists: true, branch: 'found' }]);
+
+        // What is checked out now is read, as for a chat's worktree.
+        git(found, 'switch', '-q', '-c', 'switched');
+        expect(await infoOf()).toEqual([{ workspaceId: workspace.id, exists: true, branch: 'switched' }]);
+
+        const chat = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: found } }).chat;
+
+        expect(chat.workspace?.id).toBe(workspace.id);
+        expect(await infoOf()).toEqual([{ workspaceId: workspace.id, exists: true, branch: 'switched' }]);
+    });
+
+    test('leaves out a row a new-chat page opened once its worktree is gone, which says nothing a chat could call gone', async () => {
+        const { h, project, folder, shop, root } = await setup();
+        const found = join(root, 'shop-short-lived');
+
+        git(shop, 'worktree', 'add', '-q', '-b', 'short-lived', found);
+
+        const { workspace } = h.ok('workspace.open', { projectId: project.id, folderId: folder.id, path: found }) as { workspace: { id: string } };
+        const idsOf = async () => ((await (await h.fetch(`/v1/projects/info?project=${ project.id }`)).json()) as ProjectInfo[])[0].workspaces?.map(entry => entry.workspaceId);
+
+        expect(await idsOf()).toContain(workspace.id);
+
+        rmSync(found, { recursive: true, force: true });
+        expect(await idsOf()).not.toContain(workspace.id);
     });
 
     test('is one entry for a worktree that several chats work in', async () => {

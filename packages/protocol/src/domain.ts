@@ -99,7 +99,11 @@ export interface ProjectInfo {
     tasks: number;
     /** Runs that are not finished. Removing the project or choosing another main folder waits until there are none. */
     activeRuns: number;
-    /** The workspaces of the project's chats, read as the folders are. Absent when no chat has one. */
+    /**
+     * The worktrees the project has a row of, read as the folders are: the ones its chats work in (one gone from the disk is there with `exists: false`, so the chat can say it is
+     * gone) and the ones a new-chat page opened (`workspace.open`) that no chat works in yet, which are there only while they are on the disk. Absent when there are none. Not
+     * every worktree git lists for a folder: that is `FolderGit.worktrees`.
+     */
     workspaces?: ProjectWorkspaceInfo[];
 }
 
@@ -123,7 +127,7 @@ export interface ProjectFolderInfo {
     chats: number;
 }
 
-/** What `GET /v1/projects/info` reads of one workspace (a worktree a chat works in): whether it is there and the branch it has checked out now. */
+/** What `GET /v1/projects/info` reads of one workspace (a worktree a chat works in, or a new-chat page opened): whether it is there and the branch it has checked out now. */
 export interface ProjectWorkspaceInfo {
     workspaceId: WorkspaceId;
     /** False when the worktree's folder is gone from the disk, or was not made yet. */
