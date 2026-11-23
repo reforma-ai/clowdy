@@ -24,8 +24,12 @@ const handlers: Handlers = {
 };
 const asyncHandlers: AsyncHandlers = { ...chatAsyncHandlers, ...workspaceAsyncHandlers };
 
-/** When a command that has both kinds of handler takes the async one: a delete that removes the chat's worktree waits for git, a plain delete does not. */
+/**
+ * When a command that has both kinds of handler takes the async one: a delete that removes the chat's worktree waits for git, a plain delete does not; so does a chat made on a branch of
+ * the folder's checkout (git switches it first), and a chat made any other way does not.
+ */
 const waitsWhen: { [T in SometimesAsyncCommandType]: (command: CommandOf<T>) => boolean } = {
+    'chat.create': command => command.workspace?.mode === 'main',
     'chat.delete': command => command.removeWorkspace === true,
 };
 

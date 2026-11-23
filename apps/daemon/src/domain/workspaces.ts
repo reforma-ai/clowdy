@@ -35,6 +35,7 @@ import type {
     Chat,
     ChatWorkspace,
     ChatWorkspaceChoice,
+    ChatWorktreeChoice,
     Project,
     ProjectFolder,
     StreamItemBody,
@@ -325,7 +326,7 @@ export interface WorkspaceRequest {
     chatId: string;
     /** The folder the chat works in; the project's main folder when absent. */
     folderId?: string;
-    choice: ChatWorkspaceChoice;
+    choice: ChatWorktreeChoice;
 }
 
 /**
