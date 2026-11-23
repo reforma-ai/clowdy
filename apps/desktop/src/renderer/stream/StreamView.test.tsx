@@ -757,7 +757,7 @@ describe('StreamView', () => {
 
                 await drawWith(forkable, { active: false, messageActions: { onFork, onHandoff, handoffAgents: [{ id: 'codex', name: 'Codex' }] } });
                 await press(forkButtons()[0]);
-                await press(itemNamed('Fork to another agent'));
+                await press(itemNamed('Hand off to another agent'));
                 await press(itemNamed('Codex'));
 
                 expect(onHandoff).toHaveBeenCalledExactlyOnceWith('i-3', 'codex');
@@ -782,30 +782,32 @@ describe('StreamView', () => {
             });
 
             describe('where the agent cannot cut its session', () => {
+                const handoffButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Hand off"]')];
                 // The first answer carries no flag (an agent without `session/fork`, an answer of a stopped turn); the second does.
                 const oneMarked = [twoTurns[0], twoTurns[1], twoTurns[2], twoTurns[3], twoTurns[4], { ...twoTurns[5], canFork: true }];
                 const others = [{ id: 'codex', name: 'Codex' }];
 
-                it('draws a Fork that hands the conversation to the chat\'s own agent under an answer the daemon did not mark, and keeps the session fork under one it did', async () => {
+                it('draws a Hand off, not a Fork, under an answer the daemon did not mark, with the chat\'s own agent and the others to hand off to, and keeps the Fork under one it did', async () => {
                     const onFork = vi.fn();
                     const onHandoff = vi.fn();
 
                     await drawWith(oneMarked, { active: false, messageActions: { onFork, onHandoff, ownAgent: 'cursor', handoffAgents: others } });
 
-                    expect(forkButtons()).toHaveLength(2);
+                    expect(handoffButtons()).toHaveLength(1);
+                    expect(forkButtons()).toHaveLength(1);
 
-                    await press(forkButtons()[0]);
+                    await press(handoffButtons()[0]);
 
-                    expect(itemNamed('Fork').textContent).toContain('Attaches the conversation as a file');
+                    expect([...document.body.querySelectorAll('[role="menuitem"]')].map(row => row.textContent)).toEqual(['Hand off to a new chat', 'Hand off to another agent…']);
 
-                    await press(itemNamed('Fork'));
+                    await press(itemNamed('Hand off to a new chat'));
 
                     expect(onHandoff).toHaveBeenCalledExactlyOnceWith('i-3', 'cursor');
                     expect(onFork).not.toHaveBeenCalled();
 
-                    await press(forkButtons()[1]);
+                    await press(forkButtons()[0]);
 
-                    expect(itemNamed('Fork').textContent).toBe('Fork');
+                    expect([...document.body.querySelectorAll('[role="menuitem"]')].map(row => row.textContent)).toEqual(['Fork', 'Hand off to another agent…']);
 
                     await press(itemNamed('Fork'));
 
@@ -813,16 +815,17 @@ describe('StreamView', () => {
                     expect(onHandoff).toHaveBeenCalledOnce();
                 });
 
-                it('still lists the other agents under Fork to another agent… there', async () => {
+                it('lists the other agents under Hand off to another agent… there', async () => {
                     const onHandoff = vi.fn();
 
                     await drawWith(twoTurns, { active: false, messageActions: { onHandoff, ownAgent: 'cursor', handoffAgents: others } });
 
                     // No answer is marked and both have the menu.
-                    expect(forkButtons()).toHaveLength(2);
+                    expect(handoffButtons()).toHaveLength(2);
+                    expect(forkButtons()).toHaveLength(0);
 
-                    await press(forkButtons()[1]);
-                    await press(itemNamed('Fork to another agent'));
+                    await press(handoffButtons()[1]);
+                    await press(itemNamed('Hand off to another agent'));
                     await press(itemNamed('Codex'));
 
                     expect(onHandoff).toHaveBeenCalledExactlyOnceWith('i-5', 'codex');
@@ -831,17 +834,18 @@ describe('StreamView', () => {
                 it('draws none without a hand-off to make it with, or without the agent to make it on', async () => {
                     await drawWith(twoTurns, { active: false, messageActions: { ownAgent: 'cursor' } });
 
-                    expect(forkButtons()).toHaveLength(0);
+                    expect(handoffButtons()).toHaveLength(0);
 
                     await drawWith(twoTurns, { active: false, messageActions: { onHandoff: vi.fn(), handoffAgents: others } });
 
-                    expect(forkButtons()).toHaveLength(0);
+                    expect(handoffButtons()).toHaveLength(0);
                 });
 
                 it('does not wait for a fork that is being made, since a hand-off asks nothing of the daemon', async () => {
                     await drawWith(oneMarked, { active: false, messageActions: { onFork: vi.fn(), onHandoff: vi.fn(), ownAgent: 'cursor', forkingId: 'i-5' } });
 
-                    expect(forkButtons().map(button => [button.hasAttribute('data-pending'), button.disabled])).toEqual([[false, false], [true, false]]);
+                    expect(handoffButtons().map(button => [button.hasAttribute('data-pending'), button.disabled])).toEqual([[false, false]]);
+                    expect(forkButtons().map(button => [button.hasAttribute('data-pending'), button.disabled])).toEqual([[true, false]]);
                 });
             });
 

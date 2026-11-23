@@ -475,13 +475,13 @@ describe('startHandoff', () => {
             expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe('');
         });
 
-        it('says fork, the word of the menu it came from, where the notice\'s button says hand off, and ends with the way on', async () => {
+        it('says a full message box of the new chat in the same words from an answer, and ends with the way on', async () => {
             setFiles(NEW_CHAT_KEY, Array.from({ length: MAX_ATTACHMENTS_PER_MESSAGE }, (_, index) => held(`file-${ index }.txt`, 1)));
 
             expect(await from(2, 'codex')).toBe(false);
 
             expect(vi.mocked(toast.error).mock.calls[0]![0]).toMatchObject({
-                title: 'The conversation was not forked',
+                title: 'The conversation was not handed off',
                 message: expect.stringMatching(/Make room in the message box of the new chat, then try again\.$/) as string,
             });
         });
