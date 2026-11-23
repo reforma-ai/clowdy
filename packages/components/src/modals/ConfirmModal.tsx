@@ -18,6 +18,16 @@ export type OpenConfirmModalOptions = {
     /** Omit Cancel. The confirm button is the only action. */
     showCancel?: boolean;
     destructive?: boolean;
+    /**
+     * Which button takes the focus when the dialog opens: Confirm, as most dialogs want, or Cancel, for an action that cannot be taken back. With Cancel, Enter on the dialog's own
+     * body (not on a button) does not confirm either: Enter does what the focused button does and nothing else.
+     */
+    initialFocus?: 'confirm' | 'cancel';
+    /**
+     * Where a failure of `onConfirm` is said: in a toast, which is the default, or in the dialog, under the message, where the person is looking. Either way the dialog stays open and
+     * its buttons are back, and the next press tries again.
+     */
+    errorIn?: 'toast' | 'dialog';
     onConfirm: () => void | Promise<void>;
 };
 
@@ -94,16 +104,20 @@ export function ConfirmModalContent({
     cancelLabel = 'Cancel',
     showCancel = true,
     destructive,
+    initialFocus = 'confirm',
+    errorIn = 'toast',
     onConfirm,
 }: OpenConfirmModalOptions) {
     const { modal } = useModalContext();
     const [isPending, setIsPending] = useState(false);
+    const [failure, setFailure] = useState<string | undefined>();
 
     const handleConfirm = async() => {
         if (isPending) {
             return;
         }
 
+        setFailure(undefined);
         setIsPending(true);
         const { clickOut, closeOnEscape } = modal.currentOptions;
         modal.updateOptions({ clickOut: false, closeOnEscape: false });
@@ -115,9 +129,15 @@ export function ConfirmModalContent({
         catch(error) {
             setIsPending(false);
             modal.updateOptions({ clickOut, closeOnEscape });
-            toast.error({
-                message: error instanceof Error ? error.message : 'Something went wrong. Please try again.',
-            });
+
+            const message = error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+
+            if (errorIn === 'dialog') {
+                setFailure(message);
+            }
+            else {
+                toast.error({ message });
+            }
         }
     };
 
@@ -126,7 +146,7 @@ export function ConfirmModalContent({
             gap="xl"
             padding="xxl"
             onKeyDown={ (event) => {
-                if (event.key !== 'Enter' || event.defaultPrevented || isPending) {
+                if (event.key !== 'Enter' || event.defaultPrevented || isPending || initialFocus === 'cancel') {
                     return;
                 }
 
@@ -148,6 +168,9 @@ export function ConfirmModalContent({
                         </Text>
                     )
                     : message}
+                <Show when={ failure }>
+                    { text => <Text variant="md" color="danger" role="alert" select="text">{ text }</Text> }
+                </Show>
             </Box>
 
             <Box
@@ -160,6 +183,7 @@ export function ConfirmModalContent({
                 <Show when={ showCancel }>
                     <Button
                         variant="bordered"
+                        autoFocus={ initialFocus === 'cancel' }
                         isDisabled={ isPending }
                         onPress={ () => modal.cancel() }
                     >
@@ -168,7 +192,7 @@ export function ConfirmModalContent({
                 </Show>
 
                 <Button
-                    autoFocus
+                    autoFocus={ initialFocus === 'confirm' || !showCancel }
                     color={ destructive ? 'danger' : 'primary' }
                     isPending={ isPending }
                     isDisabled={ isPending }
