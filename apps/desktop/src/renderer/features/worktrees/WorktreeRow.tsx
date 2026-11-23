@@ -12,7 +12,7 @@ import { Unavailable } from '../../shared/Unavailable';
 import { worktreeLabel } from '../agents/workspaceChoice';
 import { canOpenPaths, OpenWithMenu, useFolderGit } from '../openWith';
 import styles from './ManageWorktrees.module.css';
-import { changesLabel, lockTip, mergedMark, removeHint } from './worktreeView';
+import { changesLabel, lockTip, mergedMark, removeHint, removeNote } from './worktreeView';
 
 import type { FolderWorktrees, ProjectFolder, ProjectId, WorktreeChat, WorktreeInfo } from '@clowdy/protocol';
 import type { OpenTarget } from '../openWith';
@@ -49,12 +49,20 @@ interface WorktreeRowProps extends WorktreeRowActions {
  * One worktree of a folder, as git lists it: its branch (or the commit it is on), the marks that matter (the folder's own checkout, locked, gone from the disk), the path, how
  * many files are changed and whether its work is in the base, and the chats that work in it, archived ones too, each a button that opens it. At the end: the programs
  * that open it (`OpenWithMenu`), a new chat in it, and Remove, which the folder's own checkout does not have. A worktree whose folder is gone has no chat to start in it.
+ *
+ * Sizes are the app's list row, as `ProjectRow` has it: the title is body (`md`) medium, the path and the facts `sm` and dim, the marks `xs`; a bare `Text` would take the page's 16px,
+ * which this window shows far larger than the lists around it. The branch and the path are one line each and cut with an ellipsis (the path in its middle, `PathText`), the whole
+ * on hover, so they never push the actions. A Remove that is off says why in a line of the row (`removeNote`), and the same on hover of the button.
  */
 export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onOpenChat, onRemove }: WorktreeRowProps) {
     const label = worktreeLabel(worktree);
     const merged = mergedMark(worktree);
     const newChat = worktree.main ? 'New chat in this folder' : 'New chat in this worktree';
     const hint = removeHint(worktree);
+    const note = removeNote(worktree);
+    // Chats are the reason there is no Remove: the note leads the chats it is about. Any other reason stands on a line of its own.
+    const chatNote = worktree.blocked === 'chats' ? note : undefined;
+    const reason = chatNote === undefined ? note : undefined;
     const removeTip = worktree.missing ? 'Remove record' : 'Remove';
     const removeLabel = worktree.missing ? `Remove record of ${ label }` : `Remove ${ label }`;
 
@@ -63,7 +71,7 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
             <span className={ styles.icon }>{ worktree.main ? <Folder aria-hidden="true" /> : <Version aria-hidden="true" /> }</span>
             <span className={ styles.text }>
                 <span className={ styles.title }>
-                    <Text weight="medium" truncate>{ label }</Text>
+                    <Text variant="md" weight="medium" truncate title={ label }>{ label }</Text>
                     { worktree.main && <Badge size="xs" textValue="Project checkout" tooltip="The folder itself, where a chat works without a worktree">Project checkout</Badge> }
                     { worktree.locked !== undefined && <Badge size="xs" textValue="Locked" tooltip={ lockTip(worktree.locked) }>Locked</Badge> }
                     { worktree.missing && <Badge size="xs" color="warning" textValue="Missing on disk" tooltip="Git lists it, but its folder is gone">Missing on disk</Badge> }
@@ -73,16 +81,20 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
                     { !worktree.missing && <Text variant="sm" color={ worktree.changes === 0 ? 'secondary' : 'default' }>{ changesLabel(worktree.changes) }</Text> }
                     { merged && <Badge size="xs" color={ merged.color } textValue={ merged.label } tooltip={ merged.tip }>{ merged.label }</Badge> }
                 </span>
+                { reason !== undefined && <Text variant="sm" color="secondary" className={ styles.reason }>{ reason }</Text> }
                 { worktree.chats.length > 0 && (
-                    <span className={ styles.chats } role="group" aria-label="Chats">
-                        <For each={ worktree.chats }>
-                            {chat => (
-                                <Button key={ chat.id } variant="filling" color="secondary" size="xs" truncate className={ styles.chat } onPress={ () => onOpenChat(chat) }>
-                                    <span className={ styles.chatTitle }>{ chat.title }</span>
-                                    { chat.archived && <span className={ styles.archived }>Archived</span> }
-                                </Button>
-                            )}
-                        </For>
+                    <span className={ styles.chatsBlock }>
+                        { chatNote !== undefined && <Text variant="sm" color="secondary" className={ styles.reason }>{ chatNote }</Text> }
+                        <span className={ styles.chats } role="group" aria-label="Chats">
+                            <For each={ worktree.chats }>
+                                {chat => (
+                                    <Button key={ chat.id } variant="filling" color="secondary" size="xs" truncate className={ styles.chat } onPress={ () => onOpenChat(chat) }>
+                                        <span className={ styles.chatTitle }>{ chat.title }</span>
+                                        { chat.archived && <span className={ styles.archived }>Archived</span> }
+                                    </Button>
+                                )}
+                            </For>
+                        </span>
                     </span>
                 ) }
             </span>
@@ -121,7 +133,7 @@ export function WorktreeGroup({ projectId, group, folder, ...actions }: Omit<Wor
 
     return (
         <section className={ styles.group } aria-labelledby={ headingId } data-folder-id={ group.folderId }>
-            <Text as="h3" id={ headingId } variant="heading-5" truncate>{ group.name }</Text>
+            <Text as="h3" id={ headingId } variant="heading-5" truncate title={ group.name }>{ group.name }</Text>
             <ul className={ styles.card }>
                 <For each={ group.worktrees }>
                     {worktree => <WorktreeRow key={ worktree.path } projectId={ projectId } group={ group } folder={ folder } worktree={ worktree } { ...actions } />}

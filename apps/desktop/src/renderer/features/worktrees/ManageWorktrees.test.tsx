@@ -295,6 +295,46 @@ describe('Manage worktrees', () => {
         expect(stand(FOUND_WORKTREE)).toBeNull();
     });
 
+    it('says in the row, not only on hover, why a Remove is off, and says it once', async () => {
+        await open();
+
+        const note = 'Can\'t remove';
+        const occurrences = (text: string) => text.split(note).length - 1;
+
+        // A chat works in it: the reason leads the chats it is about, and the chats do not repeat it.
+        const clowdy = row(CLOWDY_WORKTREE);
+
+        expect(clowdy.textContent).toContain('Can\'t remove while these chats work in it');
+        expect(occurrences(clowdy.textContent!)).toBe(1);
+        expect(clowdy.querySelector('[aria-label="Chats"]')!.textContent).not.toContain(note);
+
+        // Locked: git's reason when it gave one.
+        expect(row(LOCKED_WORKTREE).textContent).toContain('Can\'t remove: git has it locked (on an external drive)');
+        expect(occurrences(row(LOCKED_WORKTREE).textContent!)).toBe(1);
+
+        // Nothing stops it, a missing folder is no reason (it has Remove record), and the folder's own checkout has no Remove to explain.
+        for (const path of [FOUND_WORKTREE, MISSING_WORKTREE, DETACHED_WORKTREE, '/Users/dev/car-rental']) expect(row(path).textContent, path).not.toContain(note);
+    });
+
+    it('says the repository\'s own working tree, when a row that is not the folder\'s checkout is one, cannot be removed', async () => {
+        const worktree = { branch: 'main', head: 'a1b2c3d', missing: false, changes: 0, submodules: false, managed: false, chats: [] };
+        const getProjectWorktrees = async (): Promise<FolderWorktrees[]> => [{
+            folderId: 'fld_car_rental',
+            name: 'car-rental',
+            isRepository: true,
+            worktrees: [
+                { ...worktree, path: '/Users/dev/car-rental', branch: 'feature', main: true, blocked: 'main' },
+                { ...worktree, path: '/Users/dev/car-rental-primary', main: false, blocked: 'main' },
+            ],
+        }];
+
+        await open({ overrides: { getProjectWorktrees } });
+
+        expect(row('/Users/dev/car-rental-primary').textContent).toContain('Can\'t remove: it is the repository\'s own working tree');
+        expect(buttonIn(row('/Users/dev/car-rental-primary'), 'Remove main')!.disabled).toBe(true);
+        expect(row('/Users/dev/car-rental').textContent).not.toContain('Can\'t remove');
+    });
+
     it('offers the programs of the computer for a worktree in the desktop app, and nothing to open it in a page that is not', async () => {
         await open();
 
