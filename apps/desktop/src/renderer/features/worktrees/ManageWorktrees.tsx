@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { RootStoreProvider, useRootStore } from '../../stores';
 import { openChat } from '../chats/archiveChat';
 import styles from './ManageWorktrees.module.css';
+import { openRemoveWorktree } from './RemoveWorktreeDialog';
 import { useProjectWorktrees } from './useProjectWorktrees';
 import { WorktreeGroup, type WorktreeRowActions } from './WorktreeRow';
 import { repositoryGroups } from './worktreeView';
@@ -22,19 +23,14 @@ export interface ManageWorktreesProps {
     projectId: ProjectId;
     /** The folder whose group is scrolled into view when the list arrives: where the dialog was opened from. */
     folderId?: FolderId;
-    /**
-     * What a row's Remove does with the group and the worktree, and the dialog's `reload` for after it. The seam of Stage 5 of `.briefback/worktree-followups/plan.md`: without
-     * it every Remove is drawn and cannot be pressed, and `openManageWorktrees` gives none yet.
-     */
-    onRemove?: (group: FolderWorktrees, worktree: WorktreeInfo, reload: () => Promise<void>) => void;
 }
 
 /**
  * "Manage worktrees": the worktrees of every git folder of a project in one window, wherever the person met one (the Files tab, the sidebar's folder menu, Info, the new-chat
  * page). One group per folder with the folder's own checkout first, then a row for every worktree git lists (`WorktreeRow`), found ones included; a folder that is no
- * repository has no group. The window shows only what changes nothing: the programs a worktree opens in, and a new chat in it (the dialog closes and the new-chat page is
- * shown there), or a click on a chat that works in it. No `title` option: the heading is drawn in the dialog, and the window's own close button floats at the corner.
- * The dialog hosts its own React root, so it brings the store to its tree.
+ * repository has no group. A row opens in the programs of the computer, starts a new chat in the worktree (the dialog closes and the new-chat page is shown there), lists the
+ * chats that work in it (a click opens one), and removes it through a confirmation (`openRemoveWorktree`), after which the list is read again. No `title` option: the heading
+ * is drawn in the dialog, and the window's own close button floats at the corner. The dialog hosts its own React root, so it brings the store to its tree.
  */
 export function openManageWorktrees({ root, ...props }: ManageWorktreesProps): void {
     Modal.create({
@@ -48,7 +44,7 @@ export function openManageWorktrees({ root, ...props }: ManageWorktreesProps): v
     });
 }
 
-function ManageWorktrees({ projectId, folderId, onRemove }: Omit<ManageWorktreesProps, 'root'>) {
+function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'root'>) {
     const root = useRootStore();
     const { modal } = useModalContext();
     const { folders, failed, reload } = useProjectWorktrees(projectId);
@@ -94,7 +90,7 @@ function ManageWorktrees({ projectId, folderId, onRemove }: Omit<ManageWorktrees
 
             leave();
         },
-        ...(onRemove && { onRemove: (group: FolderWorktrees, worktree: WorktreeInfo) => onRemove(group, worktree, reload) }),
+        onRemove: (group: FolderWorktrees, worktree: WorktreeInfo) => openRemoveWorktree({ root, projectId, group, worktree, reload }),
     };
 
     return (
@@ -104,7 +100,12 @@ function ManageWorktrees({ projectId, folderId, onRemove }: Omit<ManageWorktrees
                 <Text color="secondary">Every worktree of the project's folders, and the chats that work in each</Text>
             </div>
 
-            { failed && groups && <Text variant="sm" color="warning" role="status">Couldn't refresh the list</Text> }
+            { failed && groups && (
+                <div className={ styles.notice }>
+                    <Text variant="sm" color="warning" role="status">Couldn't refresh the list</Text>
+                    <Button size="xs" onPress={ () => void reload() }>Try again</Button>
+                </div>
+            ) }
 
             <div ref={ list } className={ styles.groups }>
                 { groups === undefined && !failed && (

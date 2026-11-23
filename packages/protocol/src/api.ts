@@ -14,8 +14,9 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/projects/info                  -> ProjectInfo[] (one per project, in the order of the snapshot: whether each of its folders exists, its
  *                                            git remote and branch and how many chats chose it, and how many chats, tasks and unfinished runs the
  *                                            project has; read when asked, never announced); `?project=ID` answers that project alone (404 when
- *                                            there is none). `workspaces` has one entry for each worktree of the project's chats (`ChatWorkspace`): whether
- *                                            it is there (not made yet, or gone from the disk, is not) and the branch it has checked out now, or on a
+ *                                            there is none). `workspaces` has one entry for each worktree of the project's chats (`ChatWorkspace`) and for each one
+ *                                            a new-chat page opened (`workspace.open`) that no chat works in yet, which is there only while it is on the disk:
+ *                                            whether it is there (not made yet, or gone from the disk, is not) and the branch it has checked out now, or on a
  *                                            detached HEAD the short hash with `detached`, read as a folder's is; absent when the project has none)
  * GET  /v1/events?cursor=N                -> text/event-stream of ClowdyEvent (frame name `clowdy`, id = cursor); without a
  *                                            cursor the stream is live only; `Last-Event-ID` also resumes; `&projectId=ID`
@@ -190,7 +191,7 @@ export type FolderGit = { isRepository: false } | {
     worktrees: GitWorktree[];
 };
 
-/** Why a worktree has no Remove: it is the folder's own checkout (or the repository's primary working tree, which git never removes), git has it locked, or a chat works in it. The first that holds, in that order. */
+/** Why a worktree has no Remove: it is the folder's own checkout (or the repository's primary working tree, which git never removes, or another folder of the project), git has it locked, or a chat works in it. The first that holds, in that order. */
 export type WorktreeBlock = 'main' | 'locked' | 'chats';
 
 /** A chat that works in a worktree, as the Manage dialog lists it. */

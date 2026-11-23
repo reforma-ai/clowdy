@@ -86,6 +86,16 @@ export const commandSchema = z.discriminatedUnion('type', [
      * with that choice: a folder that is not the root of a repository, a path that is not absolute, not a worktree of the folder or the folder itself.
      */
     z.object({ ...base, type: z.literal('workspace.open'), projectId: z.string(), folderId: z.string().min(1).optional(), path: z.string().min(1) }),
+    /**
+     * Removes a worktree `git worktree list` names for a folder of the project, whoever made it, and answers `{ path, branchDeleted }`. Refused (`conflict`, nothing removed) for the
+     * folder's own checkout, another folder of the project and the repository's primary working tree; a locked worktree; one that a chat works in, an archived chat included; a path
+     * git does not list for the folder; a tree with anything uncommitted, a new file or an initialised submodule included, unless `discard` is true, which removes it with
+     * `git worktree remove --force`; and, with `deleteBranch`, a branch that is checked out in another worktree. `invalid` for a path that is not absolute and a folder the project
+     * does not have, that is gone from the disk or that is not the root of a repository. The branch the worktree has checked out is deleted (`git branch -D`, merged or not) only
+     * with `deleteBranch`: without it the branch stays and no commit is lost. A worktree whose folder is gone has its record removed alone, and no other stale record of the
+     * repository. The command waits for git.
+     */
+    z.object({ ...base, type: z.literal('workspace.remove'), projectId: z.string(), folderId: z.string().min(1), path: z.string().min(1), discard: z.boolean().optional(), deleteBranch: z.boolean().optional() }),
 
     /* Chats */
     /**

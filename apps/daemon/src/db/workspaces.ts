@@ -97,14 +97,20 @@ export function listWorkspacesOfProject(db: Database, projectId: string): Worksp
     return (db.query('SELECT * FROM workspaces WHERE project_id = ? ORDER BY created_at, id').all(projectId) as WorkspaceRow[]).map(toRecord);
 }
 
+/** A worktree row of a project, and whether a chat still points at it (an archived chat counts). */
+export interface WorkspaceUse {
+    record: WorkspaceRecord;
+    inUse: boolean;
+}
+
 /**
- * The worktrees of the project that a chat still points at (an archived chat counts), oldest first: the ones a client can ask about. A row nobody points at, as one left
- * by a chat that was deleted or lost its folder, is not read.
+ * Every worktree row of the project, oldest first, each with whether a chat points at it: the rows a client can ask about. A row nobody points at is one the new-chat page
+ * opened (`workspace.open`) before its first message, or one left by a chat that lost its folder; the caller decides which of them are worth reading.
  */
-export function listWorkspacesInUse(db: Database, projectId: string): WorkspaceRecord[] {
+export function listWorkspaceUses(db: Database, projectId: string): WorkspaceUse[] {
     return (db.query(`
-        SELECT * FROM workspaces WHERE project_id = ? AND EXISTS (SELECT 1 FROM chats WHERE chats.workspace_id = workspaces.id) ORDER BY created_at, id
-    `).all(projectId) as WorkspaceRow[]).map(toRecord);
+        SELECT *, EXISTS (SELECT 1 FROM chats WHERE chats.workspace_id = workspaces.id) AS in_use FROM workspaces WHERE project_id = ? ORDER BY created_at, id
+    `).all(projectId) as Array<WorkspaceRow & { in_use: number }>).map(row => ({ record: toRecord(row), inUse: row.in_use === 1 }));
 }
 
 /** The ids of the chats that point at the worktree (archived ones too, a thread or a fork among them), oldest first. */
