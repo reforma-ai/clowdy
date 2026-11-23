@@ -88,6 +88,7 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                     { file => <CommitFileRow key={ file.path } file={ file } draft={ draft } /> }
                 </For>
             </Scrollable>
+            { draft.truncated && <Text variant="xs" color="secondary">{ `Showing the first ${ files.length } files` }</Text> }
 
             <Textarea
                 variant="bordered"

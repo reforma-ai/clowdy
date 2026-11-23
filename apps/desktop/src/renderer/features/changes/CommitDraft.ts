@@ -55,6 +55,11 @@ export class CommitDraft {
         return this.model.uncommitted !== undefined;
     }
 
+    /** The list holds only the first files of a larger one (the daemon cuts it at `MAX_GIT_CHANGED_FILES`): the rest cannot be ticked, so the box says so. */
+    get truncated(): boolean {
+        return this.model.uncommitted?.truncated === true;
+    }
+
     isTicked(path: string): boolean {
         return !this.#unticked.has(path);
     }

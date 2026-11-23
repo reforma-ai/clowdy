@@ -311,6 +311,30 @@ describe('the commit box', () => {
         expect(buttonOf('Generate')).toBeUndefined();
     });
 
+    it('says that the list holds only the first files when the daemon cut it, since the rest cannot be ticked', async () => {
+        const original = FixtureTransport.prototype.getGitChanges;
+        const cut = vi.spyOn(FixtureTransport.prototype, 'getGitChanges').mockImplementation(async function (this: FixtureTransport, ...args: Parameters<typeof original>) {
+            const changes = await original.apply(this, args);
+
+            return changes.isRepository && args[2] === 'uncommitted' ? { ...changes, truncated: true as const } : changes;
+        });
+
+        try {
+            await start();
+
+            expect(box()?.textContent).toContain('Showing the first 3 files');
+        }
+        finally {
+            cut.mockRestore();
+        }
+    });
+
+    it('does not say so for a list that is whole', async () => {
+        await start();
+
+        expect(box()?.textContent).not.toContain('Showing the first');
+    });
+
     it('says what the commit was when it took every file, and that there is nothing to commit for a place that is clean', async () => {
         await start();
         await press(buttonOf('Generate')!);
