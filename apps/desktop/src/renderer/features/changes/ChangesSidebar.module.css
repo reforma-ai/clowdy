@@ -86,6 +86,36 @@
     padding: 0 var(--spacing-6) var(--spacing-6);
 }
 
+/* A row and, over its end, the button that discards the file's changes: it is there while the pointer is over the row or the focus is in it, in the place of the tick. */
+.rowHost {
+    position: relative;
+    display: flex;
+    min-width: 0;
+}
+
+.discard[data-size][data-variant] {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: var(--spacing-2);
+    width: var(--spacing-18);
+    min-width: 0;
+    height: var(--spacing-18);
+    margin-block: auto;
+    opacity: 0;
+    transition: opacity var(--transition-duration-fast) var(--ease-in-out);
+}
+
+.rowHost:hover .discard,
+.rowHost:focus-within .discard {
+    opacity: 1;
+}
+
+/* The tick gives its place to the button, and keeps its width so nothing moves. */
+.rowHost:has(.discard):hover .tick,
+.rowHost:has(.discard):focus-within .tick {
+    visibility: hidden;
+}
+
 /* A row is a press that fills the list's width, its content laid out from the start. */
 .row[data-size][data-variant],
 .commit[data-size][data-variant] {
