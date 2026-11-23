@@ -102,11 +102,11 @@
 
 **This stage:** Deletes every `eslint.config.mjs`, the `packages/eslint-config` package, the ESLint dependencies of all `package.json` files and the lockfile, and turns the 15 `eslint-disable` directives into `biome-ignore` comments with the same reason, or removes them when Biome does not flag the line. The docs and the credits stop naming ESLint and the MIT copy of Reforma's config.
 
-- [ ] Complete
-  - [ ] No `eslint.config.mjs`, no `packages/eslint-config`, no `eslint` or `@stylistic` or `perfectionist` or `eslint-plugin-*` dependency left, and `bun.lock` is clean
-  - [ ] No `eslint-disable` comment left; each is a `biome-ignore` with its reason or is gone
-  - [ ] `AGENTS.md` (root Tooling, `apps/desktop`, `apps/daemon`, `packages/*`) and the GITFLOW check command name Biome; `.github/workflows` call the same scripts
-  - [ ] `NOTICE`, `scripts/licenses-extra.md` and the regenerated `THIRD-PARTY-LICENSES.md` no longer name `packages/eslint-config`
+- [x] Complete
+  - [x] No `eslint.config.mjs`, no `packages/eslint-config`, no `eslint` or `@stylistic` or `perfectionist` or `eslint-plugin-*` dependency left, and `bun.lock` is clean
+  - [x] No `eslint-disable` comment left; each is a `biome-ignore` with its reason or is gone
+  - [x] `AGENTS.md` (root Tooling, `apps/desktop`, `apps/daemon`, `packages/*`) and the GITFLOW check command name Biome; `.github/workflows` call the same scripts
+  - [x] `NOTICE`, `scripts/licenses-extra.md` and the regenerated `THIRD-PARTY-LICENSES.md` no longer name `packages/eslint-config`
 
 **Files**
 
@@ -118,7 +118,22 @@
 
 **Done when:** `git grep -il eslint` finds nothing outside `.briefback/` and `bun.lock`-free history, and `bun run lint`, `bun run typecheck` and `bun run test` pass.
 **Verify:** `git grep -il eslint -- . ':!.briefback'`, `bun install --frozen-lockfile`, `bun run lint && bun run typecheck && bun run test`.
-**Commits:** None yet.
+**Scope notes (recorded while building):**
+
+- ESLint restrictions found in the old configs: only the daemon's `no-restricted-imports` of the root of `@clowdy/lib`, ported to an `apps/daemon` override of `noRestrictedImports` (same message; a throwaway file importing `@clowdy/lib` was flagged and one importing `@clowdy/lib/checklist` was not). The desktop, components, lib, protocol, styles, constants and system-skills configs held nothing but the shared preset and `dist`-type ignores; file-manager's held no boundary at all (see Stage 1 notes).
+- Dropped as Reforma dropped them: `react-hooks` (rules-of-hooks, exhaustive-deps and the compiler rules such as `refs` and `set-state-in-effect`), `react-refresh/only-export-components`, perfectionist's ordering of exports, JSX props and object keys, `@stylistic/brace-style: stroustrup` (Biome puts `} else {` on one line), and the `no-unused-vars` that ESLint already left to `tsc` for TypeScript (`tsc` has `noUnusedLocals: false`, so nothing checks unused code in `.ts` and `.tsx`, as before). Biome's counterparts `useHookAtTopLevel` (0 findings in Clowdy today), `useExhaustiveDependencies` (50), `noUnusedVariables` (13) and `noUnusedImports` (11) are off in the ported config.
+- `eslint-disable` directives: the 6 `no-control-regex` ones became `biome-ignore` in Stage 2; the 7 `react-hooks/refs` and 3 `no-console` ones are removed, since Biome flags none of those lines.
+- Three mentions of ESLint stay on purpose: the Biome bullet in `AGENTS.md` ("no ESLint"), a comment in `quickSearchSource.ts` that uses `.eslintrc` as an example of a hidden file name, and the generic checklist of the shipped `orchestrate` skill (`added ts-ignore or eslint-disable`), which is advice for the user's own projects.
+- `NOTICE` and the credits now list `biome.json` among the files adapted from Reforma (Apache-2.0, like the rest), and the MIT exception for `packages/eslint-config` is gone. `bun.lock` lost 294 lines and gained 3 (older versions of `ajv`, `globals`, `json-schema-traverse` that ESLint used to hoist moved into the packages that needed them; no new version was resolved).
+- Verified at the end of the stage: `bun install --frozen-lockfile` clean, `bun run lint` 11 of 11 packages plus the root files, typecheck with the same 7 errors in the daemon as before, the Vite renderer build, the daemon bundle and the main and preload bundle all build, and the full test run matches the baseline (protocol 71, lib 75, icons 23, daemon 2244 pass / 0 fail, components 257, file-manager 171, desktop 4508 with the known `AbortError`, system-skills validate passes).
+
+**Commits:**
+
+- `5b4cdd4` chore(daemon): keep the root of @clowdy/lib out of the daemon with biome
+- `052a301` chore: remove eslint and its shared config
+- `1f61b57` chore: drop the eslint directives that biome does not need
+- `8edf061` docs: name biome and its style in the guides
+- `1b1d7f6` docs: drop the eslint-config license entry and credit the biome configuration
 
 ## Stage 4 — Merge back (only on the owner's word)
 
