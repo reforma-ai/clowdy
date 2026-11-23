@@ -34,7 +34,8 @@ export interface ManageWorktreesProps {
  */
 export function openManageWorktrees({ root, ...props }: ManageWorktreesProps): void {
     Modal.create({
-        width: 720,
+        // As wide as the content needs and no more: a row is a branch and a path on the left and three buttons on the right, both lines cut with an ellipsis. The settings dialogs are 460 to 480.
+        width: 540,
         shadow: true,
         clickOut: true,
         closeOnEscape: true,
@@ -97,7 +98,7 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
         <div className={ styles.dialog }>
             <div className={ styles.heading }>
                 <Text variant="heading-3" truncate>Manage worktrees</Text>
-                <Text color="secondary">Every worktree of the project's folders, and the chats that work in each</Text>
+                <Text variant="md" color="secondary">Every worktree of the project's folders, and the chats that work in each</Text>
             </div>
 
             { failed && groups && (

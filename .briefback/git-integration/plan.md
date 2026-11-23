@@ -143,12 +143,12 @@
 
 **This stage:** the person sees the PR and the size of the branch's work without opening anything. One shared store keeps the git facts of a place and refreshes them on the triggers in Decisions, so the strip, the Info rows and later the Changes tab read one answer instead of three.
 
-- [ ] Complete
-  - [ ] A store of git facts per place (status, the branch's changes summary, the PR), shared across components by the transport, refreshed on window focus, on the end of a turn, and every 60 s while a check is pending, and not read while the window is hidden
-  - [ ] The strip: the PR chip (number, state, check dot, a click opens the PR's own link), its popover with the checks, and `Files changed N +a −d`, with a dirty dot; nothing for a folder that is not a repository; without `gh` or a login a soft hint worded from the host (`Sign in with gh` for github.com, `gh isn't signed in to <host>` for another host, since offline reads the same for a few seconds and GitLab or an SSH alias reads as not signed in)
-  - [ ] The Info tab rows: base, ahead and behind, PR, Files changed
-  - [ ] The branch the chips under the composer show and the strip agree on one read
-  - [ ] UI text ends without a period; tests for the strip's states (no repo, no `gh`, no PR, open, draft, merged, checks failing, dirty)
+- [x] Complete
+  - [x] A store of git facts per place (status, the branch's changes summary, the PR), shared across components by the transport, refreshed on window focus, on the end of a turn, and every 60 s while a check is pending, and not read while the window is hidden
+  - [x] The strip: the PR chip (number, state, check dot, a click opens the PR's own link), its popover with the checks, and `Files changed N +a −d`, with a dirty dot; nothing for a folder that is not a repository; without `gh` or a login a soft hint worded from the host (`Sign in with gh` for github.com, `gh isn't signed in to <host>` for another host, since offline reads the same for a few seconds and GitLab or an SSH alias reads as not signed in)
+  - [x] The Info tab rows: base, ahead and behind, PR, Files changed
+  - [x] The branch the chips under the composer show and the strip agree on one read
+  - [x] UI text ends without a period; tests for the strip's states (no repo, no `gh`, no PR, open, draft, merged, checks failing, dirty)
 
 **Files**
 
@@ -163,7 +163,9 @@
 
 **Done when:** in the fixtures page the strip shows each state of the PR and the file counts, and in the running app on a branch with an open PR the chip opens it on GitHub.
 **Verify:** `bun run --cwd apps/desktop typecheck`, `bun run --cwd apps/desktop test src/renderer/features/chats src/renderer/features/sidePanel`, `bun run lint`
-**Commits:** None yet.
+**Scope changes:** the chip is two buttons in one chip (the PR's own link, and a dot that opens the read-only checks menu) since one click cannot do both; `gh` not installed says `Install gh to see pull requests`; the strip shows no branch of its own, so nothing has to agree with the chips under the composer; the first draw waits for the status and the changes, not for `gh`; the run-end signal is `GitStrip` seeing its chat's orchestrator run leave a busy status (no daemon event); the store keeps the latest 8 places nobody observes; the Info label column is 8.25rem wide. `GitFacts.refresh(key)` is ready for the commit and pull stages.
+**Review findings, fixed:** the 60 s PR poll was lost when an observer left and another came back within a second; the focus ring of the chip's buttons was clipped; a dead helper and an export were removed; tests added for Escape returning focus and for the dimmed stale chip. Left (follow-ups): `gitFacts.ts` and `UsageStatus.tsx` each carry a copy of the focus-and-visibility coalescing (a shared `onWindowReturn` helper would serve both and the Changes tab); a first observer that arrives while a slow `gh` read is in flight skips the status and changes refresh until it ends (a few seconds). Not checked: the real app with a real daemon, Windows.
+**Commits:** `6bd75b1` feat(desktop): show the branch's pull request and changed files above the message box and in Info.
 
 ## Stage 4 — The Changes tab: diff cards, scopes and filter
 

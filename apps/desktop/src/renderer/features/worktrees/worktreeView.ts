@@ -43,6 +43,24 @@ export function removeHint({ blocked, locked }: Pick<WorktreeInfo, 'blocked' | '
     return blocked === 'chats' ? 'A chat works in it' : undefined;
 }
 
+/**
+ * The line a row shows in the open, under the worktree, for the reason `removeHint` gives on hover: a Remove that is off must say why without being hovered. `undefined` when
+ * nothing stops the worktree, and for the folder's own checkout, which has no Remove. It reads `Can't remove` and then what holds (git's own words for a lock go in brackets). For `chats` it is the lead-in of the chats the row lists,
+ * so the reason is stated once, beside what it is about; the other reasons stand on a line of their own.
+ */
+export function removeNote({ main, blocked, locked, chats }: Pick<WorktreeInfo, 'main' | 'blocked' | 'locked' | 'chats'>): string | undefined {
+    // The folder's own checkout has no Remove to explain.
+    if (main) return undefined;
+
+    if (blocked === 'locked') return locked ? `Can't remove: git has it locked (${ locked })` : 'Can\'t remove: git has it locked';
+
+    if (blocked === 'main') return 'Can\'t remove: it is the repository\'s own working tree';
+
+    if (blocked === 'chats') return chats.length === 1 ? 'Can\'t remove while this chat works in it' : 'Can\'t remove while these chats work in it';
+
+    return undefined;
+}
+
 /** What the branch of a worktree being removed may be deleted with it: its name, whether the box starts ticked, and what is known of its work. */
 export interface BranchChoice {
     name: string;

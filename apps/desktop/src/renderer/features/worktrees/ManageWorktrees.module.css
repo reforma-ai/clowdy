@@ -84,10 +84,10 @@
     background: var(--color-secondary-muted);
 }
 
-/* A worktree whose folder is gone is dimmed: there is little to do with it. */
+/* A worktree whose folder is gone is dimmed: there is little to do with it. The actions keep their own look (Remove record is the point of the row). */
 .row[data-missing] .title,
 .row[data-missing] .text > :not(.title) {
-    opacity: 0.7;
+    opacity: var(--opacity-inactive);
 }
 
 /* The mark stands on the first line of the text: as tall as the branch's line. */
@@ -115,6 +115,11 @@
     min-width: 0;
 }
 
+/* The branch gives way to the marks after it (it is cut with an ellipsis), never the marks to the branch. */
+.title > :not(:first-child) {
+    flex-shrink: 0;
+}
+
 .facts {
     display: flex;
     flex-wrap: wrap;
@@ -122,11 +127,26 @@
     gap: var(--spacing-md);
 }
 
+/* Why Remove is off: a line of the row, dim, that wraps (git's own words for a lock can be long) and does not push the actions. */
+.reason {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.chatsBlock {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    margin-top: var(--spacing-xs);
+    min-width: 0;
+}
+
 .chats {
     display: flex;
     flex-wrap: wrap;
     gap: var(--spacing-xs);
-    margin-top: var(--spacing-xs);
+    /* The chips' own side padding (xs buttons: --spacing-md) hangs out to the left, so the titles line up with the path above them. */
+    margin-inline-start: calc(var(--spacing-md) * -1);
 }
 
 .chat {
@@ -150,4 +170,6 @@
     flex-shrink: 0;
     align-items: center;
     gap: var(--spacing-xs);
+    /* The buttons (sm, 30px) are centred on the first line of the text, the title, not on the whole row. */
+    margin-block: calc((var(--leading-md) - var(--spacing-30)) / 2);
 }
