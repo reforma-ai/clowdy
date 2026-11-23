@@ -22,6 +22,13 @@ describe('resolveDaemonConfig', () => {
         expect(resolveDaemonConfig('?fixtures=static&worktree')).toEqual({ kind: 'fixtures', timeline: false, worktree: true });
     });
 
+    it('says how a commit and its message end in the fixtures, for the words it knows', () => {
+        expect(resolveDaemonConfig('?fixtures=static&worktree&commit=signing&message=failed')).toEqual({ kind: 'fixtures', timeline: false, worktree: true, commit: 'signing', message: 'failed' });
+        expect(resolveDaemonConfig('?fixtures=static&commit=hook')).toEqual({ kind: 'fixtures', timeline: false, commit: 'hook' });
+        expect(resolveDaemonConfig('?fixtures=static&commit=slow&message=slow')).toEqual({ kind: 'fixtures', timeline: false, commit: 'slow', message: 'slow' });
+        expect(resolveDaemonConfig('?fixtures=static&commit=other&message=signing')).toEqual({ kind: 'fixtures', timeline: false });
+    });
+
     it('has nothing otherwise', () => {
         expect(resolveDaemonConfig('')).toEqual({ kind: 'none' });
         expect(resolveDaemonConfig('?other=1')).toEqual({ kind: 'none' });

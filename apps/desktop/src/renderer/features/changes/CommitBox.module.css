@@ -1,0 +1,125 @@
+@reference '@clowdy/styles/rulesets';
+
+/* The commit stands between the files of the scope and the commits of the branch: as tall as it is, and not squeezed by them. */
+.root {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: var(--spacing-6);
+    padding: var(--spacing-8) var(--spacing-12) var(--spacing-12);
+    border-top: 1px solid var(--color-surface-border);
+}
+
+/* What git and the agent say is the person's to copy. */
+.root,
+.failure {
+    user-select: text;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-6);
+    min-height: var(--spacing-22);
+}
+
+.count {
+    margin-inline-start: auto;
+    white-space: nowrap;
+}
+
+/* The checklist shows a few files and scrolls for the rest, so the message box never leaves the sidebar. */
+.list {
+    flex: 0 1 auto;
+    max-height: var(--spacing-144);
+    margin-inline: calc(var(--spacing-6) * -1);
+}
+
+.rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: 0 var(--spacing-6);
+}
+
+/* A file is a tick and its name in one press. The label of the checkbox is the last child, and takes what the tick leaves. */
+.row[data-size] {
+    display: flex;
+    width: 100%;
+    min-height: var(--spacing-24);
+}
+
+.row[data-size] > :last-child {
+    flex: 1;
+    gap: var(--spacing-6);
+    min-width: 0;
+}
+
+.glyph {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-14);
+}
+
+/* The name first, strong, and the folder after it, dimmed: the folder is cut before the name is. */
+.fileName {
+    display: flex;
+    flex: 1;
+    align-items: baseline;
+    gap: var(--spacing-6);
+    min-width: 0;
+}
+
+.name {
+    flex-shrink: 0;
+    max-width: 100%;
+}
+
+.folderHint {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.counts {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: var(--spacing-4);
+    margin-inline-start: var(--spacing-6);
+    white-space: nowrap;
+}
+
+/* In a sidebar dragged to its narrowest the folders and the counts go, and the names stay. */
+@container (max-width: 12rem) {
+    .folderHint,
+    .counts {
+        display: none;
+    }
+}
+
+.message {
+    width: 100%;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-6);
+}
+
+/* Commit is the main action and takes what Generate leaves; at the narrowest it goes on a line of its own. */
+.commit[data-size][data-variant] {
+    flex: 1 1 var(--spacing-80);
+}
+
+.generate[data-size][data-variant] {
+    flex: 0 0 auto;
+}
+
+.failure {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    overflow-wrap: anywhere;
+}

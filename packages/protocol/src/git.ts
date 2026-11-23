@@ -1,8 +1,9 @@
 /**
  * What the daemon reads of a place's git: the status of its working tree, how far its branch is from its base, the files that changed in a scope, the two texts of
  * one of them, and the pull request of its branch. A place is a folder's own checkout or a worktree of it (`resolvePlace`), named by `folderId` and an optional
- * `workspaceId` as the file routes name it. Every route is a read: nothing here writes to a repository or takes its index lock, and only the pull request goes to the
- * network, through the person's own `gh` (no token is kept or read by the daemon).
+ * `workspaceId` as the file routes name it. The reads (status, changes, file, pull request) write nothing to a repository and take no index lock, and only the pull request
+ * goes to the network, through the person's own `gh` (no token is kept or read by the daemon). The writes (`POST .../git/commit` so far) run the person's own `git` with
+ * their configuration, signing included, one at a time for a place.
  *
  * GET  /v1/projects/:id/git/status?folderId=&workspaceId=
  *                                      -> GitStatus. The branch (or the detached or unborn HEAD), its upstream with ahead and behind, the files that are not
@@ -42,7 +43,22 @@
  *                                         place keeps at most `MAX_GIT_VIEWED_MARKS` marks over all its scopes, the newest. A folder that is not the root of a working tree is
  *                                         `invalid`, as for the file route, and a commit scope the repository does not have is `not_found`.
  *
- * The first three answer `invalid` for no `folderId`, `not_found` for a folder or a workspace that is not the project's, and `unavailable` for a folder or a worktree
+ * POST /v1/projects/:id/git/commit    -> GitCommitResult. Body `GitCommitRequest`: the ticked `paths` and the `message`. The daemon runs `git add -- <paths>` and then
+ *                                         `git commit -m <message> -- <paths>` for the files that `GET .../git/changes?scope=uncommitted` lists as changed right now
+ *                                         (a renamed file brings both its paths), so what else is changed or staged in the place is left as it is. The person's git
+ *                                         configuration applies (signing, hooks: nothing is skipped). A message that is empty or over `MAX_GIT_MESSAGE_CHARS`, no paths,
+ *                                         a path that is not a changed file of the place and a folder that is not a repository are `invalid`; a merge, a cherry-pick or a revert
+ *                                         in progress, a file with merge conflicts and a commit git refuses (a hook that fails, no signature, no identity) are `conflict`
+ *                                         with git's first `fatal:`, `error:` or hook line as the message and, for a signing key that cannot be used, `details.hint`
+ *                                         (`GitErrorDetails`); a commit that did not end in time is `unavailable`.
+ * POST /v1/projects/:id/git/message   -> GitMessage. Body `GitMessageRequest`: the ticked `paths`. The first line of a Conventional Commits message for them, written by
+ *                                         the agent the person turned `Commit messages` on for, in a run of its own with no tools: Codex when it is on and signed in,
+ *                                         else (or when its run fails or does not end in time) Claude Code, asked once. Nothing runs unless this is called.
+ *                                         `Couldn't write the message` when no agent is on and signed in, or every one that is fails or does not end in time
+ *                                         (`unavailable`, or `invalid` for none on; `details.reason`: `off`, `signed_out`, `failed`, `timed_out`); the paths are judged as
+ *                                         the commit judges them.
+ *
+ * The first three reads answer `invalid` for no `folderId`, `not_found` for a folder or a workspace that is not the project's, and `unavailable` for a folder or a worktree
  * that is gone from the disk or not made yet and for a git that does not answer in time; the fourth and the viewed routes answer the same.
  */
 
@@ -355,3 +371,53 @@ export type GitPullRequestInfo = { isRepository: false } | {
     repo?: GitHubRepo;
     pullRequest?: GitPullRequest;
 };
+
+/** The most paths a commit takes: the files `GitChanges.files` lists, which are what the person ticks from. */
+export const MAX_GIT_COMMIT_PATHS = MAX_GIT_CHANGED_FILES;
+
+/** The most characters of a commit message. */
+export const MAX_GIT_MESSAGE_CHARS = 10_000;
+
+/** The body of `POST /v1/projects/:id/git/commit`. */
+export interface GitCommitRequest {
+    folderId: string;
+    workspaceId?: string;
+    /** The files to commit, as `GitChangedFile.path` writes them: at most `MAX_GIT_COMMIT_PATHS`, each a changed file of the place's uncommitted changes. */
+    paths: string[];
+    /** The whole message; its first line is the subject. At most `MAX_GIT_MESSAGE_CHARS`. */
+    message: string;
+}
+
+/** The commit that was made. */
+export interface GitCommitResult {
+    /** In full. */
+    sha: string;
+    /** The first 7 characters. */
+    shortSha: string;
+    /** The first line of the message. */
+    subject: string;
+}
+
+/** The body of `POST /v1/projects/:id/git/message`. */
+export interface GitMessageRequest {
+    folderId: string;
+    workspaceId?: string;
+    /** The files that are about to be committed. */
+    paths: string[];
+}
+
+/** A commit message the daemon had an agent write: one line, a Conventional Commits subject of at most 72 characters. */
+export interface GitMessage {
+    message: string;
+}
+
+/** Why `POST .../git/message` could not answer: no agent has `Commit messages` on, the one that has is not signed in, its run failed, or it did not end in time. */
+export type GitMessageFailure = 'off' | 'signed_out' | 'failed' | 'timed_out';
+
+/** What a failed git write may carry in `error.details`. */
+export interface GitErrorDetails {
+    /** A short sentence for the person, beside git's own line: `The signing agent couldn't be reached` when the line names the signing key. */
+    hint?: string;
+    /** For `POST .../git/message`. */
+    reason?: GitMessageFailure;
+}

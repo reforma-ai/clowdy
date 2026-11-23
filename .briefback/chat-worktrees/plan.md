@@ -47,7 +47,7 @@
 - Switching or creating a branch in Project checkout.
 - A project default for "new chats start in a worktree"; a setup file committed to the repository (a team's shared one): the settings are the person's own.
 - A Workspaces page in Settings that lists a project's worktrees (Clowdy's and found ones, with the chats that use them and their state) and removes them: not a page but the Manage worktrees dialog, planned in `.briefback/worktree-followups/plan.md` (squash merges stay out of it).
-- A merge, a pull request or ahead and behind in the app; managing worktrees that agents made (they are listed and can be picked; removing them is `.briefback/worktree-followups/plan.md`'s, through the Manage worktrees dialog).
+- A merge, a pull request or ahead and behind in the app (**changed on 2026-11-23 by `.briefback/git-integration/plan.md`: the app shows how far a place's branch is from its base and its pull request, and commits, fetches, pulls and pushes from the Changes tab; a merge of a pull request is still out**); managing worktrees that agents made (they are listed and can be picked; removing them is `.briefback/worktree-followups/plan.md`'s, through the Manage worktrees dialog).
 - One tree with all the folders of a project (VS Code's), and a folder switcher in the side panel's tabs.
 - A worktree for the project's other folders (only the chat's own folder gets one; the rest reach the agent as additional folders).
 

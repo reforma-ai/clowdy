@@ -65,6 +65,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            when it was marked; the daemon keeps them, and the client decides a file is still viewed while its own revision is the stored one)
  * POST /v1/projects/:id/git/viewed       -> GitViewedMark (body GitViewedSet: marks one file as viewed in a scope)
  * DELETE /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope=&path= -> { ok: true } (clears one file's mark). The three are described in `git.ts`
+ * POST /v1/projects/:id/git/commit        -> GitCommitResult (commits the files the person ticked, `paths`, with `message`: the first route that changes a repository)
+ * POST /v1/projects/:id/git/message       -> GitMessage (a commit message for the ticked files, written by the provider the person turned `Commit messages` on for). Both are described in `git.ts`
  * GET  /v1/projects/:id/worktrees        -> FolderWorktrees[] (one entry per folder of the project, in the project's order: whether it is the root of a repository and, if
  *                                            it is, its own checkout first and then every worktree git lists for it (one Clowdy made, one an agent or a person made, a locked one,
  *                                            one whose folder is gone): ours above the others (made by Clowdy or with a chat, or the repository's own working tree), one whose
@@ -120,6 +122,8 @@ export const ROUTES = {
     projectGitViewed: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/viewed`,
     projectWorktrees: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/worktrees`,
     projectGitPullRequest: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/pull-request`,
+    projectGitCommit: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/commit`,
+    projectGitMessage: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/message`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,

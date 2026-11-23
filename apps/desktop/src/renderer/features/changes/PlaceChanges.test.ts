@@ -610,3 +610,46 @@ describe('the viewed files', () => {
         expect(model.sides.entryOf(before)).toBeUndefined();
     });
 });
+
+describe('the uncommitted files for the commit box', () => {
+    it('are read for the box whatever scope is shown, once for each round of reads, and are the shown list itself when the scope is uncommitted', async () => {
+        const transport = transportOf({ all: list('all', [file('a.ts'), file('b.ts')]), uncommitted: list('uncommitted', [file('b.ts')]), branch: list('branch', [file('a.ts')]) });
+        const { model } = await modelOf(transport);
+        const reads = (scope: GitScope) => transport.getGitChanges.mock.calls.filter(call => call[2] === scope).length;
+
+        expect(model.uncommitted).toBeUndefined();
+
+        model.sync(1);
+        model.syncUncommitted(1);
+        await tick();
+
+        expect(model.changes?.files.map(entry => entry.path)).toEqual(['a.ts', 'b.ts']);
+        expect(model.uncommitted?.files.map(entry => entry.path)).toEqual(['b.ts']);
+
+        // The same round is read once; a new round reads again.
+        model.syncUncommitted(1);
+        expect(reads('uncommitted')).toBe(1);
+        model.syncUncommitted(2);
+        await tick();
+        expect(reads('uncommitted')).toBe(2);
+
+        // The shown scope is the uncommitted one: the tab's own read is the only read, and the box sees its list.
+        model.setScope('uncommitted');
+        model.sync(3);
+        model.syncUncommitted(3);
+        await tick();
+        expect(reads('uncommitted')).toBe(3);
+        expect(model.changes).toBe(model.uncommitted);
+
+        // Visiting many other scopes does not let the box's list go.
+        for (const scope of FIXTURE_GIT_COMMITS.map(commit => commitScope(commit.sha))) {
+            model.setScope(scope);
+            model.sync(4);
+        }
+
+        model.setScope('branch');
+        model.sync(4);
+        await tick();
+        expect(model.uncommitted?.files.map(entry => entry.path)).toEqual(['b.ts']);
+    });
+});

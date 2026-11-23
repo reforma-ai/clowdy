@@ -4,6 +4,8 @@ import type { Config } from '../config';
 import type { AgentRegistry } from '../engine/acp/registry';
 import type { FilesService } from '../files/service';
 import type { FsService } from '../fs/service';
+import type { GitWrites } from '../git/commit';
+import type { CommitMessages } from '../git/message';
 import type { PullRequests } from '../git/pullRequest';
 import type { ModelCatalog } from '../providers/models';
 import type { ProvidersService } from '../providers/service';
@@ -37,6 +39,10 @@ export interface Services {
     terminals: TerminalService;
     /** The pull request of a place's branch, read through the person's `gh`. */
     pullRequests: PullRequests;
+    /** What the daemon writes to a person's repository: the commit of the files they ticked. */
+    gitWrites: GitWrites;
+    /** The commit message an agent the person chose writes for the files they ticked. */
+    commitMessages: CommitMessages;
 }
 
 export type CommandOf<T extends CommandType> = Extract<Command, { type: T }>;

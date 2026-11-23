@@ -1,4 +1,4 @@
-import { chatTitleSetting } from '../../engine/acp/catalog';
+import { chatTitleSetting, commitMessageSetting } from '../../engine/acp/catalog';
 import { modePermissions } from '../permissions';
 import { claudeAccount } from './account';
 import { claudeModels } from './models';
@@ -76,6 +76,7 @@ export const claude: Provider = {
                 effect: on => ({ env: { CLAUDE_CODE_ARTIFACT: on ? '1' : '0' } }),
             },
             chatTitleSetting('Claude Code'),
+            commitMessageSetting('Claude Code'),
         ],
         // A stray key in the daemon's environment would move billing off the user's subscription; a key the user wants goes in the agent's `env`.
         scrub: [/^ANTHROPIC_API_KEY$/, /^ANTHROPIC_AUTH_TOKEN$/, /^CLAUDE_CODE_OAUTH_TOKEN$/],

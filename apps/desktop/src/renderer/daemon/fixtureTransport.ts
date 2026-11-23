@@ -1,5 +1,5 @@
 import { MemoryFileSystem } from '@clowdy/file-manager/memory';
-import { folderNames, isBusyRunStatus, isTerminalRunStatus, mainFolder, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, STOPPED_TOOL } from '@clowdy/protocol';
+import { folderNames, isBusyRunStatus, isTerminalRunStatus, mainFolder, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, STOPPED_TOOL, writesCommitMessages } from '@clowdy/protocol';
 
 import {
     catalogTokens,
@@ -24,6 +24,7 @@ import {
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
 import { applyFolderSettings } from './fixtureFolderSettings';
+import { FixtureGitWrites, type FixtureGitWritesOptions } from './fixtureGitWrites';
 import { fail, ok, type Outcome } from './fixtureOutcome';
 import { FixtureTasks } from './fixtureTasks';
 import { FixtureTerminals } from './fixtureTerminals';
@@ -47,7 +48,9 @@ import type {
     FolderId,
     FolderWorktrees,
     GitChanges,
+    GitCommitResult,
     GitFileSides,
+    GitMessage,
     GitPullRequestInfo,
     GitScope,
     GitStatus,
@@ -84,6 +87,8 @@ export interface FixtureTransportOptions {
     data?: FixtureData;
     /** Events nobody asked for (a tool finishing, text streaming in) after the first subscription. */
     timeline?: boolean;
+    /** How a commit and a request for a commit message end (`fixtureGitWrites.ts`): they go through unless a script says otherwise. */
+    gitWrites?: FixtureGitWritesOptions;
 }
 
 /** What the fixture keeps of a file: its bytes, and whether a message carries it already. */
@@ -206,10 +211,13 @@ export class FixtureTransport implements Transport {
     readonly #tasks: FixtureTasks;
     /** The shells, which run nothing: see `fixtureTerminals.ts`. */
     readonly #terminals = new FixtureTerminals();
+    /** What the commits made here took out of each place's uncommitted files. */
+    readonly #gitWrites: FixtureGitWrites;
 
-    constructor({ data = createFixtureData(), timeline = false }: FixtureTransportOptions = {}) {
+    constructor({ data = createFixtureData(), timeline = false, gitWrites }: FixtureTransportOptions = {}) {
         this.#data = data;
         this.#timeline = timeline;
+        this.#gitWrites = new FixtureGitWrites(gitWrites);
         this.#tasks = new FixtureTasks(data, { emit: (projectId, event) => this.#emit(projectId, event), id: prefix => this.#id(prefix) });
 
         for (const { projectId, attachment, content } of data.attachments) {
@@ -260,12 +268,12 @@ export class FixtureTransport implements Transport {
     async getGitStatus(projectId: ProjectId, place: PlaceRef): Promise<GitStatus> {
         const { head, workspace } = this.#gitPlace(projectId, place);
 
-        return structuredClone(fixtureGitStatus(head, workspace));
+        return structuredClone(fixtureGitStatus(head, workspace, this.#gitWrites.committedOf(place.workspaceId ?? '')));
     }
 
     async getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
         const { head, workspace } = this.#gitPlace(projectId, place);
-        const changes = fixtureGitChanges(head, workspace !== undefined, scope);
+        const changes = fixtureGitChanges(head, workspace !== undefined, scope, this.#gitWrites.committedOf(place.workspaceId ?? ''));
 
         if (!changes) throw new TransportError(`Commit ${ scope.slice('commit:'.length) } does not exist`, 404);
 
@@ -332,6 +340,25 @@ export class FixtureTransport implements Transport {
         this.#viewed.set(key, kept);
 
         return kept;
+    }
+
+    async commitGit(projectId: ProjectId, place: PlaceRef, paths: string[], message: string): Promise<GitCommitResult> {
+        return structuredClone(await this.#gitWrites.commit(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths, message));
+    }
+
+    async generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
+        // The daemon asks the agents' settings; so does the fixture, of the agents it lists.
+        if (!this.#data.agents.some(writesCommitMessages)) throw new TransportError('Couldn\'t write the message', 400);
+
+        return structuredClone(await this.#gitWrites.message(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths));
+    }
+
+    /** The paths the place's uncommitted changes list now (the fixture's checkout is clean; the worktree has files, less what was committed). */
+    #uncommitted(projectId: ProjectId, place: PlaceRef): string[] {
+        const { head, workspace } = this.#gitPlace(projectId, place);
+        const changes = fixtureGitChanges(head, workspace !== undefined, 'uncommitted', this.#gitWrites.committedOf(place.workspaceId ?? ''));
+
+        return changes?.isRepository ? changes.files.map(file => file.path) : [];
     }
 
     async getGitPullRequest(projectId: ProjectId, place: PlaceRef): Promise<GitPullRequestInfo> {

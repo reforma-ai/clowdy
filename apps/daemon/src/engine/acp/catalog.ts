@@ -1,3 +1,5 @@
+import { COMMIT_MESSAGE_SETTING_ID } from '@clowdy/protocol';
+
 import type { PermissionPresetId } from '@clowdy/protocol';
 
 /** How an agent is started over ACP. */
@@ -42,6 +44,19 @@ export const chatTitleSetting = (agent: string): AgentSettingSpec => ({
     label: 'Chat titles',
     description: `Let ${ agent } name a new chat from its first message`,
     default: true,
+});
+
+/**
+ * The switch of an agent that may write the commit message the Changes tab's Generate button asks for (`src/providers/generate.ts` runs it, with no tools). Off by default: nothing
+ * of the person's changes goes to a model unless they turned it on for an agent. Only the daemon reads it (it does nothing to the agent's own runs).
+ */
+export const COMMIT_MESSAGE_SETTING = COMMIT_MESSAGE_SETTING_ID;
+
+export const commitMessageSetting = (agent: string): AgentSettingSpec => ({
+    id: COMMIT_MESSAGE_SETTING,
+    label: 'Commit messages',
+    description: `Send the changed files to ${ agent } to write commit messages`,
+    default: false,
 });
 
 /** The ACP version a layer of the engine speaks to an agent (`layer.ts`). */

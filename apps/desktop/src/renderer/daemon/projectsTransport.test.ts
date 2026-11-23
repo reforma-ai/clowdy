@@ -6,6 +6,7 @@ import { HttpTransport } from './httpTransport';
 
 import type { ClowdyEvent } from '@clowdy/protocol';
 import type { FixturePullRequestScript } from './fixtureData';
+import type { FixtureGitWritesOptions } from './fixtureGitWrites';
 
 describe('HttpTransport.getProjectsInfo', () => {
     it('asks for the information of every project', async () => {
@@ -814,5 +815,112 @@ describe('FixtureTransport projects', () => {
 
         expect(projects.map(project => [project.name, project.position])).toEqual([['Personal', 0], ['Clowdy', 1], ['Car Rental', 2]]);
         expect(events.map(event => event.projectId).sort()).toEqual([FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID].sort());
+    });
+});
+
+describe('HttpTransport git writes', () => {
+    /** A transport whose daemon answers `body` with `status`, and what it was sent. */
+    function transportFor(body: unknown, status = 200) {
+        const sent: Array<{ url: string; method?: string; body?: unknown; headers: Record<string, string> }> = [];
+        const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+            sent.push({ url: String(input), method: init?.method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined, headers: init?.headers as Record<string, string> });
+
+            return new Response(JSON.stringify(body), { status });
+        }) as typeof fetch;
+
+        return { sent, transport: new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl }) };
+    }
+
+    it('commits the ticked files of a place, a worktree of its folder included, with the message, and gives the commit', async () => {
+        const commit = { sha: 'a'.repeat(40), shortSha: 'aaaaaaa', subject: 'Edit a' };
+        const { sent, transport } = transportFor(commit);
+
+        expect(await transport.commitGit('prj a', { folderId: 'fld/b' }, ['a.ts', 'src/b c.ts'], 'Edit a\n\nbody')).toEqual(commit);
+        await transport.commitGit('prj a', { folderId: 'fld/b', workspaceId: 'wks 1' }, ['a.ts'], 'x');
+        expect(sent.map(request => [request.url, request.method, request.body])).toEqual([
+            ['http://127.0.0.1:4310/v1/projects/prj%20a/git/commit', 'POST', { folderId: 'fld/b', paths: ['a.ts', 'src/b c.ts'], message: 'Edit a\n\nbody' }],
+            ['http://127.0.0.1:4310/v1/projects/prj%20a/git/commit', 'POST', { folderId: 'fld/b', workspaceId: 'wks 1', paths: ['a.ts'], message: 'x' }],
+        ]);
+        expect(sent[0]!.headers).toMatchObject({ authorization: 'Bearer t', 'content-type': 'application/json' });
+    });
+
+    it('asks for the message of the ticked files', async () => {
+        const { sent, transport } = transportFor({ message: 'feat: add a' });
+
+        expect(await transport.generateGitMessage('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' }, ['a.ts'])).toEqual({ message: 'feat: add a' });
+        expect(sent.map(request => [request.url, request.method, request.body])).toEqual([['http://127.0.0.1:4310/v1/projects/prj_a/git/message', 'POST', { folderId: 'fld_b', workspaceId: 'wks_c', paths: ['a.ts'] }]]);
+    });
+
+    it('rejects with git\'s own line and the hint the daemon gave, and the status, and sends a commit only once', async () => {
+        const body = { ok: false, error: { code: 'conflict', message: 'error: No private key found for public key "k.pub"?', details: { hint: 'The signing agent couldn\'t be reached' } } };
+        const { sent, transport } = transportFor(body, 409);
+
+        await expect(transport.commitGit('prj_a', { folderId: 'fld_b' }, ['a.ts'], 'x')).rejects.toMatchObject({ message: 'error: No private key found for public key "k.pub"?', status: 409, hint: 'The signing agent couldn\'t be reached' });
+        // A commit is not asked for twice, whatever the answer.
+        expect(sent).toHaveLength(1);
+        await expect(transportFor({ error: { code: 'conflict', message: 'lint failed' } }, 409).transport.commitGit('prj_a', { folderId: 'fld_b' }, ['a.ts'], 'x')).rejects.toMatchObject({ message: 'lint failed', hint: undefined });
+        await expect(transportFor({ error: { code: 'unavailable', message: 'Couldn\'t write the message', details: { reason: 'failed' } } }, 503).transport.generateGitMessage('prj_a', { folderId: 'fld_b' }, ['a.ts'])).rejects.toMatchObject({ message: 'Couldn\'t write the message', status: 503 });
+
+        const bare = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: (async () => new Response('Bad gateway', { status: 502 })) as unknown as typeof fetch });
+
+        await expect(bare.commitGit('prj_a', { folderId: 'fld_b' }, ['a.ts'], 'x')).rejects.toMatchObject({ message: expect.stringContaining('502'), status: 502 });
+    });
+});
+
+describe('FixtureTransport git writes', () => {
+    const place = { folderId: 'fld_car_rental' };
+    const inWorktree = { ...place, workspaceId: 'wks_ab12cd34' };
+    const worktree = (gitWrites?: FixtureGitWritesOptions) => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()), gitWrites });
+    const pathsOf = async (transport: FixtureTransport) => ((await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'uncommitted')) as { files: Array<{ path: string }> }).files.map(file => file.path);
+
+    it('takes the committed files out of the uncommitted list and the status, and leaves the other files and scopes as they are', async () => {
+        const transport = worktree();
+        const result = await transport.commitGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md', 'src/limits.ts'], 'Add the notes\n\nand the limit');
+
+        expect(result).toMatchObject({ subject: 'Add the notes', sha: expect.stringMatching(/^[0-9a-f]{40}$/) });
+        expect(result.shortSha).toBe(result.sha.slice(0, 7));
+        expect(await pathsOf(transport)).toEqual(['src/booking/price.ts']);
+        expect(await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'uncommitted')).toMatchObject({ fileCount: 1, additions: 6, deletions: 2 });
+        expect((await transport.getGitStatus(FIXTURE_PROJECT_ID, inWorktree) as { entries: unknown[] }).entries).toEqual([{ path: 'src/booking/price.ts', unstaged: 'modified' }]);
+        expect(await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'all')).toMatchObject({ fileCount: 6 });
+        // A second commit is another commit, and the files that went are not changed any more.
+        expect((await transport.commitGit(FIXTURE_PROJECT_ID, inWorktree, ['src/booking/price.ts'], 'More')).sha).not.toBe(result.sha);
+        expect(await pathsOf(transport)).toEqual([]);
+        await expect(transport.commitGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'], 'Again')).rejects.toMatchObject({ status: 400, message: 'notes.md is not a changed file' });
+    });
+
+    it('judges the request as the daemon does: no paths, no message, a file that is not changed, a place with nothing to commit', async () => {
+        const transport = worktree();
+
+        await expect(transport.commitGit(FIXTURE_PROJECT_ID, inWorktree, [], 'x')).rejects.toMatchObject({ status: 400, message: 'Pick at least one file' });
+        await expect(transport.commitGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'], ' ')).rejects.toMatchObject({ status: 400 });
+        await expect(transport.commitGit(FIXTURE_PROJECT_ID, inWorktree, ['assets/logo.png'], 'x')).rejects.toMatchObject({ status: 400, message: 'assets/logo.png is not a changed file' });
+        await expect(transport.commitGit(FIXTURE_PROJECT_ID, place, ['notes.md'], 'x')).rejects.toMatchObject({ status: 400 });
+        await expect(transport.commitGit(FIXTURE_PROJECT_ID, { ...place, workspaceId: 'wks_none' }, ['notes.md'], 'x')).rejects.toMatchObject({ status: 404 });
+        expect(await pathsOf(transport)).toHaveLength(3);
+    });
+
+    it('ends a commit the way its script says: git\'s signing line with the hint, or a hook\'s line, and takes nothing out', async () => {
+        await expect(worktree({ commit: 'signing' }).commitGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'], 'x')).rejects.toMatchObject({ status: 409, message: expect.stringContaining('No private key found'), hint: 'The signing agent couldn\'t be reached' });
+
+        const hook = worktree({ commit: 'hook' });
+
+        await expect(hook.commitGit(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'], 'x')).rejects.toMatchObject({ status: 409, message: 'pre-commit: 2 problems in src/limits.ts' });
+        expect(await pathsOf(hook)).toHaveLength(3);
+    });
+
+    it('writes a message for the changed files, as the agent the fixtures have on does, and fails as its script says', async () => {
+        expect(await worktree().generateGitMessage(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'])).toEqual({ message: 'feat(booking): add the weekend surcharge' });
+        await expect(worktree({ message: 'failed' }).generateGitMessage(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'])).rejects.toMatchObject({ status: 503, message: 'Couldn\'t write the message' });
+        await expect(worktree().generateGitMessage(FIXTURE_PROJECT_ID, inWorktree, [])).rejects.toMatchObject({ status: 400 });
+        await expect(worktree().generateGitMessage(FIXTURE_PROJECT_ID, inWorktree, ['assets/logo.png'])).rejects.toMatchObject({ status: 400 });
+    });
+
+    it('refuses a message while no agent has Commit messages on and is signed in', async () => {
+        const data = withFixtureWorkspace(createFixtureData());
+        const codex = data.agents.find(agent => agent.id === 'codex')!;
+
+        codex.settings = codex.settings!.map(setting => ({ ...setting, value: false }));
+        await expect(new FixtureTransport({ data }).generateGitMessage(FIXTURE_PROJECT_ID, inWorktree, ['notes.md'])).rejects.toMatchObject({ status: 400, message: 'Couldn\'t write the message' });
     });
 });

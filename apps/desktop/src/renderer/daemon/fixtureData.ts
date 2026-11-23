@@ -1,4 +1,4 @@
-import { branchPrefixOf, branchPrefixProblem, DOC_SOURCES, folderNames, MAX_GIT_REVISION_LENGTH, MAX_GIT_VIEWED_PATH_LENGTH, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
+import { branchPrefixOf, branchPrefixProblem, COMMIT_MESSAGE_SETTING_ID, DOC_SOURCES, folderNames, MAX_GIT_REVISION_LENGTH, MAX_GIT_VIEWED_PATH_LENGTH, PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
 
 import type {
     AgentInfo,
@@ -257,6 +257,8 @@ function fixtureAgents(now: number): AgentInfo[] {
                 { id: 'connectors', label: 'claude.ai connectors', description: 'Load the connectors of your claude.ai account (Drive, Docs and so on) into every run', value: false, default: false },
                 { id: 'subagents', label: 'Claude Code sub-agents', description: 'Let Claude Code start sub-agents of its own. Clowdy\'s agents are the better way to delegate work.', value: true, default: true },
                 { id: 'longContext', label: '1M context window', description: 'Use the 1M-token context window on the models that have one', value: true, default: true },
+                // Off, as it is until the person turns it on; Codex's is on in the fixtures, so the Changes tab has its Generate button.
+                { id: COMMIT_MESSAGE_SETTING_ID, label: 'Commit messages', description: 'Send the changed files to Claude Code to write commit messages', value: false, default: false },
             ],
             permissions: modePresets({
                 'ask': 'Asks before every edit and command',
@@ -287,7 +289,8 @@ function fixtureAgents(now: number): AgentInfo[] {
                     { id: 'codex:secondary', label: 'Week', usedPercent: 17, resetsAt: inMinutes(24 * 60) },
                 ],
             },
-            settings: [],
+            // The only switch the fixture's Codex has: on, so the Changes tab shows its Generate button.
+            settings: [{ id: COMMIT_MESSAGE_SETTING_ID, label: 'Commit messages', description: 'Send the changed files to Codex to write commit messages', value: true, default: false }],
             permissions: modePresets({
                 'ask': 'Asks before editing files or using the network',
                 'accept-edits': 'Edits workspace files, asks before going outside them or using the network',
@@ -625,7 +628,7 @@ const totalsOf = (files: readonly GitChangedFile[]) => ({ fileCount: files.lengt
  * What `GET git/status` answers for a fixture folder: no repository when `git` says nothing of it. The folder's own checkout is clean and level with `origin/main`. A worktree
  * (`workspace`) is the dirty one `fixtureFolderGit` lists: two commits ahead of the base and one behind, an edited file, one that is not tracked, and no upstream.
  */
-export function fixtureGitStatus(head: { branch?: string; detached?: true } | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined): GitStatus {
+export function fixtureGitStatus(head: { branch?: string; detached?: true } | undefined, workspace: Pick<ChatWorkspace, 'branch'> | undefined, committed: ReadonlySet<string> = new Set()): GitStatus {
     if (!head?.branch) return { isRepository: false };
 
     if (workspace) {
@@ -633,7 +636,7 @@ export function fixtureGitStatus(head: { branch?: string; detached?: true } | un
             isRepository: true,
             head: { kind: 'branch', name: workspace.branch ?? 'clowdy/ab12cd34', commit: FIXTURE_GIT_COMMITS[0]!.sha },
             origin: true,
-            entries: [{ path: 'notes.md', untracked: true }, { path: 'src/booking/price.ts', unstaged: 'modified' }, { path: 'src/limits.ts', unstaged: 'modified' }],
+            entries: [{ path: 'notes.md', untracked: true as const }, { path: 'src/booking/price.ts', unstaged: 'modified' as const }, { path: 'src/limits.ts', unstaged: 'modified' as const }].filter(entry => !committed.has(entry.path)),
             base: { state: 'ready', name: 'origin/main', commit: '2'.repeat(40), mergeBase: FIXTURE_BASE_COMMIT, ahead: FIXTURE_GIT_COMMITS.length, behind: 1, commits: FIXTURE_GIT_COMMITS },
         };
     }
@@ -671,10 +674,12 @@ function fixtureScopeFiles(scope: GitScope): { files: GitChangedFile[]; from: st
  * What `GET git/changes` answers for a fixture folder. A checkout that is clean has no changes in any scope; the worktree has the files above. `undefined` for a commit the
  * fixture's repository does not have, which the daemon answers `not_found`.
  */
-export function fixtureGitChanges(head: { branch?: string } | undefined, inWorktree: boolean, scope: GitScope): GitChanges | undefined {
+export function fixtureGitChanges(head: { branch?: string } | undefined, inWorktree: boolean, scope: GitScope, committed: ReadonlySet<string> = new Set()): GitChanges | undefined {
     if (!head?.branch) return { isRepository: false };
 
-    const found = inWorktree ? fixtureScopeFiles(scope) : scope.startsWith('commit:') ? undefined : { files: [], from: FIXTURE_BASE_COMMIT };
+    const scoped = inWorktree ? fixtureScopeFiles(scope) : scope.startsWith('commit:') ? undefined : { files: [], from: FIXTURE_BASE_COMMIT };
+    // What a commit made here took out of the uncommitted files (the fixture keeps no repository, so the other scopes stay as they were).
+    const found = scoped && scope === 'uncommitted' ? { ...scoped, files: scoped.files.filter(file => !committed.has(file.path)) } : scoped;
 
     if (!found) return undefined;
 
