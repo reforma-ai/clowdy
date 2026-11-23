@@ -1,5 +1,5 @@
 import { For } from '@clowdy/components/For';
-import { GridList, GridListItem } from '@clowdy/components/List';
+import { GridList, GridListItem, listBoxItemDataShow } from '@clowdy/components/List';
 import { Panel, PanelEmptyRow, PanelHeader } from '@clowdy/components/Panel';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
@@ -22,7 +22,7 @@ import { RemoteMenu } from './RemoteMenu';
 import { useBoxHeight } from './useBoxWidth';
 
 import type { GitChangedFile, GitStatus } from '@clowdy/protocol';
-import type { ReactNode } from 'react';
+import type { ReactNode, SyntheticEvent } from 'react';
 import type { Place } from '../sidePanel/currentPlace';
 import type { PlaceChanges } from './PlaceChanges';
 
@@ -60,10 +60,18 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
     );
 }
 
+/** What the row's own controls keep to themselves: a press or a key on them is theirs, and not the row's action too. */
+const ownEvents = {
+    onClick: (event: SyntheticEvent) => event.stopPropagation(),
+    onPointerDown: (event: SyntheticEvent) => event.stopPropagation(),
+    onKeyDown: (event: SyntheticEvent) => event.stopPropagation(),
+};
+
 /**
  * One changed file of the scope, a row of the design system's list: what happened to it, its name with its folder dimmed after it (the whole path on hover), its lines, and a tick when it is
  * viewed. Its action (a press, or Enter on the row the arrows reached) brings its card to the top and opens it. A file whose changes can be discarded (`discard`, its uncommitted entry) has
- * `Discard changes…` at the end of its row, in the place of the tick, while the pointer is over the row or the focus is in it.
+ * `Discard changes…` at the end of its row, in the place of the tick, while the pointer is over the row or the focus is in it: the row action of the design system's list, as a chat's
+ * row has its own (`listBoxItemDataShow`), reached from the row with the right arrow.
  */
 function FileRow({
     file,
@@ -83,6 +91,7 @@ function FileRow({
         <GridListItem
             id={file.path}
             textValue={file.path}
+            data-path={file.path}
             icon={
                 <Text
                     variant="sm"
@@ -103,10 +112,18 @@ function FileRow({
                             <Text variant="sm" color="danger">{`−${file.deletions}`}</Text>
                         </span>
                     )}
-                    <span className={styles.tick}>
-                        {viewed && <Check role="img" title="Viewed" aria-label="Viewed" />}
+                    {/* The tick and the button share one place: the tick at rest, the button while the row is aimed at. */}
+                    <span className={styles.mark}>
+                        <span className={styles.tick} data-show={discard ? listBoxItemDataShow.itemRest : undefined}>
+                            {viewed && <Check role="img" title="Viewed" aria-label="Viewed" />}
+                        </span>
+                        {discard && (
+                            // The button is a React child of the row, so its presses and keys would reach the row through the tree too.
+                            <span className={styles.discard} data-show={listBoxItemDataShow.itemBoth} {...ownEvents}>
+                                <DiscardButton model={model} file={discard} />
+                            </span>
+                        )}
                     </span>
-                    {discard && <DiscardButton model={model} file={discard} className={styles.discard} />}
                 </span>
             }
         >
@@ -217,7 +234,8 @@ export function ChangesSidebar({
                 )}
 
                 <BranchCommits model={model} base={base} reserved={commitBoxHeight + CHANGES_FILES_MIN_HEIGHT}>
-                    <section className={styles.files} aria-label="Changed files">
+                    {/* Focusable from code alone: it takes the focus when a discard took the list's last row (`keepFocusWhenGone`). */}
+                    <section className={styles.files} aria-label="Changed files" tabIndex={-1}>
                         <SectionHeader title="Changed files" count={model.changes ? files.length : undefined} />
                         {files.length > 0 ? (
                             <Scrollable className={styles.list} contentClass={styles.rows}>

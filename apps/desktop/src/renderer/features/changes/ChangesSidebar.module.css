@@ -109,39 +109,35 @@
     min-width: 0;
 }
 
-/* The end of a row: the lines, then the tick's place. */
+/* The end of a row: the lines, then the place of the tick, close to them, since the place is as wide as a button and the tick stands in its middle. */
 .rowEnd {
-    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: var(--spacing-sm);
+    gap: var(--spacing-xxs);
 }
 
-/* The button that discards the file's changes, over the end of the row in the place of the tick: there while the pointer is over the row or the focus is in it. */
-.discard[data-size][data-variant] {
-    position: absolute;
-    inset-block: 0;
-    inset-inline-end: 0;
-    width: var(--spacing-18);
-    min-width: 0;
-    height: var(--spacing-18);
-    margin-block: auto;
-    /* Quiet until it is aimed at, and then the colour of what it does. */
-    --clowdy-button-color: var(--color-secondary-muted-text);
-    --clowdy-button-color--hover: var(--color-danger-text);
+/*
+ * The tick and `Discard changes…` share the place at the row's end, as the time and the actions of a chat's row do: the list shows the button and hides the tick while the row is
+ * hovered (`data-show`), and here while the focus is in the row too, so the two are never drawn on each other. The place is as wide as the button in every row, so the counts of
+ * all the rows stand in one column, and the button stands where the list puts a row's action: as far from the row's end as from its top.
+ */
+.mark {
+    display: inline-grid;
+    flex-shrink: 0;
+    grid-template-columns: var(--spacing-24);
+    place-items: center;
+}
+
+.mark > * {
+    grid-area: 1 / 1;
+}
+
+[role='row']:focus-within .tick[data-show] {
     opacity: 0;
-    transition: opacity var(--transition-duration-fast) var(--ease-in-out);
 }
 
-[role='row']:hover .discard,
-[role='row']:focus-within .discard {
-    opacity: 1;
-}
-
-/* The tick gives its place to the button, and keeps its width so nothing moves. */
-[role='row']:hover .rowEnd:has(.discard) .tick,
-[role='row']:focus-within .rowEnd:has(.discard) .tick {
-    visibility: hidden;
+.discard {
+    display: inline-flex;
 }
 
 .counts {
