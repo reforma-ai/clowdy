@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
-import { FilesStore } from './FilesStore';
+import { FilesStore, MAX_OPEN_PLACES } from './FilesStore';
 
 import type { Place } from '../sidePanel/currentPlace';
 
@@ -273,6 +273,113 @@ describe('FilesStore over a worktree', () => {
         const worktree = await store.startedManagerOf(FIXTURE_PROJECT_ID, WORKTREE);
 
         expect(worktree.tabs.documents.map(document => document.path)).toEqual(['README.md']);
+
+        store.dispose();
+    });
+});
+
+describe('FilesStore limit of open places', () => {
+    const files = () => ({ fileSystem: () => new MemoryFileSystem({ 'a.ts': 'one', 'b.ts': 'two' }) });
+    const place = (n: number) => folderPlace(`f${ n }`);
+
+    it('keeps the managers of the last places asked for, and closes the place asked for the longest ago past that, taking its Files and its Docs manager together', async () => {
+        const store = new FilesStore(files(), memory());
+        const first = store.managerOf('p', place(1));
+        const firstDocs = store.managerOf('p', place(1), 'docs');
+        const dispose = vi.spyOn(first, 'dispose');
+        const disposeDocs = vi.spyOn(firstDocs, 'dispose');
+
+        for (let n = 2; n <= MAX_OPEN_PLACES; n += 1) store.managerOf('p', place(n));
+
+        expect(dispose).not.toHaveBeenCalled();
+
+        store.managerOf('p', place(MAX_OPEN_PLACES + 1));
+
+        expect(dispose).toHaveBeenCalledOnce();
+        expect(disposeDocs).toHaveBeenCalledOnce();
+        // A place that was closed has a new manager when it is asked for again; the others kept theirs.
+        expect(store.managerOf('p', place(1))).not.toBe(first);
+
+        store.dispose();
+    });
+
+    it('closes the place asked for longest ago, not the one made first: asking again keeps a place', async () => {
+        const store = new FilesStore(files(), memory());
+        const kept = store.managerOf('p', place(1));
+        const closed = store.managerOf('p', place(2));
+
+        store.managerOf('p', place(3));
+        // The first is on show again, so the second is the oldest.
+        expect(store.managerOf('p', place(1))).toBe(kept);
+        store.managerOf('p', place(4));
+
+        expect(store.managerOf('p', place(1))).toBe(kept);
+        expect(store.managerOf('p', place(2))).not.toBe(closed);
+
+        store.dispose();
+    });
+
+    it('brings the tabs of a place that was closed back when it is asked for again', async () => {
+        const storage = memory();
+        const store = new FilesStore(files(), storage);
+        const first = store.managerOf('p', place(1));
+
+        await settle();
+        await first.open('a.ts');
+        await settle();
+
+        for (let n = 2; n <= MAX_OPEN_PLACES + 1; n += 1) store.managerOf('p', place(n));
+
+        const again = store.managerOf('p', place(1));
+
+        await settle();
+
+        expect(again).not.toBe(first);
+        expect(again.tabs.active?.path).toBe('a.ts');
+
+        store.dispose();
+    });
+
+    it('keeps a place with unsaved edits open past the limit, and closes it once they are gone', async () => {
+        const store = new FilesStore(files(), memory());
+        const dirty = store.managerOf('p', place(1));
+
+        await settle();
+
+        const document = await dirty.open('a.ts');
+
+        document!.replaceText('changed');
+        await settle();
+
+        expect(document!.dirty).toBe(true);
+
+        for (let n = 2; n <= MAX_OPEN_PLACES + 2; n += 1) store.managerOf('p', place(n));
+
+        // Every clean place before the last ones went, the one with edits stayed.
+        expect(store.managerOf('p', place(1))).toBe(dirty);
+
+        await document!.save();
+
+        // Asked for just now, the place is the newest; once the others have come after it, it is the one to go.
+        for (let n = MAX_OPEN_PLACES + 3; n <= MAX_OPEN_PLACES * 2 + 3; n += 1) store.managerOf('p', place(n));
+
+        expect(store.managerOf('p', place(1))).not.toBe(dirty);
+
+        store.dispose();
+    });
+
+    it('stops keeping the tabs of a place that was closed while it was still being listed', async () => {
+        const storage = memory();
+        const store = new FilesStore(files(), storage);
+        const first = store.managerOf('p', place(1));
+
+        for (let n = 2; n <= MAX_OPEN_PLACES + 1; n += 1) store.managerOf('p', place(n));
+
+        await settle();
+        await first.open('a.ts');
+        await settle();
+
+        expect(storage.data.has('clowdy:files:p:f1')).toBe(false);
 
         store.dispose();
     });
