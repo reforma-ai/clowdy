@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { toast } from '@clowdy/components/Toast';
 import { commitScope } from '@clowdy/protocol';
 import { observer } from 'mobx-react-lite';
 import { act } from 'react';
@@ -14,6 +15,7 @@ import {
     type FixtureData,
     withFixtureWorkspace,
 } from '../../daemon/fixtureData';
+import { FIXTURE_DISCARD_HOOK_LINE } from '../../daemon/fixtureGitWrites';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { overrideTransport } from '../../daemon/testing';
 import { type Transport, TransportError } from '../../daemon/transport';
@@ -506,6 +508,32 @@ describe('the confirmation', () => {
 
         expect(dialog()).toBeNull();
         expect(cardPaths()).not.toContain('src/limits.ts');
+    });
+
+    it("closes and tells the line of the person's hook in a toast when the file was discarded and a post-checkout hook failed after it", async () => {
+        await start({ gitWrites: { discard: 'hook' } });
+
+        const warning = vi.spyOn(toast, 'warning').mockImplementation(() => 'toast');
+
+        try {
+            await press(rowButton('src/limits.ts'));
+            await settleDialog();
+            await press(dialogButton('Discard changes'));
+            await settleDialog();
+            await settle();
+            await untilClosed();
+
+            // A failure line in the dialog would have said the file was not discarded: it was.
+            expect(dialog()).toBeNull();
+            expect(cardPaths()).not.toContain('src/limits.ts');
+            expect(warning).toHaveBeenCalledExactlyOnceWith({
+                title: 'Changes discarded',
+                message: FIXTURE_DISCARD_HOOK_LINE,
+                timeout: 8000,
+            });
+        } finally {
+            warning.mockRestore();
+        }
     });
 
     it('leaves a file that the branch had changed in All changes, as the branch left it, and a mark of viewed it had does not count', async () => {

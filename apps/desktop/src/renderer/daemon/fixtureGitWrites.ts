@@ -12,8 +12,11 @@ export type FixtureCommitScript = 'ok' | 'signing' | 'hook' | 'slow';
 /** How a request for a message ends: it is written (`ok`), the agent fails (`failed`), or it takes a while (`slow`). */
 export type FixtureMessageScript = 'ok' | 'failed' | 'slow';
 
-/** How the next discard of the fixture ends: it goes through (`ok`), it takes a while (`slow`), git refuses the file (`refused`: it has merge conflicts), or the copy cannot be kept and nothing is discarded (`copyfail`). */
-export type FixtureDiscardScript = 'ok' | 'slow' | 'refused' | 'copyfail';
+/**
+ * How the next discard of the fixture ends: it goes through (`ok`), it takes a while (`slow`), git refuses the file (`refused`: it has merge conflicts), the copy cannot be kept and nothing is
+ * discarded (`copyfail`), or the file is discarded and a `post-checkout` hook of the person's failed after it (`hook`).
+ */
+export type FixtureDiscardScript = 'ok' | 'slow' | 'refused' | 'copyfail' | 'hook';
 
 export interface FixtureGitWritesOptions {
     commit?: FixtureCommitScript;
@@ -41,6 +44,8 @@ export const FIXTURE_HOOK_LINE = 'pre-commit: 2 problems in src/limits.ts';
 export const FIXTURE_CONFLICT_LINE = 'Resolve the conflict first';
 export const FIXTURE_COPY_LINE =
     "Couldn't keep a copy of the files, so nothing was discarded: ENOSPC: no space left on device";
+/** What a `post-checkout` hook that fails after a discard says. */
+export const FIXTURE_DISCARD_HOOK_LINE = 'post-checkout: git-lfs was not found on your path';
 /** Where the fixture's daemon keeps the copies of what a discard removes. */
 const FIXTURE_COPIES = '/Users/dev/Library/Application Support/Clowdy/daemon/discarded';
 
@@ -119,6 +124,7 @@ export class FixtureGitWrites {
                 keptUntil: now + GIT_DISCARD_KEEP_DAYS * 24 * 60 * 60 * 1000,
                 files: files.filter(file => file.kind !== 'deleted').length,
             },
+            ...(this.#script.discard === 'hook' && { warning: FIXTURE_DISCARD_HOOK_LINE }),
         };
     }
 
