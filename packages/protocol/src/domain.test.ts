@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { ACTIVE_RUN_STATUSES, folderNames, isBusyRunStatus, isClosedCategory, isTerminalRunStatus, MAX_TASK_DEPTH, shownRunReason, shownRunStatus } from './domain';
+import { ACTIVE_RUN_STATUSES, branchPrefixOf, branchPrefixProblem, DEFAULT_BRANCH_PREFIX, folderNames, isBusyRunStatus, isClosedCategory, isTerminalRunStatus, MAX_TASK_DEPTH, shownRunReason, shownRunStatus } from './domain';
 
 import type { TaskStatusCategory } from './domain';
 
@@ -73,5 +73,45 @@ describe('task categories', () => {
 
     test('a tree of tasks has at most 8 levels, the limit of GitHub', () => {
         expect(MAX_TASK_DEPTH).toBe(8);
+    });
+});
+
+describe('the branch prefix of a new worktree', () => {
+    test('is clowdy when none is given, and the text without the space around it otherwise', () => {
+        expect(DEFAULT_BRANCH_PREFIX).toBe('clowdy');
+        expect([branchPrefixOf(undefined), branchPrefixOf(''), branchPrefixOf('   ')]).toEqual(['clowdy', 'clowdy', 'clowdy']);
+        expect(branchPrefixOf(' max ')).toBe('max');
+    });
+
+    test('takes what git takes at the start of a branch name, slashes inside included', () => {
+        for (const prefix of ['', ' ', 'clowdy', 'max', ' max ', 'max/work', 'feature-1_x', 'v1.2', 'ivan/@home', 'a.b', 'ünïcode', 'x'.repeat(64)]) {
+            expect(branchPrefixProblem(prefix)).toBeUndefined();
+        }
+    });
+
+    test('refuses a space or a control character inside, and the characters git refuses in a ref name', () => {
+        for (const prefix of ['two words', 'tab\there', 'new\nline', 'nul\u0000', 'del\u007f', 'a~b', 'a^b', 'a:b', 'a?b', 'a*b', 'a[b', 'a\\b']) {
+            expect(branchPrefixProblem(prefix), prefix).toBeDefined();
+        }
+    });
+
+    test('refuses an invisible character, which a person cannot see to fix, and the characters Windows does not take in a file name', () => {
+        for (const prefix of ['\u200b', 'a\u200bb', 'a\u202eb', 'a\ufeffb', 'a\u00adb', 'a"b', 'a<b', 'a>b', 'a|b']) {
+            expect(branchPrefixProblem(prefix), prefix).toBeDefined();
+        }
+    });
+
+    test('refuses two dots, @{, an empty part, a part that starts with a dot or ends with .lock, and a slash, a dot or a dash at the wrong end', () => {
+        const refused = ['a..b', 'a@{b', 'a//b', '/a', 'a/', '.a', 'a.', 'a/.b', 'a.lock', 'a.lock/b', '-a', '-', '/', '.', 'x'.repeat(65)];
+
+        for (const prefix of refused) {
+            expect(branchPrefixProblem(prefix), prefix).toBeDefined();
+        }
+    });
+
+    test('says which rule it is, as a phrase with no period', () => {
+        expect(branchPrefixProblem('two words')).toBe('The branch prefix cannot have a space or a control character');
+        expect(branchPrefixProblem('a..b')).toBe('The branch prefix cannot have two dots in a row');
+        expect(branchPrefixProblem('x'.repeat(65))).toBe('The branch prefix is longer than 64 characters');
     });
 });

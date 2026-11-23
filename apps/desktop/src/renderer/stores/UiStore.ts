@@ -38,6 +38,8 @@ export interface ProjectView {
     draftFolderId: FolderId | null;
     /** Agents: where the new chat works in its folder, `null` for the folder's own checkout. Meaningful only with `draft`. */
     draftWorkspace: ChatWorkspaceChoice | null;
+    /** Agents: the agent the new chat starts on when the page was opened for one (a hand-off to another agent), `null` for the one the project and the last pick say. Meaningful only with `draft`. */
+    draftEngine: string | null;
 }
 
 interface StoredProjectUi {
@@ -122,6 +124,12 @@ export class ProjectUi {
      * gone whenever the choice, the folder or the page changes. Not kept between sessions.
      */
     draftWorkspaceRow: ChatWorkspace | null = null;
+    /**
+     * Agents: the agent the new-chat page's chat starts on, when the page was opened for one (a hand-off to another agent): the message box starts its picker there, on that
+     * agent's default model, as long as the agent can be used and until the person picks something else. `null` leaves the choice to the project's settings and the last pick.
+     * Not kept between sessions.
+     */
+    draftEngine: string | null = null;
     /** Agents: the chats whose threads the person opened in the list. A chat that is not here is folded, which is how every chat starts. */
     expandedChats: readonly ChatId[] = [];
     /**
@@ -227,11 +235,12 @@ export class ProjectUi {
             draft: this.draft,
             draftFolderId: this.draftFolderId,
             draftWorkspace: this.draftWorkspace,
+            draftEngine: this.draftEngine,
         };
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ chatId, runId, draft, draftFolderId, draftWorkspace }: ProjectView): void {
+    show({ chatId, runId, draft, draftFolderId, draftWorkspace, draftEngine }: ProjectView): void {
         if (chatId !== this.chatId || runId !== this.runId || draft !== this.draft) this.showChat();
 
         this.chatId = chatId;
@@ -239,6 +248,7 @@ export class ProjectUi {
         this.draft = draft;
         this.draftFolderId = draftFolderId;
         this.draftWorkspace = draftWorkspace;
+        this.draftEngine = draftEngine;
         // The row was the answer for the choice that was on show; the page asks again for the one it is given.
         this.draftWorkspaceRow = null;
     }
@@ -252,21 +262,23 @@ export class ProjectUi {
         this.draftFolderId = null;
         this.draftWorkspace = null;
         this.draftWorkspaceRow = null;
+        this.draftEngine = null;
     }
 
     /**
      * Shows the new-chat row: a chat that is only made when its first message is sent. `attach` are files for
      * its message box (a hand-off brings the old conversation this way): the page picks them up with `takePendingFiles`. `folderId` is the folder
      * of the project the chat is made for, `null` for the main folder, and `workspace` where it works in that folder (a hand-off from a chat in a worktree keeps working in it),
-     * `null` for the folder's own checkout.
+     * `null` for the folder's own checkout. `engine` is the agent the chat starts on (a hand-off to another agent names one), `null` for the one the project and the last pick say.
      */
-    openDraft(attach: readonly File[] = [], folderId: FolderId | null = null, workspace: ChatWorkspaceChoice | null = null): void {
+    openDraft(attach: readonly File[] = [], folderId: FolderId | null = null, workspace: ChatWorkspaceChoice | null = null, engine: string | null = null): void {
         this.showChat();
         this.runId = null;
         this.draft = true;
         this.draftFolderId = folderId;
         this.draftWorkspace = workspace;
         this.draftWorkspaceRow = null;
+        this.draftEngine = engine;
 
         if (attach.length > 0) this.pendingFiles = [...this.pendingFiles, ...attach];
     }
@@ -355,6 +367,7 @@ export class ProjectUi {
         this.draftFolderId = null;
         this.draftWorkspace = null;
         this.draftWorkspaceRow = null;
+        this.draftEngine = null;
     }
 
     /** Opens or folds the threads of a chat in the list. */

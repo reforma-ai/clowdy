@@ -718,7 +718,7 @@ describe('StreamView', () => {
         });
 
         describe('Fork', () => {
-            const forkButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Fork into new chat"]')];
+            const forkButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Fork"]')];
             // The first turn's answer and the second's can be forked; so can a message that is no answer, which is not drawn all the same.
             const forkable = [
                 { ...twoTurns[0], canFork: true },
@@ -728,6 +728,14 @@ describe('StreamView', () => {
                 twoTurns[4],
                 { ...twoTurns[5], canFork: true },
             ];
+            const press = (target: HTMLElement) => act(async () => {
+                target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+                target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+                target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true }));
+                target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+                target.click();
+            });
+            const itemNamed = (name: string) => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(row => row.textContent?.startsWith(name))!;
 
             it('draws a Fork under an answer the daemon marked, and nowhere else, and hands over the answer\'s item', async () => {
                 const onFork = vi.fn();
@@ -737,17 +745,38 @@ describe('StreamView', () => {
                 // Two answers are marked; a message of the person's, and a call inside the fold, carry the flag and get no button.
                 expect(forkButtons()).toHaveLength(2);
 
-                await act(async () => forkButtons()[1].click());
+                await press(forkButtons()[1]);
+                await press(itemNamed('Fork'));
 
                 expect(onFork).toHaveBeenCalledExactlyOnceWith('i-5');
             });
 
+            it('hands over the answer\'s item and the agent picked to the hand-off, with the agents the caller listed', async () => {
+                const onFork = vi.fn();
+                const onHandoff = vi.fn();
+
+                await drawWith(forkable, { active: false, messageActions: { onFork, onHandoff, handoffAgents: [{ id: 'codex', name: 'Codex' }] } });
+                await press(forkButtons()[0]);
+                await press(itemNamed('Fork to another agent'));
+                await press(itemNamed('Codex'));
+
+                expect(onHandoff).toHaveBeenCalledExactlyOnceWith('i-3', 'codex');
+                expect(onFork).not.toHaveBeenCalled();
+            });
+
+            it('draws no hand-off item where no handler is given for it', async () => {
+                await drawWith(forkable, { active: false, messageActions: { onFork: vi.fn(), handoffAgents: [{ id: 'codex', name: 'Codex' }] } });
+                await press(forkButtons()[0]);
+
+                expect([...document.body.querySelectorAll('[role="menuitem"]')].map(row => row.textContent)).toEqual(['Fork']);
+            });
+
             it('draws none for an answer that is not marked, or where no handler is given', async () => {
-                await drawWith(twoTurns, { active: false, messageActions: { onFork: vi.fn() } });
+                await drawWith(twoTurns, { active: false, messageActions: { onFork: vi.fn(), onHandoff: vi.fn() } });
 
                 expect(forkButtons()).toHaveLength(0);
 
-                await drawWith(forkable, { active: false, messageActions: {} });
+                await drawWith(forkable, { active: false, messageActions: { onHandoff: vi.fn() } });
 
                 expect(forkButtons()).toHaveLength(0);
             });
@@ -767,6 +796,7 @@ describe('StreamView', () => {
 
                 await act(async () => forkButtons().forEach(button => button.click()));
 
+                expect(document.body.querySelector('[role="menu"]')).toBeNull();
                 expect(onFork).not.toHaveBeenCalled();
             });
         });

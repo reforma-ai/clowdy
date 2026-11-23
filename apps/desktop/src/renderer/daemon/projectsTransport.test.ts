@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKTREE_PATH, withFixtureWorktrees } from './fixtureData';
+import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_GIT_COMMITS, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKTREE_PATH, withFixtureWorkspace, withFixtureWorktrees } from './fixtureData';
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
 
@@ -129,6 +129,65 @@ describe('FixtureTransport.getProjectWorktrees', () => {
     });
 });
 
+describe('HttpTransport git reads', () => {
+    /** A transport whose daemon answers `body` with `status`, and the urls it was asked. */
+    function transportFor(body: unknown, status = 200) {
+        const urls: string[] = [];
+        const fetchImpl = (async (input: RequestInfo | URL) => {
+            urls.push(String(input));
+
+            return new Response(JSON.stringify(body), { status });
+        }) as typeof fetch;
+
+        return { urls, transport: new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl }) };
+    }
+
+    it('asks for the status of a folder\'s own checkout, and of a worktree of it, both ids escaped', async () => {
+        const { urls, transport } = transportFor({ isRepository: false });
+
+        expect(await transport.getGitStatus('prj a', { folderId: 'fld/b' })).toEqual({ isRepository: false });
+        await transport.getGitStatus('prj a', { folderId: 'fld/b', workspaceId: 'wks 1' });
+        expect(urls).toEqual([
+            'http://127.0.0.1:4310/v1/projects/prj%20a/git/status?folderId=fld%2Fb',
+            'http://127.0.0.1:4310/v1/projects/prj%20a/git/status?folderId=fld%2Fb&workspaceId=wks+1',
+        ]);
+    });
+
+    it('asks for the changes of a scope, a commit\'s scope included', async () => {
+        const { urls, transport } = transportFor({ isRepository: true, scope: 'branch', files: [], fileCount: 0, additions: 0, deletions: 0, statsComplete: true });
+
+        expect(await transport.getGitChanges('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' }, 'branch')).toMatchObject({ scope: 'branch', fileCount: 0 });
+        await transport.getGitChanges('prj_a', { folderId: 'fld_b' }, 'commit:abc1234');
+        expect(urls).toEqual([
+            'http://127.0.0.1:4310/v1/projects/prj_a/git/changes?folderId=fld_b&workspaceId=wks_c&scope=branch',
+            'http://127.0.0.1:4310/v1/projects/prj_a/git/changes?folderId=fld_b&scope=commit%3Aabc1234',
+        ]);
+    });
+
+    it('asks for the two sides of a file by its path, and by its old path when it was renamed', async () => {
+        const { urls, transport } = transportFor({ state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' });
+
+        expect(await transport.getGitFile('prj_a', { folderId: 'fld_b' }, 'all', 'src/a b.ts')).toEqual({ state: 'text', original: 'a\n', modified: 'b\n', revision: 'r' });
+        await transport.getGitFile('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' }, 'uncommitted', 'new.ts', 'old.ts');
+        expect(urls).toEqual([
+            'http://127.0.0.1:4310/v1/projects/prj_a/git/file?folderId=fld_b&scope=all&path=src%2Fa+b.ts',
+            'http://127.0.0.1:4310/v1/projects/prj_a/git/file?folderId=fld_b&workspaceId=wks_c&scope=uncommitted&path=new.ts&oldPath=old.ts',
+        ]);
+    });
+
+    it('rejects with the daemon\'s own reason and status, for the strip to say why, and with the status when it gives none', async () => {
+        const gone = transportFor({ error: { code: 'unavailable', message: 'The worktree /w/app is missing' } }, 503).transport;
+
+        await expect(gone.getGitStatus('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' })).rejects.toMatchObject({ message: 'The worktree /w/app is missing', status: 503 });
+        await expect(gone.getGitChanges('prj_a', { folderId: 'fld_b' }, 'all')).rejects.toMatchObject({ status: 503 });
+        await expect(gone.getGitFile('prj_a', { folderId: 'fld_b' }, 'all', 'a.ts')).rejects.toMatchObject({ status: 503 });
+
+        const bare = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: (async () => new Response('Bad gateway', { status: 502 })) as unknown as typeof fetch });
+
+        await expect(bare.getGitStatus('prj_a', { folderId: 'fld_b' })).rejects.toMatchObject({ message: expect.stringContaining('502'), status: 502 });
+    });
+});
+
 describe('HttpTransport.getChatWorkspaceRemoval', () => {
     it('asks for one chat, its id escaped, and gives the daemon\'s answer', async () => {
         const urls: string[] = [];
@@ -172,6 +231,99 @@ describe('FixtureTransport.getFolderGit', () => {
 
         await expect(transport.getFolderGit('p-none', 'fld_car_rental')).rejects.toMatchObject({ status: 404 });
         await expect(transport.getFolderGit(FIXTURE_PROJECT_ID, 'fld_none')).rejects.toMatchObject({ status: 404 });
+    });
+});
+
+describe('FixtureTransport git reads', () => {
+    const place = { folderId: 'fld_car_rental' };
+    const worktree = () => new FixtureTransport({ data: withFixtureWorkspace(createFixtureData()) });
+    const inWorktree = { ...place, workspaceId: 'wks_ab12cd34' };
+
+    it('says the folder\'s own checkout is clean and level with its base, and that a folder git knows nothing of is none', async () => {
+        const transport = new FixtureTransport();
+        const status = await transport.getGitStatus(FIXTURE_PROJECT_ID, place);
+
+        expect(status).toMatchObject({
+            isRepository: true,
+            head: { kind: 'branch', name: 'main' },
+            upstream: { name: 'origin/main', ahead: 0, behind: 0 },
+            origin: true,
+            entries: [],
+            base: { state: 'ready', name: 'origin/main', ahead: 0, behind: 0, commits: [] },
+        });
+        expect(await transport.getGitChanges(FIXTURE_PROJECT_ID, place, 'all')).toMatchObject({ isRepository: true, baseState: 'ready', files: [], fileCount: 0, statsComplete: true });
+
+        const [personal] = (await transport.getRootSnapshot()).projects[0]!.folders;
+
+        expect(await transport.getGitStatus(FIXTURE_PERSONAL_PROJECT_ID, { folderId: personal!.id })).toEqual({ isRepository: false });
+        expect(await transport.getGitChanges(FIXTURE_PERSONAL_PROJECT_ID, { folderId: personal!.id }, 'all')).toEqual({ isRepository: false });
+    });
+
+    it('says a chat\'s worktree is dirty and ahead of its base, with the commits it made', async () => {
+        const status = await worktree().getGitStatus(FIXTURE_PROJECT_ID, inWorktree);
+
+        expect(status).toMatchObject({
+            isRepository: true,
+            head: { kind: 'branch', name: 'clowdy/ab12cd34' },
+            entries: [{ path: 'notes.md', untracked: true }, { path: 'src/booking/price.ts', unstaged: 'modified' }, { path: 'src/limits.ts', unstaged: 'modified' }],
+            base: { state: 'ready', name: 'origin/main', ahead: 2, behind: 1, commits: FIXTURE_GIT_COMMITS },
+        });
+        expect((status as { upstream?: unknown }).upstream).toBeUndefined();
+    });
+
+    it('lists the files of each scope with their numbers, and one commit\'s by its hash, a short one too', async () => {
+        const transport = worktree();
+        const committed = await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'branch');
+        const uncommitted = await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'uncommitted');
+        const all = await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'all');
+        const [newest, oldest] = FIXTURE_GIT_COMMITS;
+
+        expect(committed).toMatchObject({ isRepository: true, scope: 'branch', baseState: 'ready', fileCount: 4, additions: 23 + 42 + 37, deletions: 5 });
+        expect(committed).toMatchObject({ files: expect.arrayContaining([{ path: 'assets/logo.png', kind: 'added', binary: true, revision: expect.stringMatching(/^000000:0+:100644:9+$/) }]) });
+        expect(uncommitted).toMatchObject({ scope: 'uncommitted', fileCount: 3, additions: 3 + 6 + 1, deletions: 2 + 1 });
+        expect((uncommitted as { baseState?: unknown }).baseState).toBeUndefined();
+        expect(all).toMatchObject({ scope: 'all', fileCount: 6 });
+        expect((await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, `commit:${ newest!.sha }`) as { files: Array<{ path: string }> }).files.map(file => file.path)).toEqual(['src/booking/price.ts', 'src/booking/weekend.ts']);
+        expect((await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, `commit:${ oldest!.sha.slice(0, 7) }`) as { fileCount: number }).fileCount).toBe(3);
+    });
+
+    it('reads the text of a file before and after, and nothing for a binary one', async () => {
+        const transport = worktree();
+
+        expect(await transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'all', 'src/booking/price.ts')).toMatchObject({ state: 'text', original: expect.stringContaining('days * rate'), modified: expect.stringContaining('weekend') });
+        expect(await transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'uncommitted', 'notes.md')).toMatchObject({ state: 'text', original: null });
+        expect(await transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'branch', 'assets/logo.png')).toEqual({ state: 'binary', revision: expect.any(String) });
+    });
+
+    it('does not give the same object twice, so a caller that edits an answer does not change the next', async () => {
+        const transport = worktree();
+        const first = await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'all');
+
+        (first as { files: unknown[] }).files.length = 0;
+        expect(await transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'all')).toMatchObject({ fileCount: 6, files: expect.arrayContaining([expect.anything()]) });
+    });
+
+    it('refuses what the daemon refuses: an unknown project, folder, worktree or commit, a path that did not change, a file of a folder that is no repository', async () => {
+        const transport = worktree();
+
+        await expect(transport.getGitStatus('p-none', place)).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getGitStatus(FIXTURE_PROJECT_ID, { folderId: 'fld_none' })).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getGitStatus(FIXTURE_PROJECT_ID, { ...place, workspaceId: 'wks_none' })).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getGitChanges(FIXTURE_PROJECT_ID, inWorktree, 'commit:0123456789abcdef')).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getGitChanges(FIXTURE_PROJECT_ID, place, 'commit:0123456789abcdef')).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getGitFile(FIXTURE_PROJECT_ID, inWorktree, 'branch', 'notes.md')).rejects.toMatchObject({ status: 404 });
+        await expect(transport.getGitFile(FIXTURE_PROJECT_ID, place, 'all', 'src/booking/price.ts')).rejects.toMatchObject({ status: 404 });
+
+        const personal = (await transport.getRootSnapshot()).projects[0]!.folders[0]!;
+
+        await expect(transport.getGitFile(FIXTURE_PERSONAL_PROJECT_ID, { folderId: personal.id }, 'all', 'a.ts')).rejects.toMatchObject({ status: 400 });
+    });
+
+    it('says a worktree that is not made yet is unavailable, as the daemon does', async () => {
+        const data = withFixtureWorkspace(createFixtureData());
+
+        data.chats.find(chat => chat.workspace)!.workspace!.ready = false;
+        await expect(new FixtureTransport({ data }).getGitStatus(FIXTURE_PROJECT_ID, inWorktree)).rejects.toMatchObject({ status: 503 });
     });
 });
 

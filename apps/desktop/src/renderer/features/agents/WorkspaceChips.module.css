@@ -2,7 +2,7 @@
 
 /*
  * A chip with nothing to press: the pills' own height, inset, type and icon gap, in the muted colour, with no plate (a clear border keeps the box the same). The
- * started chat's mode and branch are these, and so is the mode of a folder that has no worktrees to offer.
+ * started chat's place (the branch, with `Worktree` before it) is this, and so is the stand-in of a folder git could not be asked about.
  */
 .label {
     @ruleset typography-button-sm;
@@ -30,4 +30,50 @@
 
     flex-shrink: 0;
     color: var(--color-warning-text);
+}
+
+/* The word before a branch in the label: it stays whole while a long branch is cut. */
+.lead {
+    flex-shrink: 0;
+}
+
+/* The slot at the start of a menu row: the check of the row that is on, or room of its width, so the rows' words line up. */
+.mark {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-14);
+    height: var(--spacing-14);
+}
+
+/* The base of a new worktree at the end of its row: a press target of its own, kept to a length of its own so a long ref is cut and the row does not grow. */
+.base {
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 7rem;
+    /* Shorter than the xs button is, and drawn out of the row's padding by what is left over, so the row of a new worktree is no taller than the row of the current checkout. */
+    height: var(--spacing-20);
+    min-height: 0;
+    margin-block: calc((var(--spacing-18) - var(--spacing-20)) / 2);
+}
+
+/* The branch at the end of the row of the current checkout, in the same length the base has, so the row's own words are read whole. */
+.suffix {
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 7rem;
+}
+
+.baseContent {
+    min-width: 0;
+}
+
+.baseContent svg {
+    flex-shrink: 0;
+}
+
+/* A wrapper that only catches the keys that bubble up from the menu's rows: it has no box of its own. */
+.keys {
+    display: contents;
 }

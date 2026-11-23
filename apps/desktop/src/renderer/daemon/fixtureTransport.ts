@@ -12,6 +12,9 @@ import {
     fixtureChatWorkspace,
     fixtureFolderGit,
     fixtureProjectWorktrees,
+    fixtureGitChanges,
+    fixtureGitFile,
+    fixtureGitStatus,
     fixtureWorkspaceLog,
     type FixtureData,
 } from './fixtureData';
@@ -20,7 +23,7 @@ import { applyFolderSettings } from './fixtureFolderSettings';
 import { fail, ok, type Outcome } from './fixtureOutcome';
 import { FixtureTasks } from './fixtureTasks';
 import { FixtureTerminals } from './fixtureTerminals';
-import { TransportError, type CommandInput, type FeedStatus, type PageQuery, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
+import { TransportError, type CommandInput, type FeedStatus, type PageQuery, type PlaceRef, type ProjectFileSystem, type StreamTarget, type Transport } from './transport';
 
 import type {
     AgentInfo,
@@ -39,6 +42,10 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitChanges,
+    GitFileSides,
+    GitScope,
+    GitStatus,
     Project,
     ProjectFileMatch,
     ProjectId,
@@ -238,6 +245,43 @@ export class FixtureTransport implements Transport {
 
     async getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {
         return structuredClone(fixtureProjectWorktrees(this.#project(projectId), this.#data));
+    }
+
+    async getGitStatus(projectId: ProjectId, place: PlaceRef): Promise<GitStatus> {
+        const { head, workspace } = this.#gitPlace(projectId, place);
+
+        return structuredClone(fixtureGitStatus(head, workspace));
+    }
+
+    async getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
+        const { head, workspace } = this.#gitPlace(projectId, place);
+        const changes = fixtureGitChanges(head, workspace !== undefined, scope);
+
+        if (!changes) throw new TransportError(`Commit ${ scope.slice('commit:'.length) } does not exist`, 404);
+
+        return structuredClone(changes);
+    }
+
+    async getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string): Promise<GitFileSides> {
+        const { head, workspace } = this.#gitPlace(projectId, place);
+
+        if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
+
+        const sides = workspace && fixtureGitFile(scope, path);
+
+        if (!sides) throw new TransportError(`Changed file ${ path } does not exist`, 404);
+
+        return structuredClone(sides);
+    }
+
+    /** The folder a git read names and what the fixture's git says of it, and the worktree when the read names one (judged as the daemon judges a place). */
+    #gitPlace(projectId: ProjectId, { folderId, workspaceId }: PlaceRef) {
+        const project = this.#project(projectId);
+        const folder = project.folders.find(candidate => candidate.id === folderId);
+
+        if (!folder) throw new TransportError(`Folder ${ folderId } does not exist`, 404);
+
+        return { head: this.#data.git[folder.path], workspace: workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId, folderId) };
     }
 
     async getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {

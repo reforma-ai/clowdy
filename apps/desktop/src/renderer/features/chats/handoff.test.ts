@@ -9,7 +9,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore } from '../../stores';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { filesOf, setFiles, type DraftFile } from './composerFiles';
-import { handoffFileName, handoffSentence, startHandoff, transcriptOf, turnsOf } from './handoff';
+import { handoffFileName, handoffSentence, itemsUpTo, startHandoff, transcriptOf, turnsOf } from './handoff';
 
 import type { Chat, StreamItem, StreamItemBody } from '@clowdy/protocol';
 import type { KeyValueStorage } from '../../stores/storage';
@@ -309,6 +309,25 @@ const memoryStorage = (): KeyValueStorage => {
     return { getItem: key => data[key] ?? null, setItem: (key, value) => void (data[key] = value) };
 };
 
+describe('itemsUpTo', () => {
+    const list = items(
+        { kind: 'user', text: 'First' },
+        { kind: 'assistant', text: 'One', done: true },
+        { kind: 'user', text: 'Second' },
+        { kind: 'assistant', text: 'Two', done: true }
+    );
+
+    it('keeps the items up to and including the one named, whatever order they come in', () => {
+        expect(itemsUpTo(list, 'i-2')!.map(item => item.id)).toEqual(['i-1', 'i-2']);
+        expect(itemsUpTo([...list].reverse(), 'i-3')!.map(item => item.id).sort()).toEqual(['i-1', 'i-2', 'i-3']);
+        expect(itemsUpTo(list, 'i-4')).toHaveLength(4);
+    });
+
+    it('is nothing for an item the stream does not have, and not an empty conversation', () => {
+        expect(itemsUpTo(list, 'i-9')).toBeUndefined();
+    });
+});
+
 describe('startHandoff', () => {
     let data: FixtureData;
     let transport: FixtureTransport;
@@ -386,6 +405,88 @@ describe('startHandoff', () => {
 
         expect(await handOffFrom(chatOf('c-1'))).toBe(true);
         expect(ui().draftWorkspace).toBeNull();
+    });
+
+    describe('from an answer, to an agent', () => {
+        const FIRST_ANSWER = 'I read the current flow.';
+        const LATER_ANSWER = 'The schema is in `src/db/schema.ts`.';
+        const from = async (seq: number, engine?: string) => {
+            const stream = root.streams.of('r-orch-1');
+
+            await stream.load();
+
+            return startHandoff({ root, ui: ui(), chat: chatOf('c-1'), run: root.selectedProject!.runs.get('r-orch-1'), itemId: stream.items.find(item => item.seq === seq)!.id, ...(engine && { engine }) });
+        };
+
+        it('attaches the conversation up to and including that answer and leaves out what came after', async () => {
+            expect(await from(2, 'codex')).toBe(true);
+
+            const transcript = await ui().pendingFiles[0]!.text();
+
+            expect(transcript).toContain('Simplify the booking flow: one form instead of three steps');
+            expect(transcript).toContain(FIRST_ANSWER);
+            expect(transcript).not.toContain(LATER_ANSWER);
+            expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe(handoffSentence('Simplify booking', 'simplify-booking-conversation.md'));
+        });
+
+        it('keeps the whole conversation when the answer is the last one', async () => {
+            const stream = root.streams.of('r-orch-1');
+
+            await stream.load();
+
+            const last = stream.items.filter(item => item.body.kind === 'assistant').at(-1)!;
+
+            expect(await from(last.seq, 'codex')).toBe(true);
+            expect(await ui().pendingFiles[0]!.text()).toContain(LATER_ANSWER);
+        });
+
+        it('opens the page on the agent named, and on none when no agent is named', async () => {
+            expect(await from(2, 'codex')).toBe(true);
+            expect([ui().draft, ui().draftEngine]).toEqual([true, 'codex']);
+
+            expect(await handOff('c-1')).toBe(true);
+            expect([ui().draft, ui().draftEngine]).toEqual([true, null]);
+        });
+
+        it('keeps the folder and the worktree of the chat, as the hand-off of a read only chat does', async () => {
+            const workspace = { id: 'wks_a', folderId: 'fld_car_rental', path: '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental', branch: 'clowdy/ab12cd34', managed: true, ready: true };
+            const stream = root.streams.of('r-orch-1');
+
+            await stream.load();
+
+            expect(await startHandoff({
+                root,
+                ui: ui(),
+                chat: { ...chatOf('c-1'), folderId: workspace.folderId, workspace },
+                run: root.selectedProject!.runs.get('r-orch-1'),
+                itemId: stream.items.find(item => item.seq === 2)!.id,
+                engine: 'cursor',
+            })).toBe(true);
+
+            expect([ui().draftFolderId, ui().draftWorkspace, ui().draftEngine]).toEqual(['fld_car_rental', { mode: 'existing', path: workspace.path }, 'cursor']);
+        });
+
+        it('says so and stays where it is when the answer is no longer in the conversation', async () => {
+            expect(await startHandoff({ root, ui: ui(), chat: chatOf('c-1'), run: root.selectedProject!.runs.get('r-orch-1'), itemId: 'i-gone', engine: 'codex' })).toBe(false);
+
+            expect(toast.error).toHaveBeenCalledWith({ message: 'That answer is no longer in the conversation' });
+            expect(ui().draft).toBe(false);
+            expect(ui().pendingFiles).toEqual([]);
+            expect(messageOf(draftOf(NEW_CHAT_KEY))).toBe('');
+        });
+
+        it('leaves no chat behind: it only opens the page, and nothing is sent to the daemon', async () => {
+            const command = vi.spyOn(root, 'command');
+            const before = [...root.selectedProject!.chats.keys()];
+
+            expect(await from(2, 'codex')).toBe(true);
+            ui().openChat('c-3');
+
+            expect(command).not.toHaveBeenCalled();
+            expect([...root.selectedProject!.chats.keys()]).toEqual(before);
+            // Leaving the page forgets the agent it was opened for.
+            expect(ui().draftEngine).toBeNull();
+        });
     });
 
     it('follows words already in the new-chat draft after a blank line, and keeps them', async () => {

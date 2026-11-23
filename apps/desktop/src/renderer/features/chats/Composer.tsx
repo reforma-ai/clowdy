@@ -9,6 +9,7 @@ import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useProjectState, useRootStore } from '../../stores';
 import { folderById } from '../agents/agentTree';
 import { chatPlace } from '../sidePanel/currentPlace';
+import { branchPrefix } from './branchPrefix';
 import { busyEnter, sendMode } from './busyEnter';
 import { ChatControls } from './ChatControls';
 import { readRememberedMode, startingMode, writeRememberedMode } from './chatModeMemory';
@@ -216,8 +217,8 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
                 type: 'chat.create',
                 projectId: start.projectId,
                 ...(start.folderId && { folderId: start.folderId }),
-                // A copy of the choice: the store keeps the one it holds, and the command is what the transport sends on.
-                ...(start.workspace && { workspace: { ...start.workspace } }),
+                // A copy of the choice (the store keeps the one it holds, and the command is what the transport sends on), with the app's branch prefix for a new worktree.
+                ...(start.workspace && { workspace: branchPrefix.withPrefix(start.workspace) }),
                 mode: draftMode,
                 ...(choice && { engine: choice.engine, ...(choice.model && { model: choice.model }), ...(choice.effort && { effort: choice.effort }) }),
             });

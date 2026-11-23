@@ -9,7 +9,7 @@ import { useProjectState } from '../../stores';
 import { canOpenPaths, OpenWithMenu, useFolderGit, useFolderRepair, type FolderGit, type OpenTarget } from '../openWith';
 import styles from './ChatFolder.module.css';
 import { FolderTrigger } from './DraftFolderSelect';
-import { WorkspaceLabels } from './WorkspaceChips';
+import { WorkspaceLabel } from './WorkspaceChips';
 
 import type { ChatWorkspace, ProjectFolder } from '@clowdy/protocol';
 
@@ -69,8 +69,8 @@ export interface ChatFolderProps {
 }
 
 /**
- * The line under the message box of a chat that has started, read only: its folder (`FolderPill`), where it works (`Project checkout` or `Worktree`) and the branch the tree
- * has checked out now, as the new-chat page's chips (`WorkspaceChips`) had them. The branch is read live, with the folder's `git` (see `useFolderGit`): an agent may switch
+ * The line under the message box of a chat that has started, read only: its folder (`FolderPill`) and one label (`WorkspaceLabel`) for where it works: the branch the tree has
+ * checked out now, with `Worktree` before it for a chat in a worktree, as the new-chat page's control (`WorkspaceChips`) had it. The branch is read live, with the folder's `git` (see `useFolderGit`): an agent may switch
  * branches in a worktree, so the name the chat was made with is not shown once the worktree exists. A worktree that is gone from the disk makes the folder pill the warning colour.
  */
 export function ChatFolder({ name, folder, missing, workspace }: ChatFolderProps) {
@@ -80,7 +80,7 @@ export function ChatFolder({ name, folder, missing, workspace }: ChatFolderProps
     return (
         <>
             <FolderPill name={ name } folder={ folder } missing={ missing || git?.gone === true } git={ git } workspace={ workspace } />
-            <WorkspaceLabels worktree={ workspace?.path } git={ git } />
+            <WorkspaceLabel worktree={ workspace?.path } git={ git } />
         </>
     );
 }

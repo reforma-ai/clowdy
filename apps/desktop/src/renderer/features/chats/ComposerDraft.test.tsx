@@ -5,11 +5,12 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RootStoreProvider, type RootStore } from '../../stores';
+import { branchPrefix } from './branchPrefix';
 import { Composer } from './Composer';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { modelStore } from './modelTestKit';
 
-import type { Chat, CommandResult } from '@clowdy/protocol';
+import type { Chat, ChatWorkspaceChoice, CommandResult } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { CommandInput } from '../../daemon/transport';
 
@@ -33,7 +34,7 @@ let sent: CommandInput[];
 let started: string[];
 
 /** `answer` says what the daemon answers to each command, in the order they are sent. Drawn again for another `projectId` or `folderId`, it is the same composer on another project's or folder's page. */
-async function mount(answer: (input: CommandInput) => CommandResult | Promise<CommandResult>, minLines?: number, projectId = 'p', folderId?: string) {
+async function mount(answer: (input: CommandInput) => CommandResult | Promise<CommandResult>, minLines?: number, projectId = 'p', folderId?: string, workspace?: ChatWorkspaceChoice) {
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
 
@@ -44,7 +45,7 @@ async function mount(answer: (input: CommandInput) => CommandResult | Promise<Co
     await act(async () => {
         root.render(
             <RootStoreProvider value={ store as unknown as RootStore }>
-                <Composer chat={ undefined } run={ undefined } minLines={ minLines } start={ { projectId, folderId, onStarted: chatId => started.push(chatId) } } />
+                <Composer chat={ undefined } run={ undefined } minLines={ minLines } start={ { projectId, folderId, ...(workspace && { workspace }), onStarted: chatId => started.push(chatId) } } />
             </RootStoreProvider>
         );
     });
@@ -148,6 +149,43 @@ describe('Composer without a chat', () => {
         await pressEnter();
 
         expect(sent[0]).not.toHaveProperty('folderId');
+    });
+
+    it('asks for a new worktree as the page chose it, with the branch prefix of Settings when it is not the default, and for no prefix otherwise', async () => {
+        const choice: ChatWorkspaceChoice = { mode: 'new', base: 'dev' };
+        const answer = (input: CommandInput) => (input.type === 'chat.create' ? accepted({ chat: made }) : accepted());
+        const workspaceOf = () => (sent[0] as { workspace?: unknown }).workspace;
+
+        await mount(answer, undefined, 'p', 'f1', choice);
+        type('Start in a worktree');
+        await pressEnter();
+
+        // Nothing is added for the default prefix: a daemon from before the setting takes the command as it was.
+        expect(workspaceOf()).toEqual({ mode: 'new', base: 'dev' });
+
+        sent = [];
+        branchPrefix.setValue('max');
+
+        try {
+            await mount(answer, undefined, 'p', 'f1', choice);
+            type('Start in another worktree');
+            await pressEnter();
+
+            expect(workspaceOf()).toEqual({ mode: 'new', base: 'dev', branchPrefix: 'max' });
+            // The page's own choice is the one it had.
+            expect(choice).toEqual({ mode: 'new', base: 'dev' });
+
+            // A worktree that exists has no branch to name.
+            sent = [];
+            await mount(answer, undefined, 'p', 'f1', { mode: 'existing', path: '/work/p-feature' });
+            type('Start in the feature worktree');
+            await pressEnter();
+
+            expect(workspaceOf()).toEqual({ mode: 'existing', path: '/work/p-feature' });
+        }
+        finally {
+            branchPrefix.setValue('');
+        }
     });
 
     it('does not send the message of another folder\'s page to the chat a failed message left in this one', async () => {

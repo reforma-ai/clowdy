@@ -115,11 +115,11 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **This stage:** the branch of a new worktree is `clowdy/<chat-id8>`, hard-coded in `workspaceLayout`. The prefix becomes an app-wide setting kept in the renderer like the other app-wide preferences and sent with `chat.create`. The daemon validates it as a ref name. One place reads the old name back: a thread owns its worktree when the branch is exactly `clowdy/<chat-id8>`; that test must follow the new naming.
 
-- [ ] Complete
-  - [ ] `chat.create`'s new workspace takes `branchPrefix?`; `workspaceLayout` builds `<prefix>/<chat-id8>`; an empty or absent prefix means `clowdy`; a prefix git would not accept as part of a branch name (spaces, `..`, `~^:?*[\`, a leading or trailing `/` or `.`, `.lock`) is `invalid`
-  - [ ] The check in `driver.ts` that decides whether a thread's workspace is its own worktree no longer assumes `clowdy/`: the workspace is Clowdy's own when it is `managed` and its branch ends with `/<chat-id8>`
-  - [ ] `BranchPrefixPreference` (key `clowdy:branch-prefix`, default `clowdy`), a field in Settings beside the new-chat defaults with the validation message, and the value sent when a new chat is created in a new worktree
-  - [ ] Tests: a chat made with `max` gets `max/<id8>`, an invalid prefix is refused, a thread of such a chat is still recognised as sharing or owning its worktree
+- [x] Complete
+  - [x] `chat.create`'s new workspace takes `branchPrefix?`; `workspaceLayout` builds `<prefix>/<chat-id8>`; an empty or absent prefix means `clowdy`; a prefix git would not accept as part of a branch name (spaces, `..`, `~^:?*[\`, a leading or trailing `/` or `.`, `.lock`) is `invalid`
+  - [x] The check in `driver.ts` that decides whether a thread's workspace is its own worktree no longer assumes `clowdy/`: the workspace is Clowdy's own when it is `managed` and its branch ends with `/<chat-id8>`
+  - [x] `BranchPrefixPreference` (key `clowdy:branch-prefix`, default `clowdy`), a field in Settings beside the new-chat defaults with the validation message, and the value sent when a new chat is created in a new worktree
+  - [x] Tests: a chat made with `max` gets `max/<id8>`, an invalid prefix is refused, a thread of such a chat is still recognised as sharing or owning its worktree
 
 **Files**
 
@@ -135,7 +135,8 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **Done when:** with the setting `max`, a chat started in a new worktree is on `max/<id8>`; with it unset it is on `clowdy/<id8>`; a prefix with a space is refused with a message in Settings.
 **Verify:** `cd apps/daemon && bun test test/chat-workspaces.test.ts test/threads.test.ts test/worktree-flow.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `cd apps/desktop && bunx vitest run src/renderer/features/chats src/renderer/features/settings && bun run typecheck`
-**Commits:** None yet.
+**Scope changes:** the prefix rules live in `packages/protocol/src/domain.ts` (`DEFAULT_BRANCH_PREFIX`, `branchPrefixOf`, `branchPrefixProblem`) so Settings and the daemon share one check; `chat.create` also refuses a prefix that an existing branch of the repository blocks (a branch `max` blocks `max/<id8>`); the app sends `branchPrefix` only when it is not `clowdy` (the schema is strict, an older daemon would answer 400); `ownsWorktree(chat, workspace)` in `driver.ts` is true when the workspace is `managed` and its branch ends with `/<id8>`; `commands/chat.ts` and `domain/chats.ts` needed no change. Review (`cf06d4f`) also refuses invisible characters and `" < > |` in a prefix. **Left:** a prefix part that is a Windows device name (`con`, `aux`, `nul`) is a valid ref that Windows cannot make as a folder (fix: move `RESERVED_NAMES` from `domain/workspaces.ts` to `@clowdy/protocol` and check each part); the Settings field shows "cannot end with /" for one keystroke while typing `team/`.
+**Commits:** `39e0abb` feat(protocol): add the branch prefix of a new worktree; `2fa6b98` feat(daemon): name a new worktree's branch after the prefix of the app; `bce1073` feat(desktop): set the branch prefix of new worktrees in Settings; `cf06d4f` fix(protocol): refuse invisible characters and Windows file name characters in a branch prefix; merged into `next` as `f178ccd`.
 
 ## Stage 4 — The Manage worktrees dialog
 
@@ -234,11 +235,11 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **This stage:** the Fork icon on an answer becomes a click menu. `Fork` does what the icon does now. `Fork to another agent…` opens the list of other signed-in agents; a pick opens a new-chat draft on that agent with the conversation up to that answer attached, which is today's hand-off draft with two additions: a cut at an answer and a preset agent. The read-only notice's hand-off keeps working through the same function.
 
-- [ ] Complete
-  - [ ] The Fork icon opens a `Menu` on click, not on hover, with `Fork` and a `SubmenuTrigger` `Fork to another agent…` listing the signed-in agents other than the chat's own; with no other agent the item is disabled with a hint
-  - [ ] `startHandoff` takes the answer's item id and attaches the transcript up to and including it, and the agent to open the draft on; the draft opens with that agent and its default model, the worktree and the folder kept, the text filled in
-  - [ ] Closing the draft leaves no chat behind; the read-only notice's hand-off is unchanged in behaviour
-  - [ ] Tests for the menu, the cut transcript and the preset agent
+- [x] Complete
+  - [x] The Fork icon opens a `Menu` on click, not on hover, with `Fork` and a `SubmenuTrigger` `Fork to another agent…` listing the signed-in agents other than the chat's own; with no other agent the item is disabled with a hint
+  - [x] `startHandoff` takes the answer's item id and attaches the transcript up to and including it, and the agent to open the draft on; the draft opens with that agent and its default model, the worktree and the folder kept, the text filled in
+  - [x] Closing the draft leaves no chat behind; the read-only notice's hand-off is unchanged in behaviour
+  - [x] Tests for the menu, the cut transcript and the preset agent
 
 **Files**
 
@@ -252,4 +253,28 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **Done when:** a click on the Fork icon shows the two items, `Fork` forks as before, and picking another agent opens a draft on it with the conversation up to that answer attached and the chat's worktree kept.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/stream src/renderer/features/chats src/renderer/features/agents && bun run typecheck && bun run lint`
+**Scope changes:** the preset agent is `ProjectUi.draftEngine` (a 4th argument of `openDraft`, part of the page's view, cleared by `openChat`, `openRun` and the next `openDraft`), read by `DraftChat` into the draft's defaults; `startHandoff` takes `itemId` and `engine` and cuts the transcript at that answer by `seq` (`itemsUpTo`); a shared `useHandoff` hook serves the read-only notice and the menu; the menu is `stream/ForkMenu.tsx`, its agents come from `handoffAgents` in `chatProvider.ts` (switched on, installed, not signed out, not the chat's own); the icon's tooltip reads `Fork`. The agent's "default model" is the one last used on it, else its default, as for any new chat. **Left (the owner decides):** the menu is drawn only where the Fork icon was (an answer with `canFork`), so an answer in a chat whose agent cannot cut its session has neither Fork nor the hand-off; widening it takes `StreamView.tsx` `actionsOf`, `MessageActions.tsx`, `ForkMenu.tsx` (`onFork` optional) and tests, and a choice of a grey Fork with a reason or another label; two hand-offs from one chat before sending leave two files with the same name (a fix means moving the file removal out of `useComposerFiles.remove` into `composerFiles.ts`).
+**Commits:** `b49ef2c` feat(desktop): open the new-chat page on an agent named by the caller; `18af2a1` feat(desktop): cut a hand-off at an answer and open it on another agent; `83f5e70` feat(desktop): open a menu from the Fork icon with Fork to another agent; `7135668` docs(desktop): describe the Fork menu and the hand-off to another agent; review: `13b2aa8` refactor: share `useHandoff`, `d05fbab` test: preset model, own pick, keyboard, `09c3853` docs; `b3ed954` refactor(desktop): hand the new-chat page its agent through the draft's defaults; merged into `next` as `27a10a7`.
+
+## Stage 9 — A draft in an existing worktree shows its branch
+
+**Depends on:** Stage 6.
+
+**This stage:** found in Stage 6's review. `useFolderGit` reads the live branch of a place through `getProjectsInfo`, whose `workspaces` list only the rows a chat points at (`listWorkspacesInUse`). A new-chat draft in an existing worktree (the page's `workspace.open` row, which "New chat in this worktree" and the picker both make) has no chat yet, so the Files bar, Info's Worktree and Branch rows have no branch until the first message. The rows a draft opens must be reported too, and the renderer must read again when the draft's row appears.
+
+- [ ] Complete
+  - [ ] `projectsInfo` reports every worktree row of the project that is still on disk, not only those a chat points at (a row a draft opened included), without changing what the chats' own rows say
+  - [ ] The renderer reads `getProjectsInfo` again when the draft's row (`ProjectUi.draftWorkspaceRow`) appears or changes, as it does when a chat's worktree gets made
+  - [ ] On a draft in a found worktree, the Files bar and Info show that worktree's branch; the test fails without the daemon change and without the reload
+
+**Files**
+
+- `apps/daemon/src/domain/projects.ts` — `projectsInfo`: the workspaces it reports (`listWorkspacesInUse` → the project's rows)
+- `apps/daemon/src/db/workspaces.ts` — `listWorkspacesInUse`, `listWorkspacesOfProject`
+- `apps/desktop/src/renderer/features/agents/Screen.tsx` — the `reloadKey` of `useProjectsInfo` also follows the draft's row
+- `apps/daemon/test/projects.test.ts` (or the nearest existing test of `projectsInfo`) and `apps/desktop/src/renderer/features/agents/Screen.test.tsx`
+- `apps/daemon/AGENTS.md`, `apps/desktop/AGENTS.md` — what `workspaces` of the info holds
+
+**Done when:** on a new-chat draft in a worktree no chat works in, the Files place bar and Info's Branch row show that worktree's branch.
+**Verify:** `cd apps/daemon && bun test test/projects.test.ts test/chat-workspaces.test.ts`, `cd apps/desktop && bunx vitest run src/renderer/features/agents src/renderer/features/sidePanel src/renderer/features/files && bun run typecheck && bun run lint`
 **Commits:** None yet.

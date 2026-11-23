@@ -251,12 +251,24 @@ describe('where a new chat starts', () => {
         expect(modeTrigger()!.getAttribute('aria-label')).toBe('Mode: Hands-off');
     });
 
-    it('starts on the provider its project asks for, even when another was picked last', async () => {
+    it('starts on the provider its project asks for, even when another was picked last, on that provider\'s default model', async () => {
         writeRemembered({ engine: 'claude', models: {}, efforts: {} });
         await mount({ defaults: { engine: 'codex' } });
+
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6.2 Sol · Low');
+
         await send('Build the thing');
 
-        expect(create()).toMatchObject({ engine: 'codex' });
+        expect(create()).toMatchObject({ engine: 'codex', model: 'gpt-6.2-sol' });
+    });
+
+    it('lets the person\'s own pick in the box come before the provider its project asks for', async () => {
+        await mount({ defaults: { engine: 'codex' } });
+        await openPicker();
+        await pickModel('Opus 5.5', 'Claude Code');
+        await send('Build the thing');
+
+        expect(create()).toMatchObject({ engine: 'claude', model: 'opus' });
     });
 
     it('starts on the provider that was picked last when its project asks for none', async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createFixtureData } from '../../daemon/fixtureData';
-import { chatProvider, chatWritability } from './chatProvider';
+import { chatProvider, chatWritability, handoffAgents } from './chatProvider';
 
 import type { AgentInfo, Chat, Run } from '@clowdy/protocol';
 
@@ -149,5 +149,53 @@ describe('chatWritability', () => {
 
     it('lets a chat go on when nothing tells what it runs on', () => {
         expect(verdict(agents(), chat({ engine: undefined }), undefined)).toEqual({ writable: true });
+    });
+});
+
+describe('handoffAgents', () => {
+    const named = (list: AgentInfo[], target: Chat = chat(), orchestrator: Run | undefined = run()) => handoffAgents(list, target, orchestrator).map(agent => agent.id);
+    const change = (id: string, edit: (agent: AgentInfo) => void) => (list: AgentInfo[]) => {
+        edit(list.find(agent => agent.id === id)!);
+
+        return list;
+    };
+
+    it('lists the other agents in the order of the Providers page, without the chat\'s own', () => {
+        expect(named(agents())).toEqual(['codex', 'cursor']);
+        expect(named(agents(), chat({ engine: 'codex' }))).toEqual(['claude', 'cursor']);
+    });
+
+    it('takes the chat\'s own from its orchestrator for a chat from before chats kept an agent', () => {
+        expect(named(agents(), chat({ engine: undefined }), run({ engine: 'claude' }))).toEqual(['codex', 'cursor']);
+    });
+
+    it('leaves out an agent that is signed out, switched off or not installed', () => {
+        const signedOut = change('codex', (codex) => {
+            codex.signIn = { status: 'signed-out', checkedAt: 0 };
+        });
+        const off = change('cursor', (cursor) => {
+            cursor.enabled = false;
+            cursor.status = 'disabled';
+        });
+
+        expect(named(signedOut(agents()))).toEqual(['cursor']);
+        expect(named(off(agents()))).toEqual(['codex']);
+        expect(named(change('codex', (codex) => {
+            codex.status = 'missing';
+        })(agents()))).toEqual(['cursor']);
+    });
+
+    it('keeps an agent whose account is not known yet: that is no reason to hold the person back', () => {
+        expect(named(change('codex', (codex) => {
+            codex.signIn = { status: 'unknown', checkedAt: 0 };
+        })(agents()))).toEqual(['codex', 'cursor']);
+        expect(named(change('codex', (codex) => {
+            delete codex.signIn;
+        })(agents()))).toEqual(['codex', 'cursor']);
+    });
+
+    it('is empty when no other agent can take it', () => {
+        expect(named(agents().filter(agent => agent.id === 'claude'))).toEqual([]);
+        expect(named([])).toEqual([]);
     });
 });

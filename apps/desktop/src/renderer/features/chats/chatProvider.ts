@@ -1,3 +1,5 @@
+import { isUsableProvider, providerAgents } from '../settings/providers/providerView';
+
 import type { AgentInfo, Chat, EngineId, Run } from '@clowdy/protocol';
 
 /** The scripted demo agent. It is not a program on this machine, so the agents list does not have it, and it can always answer. */
@@ -20,6 +22,16 @@ const WRITABLE: ChatWritability = { writable: true };
 /** The agent a chat runs on: its own `engine`, or the one its orchestrator runs on for a chat from before the chat kept one. */
 export function chatProvider(chat: Chat, run: Run | undefined): EngineId | undefined {
     return chat.engine ?? run?.engine;
+}
+
+/**
+ * The agents a conversation can be handed to from a chat: the ones a new chat can start on (switched on and installed, the cards of the Providers page) that are
+ * not signed out (`unknown` or no reading is no reason, as in `chatWritability`), without the chat's own. In the order of the Providers page.
+ */
+export function handoffAgents(agents: readonly AgentInfo[], chat: Chat, run: Run | undefined): AgentInfo[] {
+    const own = chatProvider(chat, run);
+
+    return providerAgents(agents).filter(agent => isUsableProvider(agent) && agent.signIn?.status !== 'signed-out' && agent.id !== own);
 }
 
 /** Whether the chat's agent has a command that compacts its conversation (`AgentInfo.canCompact`), which is what Compact is offered for. */

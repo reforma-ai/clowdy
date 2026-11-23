@@ -1,4 +1,4 @@
-import { commandSchema, mainFolder, MAX_ATTACHMENT_BYTES, PROTOCOL_VERSION } from '@clowdy/protocol';
+import { commandSchema, mainFolder, MAX_ATTACHMENT_BYTES, parseGitScope, PROTOCOL_VERSION } from '@clowdy/protocol';
 
 import { contentDisposition, servedMediaType } from '../attachments/names';
 import { executeCommandAsync, waitsForAgent } from '../commands';
@@ -6,7 +6,7 @@ import { getRun } from '../db/runs';
 import { docsTree } from '../docs/tree';
 import { requireChat } from '../domain/chats';
 import { streamItems } from '../domain/items';
-import { resolveWorkspacePlace } from '../domain/places';
+import { resolvePlace, resolveWorkspacePlace } from '../domain/places';
 import { findProjectIcon } from '../domain/projectIcon';
 import { projectsInfo, requireProject } from '../domain/projects';
 import { projectSnapshot, rootSnapshot, taskDetail, taskDetailByKey } from '../domain/snapshots';
@@ -15,7 +15,9 @@ import { taskCommentsPage } from '../domain/taskComments';
 import { DEFAULT_LIMIT } from '../domain/taskQuery';
 import { workspaceRemoval } from '../domain/workspaceRemoval';
 import { CommandError, invalid, notFound } from '../errors';
+import { placeChanges, placeFile } from '../git/changes';
 import { projectFolderGit } from '../git/state';
+import { placeStatus } from '../git/status';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body';
 import { commandResponse, failure, json } from './responses';
 import { eventStream } from './sse';
@@ -74,6 +76,19 @@ export function createRoutes(context: RouteContext): Route[] {
         const workspaceId = url.searchParams.get('workspaceId');
 
         return workspaceId ? resolveWorkspacePlace(store, project, workspaceId) : undefined;
+    };
+
+    /** The place a request of the git reads names: the folder's own checkout, or its worktree (`workspaceId`), judged by `resolvePlace` as the file routes' are. */
+    const gitPlaceOf = (projectId: string, url: URL) => resolvePlace(store, requireProject(store, projectId), url.searchParams.get('folderId') ?? '', url.searchParams.get('workspaceId') ?? undefined);
+    /** The scope a request of the changes asks for: `all` when it names none. */
+    const gitScopeOf = (url: URL) => {
+        const scope = parseGitScope(url.searchParams.get('scope') ?? 'all');
+
+        if (!scope) {
+            throw invalid('The scope is none of all, branch, uncommitted and commit:<hash>');
+        }
+
+        return scope;
     };
 
     return [
@@ -195,6 +210,13 @@ export function createRoutes(context: RouteContext): Route[] {
             },
         },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/git$/, handle: async (_request, url, [id]) => json(await projectFolderGit(requireProject(store, id), url.searchParams.get('folderId') ?? '')) },
+        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/git\/status$/, handle: async (_request, url, [id]) => json(await placeStatus(gitPlaceOf(id, url))) },
+        { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/git\/changes$/, handle: async (_request, url, [id]) => json(await placeChanges(gitPlaceOf(id, url), gitScopeOf(url))) },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/file$/,
+            handle: async (_request, url, [id]) => json(await placeFile(gitPlaceOf(id, url), gitScopeOf(url), url.searchParams.get('path') ?? '', url.searchParams.get('oldPath') ?? undefined)),
+        },
         {
             method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/docs$/,

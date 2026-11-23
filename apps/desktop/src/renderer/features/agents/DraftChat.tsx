@@ -24,15 +24,16 @@ import type { FolderId } from '@clowdy/protocol';
  * makes it when the first message is sent, and then this page gives way to the chat. A hand-off from another chat arrives
  * with its words already in the box's draft and its conversation as a file in `ui.pendingFiles`. A line under the box (drawn by the composer, with the mode at its end) says which folder the chat is for
  * (`ui.draftFolderId`, the main folder's when none): a select that changes it in a project of several folders, the folder read only (`DraftFolder`) in one of a
- * single folder. After the folder come the chips of where it works in it (`WorkspaceChips`: the mode and the branch), from what git says of the folder (`useFolderRepository`) and what the person
+ * single folder. After the folder comes the one control of where it works in it (`WorkspaceChips`: the branch of the folder's checkout, a new worktree, or an existing one), from what git says of the folder (`useFolderRepository`) and what the person
  * chose (`ui.draftWorkspace`); the first message sends what that read bears out (`effectiveChoice`). A worktree that exists, once chosen, is also the place of the window's tabs (`useDraftWorkspaceRow`). `missing` are the folders gone from the disk, which the select lists and does not let be
- * picked. The chat this page makes keeps the line, with the folder, the mode and the branch read only (`ChatFolder`).
+ * picked. The chat this page makes keeps the line, with the folder and the place read only (`ChatFolder`).
  */
 export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     const project = useProjectState();
     const ui = useProjectUi();
-    // What the project asks a new chat to start with, or the app's choice where it follows the app; what neither names starts where the last chat left off.
-    const defaults = startingChoice(project.project.settings, newChatDefaults);
+    // What the project asks a new chat to start with, or the app's choice where it follows the app; what neither names starts where the last chat left off. A page opened for an
+    // agent (a hand-off to another one, `ui.draftEngine`) starts on it, whatever those say; the person's own pick in the box comes before all of them.
+    const defaults = { ...startingChoice(project.project.settings, newChatDefaults), ...(ui.draftEngine && { engine: ui.draftEngine }) };
     const composer = useRef<ComposerHandle>(null);
     const pending = ui.pendingFiles;
     const { folders } = project.project;
