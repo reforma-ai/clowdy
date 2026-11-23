@@ -145,7 +145,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             agents,
             providers,
             models: options.models ?? new ModelCatalog({ registry: agents }),
-            terminals: options.terminals ?? new TerminalService(),
+            terminals: options.terminals ?? new TerminalService({ logsDir: join(config.dataDir, 'terminals') }),
             pullRequests: options.pullRequests ?? new PullRequests(),
             gitWrites: new GitWrites({ store, environment: gitEnvironment }),
             gitRemote: new GitRemote({ store, environment: gitEnvironment }),

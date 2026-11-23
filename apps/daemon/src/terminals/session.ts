@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { isTerminalSize, TERMINAL_SCROLLBACK } from '@clowdy/protocol';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { Terminal } from '@xterm/headless';
@@ -29,6 +31,8 @@ export interface TerminalSpec {
     env: Record<string, string>;
     cols: number;
     rows: number;
+    /** Absolute path of the plain-text log. Absent when the daemon is not writing one. */
+    logPath?: string;
 }
 
 export type ScreenMessage = Extract<TerminalServerMessage, { type: 'screen' }>;
@@ -90,6 +94,8 @@ export class TerminalSession {
     // `addon-serialize` restores mouse tracking but not these, so a screen appends them.
     #mouseEncoding: number | undefined;
     #cursorHidden = false;
+    /** A rewrite of the log is waiting for the mirror to finish what it has already been given. */
+    #logScheduled = false;
 
     constructor(
         readonly id: string,
@@ -143,6 +149,7 @@ export class TerminalSession {
             state: this.#state,
             exitCode: this.#exitCode,
             createdAt: this.createdAt,
+            ...(this.spec.logPath !== undefined && { logPath: this.spec.logPath }),
         };
     }
 
@@ -176,6 +183,7 @@ export class TerminalSession {
             this.#mirror.resize(cols, rows);
             this.#cols = cols;
             this.#rows = rows;
+            this.#scheduleLog();
         }
 
         return true;
@@ -228,6 +236,7 @@ export class TerminalSession {
     /** Kills the shell, frees the mirror and tells the clients the terminal is gone. */
     dispose(): void {
         this.#disposed = true;
+        this.#removeLog();
         this.kill();
         this.#mirror.dispose();
 
@@ -267,6 +276,7 @@ export class TerminalSession {
         this.#batch = [];
         this.#batchBytes = 0;
         this.#parsed = new Promise(resolve => this.#mirror.write(data, resolve));
+        this.#scheduleLog();
 
         for (const [listener, attachment] of this.#clients) {
             if (attachment.queue) {
@@ -347,4 +357,95 @@ export class TerminalSession {
             return false;
         });
     }
+
+    /** Rewrites the log once the mirror has parsed the output it already has. A burst is one write. */
+    #scheduleLog(): void {
+        if (!this.spec.logPath || this.#logScheduled || this.#disposed) {
+            return;
+        }
+
+        this.#logScheduled = true;
+        void this.#writeLog();
+    }
+
+    async #writeLog(): Promise<void> {
+        const path = this.spec.logPath;
+
+        if (!path) {
+            this.#logScheduled = false;
+
+            return;
+        }
+
+        try {
+            let parsed: Promise<void>;
+
+            // Output that arrives while waiting is part of this rewrite, not a second one.
+            do {
+                parsed = this.#parsed;
+                await parsed;
+            } while (parsed !== this.#parsed);
+        } catch {
+            // The mirror discarded the burst. A later one schedules another rewrite.
+            return;
+        } finally {
+            this.#logScheduled = false;
+        }
+
+        if (this.#disposed) {
+            return;
+        }
+
+        try {
+            const text = plainBuffer(this.#mirror);
+
+            if (text === '' && !existsSync(path)) {
+                return;
+            }
+
+            mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+            const temporary = join(dirname(path), `.${this.id}.log.tmp`);
+
+            // Replacing the file keeps the previous log when the rename does not land.
+            writeFileSync(temporary, text, { mode: 0o600 });
+            renameSync(temporary, path);
+        } catch (error) {
+            console.warn('[clowdy] could not write the terminal log:', error);
+        }
+    }
+
+    #removeLog(): void {
+        const path = this.spec.logPath;
+
+        if (!path) {
+            return;
+        }
+
+        const temporary = join(dirname(path), `.${this.id}.log.tmp`);
+
+        // A file the process cannot remove must not keep the shell alive.
+        for (const target of [path, temporary]) {
+            try {
+                rmSync(target, { force: true });
+            } catch {
+                // already gone, or not ours to force
+            }
+        }
+    }
+}
+
+/** The active buffer as plain rows: one line per drawn row, trailing blanks cut, trailing empty rows dropped. */
+function plainBuffer(terminal: Terminal): string {
+    const buffer = terminal.buffer.active;
+    const lines: string[] = [];
+
+    for (let index = 0; index < buffer.length; index++) {
+        lines.push(buffer.getLine(index)?.translateToString(true) ?? '');
+    }
+
+    while (lines.length > 0 && lines[lines.length - 1] === '') {
+        lines.pop();
+    }
+
+    return lines.length === 0 ? '' : `${lines.join('\n')}\n`;
 }
