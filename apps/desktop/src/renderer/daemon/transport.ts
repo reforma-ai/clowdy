@@ -11,6 +11,10 @@ import type {
     DocsTree,
     FolderGit,
     FolderId,
+    GitChanges,
+    GitFileSides,
+    GitScope,
+    GitStatus,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
@@ -61,6 +65,12 @@ export interface ProjectFileSystem extends FileSystemProvider {
     search?: SearchService;
 }
 
+/** A place by the ids the daemon takes: a folder of the project, and the worktree of it a chat works in when it has one (`workspaceId`), else the folder's own checkout. */
+export interface PlaceRef {
+    folderId: FolderId;
+    workspaceId?: WorkspaceId;
+}
+
 /** The only way the UI talks to a daemon. */
 export interface Transport {
     getRootSnapshot: () => Promise<RootSnapshot>;
@@ -75,6 +85,22 @@ export interface Transport {
      * pushed: a folder's branches and worktrees change in a terminal or by an agent. `unavailable` for a folder gone from the disk.
      */
     getFolderGit: (projectId: ProjectId, folderId: FolderId) => Promise<FolderGit>;
+    /**
+     * What git says of a place: its branch (or detached or unborn HEAD), its upstream, the files that are not committed and how far the branch is from its base
+     * (`GitBase`), or that the folder is no repository. Read when asked, never pushed: a tree changes in a terminal or by an agent, and nothing is fetched from the remote.
+     * Rejects with the daemon's reason: 404 for a folder or a worktree that is not the project's, 503 for one gone from the disk, not made yet, or a git that does not answer.
+     */
+    getGitStatus: (projectId: ProjectId, place: PlaceRef) => Promise<GitStatus>;
+    /**
+     * The files that changed in a scope of a place (`all`, `branch`, `uncommitted` or one commit), each with its lines, its revision and whether it is binary or too big to
+     * draw. The list is cut at `MAX_GIT_CHANGED_FILES`; the count and the totals cover every file. Rejects as `getGitStatus` does, and with 404 for a commit the repository does not have.
+     */
+    getGitChanges: (projectId: ProjectId, place: PlaceRef, scope: GitScope) => Promise<GitChanges>;
+    /**
+     * The text of one changed file before and after, for a diff to be drawn from. `oldPath` is the path before a rename (`GitChangedFile.oldPath`). A binary file or one too big to
+     * draw answers its state and no text. Rejects as `getGitChanges` does, and with 404 for a path that did not change in the scope.
+     */
+    getGitFile: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string) => Promise<GitFileSides>;
     /**
      * Whether the chat's worktree may be removed together with the chat, which is what `chat.delete`'s `removeWorkspace` asks for: Clowdy made it, no other chat uses it, nothing in it
      * is uncommitted and its work is merged into its base. Read when the delete dialog opens, never pushed: a tree changes in a terminal or by an agent, and the daemon checks again

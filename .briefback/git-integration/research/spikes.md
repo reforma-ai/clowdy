@@ -1,6 +1,6 @@
-# Stage 0 spikes: a tool-free Codex run, and signing and SSH from the daemon's environment
+# Stage 0 spikes: tool-free Codex and Claude runs, and signing and SSH from the daemon's environment
 
-Snapshot 2026-11-22, on the owner's machine (macOS, `codex-cli 0.171.0`, Secretive as the SSH agent). Nothing in the repository was changed to run these; the scratch work lives outside it. "Observed" means a command I ran and its output. "Inference" means my reading of what the observation implies.
+Snapshot 2026-11-22, on the owner's machine (macOS, `codex-cli 0.171.0`, `claude` 2.1.312, Secretive as the SSH agent). Nothing in the repository was changed to run these; the scratch work lives outside it. "Observed" means a command I ran and its output. "Inference" means my reading of what the observation implies.
 
 ## Summary
 
@@ -9,6 +9,7 @@ Snapshot 2026-11-22, on the owner's machine (macOS, `codex-cli 0.171.0`, Secreti
 3. **A signed commit fails from a Finder-launched app:** with launchd's `SSH_AUTH_SOCK`, or none, `git commit` stops with `No private key found for public key ...`. With the Secretive socket it works in 0.2 s.
 4. **SSH to `origin` works in every environment** (about 2.1 s for `ls-remote`), because `~/.ssh/config` sets `IdentityAgent` for all hosts. Signing does not read that file.
 5. **The daemon must put Secretive's socket into `SSH_AUTH_SOCK` for git writes:** take it from `ssh -G <origin host>` (`identityagent`), else from the login shell as `PATH` is taken, and prefer either over an inherited value. No Touch ID prompt appeared in any run, so its wait could not be timed.
+6. **Commit message from Claude:** a separate `claude -p` run on Haiku (`--model haiku --effort low`) with every tool, MCP server, skill, hook, memory block and `CLAUDE.md` switched off and a one-line `--system-prompt` takes 2.1K input tokens and 2.9 s on average (2.1 to 4.1 s, fifteen runs), against 23.9K and 2.5 s for the defaults. It answers with one clean line. Claude can drop every tool, so its floor is 0.6K tokens (Codex's is 3.3K); the saving is tokens and cost, not time. `--bare` cannot use the subscription login, and the argv is plain flags and a settings JSON, with no file to write.
 
 ## Spike A: the cheapest Codex run that writes a commit message
 
@@ -91,7 +92,6 @@ Where the tokens went, from the differences between rows:
 - **A wrong model fails cleanly.** With `-m gpt-nope` the process exits with code 1, prints a `turn.failed` event with the message, and writes nothing to stderr.
 - **Models.** The account offers `gpt-6.2-sol`, `gpt-6.2-astra`, `gpt-6.1-terra`, `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna`. The catalog describes `gpt-6-luna` as "Fast and affordable model for easier tasks", and its lowest effort is `low`. No price is in the catalog, so "cheapest" is the vendor's own description (inference). `gpt-5.6-luna` took 4.7 and 5.6 s with 29 to 41 reasoning tokens (two runs, variant 6), so `gpt-6-luna` is also the faster one. `gpt-6-sol` at low effort took 4.7 s on one run.
 - **ACP comparison:** not measured. `codex exec` reached the floor above, and `codex-acp` drives `codex app-server` with the full tool set (`.briefback/acp/research/agents-and-adapters.md`).
-- **Claude:** the owner's brief for this spike named Codex only; the Claude side of the plan's "done when" was not run.
 
 ### Recommended command
 
@@ -125,6 +125,124 @@ Limits of this recommendation:
 - `--ignore-user-config` also drops a custom provider or gateway the person set in their `config.toml`. A person on such a setup would get `Couldn't write the message`. Not tested.
 - `gpt-6-luna` is on this account. Another plan may not list it; with a missing model the run fails (observed for a wrong name). Falling back to no `-m` flag is an option (inference, not run).
 - The optional variant 5 saves another 2.0K tokens and no time, at the price of a generated catalog file. Not recommended.
+
+## Spike A2: the cheapest Claude run that writes a commit message
+
+### Method
+
+- **Prompt:** the same file as Spike A (3,422 characters, on stdin). I checked that all 43 diff lines come from `git show -U1 58207d0` (each cut at 160 characters) and then reused the file, because a fresh `git show` excerpt cuts the files differently. By Claude's count it is 1,458 tokens (the full runs minus the floors: 23,856 minus 22,398, and 2,081 minus 623). The floor prompt is "Reply with: ok".
+- **Working directory:** an empty scratch folder, not a repository.
+- **Numbers:** `claude -p --output-format json` returns `usage` (input, cache creation, cache read, output tokens), `total_cost_usd` and the durations. The cost is the CLI's list-price figure (`costBasis: list`), not what the subscription is charged. **Input tokens in the tables are input plus cache creation plus cache read**, because the split only tells what ran just before: the prompt was the same every time, so the first run of a variant wrote the cache and the next ones read it. Wall-clock is the whole process, start to exit. Each variant ran three times; the alternates and floors three times; the timing comparisons six pairs, interleaved.
+- **Environment of the runs:** the child process got a clean environment: every `CLAUDE*` and `ANTHROPIC*` variable of the parent session and `MAX_THINKING_TOKENS` removed (Observations say why), then only what a row names. Login is the owner's normal one (keychain), never read. The owner's real `~/.claude` was in play: hooks, plugins, user memory, 33 skills, one MCP server (`codegraph`).
+- **Weight of the request:** a stand-in on 127.0.0.1 that records the request body and answers with a 400. It ran with `CLAUDE_CONFIG_DIR` pointing at an empty folder and a dummy `ANTHROPIC_AUTH_TOKEN`, so no real credential existed in that process, and the recorder never stores headers. It shows the built-in text and tools only; the owner's skills, MCP server and memory are absent, so it understates rows 1 to 3.
+- **Cost to the subscription:** about 130 real runs, about 1.3M input tokens in all (nearly all of it cache reads of the default variants), about $0.7 at list price.
+
+### Results
+
+Wall is in seconds; cost is the CLI's figure for the run.
+
+| # | Variant | Exact change from the row above | Input tokens (cache read) | Output tokens | Wall (s), three runs | Cost per run | Clean single line |
+|---|---|---|---|---|---|---|---|
+| 1 | Defaults | `claude -p --output-format json` (model: the owner's `sonnet`, which is `claude-sonnet-5-5`) | 23,856 (23,854; the first run wrote it) | 22 to 23 | 2.61, 2.29, 2.30 (mean 2.4) | $0.096 when it wrote the cache, $0.0026 after | yes, 3 of 3 |
+| 2 | No session file | add `--no-session-persistence` | 23,856 (all read) | 21 to 22 | 2.52, 2.40, 2.64 (mean 2.5) | $0.0026 | yes, 3 of 3 |
+| 3 | Cheapest model, lowest effort | add `--model haiku --effort low` (`claude-haiku-5-5`) | 24,680 (24,678; the first run wrote it) | 21 to 25 | 3.59, 2.93, 2.75 (mean 3.1) | $0.0049 when it wrote the cache, $0.00026 after | yes, 3 of 3 |
+| 4 | Tools, MCP, skills, memory, hooks and CLAUDE.md off | add the list below, and `MAX_THINKING_TOKENS=0` in the environment | 4,375 (4,373) | 23 to 27 | 3.91, 3.67, 3.10 (mean 3.6) | $0.00006 | yes, 3 of 3 |
+| 5 | **One-line system prompt (recommended)** | add `--system-prompt "<82 characters>"` | **2,081** (2,079) | 25 | 4.06, 2.30, 2.93 (mean 3.1) | **$0.00003** | yes, 3 of 3 |
+
+Row 4 adds these arguments (all three groups together; the ablation below splits them):
+
+```
+--tools "" --strict-mcp-config --disable-slash-commands
+--setting-sources user
+--settings '{"autoMemoryEnabled":false,"disableAllHooks":true,"claudeMdExcludes":["**/CLAUDE.md"]}'
+```
+
+Every answer of rows 1 to 5 and of the alternates below was one line of 53 to 70 characters, so within 72, with no trailing newline in the `result` field (trim anyway).
+
+Equivalent ways to reach rows 4 and 5, three runs each, same tokens (4,375 and 2,081):
+
+| Form | Row 4 wall (s) | Row 5 wall (s) |
+|---|---|---|
+| `--setting-sources ""` and `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` in place of `--setting-sources user` and `claudeMdExcludes` | 3.25, 2.64, 2.63 | 3.82, 2.61, 2.49 |
+| `--safe-mode --tools ""` (one flag instead of the list: no CLAUDE.md, skills, plugins, hooks, MCP, memory) | 3.27, 2.61, 2.61 | 2.63, 4.18, 2.60 |
+| `--bare` (with `--model haiku`, tiny prompt) | **fails**: exit 1, `Not logged in · Please run /login`, 1.0 s, no tokens | |
+
+Timing comparisons, interleaved so both see the same load: **default (row 1) against the recommended run, six pairs: mean 2.6 s (median 2.5) against 2.9 s (median 3.0)**. The recommended run with `--model sonnet` instead of Haiku, six pairs against Haiku: median 2.3 s against 2.6 s, 2,060 tokens, $0.0004 a run after the first (list price, about 14 times Haiku's). Over all 15 runs of the recommended argv: 2.1 to 4.1 s, mean 2.9 s.
+
+### What each part weighs
+
+Floors, measured with the trivial prompt "Reply with: ok": defaults 22,398 input tokens (3.01, 2.36, 2.42 s); row 4 2,917 (2.58, 2.15, 2.26 s); row 5 **623** (2.08, 2.08, 3.44 s; $0.00001). The run uses 4 output tokens.
+
+Where the tokens went, from single runs of "Reply with: ok" on Haiku at low effort, each row adding one thing to the row above:
+
+| Step | Input tokens | Change |
+|---|---|---|
+| Defaults (the owner's tools, skills, MCP server, memory, hooks) | 23,222 | |
+| `--tools ""`, `--strict-mcp-config`, `--disable-slash-commands` | 4,038 | about -19.2K (tool schemas, the skills and agents lists, the MCP server) |
+| `autoMemoryEnabled` false (the same with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`) | 3,294 | about -0.74K |
+| `--setting-sources user` plus `claudeMdExcludes`, or `--setting-sources ""` (user `CLAUDE.md` gone) | 2,917 | about -0.38K |
+| `disableAllHooks` | 2,917 | none |
+| `--system-prompt` of one line | 623 | about -2.3K |
+
+Request weight, recorded from the stand-in with an empty config (characters; the tools of row 1 are the built-in ones):
+
+| Variant | Request body | System text | Tool schemas | Tools sent | Message text |
+|---|---|---|---|---|---|
+| 1 (the stand-in's default model was `claude-opus-5-5`: no `model` setting) | 49.9 KB | 5,972 | 30,350 | 12: `Agent`, `Bash`, `Edit`, `ListAgents`, `Read`, `ReportFindings`, `ScheduleWakeup`, `Skill`, `ToolSearch`, `Workflow`, `Write` and a placeholder for deferred tools | 13.6K (the prompt 3.4K, the rest reminder blocks) |
+| 3 | 52.7 KB | 8,764 | 30,350 | the same | 13.6K |
+| 4 | 11.6 KB | 6,327 | none | none | 4.6K (the prompt, and an environment block of about 1.0K) |
+| 5 | 5.5 KB | 218 (a billing header 80, the SDK line 62, mine 82) | none | none | 4.6K |
+
+### Observations that explain the table
+
+- **Claude can drop every tool, Codex cannot.** The `system/init` message of row 4 says `tools: 0`, `mcp_servers: 0`, `skills: 0`, and the run took one turn (`num_turns` 1). The request of row 5 carries no tool schema at all. The Codex floor of about 3.3K tokens comes from `exec` and `wait`; Claude's floor is 623.
+- **The saving is tokens and cost, not seconds.** Every row took 2.1 to 4.1 s, and the interleaved pairs put the default at 2.5 s and the recommended run at 2.9 s. `claude --version` starts in 0.01 s, and the API part of a run was about 1.0 to 1.6 s. Inference: the wall time is a fixed process init plus one round trip, and neither the model nor 20K fewer tokens moves it. The floor is about 2.1 s.
+- **Who starts `claude` changes the defaults a lot.** Run from inside a Claude Code session (the first batch of this spike, before I cleaned the environment): rows 1 and 2 were 39.0K tokens and 3.1 to 9.2 s (six runs; one run with 139 output tokens took 9.2 s), and row 3 was 39.9K tokens, 4.6 to 5.9 s, with 157 to 218 thinking tokens at `--effort low` (three runs); a clean environment gave 23.9K, 2.3 to 2.6 s and 0 thinking tokens. I bisected it: `CLAUDE_CODE_ENTRYPOINT=claude-vscode` alone loads the claude.ai connectors (Claude Docs, Google Drive) and the Artifact tools (36 tools against 25). `CLAUDECODE`, `CLAUDE_EFFORT=xhigh` and the others changed nothing. With the recommended argv the same entrypoint costs about 300 more tokens (2,388 against 2,081, two runs each form), so the argv absorbs it. The daemon should still start the child without the parent's `CLAUDECODE` and `CLAUDE_CODE_*` markers, in case it was launched from a Claude Code terminal.
+- **Thinking.** Haiku 5.5 always reasons adaptively (the docs say so): the request carries `thinking: adaptive` whatever `MAX_THINKING_TOKENS=0` or `alwaysThinkingEnabled: false` say (observed on the stand-in); `CLAUDE_CODE_DISABLE_THINKING=1` drops the parameter. In a clean environment all of about 40 runs on Haiku had 0 thinking tokens, with `--effort low` and without it (two runs), so `--effort low` is a guard, not a measured saving. On the older `claude` 2.1.83 on this machine (`haiku` is `claude-haiku-4-5` there) the same argv without the variable took 24.2 s and 2,900 output tokens, and with `MAX_THINKING_TOKENS=0` 1.9 s and 15 output tokens (one run each). The variable costs nothing on 5.5, so the recommendation sets it.
+- **Memory and CLAUDE.md.** `autoMemoryEnabled: false` removes the auto-memory block (about 0.74K tokens); either `--setting-sources ""` or `--setting-sources user` with `claudeMdExcludes` removes the user `~/.claude/CLAUDE.md` (about 0.38K). No project CLAUDE.md was involved: the folder is empty. `disableAllHooks` changes no token count; it is in the argv so that the person's hooks do not run for a background call (their effect on time was not isolated).
+- **`--setting-sources user` against `""`.** Both give the same request. `user` keeps the person's own `env`, `apiKeyHelper` or gateway from `~/.claude/settings.json`; `""` would drop them. Inference, not run: a person on an API key, Bedrock or Vertex set in `settings.json` needs `user`.
+- **`--safe-mode` is a shortcut that older versions lack.** It gave the same tokens as the list, but `claude` 2.1.83 prints `error: unknown option '--safe-mode'` and exits 1 in 0.4 s, while the explicit list ran on it. Two `claude` binaries are on this machine's PATH (2.1.312 in `~/.local/bin` first, 2.1.83 in `/opt/homebrew/bin`); the daemon takes the first one.
+- **`--bare` cannot use the subscription.** `--help` says OAuth and keychain are never read and only an API key counts; the run confirms it (exit 1, JSON with `is_error: true`).
+- **Failures are clean.** A wrong model (`--model claude-nope-9`) exits 1 in 2.0 s with JSON on stdout (`is_error: true`, `api_error_status: 404`, `result` "There's an issue with the selected model ..."), and a line with `[claude-code:unrecognized_model]` on stderr. The login failure has the same shape. So: exit code non-zero or `is_error` true is `Couldn't write the message`.
+- **The cache is shared across processes.** Run 2 read what run 1 wrote, and the first run of a following variant already read part of the previous one. The entries are one-hour ones (`ephemeral_1h` in `usage`). In use the diff changes every time, so only the stable part of row 5 (about 0.6K tokens) is read and the diff (about 1.5K) is written: that is the $0.0004 figure (the first run of the `--setting-sources ""` form of row 5, which wrote 2,079 tokens, cost $0.00043), not the $0.00003 of an exact repeat.
+- **Answers.** The type and scope vary (`fix(agents)`, `fix(desktop)`, `feat(agents)`, `refactor(agents)`); the real commit was `feat(desktop): ...`. Three runs of the recommended argv returned the same string. In the first batch (inherited environment) one answer in nine was 75 characters, so the daemon needs a rule for a line over 72 (cut at a word, or show it, since the person edits the box).
+- **Models.** On this account `haiku` resolves to `claude-haiku-5-5` and `sonnet` to `claude-sonnet-5-5`; `modelSettings` in the owner's settings also names `claude-opus-5-5`. `--help` offers the aliases `fable`, `opus` and `sonnet`, and `haiku` worked. "Cheapest" is by class (inference); the list-price figures of the runs agree (Haiku about 14 times cheaper than Sonnet per run). `--effort low` is accepted by Haiku 5.5: the request carries `output_config.effort: "low"` and the API took it.
+- **ACP comparison:** not measured. `claude -p` got cheap, which was the condition for running it.
+
+### Recommended command
+
+Run it in an empty temporary folder as the working directory, with `MAX_THINKING_TOKENS=0` in the environment, the prompt on stdin, and a limit of about 30 s (the run takes 2 to 4 s). The system prompt is the Codex instruction, passed inline, so no file is needed.
+
+```json
+["claude", "-p", "--output-format", "json", "--no-session-persistence",
+ "--model", "haiku", "--effort", "low",
+ "--tools", "", "--strict-mcp-config", "--disable-slash-commands",
+ "--setting-sources", "user",
+ "--settings", "{\"autoMemoryEnabled\":false,\"disableAllHooks\":true,\"claudeMdExcludes\":[\"**/CLAUDE.md\"]}",
+ "--system-prompt", "You write git commit messages. Reply with the single line asked for, nothing else."]
+```
+
+Measured (fifteen runs): **2,081 input tokens (about 0.6K fixed, the prompt 1.5K), 22 to 27 output tokens, 2.1 to 4.1 s (mean 2.9 s), $0.00003 to $0.0004 a run**, against 23.9K tokens, 2.5 s (mean of nine) and $0.0026 to $0.096 for the defaults: 91 percent fewer input tokens and no gain in time. Parse stdout as JSON, read `result` and trim it, and treat a non-zero exit or `is_error: true` as `Couldn't write the message`. The floor is 623 tokens and about 2.1 s.
+
+How it compares with Codex (Spike A; the two tokenizers differ, so counts are indicative):
+
+| | Codex (`gpt-6-luna`, low) | Claude (`haiku`, low) |
+|---|---|---|
+| Recommended run | 6.3K input tokens, 4.1 s (3.7 to 4.8) | 2.1K input tokens, 2.9 s (2.1 to 4.1) |
+| Defaults | 21.5K, 7.4 s | 23.9K, 2.5 s |
+| Floor | 3.3K tokens, 3.6 s (needs a custom model catalog) | 0.6K tokens, 2.1 s |
+| Tools in the request | `exec` and `wait` stay (9.1K characters) | none |
+| Setup | an instructions file the daemon writes | none: everything is in the argv |
+| Cost reported by the CLI | no | yes (list price) |
+
+Limits of this recommendation:
+
+- The flags and settings keys are those of `claude` 2.1.312. A flag that a later version removes fails the run (`unknown option`, exit 1, as `--safe-mode` does on 2.1.83). The explicit list, with `MAX_THINKING_TOKENS=0`, ran on 2.1.83 too (one run); the `haiku` alias there is `claude-haiku-4-5`. A test that runs the argv against the installed `claude` would catch drift. An unknown settings key is skipped, by the docs (not tested).
+- `--setting-sources user` keeps the person's user settings, so a hook or an `env` they set there still applies, except the hooks `disableAllHooks` turns off. Not run with a gateway, API key, Bedrock or Vertex login.
+- Haiku may not be on another plan; a missing model fails cleanly (observed for a wrong name). Falling back to the same argv without `--model` is an option (inference, not run).
+- The cost figures are the CLI's list prices, not the subscription's accounting; how the subscription counts cache reads is not known. The cached share comes from repeating one prompt.
+- The numbers are of one subscription, one afternoon and three runs per variant (spread 2.1 to 4.1 s). Rows 1 to 3 depend on the owner's `~/.claude`; rows 4 and 5 do not.
+- The request recording used an empty config and a dummy token, so it shows built-in text only.
 
 ## Spike B: commit and SSH from a process started the way the daemon starts
 
@@ -177,10 +295,11 @@ No Touch ID prompt appeared in any run, and none of the signing or SSH calls wai
 - **Codex numbers are of one subscription and one afternoon.** The prompt is one three-file diff. The fixed floor, the cached share and the latency can move with load; three runs per variant is a small sample (the spread was 0.2 to 1.1 s).
 - **The request recordings used a stand-in provider.** The tool list for the real provider may include a hosted tool the stand-in did not offer; the real-run token counts do not depend on it.
 - **Whether `codex exec` attaches to the owner's long-running `codex app-server` was not checked.** Such processes were running; if exec uses them, a machine without one may start slower.
-- **Not run:** Claude's tool-free run, an ACP session, a run on Windows, a version of Codex other than 0.171.0, a commit through the daemon itself (the spikes ran `git` directly), and any push or fetch.
+- **Claude numbers are of one subscription and one afternoon too.** Three runs per variant (the spread was 2.1 to 4.1 s), repeating one prompt, so the cached share is that of an exact repeat. What `claude -p` loads by default depends on who starts it (Spike A2, Observations); the numbers are for a clean environment.
+- **Not run:** an ACP session (for either agent), a run on Windows, a version of Codex other than 0.171.0 or of Claude Code other than 2.1.312 (2.1.83 only for the explicit flag list, one run), a Claude login through an API key, Bedrock or Vertex, a commit through the daemon itself (the spikes ran `git` directly), and any push or fetch.
 
 ## Suggested changes to the plan
 
-- Stage 0: both checks hold; record the recommended argv above and the 6.3K-token, 4 s result.
-- Decisions, commit message: the run is separate and has no tools it can use, but it still sends the code-mode `exec` and `wait` schemas (9.1K characters), because the catalog forces them. The floor is about 3.3K tokens.
+- Stage 0: both checks hold; record the recommended argv above and the 6.3K-token, 4 s result, and the Claude argv of Spike A2 with its 2.1K-token, 2.9 s result.
+- Decisions, commit message: the run is separate and has no tools it can use, but it still sends the code-mode `exec` and `wait` schemas (9.1K characters), because the catalog forces them. The floor is about 3.3K tokens. Claude's run sends no tool at all (floor 0.6K tokens); it is offered as a second provider with the same `Commit messages` switch, with the argv of Spike A2, `MAX_THINKING_TOKENS=0`, and the parent's `CLAUDECODE` and `CLAUDE_CODE_*` variables left out of its environment.
 - Stage 7 and Stage 8: add "resolve the signing agent's socket for git writes (`ssh -G`, then the login shell)" to the daemon's git environment, and the timeouts above.
