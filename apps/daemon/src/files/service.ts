@@ -5,7 +5,8 @@ import { unavailable } from '../errors';
 import { listProjectFiles } from './list';
 import { searchPaths } from './rank';
 
-import type { Project, ProjectFileMatch } from '@clowdy/protocol';
+import type { Project, ProjectFileMatch, ProjectFolder } from '@clowdy/protocol';
+import type { Place } from '../domain/places';
 
 /** A person types a few letters at a time; listing the folder for each would be a git run per key. */
 const LIST_TTL_MS = 5000;
@@ -18,27 +19,31 @@ export class FilesService {
      * The files of the project's folders whose path contains every word of `query`, best match first, at most `limit`. With several folders a
      * path is matched with the folder's name in front (`web/src/app.ts`), so typing the name finds its files. A missing folder other than the
      * main one is skipped.
+     *
+     * With a `place` that is a worktree, the worktree's files are listed in place of its folder's own checkout (a file only the worktree has is found, one only the
+     * checkout has is not), under the folder's own name and id; the other folders are listed as before.
      */
-    async search(project: Project, query: string, limit: number): Promise<ProjectFileMatch[]> {
+    async search(project: Project, query: string, limit: number, place?: Place): Promise<ProjectFileMatch[]> {
         const main = mainFolder(project);
+        const rootOf = (folder: ProjectFolder) => (place?.folder.id === folder.id ? place.path : folder.path);
 
-        if (!existsSync(main.path)) {
-            throw unavailable(`The project folder ${ main.path } is missing`);
+        if (!existsSync(rootOf(main))) {
+            throw unavailable(`The project folder ${ rootOf(main) } is missing`);
         }
 
         if (project.folders.length === 1) {
-            return searchPaths(await this.list(main.path), query, limit).map(path => ({ folderId: main.id, path }));
+            return searchPaths(await this.list(rootOf(main)), query, limit).map(path => ({ folderId: main.id, path }));
         }
 
         const names = folderNames(project.folders);
         const byKey = new Map<string, ProjectFileMatch>();
 
         await Promise.all(project.folders.map(async (folder, index) => {
-            if (!existsSync(folder.path)) {
+            if (!existsSync(rootOf(folder))) {
                 return;
             }
 
-            for (const path of await this.list(folder.path)) {
+            for (const path of await this.list(rootOf(folder))) {
                 byKey.set(`${ names[index] }/${ path }`, { folderId: folder.id, path });
             }
         }));

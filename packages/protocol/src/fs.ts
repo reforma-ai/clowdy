@@ -1,10 +1,15 @@
-import type { FolderId } from './domain';
+import type { FolderId, WorkspaceId } from './domain';
 
 /**
  * The files of one folder of a project, as the app's file manager reads and edits them. Every route is under
  * `/v1/projects/:id/fs/` and names the folder by `folderId` (a folder the project does not have is `not_found`), and a file or folder by
  * `path`: relative to that folder, `/` separators, no leading slash, `''` for the folder itself. A path with `..`, or one that resolves
  * (symbolic links followed) to a place outside the folder, is refused with `invalid` and `details.reason: 'outside'`.
+ *
+ * Every route also takes an optional `workspaceId` beside `folderId` (a query parameter of the GETs and the PUT, a field of the body of the POSTs): the worktree of
+ * that folder a chat works in (`ChatWorkspace`), read and changed in place of the folder's own checkout. The paths, the links and the limits are then judged against
+ * the worktree's real path, and the watch of a worktree is its own. A workspace that is not the folder's, or not the project's, is `not_found`; one whose worktree is
+ * not made yet (`ready` is false) or is gone from the disk is `unavailable`. Left out, the folder's own checkout is read, as before.
  *
  * GET    fs/list?folderId=&path=&depth=   -> FsEntry[]. The entries below `path` at most `depth` path segments down (`src/app/foo` is depth
  *                                            3 from the folder), all of them without `depth`. Each `path` is relative to the folder, not to
@@ -99,6 +104,8 @@ export interface FsSearchResult {
 
 export interface FsSearchRequest {
     folderId: FolderId;
+    /** The worktree of the folder to search in place of its own checkout (see the routes above). */
+    workspaceId?: WorkspaceId;
     query: string;
     matchCase?: boolean;
     wholeWord?: boolean;
@@ -111,5 +118,7 @@ export const MAX_FS_QUERY_LENGTH = 1000;
 
 export interface FsLocation {
     folderId: FolderId;
+    /** The worktree of the folder the path is in, in place of the folder's own checkout. */
+    workspaceId?: WorkspaceId;
     path: string;
 }
