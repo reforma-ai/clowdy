@@ -41,8 +41,8 @@ export interface Services {
 
 export type CommandOf<T extends CommandType> = Extract<Command, { type: T }>;
 
-/** The commands that wait for an agent before they change anything (a fork, an edit): they have an `AsyncHandlers` entry and no `Handlers` one. */
-export type AsyncCommandType = 'chat.fork' | 'chat.edit';
+/** The commands that wait for an agent or for git before they change anything (a fork, an edit, the removal of a worktree): they have an `AsyncHandlers` entry and no `Handlers` one. */
+export type AsyncCommandType = 'chat.fork' | 'chat.edit' | 'workspace.remove';
 
 /**
  * The commands that wait only when they ask for something that needs it (a delete that also removes the chat's worktree waits for git): they have a `Handlers` entry for
