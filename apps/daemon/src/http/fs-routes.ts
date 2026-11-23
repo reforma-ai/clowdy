@@ -40,14 +40,14 @@ const versionFrom = (header: string) => header.trim().replace(/^W\//, '').replac
 /** The routes under `/v1/projects/:id/fs/`, described in `packages/protocol/src/fs.ts`. */
 export function fsRoutes(context: RouteContext): FsRoute[] {
     const { store, fs } = context.services;
+    /** The folder a request names and its worktree, if it names one: an empty `workspaceId` is none (`resolvePlace`). */
+    const target = (url: URL) => ({ folderId: url.searchParams.get('folderId') ?? '', workspaceId: url.searchParams.get('workspaceId') ?? undefined });
     const location = (url: URL) => ({ ...target(url), path: url.searchParams.get('path') ?? '' });
-    /** The folder a request names and its worktree, if it names one: an empty `workspaceId` is none. */
-    const target = (url: URL) => ({ folderId: url.searchParams.get('folderId') ?? '', workspaceId: url.searchParams.get('workspaceId') || undefined });
     /** The project and the place (the folder's own checkout, or the worktree) that a request reads: judged here, so no route reaches a path the project does not own. */
-    const placeOf = (projectId: string, folderId: string, workspaceId: string | undefined) => {
+    const placed = (projectId: string, folderId: string, workspaceId: string | undefined) => {
         const project = requireProject(store, projectId);
 
-        return { project, place: resolvePlace(store, project, folderId, workspaceId || undefined) };
+        return { project, place: resolvePlace(store, project, folderId, workspaceId) };
     };
 
     return [
@@ -63,7 +63,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
                     throw invalid('depth must be a non-negative integer');
                 }
 
-                const { project, place } = placeOf(id, folderId, workspaceId);
+                const { project, place } = placed(id, folderId, workspaceId);
 
                 return json(await fs.list(project, place, path, raw === null ? undefined : Number(raw)));
             },
@@ -73,7 +73,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
             pattern: new RegExp(`${ PREFIX }find$`),
             handle: async (_request, url, [id]) => {
                 const { folderId, workspaceId } = target(url);
-                const { project, place } = placeOf(id, folderId, workspaceId);
+                const { project, place } = placed(id, folderId, workspaceId);
 
                 return json(await fs.find(project, place, url.searchParams.get('query') ?? ''));
             },
@@ -83,7 +83,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
             pattern: new RegExp(`${ PREFIX }file$`),
             handle: async (_request, url, [id]) => {
                 const { folderId, workspaceId, path } = location(url);
-                const { project, place } = placeOf(id, folderId, workspaceId);
+                const { project, place } = placed(id, folderId, workspaceId);
                 const { bytes, version } = await fs.read(project, place, path);
 
                 // A stranger's file next to the daemon's API: nothing here may be taken for a page, whatever its name says.
@@ -115,7 +115,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
                     throw invalid('If-Match and If-None-Match cannot be given together');
                 }
 
-                const { project, place } = placeOf(id, folderId, workspaceId);
+                const { project, place } = placed(id, folderId, workspaceId);
 
                 return json(await fs.write(project, place, path, request.body, {
                     create: ifNoneMatch === '*',
@@ -129,7 +129,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
             pattern: new RegExp(`${ PREFIX }folder$`),
             handle: async (request, _url, [id]) => {
                 const { folderId, workspaceId, path } = await readJson(request, folderBody);
-                const { project, place } = placeOf(id, folderId, workspaceId);
+                const { project, place } = placed(id, folderId, workspaceId);
 
                 await fs.makeFolder(project, place, path);
 
@@ -141,7 +141,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
             pattern: new RegExp(`${ PREFIX }move$`),
             handle: async (request, _url, [id]) => {
                 const { folderId, workspaceId, moves, overwrite } = await readJson(request, moveBody);
-                const { project, place } = placeOf(id, folderId, workspaceId);
+                const { project, place } = placed(id, folderId, workspaceId);
 
                 await fs.move(project, place, moves, overwrite);
 
@@ -153,7 +153,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
             pattern: new RegExp(`${ PREFIX }copy$`),
             handle: async (request, _url, [id]) => {
                 const { folderId, workspaceId, copies, overwrite } = await readJson(request, copyBody);
-                const { project, place } = placeOf(id, folderId, workspaceId);
+                const { project, place } = placed(id, folderId, workspaceId);
 
                 await fs.copy(project, place, copies, overwrite);
 
@@ -165,7 +165,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
             pattern: new RegExp(`${ PREFIX }delete$`),
             handle: async (request, _url, [id]) => {
                 const { folderId, workspaceId, paths } = await readJson(request, deleteBody);
-                const { project, place } = placeOf(id, folderId, workspaceId);
+                const { project, place } = placed(id, folderId, workspaceId);
 
                 await fs.remove(project, place, paths);
 
@@ -177,7 +177,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
             pattern: new RegExp(`${ PREFIX }search$`),
             handle: async (request, _url, [id]) => {
                 const body = await readJson(request, searchBody);
-                const { project, place } = placeOf(id, body.folderId, body.workspaceId);
+                const { project, place } = placed(id, body.folderId, body.workspaceId);
 
                 // A search may run for a minute with nothing to send; its own time limit ends it, and the client leaving ends it sooner.
                 context.keepOpen(request);
@@ -190,7 +190,7 @@ export function fsRoutes(context: RouteContext): FsRoute[] {
             pattern: new RegExp(`${ PREFIX }watch$`),
             handle: async (request, url, [id]) => {
                 const { folderId, workspaceId } = target(url);
-                const { project, place } = placeOf(id, folderId, workspaceId);
+                const { project, place } = placed(id, folderId, workspaceId);
                 const stream = await fs.watch(project, place, context.heartbeatMs);
 
                 context.keepOpen(request);

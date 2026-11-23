@@ -17,7 +17,7 @@ import {
     projectCounts,
     upsertProject,
 } from '../db/projects';
-import { listWorkspacesOfProject } from '../db/workspaces';
+import { listWorkspacesInUse } from '../db/workspaces';
 import { conflict, invalid, notFound, unavailable } from '../errors';
 import { folderHead } from '../git/state';
 import { newId } from '../ids';
@@ -520,7 +520,7 @@ async function workspaceInfo(workspace: WorkspaceRecord): Promise<ProjectWorkspa
 
 /**
  * What the page that manages projects shows besides the snapshot: whether each folder is there and its remote, what the project holds, and the head of each worktree
- * its chats work in (`workspaces`, absent when it has none). The page asks again every few seconds, so nothing here may stop the daemon: the folders are read
+ * its chats work in (`workspaces`, those a chat points at; absent when it has none). The page asks again every few seconds, so nothing here may stop the daemon: the folders are read
  * asynchronously, one project after another, and a project's worktrees a few at a time, so a long list never starts a crowd of processes. With a `projectId` only that
  * project is read (`notFound` when there is none), for a screen that wants one folder's git facts.
  */
@@ -534,7 +534,7 @@ export async function projectsInfo(store: Store, projectId?: string): Promise<Pr
             projects: wanted,
             counts: projectCounts(store.db),
             chatsIn: chatCountsByFolder(store.db),
-            workspacesOf: new Map(wanted.map(project => [project.id, listWorkspacesOfProject(store.db, project.id)])),
+            workspacesOf: new Map(wanted.map(project => [project.id, listWorkspacesInUse(store.db, project.id)])),
         };
     });
     const info: ProjectInfo[] = [];

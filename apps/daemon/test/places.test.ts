@@ -2,6 +2,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { resolvePlace } from '../src/domain/places';
 import { TerminalService } from '../src/terminals/service';
 import { EventReader } from './fs-helpers';
 import { cleanTempDirs, git, makeRepo, startHarness, tempDir } from './helpers';
@@ -181,7 +182,7 @@ describe('the file system in a worktree', () => {
     });
 
     symlinks('judges every path against the worktree\'s own real path: a link to the checkout, or out of the project, is refused', async () => {
-        const { h, root, tree, folder, feature, fsUrl, failure } = await setup();
+        const { h, root, tree, folder, feature, fsUrl, post, failure } = await setup();
         const outside = tempDir('outside');
 
         put(outside, { 'secret.txt': 'secret' });
@@ -200,6 +201,21 @@ describe('the file system in a worktree', () => {
         expect(write.status).toBe(400);
         expect(existsSync(join(root, 'shop', 'planted.txt'))).toBe(false);
         expect(existsSync(join(outside, 'planted.txt'))).toBe(false);
+
+        // The same through the other routes: a link is never entered, whether it is read, written into, copied from or deleted through.
+        const at = { folderId: folder.id, workspaceId: feature.id };
+
+        expect((await h.fetch(fsUrl('list', { ...at, path: 'checkout' }))).status).toBe(400);
+        expect((await h.fetch(fsUrl('list', { ...at, path: 'out' }))).status).toBe(400);
+        expect((await post('folder', { ...at, path: 'out/made' })).status).toBe(400);
+        expect((await post('copy', { ...at, copies: [{ from: 'out/secret.txt', to: 'taken.txt' }] })).status).toBe(400);
+        expect((await post('move', { ...at, moves: [{ from: 'only-here.txt', to: 'checkout/moved.txt' }] })).status).toBe(400);
+        expect((await post('delete', { ...at, paths: ['checkout/README.md', 'out/secret.txt'] })).status).toBe(400);
+        expect(existsSync(join(tree, 'taken.txt'))).toBe(false);
+        expect(existsSync(join(outside, 'made'))).toBe(false);
+        expect(existsSync(join(root, 'shop', 'moved.txt'))).toBe(false);
+        expect(existsSync(join(root, 'shop', 'README.md'))).toBe(true);
+        expect(existsSync(join(outside, 'secret.txt'))).toBe(true);
     });
 
     test('a workspace id of another folder, of another project or of nothing is not_found, an empty one is none', async () => {
@@ -234,10 +250,20 @@ describe('the file system in a worktree', () => {
         expect((await h.fetch(`/v1/projects/${ stranger.id }/docs?workspaceId=${ feature.id }`)).status).toBe(404);
         expect((await h.fetch(fsUrl('list', { folderId: folder.id, workspaceId: feature.id }).replace(project.id, stranger.id))).status).toBe(404);
 
-        // An empty `workspaceId` is no workspace: the folder's own checkout is read.
+        // An empty `workspaceId` is no workspace, in a query and in a body: the folder's own checkout is read, and a terminal and the lists are the folder's.
         const own = await h.fetch(fsUrl('file', { folderId: folder.id, workspaceId: '', path: 'main-only.txt' }));
 
         expect(await own.text()).toBe('only in the checkout\n');
+        expect(await (await post('search', { folderId: folder.id, workspaceId: '', query: 'only in the' })).json()).toMatchObject({ files: [{ path: 'main-only.txt' }] });
+        expect((await post('folder', { folderId: folder.id, workspaceId: '', path: 'made-in-checkout' })).status).toBe(200);
+        expect(existsSync(join(project.folders[0].path, 'made-in-checkout'))).toBe(true);
+        expect(await (await h.fetch(`${ base }/files?query=main-only&workspaceId=`)).json()).toEqual([{ folderId: folder.id, path: 'main-only.txt' }]);
+        expect(JSON.stringify(await (await h.fetch(`${ base }/docs?workspaceId=`)).json())).toContain('main/notes.md');
+
+        const terminal = await (await h.fetch('/v1/terminals', { method: 'POST', body: JSON.stringify({ projectId: project.id, folderId: folder.id, workspaceId: '', cols: 80, rows: 24 }) })).json() as TerminalInfo;
+
+        expect(terminal.workspaceId).toBeUndefined();
+        expect(terminal.cwd).toBe(realpathSync(project.folders[0].path));
     });
 
     test('a workspace that is not made yet, or is gone from the disk, is unavailable in every route', async () => {
@@ -377,6 +403,10 @@ describe('the file names of a worktree', () => {
         expect(paths(await search('main-only'))).toEqual(['main-only.txt']);
         expect(paths(await search('shared', feature.id))).toEqual(['.briefback/shared/plan.md', 'shared.txt']);
 
+        // With several folders a path is matched under the folder's own name, never under the name of the worktree's directory.
+        expect(paths(await search('shop/only-here', feature.id))).toEqual(['only-here.txt']);
+        expect(paths(await search('shop-feature/only-here', feature.id))).toEqual([]);
+
         // The other folder's files are listed as before, and the answers carry the folder's id, never the workspace's.
         expect(paths(await search('plan', feature.id))).toEqual(['.briefback/feature/plan.md', '.briefback/shared/plan.md', 'infra:.briefback/infra/plan.md']);
         expect((await search('only-here', feature.id))[0]).toEqual({ folderId: folder.id, path: 'only-here.txt' });
@@ -430,6 +460,20 @@ describe('the workspaces in the info of the projects', () => {
         expect('workspaces' in await info(bare.id)).toBe(false);
     });
 
+    test('leaves out a worktree no chat works in any more', async () => {
+        const { h, project, feature, tuning } = await setup();
+        const infoOf = async () => ((await (await h.fetch(`/v1/projects/info?project=${ project.id }`)).json()) as ProjectInfo[])[0].workspaces?.map(entry => entry.workspaceId);
+
+        expect(await infoOf()).toEqual([feature.id, tuning.id]);
+
+        // Deleting the chat leaves the worktree's row where it is; nobody points at it then, and nobody can ask about it.
+        for (const { id } of h.store.db.query('SELECT id FROM chats WHERE workspace_id = ?').all(feature.id) as Array<{ id: string }>) {
+            h.ok('chat.delete', { chatId: id });
+        }
+
+        expect(await infoOf()).toEqual([tuning.id]);
+    });
+
     test('is one entry for a worktree that several chats work in', async () => {
         const { h, project, tree, feature } = await setup();
         const again = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat.workspace as { id: string };
@@ -437,5 +481,56 @@ describe('the workspaces in the info of the projects', () => {
 
         expect(again.id).toBe(feature.id);
         expect(info[0].workspaces?.filter(entry => entry.workspaceId === feature.id)).toHaveLength(1);
+    });
+});
+
+describe('the seam that takes a place', () => {
+    test('refuses a place that is not the project\'s or the folder\'s, and a worktree named in a request that was not judged', async () => {
+        const { h, project, stranger, folder, infraFolder, feature, theirs, tree } = await setup();
+        const { fs, terminals } = h.daemon.services;
+        const place = resolvePlace(h.store, project, folder.id, feature.id);
+        const foreign = resolvePlace(h.store, stranger, stranger.folders[0].id, theirs.id);
+        const mismatched = { ...place, path: join(tree, '..') };
+        const asked = { folderId: folder.id, workspaceId: feature.id, query: 'x' };
+
+        expect(await fs.list(project, place, '')).not.toEqual([]);
+        await expect(fs.list(project, foreign, '')).rejects.toMatchObject({ code: 'not_found' });
+        await expect(fs.list(stranger, place, '')).rejects.toMatchObject({ code: 'not_found' });
+        await expect(fs.list(project, mismatched, '')).rejects.toMatchObject({ code: 'not_found' });
+        await expect(fs.search(project, asked)).rejects.toMatchObject({ code: 'invalid' });
+        await expect(fs.search(project, asked, undefined, folder.id)).rejects.toMatchObject({ code: 'invalid' });
+        await expect(fs.search(project, { ...asked, workspaceId: 'wks_other' }, undefined, place)).rejects.toMatchObject({ code: 'invalid' });
+        expect((await fs.search(project, asked, undefined, place)).files).toBeArray();
+
+        const request = { projectId: project.id, folderId: folder.id, workspaceId: feature.id, cols: 80, rows: 24 };
+
+        expect(() => terminals.create(project, request, foreign)).toThrow();
+        expect(() => terminals.create(stranger, request, place)).toThrow();
+        expect(() => terminals.create(project, { ...request, folderId: infraFolder.id }, place)).toThrow();
+        expect(terminals.create(project, request, place)).toMatchObject({ folderId: folder.id, workspaceId: feature.id });
+    });
+});
+
+describe('a worktree inside the main checkout', () => {
+    test('is read as its own tree: its files only, and nothing above it', async () => {
+        const { h, shop, folder, project, base, fsUrl, failure } = await setup();
+        const nested = join(shop, 'worktrees', 'inner');
+
+        git(shop, 'worktree', 'add', '-q', '-b', 'inner', nested);
+        put(nested, { 'inside.txt': 'inside' });
+
+        const { id } = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: nested } }).chat.workspace as { id: string };
+        const listed = (await (await h.fetch(fsUrl('list', { folderId: folder.id, workspaceId: id }))).json() as FsEntry[]).map(entry => entry.path);
+
+        expect(listed).toContain('inside.txt');
+        expect(listed).not.toContain('main-only.txt');
+        expect(listed.some(path => path.startsWith('worktrees'))).toBe(false);
+
+        const above = await h.fetch(fsUrl('file', { folderId: folder.id, workspaceId: id, path: '../../main-only.txt' }));
+
+        expect(above.status).toBe(400);
+        expect((await failure(above)).details?.reason).toBe('outside');
+        expect(await (await h.fetch(`${ base }/files?query=main-only&workspaceId=${ id }`)).json()).toEqual([]);
+        expect(await (await h.fetch(`${ base }/files?query=inside&workspaceId=${ id }`)).json()).toEqual([{ folderId: folder.id, path: 'inside.txt' }]);
     });
 });

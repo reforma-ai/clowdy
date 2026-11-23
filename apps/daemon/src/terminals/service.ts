@@ -2,6 +2,7 @@ import { isTerminalSize, MAX_TERMINALS } from '@clowdy/protocol';
 import { realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { ownsPlace } from '../domain/places';
 import { CommandError, conflict, errorMessage, invalid, notFound, unavailable } from '../errors';
 import { isInside, normalizeFsPath, outside } from '../fs/paths';
 import { newId } from '../ids';
@@ -63,6 +64,10 @@ export class TerminalService {
         // A worktree asked for and not judged would start the shell in the folder's own checkout under the worktree's name.
         if (request.workspaceId && place?.workspace?.id !== request.workspaceId) {
             throw invalid('The worktree of the terminal was not resolved');
+        }
+
+        if (place && (!ownsPlace(project, place) || place.folder.id !== request.folderId)) {
+            throw notFound('Folder', request.folderId);
         }
 
         const folder = place?.folder ?? project.folders.find(candidate => candidate.id === request.folderId);

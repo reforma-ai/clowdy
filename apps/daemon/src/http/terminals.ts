@@ -47,7 +47,7 @@ export function terminalRoutes(context: RouteContext): Route[] {
                 const project = requireProject(store, body.projectId);
 
                 // A worktree that is not this folder's, or not this project's, is refused here, before a shell is started in it.
-                return json(terminals.create(project, body, resolvePlace(store, project, body.folderId, body.workspaceId || undefined)));
+                return json(terminals.create(project, body, resolvePlace(store, project, body.folderId, body.workspaceId)));
             },
         },
         {

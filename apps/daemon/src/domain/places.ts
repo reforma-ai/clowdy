@@ -33,9 +33,10 @@ function isDirectory(path: string): boolean {
 /**
  * Where a request that names a folder, and maybe a workspace, is read. Without a workspace it is the folder's own checkout. With one, the workspace has to belong to
  * this project and to this folder (`not_found` otherwise, whoever's it is: a client learns nothing of a worktree that is not its project's), and its worktree has to be
- * made (`ready`) and on the disk (`unavailable` otherwise: the chat's first turn makes it, and a worktree that was removed by hand is made again by the next turn).
- * No request reaches a path the project does not own: the paths read are the project's folders' and its workspaces' only, and what is below them is judged against the
- * real path of the root by whoever reads (`FsService`).
+ * made (`ready`) and on the disk (`unavailable` otherwise: the chat's first turn makes it, and the next turn makes it again when Clowdy made it and it was removed by
+ * hand). An empty `workspaceId` is none. The roots read are the project's folders' and the worktrees recorded for its folders, and what is below a root is judged against
+ * its real path by whoever reads (`FsService`); the row's path is the daemon's own record (a path git named for the folder's repository, or one under the workspaces
+ * folder), so a worktree directory that someone replaced by a link is as much the person's doing as a folder that was.
  */
 export function resolvePlace(store: Store, project: Project, folderId: FolderId, workspaceId?: WorkspaceId): Place {
     if (!folderId) {
@@ -48,7 +49,7 @@ export function resolvePlace(store: Store, project: Project, folderId: FolderId,
         throw notFound('Folder', folderId);
     }
 
-    if (workspaceId === undefined) {
+    if (!workspaceId) {
         return { folder, path: folder.path };
     }
 
@@ -78,4 +79,23 @@ export function resolveWorkspacePlace(store: Store, project: Project, workspaceI
     }
 
     return resolvePlace(store, project, workspace.folderId, workspaceId);
+}
+
+/**
+ * Whether a place belongs to the project: its folder is one of the project's, and its worktree, when it has one, is a worktree of that folder recorded for this project.
+ * `resolvePlace` only makes places that do; this is for what takes a place from its caller (`FsService`, `TerminalService`), so a place made for another project, or
+ * made by hand, cannot read what the project does not own.
+ */
+export function ownsPlace(project: Project, place: Place): boolean {
+    const folder = project.folders.find(candidate => candidate.id === place.folder.id);
+
+    if (!folder) {
+        return false;
+    }
+
+    if (!place.workspace) {
+        return place.path === folder.path;
+    }
+
+    return place.workspace.projectId === project.id && place.workspace.folderId === folder.id && place.path === place.workspace.path;
 }

@@ -28,7 +28,7 @@ export class FilesService {
         const rootOf = (folder: ProjectFolder) => (place?.folder.id === folder.id ? place.path : folder.path);
 
         if (!existsSync(rootOf(main))) {
-            throw unavailable(`The project folder ${ rootOf(main) } is missing`);
+            throw unavailable(`The ${ rootOf(main) === main.path ? 'project folder' : 'worktree' } ${ rootOf(main) } is missing`);
         }
 
         if (project.folders.length === 1) {

@@ -1,6 +1,7 @@
 import { MAX_FS_FILE_BYTES, MAX_FS_FIND } from '@clowdy/protocol';
 import { realpath } from 'node:fs/promises';
 
+import { ownsPlace } from '../domain/places';
 import { invalid, notFound, unavailable } from '../errors';
 import { makeFolder, remove, transfer } from './batch';
 import { checkPreconditions, makeFolders, readBody, readFileBytes, removeFolders, writeFileAtomically } from './content';
@@ -48,7 +49,8 @@ export interface FsWriteOptions extends Preconditions {
 /**
  * The files of a project's folders for the app's file manager, read and changed on behalf of a client that is not trusted: every path is
  * checked against the folder here (`paths.ts`), and nothing outside it is ever read, written, moved, copied, deleted or watched. A folder is
- * named by its id in the project; `.git` and `node_modules` are listed only as cutoff folders and never watched.
+ * named by its id in the project, or by a `Place` (a worktree of it, whose own real path is then the root); `.git` and `node_modules` are listed only as cutoff
+ * folders and never watched.
  *
  * Changes to one folder run one at a time (`exclusive`), so the daemon's own writes never interleave; reads and listings do not wait for them.
  */
@@ -114,6 +116,11 @@ export class FsService {
      * the folder on the disk (`unavailable`) and a valid request (`invalid`); `signal` is the client's, and a client that went away ends the search.
      */
     async search(project: Project, request: FsSearchRequest, signal?: AbortSignal, at: FsTarget = request.folderId): Promise<FsSearchResult> {
+        // A worktree asked for and not judged would be searched in the folder's own checkout under the worktree's name.
+        if (request.workspaceId && (typeof at === 'string' || at.workspace?.id !== request.workspaceId)) {
+            throw invalid('The worktree of the search was not resolved');
+        }
+
         const { root } = await this.open(project, at);
 
         return this.contentSearch.search(root, request, signal);
@@ -273,8 +280,12 @@ export class FsService {
     }
 
     /** The place a request names: the folder's own checkout for a folder's id, the place itself for one `resolvePlace` made. */
-    private placeOf(project: Project, at: FsTarget): Place {
+    private placeFor(project: Project, at: FsTarget): Place {
         if (typeof at !== 'string') {
+            if (!ownsPlace(project, at)) {
+                throw notFound('Folder', at.folder.id);
+            }
+
             return at;
         }
 
@@ -293,7 +304,7 @@ export class FsService {
 
     /** The place and its real path, which every link is judged against: a worktree's own for a worktree, never the folder's. A place that is gone from the disk is `unavailable`. */
     private async open(project: Project, at: FsTarget): Promise<{ path: string; root: string }> {
-        const { path, workspace } = this.placeOf(project, at);
+        const { path, workspace } = this.placeFor(project, at);
 
         try {
             return { path, root: await realpath(path) };
