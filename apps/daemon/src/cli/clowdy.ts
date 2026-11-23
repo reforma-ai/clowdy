@@ -79,6 +79,7 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
         'clowdy thread spawn --title "Fix the login bug" --prompt-file - <<\'EOF\'',
         '<the whole brief: goal, what it owns, decisions made, how to check, how to report>',
         'EOF',
+        '# --worktree gives the thread a git worktree of its own, on a branch started from yours: merging that branch back is yours, with git',
         '# then end your turn: the daemon sends you each thread\'s report when it stops',
     ],
     thread_tell: [

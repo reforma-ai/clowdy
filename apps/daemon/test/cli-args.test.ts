@@ -4,10 +4,12 @@ import { join } from 'node:path';
 
 import { commandOf, commandText, flagsOf, helpOf, parseCommand, summaryOf, UsageError } from '../src/cli/args';
 import { readSource, runCli } from '../src/cli/clowdy';
+import { threadTools } from '../src/runs/thread-tools';
 import { cleanTempDirs, tempDir } from './helpers';
 
 import type { CliTool } from '../src/cli/args';
 import type { StdinSource } from '../src/cli/clowdy';
+import type { ToolDefinition } from '../src/engine/types';
 
 afterAll(cleanTempDirs);
 
@@ -129,6 +131,21 @@ describe('commandOf, flagsOf, summaryOf, commandText and helpOf', () => {
         expect(commandOf({ name: 'thread_spawn' })).toEqual({ group: 'thread', command: 'spawn' });
         expect(commandOf({ name: 'thread_wait_all' })).toEqual({ group: 'thread', command: 'wait-all' });
         expect(flagsOf(spawn).sort()).toEqual(['fresh', 'mode', 'mode-file', 'no-fresh', 'prompt', 'prompt-file', 'tasks', 'timeout-seconds', 'title', 'title-file']);
+    });
+
+    test('the real thread_spawn takes --worktree and --no-worktree, and its help says what the option does and that merging the branch back is the parent\'s', () => {
+        const real = threadTools({ threads: undefined as never }, {} as never).find((tool: ToolDefinition) => tool.name === 'thread_spawn') as unknown as CliTool;
+
+        expect(flagsOf(real)).toEqual(expect.arrayContaining(['worktree', 'no-worktree', 'cwd']));
+        expect(parseCommand(real, ['--prompt', 'x', '--worktree']).arguments).toEqual({ prompt: 'x', worktree: true });
+        expect(parseCommand(real, ['--prompt', 'x', '--no-worktree']).arguments).toEqual({ prompt: 'x', worktree: false });
+        expect(parseCommand(real, ['--prompt', 'x', '--worktree', '--cwd', '/work/copy']).arguments).toEqual({ prompt: 'x', worktree: true, cwd: '/work/copy' });
+
+        const help = helpOf(real);
+
+        expect(help).toMatch(/--worktree\s+Gives the thread a git worktree of its own/);
+        expect(help).toContain('Bringing the branch back is your job, with git');
+        expect(help).toContain('Not together with cwd');
     });
 
     test('a summary is the first sentence without brackets, cut at its colon when long', () => {

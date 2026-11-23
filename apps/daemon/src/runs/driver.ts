@@ -5,9 +5,10 @@ import { resolve } from 'node:path';
 import { getChat } from '../db/chats';
 import { listItems, nextSeq } from '../db/items';
 import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } from '../db/runs';
+import { getWorkspace } from '../db/workspaces';
 import { git } from '../domain/git';
 import { appendItem, markRewindPoint } from '../domain/items';
-import { needsPreparing, prepareWorkspace } from '../domain/workspaces';
+import { chatKey, needsPreparing, prepareWorkspace } from '../domain/workspaces';
 import { EngineFailure, errorMessage } from '../errors';
 import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
@@ -168,8 +169,10 @@ function promptChat(store: Store, chat: Chat | undefined): PromptChat | undefine
     }
 
     const parent = chat.parentChatId ? getChat(store.db, chat.parentChatId) : undefined;
+    // A thread whose parent had a worktree made for it alone is on the branch named after the thread's own id; one that shares its parent's is on the parent's.
+    const own = chat.workspace?.managed && chat.workspace.branch === `clowdy/${ chatKey(chat.id) }` ? getWorkspace(store.db, chat.workspace.id)?.base : undefined;
 
-    return chat.parentChatId ? { parent: { id: chat.parentChatId, title: parent?.title ?? chat.parentChatId } } : {};
+    return chat.parentChatId ? { parent: { id: chat.parentChatId, title: parent?.title ?? chat.parentChatId, ...(own !== undefined && { worktreeBase: own }) } } : {};
 }
 
 const missingEngine = (engine: EngineId) => new EngineFailure(`The ${ engine } engine is not available in this daemon`);

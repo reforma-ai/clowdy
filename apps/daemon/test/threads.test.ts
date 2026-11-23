@@ -1,15 +1,18 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { getChat } from '../src/db/chats';
 import { listItems } from '../src/db/items';
+import { getProject } from '../src/db/projects';
 import { getRunWork } from '../src/db/runs';
+import { chatsOfWorkspace, getWorkspace, listWorkspacesOfProject, updateWorkspace } from '../src/db/workspaces';
 import { createChat } from '../src/domain/chats';
+import { WORKSPACE_TOOL } from '../src/domain/workspaces';
 import { clipOutput } from '../src/runs/threads';
 import { clip } from '../src/runs/tool-kit';
 import { toolsFor } from '../src/runs/tools';
-import { cleanTempDirs, latch, restartHarness, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, tempDir, untilAborted, waitFor } from './helpers';
+import { cleanTempDirs, git, latch, makeRepo, restartHarness, ScriptEngine, scriptEngines, SHORT_TIMINGS, startHarness, tempDir, untilAborted, waitFor } from './helpers';
 
 import type { Chat, MessageSource, Run, StreamItemBody, ThreadNotice } from '@clowdy/protocol';
 import type { EngineEvent } from '../src/engine/types';
@@ -117,7 +120,7 @@ async function setup(overrides: Parameters<typeof startHarness>[0] = {}) {
 
         await waitFor(() => turnOf(prompt), `the thread on "${ prompt }" to start`);
 
-        return { ...result, run: () => runOf(result.threadId) } as { threadId: string; title: string; state: string; note: string; run: () => Run };
+        return { ...result, run: () => runOf(result.threadId) } as { threadId: string; title: string; state: string; note: string; worktree?: { path: string; branch: string; base: string }; run: () => Run };
     };
 
     return { h, engine, project, store, chatOf, runOf, bodies, on, onPrompt, exec, noticesTo, turnOf, running, root, spawn };
@@ -1422,5 +1425,237 @@ describe('reading a thread instead of its notice', () => {
         await waitFor(() => bodies(thread.run().id).some(body => body.kind === 'assistant' && body.text === 'Looking again'), 'the thread\'s next turn to speak');
         expect(await exec(parent.run, 'thread_output', { thread: thread.threadId })).toMatchObject({ state: 'working', text: 'Looking again' });
         expect(queued().map(item => item.from)).toEqual([notice]);
+    });
+});
+
+describe('thread_spawn with a worktree', () => {
+    /** The part of a chat's id its worktree and branch are named after. */
+    const id8 = (chatId: string) => chatId.slice(-8);
+
+    test('gives the thread a worktree of its own on a branch of its own from the default branch, which its first turn makes and its agent works in, while one without it works in its parent\'s place', async () => {
+        const { h, project, store, chatOf, runOf, bodies, turnOf, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true });
+        const plain = await spawn(parent.run, 'Read the importer');
+        const path = join(h.config.workspacesDir, 'repo', id8(own.threadId), 'repo');
+        const branch = `clowdy/${ id8(own.threadId) }`;
+        const folderId = getProject(store.db, project.id)!.folders[0].id;
+
+        // The answer says where the thread is and what to merge; the parent is told that bringing the branch back is its job.
+        expect(own.worktree).toEqual({ path, branch, base: 'main' });
+        expect(own.note).toContain(`its own git worktree at ${ path }, on the branch ${ branch }, started from main`);
+        expect(own.note).toContain('Bringing the work back is yours');
+        expect(plain.worktree).toBeUndefined();
+
+        // Its own row, pinned to the folder, made by the thread's first turn.
+        expect(chatOf(own.threadId).workspace).toEqual({ id: expect.stringMatching(/^wks_/), folderId, path, branch, managed: true, ready: true });
+        expect(chatOf(own.threadId).folderId).toBe(folderId);
+        expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)).toMatchObject({ projectId: project.id, folderId, path, branch, base: 'main', managed: true });
+        expect(git(project.path, 'worktree', 'list')).toContain(path);
+        expect(git(path, 'branch', '--show-current')).toBe(branch);
+        expect(git(path, 'rev-parse', 'HEAD')).toBe(git(project.path, 'rev-parse', 'main'));
+
+        // The thread's stream starts with the message and the `Prepare workspace` item, which has git's lines.
+        const items = bodies(runOf(own.threadId).id);
+
+        expect(items.slice(0, 2).map(item => item.kind)).toEqual(['user', 'tool']);
+        expect(items[1]).toMatchObject({ kind: 'tool', name: WORKSPACE_TOOL, state: 'done', input: { path, branch, base: 'main' }, output: expect.stringContaining(`new branch '${ branch }'`) });
+
+        // Its agent works there, is told so, and is told what is left to its parent; the main checkout is not handed to it.
+        expect(turnOf('Rework the importer')).toMatchObject({ cwd: path, additionalDirectories: [join(project.path, '.git')] });
+        expect(turnOf('Rework the importer')?.systemPrompt).toContain(`Worktree: you work in a git worktree of ${ project.path }, at ${ path }, on the branch ${ branch }.`);
+        expect(turnOf('Rework the importer')?.systemPrompt).toContain('on a branch started from its own branch main: commit your work on your own branch and name that branch in your report. Merging it back is your parent\'s job');
+
+        // One without the option is where its parent is, with no worktree and no word of one.
+        expect(chatOf(plain.threadId)).not.toHaveProperty('workspace');
+        expect(turnOf('Read the importer')?.cwd).toBe(project.path);
+        expect(turnOf('Read the importer')?.systemPrompt).not.toContain('Merging it back');
+        expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(1);
+    });
+
+    test('starts from the branch the parent works on, with its commits and none of its uncommitted files, and the branch comes back with a merge by the parent', async () => {
+        const { h, store, chatOf, turnOf, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch(), { workspace: { mode: 'new' } });
+        const mine = parent.chat.workspace!;
+        const sibling = await spawn(parent.run, 'Read the importer');
+
+        // The parent commits in its worktree and leaves a file uncommitted.
+        writeFileSync(join(mine.path, 'parent.txt'), 'parent work\n');
+        git(mine.path, 'add', 'parent.txt');
+        git(mine.path, 'commit', '-q', '-m', 'Parent work');
+        writeFileSync(join(mine.path, 'wip.txt'), 'not committed\n');
+
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true });
+        const path = join(h.config.workspacesDir, 'repo', id8(own.threadId), 'repo');
+        const branch = `clowdy/${ id8(own.threadId) }`;
+
+        expect(own.worktree).toEqual({ path, branch, base: mine.branch });
+        expect(chatOf(own.threadId).workspace).toMatchObject({ id: expect.not.stringMatching(mine.id), path, branch, managed: true, ready: true });
+        expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)?.base).toBe(mine.branch!);
+        expect(chatOf(own.threadId).folderId).toBe(mine.folderId);
+        expect(turnOf('Rework the importer')?.cwd).toBe(path);
+        expect(readFileSync(join(path, 'parent.txt'), 'utf8')).toBe('parent work\n');
+        expect(existsSync(join(path, 'wip.txt'))).toBe(false);
+        expect(git(path, 'rev-parse', 'HEAD')).toBe(git(mine.path, 'rev-parse', 'HEAD'));
+
+        // The sibling that asked for no worktree is in the parent's, which the thread with its own is not.
+        expect(chatOf(sibling.threadId).workspace).toEqual(mine);
+        expect(chatsOfWorkspace(store.db, mine.id)).toEqual([parent.chat.id, sibling.threadId]);
+        expect(turnOf('Read the importer')?.cwd).toBe(mine.path);
+
+        // The parent's tree is as it was. What the thread commits stays on its branch until the parent merges it, which is the parent's job.
+        expect(git(mine.path, 'status', '--porcelain')).toBe('?? wip.txt');
+        writeFileSync(join(path, 'thread.txt'), 'thread work\n');
+        git(path, 'add', 'thread.txt');
+        git(path, 'commit', '-q', '-m', 'Thread work');
+        expect(existsSync(join(mine.path, 'thread.txt'))).toBe(false);
+        git(mine.path, 'merge', '--no-edit', branch);
+        expect(readFileSync(join(mine.path, 'thread.txt'), 'utf8')).toBe('thread work\n');
+        expect(h.run(parent.run.id).status).toBe('running');
+    });
+
+    test('is refused with cwd, by a caller that works in a folder named with cwd, and when the parent\'s branch is gone or its worktree is on a detached HEAD, leaving nothing behind', async () => {
+        const { project, store, exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch(), { workspace: { mode: 'new' } });
+        const folder = tempDir('clowdy-thread-cwd');
+        const listed = async () => (await exec(parent.run, 'thread_list')).threads.map((entry: { threadId: string }) => entry.threadId);
+        const refused = async (input: Record<string, unknown>, message: RegExp) => {
+            await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', ...input })).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(message) });
+            expect(await listed()).toEqual([]);
+            expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(1);
+        };
+
+        // Two ways to say where the thread works.
+        await refused({ worktree: true, cwd: folder }, /^worktree and cwd both say where the thread works, so give one/);
+        await refused({ worktree: true, cwd: 'relative/path' }, /^worktree and cwd both say where the thread works/);
+
+        // The parent's branch is gone: starting from anything else would hand the thread a tree without the parent's work.
+        const mine = parent.chat.workspace!;
+
+        updateWorkspace(store.db, mine.id, { branch: 'clowdy/nowhere' });
+        await refused({ worktree: true }, /^Cannot give the thread a worktree of its own\. Your branch clowdy\/nowhere is not in the repository any more/);
+        updateWorkspace(store.db, mine.id, { branch: mine.branch });
+
+        // A thread that works where its parent named has no branch of its own to start another from.
+        const named = await spawn(parent.run, 'Look elsewhere', held(latch()), { cwd: folder });
+
+        await expect(exec(named.run(), 'thread_spawn', { prompt: 'Nested', worktree: true })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('named with cwd') });
+
+        // An existing worktree on a detached HEAD has no branch to start from.
+        const detached = join(tempDir('clowdy-thread-detached'), 'wt');
+
+        git(project.path, 'worktree', 'add', '--detach', detached);
+
+        const onDetached = await root('Plan the cleanup', latch(), { workspace: { mode: 'existing', path: detached } });
+
+        expect(onDetached.chat.workspace?.branch).toBeUndefined();
+        await expect(exec(onDetached.run, 'thread_spawn', { prompt: 'Nope', worktree: true })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('detached HEAD') });
+        expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(2);
+    });
+
+    test('starts from the base a parent whose worktree is not made yet is going to be made from, since nothing is committed in it', async () => {
+        const { h, project, store, chatOf, exec, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch(), { workspace: { mode: 'new' } });
+        const mine = parent.chat.workspace!;
+
+        // Its branch does not exist and the worktree is to be made: the thread's base is the one the parent's is made from.
+        updateWorkspace(store.db, mine.id, { ready: false, branch: 'clowdy/not-yet' });
+
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true });
+
+        expect(own.worktree).toMatchObject({ base: 'main' });
+        expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)?.base).toBe('main');
+        expect(git(own.worktree!.path, 'rev-parse', 'HEAD')).toBe(git(project.path, 'rev-parse', 'main'));
+
+        // A worktree that is ready has no such excuse for a branch it lost.
+        updateWorkspace(store.db, mine.id, { ready: true });
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('clowdy/not-yet is not in the repository any more') });
+        expect(h.run(parent.run.id).status).toBe('running');
+    });
+
+    test('is refused where the project\'s folder is no repository, or is inside one, and nothing is made', async () => {
+        const { h, store, exec, on, running, chatOf } = await setup();
+        const inside = makeRepo(tempDir('clowdy-thread-inside'), 'app');
+        const subfolder = join(inside, 'packages');
+        const plain = tempDir('clowdy-thread-plain');
+
+        mkdirSync(subfolder);
+
+        for (const [name, folder] of [['Notes', plain], ['Packages', subfolder]] as const) {
+            const { project } = h.ok('project.add', { name, folders: [folder] });
+            const { chat } = h.ok('chat.create', { projectId: project.id });
+
+            on(`Plan in ${ name }`, held(latch()));
+            h.ok('chat.send', { chatId: chat.id, text: `Plan in ${ name }` });
+            await running(chat.id, `Plan in ${ name }`);
+
+            const run = h.run(chatOf(chat.id).orchestratorRunId as string);
+
+            await expect(exec(run, 'thread_spawn', { prompt: 'Nope', worktree: true })).rejects.toMatchObject({
+                code: 'invalid',
+                message: 'Cannot give the thread a worktree of its own. A worktree needs the root of a git repository, and this folder is not one',
+            });
+            expect((await exec(run, 'thread_list')).threads).toEqual([]);
+            expect(listWorkspacesOfProject(store.db, project.id)).toEqual([]);
+            // A thread that does not ask for a worktree is as it was.
+            expect((await exec(run, 'thread_spawn', { prompt: 'Read around' })).threadId).toMatch(/^cht_/);
+        }
+
+        expect(existsSync(h.config.workspacesDir)).toBe(false);
+    });
+
+    test('gives each of many threads started at once its own row, path and branch, and their first turns make them side by side', async () => {
+        const { h, project, store, chatOf, turnOf, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const prompts = ['Part one', 'Part two', 'Part three', 'Part four'];
+        const threads = await Promise.all(prompts.map(prompt => spawn(parent.run, prompt, held(latch()), { worktree: true })));
+        const paths = threads.map(thread => thread.worktree!.path);
+        const branches = threads.map(thread => thread.worktree!.branch);
+
+        expect(new Set(paths).size).toBe(4);
+        expect(new Set(branches).size).toBe(4);
+        expect(new Set(threads.map(thread => chatOf(thread.threadId).workspace!.id)).size).toBe(4);
+        expect(listWorkspacesOfProject(store.db, project.id).map(record => record.path).sort()).toEqual([...paths].sort());
+
+        for (const [index, thread] of threads.entries()) {
+            expect(paths[index]).toBe(join(h.config.workspacesDir, 'repo', id8(thread.threadId), 'repo'));
+            expect(turnOf(prompts[index])?.cwd).toBe(paths[index]);
+            expect(git(paths[index], 'branch', '--show-current')).toBe(branches[index]);
+            expect(git(project.path, 'worktree', 'list')).toContain(paths[index]);
+            expect(chatsOfWorkspace(store.db, chatOf(thread.threadId).workspace!.id)).toEqual([thread.threadId]);
+        }
+    });
+
+    test('fails the thread, not the parent, when its worktree cannot be made, and a message of the parent makes it again once the way is clear', async () => {
+        const { h, chatOf, runOf, bodies, exec, on, root } = await setup();
+        const parent = await root('Plan the release', latch());
+        const { task: first } = await exec(parent.run, 'task_create', { title: 'First' });
+        const { task: second } = await exec(parent.run, 'task_create', { title: 'Second', dependsOn: [first.key] });
+
+        // The thread waits for the first task, which gives the test time to put something in the way of its worktree.
+        const waiting = await exec(parent.run, 'thread_spawn', { prompt: 'Rework the importer', tasks: [second.key], worktree: true });
+        const { path } = waiting.worktree;
+
+        expect(waiting.state).toBe('working');
+        mkdirSync(path, { recursive: true });
+        writeFileSync(join(path, 'note.txt'), 'somebody\'s\n');
+        await exec(parent.run, 'task_update', { taskId: first.key, status: 'done' });
+        await waitFor(() => runOf(waiting.threadId).status === 'failed', 'the thread to fail');
+
+        // The reason is the step's: the path was left as it is, and the parent hears of it.
+        expect(runOf(waiting.threadId).error).toContain(`${ path } exists and is not a worktree of`);
+        expect(bodies(runOf(waiting.threadId).id).find(body => body.kind === 'tool' && body.name === WORKSPACE_TOOL)).toMatchObject({ state: 'error', error: expect.stringContaining('exists and is not a worktree') });
+        expect(readFileSync(join(path, 'note.txt'), 'utf8')).toBe('somebody\'s\n');
+        expect(chatOf(waiting.threadId).workspace).toMatchObject({ path, ready: false });
+        await waitFor(() => chatOf(parent.chat.id).queue?.length === 1, 'the notice in the busy parent\'s queue');
+        expect(chatOf(parent.chat.id).queue?.[0].from).toMatchObject({ kind: 'threadNotice', threads: [{ chatId: waiting.threadId, outcome: 'failed' }] });
+        expect(h.run(parent.run.id).status).toBe('running');
+
+        // The way is clear: the next message tries again and the thread runs in its worktree.
+        rmSync(path, { recursive: true });
+        on('Try again', held(latch(), 'Working again'));
+        await exec(parent.run, 'thread_tell', { thread: waiting.threadId, message: 'Try again' });
+        await waitFor(() => chatOf(waiting.threadId).workspace?.ready, 'the worktree to be made');
+        expect(git(path, 'branch', '--show-current')).toBe(`clowdy/${ id8(waiting.threadId) }`);
     });
 });

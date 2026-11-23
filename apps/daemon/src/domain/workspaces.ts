@@ -342,6 +342,36 @@ export function inheritWorkspace(store: Store, project: Project, workspaceId: st
     return toChatWorkspace(record);
 }
 
+/**
+ * The base of a thread's own worktree when its parent works in `workspace`: the parent's branch, read as an exact local ref (every worktree of a repository shares
+ * its branches), so the thread starts from what the parent has committed there. A parent whose worktree is not made yet has no branch: it will be made from its
+ * own base and nothing is committed in it, so that base is the same commit. Anything else (a detached HEAD, a branch the repository no longer has) is `invalid`
+ * with nothing made, since a thread started from some other commit would work on a tree without the parent's work.
+ */
+export function threadBase(store: Store, project: Project, workspace: ChatWorkspace): string {
+    const folder = project.folders.find(candidate => candidate.id === workspace.folderId);
+
+    if (!folder) {
+        throw invalid('The folder of your worktree is no longer part of the project');
+    }
+
+    if (workspace.branch !== undefined) {
+        const found = readGit(folder.path, ['show-ref', '--verify', '--hash', `refs/heads/${ workspace.branch }`]);
+
+        if (found.ok && found.stdout) {
+            return workspace.branch;
+        }
+    }
+
+    const base = getWorkspace(store.db, workspace.id)?.base;
+
+    if (!workspace.ready && base !== undefined) {
+        return base;
+    }
+
+    throw invalid(workspace.branch === undefined ? 'Your worktree is on a detached HEAD, so there is no branch of yours to start the thread from' : `Your branch ${ workspace.branch } is not in the repository any more, so there is nothing to start the thread from`);
+}
+
 /** Whether a chat's first turn (or a later one) has to run `Prepare workspace`: the worktree is not set up yet, or Clowdy made it and it is gone from the disk. */
 export function needsPreparing(workspace: Pick<ChatWorkspace, 'path' | 'managed' | 'ready'>): boolean {
     return !workspace.ready || (workspace.managed && !existsSync(workspace.path));
