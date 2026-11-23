@@ -53,6 +53,8 @@ interface Page {
     projectId?: string;
     /** What the project asks a new chat to start with. */
     defaults?: { engine?: string; mode?: ChatMode };
+    /** The agent the new-chat page was opened for (a hand-off to another agent), which the window keeps in `ProjectUi.draftEngine`. */
+    draftEngine?: string;
 }
 
 /** A chat as the daemon makes it from `chat.create`. */
@@ -69,6 +71,9 @@ async function mount(page: Page = {}, options: ModelStoreOptions = {}) {
         return (current.answer ?? ((next: CommandInput) => (next.type === 'chat.create' ? accepted({ chat: madeFrom(next) }) : accepted())))(input);
     });
     const root$ = { command, transport, skillsRevision: 0, selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] }, ...store } as unknown as RootStore;
+
+    // The window's state is the store's own in the app; here it is read each time the composer draws.
+    Object.defineProperty(root$, 'selectedProjectUi', { get: () => ({ draftEngine: current.draftEngine ?? null }) });
 
     draw = () => act(async () => {
         root.render(
@@ -252,6 +257,25 @@ describe('where a new chat starts', () => {
     });
 
     it('starts on the provider its project asks for, even when another was picked last', async () => {
+        writeRemembered({ engine: 'claude', models: {}, efforts: {} });
+        await mount({ defaults: { engine: 'codex' } });
+        await send('Build the thing');
+
+        expect(create()).toMatchObject({ engine: 'codex' });
+    });
+
+    it('starts on the agent a hand-off named, whatever its project asks for and was picked last, with that agent\'s default model', async () => {
+        writeRemembered({ engine: 'claude', models: {}, efforts: {} });
+        await mount({ defaults: { engine: 'claude' }, draftEngine: 'codex' });
+
+        expect(trigger()!.getAttribute('aria-label')).not.toContain('Opus');
+
+        await send('Build the thing');
+
+        expect(create()).toMatchObject({ engine: 'codex' });
+    });
+
+    it('starts where it always does when the hand-off named no agent', async () => {
         writeRemembered({ engine: 'claude', models: {}, efforts: {} });
         await mount({ defaults: { engine: 'codex' } });
         await send('Build the thing');

@@ -126,7 +126,9 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
     const running = isRunActive(run);
     // A message to a busy orchestrator waits in the queue; the box says so, and Send now on a queued message steers.
     const busy = isRunBusy(run);
-    const model = useModelChoice({ chat, made, run, preferredEngine: start?.defaults?.engine });
+    // A page opened for an agent (a hand-off to another one) starts on it, whatever the project asks for; the person's own pick in the box comes before both.
+    const draftEngine = start && root.selectedProjectUi?.draftEngine;
+    const model = useModelChoice({ chat, made, run, preferredEngine: draftEngine || start?.defaults?.engine });
     const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
     const { folders } = useProjectState().project;
     // Where the message is read: the chat's folder and its worktree, or the folder of the new chat and the worktree it chose when that exists (a new worktree is made by the first
