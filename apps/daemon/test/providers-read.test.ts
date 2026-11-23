@@ -68,6 +68,58 @@ describe('runProgram', () => {
         expect(Date.now() - started).toBeLessThan(5000);
     });
 
+    test('asks a program to stop with the signal it was given, so it can clean up, and kills the one that ignores it after the grace', async () => {
+        const env = { PATH: process.env.PATH ?? '' };
+        /** Runs the program, stops it once it says it is ready (its trap is set), and answers what that came to. */
+        const stopped = async (name: string, body: string) => {
+            const ready = join(root, `${ name }-ready`);
+            const controller = new AbortController();
+            const running = runProgram(program(name, `${ body }\necho ready > '${ ready }'\nwhile true; do sleep 1; done`), [], { env, cwd: root, timeoutMs: 30_000, stopSignal: 'SIGTERM', signal: controller.signal });
+
+            for (let i = 0; i < 500 && !existsSync(ready); i++) {
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+
+            controller.abort();
+
+            return running;
+        };
+        const cleaned = join(root, 'cleaned');
+        const pidFile = join(root, 'stubborn-pid');
+
+        expect(await stopped('polite', `trap 'echo bye > ${ cleaned }; exit 0' TERM`)).toMatchObject({ error: 'stopped' });
+
+        // The program saw `SIGTERM` and left in its own way: a `SIGKILL` would have given it no chance to say goodbye.
+        for (let i = 0; i < 100 && !existsSync(cleaned); i++) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+
+        expect(readFileSync(cleaned, 'utf8')).toBe('bye\n');
+
+        expect(await stopped('stubborn', `echo $$ > ${ pidFile }\ntrap '' TERM`)).toMatchObject({ error: 'stopped' });
+
+        const pid = Number(readFileSync(pidFile, 'utf8'));
+        const alive = () => {
+            try {
+                process.kill(pid, 0);
+
+                return true;
+            }
+            catch {
+                return false;
+            }
+        };
+
+        // It shrugged the first signal off, and is gone once the grace (2 s) has passed.
+        expect(alive()).toBe(true);
+
+        for (let i = 0; i < 400 && alive(); i++) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+
+        expect(alive()).toBe(false);
+    });
+
     test('ends the program with its children when the signal fires, and starts nothing when it fired already', async () => {
         const pidFile = join(root, 'pid');
         const controller = new AbortController();
