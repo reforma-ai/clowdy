@@ -30,7 +30,7 @@
 
 ## Out of scope
 
-- Daemon-side git machinery of any kind (worktree tools, merge queue, integration branch): agents use git themselves, Linear or any provider sync, webhooks, remote UI, cloud execution, auto-update, installers and signing, an engine connect/auth UI, BriefBack's exact method (semi-manual mode asks questions through a simple card protocol).
+- Daemon-side git machinery of any kind (worktree tools, merge queue, integration branch): agents use git themselves (**changed on 2026-11-23 by `.briefback/git-integration/plan.md`, as the earlier worktrees plan already changed the worktree part: the daemon now reads a place's git, shows its branch, its pull request and its changes in the app, and commits, fetches, pulls and pushes for the person from the Changes tab, with their own git; the merge queue, an integration branch and a merge of a pull request are still out, and so is "no git concepts in the main UI" above, which the Changes tab and the strip above the message box replaced**), Linear or any provider sync, webhooks, remote UI, cloud execution, auto-update, installers and signing, an engine connect/auth UI, BriefBack's exact method (semi-manual mode asks questions through a simple card protocol).
 
 ## Stage 1 — Contract
 
