@@ -186,6 +186,25 @@
     },
     "overrides": [
         {
+            "includes": ["apps/daemon/**"],
+            "linter": {
+                "rules": {
+                    "style": {
+                        "noRestrictedImports": {
+                            "level": "error",
+                            "options": {
+                                "paths": {
+                                    "@clowdy/lib": {
+                                        "message": "The root of @clowdy/lib pulls in React and DOM code, which the daemon never runs. Import the file you need by its subpath, such as @clowdy/lib/checklist."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
             "includes": ["packages/file-manager/**"],
             "linter": {
                 "rules": {
