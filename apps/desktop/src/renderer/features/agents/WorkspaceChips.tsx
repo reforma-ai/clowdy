@@ -13,7 +13,7 @@ import { Text } from '@clowdy/components/Text';
 import { ChevronRight } from '@clowdy/icons/8';
 import { Folder, Settings, Version, VersionPlus } from '@clowdy/icons/14';
 import { capitalize } from '@clowdy/lib';
-import { type KeyboardEvent, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { OverlayTriggerStateContext, PopoverContext, type PressEvent } from 'react-aria-components';
 
 import { tildePath } from '../../shared/displayPath';
@@ -168,6 +168,29 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
     const [listAnchor, setListAnchor] = useState<HTMLElement | null>(null);
     // The row of the main worktree while the list of its branches is open beside the menu.
     const [branchAnchor, setBranchAnchor] = useState<HTMLElement | null>(null);
+    // A pick can give the pill a tooltip or take it away, which draws it again as another element (`Button` wraps itself in a tooltip only when it has one), and the menu hands focus back to the
+    // element it opened from, which has gone with the old pill: the pill that is there now takes it, as the keyboard's person left it.
+    const pill = useRef<HTMLButtonElement | HTMLAnchorElement | null>(null);
+    const wasOpen = useRef(false);
+
+    useEffect(() => {
+        if (isMenuOpen) {
+            wasOpen.current = true;
+
+            return;
+        }
+
+        if (!wasOpen.current) return;
+
+        wasOpen.current = false;
+
+        const frame = requestAnimationFrame(() => {
+            if (document.activeElement === document.body) pill.current?.focus();
+        });
+
+        return () => cancelAnimationFrame(frame);
+    }, [isMenuOpen]);
+
     const worktrees = pickableWorktrees(git);
     // The worktrees a chat works in come first, and the ones no chat works in, which are what is left of finished work, after them under a heading.
     const used = worktrees.filter(worktree => chatsUsing(chats.values(), worktree.path).length > 0);
@@ -264,6 +287,7 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
                 }}
             >
                 <ChipTrigger
+                    ref={pill}
                     icon={<Version aria-hidden="true" />}
                     lead={'lead' in trigger ? trigger.lead : undefined}
                     label={trigger.label}

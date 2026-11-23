@@ -292,6 +292,23 @@ describe('picking a branch', () => {
         expect(options()).toEqual([]);
     });
 
+    it('gives focus back to the pill after a pick, though the pill is drawn again as another element (it gains or loses its tooltip)', async () => {
+        await openBranches();
+        await press(option('dev'));
+        await settle();
+        await act(async () => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+
+        expect(document.activeElement).toBe(chip());
+
+        // And back to the folder as it is, which takes the tooltip away again.
+        await openBranches();
+        await press(option('main'));
+        await settle();
+        await act(async () => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+
+        expect(document.activeElement).toBe(chip());
+    });
+
     it('checks the branch that was picked when the list opens again, and the branch of the chip says it', async () => {
         await openBranches();
         await press(option('dev'));
