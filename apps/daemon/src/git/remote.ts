@@ -26,6 +26,12 @@ const MAX_PRINTED_CHARS = 256 * 1024;
 /** The only remote the app moves commits to and from. */
 const ORIGIN = 'origin';
 
+/** Where a branch's own ref is: `refs/heads/<branch>`. */
+const HEADS = 'refs/heads/';
+
+/** Whether what a branch tracks is the branch of its own name: the only upstream the app pulls from and pushes to. */
+const ownName = (branch: string, tracking: { merge: string }): boolean => tracking.merge === `${ HEADS }${ branch }`;
+
 /** Keeps a fetch to `origin`: git also fetches a submodule from its own remote when the commit of it that the superproject points at has moved, which is another remote and another failure. */
 const NO_SUBMODULES = ['--no-recurse-submodules'];
 
@@ -72,14 +78,15 @@ interface Head {
  *
  * - fetch is `git fetch --no-recurse-submodules origin`: the submodules' own remotes are not asked (git does that by itself for a submodule whose commit moved, and a failure there ends the
  *   fetch with an error though `origin` was fetched);
- * - pull fetches, then takes what the upstream has with `git merge --ff-only`; a branch that diverged from its upstream (commits on both sides, counted with `rev-list --left-right --count`
+ * - pull fetches, then takes what the upstream has with `git merge --ff-only`, for a branch whose upstream is the branch of its own name (`invalid` for one that tracks another); a branch that diverged from its upstream (commits on both sides, counted with `rev-list --left-right --count`
  *   before anything moves) is answered as `diverged` and left alone: no merge, no rebase, no reset. It merges itself, and does not call `git pull`, so the network is asked once;
- * - push is `git push origin refs/heads/<branch>:<the upstream's ref>` for a branch that has an upstream, and `git push -u origin refs/heads/<branch>:refs/heads/<branch>` (publish) for one
- *   that has none. The branch is spelled as a full ref, never `HEAD`, so a branch that an agent or the person switched to while the push waited is not sent in its place, and a tag of its name
+ * - push is `git push origin refs/heads/<branch>:refs/heads/<branch>` for a branch whose upstream is `origin/<branch>`, the branch of its own name, and `git push -u origin
+ *   refs/heads/<branch>:refs/heads/<branch>` (publish) for any other: one that tracks nothing, one whose upstream is gone from origin and one that tracks a branch of another name
+ *   (`git switch -c feat origin/main`), which is sent under its own name and never to the branch it tracks, so a push cannot update `main` from `feat`. The branch is spelled as a full ref, never `HEAD`, so a branch that an agent or the person switched to while the push waited is not sent in its place, and a tag of its name
  *   is not meant. The refspec is given on the command line, so what the person's configuration says (`push.default`, `remote.origin.push`, a `+` in it) cannot widen it, and `--no-follow-tags`
  *   and `--no-recurse-submodules` keep a tag and a submodule from going with it. Never `--force`, never `--no-verify`.
  *
- * A place that is not a repository, a repository with no `origin`, a detached HEAD, a branch with no commit (pull and push) and a branch that tracks another remote are `invalid`. A
+ * A place that is not a repository, a repository with no `origin`, a detached HEAD, a branch with no commit (pull and push), a branch that tracks another remote and, for a pull, a branch that tracks a branch of another name are `invalid`. A
  * refusal by git is `conflict` with the line that says why (`remoteFailureLine`) and, for a signing or agent failure, the hint of `writeEnv`; a run that does not end in time and the daemon stopping are `unavailable`.
  */
 export class GitRemote {
@@ -119,6 +126,8 @@ export class GitRemote {
 
             if (!tracking) throw invalid(`${ branch } has no upstream to pull from, publish it first`);
 
+            if (!ownName(branch, tracking)) throw invalid(`${ branch } tracks ${ ORIGIN }/${ tracking.merge.slice(HEADS.length) }, not a branch of its own, publish it first`);
+
             await this.#run(place, 'pull', ['fetch', ...NO_SUBMODULES, ORIGIN]);
             await rememberFetch(place.path);
 
@@ -144,17 +153,18 @@ export class GitRemote {
     push(place: Place): Promise<GitRemoteResult> {
         return this.#alone(place, async () => {
             const { branch, tracking } = await this.#branchOf(place, 'push');
-            // A branch is published when it tracks nothing, and also when what it tracks is not on origin (the upstream is set and the remote's branch is gone): it is sent as a new one.
-            const publish = tracking === undefined || await gitAnswer(place.path, ['rev-parse', '--verify', '--quiet', '@{upstream}']) === undefined;
+            const own = `${ HEADS }${ branch }`;
+            // A branch is sent only to the branch of its own name. What it tracks is its own only under that name: a branch made from another one (`git switch -c feat origin/main` tracks `origin/main`)
+            // would be sent to `main` itself, which git's own `push.default=simple` refuses and a refspec to the upstream's ref would not. Such a branch, and one that tracks nothing or whose
+            // upstream is gone from origin, is published under its own name instead, with `-u`, so its upstream is the new branch. The source is spelled as a full ref (never `HEAD`, which is
+            // whatever is checked out when git runs, not the branch that was judged), so a tag of the branch's name is not meant, and git names the ref as the branch in what it says of a refusal.
+            const published = tracking !== undefined && ownName(branch, tracking) && await gitAnswer(place.path, ['rev-parse', '--verify', '--quiet', '@{upstream}']) !== undefined;
 
-            // Everything a person's configuration may add to a push (other refs, a force, tags, submodules) is overridden here: the branch goes to the branch it tracks, or to the one of its own
-            // name when it tracks none (`-u` then makes it track that), nothing else. The source is spelled as a full ref (never `HEAD`, which is whatever is checked out when git runs, not
-            // the branch that was judged), so a tag of the branch's name is not meant, and git names the ref as the branch in what it says of a refusal.
-            await this.#run(place, 'push', ['push', '--no-follow-tags', '--no-recurse-submodules', ...(tracking === undefined ? ['-u'] : []), ORIGIN, `refs/heads/${ branch }:${ tracking?.merge ?? `refs/heads/${ branch }` }`]);
+            await this.#run(place, 'push', ['push', '--no-follow-tags', '--no-recurse-submodules', ...(published ? [] : ['-u']), ORIGIN, `${ own }:${ own }`]);
 
             const upstream = await this.#upstream(place);
 
-            return { state: 'done', action: 'push', ...(publish && { published: true as const }), ...(upstream && { upstream }) };
+            return { state: 'done', action: 'push', ...(!published && { published: true as const }), ...(upstream && { upstream }) };
         });
     }
 

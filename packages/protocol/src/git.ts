@@ -61,11 +61,13 @@
  *
  * POST /v1/projects/:id/git/fetch    -> GitRemoteResult. Body `GitRemoteRequest` (`folderId`, `workspaceId?`). `git fetch --no-recurse-submodules origin` and nothing else: no `--prune` of its own, no other
  *                                         remote, no submodule's. The answer carries the branch's upstream as it stands after the fetch (`upstream`, with `ahead` and `behind`), when it has one.
- * POST /v1/projects/:id/git/pull     -> GitRemoteResult. Same body. Fetches `origin`, then takes what the upstream has with `git merge --ff-only`: nothing is merged, rebased, reset or
+ * POST /v1/projects/:id/git/pull     -> GitRemoteResult. Same body. Fetches `origin`, then takes what the upstream has with `git merge --ff-only` (only for a branch whose upstream is the branch of its own
+ *                                         name: one that tracks another, as `git switch -c feat origin/main` does, is `invalid`, since it is not published): nothing is merged, rebased, reset or
  *                                         discarded. A branch that has commits of its own and falls behind its upstream as well has diverged: the answer is `state: 'diverged'` (not an
  *                                         error) and the branch is left as it was. `pulled` says how many commits came in (0: already up to date).
- * POST /v1/projects/:id/git/push     -> GitRemoteResult. Same body. Sends the branch to its upstream (`git push origin refs/heads/<branch>:<the upstream's ref>`), and when the branch has none it
- *                                         publishes it: `git push -u origin refs/heads/<branch>:refs/heads/<branch>`, with `published: true` in the answer. Never forced, never with `--no-verify`, never with a tag.
+ * POST /v1/projects/:id/git/push     -> GitRemoteResult. Same body. Sends the branch to the branch of its own name (`git push origin refs/heads/<branch>:refs/heads/<branch>`) when that is its upstream, and
+ *                                         publishes it in every other case, when it has no upstream, its upstream is gone or its upstream is a branch of another name (`feat` made from `origin/main`
+ *                                         is never sent to `main`): `git push -u origin refs/heads/<branch>:refs/heads/<branch>`, with `published: true` in the answer. Never forced, never with `--no-verify`, never with a tag.
  *                                         The three refuse (`invalid`) a place that is not a repository, a repository with no `origin` and, for pull and push, a detached HEAD, a branch with no
  *                                         commit and a branch whose upstream is not on `origin`. A refusal by git (a push that is rejected, a hook, no permission, no network) is `conflict`
  *                                         with git's own line as the message (the line that says what went wrong, not the summary that follows it), and a `details.hint` when it names the
@@ -394,7 +396,7 @@ export type GitPullRequestInfo = { isRepository: false } | {
     pullRequest?: GitPullRequest;
 };
 
-/** The three ways a branch is moved to and from `origin`. Publishing a branch is a `push` of one that has no upstream. */
+/** The three ways a branch is moved to and from `origin`. Publishing a branch is a `push` of one that is not on origin under its own name. */
 export type GitRemoteAction = 'fetch' | 'pull' | 'push';
 
 /** The body of `POST /v1/projects/:id/git/fetch`, `.../pull` and `.../push`: the place. */
@@ -413,7 +415,7 @@ export interface GitRemoteDone {
     upstream?: GitUpstream;
     /** `pull`: how many commits came in; 0 when the branch was up to date already. */
     pulled?: number;
-    /** `push`: the branch had no upstream, so it was published and now tracks `origin/<name>`. */
+    /** `push`: the branch was not on origin under its own name (no upstream, a gone one, or another branch's), so it was published and now tracks `origin/<name>`. */
     published?: true;
 }
 

@@ -14,14 +14,16 @@ import type { GitRemoteAction, GitRemoteResult, GitUpstream } from '@clowdy/prot
  * - `rejected`: published with 1 commit of its own, and origin has moved on: Push is rejected with git's line;
  * - `signing`: published with 1 commit to push, and the signing agent cannot be reached, with its hint;
  * - `offline`: published with 1 commit to push, and every action fails as git does with no network;
+ * - `renamed`: the branch tracks `origin/main`, as one made with `git switch -c feat origin/main` does, with 2 commits of its own and origin's 1 more: it is not published under its own
+ *   name, so Pull is refused and Push publishes it as `origin/<branch>`;
  * - `no_origin`: the repository has no remote called `origin`, so there is nothing to sync with;
  * - `detached`: HEAD is on no branch;
  * - `unborn`: the branch has no commit yet.
  */
-export type FixtureRemoteScript = 'slow' | 'behind' | 'ahead' | 'level' | 'never' | 'diverged' | 'rejected' | 'signing' | 'offline' | 'no_origin' | 'detached' | 'unborn';
+export type FixtureRemoteScript = 'slow' | 'behind' | 'ahead' | 'level' | 'never' | 'diverged' | 'rejected' | 'signing' | 'offline' | 'renamed' | 'no_origin' | 'detached' | 'unborn';
 
 /** The words the page's `&remote=` switch knows. */
-export const FIXTURE_REMOTE_SCRIPTS: readonly FixtureRemoteScript[] = ['slow', 'behind', 'ahead', 'level', 'never', 'diverged', 'rejected', 'signing', 'offline', 'no_origin', 'detached', 'unborn'];
+export const FIXTURE_REMOTE_SCRIPTS: readonly FixtureRemoteScript[] = ['slow', 'behind', 'ahead', 'level', 'never', 'diverged', 'rejected', 'signing', 'offline', 'renamed', 'no_origin', 'detached', 'unborn'];
 
 /** How long before the page was opened the fixture's repository last fetched, when its script does not say it never did. */
 const FETCHED_AGO_MS = 3 * 60_000;
@@ -48,6 +50,8 @@ interface RemoteState {
     published: boolean;
     ahead: number;
     behind: number;
+    /** The branch of origin the branch tracks when it is not the one of its own name (`main`): until it is published under its own name. */
+    tracks?: string;
 }
 
 /**
@@ -90,7 +94,7 @@ export class FixtureGitRemote {
 
         const state = this.#stateOf(place);
 
-        return state.published ? { name: `origin/${ place.branch }`, ahead: state.ahead, behind: state.behind } : undefined;
+        return state.published ? { name: `origin/${ state.tracks ?? place.branch }`, ahead: state.ahead, behind: state.behind } : undefined;
     }
 
     /** A commit was made in the place: a published branch is one ahead further. */
@@ -125,6 +129,8 @@ export class FixtureGitRemote {
         if (action === 'pull') {
             if (!state.published) throw new TransportError(`${ branch } has no upstream to pull from, publish it first`, 400);
 
+            if (state.tracks !== undefined) throw new TransportError(`${ branch } tracks origin/${ state.tracks }, not a branch of its own, publish it first`, 400);
+
             // A pull fetches first, whatever it finds.
             this.#fetchedAt = this.#now();
 
@@ -137,9 +143,12 @@ export class FixtureGitRemote {
             return { state: 'done', action, pulled, ...this.#upstream(place) };
         }
 
-        if (!state.published) {
+        // A branch is sent only to the branch of its own name: one that tracks another is published under its own, which is its upstream from then on.
+        if (!state.published || state.tracks !== undefined) {
             state.published = true;
+            state.tracks = undefined;
             state.ahead = 0;
+            state.behind = 0;
 
             return { state: 'done', action, published: true, ...this.#upstream(place) };
         }
@@ -171,8 +180,9 @@ export class FixtureGitRemote {
 
             state = {
                 published: !place.worktree || scripted,
-                ahead: script === 'ahead' ? 2 : script === 'diverged' || script === 'rejected' || script === 'signing' || script === 'offline' ? 1 : 0,
-                behind: script === 'behind' || script === 'diverged' ? 2 : 0,
+                ahead: script === 'ahead' || script === 'renamed' ? 2 : script === 'diverged' || script === 'rejected' || script === 'signing' || script === 'offline' ? 1 : 0,
+                behind: script === 'behind' || script === 'diverged' ? 2 : script === 'renamed' ? 1 : 0,
+                ...(script === 'renamed' && { tracks: 'main' }),
             };
             this.#states.set(place.key, state);
         }

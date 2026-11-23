@@ -205,6 +205,36 @@ describe('the sync button in the sidebar', () => {
         }
     });
 
+    it('is Publish branch, with what it tracks, for a branch made from another one, and a press publishes it under its own name: it is level with that upstream afterwards, and nothing was pulled or sent to main', async () => {
+        await start({ gitWrites: { remote: 'renamed' } });
+
+        expect(syncButton().getAttribute('data-sync')).toBe('publish');
+        expect(syncButton().textContent).toBe('Publish branchTracks origin/main');
+        expect(syncButton().disabled).toBe(false);
+
+        const push = vi.spyOn(transport, 'pushGit');
+        const pull = vi.spyOn(transport, 'pullGit');
+
+        await press(syncButton());
+        await settle();
+        await settle();
+
+        expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' });
+        expect(pull).not.toHaveBeenCalled();
+        expect(status()?.textContent).toBe('Published to origin');
+        expect(syncButton().getAttribute('data-sync')).toBe('fetch');
+        expect(await transport.getGitStatus(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' })).toMatchObject({ upstream: { name: 'origin/clowdy/ab12cd34', ahead: 0, behind: 0 } });
+    });
+
+    it('lists Pull origin off with what the branch tracks, and Publish branch as the one that works, for a branch made from another one', async () => {
+        await start({ gitWrites: { remote: 'renamed' } });
+        await openMenu();
+
+        expect(items().map(candidate => candidate.textContent)).toEqual(['Fetch origin', 'Pull originTracks origin/main', 'Publish branch']);
+        expect(isOff('Pull origin')).toBe(true);
+        expect(isOff('Publish branch')).toBe(false);
+    });
+
     it('is Pull origin with the count for a branch that is behind, and a press pulls and reads the place again, so the counts and the pull request are the ones it left', async () => {
         await start({ gitWrites: { remote: 'behind' } });
 
@@ -440,22 +470,39 @@ describe('Create PR in the sidebar', () => {
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
-    it('opens the page of the branch GitHub has: the one the worktree\'s branch tracks on origin, when it is not named as the branch is', async () => {
+    it('does not open the page of a branch that tracks a branch of another name, which GitHub does not have under its own: it says Publish first, and the page comes once it is published', async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'behind' } });
 
         const read = transport.getGitStatus.bind(transport);
-
-        vi.spyOn(transport, 'getGitStatus').mockImplementation(async (...args) => {
+        // What `git switch -c feat origin/main` leaves: the branch tracks `origin/main`.
+        const renamed = vi.spyOn(transport, 'getGitStatus').mockImplementation(async (...args) => {
             const value = await read(...args);
 
-            return value.isRepository && value.upstream ? { ...value, upstream: { ...value.upstream, name: 'origin/shared/feature' } } : value;
+            return value.isRepository && value.upstream ? { ...value, upstream: { ...value.upstream, name: 'origin/main' } } : value;
         });
+
+        gitFactsOf(transport).refresh(WORKTREE);
+        await settle();
+        await settle();
+        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(syncButton().textContent).toBe('Publish branchTracks origin/main');
+
+        const push = vi.spyOn(transport, 'pushGit');
+
+        await press(buttonOf('Publish first')!);
+        await settle();
+        await settle();
+        expect(push).toHaveBeenCalledTimes(1);
+        expect(opened).toEqual([]);
+
+        // Published under its own name, the branch has its own upstream, and GitHub has it.
+        renamed.mockRestore();
         gitFactsOf(transport).refresh(WORKTREE);
         await settle();
         await settle();
         await press(buttonOf('Create PR')!);
 
-        expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...shared/feature?expand=1']);
+        expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
     it('is off, with the reason, for a branch that diverged', async () => {

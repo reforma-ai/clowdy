@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { commitAndPushBlock, commitBlock, commitLabel, commitTarget, createPullRequest, githubBaseName, isDiverged, isFetchFirst, lastFetchedWords, middleCut, nextStep, pushOrPublish, remoteActions, remoteBranchOf, remoteCall, remoteNotice, RUNNING_WORDS, syncButton } from './changesActions';
+import { branchOf, commitAndPushBlock, commitBlock, commitLabel, commitTarget, createPullRequest, githubBaseName, isDiverged, isFetchFirst, lastFetchedWords, middleCut, nextStep, pushOrPublish, remoteActions, remoteCall, remoteNotice, RUNNING_WORDS, syncButton } from './changesActions';
 
 import type { GitBase, GitStatus, GitUpstream } from '@clowdy/protocol';
 
@@ -377,20 +377,45 @@ describe('githubBaseName', () => {
     });
 });
 
-describe('remoteBranchOf', () => {
-    const of = (value: GitStatus) => remoteBranchOf(value as RepositoryStatus);
+describe('a branch that tracks a branch of another name', () => {
+    // `git switch -c feat origin/main` tracks `origin/main`: a push to the upstream would update `main` itself, which git's own `push.default=simple` refuses.
+    const renamed = (fields: Partial<RepositoryStatus> = {}, upstream: Partial<GitUpstream> = {}) => status(fields, { name: 'origin/main', ahead: 2, behind: 1, ...upstream });
 
-    it('is the name the branch tracks on origin, which a branch made from another one has otherwise than its own, and its own name when it tracks nothing', () => {
-        expect(of(status())).toBe('feature');
-        expect(of(status({}, { name: 'origin/shared/feature' }))).toBe('shared/feature');
-        expect(of(status({}, null))).toBe('feature');
-        // An upstream that is gone is where a push sends the branch again.
-        expect(of(status({}, { name: 'origin/other', gone: true }))).toBe('other');
+    it('is not published: Publish branch with what it tracks as its line, and Pull, Push and Diverged left out, whatever the counts against that other branch are', () => {
+        expect(syncButton(renamed(), undefined, 0)).toMatchObject({ kind: 'publish', label: 'Publish branch', action: 'publish', line: 'Tracks origin/main' });
+        expect(syncButton(renamed(), undefined, 0)?.title).toContain('publish it as origin/feature');
+        expect(syncButton(renamed({}, { ahead: 0, behind: 3 }), undefined, 0)).toMatchObject({ kind: 'publish', action: 'publish' });
+        expect(syncButton(renamed({}, { gone: true }), undefined, 0)).toMatchObject({ kind: 'publish', line: 'Tracks origin/main' });
+        expect(reasons(renamed())).toEqual([['fetch', null, null], ['pull', 'Tracks origin/main', null], ['publish', null, null]]);
     });
 
-    it('is the branch\'s own name for an upstream that is not on origin, and nothing for a HEAD on no branch', () => {
-        expect(of(status({}, { name: 'upstream/feature' }))).toBe('feature');
-        expect(of(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toBeUndefined();
+    it('is published by Commit & Push and by Create PR\'s first step, and the compare page is not offered for a branch GitHub does not have', () => {
+        expect(commitAndPushBlock(renamed())).toBeUndefined();
+        expect(pushOrPublish(renamed())).toBe('publish');
+        expect(createPullRequest({ status: renamed(), hasPullRequest: false, onGitHub: true })).toEqual({ kind: 'publish', label: 'Publish first' });
+        expect(createPullRequest({ status: renamed({}, { ahead: 0, behind: 0 }), hasPullRequest: false, onGitHub: true })).toEqual({ kind: 'publish', label: 'Publish first' });
+    });
+
+    it('suggests publishing it in the empty box, and never the pull, the push or the pull request that its counts against the other branch would say', () => {
+        const ready = { kind: 'ready', label: 'Create PR' } as const;
+
+        expect(nextStep(renamed(), ready)).toEqual({ kind: 'publish', title: 'Publish your branch', description: 'feature tracks origin/main, not a branch of its own' });
+        expect(nextStep(renamed({}, { ahead: 0, behind: 0 }), ready)?.kind).toBe('publish');
+    });
+
+    it('is published once its upstream is the branch of its own name, whatever the branch is called', () => {
+        expect(syncButton(status({ head: { kind: 'branch', name: 'feature/new-menu', commit: 'a'.repeat(40) } }, { name: 'origin/feature/new-menu', ahead: 1 }), undefined, 0)).toMatchObject({ kind: 'push' });
+        // A name that only begins like the branch's is another branch.
+        expect(syncButton(status({}, { name: 'origin/feature-2', ahead: 1 }), undefined, 0)).toMatchObject({ kind: 'publish', line: 'Tracks origin/feature-2' });
+        expect(syncButton(status({}, { name: 'origin/feature/x', ahead: 1 }), undefined, 0)).toMatchObject({ kind: 'publish' });
+    });
+});
+
+describe('branchOf', () => {
+    it('is the name of the branch, which an unborn one has too, and nothing for a HEAD on no branch', () => {
+        expect(branchOf(status() as RepositoryStatus)).toBe('feature');
+        expect(branchOf(status({ head: { kind: 'unborn', name: 'main' } }, null) as RepositoryStatus)).toBe('main');
+        expect(branchOf(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null) as RepositoryStatus)).toBeUndefined();
     });
 });
 
