@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { EditorView } from '@codemirror/view';
 import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -7,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureData, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, FIXTURE_WORKTREE_PATH, withFixtureWorkspace } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { registerComposer } from '../chats/composerBridge';
 import { openManageWorktrees } from '../worktrees';
 import FilesTab from './FilesTab';
 import { filesStoreOf } from './useFilesStore';
@@ -208,5 +210,71 @@ describe('a chat whose worktree is not made yet', () => {
 
         expect(container.textContent).not.toContain('The worktree is not made yet');
         expect(rows().some(text => text?.includes('weekend-pricing'))).toBe(true);
+    });
+});
+
+describe('Add to chat over the open file', () => {
+    const editor = () => EditorView.findFromDOM(container.querySelector<HTMLElement>('.cm-editor')!)!;
+    const button = () => container.querySelector<HTMLButtonElement>('.cm-tooltip button');
+    const select = (from: number, to: number) => act(async () => editor().dispatch({ selection: { anchor: from, head: to } }));
+
+    async function openPrice() {
+        await draw('files');
+
+        const manager = await filesStoreOf(store).startedManagerOf(FIXTURE_PROJECT_ID, { folder: store.selectedProject!.project.folders[0]! }, 'files');
+
+        await manager.open('src/booking/price.ts');
+        await settle();
+        await settle();
+    }
+
+    it('offers nothing while no message box is mounted', async () => {
+        await openPrice();
+        await select(0, 5);
+        await settle();
+
+        expect(container.querySelector('.cm-editor')).not.toBeNull();
+        expect(button()).toBeNull();
+    });
+
+    it('shows the button over selected words once a message box is mounted, and quotes the file\'s path and lines into it', async () => {
+        const quoted: string[] = [];
+        const unregister = registerComposer(text => quoted.push(text));
+
+        await openPrice();
+
+        const text = editor().state.doc.toString();
+        const lines = text.split('\n');
+
+        // The first two lines, whole.
+        await select(0, lines[0]!.length + 1 + lines[1]!.length);
+
+        expect(button()?.textContent).toContain('Add to chat');
+
+        await act(async () => button()!.click());
+
+        expect(quoted).toEqual([`\`src/booking/price.ts:1-2\`\n\`\`\`ts\n${ lines[0] }\n${ lines[1] }\n\`\`\``]);
+        expect(editor().state.selection.main.empty).toBe(true);
+
+        unregister();
+    });
+
+    it('takes the button away when the message box goes, and brings it back with the next one', async () => {
+        const unregister = registerComposer(() => undefined);
+
+        await openPrice();
+        await select(0, 5);
+        expect(button()).not.toBeNull();
+
+        act(() => unregister());
+        await settle();
+        expect(button()).toBeNull();
+
+        const again = registerComposer(() => undefined);
+
+        await settle();
+        expect(button()).not.toBeNull();
+
+        again();
     });
 });
