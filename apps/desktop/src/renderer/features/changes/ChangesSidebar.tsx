@@ -33,7 +33,7 @@ export function headName(status: GitStatus | undefined): string | undefined {
 function SectionHeader({ title, count }: { title: string; count?: number }) {
     return (
         <div className={ styles.sectionHeader }>
-            <Text variant="xs" weight="medium" color="secondary">{ title }</Text>
+            <Text variant="xs" weight="medium" color="secondary" truncate>{ title }</Text>
             { count !== undefined && <Text variant="xs" color="secondary">{ count }</Text> }
         </div>
     );

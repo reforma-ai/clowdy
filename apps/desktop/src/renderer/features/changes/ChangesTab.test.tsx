@@ -319,6 +319,19 @@ describe('the Changes tab of a chat in a worktree', () => {
         expect(counts[1]?.className).toMatch(/danger/);
     });
 
+    it('sets a path right to left so it is cut at its start, in a run of its own that reads left to right, so dots and brackets stay and a name in an RTL script is not turned round', async () => {
+        await start();
+        await draw();
+
+        const label = card('src/booking/price.ts').querySelector('[dir="rtl"]')!;
+
+        expect(label.textContent).toBe('src/booking/price.ts');
+        expect(label.getAttribute('title')).toBe('src/booking/price.ts');
+        // An isolate, not an override: `bdo` would draw the letters of a Hebrew name backwards.
+        expect([...label.children].map(child => `${ child.tagName.toLowerCase() }:${ child.getAttribute('dir') }`)).toEqual(['bdi:ltr']);
+        expect(label.querySelector('bdo')).toBeNull();
+    });
+
     it('copies the path of a file from its card', async () => {
         const write = vi.fn().mockResolvedValue(undefined);
 

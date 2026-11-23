@@ -73,8 +73,9 @@
 }
 
 /*
- * The path is cut at its start, which is why it is set right to left: the ellipsis goes where the text is cut, and the name at the end stays. `bdo` puts the characters back in
- * their order, so the slashes do not wander to the other end.
+ * The path is cut at its start, which is why it is set right to left: the ellipsis goes where the text is cut, and the name at the end stays. The `bdi` inside is its own left to
+ * right run, so a path that starts or ends with a dot, a bracket or a slash keeps them where they are, and a name in a right to left script still reads right (a `bdo`, which
+ * forces every character left to right, would turn it round).
  */
 .path {
     display: block;

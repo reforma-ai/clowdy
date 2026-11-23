@@ -33,10 +33,10 @@ function PathLabel({ path }: { path: string }) {
 
     return (
         <span className={ styles.path } dir="rtl" title={ path }>
-            <bdo dir="ltr">
+            <bdi dir="ltr">
                 { folder && <Text color="secondary">{ folder }</Text> }
                 <Text weight="medium">{ name }</Text>
-            </bdo>
+            </bdi>
         </span>
     );
 }
