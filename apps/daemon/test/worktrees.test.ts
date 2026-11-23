@@ -470,6 +470,35 @@ describe('GET /v1/projects/:id/worktrees', () => {
         expect(group.worktrees[1]).toMatchObject({ path: real(primary), branch: 'main', main: false, blocked: 'main' });
     });
 
+    test('lists every worktree of a repository with many, in the order git lists them, though they are read a few at a time', async () => {
+        const { rows, found, repo } = await setup();
+        const names = Array.from({ length: 9 }, (_, index) => `many-${ index }`);
+
+        for (const name of names) found(name);
+
+        const listed = git(repo, 'worktree', 'list', '--porcelain').split('\n').filter(line => line.startsWith('worktree ')).map(line => real(line.slice('worktree '.length)));
+
+        expect(listed).toHaveLength(10);
+        expect((await rows()).map(row => row.path)).toEqual(listed);
+        expect((await rows()).slice(1).map(row => row.branch).sort()).toEqual([...names].sort());
+    });
+
+    test('is unavailable, not an empty answer, when git cannot be run', async () => {
+        const { h, project } = await setup();
+        const path = process.env.PATH;
+
+        process.env.PATH = tempDir('worktrees-no-git');
+
+        try {
+            const response = await h.fetch(`/v1/projects/${ project.id }/worktrees`);
+
+            expect(response.status).toBe(503);
+        }
+        finally {
+            process.env.PATH = path;
+        }
+    });
+
     test('answers not_found for a project that does not exist', async () => {
         const { h } = await setup();
         const response = await h.fetch('/v1/projects/prj_none/worktrees');
