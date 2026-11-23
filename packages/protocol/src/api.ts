@@ -53,6 +53,12 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            changes). A folder that is not the root of a repository answers `isRepository: false` and nothing else; `folderId` of no
  *                                            folder of the project is `not_found`, none is `invalid`, and a folder gone from the disk, or a git that does not answer
  *                                            in time, is `unavailable`)
+ * GET  /v1/projects/:id/git/status?folderId=&workspaceId= -> GitStatus (what git says of a place, a folder's checkout or a worktree of it: the branch, its upstream, the
+ *                                            uncommitted paths and how far the branch is from its base)
+ * GET  /v1/projects/:id/git/changes?folderId=&workspaceId=&scope= -> GitChanges (the files that changed in a scope, `all`, `branch`, `uncommitted` or `commit:<sha>`, with
+ *                                            their line counts and revisions)
+ * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath= -> GitFileSides (the text of one changed file before and after). The three are described
+ *                                            in `git.ts`
  * GET  /v1/projects/:id/files?query=&limit=&workspaceId= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
  *                                            the folder's name counting as part of the path when there are several; best match first,
  *                                            at most `limit` (default 40, most 100); git's tracked and unignored files, or a walk outside
@@ -96,6 +102,9 @@ export const ROUTES = {
     projectArchivedTasks: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/archived-tasks`,
     docsTree: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/docs`,
     projectGit: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git`,
+    projectGitStatus: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/status`,
+    projectGitChanges: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/changes`,
+    projectGitFile: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/git/file`,
     projectFiles: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/files`,
     projectAttachments: (projectId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments`,
     projectAttachment: (projectId: string, attachmentId: string) => `/v1/projects/${ encodeURIComponent(projectId) }/attachments/${ encodeURIComponent(attachmentId) }`,

@@ -5,6 +5,7 @@ export * from './docSources';
 export * from './domain';
 export * from './events';
 export * from './fs';
+export * from './git';
 export * from './paths';
 export * from './skills';
 export * from './terminals';

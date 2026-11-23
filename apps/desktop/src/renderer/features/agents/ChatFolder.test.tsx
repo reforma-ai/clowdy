@@ -83,14 +83,30 @@ afterEach(() => {
 });
 
 describe('the folder of a chat', () => {
-    it('tells where the chat works and the branch that is checked out after its name, and no branch for a folder git does not know', async () => {
+    it('tells the branch that is checked out after its name, as one label with no word for the mode, and nothing for a folder git does not know', async () => {
         await draw({});
 
-        expect(container.textContent).toBe('webProject checkoutmain');
+        expect(container.textContent).toBe('webmain');
+
+        const label = container.querySelector<HTMLElement>('[aria-label="Where it runs: Project checkout, branch main"]');
+
+        // The git mark and the branch, in one label that says on hover and to a screen reader where it runs.
+        expect(label?.textContent).toBe('main');
+        expect(label?.title).toBe('Project checkout');
+        expect(label?.querySelector('svg')).not.toBeNull();
 
         await draw({ project: FIXTURE_PERSONAL_PROJECT_ID, folder: { id: 'fld_personal', path: '/Users/dev/Clowdy/Personal' } });
 
-        expect(container.textContent).toBe('webProject checkout');
+        expect(container.textContent).toBe('web');
+        expect(container.querySelector('[aria-label^="Where it runs"]')).toBeNull();
+    });
+
+    it('says the short hash of a detached HEAD in place of a branch, and so on hover', async () => {
+        vi.spyOn(store.transport, 'getProjectsInfo').mockImplementation(async () => [{ projectId: FIXTURE_PROJECT_ID, folders: [{ folderId: FOLDER.id, exists: true, remoteUrl: undefined, branch: '5c4d3e2', detached: true, chats: 0 }], chats: 0, tasks: 0, activeRuns: 0 }]);
+        await draw({});
+
+        expect(container.textContent).toBe('web5c4d3e2');
+        expect(container.querySelector<HTMLElement>('[aria-label="Where it runs: Project checkout, detached at 5c4d3e2"]')?.title).toBe('Detached HEAD');
     });
 
     it('is read only outside the desktop app: its name, the path on hover, and nothing to press', async () => {
@@ -254,7 +270,7 @@ describe('the folder of a chat', () => {
         await draw({ bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } });
 
         expect(pill()?.textContent).toBe('web');
-        expect(container.textContent).toBe('webProject checkoutmain');
+        expect(container.textContent).toBe('webmain');
     });
 
     it('opens the folder in the built-in file manager', async () => {
@@ -335,7 +351,12 @@ describe('the folder of a chat that works in a worktree', () => {
         await draw({ workspace });
 
         expect(container.textContent).toBe('webWorktreeclowdy/ab12cd34');
-        expect(container.querySelector<HTMLElement>('[aria-label="Where it runs: Worktree"]')?.title).toBe('~/Clowdy/workspaces/car-rental/ab12cd34/car-rental');
+
+        const label = container.querySelector<HTMLElement>('[aria-label="Where it runs: Worktree, branch clowdy/ab12cd34"]');
+
+        // One label: the word `Worktree` and the branch are two pieces of text of it, so they can be told apart by tone.
+        expect([...label!.querySelectorAll('span')].map(part => part.textContent)).toEqual(['Worktree', 'clowdy/ab12cd34']);
+        expect(label?.title).toBe('~/Clowdy/workspaces/car-rental/ab12cd34/car-rental');
         expect(container.querySelector('[data-missing]')).toBeNull();
     });
 
@@ -351,7 +372,8 @@ describe('the folder of a chat that works in a worktree', () => {
         await settle();
 
         expect(container.textContent).toBe('webWorktree5c4d3e2');
-        expect(container.querySelector('[title="Detached HEAD"]')).not.toBeNull();
+        // The hash stands in a branch's place, and the label says it is a commit: on hover with the worktree's path, and to a screen reader.
+        expect(container.querySelector<HTMLElement>('[aria-label="Where it runs: Worktree, detached at 5c4d3e2"]')?.title).toMatch(/\nDetached HEAD$/);
     });
 
     it('names no branch until the read has answered, and none that the read does not know once the worktree is made', async () => {

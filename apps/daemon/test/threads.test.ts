@@ -1473,6 +1473,37 @@ describe('thread_spawn with a worktree', () => {
         expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(1);
     });
 
+    test('knows a worktree is the thread\'s own by its branch ending with the thread\'s id, whatever prefix the app chose, and the parent\'s shared one is not', async () => {
+        const { h, project, store, chatOf, turnOf, root, spawn, on } = await setup();
+        const parent = await root('Plan the release', latch(), { workspace: { mode: 'new', branchPrefix: 'max' } });
+        const mine = parent.chat.workspace!;
+        const alone = 'It had a git worktree made for you alone';
+
+        expect(mine.branch).toBe(`max/${ id8(parent.chat.id) }`);
+
+        // A thread that shares the parent's worktree is on a branch with the parent's id: not its own.
+        const sharing = await spawn(parent.run, 'Read the importer');
+
+        expect(chatOf(sharing.threadId).workspace).toEqual(mine);
+        expect(turnOf('Read the importer')?.systemPrompt).not.toContain(alone);
+
+        // One that asks for a worktree of its own gets the daemon's own prefix (a thread has no say in the app's setting), and is told it is its own.
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true });
+
+        expect(own.worktree?.branch).toBe(`clowdy/${ id8(own.threadId) }`);
+        expect(turnOf('Rework the importer')?.systemPrompt).toContain(`${ alone }, on a branch started from ${ mine.branch }`);
+
+        // A thread whose worktree was made with another prefix is recognised the same way: the branch ends with its id.
+        const chat = createChat(store, { projectId: project.id, title: 'Rework the parser', parentChatId: parent.chat.id, folderId: mine.folderId, workspace: { mode: 'new', branchPrefix: 'max/threads' } }, h.config);
+
+        expect(chat.workspace?.branch).toBe(`max/threads/${ id8(chat.id) }`);
+        on('Rework the parser', held(latch()));
+        h.ok('chat.send', { chatId: chat.id, text: 'Rework the parser' });
+        await waitFor(() => turnOf('Rework the parser'), 'the turn of the thread on its worktree');
+        expect(turnOf('Rework the parser')?.systemPrompt).toContain(`${ alone }, on a branch started from main`);
+        expect(getWorkspace(store.db, chat.workspace!.id)).toMatchObject({ branch: chat.workspace!.branch!, managed: true });
+    });
+
     test('starts from the branch the parent works on, with its commits and none of its uncommitted files, and the branch comes back with a merge by the parent', async () => {
         const { h, store, chatOf, turnOf, root, spawn } = await setup();
         const parent = await root('Plan the release', latch(), { workspace: { mode: 'new' } });

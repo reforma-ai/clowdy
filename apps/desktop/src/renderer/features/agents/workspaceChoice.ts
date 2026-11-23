@@ -4,9 +4,6 @@ import type { FolderRepository } from './useFolderRepository';
 /** What the daemon says of a folder that is a repository (the part of `FolderGit` with branches and worktrees). */
 export type Repository = Extract<FolderGit, { isRepository: true }>;
 
-/** Where a new chat works: the folder's own checkout, a worktree it makes, or one the folder has. */
-export type WorkspaceMode = 'checkout' | 'new' | 'existing';
-
 /** The folder's repository, once the daemon has said the folder is one. */
 export function repositoryOf(repository: FolderRepository): Repository | undefined {
     return repository.status === 'ready' && repository.git.isRepository ? repository.git : undefined;
@@ -55,10 +52,6 @@ export function effectiveChoice(choice: ChatWorkspaceChoice | null, repository: 
     if (base === undefined && git.defaultBranch === undefined) return undefined;
 
     return base === undefined ? { mode: 'new' } : { mode: 'new', base };
-}
-
-export function modeOf(choice: ChatWorkspaceChoice | undefined): WorkspaceMode {
-    return choice ? choice.mode : 'checkout';
 }
 
 /** The chats that work in the worktree at `path`, as the list shows chats: the ones the person made and has not put away (their threads share the worktree and are not named). */

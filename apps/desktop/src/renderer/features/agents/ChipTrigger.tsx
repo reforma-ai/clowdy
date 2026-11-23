@@ -9,7 +9,11 @@ import styles from './ChipTrigger.module.css';
 export interface ChipTriggerProps {
     /** The mark at the start of the pill: the folder's, the branch's. Nothing for a pill that is all words. */
     icon?: ReactNode;
+    /** Words before the label in the dim tone (`Worktree` before a branch), which stay whole while the label gives way. */
+    lead?: string;
     label: string;
+    /** Words after the label in the dim tone (`from main` after `New worktree`), which keep their place while a long label is cut. */
+    trail?: string;
     /** What a screen reader says of the pill: its kind and the label (`Folder: web`). */
     'aria-label': string;
     tooltip?: string;
@@ -23,10 +27,10 @@ export interface ChipTriggerProps {
 }
 
 /**
- * A pill of the line under the message box that opens a menu or a list: its words and a chevron, with the plate staying and the chevron turned over while what it opens is
- * there. The folder, the mode and the branch of a new chat are this pill. It goes inside a `MenuTrigger` or a `PopoverTrigger`, or opens a list of its own by `onPress`.
+ * A pill of the line under the message box that opens a menu or a list: its words (`label`, with a dim `lead` before and a dim `trail` after it when it has them) and a chevron, with the plate staying and the chevron turned over while what it opens is
+ * there. The folder of a chat and the place it works in (the branch, a new worktree, an existing one) are this pill. It goes inside a `MenuTrigger` or a `PopoverTrigger`, or opens a list of its own by `onPress`.
  */
-export function ChipTrigger({ icon, label, 'aria-label': ariaLabel, tooltip, missing = false, isOpen, ref, onPress }: ChipTriggerProps) {
+export function ChipTrigger({ icon, lead, label, trail, 'aria-label': ariaLabel, tooltip, missing = false, isOpen, ref, onPress }: ChipTriggerProps) {
     const trigger = use(OverlayTriggerStateContext);
     const opened = isOpen ?? trigger?.isOpen;
 
@@ -46,7 +50,9 @@ export function ChipTrigger({ icon, label, 'aria-label': ariaLabel, tooltip, mis
             onPress={ onPress }
         >
             { icon }
-            <Text truncate>{ label }</Text>
+            { lead && <Text color="secondary" className={ styles.lead }>{ lead }</Text> }
+            <Text truncate className={ trail ? styles.whole : undefined }>{ label }</Text>
+            { trail && <Text color="secondary" truncate className={ styles.trail }>{ trail }</Text> }
             <ChevronDown aria-hidden="true" className={ styles.chevron } />
         </Button>
     );

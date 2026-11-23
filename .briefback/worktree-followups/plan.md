@@ -115,11 +115,11 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **This stage:** the branch of a new worktree is `clowdy/<chat-id8>`, hard-coded in `workspaceLayout`. The prefix becomes an app-wide setting kept in the renderer like the other app-wide preferences and sent with `chat.create`. The daemon validates it as a ref name. One place reads the old name back: a thread owns its worktree when the branch is exactly `clowdy/<chat-id8>`; that test must follow the new naming.
 
-- [ ] Complete
-  - [ ] `chat.create`'s new workspace takes `branchPrefix?`; `workspaceLayout` builds `<prefix>/<chat-id8>`; an empty or absent prefix means `clowdy`; a prefix git would not accept as part of a branch name (spaces, `..`, `~^:?*[\`, a leading or trailing `/` or `.`, `.lock`) is `invalid`
-  - [ ] The check in `driver.ts` that decides whether a thread's workspace is its own worktree no longer assumes `clowdy/`: the workspace is Clowdy's own when it is `managed` and its branch ends with `/<chat-id8>`
-  - [ ] `BranchPrefixPreference` (key `clowdy:branch-prefix`, default `clowdy`), a field in Settings beside the new-chat defaults with the validation message, and the value sent when a new chat is created in a new worktree
-  - [ ] Tests: a chat made with `max` gets `max/<id8>`, an invalid prefix is refused, a thread of such a chat is still recognised as sharing or owning its worktree
+- [x] Complete
+  - [x] `chat.create`'s new workspace takes `branchPrefix?`; `workspaceLayout` builds `<prefix>/<chat-id8>`; an empty or absent prefix means `clowdy`; a prefix git would not accept as part of a branch name (spaces, `..`, `~^:?*[\`, a leading or trailing `/` or `.`, `.lock`) is `invalid`
+  - [x] The check in `driver.ts` that decides whether a thread's workspace is its own worktree no longer assumes `clowdy/`: the workspace is Clowdy's own when it is `managed` and its branch ends with `/<chat-id8>`
+  - [x] `BranchPrefixPreference` (key `clowdy:branch-prefix`, default `clowdy`), a field in Settings beside the new-chat defaults with the validation message, and the value sent when a new chat is created in a new worktree
+  - [x] Tests: a chat made with `max` gets `max/<id8>`, an invalid prefix is refused, a thread of such a chat is still recognised as sharing or owning its worktree
 
 **Files**
 
@@ -135,7 +135,8 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **Done when:** with the setting `max`, a chat started in a new worktree is on `max/<id8>`; with it unset it is on `clowdy/<id8>`; a prefix with a space is refused with a message in Settings.
 **Verify:** `cd apps/daemon && bun test test/chat-workspaces.test.ts test/threads.test.ts test/worktree-flow.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `cd apps/desktop && bunx vitest run src/renderer/features/chats src/renderer/features/settings && bun run typecheck`
-**Commits:** None yet.
+**Scope changes:** the prefix rules live in `packages/protocol/src/domain.ts` (`DEFAULT_BRANCH_PREFIX`, `branchPrefixOf`, `branchPrefixProblem`) so Settings and the daemon share one check; `chat.create` also refuses a prefix that an existing branch of the repository blocks (a branch `max` blocks `max/<id8>`); the app sends `branchPrefix` only when it is not `clowdy` (the schema is strict, an older daemon would answer 400); `ownsWorktree(chat, workspace)` in `driver.ts` is true when the workspace is `managed` and its branch ends with `/<id8>`; `commands/chat.ts` and `domain/chats.ts` needed no change. Review (`cf06d4f`) also refuses invisible characters and `" < > |` in a prefix. **Left:** a prefix part that is a Windows device name (`con`, `aux`, `nul`) is a valid ref that Windows cannot make as a folder (fix: move `RESERVED_NAMES` from `domain/workspaces.ts` to `@clowdy/protocol` and check each part); the Settings field shows "cannot end with /" for one keystroke while typing `team/`.
+**Commits:** `39e0abb` feat(protocol): add the branch prefix of a new worktree; `2fa6b98` feat(daemon): name a new worktree's branch after the prefix of the app; `bce1073` feat(desktop): set the branch prefix of new worktrees in Settings; `cf06d4f` fix(protocol): refuse invisible characters and Windows file name characters in a branch prefix; merged into `next` as `f178ccd`.
 
 ## Stage 4 — The Manage worktrees dialog
 

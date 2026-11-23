@@ -86,6 +86,24 @@ describe('task.archive and task.unarchive', () => {
     });
 });
 
+describe('chat.create with a new worktree', () => {
+    const create = (workspace: unknown) => ({ ...base, type: 'chat.create', projectId: 'p1', workspace });
+
+    test('takes the prefix of the branch beside the base', () => {
+        expect(commandSchema.parse(create({ mode: 'new', base: 'dev', branchPrefix: 'max' }))).toMatchObject({ workspace: { mode: 'new', base: 'dev', branchPrefix: 'max' } });
+        expect(commandSchema.safeParse(create({ mode: 'new' })).success).toBe(true);
+    });
+
+    test('leaves the rules of the prefix to the domain, so a refusal can name the rule, and only keeps the text short', () => {
+        expect(commandSchema.safeParse(create({ mode: 'new', branchPrefix: 'has a space' })).success).toBe(true);
+        expect(commandSchema.safeParse(create({ mode: 'new', branchPrefix: 'x'.repeat(501) })).success).toBe(false);
+    });
+
+    test('a worktree that exists has no prefix: it was made already', () => {
+        expect(commandSchema.safeParse(create({ mode: 'existing', path: '/work/tree', branchPrefix: 'max' })).success).toBe(false);
+    });
+});
+
 describe('workspace.open', () => {
     const open = (fields: Record<string, unknown>) => ({ ...base, type: 'workspace.open', projectId: 'p1', ...fields });
 
