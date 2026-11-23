@@ -12,10 +12,14 @@ import { CHAT_TITLE_SETTING } from './engine/acp/catalog';
 import { AgentRegistry } from './engine/acp/registry';
 import { FilesService } from './files/service';
 import { FsService } from './fs/service';
+import { GitWrites } from './git/commit';
+import { CommitMessages } from './git/message';
 import { PullRequests } from './git/pullRequest';
+import { WriteEnvironment } from './git/writeEnv';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
 import { announceAgentsChanged } from './providers/announce';
+import { TextGeneration } from './providers/generate';
 import { ModelCatalog } from './providers/models';
 import { ProvidersService } from './providers/service';
 import { RunDriver } from './runs/driver';
@@ -59,6 +63,10 @@ export interface DaemonOptions {
     terminals?: TerminalService;
     /** Replaces the reader of pull requests; tests use it to put a `gh` of their own in the place of the person's. */
     pullRequests?: PullRequests;
+    /** Replaces the environment of the git writes and its search for the signing agent; tests use it to put an `ssh` and a shell of their own in the place of the person's. */
+    gitEnvironment?: WriteEnvironment;
+    /** Replaces the runner of the agents' no-tools runs (commit messages); tests use it to give a run a limit of its own. */
+    textGeneration?: TextGeneration;
     heartbeatMs?: number;
     /** Called once the daemon has stopped because a client asked (`POST /v1/shutdown`); the entry point exits the process here. */
     onShutdown?: () => void;
@@ -100,7 +108,8 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             announce: () => announceAgentsChanged(store),
         });
         const files = new FilesService();
-        const services: Services = { config, store, runs, driver, queue, threads, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }), terminals: options.terminals ?? new TerminalService(), pullRequests: options.pullRequests ?? new PullRequests() };
+        const textGeneration = options.textGeneration ?? new TextGeneration({ target: id => agents.probeTarget(id), dataDir: config.dataDir });
+        const services: Services = { config, store, runs, driver, queue, threads, files, fs: new FsService(files, {}, { ripgrep: config.ripgrep }), attachments, skills, agents, providers, models: options.models ?? new ModelCatalog({ registry: agents }), terminals: options.terminals ?? new TerminalService(), pullRequests: options.pullRequests ?? new PullRequests(), gitWrites: new GitWrites({ store, environment: options.gitEnvironment ?? new WriteEnvironment() }), commitMessages: new CommitMessages({ store, agents, providers, generation: textGeneration }) };
 
         await runs.recover();
         attachments.sweep();
@@ -118,6 +127,8 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             await server.stop(true);
             services.terminals.stop();
             services.pullRequests.stop();
+            services.gitWrites.stop();
+            services.commitMessages.stop();
             await driver.stop();
             created?.stop();
             providers.stop();

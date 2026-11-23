@@ -1,4 +1,4 @@
-import { chatTitleSetting } from '../../engine/acp/catalog';
+import { chatTitleSetting, commitMessageSetting } from '../../engine/acp/catalog';
 import { modePermissions } from '../permissions';
 import { codexAccount } from './account';
 import { codexModels } from './models';
@@ -45,6 +45,7 @@ export const codex: Provider = {
                 effect: on => on ? {} : { codexConfig: { 'agents.enabled': false, 'features.multi_agent_v2': false } },
             },
             chatTitleSetting('Codex'),
+            commitMessageSetting('Codex'),
         ],
         scrub: [/^OPENAI_API_KEY$/, /^CODEX_API_KEY$/],
         login: 'codex login',

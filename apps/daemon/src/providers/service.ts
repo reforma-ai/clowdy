@@ -148,6 +148,19 @@ export class ProvidersService {
         await this.ensure(id);
     }
 
+    /**
+     * Whether somebody is signed in to the agent, as the last read says (`signIn.status` `signed-in`: `unknown` is not a yes). An agent that has not been read yet is read now and waited
+     * for, so a caller that arrives before anybody listed the agents is not told no. For what has to know before it spends the person's plan (a commit message the daemon asks an agent to
+     * write); a screen reads `GET /v1/agents`.
+     */
+    async signedIn(id: string): Promise<boolean> {
+        if (!this.entries.get(id)?.signIn) {
+            await this.readNow(id);
+        }
+
+        return this.entries.get(id)?.signIn?.status === 'signed-in';
+    }
+
     /** Tells the clients. A failure to tell must not reach the read or the login program that asked, and nobody is told once the daemon has stopped (its database is closed). */
     private announce(): void {
         if (this.stopper.signal.aborted) {

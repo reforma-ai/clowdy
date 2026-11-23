@@ -1,4 +1,5 @@
 import { commandSchema, mainFolder, MAX_ATTACHMENT_BYTES, parseGitScope, PROTOCOL_VERSION } from '@clowdy/protocol';
+import { z } from 'zod';
 
 import { contentDisposition, servedMediaType } from '../attachments/names';
 import { executeCommandAsync, waitsForAgent } from '../commands';
@@ -19,7 +20,7 @@ import { CommandError, invalid, notFound } from '../errors';
 import { placeChanges, placeFile } from '../git/changes';
 import { projectFolderGit } from '../git/state';
 import { placeStatus } from '../git/status';
-import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readText } from './body';
+import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readJson, readText } from './body';
 import { commandResponse, failure, json } from './responses';
 import { eventStream } from './sse';
 
@@ -57,6 +58,10 @@ const UPLOAD_BODY_SLACK = 1024 * 1024;
 /** How many paths a file search answers with when it is not told, and the most it ever does. */
 const DEFAULT_FILE_LIMIT = 40;
 const MAX_FILE_LIMIT = 100;
+
+/** The bodies of the two git writes: the place (`folderId`, and the worktree when there is one) and the ticked files; what is wrong with them is the route's to say (`selectChanged`). */
+const gitCommitBody = z.object({ folderId: z.string(), workspaceId: z.string().optional(), paths: z.array(z.string()), message: z.string() });
+const gitMessageBody = z.object({ folderId: z.string(), workspaceId: z.string().optional(), paths: z.array(z.string()) });
 
 function integerParam(raw: string | null, name: string, fallback: number): number {
     if (raw === null) {
@@ -250,6 +255,32 @@ export function createRoutes(context: RouteContext): Route[] {
         },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/worktrees$/, handle: async (_request, _url, [id]) => json(await projectWorktrees(store, requireProject(store, id))) },
         { method: 'GET', pattern: /^\/v1\/projects\/([^/]+)\/git\/pull-request$/, handle: async (_request, url, [id]) => json(await services.pullRequests.read(gitPlaceOf(id, url))) },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/commit$/,
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, gitCommitBody);
+                const place = resolvePlace(store, requireProject(store, id), body.folderId, body.workspaceId);
+
+                // A commit may wait for a fingerprint (a signing key that asks for one), longer than the connection's idle timeout.
+                context.keepOpen(request);
+
+                return json(await services.gitWrites.commit(place, body));
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/message$/,
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, gitMessageBody);
+                const place = resolvePlace(store, requireProject(store, id), body.folderId, body.workspaceId);
+
+                // The agent has 30 seconds, and the place's other requests for a message may be ahead of this one.
+                context.keepOpen(request);
+
+                return json(await services.commitMessages.generate(place, body.paths));
+            },
+        },
         {
             method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/docs$/,

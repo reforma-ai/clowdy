@@ -304,7 +304,7 @@ describe('AgentRegistry', () => {
 
             const reg = registry();
 
-            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: false, subagents: true, workflows: true, longContext: true, artifacts: false, chatTitle: true });
+            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: false, subagents: true, workflows: true, longContext: true, artifacts: false, chatTitle: true, commitMessage: false });
             expect((await byId(reg, 'claude'))?.settings?.[0]).toMatchObject({ id: 'memory', default: false, label: expect.any(String), description: expect.any(String) });
 
             const agent = await start(reg);
@@ -324,7 +324,7 @@ describe('AgentRegistry', () => {
 
             reg.update('claude', { settings: { memory: true, connectors: true, subagents: false, workflows: false, longContext: false, artifacts: true } });
 
-            expect(await settingsOf(reg)).toEqual({ memory: true, connectors: true, subagents: false, workflows: false, longContext: false, artifacts: true, chatTitle: true });
+            expect(await settingsOf(reg)).toEqual({ memory: true, connectors: true, subagents: false, workflows: false, longContext: false, artifacts: true, chatTitle: true, commitMessage: false });
 
             const agent = await start(reg);
 
@@ -336,7 +336,7 @@ describe('AgentRegistry', () => {
             // A change names only what it changes.
             reg.update('claude', { settings: { memory: false } });
 
-            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: true, subagents: false, workflows: false, longContext: false, artifacts: true, chatTitle: true });
+            expect(await settingsOf(reg)).toEqual({ memory: false, connectors: true, subagents: false, workflows: false, longContext: false, artifacts: true, chatTitle: true, commitMessage: false });
         });
 
         test('Claude Artifacts is stated off, so a variable the person\'s own shell sets does not turn it on', async () => {
@@ -347,19 +347,19 @@ describe('AgentRegistry', () => {
             expect(buildAgentEnv({ daemonEnv: { CLAUDE_CODE_ARTIFACT: '1' }, path: bin, set: env })).toMatchObject({ CLAUDE_CODE_ARTIFACT: '0' });
         });
 
-        test('Codex lists memory and sub-agents next to its chat titles, and turns each into config keys in one CODEX_CONFIG', async () => {
+        test('Codex lists memory and sub-agents next to its chat titles and commit messages, and turns the first two into config keys in one CODEX_CONFIG', async () => {
             program('codex', 'codex-cli 0.166.0');
 
             const reg = registry();
 
-            expect(await settingsOf(reg, 'codex')).toEqual({ memory: false, subagents: true, chatTitle: true });
+            expect(await settingsOf(reg, 'codex')).toEqual({ memory: false, subagents: true, chatTitle: true, commitMessage: false });
 
             // Memory is stated both ways, so a feature the person turned on in their own Codex does not reach a run that has it off.
             expect(JSON.parse((await start(reg, 'codex')).env.CODEX_CONFIG ?? 'null')).toEqual({ 'features.memories': false, 'memories.use_memories': false, 'memories.generate_memories': false });
 
             reg.update('codex', { settings: { memory: true, subagents: false } });
 
-            expect(await settingsOf(reg, 'codex')).toEqual({ memory: true, subagents: false, chatTitle: true });
+            expect(await settingsOf(reg, 'codex')).toEqual({ memory: true, subagents: false, chatTitle: true, commitMessage: false });
             expect(JSON.parse((await start(reg, 'codex')).env.CODEX_CONFIG ?? 'null')).toEqual({
                 'features.memories': true,
                 'memories.use_memories': true,
@@ -393,6 +393,31 @@ describe('AgentRegistry', () => {
             expect(reg.setting('codex', 'chatTitle')).toBe(true);
             // Nothing about it reaches the agent: it starts as it did.
             expect(await start(reg)).toEqual(before);
+        });
+
+        test('the commit messages of Codex and of Claude Code are off, are read by the daemon alone, and no other agent has them', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+            program('codex', 'codex-cli 0.166.0');
+
+            const reg = registry();
+
+            expect(reg.setting('codex', 'commitMessage')).toBe(false);
+            expect(reg.setting('claude', 'commitMessage')).toBe(false);
+            expect(reg.setting('cursor', 'commitMessage')).toBeUndefined();
+            expect(reg.setting('nobody', 'commitMessage')).toBeUndefined();
+            expect((await byId(reg, 'claude'))?.settings?.find(setting => setting.id === 'commitMessage')).toEqual({ id: 'commitMessage', label: 'Commit messages', description: 'Let Claude Code write commit messages', value: false, default: false });
+            expect((await byId(reg, 'codex'))?.settings?.find(setting => setting.id === 'commitMessage')).toEqual({ id: 'commitMessage', label: 'Commit messages', description: 'Let Codex write commit messages', value: false, default: false });
+
+            const before = await start(reg, 'codex');
+            const claudeBefore = await start(reg);
+
+            reg.update('codex', { settings: { commitMessage: true } });
+            reg.update('claude', { settings: { commitMessage: true } });
+            expect(reg.setting('codex', 'commitMessage')).toBe(true);
+            expect(reg.setting('claude', 'commitMessage')).toBe(true);
+            // Nothing about it reaches the agents' own runs: they start as they did.
+            expect(await start(reg, 'codex')).toEqual(before);
+            expect(await start(reg)).toEqual(claudeBefore);
         });
 
         test('are kept in agents.json, refuse a setting the agent does not have, and give way to the variables the person set', async () => {
