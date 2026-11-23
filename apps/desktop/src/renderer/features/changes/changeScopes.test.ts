@@ -1,7 +1,7 @@
-import { commitScope } from '@clowdy/protocol';
+import { commitScope, turnScope } from '@clowdy/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { ALL_CHANGES_LABEL, commitLabel, commitOfScope, isCommitScope, scopeOptions, usableScope } from './changeScopes';
+import { ALL_CHANGES_LABEL, commitLabel, commitOfScope, isCommitScope, isRunScope, LAST_RUN_LABEL, LAST_RUN_NOTE, scopeOptions, usableScope } from './changeScopes';
 
 import type { GitBase, GitCommit } from '@clowdy/protocol';
 
@@ -25,6 +25,25 @@ describe('the scope menu', () => {
         for (const base of [undefined, { state: 'unborn' }, { state: 'no_base' }, { state: 'no_merge_base', name: 'origin/main', commit: 'c'.repeat(40) }] as const) {
             expect(scopeOptions(base).map(option => option.label)).toEqual([ALL_CHANGES_LABEL, 'Uncommitted']);
         }
+    });
+
+    it('has the open chat\'s last run after what is not committed, whatever the base is, with a line that says the edits of others are in it', () => {
+        const run = turnScope('a'.repeat(40), 'b'.repeat(40));
+
+        expect(scopeOptions(ready, run).map(option => option.label)).toEqual([ALL_CHANGES_LABEL, 'Branch', 'Uncommitted', LAST_RUN_LABEL, 'bbbbbbb Charge a weekend surcharge', 'aaaaaaa Price a booking by the day']);
+        expect(scopeOptions(ready, run)[3]).toEqual({ scope: run, label: 'Last run', note: LAST_RUN_NOTE });
+        expect(scopeOptions(undefined, run).map(option => option.label)).toEqual([ALL_CHANGES_LABEL, 'Uncommitted', LAST_RUN_LABEL]);
+        // None for a chat that has no run that changed files.
+        expect(scopeOptions(ready).map(option => option.label)).not.toContain(LAST_RUN_LABEL);
+        expect(scopeOptions(ready).every(option => option.note === undefined)).toBe(true);
+        expect(LAST_RUN_NOTE).not.toMatch(/\.$/);
+    });
+
+    it('knows a run\'s scope by its two trees', () => {
+        expect(isRunScope(turnScope('a'.repeat(40), 'b'.repeat(40)))).toBe(true);
+        expect(isRunScope(commitScope('a'.repeat(40)))).toBe(false);
+        expect(isRunScope('all')).toBe(false);
+        expect(usableScope(turnScope('a'.repeat(40), 'b'.repeat(40)), { state: 'no_base' })).toBe(turnScope('a'.repeat(40), 'b'.repeat(40)));
     });
 
     it('has no commit entry for a branch with no commits yet, and keeps the branch', () => {

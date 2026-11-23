@@ -1,6 +1,6 @@
 import { FileSystemError } from '@clowdy/file-manager/provider';
 
-import { createFixtureData, withFixtureWorkspace } from './fixtureData';
+import { createFixtureData, withFixtureLastRun, withFixtureWorkspace } from './fixtureData';
 import { FIXTURE_REMOTE_SCRIPTS } from './fixtureGitRemote';
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
@@ -114,7 +114,7 @@ export function createTransport(config: DaemonConfig): Transport {
     if (config.kind !== 'fixtures') return unconfigured;
 
     const { timeline, commit, message, remote, pr } = config;
-    const data = config.worktree ? withFixtureWorkspace(createFixtureData()) : createFixtureData();
+    const data = config.worktree ? withFixtureLastRun(withFixtureWorkspace(createFixtureData())) : createFixtureData();
 
     // What GitHub says of the worktree's branch, for the states of Create PR to be looked at.
     if (pr) for (const scripts of Object.values(data.pullRequests)) scripts.worktree = pr;

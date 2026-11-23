@@ -1,4 +1,4 @@
-import { isCommitScope } from './changeScopes';
+import { isCommitScope, isRunScope } from './changeScopes';
 
 import type { GitBaseState } from '@clowdy/protocol';
 import type { PlaceChanges } from './PlaceChanges';
@@ -69,6 +69,8 @@ export function listStateOf(model: PlaceChanges): ListState {
         if (scope === 'uncommitted') return { kind: 'empty', title: LIST_TEXT.noChanges, description: 'Everything is committed' };
 
         if (isCommitScope(scope)) return { kind: 'empty', title: LIST_TEXT.noChanges, description: 'This commit changes no files' };
+
+        if (isRunScope(scope)) return { kind: 'empty', title: LIST_TEXT.noChanges, description: 'That run changed no files' };
 
         return { kind: 'empty', title: LIST_TEXT.noChanges, ...(missing ? { description: missing } : base ? { description: `Nothing differs from ${ base.name }` } : {}) };
     }

@@ -2,6 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup, usePanelRef } from '@clowdy/components/Resizable';
 import { Show } from '@clowdy/components/Show';
 import { Aside } from '@clowdy/icons/14';
+import { turnScope } from '@clowdy/protocol';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useRootStore } from '../../stores';
@@ -15,7 +16,7 @@ import { changesSidebarLayout } from './sidebarLayout';
 import { useBoxWidth } from './useBoxWidth';
 import { useGitFacts } from './useGitFacts';
 
-import type { ProjectId } from '@clowdy/protocol';
+import type { Chat, ProjectId } from '@clowdy/protocol';
 import type { Place } from '../sidePanel/currentPlace';
 
 /**
@@ -70,7 +71,7 @@ function Sidebar({ panelRef, width, children }: { panelRef: ReturnType<typeof us
  * choice, as the file tree's are. It reads the place's git facts (`useGitFacts`, which the strip and Info read too) and reads the list of its scope when it appears, when the
  * scope changes and when the facts start a new round of reads, which is all the triggers the tab has. A card is open when the tab appears.
  */
-export function ChangesView({ projectId, place }: { projectId: ProjectId; place: Place }) {
+export function ChangesView({ projectId, place, chat }: { projectId: ProjectId; place: Place; chat?: Pick<Chat, 'id' | 'lastRun'> }) {
     const root = useRootStore();
     const facts = useGitFacts(projectId, place);
     const model = useMemo(() => (facts ? placeChangesOf(root.transport, facts) : undefined), [root.transport, facts]);
@@ -83,13 +84,29 @@ export function ChangesView({ projectId, place }: { projectId: ProjectId; place:
     const [sized, setSized] = useState(false);
     const generation = facts?.generation;
     const scope = model?.effectiveScope;
+    // What the open chat's latest run changed is one of the scopes: the tab is told which, since the place's view is shared by the chats that work in it.
+    const { id: chatId, lastRun } = chat ?? {};
+    const runScope = lastRun && turnScope(lastRun.startTree, lastRun.endTree);
+    const wanted = model?.revealRequest;
+    const listed = model?.changes?.files;
 
     // The facts read the place when this is the first to look at it, which starts a round: the list is read once, for that round, and not before it.
     useEffect(() => {
         if (model) model.sync(model.facts.generation);
     }, [model, scope, generation]);
 
+    useEffect(() => model?.setRun(chatId, runScope), [model, chatId, runScope]);
+
     useEffect(() => model?.resetFolds(), [model]);
+
+    // A press on a file of the last run plate: its card opens and comes to the top once the list of the run has it.
+    useEffect(() => {
+        if (!model || wanted === undefined || !listed?.some(file => file.path === wanted)) return;
+
+        model.reveal(wanted);
+        model.clearRevealRequest();
+        requestAnimationFrame(() => list.current?.scrollToFile(wanted));
+    }, [model, wanted, listed]);
 
     useEffect(() => {
         if (width > 0) setSized(true);

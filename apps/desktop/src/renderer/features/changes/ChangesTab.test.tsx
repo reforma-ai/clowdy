@@ -4,13 +4,16 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_GIT_COMMITS, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_WORKSPACE_CHAT_ID, withFixtureWorkspace, type FixtureData } from '../../daemon/fixtureData';
+import { createFixtureData, FIXTURE_GIT_COMMITS, FIXTURE_LAST_RUN_CHAT_ID, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, FIXTURE_QUIET_CHAT_ID, FIXTURE_RUN_FILES, FIXTURE_RUN_SCOPE, FIXTURE_WORKSPACE_CHAT_ID, withFixtureLastRun, withFixtureWorkspace, type FixtureData } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { overrideTransport } from '../../daemon/testing';
 import { TransportError, type Transport } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { chatFolder } from '../agents/agentTree';
+import { chatPlace } from '../sidePanel/currentPlace';
 import ChangesTab from './ChangesTab';
 import { gitFactsOf } from './gitFacts';
+import { openRunInChanges } from './openRunInChanges';
 import { changesSidebarLayout } from './sidebarLayout';
 
 import type { GitChanges, GitFileSides } from '@clowdy/protocol';
@@ -1162,5 +1165,158 @@ describe('the reads of the texts', () => {
         await finishAll();
 
         expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts']);
+    });
+});
+
+describe('the last run of the open chat', () => {
+    const withRuns = (data: FixtureData) => void withFixtureLastRun(data);
+    const run = { tweak: withRuns, chat: FIXTURE_LAST_RUN_CHAT_ID };
+    const openMenu = async () => {
+        await press(scopeTrigger());
+        await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
+    };
+    const optionLabels = () => options().map(option => option.textContent);
+
+    it('is a scope of the menu after what is not committed, with a line that says the edits of others are in it, while the open chat has one', async () => {
+        await start(run);
+        await draw();
+        await openMenu();
+
+        expect(optionLabels()).toEqual(['All changes', 'Branch', 'Uncommitted', 'Last runEdits of others in the place are in it too', 'b744444 Charge a weekend surcharge', 'a155555 Price a booking by the day']);
+    });
+
+    it('is not offered for a chat whose latest run changed nothing, or for one with no run in the place', async () => {
+        await start({ ...run, chat: FIXTURE_QUIET_CHAT_ID });
+        await draw();
+        await openMenu();
+        expect(optionLabels()).toEqual(['All changes', 'Branch', 'Uncommitted', 'b744444 Charge a weekend surcharge', 'a155555 Price a booking by the day']);
+    });
+
+    it('is not offered while the new-chat page is shown, whose place is not a chat\'s', async () => {
+        await start(run);
+        store.ui.forProject(FIXTURE_PROJECT_ID).openDraft();
+        await draw();
+        await openMenu();
+        expect(optionLabels()).not.toContain('Last runEdits of others in the place are in it too');
+    });
+
+    it('lists the files the run changed when it is picked, with their totals and the tooltip that says what the list is, and goes back to all changes', async () => {
+        await start(run);
+        await draw();
+        await openMenu();
+        await press(options().find(option => option.textContent?.startsWith('Last run'))!);
+        await settle();
+
+        expect(scopeTrigger().textContent).toContain('Last run');
+        expect(scopeTrigger().closest('[title]')?.getAttribute('title')).toContain('What the latest run of this chat changed');
+        expect(cardPaths()).toEqual(FIXTURE_RUN_FILES.map(file => file.path));
+        expect(summary()).toBe('7 files,+178−29');
+        // The two ends of a run are trees: no commit, no base.
+        expect(sidebarFiles()).toHaveLength(7);
+
+        await openMenu();
+        await press(options().find(option => option.textContent === 'All changes')!);
+        await settle();
+        expect(scopeTrigger().textContent).toContain('All changes');
+        expect(scopeTrigger().closest('[title]')).toBeNull();
+        expect(cards()).toHaveLength(6);
+    });
+
+    it('reads the texts of the files of the run from the run\'s own scope, with no start of the list', async () => {
+        await start(run);
+        await draw();
+
+        const read = vi.spyOn(transport, 'getGitFile');
+
+        await openMenu();
+        await press(options().find(option => option.textContent?.startsWith('Last run'))!);
+        await settle();
+        await bringNear();
+        await settle();
+
+        expect(read).toHaveBeenCalled();
+        expect(read.mock.calls.every(call => call[2] === FIXTURE_RUN_SCOPE && call[5] === undefined)).toBe(true);
+        expect(card('src/booking/price.ts').querySelector('[data-diff]')?.textContent).toContain('weekend');
+    });
+
+    it('opens on the run with the card of the pressed file brought up and opened, when it was asked for before the tab was drawn', async () => {
+        await start(run);
+
+        const project = store.selectedProject!;
+        const chat = project.chats.get(FIXTURE_LAST_RUN_CHAT_ID)!;
+        const place = chatPlace(project.project.folders, chat, chatFolder(project.chats, project.project.folders, chat.id)?.folder);
+
+        expect(openRunInChanges(store, FIXTURE_PROJECT_ID, place, chat.id, FIXTURE_RUN_SCOPE, 'src/booking/weekend.ts')).toBe(true);
+        expect(store.ui.forProject(FIXTURE_PROJECT_ID).sidePanelTab).toBe('changes');
+        expect(store.ui.forProject(FIXTURE_PROJECT_ID).sidePanelOpen).toBe(true);
+
+        await draw();
+        await vi.waitFor(() => expect(scrolled).toEqual([card('src/booking/weekend.ts')]));
+
+        expect(scopeTrigger().textContent).toContain('Last run');
+        expect(cardPaths()).toEqual(FIXTURE_RUN_FILES.map(file => file.path));
+        expect(card('src/booking/weekend.ts').hasAttribute('data-open')).toBe(true);
+        // The request is answered once: the tab does not scroll again to the file on a later round of reads.
+        gitFactsOf(transport).refresh({ projectId: FIXTURE_PROJECT_ID, folderId: place.folder.id, workspaceId: place.workspace!.id });
+        await settle();
+        await new Promise(resolve => setTimeout(resolve, 40));
+        expect(scrolled).toEqual([card('src/booking/weekend.ts')]);
+    });
+
+    it('opens a viewed card of the run when its file is the one that was pressed, and keeps its mark', async () => {
+        await start(run);
+        await draw();
+        await openMenu();
+        await press(options().find(option => option.textContent?.startsWith('Last run'))!);
+        await settle();
+
+        const tick = (path: string) => container.querySelector<HTMLInputElement>(`input[aria-label="Viewed ${ path }"]`)!;
+
+        await press(tick('src/booking/price.ts'));
+        await settle();
+        expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(false);
+        expect(summary()).toContain('1 of 7 viewed');
+        expect((await transport.getGitViewed(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, FIXTURE_RUN_SCOPE)).map(mark => mark.path)).toEqual(['src/booking/price.ts']);
+        // Another scope has none of it.
+        expect(await transport.getGitViewed(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' }, 'all')).toEqual([]);
+    });
+
+    it('says the changes of the run are gone when git has pruned its trees, with a way to try again, and the other scopes still work', async () => {
+        await start({
+            ...run,
+            tweak: (data) => {
+                withRuns(data);
+                data.chats.find(chat => chat.id === FIXTURE_LAST_RUN_CHAT_ID)!.lastRun = { startTree: 'c'.repeat(40), endTree: 'd'.repeat(40), seq: 2, at: 1 };
+            },
+        });
+        await draw();
+        await openMenu();
+        await press(options().find(option => option.textContent?.startsWith('Last run'))!);
+        await settle();
+
+        expect(container.textContent).toContain('Couldn\'t read the changes');
+        expect(container.textContent).toContain('The changes of that run are no longer in the repository');
+        expect(cards()).toHaveLength(0);
+
+        await openMenu();
+        await press(options().find(option => option.textContent === 'Uncommitted')!);
+        await settle();
+        expect(cards()).toHaveLength(3);
+    });
+
+    it('is not followed to another chat of the place: the tab is back on all changes', async () => {
+        await start(run);
+        await draw();
+        await openMenu();
+        await press(options().find(option => option.textContent?.startsWith('Last run'))!);
+        await settle();
+        expect(cards()).toHaveLength(7);
+
+        act(() => store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_QUIET_CHAT_ID));
+        await draw();
+        await settle();
+
+        expect(scopeTrigger().textContent).toContain('All changes');
+        expect(cards()).toHaveLength(6);
     });
 });

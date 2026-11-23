@@ -1,5 +1,5 @@
 import { MemoryFileSystem } from '@clowdy/file-manager/memory';
-import { folderNames, isBusyRunStatus, isTerminalRunStatus, mainFolder, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, PROTOCOL_VERSION, STOPPED_TOOL, writesCommitMessages } from '@clowdy/protocol';
+import { folderNames, isBusyRunStatus, isTerminalRunStatus, mainFolder, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES_PER_MESSAGE, PROTOCOL_VERSION, STOPPED_TOOL, turnScopeTrees, writesCommitMessages } from '@clowdy/protocol';
 
 import {
     catalogTokens,
@@ -315,6 +315,9 @@ export class FixtureTransport implements Transport {
     async getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
         const { head, workspace } = this.#gitPlace(projectId, place);
         const changes = fixtureGitChanges(head, workspace !== undefined, scope, this.#gitWrites.committedOf(place.workspaceId ?? ''));
+
+        // A run whose trees git has pruned is `unavailable`, a commit the repository does not have is `not_found`.
+        if (!changes && turnScopeTrees(scope)) throw new TransportError('The changes of that run are no longer in the repository', 503);
 
         if (!changes) throw new TransportError(`Commit ${ scope.slice('commit:'.length) } does not exist`, 404);
 
