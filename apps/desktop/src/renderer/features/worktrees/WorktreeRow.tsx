@@ -7,7 +7,7 @@ import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
 import { Folder, More, NewChat, Version } from '@clowdy/icons/14';
-import { useId } from 'react';
+import { useId, useState } from 'react';
 
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
@@ -44,17 +44,19 @@ interface WorktreeRowProps extends WorktreeRowActions {
  * Sizes are the app's list row, as `ProjectRow` has it: the title is body (`md`) medium, the facts `sm` and dim, the marks `xs`; a bare `Text` would take the page's 16px,
  * which this window shows far larger than the lists around it. The branch is one line cut with an ellipsis, so it never pushes the actions. The path is not a line of the
  * row: it is the tooltip of the branch (in the home folder's `~` form), and the reason a Remove is off (`removeHint`) is the line under it in the menu. A right-click anywhere on
- * the row opens the same menu at the pointer (and a long touch, which is a right-click to the app), so the strip is as good as the button.
+ * the row opens the same menu at the pointer (and a long touch, which is a right-click to the app), so the strip is as good as the button. The buttons show on hover, on focus
+ * inside the row and while a menu of the row is open (`data-open`), and always where there is no hover (a touch screen): a list of rows would otherwise be a fence of icons.
  */
 export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onOpenChat, onRemove }: WorktreeRowProps) {
     const label = worktreeLabel(worktree);
     const mark = worktreeMark(worktree);
     const newChat = worktree.main ? 'New chat in this folder' : 'New chat in this worktree';
     const contextMenu = useContextMenu();
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     return (
         <>
-            <li className={ styles.row } data-worktree-path={ worktree.path } data-main={ worktree.main || undefined } data-missing={ worktree.missing || undefined } { ...contextMenu.areaProps }>
+            <li className={ styles.row } data-worktree-path={ worktree.path } data-main={ worktree.main || undefined } data-missing={ worktree.missing || undefined } data-open={ isMenuOpen || contextMenu.isOpen || undefined } { ...contextMenu.areaProps }>
                 <span className={ styles.icon }>{ worktree.main ? <Folder aria-hidden="true" /> : <Version aria-hidden="true" /> }</span>
                 <span className={ styles.text }>
                     <span className={ styles.title }>
@@ -64,7 +66,7 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
                         { mark && <Badge size="xs" color={ mark.color } textValue={ mark.label } tooltip={ mark.tip }>{ mark.label }</Badge> }
                     </span>
                     <span className={ styles.facts }>
-                        { !worktree.missing && <Text variant="sm" color={ worktree.changes === 0 ? 'secondary' : 'default' }>{ changesLabel(worktree.changes) }</Text> }
+                        { !worktree.missing && <Text variant="sm" color="secondary">{ changesLabel(worktree.changes) }</Text> }
                     </span>
                     { worktree.chats.length > 0 && (
                         <span className={ styles.chats } role="group" aria-label="Chats">
@@ -85,7 +87,7 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
                             <NewChat />
                         </Button>
                     </Unavailable>
-                    <MenuTrigger>
+                    <MenuTrigger isOpen={ isMenuOpen } onOpenChange={ setIsMenuOpen }>
                         <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `More for ${ label }` } tooltip="More">
                             <More />
                         </Button>

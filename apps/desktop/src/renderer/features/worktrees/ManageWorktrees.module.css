@@ -47,12 +47,6 @@
     height: 0.8rem;
 }
 
-.skeletonButton {
-    width: var(--spacing-30);
-    min-height: 0;
-    height: var(--spacing-30);
-}
-
 .card[data-skeleton] {
     pointer-events: none;
 }
@@ -130,6 +124,13 @@
     background: var(--color-secondary-muted);
 }
 
+.row:hover .actions,
+.row:focus-within .actions,
+.row[data-open] .actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 /* A worktree whose folder is gone is dimmed: there is little to do with it. The actions keep their own look (Remove record is the point of the row). */
 .row[data-missing] .title,
 .row[data-missing] .text > :not(.title) {
@@ -198,11 +199,22 @@
     color: var(--color-secondary-muted-text);
 }
 
+/* Shown on hover, on focus inside the row and while a menu of the row is open, as the lists' row actions are; always where nothing hovers (a touch screen). */
 .actions {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-duration-fast) ease;
     display: flex;
     flex-shrink: 0;
     align-items: center;
     gap: var(--spacing-xs);
     /* The buttons are centred on the row, whatever it holds: one line, or the chats under it. */
     align-self: center;
+}
+
+@media (hover: none) {
+    .actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
 }
