@@ -9,10 +9,12 @@ import {
     FIXTURE_LIVE_RUN_ID,
     FIXTURE_LIVE_TEXT_ID,
     FIXTURE_LIVE_TOOL_ID,
+    FIXTURE_PULL_REQUEST_UNAVAILABLE,
     fixtureChatWorkspace,
     fixtureFolderGit,
     fixtureGitChanges,
     fixtureGitFile,
+    fixtureGitPullRequest,
     fixtureGitStatus,
     fixtureWorkspaceLog,
     type FixtureData,
@@ -42,6 +44,7 @@ import type {
     FolderId,
     GitChanges,
     GitFileSides,
+    GitPullRequestInfo,
     GitScope,
     GitStatus,
     Project,
@@ -268,6 +271,15 @@ export class FixtureTransport implements Transport {
         return structuredClone(sides);
     }
 
+    async getGitPullRequest(projectId: ProjectId, place: PlaceRef): Promise<GitPullRequestInfo> {
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
+        const answer = fixtureGitPullRequest(head, this.#data.pullRequests[folder.path], workspace);
+
+        if (!answer) throw new TransportError(FIXTURE_PULL_REQUEST_UNAVAILABLE, 503);
+
+        return structuredClone(answer);
+    }
+
     /** The folder a git read names and what the fixture's git says of it, and the worktree when the read names one (judged as the daemon judges a place). */
     #gitPlace(projectId: ProjectId, { folderId, workspaceId }: PlaceRef) {
         const project = this.#project(projectId);
@@ -275,7 +287,7 @@ export class FixtureTransport implements Transport {
 
         if (!folder) throw new TransportError(`Folder ${ folderId } does not exist`, 404);
 
-        return { head: this.#data.git[folder.path], workspace: workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId, folderId) };
+        return { folder, head: this.#data.git[folder.path], workspace: workspaceId === undefined ? undefined : this.#workspaceOf(project, workspaceId, folderId) };
     }
 
     async getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {

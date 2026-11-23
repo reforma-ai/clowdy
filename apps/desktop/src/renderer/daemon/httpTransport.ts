@@ -18,6 +18,7 @@ import type {
     FolderId,
     GitChanges,
     GitFileSides,
+    GitPullRequestInfo,
     GitScope,
     GitStatus,
     ProjectFileMatch,
@@ -134,6 +135,10 @@ export class HttpTransport implements Transport {
 
     getGitFile(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string): Promise<GitFileSides> {
         return this.#read(`${ ROUTES.projectGitFile(projectId) }?${ placeQuery(place, { scope, path, oldPath }) }`);
+    }
+
+    getGitPullRequest(projectId: ProjectId, place: PlaceRef): Promise<GitPullRequestInfo> {
+        return this.#read(`${ ROUTES.projectGitPullRequest(projectId) }?${ placeQuery(place) }`);
     }
 
     getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {

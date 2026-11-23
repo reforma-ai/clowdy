@@ -13,6 +13,7 @@ import type {
     FolderId,
     GitChanges,
     GitFileSides,
+    GitPullRequestInfo,
     GitScope,
     GitStatus,
     ProjectFileMatch,
@@ -101,6 +102,13 @@ export interface Transport {
      * draw answers its state and no text. Rejects as `getGitChanges` does, and with 404 for a path that did not change in the scope.
      */
     getGitFile: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string) => Promise<GitFileSides>;
+    /**
+     * Whether GitHub can be asked about a place (the person's `gh` found and signed in for the host of the place's `origin`: `access`) and the pull request of its branch with the
+     * state of its checks, or none. Read when asked, never pushed: the daemon asks `gh` once per branch and keeps the answer for a few seconds, so several windows cost one call.
+     * Rejects as `getGitStatus` does, and with 503 and the daemon's reason when `gh` could not read it (it timed out, GitHub is out of reach, the rate limit is reached): that
+     * is no answer, and never "no pull request".
+     */
+    getGitPullRequest: (projectId: ProjectId, place: PlaceRef) => Promise<GitPullRequestInfo>;
     /**
      * Whether the chat's worktree may be removed together with the chat, which is what `chat.delete`'s `removeWorkspace` asks for: Clowdy made it, no other chat uses it, nothing in it
      * is uncommitted and its work is merged into its base. Read when the delete dialog opens, never pushed: a tree changes in a terminal or by an agent, and the daemon checks again
