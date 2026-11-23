@@ -68,7 +68,7 @@ async function walkedFiles(root: string): Promise<string[]> {
 }
 
 /** A name with a line break or another control character cannot be written into a one-line message as a mention. */
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what it looks for
 const HAS_CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/;
 
 /**

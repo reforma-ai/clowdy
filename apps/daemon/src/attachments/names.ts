@@ -9,8 +9,8 @@ const FALLBACK_NAME = 'file';
 
 // Control characters, and the invisible ones that disguise a name (a right-to-left override turns `gpj.exe` into `exe.jpg`) or
 // break its line in the message that lists the file (the line and paragraph separators).
-// eslint-disable-next-line no-control-regex
 const HIDDEN =
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what it strips
     /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
 /** Windows refuses these in a name, and `:` there opens an alternate data stream. */
 const FORBIDDEN = /[<>:"|?*]/g;

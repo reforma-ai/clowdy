@@ -48,7 +48,7 @@ export function headCommit(cwd: string): Promise<string | undefined> {
 }
 
 /** What a ref's name may not have (`git check-ref-format`): control characters and spaces, `~ ^ : ? * [ \`, `..` and `@{`. */
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: a ref name may not have control characters
 const NOT_A_REF_NAME = /[\x00-\x20\x7f~^:?*[\\]|\.\.|@\{/;
 
 /** What a branch name resolves to: the ref's short name and the commit it is at. */

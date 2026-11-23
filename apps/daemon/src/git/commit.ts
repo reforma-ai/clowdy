@@ -35,11 +35,13 @@ export interface GitWritesOptions {
     timeoutMs?: number;
 }
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: it strips terminal color escapes
+const COLOR_ESCAPES = /\u001B\[[0-9;]*[A-Za-z]/g;
+
 /** The lines of what a program printed that have something in them, without colour codes. */
 export function printedLines(text: string): string[] {
-    // eslint-disable-next-line no-control-regex
     return text
-        .replace(/\u001B\[[0-9;]*[A-Za-z]/g, '')
+        .replace(COLOR_ESCAPES, '')
         .split(/\r?\n/)
         .map(line => line.trim())
         .filter(line => line !== '');

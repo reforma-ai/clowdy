@@ -21,10 +21,10 @@ export class SignInError extends Error {
     }
 }
 
-/* eslint-disable no-control-regex -- terminal escape sequences are the point */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: terminal escape sequences are the point
 const OSC_LINK = /\u001B\]8;[^;\u0007\u001B]*;([^\u0007\u001B]+)(?:\u0007|\u001B\\)/g;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: terminal escape sequences are the point
 const ESCAPES = /\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)|\u001B\[[0-9;?]*[ -/]*[@-~]|\u001B[@-Z\\-_]/g;
-/* eslint-enable no-control-regex */
 
 const URL_IN_TEXT = /https?:\/\/[^\s<>"']+/g;
 /** The address of the login program's own listener (`Starting local login server on http://localhost:1455`): the page is somewhere else. */

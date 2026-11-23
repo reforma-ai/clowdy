@@ -31,7 +31,7 @@ function repoAt(host: string, path: string): GitHubRepo | undefined {
 export function parseRemote(address: string): GitHubRepo | undefined {
     const text = address.trim();
 
-    // eslint-disable-next-line no-control-regex
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: an address with a control character is refused
     if (text === '' || /[\s\x00-\x1f\x7f\\?#]/.test(text)) return undefined;
 
     const url = /^([a-z][a-z0-9+.-]*):\/\/([^/]*)\/(.*)$/i.exec(text);
