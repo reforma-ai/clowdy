@@ -61,11 +61,11 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **This stage:** the Manage dialog needs, per folder, the folder's own checkout and every worktree git lists, with who works in each and how far it is from the base. `GitWorktree` from `folderGit` drops prunable entries and says nothing about locks or chat use, so this stage adds one read for the whole project. Its first commit is the contract (types, the route, the transport method and the fixture), so Stage 4 can start from it.
 
-- [ ] Complete
-  - [ ] The contract commit: `ROUTES.projectWorktrees` (`GET /v1/projects/:id/worktrees`), `FolderWorktrees { folderId, name, isRepository, worktrees: WorktreeInfo[] }` with the folder's own checkout first, `WorktreeInfo { path, branch?, head, main, missing, locked?, changes, submodules, merged?, base?, workspaceId?, managed, chats: { id, title, archived }[], blocked?: 'main' | 'locked' | 'chats' }` (`changes` is the number of uncommitted files, a new file counted, 0 when clean; `merged` is absent when no base resolves); `getProjectWorktrees(projectId)` on the transport interface, the HTTP transport, the `unconfigured` stub and the fixture, with fixture data for a project of two repositories (a Clowdy-made worktree with a chat, a found dirty one, a locked one, a missing one) and a plain folder
-  - [ ] The daemon answers it from `git worktree list --porcelain` (prunable and locked kept), the project's `workspaces` rows and their chats, per-worktree `status` and ancestor checks run with bounded concurrency and timeouts, and a folder gone from the disk or not a repository answered as such
-  - [ ] `isMerged` and `commitOf` become shared (exported from `git/state.ts`), so removal and this read use one definition of merged
-  - [ ] Tests on real repositories: main checkout first, a found worktree, a Clowdy-made one with two chats (one archived), a locked one, one whose folder was deleted, a dirty one with a new file, a merged and an unmerged branch, a detached HEAD, a plain folder
+- [x] Complete
+  - [x] The contract commit: `ROUTES.projectWorktrees` (`GET /v1/projects/:id/worktrees`), `FolderWorktrees { folderId, name, isRepository, worktrees: WorktreeInfo[] }` with the folder's own checkout first, `WorktreeInfo { path, branch?, head, main, missing, locked?, changes, submodules, merged?, base?, workspaceId?, managed, chats: { id, title, archived }[], blocked?: 'main' | 'locked' | 'chats' }` (`changes` is the number of uncommitted files, a new file counted, 0 when clean; `merged` is absent when no base resolves); `getProjectWorktrees(projectId)` on the transport interface, the HTTP transport, the `unconfigured` stub and the fixture, with fixture data for a project of two repositories (a Clowdy-made worktree with a chat, a found dirty one, a locked one, a missing one) and a plain folder
+  - [x] The daemon answers it from `git worktree list --porcelain` (prunable and locked kept), the project's `workspaces` rows and their chats, per-worktree `status` and ancestor checks run with bounded concurrency and timeouts, and a folder gone from the disk or not a repository answered as such
+  - [x] `isMerged` and `commitOf` become shared (exported from `git/state.ts`), so removal and this read use one definition of merged
+  - [x] Tests on real repositories: main checkout first, a found worktree, a Clowdy-made one with two chats (one archived), a locked one, one whose folder was deleted, a dirty one with a new file, a merged and an unmerged branch, a detached HEAD, a plain folder
 
 **Files**
 
@@ -80,7 +80,8 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **Done when:** for a project with a repository holding a Clowdy-made worktree used by two chats, a dirty found worktree, a locked one and one whose folder is gone, and a plain folder, the route lists the main checkout first and each worktree with its chats, changed-file count, merged flag and blocked reason, and the plain folder has no group.
 **Verify:** `cd apps/daemon && bun test test/worktrees.test.ts test/git-state.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `cd apps/desktop && bunx vitest run src/renderer/daemon && bun run typecheck`
-**Commits:** None yet.
+**Scope changes:** the contract added `WorktreeBlock` and `WorktreeChat`; `locked` is the reason string (`''` when git gave none); `submodules` is false when git cannot say, so a guess never reaches a forced removal; `changes` counts git status entries (a failed status counts 1, an untracked folder is one entry); `blocked: 'main'` also covers the repository's primary tree when the project's folder is itself a linked worktree; a folder that is not a repository, gone, or replaced by a file has an entry with `isRepository: false` and no worktrees; a git that does not answer makes the whole route `unavailable`; `isMerged`, `commitOf`, `changedFiles`, `countChanges`, `hasCheckedOutSubmodules`, `isOnDisk` live in `git/state.ts` (the integration kept `next`'s `workingTreeRoot` for the helper Stage 1 had called `repositoryRoot`). **Review findings, fixed:** a Clowdy-made worktree whose folder was deleted lost its record and chats when the record's path went through a symlink (`/var` vs `/private/var`); a repository with `--separate-git-dir` showed a bogus first row; a project folder replaced by a file made the whole route 503; the status call and the on-disk check each existed three times. **Left:** one folder whose git hangs blanks the dialog for every folder (as `GET /git` does); worktrees are read four at a time, so a batch waits for its slowest.
+**Commits:** `b6f8d4b` feat(protocol): describe a project's worktrees for the Manage dialog; `0ce0af7` refactor(daemon): share the merged check and the changed-files count of a worktree; `960b9ba` feat(daemon): answer GET /v1/projects/:id/worktrees with every worktree of the project's folders; review: `4341c04`, `fc9fbed`, `16a0c6c`, `a0ccfb7`, `0658056`; merged into `next` with Stages 4, 6, 7 as `9c812d2`.
 
 ## Stage 2 — Remove a worktree
 
@@ -144,12 +145,12 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **This stage:** the dialog and its non-destructive parts. One opener, `openManageWorktrees`, draws the groups the daemon describes and offers the actions that change nothing: open in Finder, Terminal and the editor, and a new chat in a worktree or in the folder's checkout. Remove is Stage 5's, so a row's Remove button is drawn disabled here and wired there. The new-chat actions close the dialog and open a draft with `ui.openDraft([], folderId, workspace)`, which is how the draft already shows an existing worktree's files.
 
-- [ ] Complete
-  - [ ] `openManageWorktrees({ root, projectId, folderId? })` opens a modal (`Modal.create`); with a `folderId` that group is scrolled into view
-  - [ ] One group per git folder, its own checkout first (branch, clean or changed, no Remove), then a row per worktree: branch or detached, chats (a click closes the dialog and opens the chat), clean or `N changed`, merged or `not merged` with its tip, path, `missing on disk`, `locked`
-  - [ ] Row actions: `OpenWithMenu` for the worktree's path, `New chat in this worktree`, `New chat in this folder` on the checkout row
-  - [ ] The list reads when the dialog opens and when the window gets focus again; a loading and an error state; a project with no git folder says so
-  - [ ] Component tests on the fixture transport: groups and rows, the draft opening in the right place, the missing and locked marks
+- [x] Complete
+  - [x] `openManageWorktrees({ root, projectId, folderId? })` opens a modal (`Modal.create`); with a `folderId` that group is scrolled into view
+  - [x] One group per git folder, its own checkout first (branch, clean or changed, no Remove), then a row per worktree: branch or detached, chats (a click closes the dialog and opens the chat), clean or `N changed`, merged or `not merged` with its tip, path, `missing on disk`, `locked`
+  - [x] Row actions: `OpenWithMenu` for the worktree's path, `New chat in this worktree`, `New chat in this folder` on the checkout row
+  - [x] The list reads when the dialog opens and when the window gets focus again; a loading and an error state; a project with no git folder says so
+  - [x] Component tests on the fixture transport: groups and rows, the draft opening in the right place, the missing and locked marks
 
 **Files**
 
@@ -161,7 +162,8 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **Done when:** against the fixture, `openManageWorktrees` shows the fixture project's two repositories with the main checkout first and a row per worktree, and `New chat in this worktree` opens a draft whose place is that worktree.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/features/worktrees && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Scope changes:** beyond the plan's files: `WorktreeRow.tsx` (a group and its rows), `worktreeView.ts` (pure helpers) and an `index.ts` barrel; `OpenWithMenu` got an optional `inApp` prop (default true) that the dialog sets to false, so its menu has no Open in Files or Open in Terminal (they would act behind the dialog); leaving through `New chat in this worktree` or a chat click does not return focus to the opener. **Review findings, fixed:** a stand-in `workspace` that faked a place for `OpenWithMenu`; focus theft after the closing animation; a dead tooltip on a disabled New chat; a missing test for two reads in flight. **Left:** the `.row[data-missing]` dimming is a raw `opacity: 0.7` (DESIGN.md has `--opacity-inactive` 0.5; a visual choice).
+**Commits:** `f06c5b9` feat(desktop): read a project's worktrees and label them for the Manage dialog; `7d00fe7` feat(desktop): add the Manage worktrees dialog; `b0fdd54` docs(desktop): describe the Manage worktrees dialog; review: `a5b6167`, `44264c0`, `2784e27`, `7f1b0ad`, `fadf39c`; merged into `next` as `9c812d2`.
 
 ## Stage 5 — Remove in the dialog
 
@@ -193,11 +195,11 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **This stage:** the three entry points that sit in files nobody else is changing. The Files tab has no header, so a thin bar above the file manager shows where the panel is (the worktree's branch, or the folder's name and branch for a checkout) and opens the dialog, without touching the forked `file-manager` package.
 
-- [ ] Complete
-  - [ ] A place bar on top of `FilesTab`: an icon, the worktree branch or `<folder> · <branch>`, a click and a Manage button that call `openManageWorktrees` with the project and the place's folder
-  - [ ] `Manage worktrees` as the first item of the folder title's menu in the sidebar group (`GroupFolderMenu`), when the folder is a repository
-  - [ ] A Manage button in Info's Worktree row
-  - [ ] Tests for each entry point calling the opener with the right folder
+- [x] Complete
+  - [x] A place bar on top of `FilesTab`: an icon, the worktree branch or `<folder> · <branch>`, a click and a Manage button that call `openManageWorktrees` with the project and the place's folder
+  - [x] `Manage worktrees` as the first item of the folder title's menu in the sidebar group (`GroupFolderMenu`), when the folder is a repository
+  - [x] A Manage button in Info's Worktree row
+  - [x] Tests for each entry point calling the opener with the right folder
 
 **Files**
 
@@ -208,7 +210,8 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **Done when:** each of the three calls `openManageWorktrees` with its folder, and the Files bar names the worktree or the checkout the panel shows.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/features/files src/renderer/features/agents src/renderer/features/sidePanel && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Scope changes:** the place bar is on both the Files and Docs tabs (one mounted component); no bar until git answers, none for a plain folder, a missing folder or a worktree not made yet; `OpenWithMenu` got an optional `onManageWorktrees` prop (the item is first, in its own section); the sidebar item shows when the folder's git read has a branch (a stand-in for "is a repository"). **Review findings, fixed:** the bar's name button and Manage were two keyboard stops (the name is now out of the tab order); a missing test for the folder menu on a missing folder; wording in the notes. **Left:** a folder inside a larger repository shows the bar and the item but the dialog has no group for it (fix: a root flag on `ProjectFolderInfo`); the bar nudges the file manager down once when git answers (fix: keep the last answer per place in `useFolderGit`); a draft in a worktree no chat works in had no bar (Stage 9).
+**Commits:** `9ec3b87` feat(desktop): add a place bar to the Files and Docs tabs that opens Manage worktrees; `c73cb26` feat(desktop): add Manage worktrees to the menu of a folder group's title; `e1d9627` feat(desktop): add a Manage button to the Worktree row of the Info tab; `cc4bfde` docs; review: `497360b`, `2597e01`, `b2678ad`; merged into `next` as `9c812d2`.
 
 ## Stage 7 — Entry point: the new-chat worktree picker
 
@@ -216,9 +219,9 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **This stage:** the picker of existing worktrees on the new-chat page gets a Manage button. It waits for the merge that turns the mode and branch chips into one control, since that branch rewrites `WorkspaceChips.tsx`, and the button belongs in the control as it ends up.
 
-- [ ] Complete
-  - [ ] A Manage button in the existing-worktree picker (a footer of `PickerPopover` or an item of the control's menu, wherever the merged control keeps the list) that opens the dialog for the draft's folder
-  - [ ] A test that it opens the dialog for that folder
+- [x] Complete
+  - [x] A Manage button in the existing-worktree picker (a footer of `PickerPopover` or an item of the control's menu, wherever the merged control keeps the list) that opens the dialog for the draft's folder
+  - [x] A test that it opens the dialog for that folder
 
 **Files**
 
@@ -227,7 +230,8 @@ Each stage runs in its own worktree (GITFLOW, Worktrees) and is merged into `nex
 
 **Done when:** on the new-chat page, the existing-worktree picker has a Manage button that opens the dialog on the draft's folder.
 **Verify:** `cd apps/desktop && bunx vitest run src/renderer/features/agents && bun run typecheck && bun run lint`
-**Commits:** None yet.
+**Scope changes:** the plan said "picker"; after the one control landed it is a last menu row `Manage worktrees…` (its own `MenuSection`, `selectionMode="none"`, a `menuitem` and not a radio) after a separator, shown whenever the pill is; `WorkspaceChips` takes a required `onManage` that `DraftChat` fills with the real folder id (the main folder's too; the dialog turns it into `null` only for `openDraft`). **Review:** no change to production code; two tests added (arrows wrap to the row, Escape returns focus to the pill) and the notes corrected. **Left:** with many worktrees the row is below the fold of the 360 px scroll box (a sticky footer would fix it).
+**Commits:** `edf5cd8` feat(desktop): open Manage worktrees from the new-chat control's menu; `bf13219` chore(desktop): order the fixture transport imports after the merge; review: `ec67d9d`, `d8eccb4`; merged into `next` as `9c812d2`.
 
 ## Stage 8 — The Fork menu
 
