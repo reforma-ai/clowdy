@@ -68,7 +68,7 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * DELETE /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope=&path= -> { ok: true } (clears one file's mark). The three are described in `git.ts`
  * POST /v1/projects/:id/git/commit        -> GitCommitResult (commits the files the person ticked, `paths`, with `message`: the first route that changes a repository)
  * POST /v1/projects/:id/git/message       -> GitMessage (a commit message for the ticked files, written by the provider the person turned `Commit messages` on for). Both are described in `git.ts`
- * POST /v1/projects/:id/git/fetch|pull|push -> GitRemoteResult (the only routes that reach `origin`: `git fetch origin`, a fast-forward pull, a push or the first publish of the branch; a pull of
+ * POST /v1/projects/:id/git/fetch|pull|push -> GitRemoteResult (the only routes that reach `origin`: `git fetch --no-recurse-submodules origin`, a fast-forward pull, a push or the first publish of the branch; a pull of
  *                                            a diverged branch answers `state: 'diverged'` and changes nothing). Body `GitRemoteRequest`, described in `git.ts`
  * GET  /v1/projects/:id/worktrees        -> FolderWorktrees[] (one entry per folder of the project, in the project's order: whether it is the root of a repository and, if
  *                                            it is, its own checkout first and then every worktree git lists for it (one Clowdy made, one an agent or a person made, a locked one,

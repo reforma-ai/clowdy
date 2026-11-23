@@ -133,7 +133,7 @@ export interface Transport {
      */
     generateGitMessage: (projectId: ProjectId, place: PlaceRef, paths: string[]) => Promise<GitMessage>;
     /**
-     * `git fetch origin` in a place (`POST git/fetch`): brings in what origin has, moves no branch and prunes nothing. Answers the branch's upstream as it stands, with how far apart the two are.
+     * `git fetch origin` in a place (`POST git/fetch`, without the submodules' remotes): brings in what origin has, moves no branch and prunes nothing. Answers the branch's upstream as it stands, with how far apart the two are.
      * Rejects with a `TransportError` carrying git's own line (`conflict`, 409: no network, no permission, a hook) and `hint` when the line names the signing agent, 400 for a place that is no repository or
      * has no `origin`, 503 for one that did not end in about two minutes (a fingerprint that was waited for). Not retried.
      */

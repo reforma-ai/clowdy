@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { CommandError } from '../src/errors';
@@ -100,6 +100,9 @@ const left = (path: string): string[] => Bun.spawnSync(['git', 'status', '--porc
 
 const refsOf = (path: string): string => git(path, 'for-each-ref', '--format=%(refname) %(objectname)');
 
+/** The lock files a repository has: what a git that was stopped in the middle of a ref update would leave behind. */
+const locksIn = (path: string): string[] => readdirSync(join(path, '.git'), { recursive: true }).map(String).filter(name => name.endsWith('.lock'));
+
 const json = async <T>(response: Response) => await response.json() as T;
 
 interface Failure { ok: false; error: { code: string; message: string; details?: { hint?: string } } }
@@ -118,6 +121,14 @@ withScripts('remoteFailureLine', () => {
         expect(remoteFailureLine('fatal: Could not read from remote repository.\n', '', 'x')).toBe('fatal: Could not read from remote repository.');
         expect(remoteFailureLine('', 'only on the output\n', 'x')).toBe('only on the output');
         expect(remoteFailureLine('', '', 'git could not push to origin')).toBe('git could not push to origin');
+    });
+
+    test('is not a warning, a bare `remote:` or the remote\'s own progress, which come before the line that says why', () => {
+        expect(remoteFailureLine('warning: redirecting to https://github.com/acme/app.git/\nremote: Repository not found.\nfatal: repository \'https://github.com/acme/app.git/\' not found\n', '', 'x')).toBe('remote: Repository not found.');
+        expect(remoteFailureLine('remote: Resolving deltas: 100% (1/1), completed with 1 local object.\nremote: error: GH006: Protected branch update failed for refs/heads/main.\nTo github.com:acme/app.git\n ! [remote rejected] main -> main (protected branch hook declined)\n', '', 'x')).toBe('remote: error: GH006: Protected branch update failed for refs/heads/main.');
+        expect(remoteFailureLine('remote:\nremote: error: GH013: Repository rule violations found for refs/heads/main.\n', '', 'x')).toBe('remote: error: GH013: Repository rule violations found for refs/heads/main.');
+        // Nothing the remote said besides what git says of the ref: that is the line.
+        expect(remoteFailureLine('To github.com:acme/app.git\n ! [remote rejected] main -> main (pre-receive hook declined)\nerror: failed to push some refs to \'github.com:acme/app.git\'\n', '', 'x')).toBe('! [remote rejected] main -> main (pre-receive hook declined)');
     });
 
     test('is one line, with no colour and no credential of an address', () => {
@@ -182,6 +193,29 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             git(other, 'push', '-q', 'origin', '--delete', 'short-lived');
             await result('fetch');
             expect(git(path, 'branch', '-r', '--list', 'origin/short-lived')).toContain('origin/short-lived');
+        });
+
+        test('asks origin and nothing else: a submodule whose remote cannot be reached does not fail it', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { result } = await open(path, h);
+            const library = makeRepo(tempDir('git-remote'), 'library');
+
+            git(path, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', library, 'library');
+            git(path, 'commit', '-q', '-m', 'Add the library');
+            git(path, 'push', '-q');
+
+            // Somebody moves the commit the submodule is at, which is what makes git fetch the submodule by itself.
+            const other = neighbour(origin);
+
+            git(other, '-c', 'protocol.file.allow=always', 'submodule', 'update', '--init', '-q');
+            commitFile(join(other, 'library'), 'newer.txt');
+            git(other, 'add', 'library');
+            git(other, 'commit', '-q', '-m', 'Bump the library');
+            git(other, 'push', '-q');
+            git(path, '-C', 'library', 'config', 'remote.origin.url', join(tempDir('git-remote'), 'gone.git'));
+
+            expect(await result('fetch')).toMatchObject({ state: 'done', action: 'fetch', upstream: { name: 'origin/main', ahead: 0, behind: 1 } });
         });
 
         test('works on a detached HEAD and on a branch that tracks nothing, with no upstream in the answer', async () => {
@@ -423,6 +457,43 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             expect(refsOf(origin)).not.toContain('refs/heads/side');
         });
 
+        test('is never forced, and goes to origin, whatever the person\'s configuration says: a `+` refspec, `pushRemote` and `remote.pushDefault` of another remote', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { failure } = await open(path, h);
+            const other = neighbour(origin);
+            const theirs = commitFile(other, 'theirs.txt');
+            const elsewhere = bare();
+
+            git(other, 'push', '-q');
+            commitFile(path, 'mine.txt');
+            git(path, 'remote', 'add', 'elsewhere', elsewhere);
+            git(path, 'config', 'remote.origin.push', '+refs/heads/main:refs/heads/main');
+            git(path, 'config', 'push.default', 'matching');
+            git(path, 'config', 'branch.main.pushRemote', 'elsewhere');
+            git(path, 'config', 'remote.pushDefault', 'elsewhere');
+
+            expect((await failure('push', 409)).message).toBe('! [rejected] main -> main (fetch first)');
+            expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(theirs);
+            expect(refsOf(elsewhere)).toBe('');
+        });
+
+        test('sends a branch that tracks a branch of another name to that branch, and publishes one that tracks nothing under its own name', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { result } = await open(path, h);
+
+            git(path, 'push', '-q', 'origin', 'main:refs/heads/shared');
+            git(path, 'fetch', '-q', 'origin');
+            git(path, 'switch', '-q', '-c', 'mine', '--track', 'origin/shared');
+
+            const mine = commitFile(path, 'mine.txt');
+
+            expect(await result('push')).toEqual({ state: 'done', action: 'push', upstream: { name: 'origin/shared', ahead: 0, behind: 0 } });
+            expect(git(origin, 'rev-parse', 'refs/heads/shared')).toBe(mine);
+            expect(refsOf(origin)).not.toContain('refs/heads/mine');
+        });
+
         test('refuses a detached HEAD, a branch with no commit, a repository with no origin and a folder that is no repository, and sends nothing', async () => {
             const h = await start();
             const { path, origin } = repository();
@@ -592,6 +663,7 @@ withScripts('GitRemote', () => {
         expect(error).toBeInstanceOf(CommandError);
         expect(error).toMatchObject({ code: 'unavailable', message: 'The push did not finish in time' });
         expect(Date.now() - started).toBeLessThan(5000);
+        expect(locksIn(path)).toEqual([]);
 
         const running = new GitRemote({ store: h.store, environment: isolated() });
         const pending = running.push(place).catch((caught: unknown) => caught);
@@ -661,11 +733,81 @@ withScripts('GitRemote', () => {
 
         const runs = readFileSync(log, 'utf8').trim().split('\n');
 
-        expect(runs).toContain('fetch origin');
+        expect(runs).toContain('fetch --no-recurse-submodules origin');
         expect(runs).toContain('merge --ff-only @{upstream}');
         expect(runs).toContain('push --no-follow-tags --no-recurse-submodules origin refs/heads/main:refs/heads/main');
-        expect(runs).toContain('push --no-follow-tags --no-recurse-submodules -u origin HEAD');
-        expect(runs.join('\n')).not.toMatch(/--force|\s-f\s|--no-verify|--tags|--mirror|--all|--prune|\+refs|--delete|--rebase|reset|pull\b/);
+        // A branch that was never published is sent as a full ref too, never as `HEAD`, which is whatever is checked out when git runs.
+        expect(runs).toContain('push --no-follow-tags --no-recurse-submodules -u origin refs/heads/feature:refs/heads/feature');
+        expect(runs.join('\n')).not.toMatch(/--force|\s-f\s|--no-verify|--tags|--mirror|--all|--prune|\+refs|--delete|--rebase|reset|pull\b|\bHEAD\b/);
+    });
+
+    test('publishes the branch it judged, not the one that is checked out by the time git runs', async () => {
+        const dir = tempDir('git-remote');
+        const bin = join(dir, 'bin');
+        const real = Bun.which('git') as string;
+
+        mkdirSync(bin);
+        // A `git` that checks out another branch just before it pushes, as an agent working in the same place may.
+        writeFileSync(join(bin, 'git'), ['#!/bin/sh', 'if [ "$1" = push ]; then', `  '${ real }' switch -q side`, 'fi', `exec '${ real }' "$@"`].join('\n'));
+        chmodSync(join(bin, 'git'), 0o755);
+
+        const { path, origin, place, remote: publishing } = await remote({ environment: isolated({ PATH: `${ bin }:${ process.env.PATH }` }) });
+
+        git(path, 'switch', '-q', '-c', 'side');
+        commitFile(path, 'side.txt');
+        git(path, 'switch', '-q', '-c', 'feature');
+
+        const feature = commitFile(path, 'feature.txt');
+
+        await publishing.push(place);
+
+        expect(git(origin, 'rev-parse', 'refs/heads/feature')).toBe(feature);
+        expect(refsOf(origin)).not.toContain('refs/heads/side');
+        expect(git(path, 'config', 'branch.feature.merge')).toBe('refs/heads/feature');
+    });
+
+    test('lets two worktrees of one repository fetch and push at once, each on its own line, with nothing corrupted or left locked', async () => {
+        const { path, origin, place, remote: actions } = await remote();
+        const trees = ['b', 'c'].map((name) => {
+            const tree = join(tempDir('git-remote'), `tree-${ name }`);
+
+            git(path, 'worktree', 'add', '-q', '-b', `wt-${ name }`, tree);
+
+            return { name: `wt-${ name }`, place: { folder: place.folder, path: tree } satisfies Place };
+        });
+
+        for (let round = 0; round < 4; round++) {
+            for (const tree of trees) commitFile(tree.place.path, `${ tree.name }-${ round }.txt`);
+
+            // The first round publishes both branches, the next ones push them: a fetch of the checkout and of a worktree run between.
+            const results = await Promise.all([actions.fetch(place), actions.push(trees[0]!.place), actions.push(trees[1]!.place), actions.fetch(trees[0]!.place)]);
+
+            expect(results.map(result => result.state)).toEqual(['done', 'done', 'done', 'done']);
+        }
+
+        for (const tree of trees) expect(git(origin, 'rev-parse', `refs/heads/${ tree.name }`)).toBe(git(tree.place.path, 'rev-parse', 'HEAD'));
+
+        expect(locksIn(path)).toEqual([]);
+        expect(git(path, 'fsck', '--no-progress')).not.toMatch(/error|missing/i);
+    });
+
+    test('leaves no lock file when a fetch that waits for the network is stopped at its limit', async () => {
+        const { path, place, remote: slow } = await remote({ timeoutMs: 400 });
+        const ssh = join(tempDir('git-remote'), 'ssh-that-waits');
+
+        // What ssh does while a fingerprint is waited for, or a network does not answer.
+        writeFileSync(ssh, ['#!/bin/sh', 'sleep 20'].join('\n'));
+        chmodSync(ssh, 0o755);
+        git(path, 'remote', 'set-url', 'origin', 'git@example.invalid:acme/app.git');
+        git(path, 'config', 'core.sshCommand', ssh);
+
+        const started = Date.now();
+
+        expect(await slow.fetch(place).catch((caught: unknown) => caught)).toMatchObject({ code: 'unavailable', message: 'The fetch did not finish in time' });
+        expect(Date.now() - started).toBeLessThan(5000);
+        expect(locksIn(path)).toEqual([]);
+        // What git was running when it was stopped is gone, not left waiting.
+        expect(Bun.spawnSync(['pgrep', '-f', ssh]).exitCode).not.toBe(0);
     });
 
     test('gives the place\'s writes the environment of the daemon: no prompt for a password, and the signing agent that was found', async () => {

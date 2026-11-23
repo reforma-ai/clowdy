@@ -58,13 +58,13 @@
  *                                         (`unavailable`, or `invalid` for none on; `details.reason`: `off`, `signed_out`, `failed`, `timed_out`); the paths are judged as
  *                                         the commit judges them.
  *
- * POST /v1/projects/:id/git/fetch    -> GitRemoteResult. Body `GitRemoteRequest` (`folderId`, `workspaceId?`). `git fetch origin` and nothing else: no `--prune` of its own, no other remote, no
- *                                         submodule's. The answer carries the branch's upstream as it stands after the fetch (`upstream`, with `ahead` and `behind`), when it has one.
+ * POST /v1/projects/:id/git/fetch    -> GitRemoteResult. Body `GitRemoteRequest` (`folderId`, `workspaceId?`). `git fetch --no-recurse-submodules origin` and nothing else: no `--prune` of its own, no other
+ *                                         remote, no submodule's. The answer carries the branch's upstream as it stands after the fetch (`upstream`, with `ahead` and `behind`), when it has one.
  * POST /v1/projects/:id/git/pull     -> GitRemoteResult. Same body. Fetches `origin`, then takes what the upstream has with `git merge --ff-only`: nothing is merged, rebased, reset or
  *                                         discarded. A branch that has commits of its own and falls behind its upstream as well has diverged: the answer is `state: 'diverged'` (not an
  *                                         error) and the branch is left as it was. `pulled` says how many commits came in (0: already up to date).
- * POST /v1/projects/:id/git/push     -> GitRemoteResult. Same body. Sends the branch to its upstream (`git push origin HEAD:<the upstream's branch>`), and when the branch has none it
- *                                         publishes it: `git push -u origin HEAD`, with `published: true` in the answer. Never forced, never with `--no-verify`, never with a tag.
+ * POST /v1/projects/:id/git/push     -> GitRemoteResult. Same body. Sends the branch to its upstream (`git push origin refs/heads/<branch>:<the upstream's ref>`), and when the branch has none it
+ *                                         publishes it: `git push -u origin refs/heads/<branch>:refs/heads/<branch>`, with `published: true` in the answer. Never forced, never with `--no-verify`, never with a tag.
  *                                         The three refuse (`invalid`) a place that is not a repository, a repository with no `origin` and, for pull and push, a detached HEAD, a branch with no
  *                                         commit and a branch whose upstream is not on `origin`. A refusal by git (a push that is rejected, a hook, no permission, no network) is `conflict`
  *                                         with git's own line as the message (the line that says what went wrong, not the summary that follows it), and a `details.hint` when it names the
