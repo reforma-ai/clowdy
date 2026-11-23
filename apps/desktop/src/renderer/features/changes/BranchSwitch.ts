@@ -96,6 +96,7 @@ export class BranchSwitch {
         const { key } = this.facts;
 
         this.running = branch;
+        this.facts.switching = true;
         this.failure = undefined;
         this.warning = undefined;
 
@@ -124,6 +125,7 @@ export class BranchSwitch {
         finally {
             runInAction(() => {
                 this.running = undefined;
+                this.facts.switching = false;
             });
             this.refresh();
         }

@@ -81,7 +81,7 @@ describe('BranchSwitch', () => {
 
     it('switches, says it is running while it does, drops the old listing and reads the place again when it ends', async () => {
         const { stand, reads, switches } = transport();
-        const { model: branches, refresh } = model(stand);
+        const { model: branches, refresh, facts } = model(stand);
         const read = branches.load();
 
         reads[0]!.resolve(LISTING);
@@ -91,12 +91,15 @@ describe('BranchSwitch', () => {
 
         expect(branches.running).toBe('dev');
         expect(branches.busy).toBe(true);
+        // The place's moves to and from origin wait for it (`RemoteActions.busy`).
+        expect(facts.switching).toBe(true);
         expect(stand.switchGitBranch).toHaveBeenCalledExactlyOnceWith('p-1', { folderId: 'f-1' }, 'dev', undefined);
         expect(refresh).not.toHaveBeenCalled();
 
         switches[0]!.resolve(RESULT);
 
         expect(await pending).toEqual({ ok: true, result: RESULT });
+        expect(facts.switching).toBe(false);
         expect(branches.running).toBeUndefined();
         expect(branches.listing).toBeUndefined();
         expect(branches.failure).toBeUndefined();
