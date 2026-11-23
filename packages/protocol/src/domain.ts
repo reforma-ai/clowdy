@@ -250,8 +250,52 @@ export interface ChatWorkspace {
     ready: boolean;
 }
 
-/** Where a new chat works when it is not in the folder itself: in a new worktree started from `base` (the folder's default branch when absent), or in a worktree that exists. */
-export type ChatWorkspaceChoice = { mode: 'new'; base?: string } | { mode: 'existing'; path: string };
+/**
+ * Where a new chat works when it is not in the folder itself: in a new worktree started from `base` (the folder's default branch when absent) on the branch
+ * `<branchPrefix>/<chat id8>` (`DEFAULT_BRANCH_PREFIX` when absent or empty), or in a worktree that exists.
+ */
+export type ChatWorkspaceChoice = { mode: 'new'; base?: string; branchPrefix?: string } | { mode: 'existing'; path: string };
+
+/** What the branch of a new worktree starts with when none is chosen: `clowdy/<chat id8>`. */
+export const DEFAULT_BRANCH_PREFIX = 'clowdy';
+
+export const MAX_BRANCH_PREFIX_LENGTH = 64;
+
+/** What a branch prefix is as git takes it: the text without the space around it, `DEFAULT_BRANCH_PREFIX` when it holds nothing. */
+export const branchPrefixOf = (text: string | undefined): string => text?.trim() || DEFAULT_BRANCH_PREFIX;
+
+/**
+ * Why `text` cannot start a branch name (`<prefix>/<chat id8>`), in words for the person, or `undefined` when it can; an empty one is the default prefix and fine.
+ * The rules are git's own for a ref name (`git check-ref-format`), a little stricter at the edges: no space or control character, none of `~ ^ : ? * [ \`, no `..`
+ * or `@{`, no empty part between slashes, no part that starts with `.` or ends with `.lock`, and no slash or dot at either end (a slash is added after the prefix).
+ * A leading `-` is refused as well: a branch name that starts so would be an option wherever it is handed to git. The text is read as `branchPrefixOf` reads it.
+ */
+export function branchPrefixProblem(text: string | undefined): string | undefined {
+    const prefix = branchPrefixOf(text);
+
+    if (prefix.length > MAX_BRANCH_PREFIX_LENGTH) return `The branch prefix is longer than ${ MAX_BRANCH_PREFIX_LENGTH } characters`;
+
+    // eslint-disable-next-line no-control-regex -- a control character is what is looked for
+    if (/[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(prefix)) return 'The branch prefix cannot have a space or a control character';
+
+    if (/[~^:?*[\\]/.test(prefix)) return 'The branch prefix cannot have any of ~ ^ : ? * [ \\';
+
+    if (prefix.includes('..')) return 'The branch prefix cannot have two dots in a row';
+
+    if (prefix.includes('@{')) return 'The branch prefix cannot have @{';
+
+    if (/^[/.-]/.test(prefix)) return 'The branch prefix cannot start with / . or -';
+
+    if (/[/.]$/.test(prefix)) return 'The branch prefix cannot end with / or .';
+
+    if (prefix.includes('//')) return 'The branch prefix cannot have an empty part between slashes';
+
+    const parts = prefix.split('/');
+
+    if (parts.some(part => part.startsWith('.'))) return 'A part of the branch prefix cannot start with a dot';
+
+    return parts.some(part => part.endsWith('.lock')) ? 'A part of the branch prefix cannot end with .lock' : undefined;
+}
 
 /** How a thread ended its turn, as its parent is told. */
 export type ThreadOutcome = 'finished' | 'failed' | 'interrupted';
