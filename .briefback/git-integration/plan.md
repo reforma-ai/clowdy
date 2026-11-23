@@ -22,6 +22,7 @@
 - The pull request of a branch is found by the branch through one `gh api graphql` read: an open PR first, else the newest one. A merged or closed PR that HEAD has moved past (`merge-base --is-ancestor HEAD <PR head>` says no) counts as no PR, so Create PR is offered again, and a new open PR for the branch is picked up by the next read. The PR's own file counts are shown only in its row, never in the changes list.
 - The diff has four scopes: All, Branch (against the base), Uncommitted, and one commit. Last turn is the last stage and may be cut.
 - The strip above the composer shows the PR chip (number, state, a dot for the checks, a click opens GitHub, the chip opens a read-only list of the checks with their names, states and links) and `Files changed N +a −d` against the base. A dot beside it says the tree is dirty. The Info tab gets rows for the base, ahead and behind, the PR and Files changed.
+- **Changed 2026-11-23 (the owner, after using Stages 1 to 8):** the strip above the composer (PR chip, Create PR, `Files changed N +a −d`, the dirty dot) is removed: it showed the branch against its base in every chat, a new one too, and was a distraction. The PR chip and Create PR stay in the Changes sidebar and the Info rows stay. In its place a **Last run plate** shows after a run that changed files (Stage 9), a new message from the person takes it down. The research of GitHub Desktop (`research/github-desktop.md`) added Stages 10 to 13: the sidebar speaks GitHub Desktop's words (10), the branch of the folder's own checkout is changed from the Changes sidebar (11) and from the new chat's pill (12), a file's changes are discarded one at a time (13). The owner never undoes, amends, force pushes or stashes in GitHub Desktop and wants none of them; renaming a branch is not needed (a new worktree's branch is named at creation, by another chat's work); Update from the base and a pull that merges a diverged branch are an open question (see the last section).
 - The PR chip stays at the level of GitHub Desktop: no comments, no re-run, no merge, no list beyond the checks. It is read when the window gets focus, when a turn ends, and every 60 seconds while a check is pending.
 - The new Changes tab is a tree-and-view tab like Files: beside the chat, in the chat's place when the window is narrow, `Cmd+5`. The left side is the reading area: scope menu, totals, a filter input above the cards (substring or glob, `!` excludes, one input for the cards and the sidebar list; globs are matched by `minimatch`, which replaces the hand-written matchers everywhere, as the owner asked), a "hide viewed" toggle, expand and collapse all, and one card per file with its diff, expanded when the tab opens. The right side is a sidebar of 220 to 250 px, resizable and hideable like Files': the PR, the branch to its base with ahead and behind, an open-on-GitHub button and the Fetch, Pull, Push, Publish menu; the checklist of changed files (a click scrolls to the card, a tick shows a viewed file); the message box with a Generate button; Commit with a Commit & Push variant; Committed on branch; the list of commits, where a click sets the scope to that commit. The diff is unified only.
 - The diff is drawn by `@codemirror/merge` 6.12.3 (MIT, published 2026-10-19), the one new dependency, in `packages/file-manager` beside the editor whose theme and languages it shares. A card reads both sides of the file as text (bb and Orca do the same), mounts its editor when it is near the screen and caps the size it loads.
@@ -338,33 +339,117 @@
 **Review findings, fixed:** a fetch also fetched the submodules from their own remotes (a broken submodule URL failed the fetch of origin); Publish pushed `HEAD`; the failure line could show `warning:`, a bare `remote:` or `Resolving deltas` as the cause; Create PR built the compare page from the local branch name, so a branch made from `origin/feature` (pushing to `feature`) got a page for a branch GitHub did not have (now the tracked name); menu reasons were cut at 220 px before saying why (`2 commits to pull first`, `Upstream gone from origin`); a password with an `@` left part of itself in a shown line, and `tracks <remote>` could print an address with a credential. Checked on real temporary repositories with a bare origin: pull in every state (no upstream, another remote, detached, gone, ahead, behind, diverged, a local change in the way: nothing half-done), every push configuration that could widen a push, two worktrees of one repository fetching and pushing at once (60 rounds, no lock file, clean `fsck`: the per-place `exclusive` is enough and was not widened to the repository), a stopped run leaving no lock file and no live child. Left (follow-ups): the PR lookup (Stage 2, `pullRequest.ts`) uses the local branch name, so a branch that tracks a differently named upstream does not find its PR and Create PR may be offered for a branch that has one (rare; the fix is to look the PR up by the upstream's name); Create PR's `ready` rests on the last fetch, so a branch deleted on the remote since (a merge with auto-delete) opens a page for a branch GitHub no longer has until Fetch is pressed (inherent without a network check); at 150 px the upstream row reads `ori… 2 behind` with the name in the tooltip; `CommitDraft.sent` ("and pushed" or "and published") is the client's guess, not the daemon's `published` flag; a Fetch pressed while a commit runs makes the next Commit & Push report `push failed: An action is running`; a pull may take 120 s for the fetch plus 120 s for the merge, not 120 s in total; an aborted HTTP request does not stop a running push (by design). Not checked: any real remote, `gh`, Secretive or Touch ID (the 120 s is unmeasured), Windows, the real app with a real daemon, an enterprise GitHub server.
 **Commits:** `06a086f` feat(daemon): fetch, pull, push and publish a place's branch to origin; `70bde1b` feat(desktop): add fetch, pull and push of a place to the transport and the fixtures; `f8d8975` feat(desktop): fetch, pull, push, publish, Commit & Push and Create PR in the changes sidebar; `cc60afb`, `d21036f` docs; `af933f8`, `62d53cb` refactors; review fixes `30f81fd`, `aebb401`, `1c296b8`, `277d551`, `38eafac`; merged by `3191210`.
 
-## Stage 9 — Last turn (optional, cut if it costs more than it is worth)
+## Stage 9 — The Last run plate over the composer
 
-**Depends on:** Stage 1, Stage 4.
+**Depends on:** Stage 1, Stage 4. Replaces the strip of Stage 3 (removed on 2026-11-23).
 
-**This stage:** the person asks what the last turn changed. A tree id taken when the turn starts is compared with the tree now. If this proves bigger than a stage's worth of code, or git's pruning makes it unreliable, the stage is dropped and recorded as cut.
+**This stage:** after a run that changed files, a plate over the message box lists what that run changed, in the manner of bb's: a header `Last run · 7 files +152 −22` (no pull request: a run's changes are local), the first five files with their kind letter and `+a −d`, a chevron to unfold the rest, and a press on a file opens the Changes tab on the `Last run` scope with that file revealed. The plate shows only for a run that changed something and is gone while a run works and once the person sends a new message. The scope is made from two trees of the working directory, one taken when the turn starts and one when it ends (a temporary index, `git write-tree`, the repository's index untouched), so it stays what that run did whatever happens to the files afterwards. A shared place shows the neighbours' edits of that time too (said in the scope's tooltip). When git has pruned a tree, the scope says it is unavailable and the plate is not drawn.
 
 - [ ] Complete
-  - [ ] When a run's turn starts, the daemon makes a tree of the place's working directory with a temporary index (`GIT_INDEX_FILE`, `add -A`, `write-tree`), bounded in time, and keeps its id with the turn; a failure keeps nothing
-  - [ ] A `turn` scope: the changes read and the file sides compare that tree with the tree of the working directory now; a missing object answers `unavailable`
-  - [ ] The scope menu offers Last turn for the open chat when a snapshot exists
-  - [ ] Tests: a turn that edits and adds files, a shell-made change, a pruned tree, two chats in one place
+  - [ ] The daemon makes the tree of the place's working directory when a run's turn starts and when it ends (a copy of the real index, `add -A`, `write-tree`, in a temporary `GIT_INDEX_FILE`, bounded in time, ignored files out, a failure keeps nothing) and keeps both ids with the turn (migration 27)
+  - [ ] A `turn` scope: the changes read and the file sides compare the two trees; the routes take the chat's id (or the turn's); a missing object answers `unavailable`
+  - [ ] The plate: `Last run` header with the totals, five rows, a chevron for the rest, drawn on `ComposerBanner` over the message box for a chat that changed files in its last finished turn, nothing for a chat with no snapshot, a run with no change, a run that is working, a chat the person has written to since; a press on a row opens the Changes tab (the side panel opens if shut) on the `turn` scope with the file revealed
+  - [ ] The scope menu of the Changes tab offers `Last run` for the open chat while a snapshot exists
+  - [ ] Tests: a turn that edits and adds files, a shell-made change, a deleted file, a pruned tree, two chats in one place, a turn that changes nothing, the plate's lifecycle (appears at run end, goes at the next message)
 
 **Files**
 
-- `apps/daemon/src/db/migrations.ts` — `MIGRATIONS`: the next version; `apps/daemon/src/db/runs.ts` — the snapshot's id with the turn
-- `apps/daemon/src/runs/driver.ts` — the start of a turn takes the snapshot
+- `apps/daemon/src/db/migrations.ts` — `MIGRATIONS`: version 27; `apps/daemon/src/db/runs.ts` (or the turn's table) — the two tree ids
+- `apps/daemon/src/runs/driver.ts` — the start and the end of a turn take the snapshots (another chat has uncommitted edits to this file: merge on top of theirs)
 - `apps/daemon/src/git/snapshot.ts` — create: the temporary-index tree; `changes.ts` reads an existing scope and does not write objects
 - `apps/daemon/src/git/changes.ts` — the `turn` scope
-- `packages/protocol/src/git.ts` — `GitScope`
-- `apps/desktop/src/renderer/features/changes/ChangesToolbar.tsx` — the menu entry
+- `packages/protocol/src/git.ts`, `api.ts` — `GitScope`, the route's parameter; the four transport places and fixtures
+- `apps/desktop/src/renderer/features/chats/LastRunPlate.tsx` — create, on `ComposerBanner`; `ChatView.tsx` mounts it after `RunningAgents`
+- `apps/desktop/src/renderer/features/changes/ChangesToolbar.tsx`, `PlaceChanges.ts` — the scope menu entry and the reveal
 - `apps/daemon/test/git-snapshot.test.ts` — create
-- `apps/daemon/AGENTS.md` — the snapshot and its limits
+- `apps/daemon/AGENTS.md`, `apps/desktop/AGENTS.md` — the snapshot and its limits, the plate
 
-**Done when:** after a turn that edits two files, the Last turn scope lists those two files and not the ones changed before the turn began.
-**Verify:** `cd apps/daemon && bun test test/git-snapshot.test.ts test/git-changes.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `bun run --cwd apps/desktop typecheck`
+**Done when:** after a run that edits two files, the plate over the message box lists those two files and not the ones changed before the run; a press on one opens the Changes tab on Last run with that file's card; sending a message takes the plate down.
+**Verify:** `cd apps/daemon && bun test test/git-snapshot.test.ts test/git-changes.test.ts test/storage.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `bun run --cwd apps/desktop typecheck`, `bun run --cwd apps/desktop test src/renderer/features/changes src/renderer/features/chats`
 **Commits:** None yet.
 
-## After Stage 8: can Clowdy replace GitHub Desktop? (owner's request of 2026-11-23, not started)
+## Stage 10 — GitHub Desktop's words in the sidebar and the commit box
 
-The owner uses GitHub Desktop for one flow: change branch, commit, pull, push, Create PR, and wants Clowdy to make opening it unnecessary. To do after Stage 8 is in `next` (and Stage 9 is decided): a Research run (`.briefback/git-integration/research/github-desktop.md`) of GitHub Desktop's own docs and source (read-only clone in the scratchpad, as bb's was), ending in a table of what it does that Clowdy does not (named by GitHub Desktop's terms), what each missing piece would cost here, and what Clowdy's shared tree rule (`GITFLOW.md`: no branch switching in a tree other agents work in) means for "change branch"; then a Grill with the owner on which pieces to take and a plan if they are worth stages. Known gap before any research: nothing in Stages 1 to 9 switches or creates a branch.
+**Depends on:** Stage 8.
+
+**This stage:** the owner knows GitHub Desktop's words and states by heart, so the places where Clowdy shows the same things speak them. No new git command beyond reading when the last fetch was.
+
+- [ ] Complete
+  - [ ] One primary sync button in the Changes sidebar, in place of the row and menu of Stage 8, whose label is the next action: `Publish branch` (no upstream), `Pull origin` with the number behind, `Push origin` with the number ahead, `Fetch origin` with `Last fetched <relative>` or `Never fetched` when there is nothing to move, a disabled `Diverged` state that says what to do (the daemon leaves a diverged branch alone), and the running state with its progress; a dropdown at its side keeps the rest (Fetch origin, and the others with their reasons)
+  - [ ] `Last fetched` comes from the daemon (the mtime of `FETCH_HEAD`, in the status read)
+  - [ ] The commit button reads `Commit 3 files to <branch>`, with the tooltips `A commit summary is required to commit` and `Select one or more files to commit`; a line under the box says the commit goes to the branch the work is compared with (the default or base branch) so the wrong-branch commit is seen before it happens
+  - [ ] The empty state of the commit box, `No local changes`, offers one next step in GitHub Desktop's order: `Publish your branch`, `Pull N commits from the origin remote`, `Push N commits to the origin remote`, `Create a Pull Request from your current branch` (none on the base branch), then three quiet ones: open in the editor, show in the file manager, open the repository on GitHub
+  - [ ] A rejected push offers `Fetch` beside git's line
+  - [ ] Tests for the pure rules and the states; the fixtures page plays each state
+
+**Files**
+
+- `apps/desktop/src/renderer/features/changes/RemoteMenu.tsx` (the sync button), `changesActions.ts` (the next-action rule), `CommitBox.tsx`, `CommitDraft.ts`, `ChangesSidebar.tsx`
+- `apps/daemon/src/git/status.ts`, `packages/protocol/src/git.ts` — `lastFetchedAt`; the transports' fixtures
+- `apps/desktop/AGENTS.md`
+
+**Done when:** the sidebar has one button that always names the next step and says when the last fetch was; the commit button names the branch and the count; a clean branch says `No local changes` with the one suggested step.
+**Verify:** `bun run --cwd apps/desktop typecheck`, `bun run --cwd apps/desktop test src/renderer/features/changes`, `cd apps/daemon && bun test test/git-changes.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`
+**Commits:** None yet.
+
+## Stage 11 — Change branch from the Changes sidebar
+
+**Depends on:** Stage 8 (and Stage 10's sidebar, which it joins).
+
+**This stage:** the owner cannot change the branch of the folder's checkout from Clowdy (terminal or GitHub Desktop only). The Changes sidebar's branch row becomes a branch picker for the place's own checkout. A chat's worktree keeps its branch (the picker shows it and says why it is not offered), so there is no jump to another place as in GitHub Desktop. The switch is refused, not negotiated: a tree with any change (tracked, staged or untracked), a merge or rebase in progress, a run working in the place, or a branch another worktree has checked out gives a reason, and nothing is stashed or carried along.
+
+- [ ] Complete
+  - [ ] `GET /v1/projects/:id/git/branches` for a place: the local branches (current, default, upstream, the worktree that holds it, last commit time), the branches of `origin` with no local branch, the five most recent (the reflog's `checkout: moving from` lines), capped; read with the discipline of Stage 1
+  - [ ] `POST /v1/projects/:id/git/switch` (`folderId`, `branch`, optional `create` with the start point `current` or `default`): `git switch <branch>`, `git switch --track -c <name> origin/<name>` for a remote-only branch, `git switch -c <name> <start>` for a new one (the name checked by `git check-ref-format --branch`); on the write line of the place (`exclusive`), in the write environment, hooks and signing as ever; refusals as above, each with its reason; only the folder's own checkout (a worktree place is `invalid`)
+  - [ ] The picker: a branch button in the sidebar showing the current branch, a popover with a filter and the groups Default, Recent, Local, Remote (the new-worktree base picker's component), `New branch...` (name, and `from the default branch` or `from the current branch`, GitHub Desktop's two choices and words), a branch held by a worktree shown disabled with where; the reason of a refusal shown in the popover; disabled on a worktree place with the reason
+  - [ ] After a switch the facts, the changes and the Info rows are read again; the chats of the folder see the new branch at their next read
+  - [ ] Tests on real repositories: switching clean, a dirty tree refused (modified, staged, untracked), a branch held by a worktree refused with its path, a remote-only branch tracked, a new branch from current and from default, a bad name, a merge in progress, a worktree place refused, a run working in the place refused
+
+**Files**
+
+- `apps/daemon/src/git/branches.ts` — create: the list; `apps/daemon/src/git/switch.ts` — create, beside `commit.ts` and `remote.ts`; `apps/daemon/src/http/routes.ts`
+- `packages/protocol/src/git.ts`, `api.ts`; the four transport places and fixtures with `&branches=` switches for the states
+- `apps/desktop/src/renderer/features/changes/BranchPicker.tsx` — create; `ChangesSidebar.tsx`; `changesActions.ts` (the rules and reasons)
+- `apps/daemon/test/git-switch.test.ts`, `git-branches.test.ts` — create; `apps/daemon/AGENTS.md`, `apps/desktop/AGENTS.md`
+
+**Done when:** in the Changes tab of a chat that works in the folder's checkout, a clean tree changes branch from the picker, creates a branch from the default or current one, and a dirty tree says what stands in the way; a worktree chat's picker says its branch stays.
+**Verify:** `cd apps/daemon && bun test test/git-switch.test.ts test/git-branches.test.ts`, `cd packages/protocol && bun run test && bun run typecheck`, `bun run --cwd apps/desktop typecheck`, `bun run --cwd apps/desktop test src/renderer/features/changes`
+**Commits:** None yet.
+
+## Stage 12 — Pick the branch of the main worktree in the new chat
+
+**Depends on:** Stage 11, and the commit of another chat's `branchName` work on `ChatWorkspaceChoice` (`packages/protocol/src/domain.ts`, `apps/daemon/src/domain/workspaces.ts`).
+
+**This stage:** the new-chat pill's `Main worktree` row shows the folder's branch; it becomes a branch picker like the `New worktree` row's base picker. Choosing another branch switches the folder's checkout when the chat is made, with Stage 11's refusals (dirty tree, a run working in the folder, a branch held elsewhere): the pill shows the reason and the chat is not made until it is settled.
+
+- [ ] Complete
+  - [ ] The pill's branch picker for `Main worktree`, with the list of Stage 11
+  - [ ] The choice is carried by the new-chat command and the switch runs before the chat's first turn, by the daemon, with Stage 11's rules
+  - [ ] Tests, the fixtures page, docs
+
+**Files:** `apps/desktop/src/renderer/features/agents/WorkspaceChips.tsx` and its tests, `packages/protocol/src/domain.ts` (`ChatWorkspaceChoice`), `apps/daemon/src/domain/workspaces.ts`, the new-chat command path; to be listed exactly when the stage starts.
+
+**Done when:** a new chat on `Main worktree` can pick another clean branch and starts on it, and a dirty folder says why it cannot.
+**Verify:** the daemon's and the desktop's tests of the touched areas, typecheck, lint
+**Commits:** None yet.
+
+## Stage 13 — Discard the changes of a file
+
+**Depends on:** Stage 4.
+
+**This stage:** the one destructive action the owner uses in GitHub Desktop: discard the changes of single files. A file goes back to the last commit (an untracked file is removed) after a confirmation, and a copy of what is discarded is kept for a while, since an agent may have written it a minute ago.
+
+- [ ] Complete
+  - [ ] `POST /v1/projects/:id/git/discard` (`folderId`, `workspaceId?`, `paths`): judged against the place's `uncommitted` list as `commit` does (a rename brings both paths); tracked files by `git restore --source=HEAD --staged --worktree -- <paths>`, untracked files removed; on the place's write line; a copy of every discarded file (its text before) kept in the daemon's data folder for 7 days, capped in size, never in the repository
+  - [ ] The sidebar's file rows and the card headers offer `Discard changes...` for an uncommitted file (menu or button, in the style of the Viewed tick), a confirmation that names the file and says a copy is kept, then the lists are read again; `Discard all` is not offered
+  - [ ] Tests on real repositories: a modified, a deleted, a staged, a renamed and an untracked file, a path that is not changed refused, the copy kept and its cap
+
+**Files:** `apps/daemon/src/git/discard.ts` — create; `routes.ts`; `packages/protocol`; the four transport places; `apps/desktop/.../ChangesSidebar.tsx`, `DiffCard.tsx`, a confirmation dialog from the shared components; docs.
+
+**Done when:** a changed file is discarded from the sidebar after a confirmation and is back at the last commit, with its copy kept.
+**Verify:** `cd apps/daemon && bun test test/git-discard.test.ts`, protocol tests and typecheck, `bun run --cwd apps/desktop typecheck`, `bun run --cwd apps/desktop test src/renderer/features/changes`
+**Commits:** None yet.
+
+## After Stage 13: can Clowdy replace GitHub Desktop? (study done 2026-11-23)
+
+The study is `research/github-desktop.md` (GitHub Desktop's docs and source against Clowdy at `233012f`). Its answer: the owner's five steps need about four to five more stages; the missing ones are Stages 10 to 13 above, with Update from the base and a pull that merges a diverged branch still to decide (GitHub Desktop's `Update from main` and `Pull origin` merge; Clowdy's pull is fast-forward only and leaves a diverged branch alone; the owner's `GITFLOW.md` asks for the merge by hand after every `next` merge; a merge commit is signed, so it asks for Touch ID, and it can conflict, which would need a banner, `Abort merge` and a way to hand the conflict to the agent: about one and a half stages). Not wanted by the owner: undo of a commit, amend, force push, stash, rename of a branch, a list of pull requests, co-authors.
