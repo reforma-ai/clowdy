@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RootStoreProvider, type RootStore } from '../../stores';
-import { useFolderGit } from './useFolderGit';
+import { refreshFolderGit, useFolderGit } from './useFolderGit';
 
 import type { ProjectInfo } from '@clowdy/protocol';
 
@@ -61,6 +61,29 @@ describe('useFolderGit', () => {
 
         await daemon.answer(1, info({ 'f-a': 'feature/menu' }));
         expect(shown()).toBe('feature/menu');
+    });
+
+    it('reads again at once when something that changed the folder\'s branch says so, for that folder alone', async () => {
+        const daemon = transport();
+        const store = { transport: daemon } as unknown as RootStore;
+
+        draw(store, 'f-a');
+        await daemon.answer(0, info({ 'f-a': 'main' }));
+
+        act(() => refreshFolderGit('p-1', 'f-b'));
+        act(() => refreshFolderGit('p-2', 'f-a'));
+        expect(daemon.getProjectsInfo).toHaveBeenCalledTimes(1);
+
+        act(() => refreshFolderGit('p-1', 'f-a'));
+        expect(daemon.getProjectsInfo).toHaveBeenCalledTimes(2);
+
+        await daemon.answer(1, info({ 'f-a': 'feature/menu' }));
+        expect(shown()).toBe('feature/menu');
+
+        act(() => root.unmount());
+        root = createRoot(container);
+        act(() => refreshFolderGit('p-1', 'f-a'));
+        expect(daemon.getProjectsInfo).toHaveBeenCalledTimes(2);
     });
 
     it('shows nothing of the folder it had, while the answer for the folder it has now is on its way', async () => {

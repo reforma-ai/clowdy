@@ -13,6 +13,17 @@ interface Read {
     workspaces: ProjectWorkspaceInfo[] | undefined;
 }
 
+/** The reads of the folders that are on show now, each asked to read again by `refreshFolderGit`. */
+const listeners = new Set<(projectId: ProjectId, folderId: FolderId) => void>();
+
+/**
+ * Asks everything that shows a folder's branch (`useFolderGit`: the chat's folder chip, the Files and Info tabs, the Changes sidebar) to read it again at once: what changed the branch
+ * (a switch made from the Changes sidebar) knows it before the window's next focus does.
+ */
+export function refreshFolderGit(projectId: ProjectId, folderId: FolderId): void {
+    for (const listener of listeners) listener(projectId, folderId);
+}
+
 /**
  * What git says about a folder of a project (its `origin` and the branch that is checked out), read from the daemon when the component is drawn, when the folder
  * changes and when the window gets focus again, since the branch changes in a terminal or by an agent while the app is in the background. Nothing until the
@@ -47,12 +58,18 @@ export function useFolderGit(projectId: ProjectId, folderId: FolderId, workspace
             );
         };
 
+        const onRefresh = (changedProject: ProjectId, changedFolder: FolderId) => {
+            if (changedProject === projectId && changedFolder === folderId) readGit();
+        };
+
         readGit();
         window.addEventListener('focus', readGit);
+        listeners.add(onRefresh);
 
         return () => {
             latest++;
             window.removeEventListener('focus', readGit);
+            listeners.delete(onRefresh);
         };
     }, [root, projectId, folderId, key]);
 
