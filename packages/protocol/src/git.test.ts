@@ -24,5 +24,6 @@ describe('ROUTES git reads', () => {
         expect(ROUTES.projectGitStatus('prj_1')).toBe('/v1/projects/prj_1/git/status');
         expect(ROUTES.projectGitChanges('prj_1')).toBe('/v1/projects/prj_1/git/changes');
         expect(ROUTES.projectGitFile('a/b?c')).toBe('/v1/projects/a%2Fb%3Fc/git/file');
+        expect(ROUTES.projectGitViewed('a/b?c')).toBe('/v1/projects/a%2Fb%3Fc/git/viewed');
     });
 });

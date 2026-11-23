@@ -89,7 +89,7 @@ export function ChangesView({ projectId, place }: { projectId: ProjectId; place:
         if (model) model.sync(model.facts.generation);
     }, [model, scope, generation]);
 
-    useEffect(() => model?.unfoldAll(), [model]);
+    useEffect(() => model?.resetFolds(), [model]);
 
     useEffect(() => {
         if (width > 0) setSized(true);

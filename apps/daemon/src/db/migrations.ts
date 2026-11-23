@@ -504,4 +504,27 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 26,
+        up(db) {
+            // The files the person marked as viewed in the Changes tab (see `GitViewedMark`): one row for a file in a scope of a place. A place is the folder's own checkout
+            // (`workspace_id` empty, never NULL, so the key can hold it) or a worktree of it. `scope_key` is built by the daemon, never taken from a client: `uncommitted`,
+            // `branch:<base>`, `all:<base>` or `commit:<hash>`. `revision` is the file's own (`GitChangedFile.revision`) when it was marked: the client calls a file viewed only
+            // while its revision is still this one. No foreign keys, as the other tables of places have none: the rows of a worktree go with its row (`deleteWorkspace`) and a
+            // project's with the project.
+            db.run(`
+                CREATE TABLE viewed_files (
+                    project_id TEXT NOT NULL,
+                    folder_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    scope_key TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    revision TEXT NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (project_id, folder_id, workspace_id, scope_key, path)
+                );
+                CREATE INDEX viewed_files_workspace ON viewed_files(workspace_id) WHERE workspace_id <> '';
+            `);
+        },
+    },
 ];

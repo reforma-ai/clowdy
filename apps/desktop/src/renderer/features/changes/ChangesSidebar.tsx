@@ -3,7 +3,7 @@ import { For } from '@clowdy/components/For';
 import { Panel, PanelEmptyRow, PanelHeader } from '@clowdy/components/Panel';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
-import { ArrowLeft, Version } from '@clowdy/icons/14';
+import { ArrowLeft, Check, Version } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
 import { commitScope } from '@clowdy/protocol';
 
@@ -13,6 +13,7 @@ import { githubLink } from '../openWith/openTarget';
 import { isCommitScope } from './changeScopes';
 import styles from './ChangesSidebar.module.css';
 import { accessHint, accessHintTitle, aheadBehindCounts, CHANGE_KIND_VIEW, splitPath } from './gitSummary';
+import { LIST_TEXT } from './listState';
 import { PullRequestChip } from './PullRequestChip';
 
 import type { GitChangedFile, GitCommit, GitStatus } from '@clowdy/protocol';
@@ -29,6 +30,13 @@ export function headName(status: GitStatus | undefined): string | undefined {
     return head.kind === 'detached' ? `Detached at ${ head.commit.slice(0, 7) }` : head.name;
 }
 
+/** What the files section says when it lists none: that the filter lets nothing through, that every file it lets through is viewed and hidden, or that nothing changed. */
+function emptyFilesWords(model: PlaceChanges): string {
+    if (model.hideViewed && model.matchingFiles.length > 0) return LIST_TEXT.allViewed;
+
+    return model.changes && model.filter.trim() !== '' && model.changes.files.length > 0 ? 'No files match the filter' : 'No changed files';
+}
+
 /** The title of a section of the sidebar, and how many it lists. */
 function SectionHeader({ title, count }: { title: string; count?: number }) {
     return (
@@ -39,8 +47,8 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
     );
 }
 
-/** One changed file of the scope: what happened to it, its name with its folder dimmed after it, and its lines. A press brings its card to the top and opens it. */
-function FileRow({ file, onOpen }: { file: GitChangedFile; onOpen: (path: string) => void }) {
+/** One changed file of the scope: what happened to it, its name with its folder dimmed after it, its lines, and a tick when it is viewed. A press brings its card to the top and opens it. */
+function FileRow({ file, viewed, onOpen }: { file: GitChangedFile; viewed: boolean; onOpen: (path: string) => void }) {
     const kind = CHANGE_KIND_VIEW[file.kind];
     const { folder, name } = splitPath(file.path);
 
@@ -57,6 +65,7 @@ function FileRow({ file, onOpen }: { file: GitChangedFile; onOpen: (path: string
                     <Text variant="xs" color="danger">{ `−${ file.deletions }` }</Text>
                 </span>
             ) }
+            <span className={ styles.tick }>{ viewed && <Check role="img" title="Viewed" aria-label="Viewed" /> }</span>
         </Button>
     );
 }
@@ -102,6 +111,8 @@ export function ChangesSidebar({ model, place, projectId, onOpenFile, toggle }: 
     const hint = pr ? undefined : accessHint(facts.access, facts.repo);
     const repositoryLink = githubLink(git, { relative: '', kind: 'directory' });
     const files = model.files;
+    // Read here, with the list: the rows are drawn by a callback of `For`, which does not follow the model, so a tick that changes reaches them through this component.
+    const viewed = model.viewedPaths;
     const commits = base?.commits ?? [];
     const onCommit = isCommitScope(model.effectiveScope);
 
@@ -142,11 +153,11 @@ export function ChangesSidebar({ model, place, projectId, onOpenFile, toggle }: 
                         ? (
                             <Scrollable className={ styles.list } contentClass={ styles.rows }>
                                 <For each={ [...files] }>
-                                    { file => <FileRow key={ file.path } file={ file } onOpen={ onOpenFile } /> }
+                                    { file => <FileRow key={ file.path } file={ file } viewed={ viewed.has(file.path) } onOpen={ onOpenFile } /> }
                                 </For>
                             </Scrollable>
                         )
-                        : <PanelEmptyRow>{ model.changes && model.filter.trim() !== '' && model.changes.files.length > 0 ? 'No files match the filter' : 'No changed files' }</PanelEmptyRow> }
+                        : <PanelEmptyRow>{ emptyFilesWords(model) }</PanelEmptyRow> }
                 </section>
 
                 { base && (

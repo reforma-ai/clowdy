@@ -59,3 +59,9 @@
 .note {
     min-width: 0;
 }
+
+/* How many files are viewed: it stays whole while a phrase beside it is cut. */
+.viewedCount {
+    flex-shrink: 0;
+    white-space: nowrap;
+}

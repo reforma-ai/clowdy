@@ -17,6 +17,7 @@ import type {
     GitPullRequestInfo,
     GitScope,
     GitStatus,
+    GitViewedMark,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
@@ -105,6 +106,16 @@ export interface Transport {
      * commit, and 400 for a `from` that is no hash.
      */
     getGitFile: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, oldPath?: string, from?: string) => Promise<GitFileSides>;
+    /**
+     * The files the person marked as viewed in a scope of a place, each with the revision (`GitChangedFile.revision`) the file had when it was marked, in path order. The daemon only
+     * keeps them: a file is viewed only while its revision in the scope's list is the stored one, which the caller decides, so an edit clears the mark with no read. Read when asked,
+     * never pushed. Rejects as `getGitStatus` does, with 400 for a place that is no repository and 404 for a commit the repository does not have.
+     */
+    getGitViewed: (projectId: ProjectId, place: PlaceRef, scope: GitScope) => Promise<GitViewedMark[]>;
+    /** Marks a file as viewed at the revision the list gave it, replacing the mark it had, and answers what was kept. Rejects as `getGitViewed` does, and with 400 for a path or a revision that cannot be one. */
+    setGitViewed: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, revision: string) => Promise<GitViewedMark>;
+    /** Clears a file's mark; a file with none is cleared all the same. Rejects as `setGitViewed` does. */
+    clearGitViewed: (projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string) => Promise<void>;
     /**
      * Every worktree of every folder of a project, with the chats that work in each, how many files are changed and whether its work is in the base: what the Manage worktrees
      * dialog lists. One entry per folder in the project's order, a folder that is no repository (or is gone) with no worktrees. Read when asked, never pushed: worktrees change

@@ -18,6 +18,7 @@ import {
     fixtureGitStatus,
     fixtureHasCommit,
     fixtureProjectWorktrees,
+    fixtureViewedProblem,
     fixtureWorkspaceLog,
     type FixtureData,
 } from './fixtureData';
@@ -50,6 +51,7 @@ import type {
     GitPullRequestInfo,
     GitScope,
     GitStatus,
+    GitViewedMark,
     Project,
     ProjectFileMatch,
     ProjectId,
@@ -194,6 +196,8 @@ export class FixtureTransport implements Transport {
     readonly #turns = new Map<RunId, number>();
     /** The ref each worktree that is not made yet starts from, by the workspace's id: what the step that makes it logs. */
     readonly #bases = new Map<string, string>();
+    /** The files marked as viewed, by place and scope: the revision each had when it was marked, by path. Lost with the page, as the rest of the fixture's changes are. */
+    readonly #viewed = new Map<string, Map<string, string>>();
     /** The worktrees `workspace.open` answered that no chat works in (yet), by the workspace's id: the places read them as they read a chat's. */
     readonly #opened = new Map<string, { projectId: ProjectId; workspace: ChatWorkspace }>();
     /** How many times an edit rewrote each run's stream: an item written after one gets an id of its own, as the daemon's items do, though it takes the freed number. */
@@ -283,6 +287,51 @@ export class FixtureTransport implements Transport {
         if (!sides) throw new TransportError(`Changed file ${ path } does not exist`, 404);
 
         return structuredClone(sides);
+    }
+
+    async getGitViewed(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitViewedMark[]> {
+        const marks = [...this.#viewedIn(projectId, place, scope)].map(([path, revision]) => ({ path, revision }));
+
+        // In the order of the bytes of the paths, as the daemon lists them.
+        return marks.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    }
+
+    async setGitViewed(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string, revision: string): Promise<GitViewedMark> {
+        const problem = fixtureViewedProblem(path, revision);
+
+        if (problem) throw new TransportError(problem, 400);
+
+        this.#viewedIn(projectId, place, scope).set(path, revision);
+
+        return { path, revision };
+    }
+
+    async clearGitViewed(projectId: ProjectId, place: PlaceRef, scope: GitScope, path: string): Promise<void> {
+        const problem = fixtureViewedProblem(path, 'a');
+
+        if (problem) throw new TransportError(problem, 400);
+
+        this.#viewedIn(projectId, place, scope).delete(path);
+    }
+
+    /**
+     * The marks of viewed files of a scope of a place (the revision of each file by path), judged as the daemon judges the request: the place is the project's, a folder that is no
+     * repository is `400`, a commit the fixture's repository does not have is `404`. Kept in memory under the place and the scope (the fixture's base never changes), so a file
+     * ticked in the tab stays ticked while the page is open.
+     */
+    #viewedIn(projectId: ProjectId, place: PlaceRef, scope: GitScope): Map<string, string> {
+        const { head } = this.#gitPlace(projectId, place);
+
+        if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
+
+        if (scope.startsWith('commit:') && !fixtureHasCommit(scope.slice('commit:'.length))) throw new TransportError(`Commit ${ scope.slice('commit:'.length) } does not exist`, 404);
+
+        const key = `${ projectId }/${ place.folderId }/${ place.workspaceId ?? '' }/${ scope }`;
+        const kept = this.#viewed.get(key) ?? new Map<string, string>();
+
+        this.#viewed.set(key, kept);
+
+        return kept;
     }
 
     async getGitPullRequest(projectId: ProjectId, place: PlaceRef): Promise<GitPullRequestInfo> {

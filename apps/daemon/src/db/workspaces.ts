@@ -1,3 +1,5 @@
+import { deleteViewedOfWorkspace } from './viewed';
+
 import type { ChatWorkspace } from '@clowdy/protocol';
 import type { Database } from 'bun:sqlite';
 
@@ -142,9 +144,10 @@ export function updateWorkspace(db: Database, id: string, change: WorkspaceChang
     return next;
 }
 
-/** Drops the row. The worktree on disk and the chats that point at it are not touched: the caller sees to both. */
+/** Drops the row, and the marks of viewed files that were made in the worktree (`viewed_files`: they are the worktree's, and no row is left to read them by). The worktree on disk and the chats that point at it are not touched: the caller sees to both. */
 export function deleteWorkspace(db: Database, id: string): void {
     db.query('DELETE FROM workspaces WHERE id = ?').run(id);
+    deleteViewedOfWorkspace(db, id);
 }
 
 /** Drops every row of a project, for the project's removal (no foreign key does it). */

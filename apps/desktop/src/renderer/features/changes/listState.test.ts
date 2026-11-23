@@ -25,6 +25,9 @@ async function stateOf({ status, changes, scope }: { status: GitStatus; changes:
             return changes!;
         }),
         getGitFile: vi.fn(),
+        getGitViewed: vi.fn(async () => []),
+        setGitViewed: vi.fn(),
+        clearGitViewed: vi.fn(),
         getGitPullRequest: vi.fn(async () => ({ isRepository: true as const, access: 'ready' as const })),
     };
     const facts = new PlaceFacts(KEY, transport);
@@ -120,6 +123,9 @@ describe('what the reading area shows', () => {
                 return next;
             }),
             getGitFile: vi.fn(),
+            getGitViewed: vi.fn(async () => []),
+            setGitViewed: vi.fn(),
+            clearGitViewed: vi.fn(),
             getGitPullRequest: vi.fn(async () => ({ isRepository: true as const, access: 'ready' as const })),
         };
         const facts = new PlaceFacts(KEY, transport);
