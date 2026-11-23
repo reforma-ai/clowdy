@@ -1,6 +1,5 @@
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
-import { Loader } from '@clowdy/components/Loader';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Text } from '@clowdy/components/Text';
 import { mainFolder } from '@clowdy/protocol';
@@ -13,6 +12,7 @@ import styles from './ManageWorktrees.module.css';
 import { openRemoveWorktree } from './RemoveWorktreeDialog';
 import { useProjectWorktrees } from './useProjectWorktrees';
 import { WorktreeGroup, type WorktreeRowActions } from './WorktreeRow';
+import { WorktreesSkeleton } from './WorktreesSkeleton';
 import { repositoryGroups } from './worktreeView';
 
 import type { FolderId, FolderWorktrees, ProjectId, WorktreeChat, WorktreeInfo } from '@clowdy/protocol';
@@ -30,7 +30,8 @@ export interface ManageWorktreesProps {
  * page). One group per folder with the folder's own checkout first, then a row for every worktree git lists (`WorktreeRow`), found ones included; a folder that is no
  * repository has no group. A row opens in the programs of the computer, starts a new chat in the worktree (the dialog closes and the new-chat page is shown there), lists the
  * chats that work in it (a click opens one), and removes it through a confirmation (`openRemoveWorktree`), after which the list is read again. No `title` option: the heading
- * is drawn in the dialog, and the window's own close button floats at the corner. The dialog hosts its own React root, so it brings the store to its tree.
+ * is drawn in the dialog, and the window's own close button floats at the corner. While the first read is on its way it shows the table the list will be, in shimmering blocks
+ * (`WorktreesSkeleton`), not a line of text. The dialog hosts its own React root, so it brings the store to its tree.
  */
 export function openManageWorktrees({ root, ...props }: ManageWorktreesProps): void {
     Modal.create({
@@ -98,7 +99,7 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
         <div className={ styles.dialog }>
             <div className={ styles.heading }>
                 <Text variant="heading-3" truncate>Manage worktrees</Text>
-                <Text variant="md" color="secondary">Every worktree of the project's folders, and the chats that work in each</Text>
+                <Text variant="md" color="secondary">Each folder's worktrees and the chats working in them</Text>
             </div>
 
             { failed && groups && (
@@ -109,19 +110,14 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
             ) }
 
             <div ref={ list } className={ styles.groups }>
-                { groups === undefined && !failed && (
-                    <div className={ styles.loading }>
-                        <Loader size="xs" />
-                        <Text color="secondary">Loading worktrees…</Text>
-                    </div>
-                ) }
+                { groups === undefined && !failed && <WorktreesSkeleton /> }
                 { groups === undefined && failed && (
                     <div className={ styles.message }>
-                        <Text color="danger" role="alert">Couldn't read the worktrees</Text>
+                        <Text color="danger" role="alert">Couldn't load the worktrees</Text>
                         <Button size="sm" onPress={ () => void reload() }>Try again</Button>
                     </div>
                 ) }
-                { groups?.length === 0 && <Text color="secondary" className={ styles.message }>None of the project's folders is a git repository</Text> }
+                { groups?.length === 0 && <Text color="secondary" className={ styles.message }>No folder of this project is a git repository</Text> }
                 <For each={ groups ?? [] }>
                     {({ group, folder }) => <WorktreeGroup key={ group.folderId } projectId={ projectId } group={ group } folder={ folder } { ...actions } />}
                 </For>

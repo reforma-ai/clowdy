@@ -1023,6 +1023,53 @@ describe('Fork in a chat', () => {
         });
     });
 
+    describe('where the agent cannot cut its session', () => {
+        // First version's answer loses its flag, as the answer of an agent with no `session/fork` (Cursor), one from before the rewind points or one of a stopped turn has none.
+        const unflagged = (fixtures: FixtureData) => {
+            const { canFork: _flag, ...answer } = fixtures.items['r-orch-2'][5];
+
+            fixtures.items['r-orch-2'][5] = answer;
+        };
+
+        it('draws a Fork on the answer all the same, which opens a new-chat page on the chat\'s own agent with the conversation up to the answer attached', async () => {
+            await start(undefined, unflagged);
+            await draw('c-2');
+
+            expect(forkButtons()).toHaveLength(1);
+
+            const command = vi.spyOn(store, 'command');
+
+            await press(forkButtons()[0]);
+
+            expect(menuItem('Fork').textContent).toContain('Attaches the conversation as a file');
+
+            await press(menuItem('Fork'));
+            await vi.waitFor(() => expect(ui().draft).toBe(true));
+
+            expect(ui().draftEngine).toBe('claude');
+            expect(ui().pendingFiles.map(file => file.name)).toEqual(['first-version-conversation.md']);
+            expect(await ui().pendingFiles[0].text()).toContain(ANSWER);
+            // The daemon is asked for nothing: no chat exists until the first message of the page.
+            expect(command).not.toHaveBeenCalled();
+        });
+
+        it('still offers the other agents', async () => {
+            await start(undefined, unflagged);
+            await draw('c-2');
+            await press(forkButtons()[0]);
+            await press(menuItem('Fork to another agent'));
+
+            expect([...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Fork to another agent"] [role="menuitem"]')].map(row => row.textContent)).toEqual(['Codex', 'Cursor']);
+        });
+
+        it('draws none in a chat that is read only', async () => {
+            await start(claudeOff, unflagged);
+            await draw('c-2');
+
+            expect(forkButtons()).toHaveLength(0);
+        });
+    });
+
     describe('the divider', () => {
         it('stands where the inherited history ends, after the answer the chat was forked at and before its own first message', async () => {
             await start(undefined, withFork);

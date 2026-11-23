@@ -255,8 +255,11 @@ const handingOff = new Set<ChatId>();
  * menu's "Fork to another agent"): the person can pick another, or close the page, which leaves nothing behind, since no chat exists before its first message is sent.
  */
 export async function startHandoff({ root, ui, chat, run, stillOpen = () => true, itemId, engine: startOn }: Handoff): Promise<boolean> {
+    // From an answer it is the Fork menu's own `Fork`, so that is the word the person reads; the notice's button says hand off.
+    const verb = itemId === undefined ? 'hand off' : 'fork';
+
     if (!chat.orchestratorRunId) {
-        toast.error({ message: 'There is nothing to hand off yet: the chat has no messages' });
+        toast.error({ message: `There is nothing to ${ verb } yet: the chat has no messages` });
 
         return false;
     }
@@ -292,7 +295,7 @@ export async function startHandoff({ root, ui, chat, run, stillOpen = () => true
         const turns = turnsOf(items);
 
         if (turns.length === 0) {
-            toast.error({ message: 'There is nothing to hand off yet: the chat has no messages' });
+            toast.error({ message: `There is nothing to ${ verb } yet: the chat has no messages` });
 
             return false;
         }
@@ -307,7 +310,7 @@ export async function startHandoff({ root, ui, chat, run, stillOpen = () => true
         const [refusal] = admitFiles(filesOf(draftKey), [file]).refusals;
 
         if (refusal) {
-            toast.error({ title: 'The conversation was not handed off', message: `${ refusal } Make room in the message box of the new chat, then hand off again.` });
+            toast.error({ title: `The conversation was not ${ itemId === undefined ? 'handed off' : 'forked' }`, message: `${ refusal } Make room in the message box of the new chat, then try again.` });
 
             return false;
         }

@@ -128,7 +128,7 @@ describe('ChatPage', () => {
 
         it('is clowdy at first, with a line that says what it does and no period after it', () => {
             expect(prefixField().value).toBe('clowdy');
-            expect(container.textContent).toContain('The branch of a chat in a new worktree starts with it, such as clowdy/ab12cd34');
+            expect(container.textContent).toContain('Branches of new worktrees are named like clowdy/ab12cd34');
             expect(container.textContent).not.toContain('such as clowdy/ab12cd34.');
             expect(prefixNote()).toBeUndefined();
         });
@@ -138,7 +138,7 @@ describe('ChatPage', () => {
 
             expect(branchPrefix.value).toBe('max');
             expect(localStorage.getItem('clowdy:branch-prefix')).toBe('"max"');
-            expect(container.textContent).toContain('such as max/ab12cd34');
+            expect(container.textContent).toContain('named like max/ab12cd34');
             expect(prefixNote()).toBeUndefined();
 
             type('team/max');

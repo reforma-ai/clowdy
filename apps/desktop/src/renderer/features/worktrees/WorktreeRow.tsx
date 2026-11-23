@@ -1,21 +1,23 @@
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
 import { MenuTrigger } from '@clowdy/components/List';
-import { Popover } from '@clowdy/components/Popover';
+import { Popover, useContextMenu } from '@clowdy/components/Popover';
+import { Show } from '@clowdy/components/Show';
 import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
-import { Folder, Follow, NewChat, Trash, Version } from '@clowdy/icons/14';
-import { useId } from 'react';
+import { Tooltip } from '@clowdy/components/Tooltip';
+import { Folder, More, NewChat, Version } from '@clowdy/icons/14';
+import { useId, useState } from 'react';
 
-import { PathText } from '../../shared/PathText';
+import { tildePath } from '../../shared/displayPath';
+import { homeFolder } from '../../shared/homeFolder';
 import { Unavailable } from '../../shared/Unavailable';
 import { worktreeLabel } from '../agents/workspaceChoice';
-import { canOpenPaths, OpenWithMenu, useFolderGit } from '../openWith';
 import styles from './ManageWorktrees.module.css';
-import { changesLabel, lockTip, mergedMark, removeHint, removeNote } from './worktreeView';
+import { WorktreeMenu } from './WorktreeMenu';
+import { changesLabel, worktreeMark } from './worktreeView';
 
 import type { FolderWorktrees, ProjectFolder, ProjectId, WorktreeChat, WorktreeInfo } from '@clowdy/protocol';
-import type { OpenTarget } from '../openWith';
 
 /** What a row asks its dialog to do: the dialog closes itself for the ones that leave it. */
 export interface WorktreeRowActions {
@@ -26,18 +28,6 @@ export interface WorktreeRowActions {
     onRemove: (group: FolderWorktrees, worktree: WorktreeInfo) => void;
 }
 
-/**
- * The menu of a row's Open button: the worktree's folder on the disk, in the project's folder it is a checkout of. It reads the folder's git, for the GitHub link, once it is
- * open, and not for every row on the list. The dialog covers the window's places, so the menu leaves out Open in Files and Open in Terminal, which would act behind it.
- */
-function WorktreeOpenMenu({ projectId, folder, worktree }: { projectId: ProjectId; folder: ProjectFolder; worktree: WorktreeInfo }) {
-    const folderGit = useFolderGit(projectId, folder.id);
-    const git = folderGit && { remoteUrl: folderGit.remoteUrl, ...(worktree.branch === undefined ? { detached: true } : { branch: worktree.branch }) };
-    const target: OpenTarget = { projectId, folder, path: worktree.path, relative: '', kind: 'directory' };
-
-    return <OpenWithMenu target={ target } missing={ worktree.missing } git={ git } inApp={ false } aria-label="Open worktree" />;
-}
-
 interface WorktreeRowProps extends WorktreeRowActions {
     projectId: ProjectId;
     group: FolderWorktrees;
@@ -46,45 +36,39 @@ interface WorktreeRowProps extends WorktreeRowActions {
 }
 
 /**
- * One worktree of a folder, as git lists it: its branch (or the commit it is on), the marks that matter (the folder's own checkout, locked, gone from the disk), the path, how
- * many files are changed and whether its work is in the base, and the chats that work in it, archived ones too, each a button that opens it. At the end: the programs
- * that open it (`OpenWithMenu`), a new chat in it, and Remove, which the folder's own checkout does not have. A worktree whose folder is gone has no chat to start in it.
+ * One worktree of a folder, as git lists it: its branch (or the commit it is on), the one badge that matters most (`worktreeMark`: the folder's own checkout, gone from the disk, locked, or whether its work is in the base), how
+ * many files are changed, and the chats that work in it, archived ones too, each a button that opens it. At the end: a new
+ * chat in it, and More (`WorktreeMenu`: the same new chat, the copy of the path, the programs that open it, and Remove, which the folder's own checkout does not have). A
+ * worktree whose folder is gone has no chat to start in it.
  *
- * Sizes are the app's list row, as `ProjectRow` has it: the title is body (`md`) medium, the path and the facts `sm` and dim, the marks `xs`; a bare `Text` would take the page's 16px,
- * which this window shows far larger than the lists around it. The branch and the path are one line each and cut with an ellipsis (the path in its middle, `PathText`), the whole
- * on hover, so they never push the actions. A Remove that is off says why in a line of the row (`removeNote`), and the same on hover of the button.
+ * Sizes are the app's list row, as `ProjectRow` has it: the title is body (`md`) medium, the facts `sm` and dim, the marks `xs`; a bare `Text` would take the page's 16px,
+ * which this window shows far larger than the lists around it. The branch is one line cut with an ellipsis, so it never pushes the actions. The path is not a line of the
+ * row: it is the tooltip of the branch (in the home folder's `~` form), and the reason a Remove is off (`removeHint`) is the line under it in the menu. A right-click anywhere on
+ * the row opens the same menu at the pointer (and a long touch, which is a right-click to the app), so the strip is as good as the button. The buttons show on hover, on focus
+ * inside the row and while a menu of the row is open (`data-open`), and always where there is no hover (a touch screen): a list of rows would otherwise be a fence of icons.
  */
 export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onOpenChat, onRemove }: WorktreeRowProps) {
     const label = worktreeLabel(worktree);
-    const merged = mergedMark(worktree);
+    const mark = worktreeMark(worktree);
     const newChat = worktree.main ? 'New chat in this folder' : 'New chat in this worktree';
-    const hint = removeHint(worktree);
-    const note = removeNote(worktree);
-    // Chats are the reason there is no Remove: the note leads the chats it is about. Any other reason stands on a line of its own.
-    const chatNote = worktree.blocked === 'chats' ? note : undefined;
-    const reason = chatNote === undefined ? note : undefined;
-    const removeTip = worktree.missing ? 'Remove record' : 'Remove';
-    const removeLabel = worktree.missing ? `Remove record of ${ label }` : `Remove ${ label }`;
+    const contextMenu = useContextMenu();
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     return (
-        <li className={ styles.row } data-worktree-path={ worktree.path } data-main={ worktree.main || undefined } data-missing={ worktree.missing || undefined }>
-            <span className={ styles.icon }>{ worktree.main ? <Folder aria-hidden="true" /> : <Version aria-hidden="true" /> }</span>
-            <span className={ styles.text }>
-                <span className={ styles.title }>
-                    <Text variant="md" weight="medium" truncate title={ label }>{ label }</Text>
-                    { worktree.main && <Badge size="xs" textValue="Project checkout" tooltip="The folder itself, where a chat works without a worktree">Project checkout</Badge> }
-                    { worktree.locked !== undefined && <Badge size="xs" textValue="Locked" tooltip={ lockTip(worktree.locked) }>Locked</Badge> }
-                    { worktree.missing && <Badge size="xs" color="warning" textValue="Missing on disk" tooltip="Git lists it, but its folder is gone">Missing on disk</Badge> }
-                </span>
-                <PathText path={ worktree.path } variant="sm" color="secondary" />
-                <span className={ styles.facts }>
-                    { !worktree.missing && <Text variant="sm" color={ worktree.changes === 0 ? 'secondary' : 'default' }>{ changesLabel(worktree.changes) }</Text> }
-                    { merged && <Badge size="xs" color={ merged.color } textValue={ merged.label } tooltip={ merged.tip }>{ merged.label }</Badge> }
-                </span>
-                { reason !== undefined && <Text variant="sm" color="secondary" className={ styles.reason }>{ reason }</Text> }
-                { worktree.chats.length > 0 && (
-                    <span className={ styles.chatsBlock }>
-                        { chatNote !== undefined && <Text variant="sm" color="secondary" className={ styles.reason }>{ chatNote }</Text> }
+        <>
+            <li className={ styles.row } data-worktree-path={ worktree.path } data-main={ worktree.main || undefined } data-missing={ worktree.missing || undefined } data-open={ isMenuOpen || contextMenu.isOpen || undefined } { ...contextMenu.areaProps }>
+                <span className={ styles.icon }>{ worktree.main ? <Folder aria-hidden="true" /> : <Version aria-hidden="true" /> }</span>
+                <span className={ styles.text }>
+                    <span className={ styles.title }>
+                        <Tooltip content={ tildePath(worktree.path, homeFolder.path) } placement="top start" wrapTrigger>
+                            <Text variant="md" weight="medium" truncate>{ label }</Text>
+                        </Tooltip>
+                        { mark && <Badge size="xs" color={ mark.color } textValue={ mark.label } tooltip={ mark.tip }>{ mark.label }</Badge> }
+                    </span>
+                    <span className={ styles.facts }>
+                        { !worktree.missing && <Text variant="sm" color="secondary">{ changesLabel(worktree.changes) }</Text> }
+                    </span>
+                    { worktree.chats.length > 0 && (
                         <span className={ styles.chats } role="group" aria-label="Chats">
                             <For each={ worktree.chats }>
                                 {chat => (
@@ -95,35 +79,30 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
                                 )}
                             </For>
                         </span>
-                    </span>
-                ) }
-            </span>
-            <span className={ styles.actions }>
-                { canOpenPaths() && (
-                    <MenuTrigger>
-                        <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `Open ${ label }` } tooltip="Open in…">
-                            <Follow />
-                        </Button>
-                        <Popover placement="bottom end" spacing="xs">
-                            <WorktreeOpenMenu projectId={ projectId } folder={ folder } worktree={ worktree } />
-                        </Popover>
-                    </MenuTrigger>
-                ) }
-                <Unavailable label={ `${ newChat }: ${ label }` } hint={ worktree.missing ? 'Its folder is gone from the disk' : undefined } placement="top">
-                    <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `${ newChat }: ${ label }` } tooltip={ worktree.missing ? undefined : newChat } isDisabled={ worktree.missing } onPress={ () => onNewChat(folder, worktree) }>
-                        <NewChat />
-                    </Button>
-                </Unavailable>
-                {/* A reason from the daemon (a lock, a chat) keeps Remove off and says so on hover; a worktree whose folder is gone has only its record to remove. */}
-                { !worktree.main && (
-                    <Unavailable label={ removeLabel } hint={ hint } placement="top">
-                        <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ removeLabel } tooltip={ hint === undefined ? removeTip : undefined } isDisabled={ hint !== undefined } onPress={ () => onRemove(group, worktree) }>
-                            <Trash />
+                    ) }
+                </span>
+                <span className={ styles.actions }>
+                    <Unavailable label={ `${ newChat }: ${ label }` } hint={ worktree.missing ? 'Its folder is gone from the disk' : undefined } placement="top">
+                        <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `${ newChat }: ${ label }` } tooltip={ worktree.missing ? undefined : newChat } isDisabled={ worktree.missing } onPress={ () => onNewChat(folder, worktree) }>
+                            <NewChat />
                         </Button>
                     </Unavailable>
-                ) }
-            </span>
-        </li>
+                    <MenuTrigger isOpen={ isMenuOpen } onOpenChange={ setIsMenuOpen }>
+                        <Button variant="filling" color="secondary" size="sm" iconOnly aria-label={ `More for ${ label }` } tooltip="More">
+                            <More />
+                        </Button>
+                        <Popover placement="bottom end" spacing="xs" width={ 260 }>
+                            <WorktreeMenu projectId={ projectId } group={ group } folder={ folder } worktree={ worktree } onNewChat={ onNewChat } onRemove={ onRemove } />
+                        </Popover>
+                    </MenuTrigger>
+                </span>
+            </li>
+            <Show when={ contextMenu.isOpen }>
+                <Popover { ...contextMenu.popoverProps } placement="bottom start" spacing="xs" width={ 260 }>
+                    <WorktreeMenu projectId={ projectId } group={ group } folder={ folder } worktree={ worktree } onNewChat={ onNewChat } onRemove={ onRemove } onClose={ contextMenu.close } />
+                </Popover>
+            </Show>
+        </>
     );
 }
 
