@@ -3,7 +3,7 @@ import { makeAutoObservable, observableRef, reaction } from 'mobx';
 import { readStored, removeStored, writeStored, type KeyValueStorage } from './storage';
 import { revealTask, type RevealTasks } from './taskReveal';
 
-import type { ChatId, ChatWorkspaceChoice, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
+import type { ChatId, ChatWorkspace, ChatWorkspaceChoice, FolderId, ProjectId, RunId, Task, TaskId } from '@clowdy/protocol';
 
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
 export const SETTINGS_PAGES = ['appearance', 'chat', 'files', 'shortcuts', 'projects', 'providers', 'skills'] as const;
@@ -116,6 +116,12 @@ export class ProjectUi {
      * folder changes. Not kept between sessions.
      */
     draftWorkspace: ChatWorkspaceChoice | null = null;
+    /**
+     * Agents: the daemon's row of the worktree `draftWorkspace` names, when it names an existing one (`workspace.open`): what makes the worktree the place of the new-chat page, so
+     * its files, shells and `@` list are the worktree's before the chat exists, and the chat's first message finds the same row. Set by the page once the daemon has answered, and
+     * gone whenever the choice, the folder or the page changes. Not kept between sessions.
+     */
+    draftWorkspaceRow: ChatWorkspace | null = null;
     /** Agents: the chats whose threads the person opened in the list. A chat that is not here is folded, which is how every chat starts. */
     expandedChats: readonly ChatId[] = [];
     /**
@@ -190,7 +196,7 @@ export class ProjectUi {
         }
 
         Object.assign(this, initial);
-        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, draftWorkspace: observableRef, expandedChats: observableRef, collapsedFolders: observableRef, tasksCollapsed: observableRef });
+        makeAutoObservable(this, { projectId: false, pendingFiles: observableRef, draftWorkspace: observableRef, draftWorkspaceRow: observableRef, expandedChats: observableRef, collapsedFolders: observableRef, tasksCollapsed: observableRef });
         reaction(
             (): StoredProjectUi => ({
                 chatId: this.chatId,
@@ -233,6 +239,8 @@ export class ProjectUi {
         this.draft = draft;
         this.draftFolderId = draftFolderId;
         this.draftWorkspace = draftWorkspace;
+        // The row was the answer for the choice that was on show; the page asks again for the one it is given.
+        this.draftWorkspaceRow = null;
     }
 
     /** Shows the chat; `null` leaves none selected. */
@@ -243,6 +251,7 @@ export class ProjectUi {
         this.draft = false;
         this.draftFolderId = null;
         this.draftWorkspace = null;
+        this.draftWorkspaceRow = null;
     }
 
     /**
@@ -257,6 +266,7 @@ export class ProjectUi {
         this.draft = true;
         this.draftFolderId = folderId;
         this.draftWorkspace = workspace;
+        this.draftWorkspaceRow = null;
 
         if (attach.length > 0) this.pendingFiles = [...this.pendingFiles, ...attach];
     }
@@ -268,7 +278,10 @@ export class ProjectUi {
     setDraftFolder(folderId: FolderId | null): void {
         if (!this.draft) return;
 
-        if (folderId !== this.draftFolderId) this.draftWorkspace = null;
+        if (folderId !== this.draftFolderId) {
+            this.draftWorkspace = null;
+            this.draftWorkspaceRow = null;
+        }
 
         this.draftFolderId = folderId;
     }
@@ -277,7 +290,19 @@ export class ProjectUi {
     setDraftWorkspace(choice: ChatWorkspaceChoice | null): void {
         if (!this.draft) return;
 
+        // The row answers for one worktree: it stays only while the choice is that same worktree again.
+        const same = choice?.mode === 'existing' && this.draftWorkspace?.mode === 'existing' && choice.path === this.draftWorkspace.path;
+
+        if (!same) this.draftWorkspaceRow = null;
+
         this.draftWorkspace = choice;
+    }
+
+    /** Keeps the daemon's row of the worktree the new-chat page chose (`draftWorkspaceRow`), or drops it with `null`. Only with the new-chat page open. */
+    setDraftWorkspaceRow(row: ChatWorkspace | null): void {
+        if (!this.draft) return;
+
+        this.draftWorkspaceRow = row;
     }
 
     /** The files `openDraft` was given, handed over once: the next call finds none. */
@@ -329,6 +354,7 @@ export class ProjectUi {
         this.draft = false;
         this.draftFolderId = null;
         this.draftWorkspace = null;
+        this.draftWorkspaceRow = null;
     }
 
     /** Opens or folds the threads of a chat in the list. */

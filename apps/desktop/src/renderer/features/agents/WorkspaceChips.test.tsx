@@ -7,6 +7,7 @@ import { createFixtureData, FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, wit
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { currentPlace } from '../sidePanel/currentPlace';
 import { DraftChat } from './DraftChat';
 
 import type { Chat, CommandResult, FolderGit } from '@clowdy/protocol';
@@ -598,5 +599,103 @@ describe('the folder of the page', () => {
 
         expect(modeChip()?.textContent).toBe('New worktree');
         expect(baseChip()?.textContent).toBe('Branch from: dev');
+    });
+});
+
+describe('the place of the page', () => {
+    const pickWorktree = async () => {
+        await press(modeChip()!);
+        await press(menuItem('Existing worktree'));
+        await settle();
+        await press(option('clowdy/ab12cd34'));
+        await settle();
+    };
+    const placeOfPage = () => currentPlace(store.selectedProject!, ui());
+
+    it('is the folder\'s own checkout in Project checkout and for a new worktree, which the first message makes', async () => {
+        expect(placeOfPage().workspace).toBeUndefined();
+
+        await chooseMode('New worktree');
+
+        expect(placeOfPage().workspace).toBeUndefined();
+        expect(ui().draftWorkspaceRow).toBeNull();
+    });
+
+    it('is the worktree that is picked once the daemon has answered for it, and the folder\'s own checkout again when it is left', async () => {
+        await pickWorktree();
+
+        expect(ui().draftWorkspaceRow).toMatchObject({ path: WORKTREE, managed: true, ready: true });
+        expect(placeOfPage()).toMatchObject({ folder: { id: 'fld_car_rental' }, workspace: { path: WORKTREE, ready: true } });
+
+        await chooseMode('Project checkout');
+
+        expect(ui().draftWorkspaceRow).toBeNull();
+        expect(placeOfPage().workspace).toBeUndefined();
+    });
+
+    it('makes the chat of the first message work in that same row, so the place does not change when it starts', async () => {
+        await pickWorktree();
+
+        const before = placeOfPage();
+        const known = new Set(store.selectedProject!.chats.keys());
+
+        await send('Fix the price');
+
+        const [chat] = made(known);
+
+        expect(chat?.workspace?.id).toBe(before.workspace?.id);
+        expect(chat?.workspace?.path).toBe(WORKTREE);
+    });
+
+    it('asks once for a worktree, and again for another', async () => {
+        const transport = new FixtureTransport();
+        const asked = vi.spyOn(transport, 'command');
+
+        await start({ transport });
+        await pickWorktree();
+        await draw(() => ui().setDraftWorkspace({ mode: 'existing', path: WORKTREE }));
+        await settle();
+
+        expect(asked.mock.calls.filter(([command]) => command.type === 'workspace.open')).toEqual([[{ type: 'workspace.open', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: WORKTREE }]]);
+    });
+
+    it('drops an answer for a choice that changed while it was on its way', async () => {
+        const transport = new FixtureTransport();
+        const original = transport.command.bind(transport);
+        let answer: () => void = () => undefined;
+
+        vi.spyOn(transport, 'command').mockImplementation(async (command) => {
+            if (command.type !== 'workspace.open') return original(command);
+
+            await new Promise<void>((resolve) => {
+                answer = resolve;
+            });
+
+            return original(command);
+        });
+        await start({ transport });
+        await pickWorktree();
+
+        expect(ui().draftWorkspaceRow).toBeNull();
+
+        await chooseMode('Project checkout');
+        await act(async () => answer());
+        await settle();
+
+        expect(ui().draftWorkspaceRow).toBeNull();
+        expect(placeOfPage().workspace).toBeUndefined();
+    });
+
+    it('stays in the folder\'s own checkout, without a word, when the daemon refuses or cannot be reached', async () => {
+        const transport = new FixtureTransport();
+        const original = transport.command.bind(transport);
+
+        vi.spyOn(transport, 'command').mockImplementation(async command => (command.type === 'workspace.open' ? refused : original(command)));
+        await start({ transport });
+        await pickWorktree();
+
+        expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: WORKTREE });
+        expect(ui().draftWorkspaceRow).toBeNull();
+        expect(placeOfPage().workspace).toBeUndefined();
     });
 });

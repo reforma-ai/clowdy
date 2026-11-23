@@ -31,7 +31,7 @@ import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
 import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
 
-import type { Chat, ChatId, ChatMode, ChatWorkspaceChoice, FolderId, ProjectId, QueuedMessage, Run } from '@clowdy/protocol';
+import type { Chat, ChatId, ChatMode, ChatWorkspace, ChatWorkspaceChoice, FolderId, ProjectId, QueuedMessage, Run } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
 import type { ReplyMessage } from '../../stream/MessageActions';
 
@@ -80,9 +80,11 @@ export interface ComposerProps {
      * For the new-chat page: the project the chat is made in, the folder of it the chat works in (none: the main folder) and where in that folder (`workspace`: a
      * worktree the chat makes or one that exists; none: the folder's own checkout), what to do once its first message is sent, and what the project asks a new chat to
      * start with (its agent and its mode; what it leaves out starts where the last chat left off). `waiting` is why the first message cannot be sent yet, when what it is sent
-     * with is not known until an answer comes (the folder's worktrees are being read): the chat is not made, and Send says why.
+     * with is not known until an answer comes (the folder's worktrees are being read): the chat is not made, and Send says why. `workspaceRow` is the daemon's row of the
+     * worktree `workspace` names when it exists and the page has asked for it (`ProjectUi.draftWorkspaceRow`): the place the box reads for `@`, as the chat will, since the
+     * first message makes the chat in that same row.
      */
-    start?: { projectId: ProjectId; folderId?: FolderId; workspace?: ChatWorkspaceChoice; waiting?: string; onStarted: (chatId: ChatId) => void; defaults?: { engine?: string; mode?: ChatMode } };
+    start?: { projectId: ProjectId; folderId?: FolderId; workspace?: ChatWorkspaceChoice; workspaceRow?: ChatWorkspace; waiting?: string; onStarted: (chatId: ChatId) => void; defaults?: { engine?: string; mode?: ChatMode } };
     /** How many lines the empty field is tall (it still grows with the text). One by default. */
     minLines?: number;
     /** The box of an edit frame (see `EditMode`) in place of the chat's message box. */
@@ -127,9 +129,9 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
     const model = useModelChoice({ chat, made, run, preferredEngine: start?.defaults?.engine });
     const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
     const { folders } = useProjectState().project;
-    // Where the message is read: the chat's folder and its worktree, or the folder of the new chat (no worktree to name before the chat is made). The `@` menu lists that place's
-    // files and documents, and a path in the message is the one the agent reads from its working directory there.
-    const place = target ? chatPlace(folders, target) : { folder: folderById(folders, start?.folderId) };
+    // Where the message is read: the chat's folder and its worktree, or the folder of the new chat and the worktree it chose when that exists (a new worktree is made by the first
+    // message, so there is none to name before). The `@` menu lists that place's files and documents, and a path in the message is the one the agent reads from its working directory there.
+    const place = target ? chatPlace(folders, target) : { folder: folderById(folders, start?.folderId), ...(start?.workspaceRow && { workspace: start.workspaceRow }) };
     const triggers = useMentionTriggers(box, place);
     // The message the box replies to, shown as a card above the field. The box of an edit frame has none.
     const replyTo = useReplyQuote(key);

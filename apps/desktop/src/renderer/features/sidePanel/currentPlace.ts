@@ -1,6 +1,7 @@
 import { mainFolder } from '@clowdy/protocol';
 
 import { chatFolder, draftTarget, folderById } from '../agents/agentTree';
+import { samePath } from '../agents/workspaceChoice';
 
 import type { Chat, ChatWorkspace, FolderId, ProjectFolder, WorkspaceId } from '@clowdy/protocol';
 import type { ProjectState, ProjectUi } from '../../stores';
@@ -13,7 +14,7 @@ export interface Place {
     folder: ProjectFolder;
     /**
      * The worktree the chat works in, in place of the folder's checkout, whether it is made or not: a worktree is made by the chat's first turn, and `isPlaceReady` says
-     * whether there is anything of it to show yet.
+     * whether there is anything of it to show yet. The new-chat page has one too, once it has chosen a worktree that exists (`currentPlace`).
      */
     workspace?: ChatWorkspace;
 }
@@ -47,13 +48,21 @@ export function chatPlace(folders: readonly ProjectFolder[], chat: Pick<Chat, 'f
 /**
  * The place the window is working in: that of the new chat that is being made, else that of the open chat, and the project's main folder when no chat is open.
  * The new-chat page comes first: it is opened over the chat that was open and leaves it remembered (`ProjectUi.openDraft` keeps `chatId`, so the chat comes back when the
- * page is left), and what the window shows is the page, whose folder the select under the message box names. The page has no worktree to show: a new worktree is made by the
- * first message, and one that exists has no workspace of Clowdy's until the chat is made, so a new chat's place is its folder's own checkout.
+ * page is left), and what the window shows is the page, whose folder the select under the message box names. Where the page works in that folder is the folder's own
+ * checkout, except for a worktree that exists and that the page has chosen and asked the daemon for (`ProjectUi.draftWorkspaceRow`): that is its place, the same row the chat
+ * made by the first message works in, so nothing changes under the tabs when the chat starts. A new worktree is made by the first message and has no row until then, so
+ * the place of a page that chose one is the folder's own checkout.
  */
-export function currentPlace(project: Pick<ProjectState, 'chats' | 'project'>, ui: Pick<ProjectUi, 'chatId' | 'draft' | 'draftFolderId'>): Place {
+export function currentPlace(project: Pick<ProjectState, 'chats' | 'project'>, ui: Pick<ProjectUi, 'chatId' | 'draft' | 'draftFolderId' | 'draftWorkspace' | 'draftWorkspaceRow'>): Place {
     const { folders } = project.project;
 
-    if (ui.draft) return { folder: draftTarget(folders, ui.draftFolderId).folder };
+    if (ui.draft) {
+        const { folder } = draftTarget(folders, ui.draftFolderId);
+        const { draftWorkspace: choice, draftWorkspaceRow: row } = ui;
+
+        // The row answers for the choice it was asked for: one that no longer fits it (another worktree, another folder) is not the page's place.
+        return row && choice?.mode === 'existing' && row.folderId === folder.id && samePath(row.path, choice.path) ? { folder, workspace: row } : { folder };
+    }
 
     const chat = ui.chatId ? project.chats.get(ui.chatId) : undefined;
 

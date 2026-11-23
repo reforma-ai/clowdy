@@ -1022,6 +1022,85 @@ describe('UiStore', () => {
             ui.setDraftWorkspace({ mode: 'new' });
             expect(ui.draftWorkspace).toBeNull();
         });
+
+        describe('the daemon\'s row of the worktree it chose', () => {
+            const row = { id: 'wks_found', folderId: 'fld-api', path: '/work/api-fix', branch: 'fix', managed: false, ready: true };
+            const existing = { mode: 'existing', path: '/work/api-fix' } as const;
+            const chosen = () => {
+                const ui = new UiStore().forProject('p1');
+
+                ui.openDraft([], 'fld-api', existing);
+                ui.setDraftWorkspaceRow(row);
+
+                return ui;
+            };
+
+            it('is kept by the page, and starts empty', () => {
+                const ui = new UiStore().forProject('p1');
+
+                ui.openDraft([], 'fld-api', existing);
+                expect(ui.draftWorkspaceRow).toBeNull();
+
+                ui.setDraftWorkspaceRow(row);
+                expect(ui.draftWorkspaceRow).toEqual(row);
+            });
+
+            it('stays when the same worktree is chosen again, and goes when the choice changes', () => {
+                const ui = chosen();
+
+                ui.setDraftWorkspace({ mode: 'existing', path: '/work/api-fix' });
+                expect(ui.draftWorkspaceRow).toEqual(row);
+
+                ui.setDraftWorkspace({ mode: 'existing', path: '/work/api-other' });
+                expect(ui.draftWorkspaceRow).toBeNull();
+
+                ui.setDraftWorkspaceRow(row);
+                ui.setDraftWorkspace({ mode: 'new' });
+                expect(ui.draftWorkspaceRow).toBeNull();
+
+                ui.setDraftWorkspaceRow(row);
+                ui.setDraftWorkspace(null);
+                expect(ui.draftWorkspaceRow).toBeNull();
+            });
+
+            it('goes with the folder, and stays when the same folder is picked again', () => {
+                const ui = chosen();
+
+                ui.setDraftFolder('fld-api');
+                expect(ui.draftWorkspaceRow).toEqual(row);
+
+                ui.setDraftFolder('fld-notes');
+                expect(ui.draftWorkspaceRow).toBeNull();
+            });
+
+            it('goes when a chat or a run opens, when the page is opened again and when a place is shown again (the page asks for the one it is given)', () => {
+                const ui = chosen();
+                const view = ui.view;
+
+                ui.openChat('c1');
+                expect(ui.draftWorkspaceRow).toBeNull();
+
+                ui.show(view);
+                expect(ui.draftWorkspaceRow).toBeNull();
+
+                ui.setDraftWorkspaceRow(row);
+                ui.openRun('r1');
+                expect(ui.draftWorkspaceRow).toBeNull();
+
+                ui.openDraft([], 'fld-api', existing);
+                expect(ui.draftWorkspaceRow).toBeNull();
+            });
+
+            it('is not part of the place that history keeps, and is kept only with the new-chat page open', () => {
+                const ui = chosen();
+
+                expect(ui.view).not.toHaveProperty('draftWorkspaceRow');
+
+                ui.openChat('c1');
+                ui.setDraftWorkspaceRow(row);
+                expect(ui.draftWorkspaceRow).toBeNull();
+            });
+        });
     });
 
     it('ignores URL values that name no view, and a section, which is gone', () => {

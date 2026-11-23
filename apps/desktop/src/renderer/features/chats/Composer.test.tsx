@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RootStoreProvider, type RootStore } from '../../stores';
 import { busyEnter } from './busyEnter';
-import { Composer } from './Composer';
+import { Composer, type ComposerProps } from './Composer';
 import { modelStore } from './modelTestKit';
 
 import type { Chat, ChatWorkspace, CommandResult, DocsTree, ProjectFolder, Run, SkillEntry, Task } from '@clowdy/protocol';
@@ -40,7 +40,7 @@ const transport = {
     getSkills: vi.fn(async () => ({ entries: skills, tokens: 0, warnings: [] })),
 };
 
-async function mount(result: CommandResult | Promise<CommandResult>, run?: Run, folders = FOLDERS) {
+async function mount(result: CommandResult | Promise<CommandResult>, run?: Run, folders = FOLDERS, start?: ComposerProps['start']) {
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
 
@@ -51,7 +51,7 @@ async function mount(result: CommandResult | Promise<CommandResult>, run?: Run, 
     await act(async () => {
         root.render(
             <RootStoreProvider value={ store as unknown as RootStore }>
-                <Composer chat={ chat } run={ run } />
+                <Composer chat={ start ? undefined : chat } run={ run } start={ start } />
             </RootStoreProvider>
         );
     });
@@ -321,6 +321,31 @@ describe('Composer', () => {
                 expect(optionTexts()).toEqual([expect.stringContaining('CAR-24')]);
                 expect(transport.getProjectFiles).not.toHaveBeenCalled();
                 expect(transport.getDocsTree).not.toHaveBeenCalled();
+            });
+
+            describe('of the new-chat page', () => {
+                const page = (workspaceRow?: ChatWorkspace): ComposerProps['start'] => ({ projectId: 'p', folderId: 'fld_p', workspace: { mode: 'existing', path: '/work/p-feature' }, ...(workspaceRow && { workspaceRow }), onStarted: () => undefined });
+                const found: ChatWorkspace = { id: 'wks_found', folderId: 'fld_p', path: '/work/p-feature', branch: 'feature', managed: false, ready: true };
+
+                it('lists the files and the documents of the worktree it chose once its row is there, the same place the chat will have', async () => {
+                    transport.getProjectFiles.mockClear();
+                    transport.getDocsTree.mockClear();
+                    await mount(accepted, undefined, FOLDERS, page(found));
+                    await open('Look at @price');
+
+                    expect(transport.getProjectFiles).toHaveBeenCalledWith('p', 'price', 20, 'wks_found');
+                    expect(transport.getDocsTree).toHaveBeenCalledWith('p', 'wks_found');
+                });
+
+                it('lists the folder\'s own checkout until the row is there, and for a worktree that is not made yet', async () => {
+                    transport.getProjectFiles.mockClear();
+                    transport.getDocsTree.mockClear();
+                    await mount(accepted, undefined, FOLDERS, page());
+                    await open('Look at @price');
+
+                    expect(transport.getProjectFiles).toHaveBeenCalledWith('p', 'price', 20, undefined);
+                    expect(transport.getDocsTree).toHaveBeenCalledWith('p', undefined);
+                });
             });
 
             it('asks for the folder\'s own checkout for a chat that has no worktree, with no workspace named', async () => {

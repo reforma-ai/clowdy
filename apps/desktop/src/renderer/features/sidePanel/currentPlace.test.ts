@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { chatPlace, currentPlace, isPlaceReady, isSamePlace, placeKey, placeOf, placePath } from './currentPlace';
 
-import type { Chat, ChatWorkspace, ProjectFolder } from '@clowdy/protocol';
+import type { Chat, ChatWorkspace, ChatWorkspaceChoice, ProjectFolder } from '@clowdy/protocol';
 
 const folders: ProjectFolder[] = [{ id: 'f1', path: '/Users/dev/web' }, { id: 'f2', path: '/Users/dev/api' }];
 const workspace = (overrides: Partial<ChatWorkspace> = {}): ChatWorkspace => ({ id: 'wks_1', folderId: 'f2', path: '/Users/dev/Clowdy/workspaces/shop/ab12cd34/api', branch: 'clowdy/ab12cd34', managed: true, ready: true, ...overrides });
@@ -17,7 +17,7 @@ const chats = new Map<string, Chat>([
     ['c6', { id: 'c6', folderId: 'f1', workspace: workspace() } as Chat],
 ]);
 const project = { chats, project: { folders } as never };
-const idle = { section: 'agents', chatId: null, draft: false, draftFolderId: null } as const;
+const idle = { section: 'agents', chatId: null, draft: false, draftFolderId: null, draftWorkspace: null, draftWorkspaceRow: null } as const;
 
 describe('the place the window works in', () => {
     it('is the folder of the open chat, and the main one for a chat that has none', () => {
@@ -55,6 +55,45 @@ describe('the place the window works in', () => {
         expect(currentPlace(project, { ...idle, chatId: 'c1', draft: true }).folder.path).toBe('/Users/dev/web');
         expect(currentPlace(project, { ...idle, chatId: 'c2', draft: true, draftFolderId: 'f2' }).folder.path).toBe('/Users/dev/api');
         expect(currentPlace(project, { ...idle, chatId: 'c3', draft: true, draftFolderId: 'f2' })).toEqual({ folder: folders[1] });
+    });
+
+    describe('of a new chat that chose a worktree that exists', () => {
+        const row = workspace({ id: 'wks_found', managed: false, path: '/Users/dev/api-feature', branch: 'feature' });
+        const choice: ChatWorkspaceChoice = { mode: 'existing', path: '/Users/dev/api-feature' };
+        const draft = { ...idle, draft: true, draftFolderId: 'f2', draftWorkspace: choice, draftWorkspaceRow: row };
+
+        it('is that worktree once the daemon has answered for it, and it is ready as the worktree is', () => {
+            const place = currentPlace(project, draft);
+
+            expect(place).toEqual({ folder: folders[1], workspace: row });
+            expect(isPlaceReady(place)).toBe(true);
+            expect(placeKey(place)).toBe('wks_found');
+        });
+
+        it('is the same place the chat that is made from it has, so nothing changes under the tabs when the first message goes', () => {
+            const made = new Map(chats).set('c7', { id: 'c7', folderId: 'f2', workspace: row } as Chat);
+
+            expect(isSamePlace(currentPlace(project, draft), currentPlace({ ...project, chats: made }, { ...idle, chatId: 'c7' }))).toBe(true);
+        });
+
+        it('is the folder\'s own checkout until the answer comes, and for a worktree the page has not chosen yet', () => {
+            expect(currentPlace(project, { ...draft, draftWorkspaceRow: null })).toEqual({ folder: folders[1] });
+            expect(currentPlace(project, { ...draft, draftWorkspace: null })).toEqual({ folder: folders[1] });
+        });
+
+        it('is the folder\'s own checkout when the row is not for what the page chose: another worktree, another folder, or a new worktree', () => {
+            expect(currentPlace(project, { ...draft, draftWorkspace: { mode: 'existing', path: '/Users/dev/api-other' } })).toEqual({ folder: folders[1] });
+            expect(currentPlace(project, { ...draft, draftFolderId: null })).toEqual({ folder: folders[0] });
+            expect(currentPlace(project, { ...draft, draftWorkspace: { mode: 'new' } })).toEqual({ folder: folders[1] });
+        });
+
+        it('takes a path the daemon wrote with a trailing separator for the same worktree', () => {
+            expect(currentPlace(project, { ...draft, draftWorkspace: { mode: 'existing', path: '/Users/dev/api-feature/' } }).workspace).toEqual(row);
+        });
+
+        it('is not the chat\'s worktree when the page is left for the chat: the chat\'s own place counts', () => {
+            expect(currentPlace(project, { ...draft, draft: false, chatId: 'c1' })).toEqual({ folder: folders[1] });
+        });
     });
 
     it('is the main folder when no chat is open, and when the open chat is not there', () => {
