@@ -67,7 +67,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * DELETE /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope=&path= -> { ok: true } (clears one file's mark). The three are described in `git.ts`
  * GET  /v1/projects/:id/worktrees        -> FolderWorktrees[] (one entry per folder of the project, in the project's order: whether it is the root of a repository and, if
  *                                            it is, its own checkout first and then every worktree git lists for it (one Clowdy made, one an agent or a person made, a locked one,
- *                                            one whose folder is gone), each with the chats that work in it (archived ones too), the number of changed files, whether its work is
+ *                                            one whose folder is gone): ours above the others (made by Clowdy or with a chat, or the repository's own working tree), one whose
+ *                                            folder is gone last, git's order within each kind; each with the chats that work in it (archived ones too), the number of changed files, whether its work is
  *                                            in the base as last fetched, and why it cannot be removed. A folder that is not a repository, or is gone from the disk, has an entry
  *                                            with `isRepository: false` and no worktrees; `not_found` for no such project, `unavailable` for a git that does not answer)
  * GET  /v1/projects/:id/files?query=&limit=&workspaceId= -> ProjectFileMatch[] (files of the project's folders whose path contains every word of `query`,
@@ -241,7 +242,7 @@ export interface WorktreeInfo {
     blocked?: WorktreeBlock;
 }
 
-/** What `GET /v1/projects/:id/worktrees` says about one folder of the project: no worktrees for a folder that is no repository, else its own checkout first and every worktree git lists. */
+/** What `GET /v1/projects/:id/worktrees` says about one folder of the project: no worktrees for a folder that is no repository, else its own checkout first and every worktree git lists: ours above the others, one gone from the disk last, git's order within each kind. */
 export interface FolderWorktrees {
     folderId: FolderId;
     /** The folder's name, as `folderNames` writes it. */

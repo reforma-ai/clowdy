@@ -1,0 +1,13 @@
+/*
+ * The box of the selection button's tooltip. The editor draws every `.cm-tooltip` as a floating surface (the border and the background, in
+ * CodeEditor.module.css and DiffView.module.css); this gives it the room around the button that the app's other floats have, and their shadow.
+ */
+.host {
+    padding: var(--spacing-xs);
+    box-shadow: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-dark-a10);
+    user-select: none;
+}
+
+:global(.dark) .host {
+    box-shadow: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-black-a50);
+}

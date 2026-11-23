@@ -159,8 +159,26 @@ function readWorkspaces(store: Store, projectId: string): { records: WorkspaceRe
 }
 
 /**
+ * Where a worktree stands in a folder's list, from the top: the folder's own checkout, then what is the person's own or ours (Clowdy made it, a chat works in it, archived ones too,
+ * or it is the repository's primary working tree or another folder's checkout, which `blocked: 'main'` says), then the rest (an agent's own worktree, one made by hand or by another
+ * program), and last one whose folder is gone, of which only the record is left.
+ */
+function rank({ main, missing, managed, chats, blocked }: Pick<WorktreeInfo, 'main' | 'missing' | 'managed' | 'chats' | 'blocked'>): number {
+    if (main) return 0;
+
+    if (missing) return 3;
+
+    return managed || chats.length > 0 || blocked === 'main' ? 1 : 2;
+}
+
+/** A folder's worktrees with ours above the others (`rank`), each kind in the order git lists them. */
+export function orderWorktrees(worktrees: readonly WorktreeInfo[]): WorktreeInfo[] {
+    return worktrees.map((worktree, index) => ({ worktree, index })).sort((a, b) => rank(a.worktree) - rank(b.worktree) || a.index - b.index).map(({ worktree }) => worktree);
+}
+
+/**
  * One folder's group: nothing for a folder gone from the disk (or replaced by a file) or that is no repository (a folder inside one has no worktree of its own), else the folder's own checkout first and
- * every worktree git lists after it, git's own order. Git lists the folder's checkout by its real place, so the row carries the folder's path as the project holds it; when the
+ * every worktree git lists after it, ours above the others (`orderWorktrees`), git's order within each kind. Git lists the folder's checkout by its real place, so the row carries the folder's path as the project holds it; when the
  * folder is itself a linked worktree, the repository's primary one is among the others, flagged because git never removes it, and so is the checkout of another folder of the
  * project (`siblings`), which the project works in. A git that does not answer is `unavailable` for the whole read, as for `GET /v1/projects/:id/git`.
  */
@@ -214,7 +232,7 @@ async function folderWorktrees(folder: ProjectFolder, name: string, siblings: re
         })));
     }
 
-    return { ...none, isRepository: true, worktrees };
+    return { ...none, isRepository: true, worktrees: orderWorktrees(worktrees) };
 }
 
 /**

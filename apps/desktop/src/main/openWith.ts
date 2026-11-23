@@ -1,3 +1,4 @@
+import { escape, Minimatch } from 'minimatch';
 import { spawn } from 'node:child_process';
 import { access, readdir, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -50,7 +51,11 @@ export interface OpenWith {
     openPath: (path: unknown, app: unknown) => Promise<void>;
 }
 
-const escapeRegExp = (text: string) => text.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * What a folder's name is tried against: only `*` (any run of characters, dot names included) is a wildcard, whatever its case; every other character is itself, so a `(` or a `[` in a
+ * folder's name does not make a pattern of it. The catalog's parts have a star or two, which `minimatch` matches in no time on a folder's name.
+ */
+const wildcardOf = (part: string) => new Minimatch(part.split('*').map(piece => escape(piece)).join('*'), { dot: true, nocase: true, nonegate: true, nocomment: true, nobrace: true, noext: true, platform: 'linux' });
 
 export function createOpenWith(deps: OpenWithDeps): OpenWith {
     const { platform, home, env, list, exists } = deps;
@@ -96,10 +101,10 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
 
         if (!head.includes('*')) return walk(rest, win32.join(base, head));
 
-        const pattern = new RegExp(`^${ head.split('*').map(escapeRegExp).join('.*') }$`, 'i');
+        const pattern = wildcardOf(head);
 
         for (const entry of (await list(base)).sort().reverse()) {
-            if (!pattern.test(entry)) continue;
+            if (!pattern.match(entry)) continue;
 
             const found = await walk(rest, win32.join(base, entry));
 

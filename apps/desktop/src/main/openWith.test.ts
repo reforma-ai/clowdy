@@ -301,6 +301,17 @@ describe('what a Windows machine has', () => {
         expect(openPath).toHaveBeenCalledWith('C:\\Users\\dev\\web');
     });
 
+    test('matches the folder a star stands for whatever its case, and a name with brackets or parentheses in it', async () => {
+        const { open } = machine({
+            platform: 'win32',
+            env,
+            folders: { 'C:\\Program Files\\JetBrains': ['webstorm (EAP) [2025.2]'] },
+            files: ['C:\\Program Files\\JetBrains\\webstorm (EAP) [2025.2]\\bin\\webstorm64.exe'],
+        });
+
+        expect((await open.listApps()).editors).toEqual([{ id: 'webstorm', name: 'WebStorm' }]);
+    });
+
     test('skips a place that names an environment variable the machine does not have', async () => {
         const { open } = machine({ platform: 'win32', env: { ProgramFiles: 'C:\\Program Files' }, files: ['C:\\Users\\dev\\AppData\\Local\\Programs\\cursor\\Cursor.exe'] });
 

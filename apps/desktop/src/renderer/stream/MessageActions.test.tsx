@@ -217,19 +217,46 @@ describe('MessageActions', () => {
 
             await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork: vi.fn(), onHandoff: vi.fn(), handoffAgents: agents } } />));
 
-            expect(items().map(item => item.textContent)).toEqual(['Fork', 'Fork to another agent…']);
+            expect(items().map(item => item.textContent)).toEqual(['Fork', 'Hand off to another agent…']);
         });
 
-        it('lists the other agents under Fork to another agent… and hands the conversation to the one picked', async () => {
+        it('is a Hand off, not a Fork, where the session cannot be cut: its button, its menu and its one item say so, and the item hands off to the chat\'s own agent', async () => {
+            const onHandoffHere = vi.fn();
+            const onHandoff = vi.fn();
+
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onHandoffHere, onHandoff, handoffAgents: agents } } />));
+
+            expect(forkButton()).toBeNull();
+
+            await press(container.querySelector<HTMLButtonElement>('button[aria-label="Hand off"]')!);
+
+            expect(document.body.querySelector('[role="menu"][aria-label="Hand off"]')).not.toBeNull();
+            expect(items().map(item => item.textContent)).toEqual(['Hand off to a new chat', 'Hand off to another agent…']);
+
+            await press(itemNamed('Hand off to a new chat'));
+
+            expect(onHandoffHere).toHaveBeenCalledOnce();
+            expect(onHandoff).not.toHaveBeenCalled();
+            expect(document.body.querySelector('[role="menu"]')).toBeNull();
+        });
+
+        it('has the Fork and no Hand off to a new chat where the session can be cut, whatever else is given', async () => {
+            await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork: vi.fn(), onHandoffHere: vi.fn(), onHandoff: vi.fn(), handoffAgents: agents } } />));
+            await press(forkButton()!);
+
+            expect(items().map(item => item.textContent)).toEqual(['Fork', 'Hand off to another agent…']);
+        });
+
+        it('lists the other agents under Hand off to another agent… and hands the conversation to the one picked', async () => {
             const onFork = vi.fn();
             const onHandoff = vi.fn();
 
             await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork, onHandoff, handoffAgents: agents } } />));
             await press(forkButton()!);
-            await press(itemNamed('Fork to another agent'));
+            await press(itemNamed('Hand off to another agent'));
 
-            expect(document.body.querySelector('[role="menu"][aria-label="Fork to another agent"]')).not.toBeNull();
-            expect([...document.body.querySelectorAll('[role="menu"][aria-label="Fork to another agent"] [role="menuitem"]')].map(item => item.textContent)).toEqual(['Codex', 'Cursor']);
+            expect(document.body.querySelector('[role="menu"][aria-label="Hand off to another agent"]')).not.toBeNull();
+            expect([...document.body.querySelectorAll('[role="menu"][aria-label="Hand off to another agent"] [role="menuitem"]')].map(item => item.textContent)).toEqual(['Codex', 'Cursor']);
 
             await press(itemNamed('Cursor'));
 
@@ -261,7 +288,7 @@ describe('MessageActions', () => {
             await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork: vi.fn(), onHandoff, handoffAgents: agents } } />));
             await press(forkButton()!);
 
-            const other = itemNamed('Fork to another agent');
+            const other = itemNamed('Hand off to another agent');
 
             expect(other.getAttribute('aria-haspopup')).toBe('menu');
 
@@ -278,18 +305,18 @@ describe('MessageActions', () => {
             expect(document.activeElement).toBe(forkButton());
         });
 
-        it('turns Fork to another agent… off, and says why under it, when there is no other agent', async () => {
+        it('turns Hand off to another agent… off, and says why under it, when there is no other agent', async () => {
             const onHandoff = vi.fn();
 
             await act(async () => root.render(<MessageActions text="Done." at={ at } align="start" actions={ { show: 'hover', onFork: vi.fn(), onHandoff, handoffAgents: [] } } />));
             await press(forkButton()!);
 
-            expect(itemNamed('Fork to another agent').getAttribute('aria-disabled')).toBe('true');
-            expect(itemNamed('Fork to another agent').textContent).toContain('No other agent is ready');
+            expect(itemNamed('Hand off to another agent').getAttribute('aria-disabled')).toBe('true');
+            expect(itemNamed('Hand off to another agent').textContent).toContain('No other agent is ready');
 
-            await press(itemNamed('Fork to another agent'));
+            await press(itemNamed('Hand off to another agent'));
 
-            expect(document.body.querySelector('[role="menu"][aria-label="Fork to another agent"]')).toBeNull();
+            expect(document.body.querySelector('[role="menu"][aria-label="Hand off to another agent"]')).toBeNull();
             expect(onHandoff).not.toHaveBeenCalled();
         });
 

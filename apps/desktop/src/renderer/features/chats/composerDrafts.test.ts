@@ -30,6 +30,19 @@ describe('withQuoteLast', () => {
         expect(written(withQuoteLast(emptyComposerDoc(), '> one\n\ntwo'))).toBe('> > one\n>\n> two\n\n');
     });
 
+    it('keeps the blank lines of a fenced block of code, where they are the code\'s own', () => {
+        const code = '`a.md:1-3`\n```md\n> one\n\n> two\n```\n\n> three\n\n> four';
+
+        // The blank line inside the block stays; the one between the two quotes after it is left out, as before.
+        expect(written(withQuoteLast(emptyComposerDoc(), code))).toBe('> `a.md:1-3`\n> ```md\n> > one\n>\n> > two\n> ```\n>\n> > three\n> > four\n\n');
+    });
+
+    it('closes a fenced block only with a fence at least as long, so a shorter one inside it is code', () => {
+        const code = '````md\n> one\n```\n\n> two\n````\n\n> three\n\n> four';
+
+        expect(written(withQuoteLast(emptyComposerDoc(), code))).toBe('> ````md\n> > one\n> ```\n>\n> > two\n> ````\n>\n> > three\n> > four\n\n');
+    });
+
     it('writes a line of blanks as a bare `>` too', () => {
         expect(written(withQuoteLast(emptyComposerDoc(), 'one\n   \ntwo'))).toBe('> one\n>\n> two\n\n');
     });

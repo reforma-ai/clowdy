@@ -7,6 +7,7 @@ import { DiffView } from '@clowdy/file-manager/react';
 import { ChevronDown, ChevronRight } from '@clowdy/icons/14';
 import { useEffect, useState, type CSSProperties } from 'react';
 
+import { useAddToChat } from '../chats/useAddToChat';
 import { CARD_TEXT, cardBody, estimatedLines, needsSides, type CardBody } from './cardView';
 import styles from './DiffCard.module.css';
 import { sidesKey } from './fileSides';
@@ -49,6 +50,9 @@ function Note({ children }: { children: string }) {
 
 /** The body of an open card for what is known of its file. */
 function Body({ body, file, onRetry }: { body: CardBody; file: GitChangedFile; onRetry: () => void }) {
+    // Words selected in the diff go to the chat with the file's path and their lines of the new text.
+    const addToChat = useAddToChat(() => file.path);
+
     switch (body.kind) {
         case 'binary':
             return <Note>{ CARD_TEXT.binary }</Note>;
@@ -71,7 +75,7 @@ function Body({ body, file, onRetry }: { body: CardBody; file: GitChangedFile; o
                 </div>
             );
         case 'diff':
-            return <DiffView lazy className={ styles.diff } path={ file.path } original={ body.original } modified={ body.modified } estimatedLines={ estimatedLines(file) } />;
+            return <DiffView lazy className={ styles.diff } path={ file.path } original={ body.original } modified={ body.modified } extensions={ addToChat } estimatedLines={ estimatedLines(file) } />;
     }
 }
 

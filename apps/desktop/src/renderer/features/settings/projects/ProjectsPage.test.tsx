@@ -285,6 +285,22 @@ describe('ProjectsPage project', () => {
         expect(container.textContent).not.toContain('Change folder');
     });
 
+    it('has a button for the project\'s worktrees that opens Manage worktrees over Settings, and none for the personal space', async () => {
+        const button = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent === 'Manage worktrees');
+        await open(FIXTURE_PERSONAL_PROJECT_ID);
+
+        expect(button()).toBeUndefined();
+
+        await open(FIXTURE_PROJECT_ID);
+
+        expect(document.body.querySelector('[data-modal-window]')).toBeNull();
+
+        await click(button()!);
+        await flush();
+
+        expect(document.body.querySelector('[data-modal-window]')?.textContent).toContain('Manage worktrees');
+    });
+
     it('renames on blur, and puts the name back on Escape', async () => {
         await open(FIXTURE_EMPTY_PROJECT_ID);
 

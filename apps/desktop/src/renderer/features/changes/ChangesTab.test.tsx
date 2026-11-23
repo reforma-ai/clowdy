@@ -24,6 +24,8 @@ vi.mock('@clowdy/file-manager/react', () => ({
     DiffView: ({ path, original, modified, estimatedLines }: { path: string; original: string | null; modified: string | null; estimatedLines?: number }) => (
         <pre data-diff={ path } data-lines={ estimatedLines }>{ `${ original === null ? '(none)' : original }=>${ modified === null ? '(none)' : modified }` }</pre>
     ),
+    // What a card asks for once a message box is mounted (`useAddToChat`).
+    selectionAction: () => [],
 }));
 // The babel plugin that makes the app's components observers does not run under Vitest: the parts of the tab are, to follow the model they read.
 vi.mock('./ChangesView', async importOriginal => ({ ...await importOriginal<typeof import('./ChangesView')>(), ChangesView: observer((await importOriginal<typeof import('./ChangesView')>()).ChangesView) }));

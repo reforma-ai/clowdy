@@ -104,8 +104,10 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
 
             {/* Not a FormField: the Textarea would pass the field's `isDisabled` and `isInvalid` on to the DOM and React would warn. */}
             <div className={ styles.field }>
-                <Text as="label" variant="heading-5" htmlFor={ filesId }>Files to copy</Text>
-                <Text id={ filesHintId } variant="sm" color="secondary">One path per line, such as .env or .env*</Text>
+                <div className={ styles.copy }>
+                    <Text as="label" variant="heading-5" htmlFor={ filesId }>Files to copy</Text>
+                    <Text id={ filesHintId } variant="sm" color="secondary">One path per line, such as .env or .env*</Text>
+                </div>
                 <Textarea
                     id={ filesId }
                     aria-describedby={ filesHintId }
@@ -120,8 +122,10 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
             </div>
 
             <div className={ styles.field }>
-                <Text as="label" variant="heading-5" htmlFor={ commandId }>Command</Text>
-                <Text id={ commandHintId } variant="sm" color="secondary">Runs in the new worktree once the files are copied</Text>
+                <div className={ styles.copy }>
+                    <Text as="label" variant="heading-5" htmlFor={ commandId }>Command</Text>
+                    <Text id={ commandHintId } variant="sm" color="secondary">Runs in the new worktree once the files are copied</Text>
+                </div>
                 <Textarea
                     id={ commandId }
                     aria-describedby={ commandHintId }
