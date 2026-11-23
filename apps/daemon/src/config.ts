@@ -65,9 +65,11 @@ export interface Timings {
     pauseJitterMs: number;
     /** A parent is told of its threads that stopped this long after the first of them: those that stop meanwhile join the same message. */
     noticeWindowMs: number;
+    /** The setup command of a new worktree (`Prepare workspace`) is stopped, with everything it started, after this long. */
+    setupMs: number;
 }
 
-export const DEFAULT_TIMINGS: Timings = { killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000, noticeWindowMs: 2000 };
+export const DEFAULT_TIMINGS: Timings = { killGraceMs: 5000, retryBaseMs: 5000, pauseJitterMs: 30_000, noticeWindowMs: 2000, setupMs: 10 * 60_000 };
 
 export class ConfigError extends Error {}
 

@@ -17,6 +17,8 @@ export interface LineRunOptions {
     signal?: AbortSignal;
     /** Kills the process, and everything it started, after this long. */
     timeoutMs?: number;
+    /** Windows only: the arguments go to the command line as they are, with no quoting (a `cmd /s /c "…"` line is written whole by its caller). */
+    windowsVerbatimArguments?: boolean;
 }
 
 /** A process that was asked to end (SIGTERM) and does not is killed (SIGKILL) after this long. */
@@ -77,14 +79,14 @@ const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
  * (`ENOENT` for one that is not installed): the caller says so in its own words.
  */
 export async function runLines(argv: string[], options: LineRunOptions): Promise<LineRun> {
-    const { cwd, env, onLine, signal, timeoutMs } = options;
+    const { cwd, env, onLine, signal, timeoutMs, windowsVerbatimArguments } = options;
 
     if (signal?.aborted) {
         return { code: null, timedOut: false, aborted: true };
     }
 
     const windows = process.platform === 'win32';
-    const child = Bun.spawn(argv, { cwd, env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', windowsHide: true, ...(!windows && { detached: true }) });
+    const child = Bun.spawn(argv, { cwd, env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', windowsHide: true, windowsVerbatimArguments, ...(!windows && { detached: true }) });
     let timedOut = false;
     let aborted = false;
     let exited = false;

@@ -757,14 +757,14 @@ export class RunDriver {
      * in (a thread's) has no use for the chat's worktree, which the chat's own turns make.
      */
     private async prepareWorkspace(runId: string, signal: AbortSignal): Promise<void> {
-        const { store, runs } = this.deps;
+        const { store, runs, config } = this.deps;
         const chatId = runs.require(runId).chatId;
         const workspace = chatId && !getRunWork(store.db, runId).cwd ? getChat(store.db, chatId)?.workspace : undefined;
 
         if (workspace && needsPreparing(workspace)) {
             const stopped = AbortSignal.any([signal, this.stopping.signal]);
 
-            await prepareWorkspace(store, workspace.id, { runId, signal: stopped });
+            await prepareWorkspace(store, workspace.id, { runId, signal: stopped, setupTimeoutMs: config.timings.setupMs });
             // A Stop that came while nothing was running git (the wait for another chat, the reads) must not start a session.
             stopped.throwIfAborted();
         }
