@@ -56,7 +56,9 @@
 - `biome.json` ignores, besides Reforma's `dist`: `node_modules`, `.turbo`, the desktop's `app`, `bundle`, `runtime`, `release`, `.ota-local`, `.briefback`, `.claude`, `.codegraph` (fully, so they are not even indexed) and every SVG; the formatter also skips `fixtures`, `*.generated.*`, Markdown, `THIRD-PARTY-LICENSES.md`, the Lottie `reforma-loader.json` and the icon sync's own `figma-icons-manifest.json` (the sync script writes it with `JSON.stringify`, so formatting it would only be undone by the next sync). Reforma's `apps/api` plugins and its `apps/api`/`sandbox`/`storybook` paths are gone.
 - Baseline on `next` before the reformat, in this worktree (`bun run typecheck`, `bun run test`): typecheck fails only in `apps/daemon` with 7 errors in 6 files (`ReadableStream`/`BodyInit`, TS2352 and TS2345); all other packages and `tsc -p scripts` pass. Tests: protocol 71, lib 75, icons 23, daemon 2244 pass / 0 fail (2252 tests, 83 files), components 257, file-manager 171, desktop 4508 in 245 files with the known unhandled `AbortError` (which makes the desktop's `test` exit 1), system-skills `validate` passes. The first Biome run reported 1180 files to format, 410 import orders and 36 lint findings plus the old ESLint config tripping the boundary (22 `noControlCharactersInRegex`, 4 `noCommaOperator`, 4 `noAutofocus`, 2 `useLiteralKeys`, 1 each of `noUselessEmptyExport`, `noUselessTernary`, `noUnusedPrivateClassMembers`, `useExportType`) and no parse error.
 
-**Commits:** see the Stage 1 commit below.
+**Commits:**
+
+- `7ae9e42` chore: add biome for linting and formatting
 
 ## Stage 2 — Reformat the repository and fix what Biome finds
 
@@ -64,11 +66,11 @@
 
 **This stage:** Runs `biome check --write` over the whole repository as one commit that changes formatting and import order and nothing else, then fixes the lint diagnostics that remain: a rule that Reforma also switched off is switched off in the same way; anything else is fixed in the code or switched off with a one-line reason in `biome.json`. The reformat commit is separate from the fixes, and its hash goes into `.git-blame-ignore-revs`.
 
-- [ ] Complete
-  - [ ] One commit that only reformats (`style: reformat the repository with biome`), nothing else in it
-  - [ ] `.git-blame-ignore-revs` names that commit, and `git config blame.ignoreRevsFile` is mentioned in `README.md`
-  - [ ] `bunx biome check` reports no diagnostics
-  - [ ] `bun run typecheck` and `bun run test` pass as they did on `next` before the stage (name any test that failed before)
+- [x] Complete
+  - [x] One commit that only reformats (`style: reformat the repository with biome`), nothing else in it
+  - [x] `.git-blame-ignore-revs` names that commit, and `git config blame.ignoreRevsFile` is mentioned in `README.md`
+  - [x] `bunx biome check` reports no diagnostics (one remains until the first Stage 3 commit: `packages/file-manager/eslint.config.mjs` imports `@clowdy/eslint-config`, which the file-manager boundary now forbids; the file is dead since Stage 1 and Stage 3 deletes it)
+  - [x] `bun run typecheck` and `bun run test` pass as they did on `next` before the stage (name any test that failed before)
 
 **Files**
 
@@ -79,7 +81,20 @@
 
 **Done when:** `bun run lint`, `bun run typecheck` and `bun run test` pass in the worktree, and the reformat commit changes only whitespace, line breaks, quotes, commas, parentheses and import order.
 **Verify:** `bun run lint && bun run typecheck && bun run test`; compare the test counts with the main checkout; `git show --stat <reformat commit> | tail -1`; a build smoke with `./clowdy build` if it runs here.
-**Commits:** None yet.
+**Scope notes (recorded while building):**
+
+- The reformat ran as `biome check --write --linter-enabled=false` (formatter and import order only; it needed two passes, the formatter is not idempotent in one place of `apps/daemon/src/runs/service.ts`) and touched 1234 files (+71617 -29819: 770 `.ts`, 422 `.tsx`, 31 `.css`, 11 other). It was checked against HEAD with a script that parses every changed file (Babel for TS/JS, PostCSS for CSS, JSON) and compares the trees: everything equal apart from parentheses, a one-member union written with a bar, `export` statements merged and sorted, and `a && (b && c)` or `a ?? (b ?? c)` flattened. Side-effect imports were not moved across. The renderer built with Vite from the old and the new tree has the same files and the same CSS rules; the only change is that one CSS module (`ProjectSelect`) lands 19 rules earlier among unrelated modules, because Biome sorts `./ProjectSelect.module.css` before `./projectDialogs` (nothing styles one element with both).
+- After the reformat, before any fix: typecheck and every test count equal the baseline (daemon 2244 pass / 0 fail, desktop 4508 with the same `AbortError`, the rest unchanged).
+- Lint findings (36): the 22 control-character regexes (6 files) stay, as the ESLint directives did, with a `biome-ignore` and a reason; the 4 comma operators and 2 literal keys of tests are written plainly; `noUselessTernary`, `useExportType`, `noUselessEmptyExport` and the unused private `options` of `MapperV2` are fixed in the code; the 4 deliberate `autoFocus` attributes (the quick search input, the side panel size picker, two Modal tests) get a `biome-ignore` with a reason. No rule was switched off in `biome.json`; every rule that fired is fixed or suppressed on its line.
+
+**Commits:**
+
+- `7f907d4` style: reformat the repository with biome
+- `7272ed1` chore(daemon): tell biome which regexes mean to match control characters
+- `d25f98a` refactor(test): write the comma operators and string keys of four tests plainly
+- `2f7ce82` refactor: drop four things biome finds useless
+- `2c9b9a4` chore: keep the four deliberate autoFocus attributes with a reason for biome
+- `aca7c60` chore: make git blame skip the biome reformat
 
 ## Stage 3 — Remove ESLint
 
