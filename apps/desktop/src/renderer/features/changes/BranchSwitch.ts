@@ -37,7 +37,7 @@ export class BranchSwitch {
     running: string | undefined;
     /** Why the last switch was refused or failed. */
     failure: SwitchFailure | undefined;
-    /** What a `post-checkout` hook said when it failed after a switch that was made: the branch changed, and this is the one thing the person is told. */
+    /** What the daemon says of a switch that was made (a `post-checkout` hook that failed, the commits a detached HEAD left on no branch): the branch changed, and this is the one thing the person is told. */
     warning: { branch: string; line: string } | undefined;
     #latest = 0;
 

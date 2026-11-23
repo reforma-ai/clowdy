@@ -27,7 +27,7 @@ export function SwitchReasons({ model }: { model: BranchSwitch }) {
         );
     }
 
-    // A `post-checkout` hook that failed after the branch changed: the switch is made, and this is all that is left to say of it.
+    // What the daemon has to say of a switch that was made (a `post-checkout` hook that failed, commits left on no branch): the switch is made, and this is all that is left to say of it.
     if (warning) {
         return (
             <div className={ styles.reason } role="status">

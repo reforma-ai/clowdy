@@ -164,7 +164,7 @@ export interface Transport {
      * cut from the current branch or the default one. Never for a chat's worktree. Nothing is stashed or carried along: a change in the tree, a merge or rebase under way, a run working in the
      * place and a branch that another worktree has checked out are refused with the daemon's short reason. Rejects with a `TransportError`: 400 for a worktree place, a name that is no branch name, a
      * branch that does not exist or a new one that does, 409 for a refusal that is the repository's state (its `message` is the reason, and `hint` says how many files or what to do) or a switch git
-     * refused, 503 for one that did not end in time. Not retried: a switch is not asked for twice. `warning` in the answer is what a failed `post-checkout` hook said after the branch changed.
+     * refused, 503 for one that did not end in time. Not retried: a switch is not asked for twice. `warning` in the answer is what the person is told of a switch that was made: what a failed `post-checkout` hook said, or the commits a detached HEAD left on no branch.
      */
     switchGitBranch: (projectId: ProjectId, place: PlaceRef, branch: string, create?: GitSwitchRequest['create']) => Promise<GitSwitchResult>;
     /**
