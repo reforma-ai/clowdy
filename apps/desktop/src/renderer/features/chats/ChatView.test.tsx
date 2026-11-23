@@ -928,10 +928,10 @@ describe('Fork in a chat', () => {
     });
 
     describe('to another agent', () => {
-        const agentRows = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Fork to another agent"] [role="menuitem"]')].map(row => row.textContent);
+        const agentRows = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Hand off to another agent"] [role="menuitem"]')].map(row => row.textContent);
         const openAgents = async (index = 0) => {
             await press(forkButtons()[index]);
-            await press(menuItem('Fork to another agent'));
+            await press(menuItem('Hand off to another agent'));
         };
         const change = (id: string, edit: (agent: FixtureData['agents'][number]) => void) => (agents: FixtureData['agents']) => edit(agents.find(agent => agent.id === id)!);
         const files = () => ui().pendingFiles;
@@ -942,7 +942,7 @@ describe('Fork in a chat', () => {
             await openAgents();
 
             expect(agentRows()).toEqual(['Codex', 'Cursor']);
-            expect(document.body.querySelectorAll('[role="menu"][aria-label="Fork to another agent"] svg').length).toBeGreaterThanOrEqual(2);
+            expect(document.body.querySelectorAll('[role="menu"][aria-label="Hand off to another agent"] svg').length).toBeGreaterThanOrEqual(2);
         });
 
         it('leaves out an agent that is signed out or switched off', async () => {
@@ -969,8 +969,8 @@ describe('Fork in a chat', () => {
             await draw('c-2');
             await press(forkButtons()[0]);
 
-            expect(menuItem('Fork to another agent').getAttribute('aria-disabled')).toBe('true');
-            expect(menuItem('Fork to another agent').textContent).toContain('No other agent is ready');
+            expect(menuItem('Hand off to another agent').getAttribute('aria-disabled')).toBe('true');
+            expect(menuItem('Hand off to another agent').textContent).toContain('No other agent is ready');
         });
 
         it('opens the new-chat page on the agent, with the conversation up to that answer attached, and sends nothing to the daemon', async () => {
@@ -1030,20 +1030,22 @@ describe('Fork in a chat', () => {
 
             fixtures.items['r-orch-2'][5] = answer;
         };
+        const handoffButtons = () => [...container.querySelectorAll<HTMLButtonElement>('button[aria-label="Hand off"]')];
 
-        it('draws a Fork on the answer all the same, which opens a new-chat page on the chat\'s own agent with the conversation up to the answer attached', async () => {
+        it('draws a Hand off, and no Fork, on the answer, which opens a new-chat page on the chat\'s own agent with the conversation up to the answer attached', async () => {
             await start(undefined, unflagged);
             await draw('c-2');
 
-            expect(forkButtons()).toHaveLength(1);
+            expect(forkButtons()).toHaveLength(0);
+            expect(handoffButtons()).toHaveLength(1);
 
             const command = vi.spyOn(store, 'command');
 
-            await press(forkButtons()[0]);
+            await press(handoffButtons()[0]);
 
-            expect(menuItem('Fork').textContent).toContain('Attaches the conversation as a file');
+            expect(menuItems().map(row => row.textContent)).toEqual(['Hand off to a new chat', 'Hand off to another agent…']);
 
-            await press(menuItem('Fork'));
+            await press(menuItem('Hand off to a new chat'));
             await vi.waitFor(() => expect(ui().draft).toBe(true));
 
             expect(ui().draftEngine).toBe('claude');
@@ -1056,10 +1058,10 @@ describe('Fork in a chat', () => {
         it('still offers the other agents', async () => {
             await start(undefined, unflagged);
             await draw('c-2');
-            await press(forkButtons()[0]);
-            await press(menuItem('Fork to another agent'));
+            await press(handoffButtons()[0]);
+            await press(menuItem('Hand off to another agent'));
 
-            expect([...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Fork to another agent"] [role="menuitem"]')].map(row => row.textContent)).toEqual(['Codex', 'Cursor']);
+            expect([...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Hand off to another agent"] [role="menuitem"]')].map(row => row.textContent)).toEqual(['Codex', 'Cursor']);
         });
 
         it('draws none in a chat that is read only', async () => {
@@ -1067,6 +1069,7 @@ describe('Fork in a chat', () => {
             await draw('c-2');
 
             expect(forkButtons()).toHaveLength(0);
+            expect(handoffButtons()).toHaveLength(0);
         });
     });
 
