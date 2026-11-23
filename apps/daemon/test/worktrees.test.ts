@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
 import { getChat } from '../src/db/chats';
@@ -269,6 +269,56 @@ describe('GET /v1/projects/:id/worktrees', () => {
         writeFileSync(join(path, 'README.md'), '# Changed after staging\n');
 
         expect(await at(path)).toMatchObject({ changes: 1 });
+    });
+
+    test('keeps the record and the chats of a Clowdy-made worktree whose folder was deleted, though the record names its path through a link', async () => {
+        const { at, start, rows, root, h } = await setup();
+        const chat = await start();
+        const record = chat.workspace!;
+        // The record keeps the path as it was configured and git writes the real one: a link in the way (`/var` and `/private/var` on a Mac) must not part a gone worktree from its chats.
+        const alias = join(root, 'alias');
+
+        symlinkSync(realpathSync(dirname(record.path)), alias);
+        h.store.db.query('UPDATE workspaces SET path = ? WHERE id = ?').run(join(alias, basename(record.path)), record.id);
+        rmSync(record.path, { recursive: true, force: true });
+
+        const row = (await rows()).find(candidate => candidate.branch === record.branch);
+
+        expect(row).toMatchObject({ missing: true, managed: true, workspaceId: record.id, chats: [{ id: chat.id }], blocked: 'chats' });
+        expect(row?.path).toBe(real(record.path));
+        expect(await at(record.path)).toMatchObject({ workspaceId: record.id });
+    });
+
+    test('says nothing of merging for a worktree on a branch with no commit yet', async () => {
+        const { at, repo, root } = await setup();
+        const path = join(root, 'fresh');
+
+        git(repo, 'worktree', 'add', '-q', '--orphan', '-b', 'fresh', path);
+
+        const row = await at(path);
+
+        expect(row).toMatchObject({ branch: 'fresh', head: '', missing: false, changes: 0 });
+        expect(row.merged).toBeUndefined();
+        expect(row.base).toBeUndefined();
+    });
+
+    test('compares with a remote branch as last fetched when that is the folder\'s default', async () => {
+        const root = tempDir('worktrees-remote');
+        const origin = makeRepo(root, 'origin');
+        const clone = join(root, 'clone');
+        const feat = join(root, 'feat');
+
+        git(root, 'clone', '-q', origin, clone);
+        git(clone, 'worktree', 'add', '-q', '-b', 'feat', feat, 'origin/main');
+
+        const { worktrees } = await setup([clone]);
+        const featRow = async () => (await worktrees())[1].worktrees.find(row => row.path === real(feat));
+
+        expect(await featRow()).toMatchObject({ merged: true, base: 'origin/main' });
+
+        commit(feat);
+
+        expect(await featRow()).toMatchObject({ merged: false, base: 'origin/main' });
     });
 
     test('says whether the work of a worktree is in the base: not before it is merged, yes after', async () => {

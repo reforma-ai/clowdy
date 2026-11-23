@@ -1,5 +1,5 @@
 import { folderNames } from '@clowdy/protocol';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 
 import { getChat } from '../db/chats';
 import { chatsOfWorkspace, listWorkspacesOfProject } from '../db/workspaces';
@@ -36,9 +36,17 @@ export interface WorktreeOwner {
     chats?: WorktreeChat[];
 }
 
-/** A path as a key to compare it with another: its real place when it is there, else its name (a worktree whose folder is gone has no real place, and two such must not match). */
+/**
+ * A path as a key to compare it with another, as `samePlace` reads paths: its real place, and for a worktree whose folder is gone the real place of the nearest folder that is
+ * there with the rest of the path after it. A link in the way (`/var` and `/private/var` on a Mac, a drive letter's case) must not part a gone worktree from its record and chats:
+ * git writes the real path, and the record keeps the path as it was configured.
+ */
 async function keyOf(path: string): Promise<string> {
-    return pathKey(await placeOf(path) ?? path);
+    const full = resolve(path);
+    const place = await placeOf(full);
+    const parent = dirname(full);
+
+    return pathKey(place ?? (parent === full ? full : join(await keyOf(parent), basename(full))));
 }
 
 /** The commit of a base ref, read once per name: `refs/heads/<name>`, then `refs/remotes/<name>`. */
