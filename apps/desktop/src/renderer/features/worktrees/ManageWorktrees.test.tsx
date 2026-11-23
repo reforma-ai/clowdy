@@ -356,6 +356,37 @@ describe('Manage worktrees', () => {
         expect(row(FOUND_WORKTREE).textContent).toContain('7 changed');
     });
 
+    it('drops an answer that comes after a newer read, so the list is never put back to what an older read saw', async () => {
+        const base = new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) });
+        const answers: Array<(groups: FolderWorktrees[]) => void> = [];
+        const getProjectWorktrees = vi.fn((projectId: string) => {
+            if (getProjectWorktrees.mock.calls.length === 1) return base.getProjectWorktrees(projectId);
+
+            return new Promise<FolderWorktrees[]>(resolve => answers.push(resolve));
+        });
+        const withChanges = async (changes: number) => {
+            const read = await base.getProjectWorktrees(FIXTURE_PROJECT_ID);
+
+            read[0]!.worktrees.find(worktree => worktree.path === FOUND_WORKTREE)!.changes = changes;
+
+            return read;
+        };
+
+        await open({ overrides: { getProjectWorktrees } });
+
+        // Two reads are on their way, and the second one answers first.
+        await act(async () => void window.dispatchEvent(new Event('focus')));
+        await act(async () => void window.dispatchEvent(new Event('focus')));
+        await act(async () => answers[1]!(await withChanges(7)));
+
+        expect(row(FOUND_WORKTREE).textContent).toContain('7 changed');
+
+        await act(async () => answers[0]!(await withChanges(5)));
+
+        expect(row(FOUND_WORKTREE).textContent).toContain('7 changed');
+        expect(row(FOUND_WORKTREE).textContent).not.toContain('5 changed');
+    });
+
     it('waits with a loading state, and then shows the list', async () => {
         let answer!: (groups: FolderWorktrees[]) => void;
         const getProjectWorktrees = vi.fn(() => new Promise<FolderWorktrees[]>((resolve) => {
