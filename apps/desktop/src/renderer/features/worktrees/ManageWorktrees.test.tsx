@@ -131,6 +131,25 @@ describe('Manage worktrees', () => {
         expect(row(DETACHED_WORKTREE).textContent).toContain('Detached at 3a2b1c0');
     });
 
+    it('has the path of a worktree in the tooltip of its name, and in no line of the row', async () => {
+        await open();
+
+        const found = row(FOUND_WORKTREE);
+
+        expect(found.textContent).not.toContain('/Users/dev/orca');
+
+        // The name takes the focus, which a keyboard reaches, and the tooltip opens on it.
+        const name = [...found.querySelectorAll<HTMLElement>('[tabindex="0"]')].find(element => element.textContent === 'search-filters')!;
+
+        await act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            name.focus();
+        });
+        await settle();
+
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('~/orca/car-rental/search-filters');
+    });
+
     it('marks a locked worktree and one whose folder is gone, which has no state of its own to show and no chat to start', async () => {
         await open();
 
@@ -331,14 +350,14 @@ describe('Manage worktrees', () => {
         expect(buttonIn(row(FOUND_WORKTREE), 'Open search-filters')).not.toBeNull();
     });
 
-    it('opens the menu of a worktree with the programs of the computer and the copy of its path, and without Open in Files, which would act behind the dialog', async () => {
+    it('opens the menu of a worktree as the list of the programs of the computer itself, with no copy of its path, no Open in… and no Open in Files, which would act behind the dialog', async () => {
         (window as { desktop?: unknown }).desktop = { openPath: vi.fn(), getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [{ id: 'finder', name: 'Finder' }] }) };
         await open();
         // The window works in the folder's own checkout, which is the place of the first row: its menu would offer Open in Files if the dialog were a place.
         await click(buttonIn(row('/Users/dev/car-rental'), 'Open main')!);
         await settle();
 
-        expect([...document.body.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(['Copy path', 'Open in…']);
+        expect([...document.body.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(['Open in Finder', 'Open in GitHub']);
     });
 
     it('reads the worktrees when it opens and again each time the window gets focus', async () => {
