@@ -8,7 +8,7 @@ import { listItems } from '../src/db/items';
 import { getProject } from '../src/db/projects';
 import { chatsOfWorkspace, getWorkspace, insertWorkspace, listWorkspacesOfProject, updateWorkspace } from '../src/db/workspaces';
 import { runLines } from '../src/domain/lines';
-import { chatKey, IDLE_WORKSPACE_MS, needsPreparing, placeOf, prepareWorkspace, projectSlug, samePlace, WORKSPACE_TOOL, workspaceLayout } from '../src/domain/workspaces';
+import { chatKey, IDLE_WORKSPACE_MS, needsPreparing, ownsWorktree, placeOf, prepareWorkspace, projectSlug, samePlace, WORKSPACE_TOOL, workspaceLayout } from '../src/domain/workspaces';
 import { copySetupFiles, setupShell } from '../src/domain/workspaceSetup';
 import { baseOf } from '../src/git/state';
 import { newId } from '../src/ids';
@@ -121,6 +121,90 @@ describe('chat.create with a workspace', () => {
         expect(git(folder.path, 'worktree', 'list')).not.toContain('clowdy/');
         expect(needsPreparing(chat.workspace!)).toBe(true);
         expect(chatsOfWorkspace(h.store.db, chat.workspace!.id)).toEqual([chat.id]);
+    });
+
+    test('puts the branch under the prefix the choice names, a prefix with slashes included, and the first turn makes the worktree on it', async () => {
+        const { h, make, send } = await setup();
+        const plain = make({ mode: 'new', branchPrefix: 'max' });
+        const nested = make({ mode: 'new', branchPrefix: ' team/max ' });
+
+        expect(plain.workspace).toMatchObject({ branch: `max/${ plain.id.slice(-8) }`, managed: true, ready: false });
+        expect(nested.workspace?.branch).toBe(`team/max/${ nested.id.slice(-8) }`);
+        // The path does not follow the prefix: it is the chat's own, as ever.
+        expect(plain.workspace?.path).toBe(join(h.config.workspacesDir, 'shop', plain.id.slice(-8), 'shop-web'));
+        expect(getWorkspace(h.store.db, plain.workspace!.id)?.branch).toBe(plain.workspace!.branch!);
+
+        await send(plain, 'Start');
+        await send(nested, 'Start');
+        expect(git(plain.workspace!.path, 'branch', '--show-current')).toBe(plain.workspace!.branch!);
+        expect(git(nested.workspace!.path, 'branch', '--show-current')).toBe(nested.workspace!.branch!);
+    });
+
+    test('is on clowdy/<chat id8> when no prefix is given, or an empty one', async () => {
+        const { make } = await setup();
+
+        for (const choice of [{ mode: 'new' }, { mode: 'new', branchPrefix: '' }, { mode: 'new', branchPrefix: '  ' }, { mode: 'new', branchPrefix: 'clowdy' }]) {
+            const chat = make(choice);
+
+            expect(chat.workspace?.branch).toBe(`clowdy/${ chat.id.slice(-8) }`);
+        }
+    });
+
+    test('refuses a prefix git would not take at the start of a branch name, saying which rule, and creates nothing', async () => {
+        const { h, create } = await setup();
+        const refused: [prefix: string, message: string][] = [
+            ['two words', 'The branch prefix cannot have a space or a control character'],
+            ['a~b', 'The branch prefix cannot have any of ~ ^ : ? * [ \\'],
+            ['a..b', 'The branch prefix cannot have two dots in a row'],
+            ['/max', 'The branch prefix cannot start with / . or -'],
+            ['max/', 'The branch prefix cannot end with / or .'],
+            ['max.lock', 'A part of the branch prefix cannot end with .lock'],
+            ['-max', 'The branch prefix cannot start with / . or -'],
+            ['x'.repeat(65), 'The branch prefix is longer than 64 characters'],
+        ];
+
+        for (const [branchPrefix, message] of refused) {
+            expect(create({ mode: 'new', branchPrefix })).toMatchObject({ ok: false, error: { code: 'invalid', message } });
+        }
+
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM workspaces').get()).toEqual({ n: 0 });
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM chats').get()).toEqual({ n: 0 });
+    });
+
+    test('takes only the prefixes git itself takes: what the daemon accepts, git accepts as a branch name', async () => {
+        const { repo, make } = await setup();
+
+        for (const branchPrefix of ['max', 'team/max', 'v1.2', 'ivan/@home', 'a-b_c', 'ünïcode']) {
+            const chat = make({ mode: 'new', branchPrefix });
+
+            expect(() => git(repo, 'check-ref-format', '--branch', chat.workspace!.branch!)).not.toThrow();
+        }
+    });
+
+    test('refuses a prefix that is the name of a branch the repository has, or a folder of one, since git cannot keep both', async () => {
+        const { repo, create, make } = await setup();
+
+        git(repo, 'branch', 'max');
+        git(repo, 'branch', 'team/lead');
+
+        expect(create({ mode: 'new', branchPrefix: 'max' })).toMatchObject({ ok: false, error: { code: 'invalid', message: 'This repository has a branch called max, so the branch prefix cannot be max' } });
+        expect(create({ mode: 'new', branchPrefix: 'max/inner' })).toMatchObject({ ok: false, error: { code: 'invalid', message: 'This repository has a branch called max, so the branch prefix cannot be max/inner' } });
+        expect(create({ mode: 'new', branchPrefix: 'team/lead' })).toMatchObject({ ok: false, error: { code: 'invalid', message: 'This repository has a branch called team/lead, so the branch prefix cannot be team/lead' } });
+        // A folder of branches is no branch: `team/other` and `team` itself are fine.
+        expect(make({ mode: 'new', branchPrefix: 'team/other' }).workspace?.branch).toStartWith('team/other/');
+        expect(make({ mode: 'new', branchPrefix: 'team' }).workspace?.branch).toStartWith('team/');
+        // The default prefix is no exception.
+        git(repo, 'branch', 'clowdy');
+        expect(create({ mode: 'new' })).toMatchObject({ ok: false, error: { code: 'invalid', message: 'This repository has a branch called clowdy, so the branch prefix cannot be clowdy' } });
+    });
+
+    test('takes the prefix of a new worktree only: one that exists has none to give, over HTTP', async () => {
+        const { h, project } = await setup();
+        const post = async (workspace: unknown) => (await h.fetch('/v1/commands', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(command('chat.create', { projectId: project.id, workspace })) })).status;
+
+        expect(await post({ mode: 'existing', path: '/x', branchPrefix: 'max' })).toBe(400);
+        expect(await post({ mode: 'new', branchPrefix: 'max' })).toBe(200);
+        expect(await post({ mode: 'new', branchPrefix: 'two words' })).toBe(400);
     });
 
     test('takes the default branch of the repository as the base, or the one asked for, and keeps it on the row', async () => {
@@ -1584,6 +1668,32 @@ describe('the layout of a worktree', () => {
 
         expect(workspaceLayout(config, odd, odd.folders[0], chatId).path.endsWith(`${ sep }aux-folder`)).toBe(true);
         expect(workspaceLayout(config, odd, odd.folders[1], chatId).path.endsWith(`${ sep }a-b-`)).toBe(true);
+    });
+
+    test('puts the prefix before the chat id8 in the branch, clowdy when there is none, and leaves the path as it is', () => {
+        const project = { id: 'prj_X', name: 'Shop', folders: [{ id: 'fld_1', path: '/code/shop-web' }] } as Project;
+        const config = { workspacesDir: join(tempDir(), 'ws') };
+        const chatId = 'cht_01M82S6FRZH43TGT47XZCBJ2Y7';
+        const path = join(config.workspacesDir, 'shop', 'XZCBJ2Y7', 'shop-web');
+
+        expect(workspaceLayout(config, project, project.folders[0], chatId, 'max')).toEqual({ path, branch: 'max/XZCBJ2Y7' });
+        expect(workspaceLayout(config, project, project.folders[0], chatId, 'team/max')).toEqual({ path, branch: 'team/max/XZCBJ2Y7' });
+        expect(workspaceLayout(config, project, project.folders[0], chatId, '')).toEqual({ path, branch: 'clowdy/XZCBJ2Y7' });
+        expect(workspaceLayout(config, project, project.folders[0], chatId, undefined)).toEqual({ path, branch: 'clowdy/XZCBJ2Y7' });
+    });
+
+    test('is a chat\'s own when Clowdy made it and its branch ends with the chat\'s id8, whatever the prefix', () => {
+        const chatId = 'cht_01M82S6FRZH43TGT47XZCBJ2Y7';
+
+        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'clowdy/XZCBJ2Y7' })).toBe(true);
+        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'max/XZCBJ2Y7' })).toBe(true);
+        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'team/max/XZCBJ2Y7' })).toBe(true);
+        // Another chat's branch, a branch that only ends alike, one that was found, and none.
+        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'clowdy/AAAAAAAA' })).toBe(false);
+        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'clowdy-XZCBJ2Y7' })).toBe(false);
+        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'XZCBJ2Y7' })).toBe(false);
+        expect(ownsWorktree({ id: chatId }, { managed: false, branch: 'clowdy/XZCBJ2Y7' })).toBe(false);
+        expect(ownsWorktree({ id: chatId }, { managed: true })).toBe(false);
     });
 
     test('names the project in kebab case, by its id when the name has nothing a folder can take, and not with a name Windows reserves', () => {

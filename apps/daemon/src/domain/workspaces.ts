@@ -1,4 +1,4 @@
-import { folderNames, mainFolder, STOPPED_TOOL } from '@clowdy/protocol';
+import { branchPrefixOf, branchPrefixProblem, folderNames, mainFolder, STOPPED_TOOL } from '@clowdy/protocol';
 import { existsSync, realpathSync } from 'node:fs';
 import { lstat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
@@ -142,14 +142,21 @@ function folderSegment(name: string): string {
 }
 
 /**
- * Where a chat's new worktree goes and what its branch is called: `<workspacesDir>/<project-slug>/<chat-id8>/<folder-name>` on `clowdy/<chat-id8>`. The folder's
- * own name is the last part, so a shell prompt and a window title read as the project does. Nothing is made.
+ * Where a chat's new worktree goes and what its branch is called: `<workspacesDir>/<project-slug>/<chat-id8>/<folder-name>` on `<prefix>/<chat-id8>`, the prefix
+ * being `clowdy` unless the person chose one (`branchPrefixOf`; `createNewWorkspace` checks it). The folder's own name is the last part, so a shell prompt and a
+ * window title read as the project does. Nothing is made.
  */
-export function workspaceLayout(config: Pick<Config, 'workspacesDir'>, project: Project, folder: ProjectFolder, chatId: string): { path: string; branch: string } {
+export function workspaceLayout(config: Pick<Config, 'workspacesDir'>, project: Project, folder: ProjectFolder, chatId: string, branchPrefix?: string): { path: string; branch: string } {
     const name = folderNames(project.folders)[project.folders.findIndex(candidate => candidate.id === folder.id)] ?? basename(folder.path);
 
-    return { path: join(config.workspacesDir, projectSlug(project), chatKey(chatId), folderSegment(name)), branch: `clowdy/${ chatKey(chatId) }` };
+    return { path: join(config.workspacesDir, projectSlug(project), chatKey(chatId), folderSegment(name)), branch: `${ branchPrefixOf(branchPrefix) }/${ chatKey(chatId) }` };
 }
+
+/**
+ * Whether a worktree was made for this very chat: Clowdy made it (`managed`) and its branch ends with `/<chat id8>`, whatever prefix it was made with. A thread that
+ * shares its parent's worktree is on a branch that ends with the parent's id, and a worktree that was found is not managed.
+ */
+export const ownsWorktree = (chat: { id: string }, workspace: Pick<ChatWorkspace, 'managed' | 'branch'>): boolean => workspace.managed && workspace.branch?.endsWith(`/${ chatKey(chat.id) }`) === true;
 
 /* --------------------------- Reading a repository -------------------------- */
 
@@ -272,7 +279,7 @@ export function createWorkspace(store: Store, config: Pick<Config, 'workspacesDi
     const { project, chatId, choice } = request;
     const folder = repositoryFolder(project, request.folderId);
 
-    return choice.mode === 'new' ? createNewWorkspace(store, config, project, folder, chatId, choice.base) : openExistingWorkspace(store, project, folder, choice.path);
+    return choice.mode === 'new' ? createNewWorkspace(store, config, project, folder, chatId, choice) : openExistingWorkspace(store, project, folder, choice.path);
 }
 
 /** The folder a worktree is made from: the given folder of the project, else its main one, and it has to be on the disk and the root of a repository (`invalid` otherwise). */
@@ -321,8 +328,14 @@ function dropIdleWorkspaces(store: Store, projectId: string, now: number): void 
     }
 }
 
-function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>, project: Project, folder: ProjectFolder, chatId: string, requested: string | undefined): ChatWorkspace {
-    const base = requested ?? baseOfSync(folder);
+function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>, project: Project, folder: ProjectFolder, chatId: string, choice: Extract<ChatWorkspaceChoice, { mode: 'new' }>): ChatWorkspace {
+    const problem = branchPrefixProblem(choice.branchPrefix);
+
+    if (problem) {
+        throw invalid(problem);
+    }
+
+    const base = choice.base ?? baseOfSync(folder);
 
     if (!base) {
         throw invalid('The repository has no commit to start a worktree from');
@@ -332,11 +345,29 @@ function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>,
         throw invalid(`${ base } is not a branch of this repository`);
     }
 
-    const record = { id: newId('wks'), projectId: project.id, folderId: folder.id, ...workspaceLayout(config, project, folder, chatId), base, managed: true, ready: false, createdAt: Date.now() };
+    const layout = workspaceLayout(config, project, folder, chatId, choice.branchPrefix);
+    const clash = branchInTheWay(folder.path, layout.branch);
+
+    if (clash) {
+        throw invalid(`This repository has a branch called ${ clash }, so the branch prefix cannot be ${ branchPrefixOf(choice.branchPrefix) }`);
+    }
+
+    const record = { id: newId('wks'), projectId: project.id, folderId: folder.id, ...layout, base, managed: true, ready: false, createdAt: Date.now() };
 
     insertWorkspace(store.db, record);
 
     return toChatWorkspace(record);
+}
+
+/** The branch of the repository that stands in the way of `branch`, if any: `max` for `max/ab12cd34`, since git keeps a branch as a file and cannot make a folder of it. */
+function branchInTheWay(folder: string, branch: string): string | undefined {
+    const parents = branch.split('/').slice(0, -1);
+
+    return parents.map((_, index) => parents.slice(0, index + 1).join('/')).find(name => {
+        const found = readGit(folder, ['show-ref', '--verify', '--hash', `refs/heads/${ name }`]);
+
+        return found.ok && found.stdout !== '';
+    });
 }
 
 function openExistingWorkspace(store: Store, project: Project, folder: ProjectFolder, path: string): ChatWorkspace {
