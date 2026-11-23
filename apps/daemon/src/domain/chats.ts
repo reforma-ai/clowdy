@@ -70,6 +70,8 @@ export function choiceOf(run: Run): ChatChoice {
 /** What a new chat may be given beyond its title, mode and agent. */
 export interface NewChat extends ChatChoice {
     projectId: string;
+    /** The id the chat is to have, when its caller needs it before the chat exists (a branch named after the chat); made when absent. */
+    id?: string;
     title?: string;
     mode?: ChatMode;
     /** Makes the chat a thread of that chat (an agent of it started this one), which the caller has checked. */
@@ -106,7 +108,7 @@ export function createChat(store: Store, input: NewChat, workspaces?: Pick<Confi
             throw new Error('createChat needs the workspaces folder to make a worktree');
         }
 
-        const id = newId('cht');
+        const id = input.id ?? newId('cht');
         let workspace: ChatWorkspace | undefined;
 
         if (input.workspace && workspaces) {

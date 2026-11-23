@@ -1473,7 +1473,7 @@ describe('thread_spawn with a worktree', () => {
         expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(1);
     });
 
-    test('knows a worktree is the thread\'s own by its branch ending with the thread\'s id, whatever prefix the app chose, and the parent\'s shared one is not', async () => {
+    test('knows a worktree is the thread\'s own by the folder the thread\'s id names, whatever its branch is called, and the parent\'s shared one is not', async () => {
         const { h, project, store, chatOf, turnOf, root, spawn, on } = await setup();
         const parent = await root('Plan the release', latch(), { workspace: { mode: 'new', branchPrefix: 'max' } });
         const mine = parent.chat.workspace!;
@@ -1481,7 +1481,7 @@ describe('thread_spawn with a worktree', () => {
 
         expect(mine.branch).toBe(`max/${ id8(parent.chat.id) }`);
 
-        // A thread that shares the parent's worktree is on a branch with the parent's id: not its own.
+        // A thread that shares the parent's worktree stands in the folder of the parent's id: not its own.
         const sharing = await spawn(parent.run, 'Read the importer');
 
         expect(chatOf(sharing.threadId).workspace).toEqual(mine);
@@ -1493,7 +1493,7 @@ describe('thread_spawn with a worktree', () => {
         expect(own.worktree?.branch).toBe(`clowdy/${ id8(own.threadId) }`);
         expect(turnOf('Rework the importer')?.systemPrompt).toContain(`${ alone }, on a branch started from ${ mine.branch }`);
 
-        // A thread whose worktree was made with another prefix is recognised the same way: the branch ends with its id.
+        // A thread whose worktree was made with another prefix is recognised the same way: it stands in the folder of its id.
         const chat = createChat(store, { projectId: project.id, title: 'Rework the parser', parentChatId: parent.chat.id, folderId: mine.folderId, workspace: { mode: 'new', branchPrefix: 'max/threads' } }, h.config);
 
         expect(chat.workspace?.branch).toBe(`max/threads/${ id8(chat.id) }`);
@@ -1543,6 +1543,135 @@ describe('thread_spawn with a worktree', () => {
         git(mine.path, 'merge', '--no-edit', branch);
         expect(readFileSync(join(mine.path, 'thread.txt'), 'utf8')).toBe('thread work\n');
         expect(h.run(parent.run.id).status).toBe('running');
+    });
+
+    test('starts from the branch the parent has checked out in the folder itself, not from the default branch', async () => {
+        const { project, store, chatOf, turnOf, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+
+        // The parent works in the project's own folder, which is on a feature branch with a commit of its own: the thread builds on that.
+        git(project.path, 'switch', '-q', '-c', 'feature/checkout');
+        writeFileSync(join(project.path, 'feature.txt'), 'feature work\n');
+        git(project.path, 'add', 'feature.txt');
+        git(project.path, 'commit', '-q', '-m', 'Feature work');
+
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true });
+
+        expect(own.worktree).toMatchObject({ base: 'feature/checkout' });
+        expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)?.base).toBe('feature/checkout');
+        expect(readFileSync(join(own.worktree!.path, 'feature.txt'), 'utf8')).toBe('feature work\n');
+        expect(turnOf('Rework the importer')?.cwd).toBe(own.worktree!.path);
+
+        // On a detached HEAD there is no branch to say, and the repository's default one stands.
+        git(project.path, 'switch', '-q', '--detach');
+
+        const other = await spawn(parent.run, 'Rework the parser', held(latch()), { worktree: true });
+
+        expect(other.worktree).toMatchObject({ base: 'main' });
+    });
+
+    test('starts from the base it is given, a branch of the repository, and is refused for one that is not', async () => {
+        const { project, root, spawn, exec } = await setup();
+        const parent = await root('Plan the release', latch());
+
+        git(project.path, 'branch', 'release/2');
+
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, base: 'release/2' });
+
+        expect(own.worktree).toMatchObject({ base: 'release/2' });
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, base: 'nowhere' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('nowhere is not a branch of this repository') });
+        // The options go with the worktree: without it there is no branch to start or to name.
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', base: 'main' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('they go with worktree') });
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', branch: 'x' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('they go with worktree') });
+    });
+
+    test('names the branch after the thread\'s title, in the folder the thread\'s id names, and has the thread know the worktree is its own', async () => {
+        const { h, project, store, chatOf, turnOf, root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, title: 'Fix the login redirect!' });
+        const path = join(h.config.workspacesDir, 'repo', id8(own.threadId), 'repo');
+
+        // The branch has the title's words; the folder has the id, and is where the agent works.
+        expect(own.worktree).toEqual({ path, branch: 'clowdy/fix-the-login-redirect', base: 'main' });
+        expect(git(path, 'branch', '--show-current')).toBe('clowdy/fix-the-login-redirect');
+        expect(getWorkspace(store.db, chatOf(own.threadId).workspace!.id)).toMatchObject({ path, branch: 'clowdy/fix-the-login-redirect' });
+        expect(turnOf('Rework the importer')?.cwd).toBe(path);
+        expect(turnOf('Rework the importer')?.systemPrompt).toContain('It had a git worktree made for you alone');
+        expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(1);
+    });
+
+    test('keeps the id for a branch name when the title has no words in ASCII, cuts a long one at a word, and tells two threads with one title apart', async () => {
+        const { root, spawn } = await setup();
+        const parent = await root('Plan the release', latch());
+        const russian = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, title: 'Починить редирект' });
+        const long = await spawn(parent.run, 'Rework the parser', held(latch()), { worktree: true, title: 'Rework the importer so that it reads the long files in small pieces and keeps going' });
+        const first = await spawn(parent.run, 'Check the cache', held(latch()), { worktree: true, title: 'Check the cache' });
+        const second = await spawn(parent.run, 'Check the cache again', held(latch()), { worktree: true, title: 'Check the cache' });
+
+        expect(russian.worktree?.branch).toBe(`clowdy/${ id8(russian.threadId) }`);
+        // Cut at a word, leaving room for the end of the id that tells a second thread with the same title apart.
+        expect(long.worktree?.branch).toBe('clowdy/rework-the-importer-so-that-it-reads-the');
+        expect(first.worktree?.branch).toBe('clowdy/check-the-cache');
+        expect(second.worktree?.branch).toBe(`clowdy/check-the-cache-${ id8(second.threadId).slice(-4).toLowerCase() }`);
+    });
+
+    test('takes the branch name the caller gives, refuses one git would not like or one that is taken, and leaves nothing behind', async () => {
+        const { project, store, root, spawn, exec } = await setup();
+        const parent = await root('Plan the release', latch());
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, title: 'Anything', branch: 'importer-rework' });
+        const rows = () => listWorkspacesOfProject(store.db, project.id).length;
+
+        // The explicit name wins over the title.
+        expect(own.worktree?.branch).toBe('clowdy/importer-rework');
+        expect(rows()).toBe(1);
+
+        for (const [branch, message] of [['importer-rework', 'The branch name clowdy/importer-rework is taken'], ['Fix Login', 'lower-case letters'], ['x'.repeat(60), 'longer than 48'], ['two..dots', 'two dots']] as const) {
+            await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining(message) });
+        }
+
+        expect(rows()).toBe(1);
+    });
+
+    test('does not take a name that has branches below it, or that a worktree still to be made is below or above of: a name derived from a title gives way, one that was given is refused', async () => {
+        const { project, root, spawn, exec } = await setup();
+        const parent = await root('Plan the release', latch());
+
+        // `clowdy/fix/login` exists, so `clowdy/fix` cannot be made (git keeps a branch as a file).
+        git(project.path, 'branch', 'clowdy/fix/login');
+
+        const derived = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, title: 'Fix' });
+
+        expect(derived.worktree?.branch).toBe(`clowdy/fix-${ id8(derived.threadId).slice(-4).toLowerCase() }`);
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch: 'fix' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('The branch name clowdy/fix is taken') });
+
+        // A thread that is not made yet (a worktree row with its branch) counts as well, above and below.
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch: 'fix-here' })).resolves.toBeDefined();
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, branch: 'fix-here' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('The branch name clowdy/fix-here is taken') });
+    });
+
+    test('reads an empty base or branch as left out, takes a base for a parent on a detached HEAD, and does not take the name of a device Windows keeps', async () => {
+        const { project, root, spawn, exec } = await setup();
+        const parent = await root('Plan the release', latch(), { workspace: { mode: 'new' } });
+        const own = await spawn(parent.run, 'Rework the importer', held(latch()), { worktree: true, base: '', branch: '' });
+
+        expect(own.worktree).toMatchObject({ base: expect.any(String), branch: `clowdy/${ id8(own.threadId) }` });
+        // Left out with no worktree it is no refusal either: an empty string says nothing.
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Plain', base: '', branch: '' })).resolves.toBeDefined();
+
+        // The parent's worktree is on a detached HEAD: it has no branch to start from, and the refusal says a base is the way out; one that is given is taken.
+        git(parent.chat.workspace!.path, 'switch', '-q', '--detach');
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('name the branch to start it from with base') });
+
+        const based = await spawn(parent.run, 'Rework the parser', held(latch()), { worktree: true, base: 'main' });
+
+        expect(based.worktree).toMatchObject({ base: 'main' });
+
+        // `con` is a device on Windows: a title of it takes the end of the id, a name that was given is refused.
+        const device = await spawn(parent.run, 'Rework the cache', held(latch()), { worktree: true, base: 'main', title: 'Con' });
+
+        expect(device.worktree?.branch).toBe(`clowdy/con-${ id8(device.threadId).slice(-4).toLowerCase() }`);
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Nope', worktree: true, base: 'main', branch: 'nul' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('device') });
+        expect(project.path).toBeDefined();
     });
 
     test('is refused with cwd, by a caller that works in a folder named with cwd, and when the parent\'s worktree is on a detached HEAD or its branch is gone, leaving nothing behind', async () => {

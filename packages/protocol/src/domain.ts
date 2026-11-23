@@ -256,9 +256,10 @@ export interface ChatWorkspace {
 
 /**
  * Where a new chat works when it is not in the folder itself: in a new worktree started from `base` (the folder's default branch when absent) on the branch
- * `<branchPrefix>/<chat id8>` (`DEFAULT_BRANCH_PREFIX` when absent or empty), or in a worktree that exists.
+ * `<branchPrefix>/<branchName>` (`DEFAULT_BRANCH_PREFIX` when the prefix is absent or empty; the chat's id8 when there is no name, which is what a chat the person starts
+ * has), or in a worktree that exists. The folder of the worktree is named by its chat's id8 whatever the branch is called.
  */
-export type ChatWorkspaceChoice = { mode: 'new'; base?: string; branchPrefix?: string } | { mode: 'existing'; path: string };
+export type ChatWorkspaceChoice = { mode: 'new'; base?: string; branchPrefix?: string; branchName?: string } | { mode: 'existing'; path: string };
 
 /** What the branch of a new worktree starts with when none is chosen: `clowdy/<chat id8>`. */
 export const DEFAULT_BRANCH_PREFIX = 'clowdy';
@@ -300,6 +301,26 @@ export function branchPrefixProblem(text: string | undefined): string | undefine
     if (parts.some(part => part.startsWith('.'))) return 'A part of the branch prefix cannot start with a dot';
 
     return parts.some(part => part.endsWith('.lock')) ? 'A part of the branch prefix cannot end with .lock' : undefined;
+}
+
+export const MAX_BRANCH_NAME_LENGTH = 48;
+
+/**
+ * Why `text` cannot be the name of a worktree's branch after its prefix (`<prefix>/<name>`), in words for the one who chose it, or `undefined` when it can: lower-case
+ * letters and digits with `-`, `_` and `.` between them, none of them at either end, and no more than `MAX_BRANCH_NAME_LENGTH` characters. Narrower than git's own rules
+ * on purpose: a name is read in a list of branches and typed in a shell, and one that is made of these is the same on every system.
+ */
+export function branchNameProblem(text: string): string | undefined {
+    if (text === '') return 'The branch name is empty';
+
+    if (text.length > MAX_BRANCH_NAME_LENGTH) return `The branch name is longer than ${ MAX_BRANCH_NAME_LENGTH } characters`;
+
+    if (!/^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/.test(text)) return 'The branch name takes lower-case letters, digits, -, _ and . only, and starts and ends with a letter or a digit';
+
+    if (text.includes('..') || text.endsWith('.lock')) return 'The branch name cannot have two dots in a row or end with .lock';
+
+    // A name Windows keeps for a device (`con`, `nul`, `com1`) cannot be a file there, and git keeps a branch as one.
+    return /^(con|prn|aux|nul|com\d|lpt\d)$/.test(text) ? 'The branch name cannot be a name Windows keeps for a device, such as con or nul' : undefined;
 }
 
 /** How a thread ended its turn, as its parent is told. */

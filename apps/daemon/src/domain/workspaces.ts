@@ -1,4 +1,4 @@
-import { branchPrefixOf, branchPrefixProblem, folderNames, mainFolder, STOPPED_TOOL } from '@clowdy/protocol';
+import { branchNameProblem, branchPrefixOf, branchPrefixProblem, folderNames, mainFolder, MAX_BRANCH_NAME_LENGTH, STOPPED_TOOL } from '@clowdy/protocol';
 import { existsSync, realpathSync } from 'node:fs';
 import { lstat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
@@ -142,21 +142,23 @@ function folderSegment(name: string): string {
 }
 
 /**
- * Where a chat's new worktree goes and what its branch is called: `<workspacesDir>/<project-slug>/<chat-id8>/<folder-name>` on `<prefix>/<chat-id8>`, the prefix
- * being `clowdy` unless the person chose one (`branchPrefixOf`; `createNewWorkspace` checks it). The folder's own name is the last part, so a shell prompt and a
+ * Where a chat's new worktree goes and what its branch is called: `<workspacesDir>/<project-slug>/<chat-id8>/<folder-name>` on `<prefix>/<branch name>`, the prefix
+ * being `clowdy` unless the person chose one (`branchPrefixOf`; `createNewWorkspace` checks it), and the name the chat's id8 unless one was given (a thread's, made of its
+ * title). The folder is named by the id8 alone, and is never renamed: an agent keeps its sessions by folder. The folder's own name is the last part, so a shell prompt and a
  * window title read as the project does. Nothing is made.
  */
-export function workspaceLayout(config: Pick<Config, 'workspacesDir'>, project: Project, folder: ProjectFolder, chatId: string, branchPrefix?: string): { path: string; branch: string } {
+export function workspaceLayout(config: Pick<Config, 'workspacesDir'>, project: Project, folder: ProjectFolder, chatId: string, branchPrefix?: string, branchName?: string): { path: string; branch: string } {
     const name = folderNames(project.folders)[project.folders.findIndex(candidate => candidate.id === folder.id)] ?? basename(folder.path);
 
-    return { path: join(config.workspacesDir, projectSlug(project), chatKey(chatId), folderSegment(name)), branch: `${ branchPrefixOf(branchPrefix) }/${ chatKey(chatId) }` };
+    return { path: join(config.workspacesDir, projectSlug(project), chatKey(chatId), folderSegment(name)), branch: `${ branchPrefixOf(branchPrefix) }/${ branchName ?? chatKey(chatId) }` };
 }
 
 /**
- * Whether a worktree was made for this very chat: Clowdy made it (`managed`) and its branch ends with `/<chat id8>`, whatever prefix it was made with. A thread that
- * shares its parent's worktree is on a branch that ends with the parent's id, and a worktree that was found is not managed.
+ * Whether a worktree was made for this very chat: Clowdy made it (`managed`) and it stands in the folder named by the chat's id8 (`<project-slug>/<chat-id8>/<folder-name>`, which
+ * `workspaceLayout` makes and nothing renames), whatever its branch is called. A thread that shares its parent's worktree stands in one with the parent's id8, and a worktree that
+ * was found is not managed.
  */
-export const ownsWorktree = (chat: { id: string }, workspace: Pick<ChatWorkspace, 'managed' | 'branch'>): boolean => workspace.managed && workspace.branch?.endsWith(`/${ chatKey(chat.id) }`) === true;
+export const ownsWorktree = (chat: { id: string }, workspace: Pick<ChatWorkspace, 'managed' | 'path'>): boolean => workspace.managed && basename(dirname(workspace.path)) === chatKey(chat.id);
 
 /* --------------------------- Reading a repository -------------------------- */
 
@@ -329,7 +331,7 @@ function dropIdleWorkspaces(store: Store, projectId: string, now: number): void 
 }
 
 function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>, project: Project, folder: ProjectFolder, chatId: string, choice: Extract<ChatWorkspaceChoice, { mode: 'new' }>): ChatWorkspace {
-    const problem = branchPrefixProblem(choice.branchPrefix);
+    const problem = branchPrefixProblem(choice.branchPrefix) ?? (choice.branchName === undefined ? undefined : branchNameProblem(choice.branchName));
 
     if (problem) {
         throw invalid(problem);
@@ -345,11 +347,16 @@ function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>,
         throw invalid(`${ base } is not a branch of this repository`);
     }
 
-    const layout = workspaceLayout(config, project, folder, chatId, choice.branchPrefix);
+    const layout = workspaceLayout(config, project, folder, chatId, choice.branchPrefix, choice.branchName);
     const clash = branchInTheWay(folder.path, layout.branch);
 
     if (clash) {
-        throw invalid(`This repository has a branch called ${ clash }, so the branch prefix cannot be ${ branchPrefixOf(choice.branchPrefix) }`);
+        throw invalid(`This repository has a branch called ${ clash }, so ${ choice.branchName === undefined ? `the branch prefix cannot be ${ branchPrefixOf(choice.branchPrefix) }` : `the branch ${ layout.branch } cannot be made` }`);
+    }
+
+    // The id8 is unique by itself; a name someone chose is not, and is taken by a branch of the repository or by a worktree another chat is still to make.
+    if (choice.branchName !== undefined && branchTaken(store, project, folder, layout.branch)) {
+        throw invalid(`The branch name ${ layout.branch } is taken, by a branch of the repository, one below it, or a worktree still to be made: name this one differently`);
     }
 
     const record = { id: newId('wks'), projectId: project.id, folderId: folder.id, ...layout, base, managed: true, ready: false, createdAt: Date.now() };
@@ -357,6 +364,47 @@ function createNewWorkspace(store: Store, config: Pick<Config, 'workspacesDir'>,
     insertWorkspace(store.db, record);
 
     return toChatWorkspace(record);
+}
+
+/**
+ * Whether `branch` cannot be made as a new branch: the repository has it, or has branches below it (`clowdy/fix` and `clowdy/fix/login` cannot both be, git keeps a branch as
+ * a file), or a worktree row of the project that is not made yet is to have it or one below or above it. (`branchInTheWay` is the branches above it, in the repository.)
+ */
+function branchTaken(store: Store, project: Project, folder: ProjectFolder, branch: string): boolean {
+    const found = readGit(folder.path, ['show-ref', '--verify', '--hash', `refs/heads/${ branch }`]);
+    const below = readGit(folder.path, ['for-each-ref', '--count=1', '--format=%(refname)', `refs/heads/${ branch }/`]);
+
+    return (found.ok && found.stdout !== '') || (below.ok && below.stdout !== '')
+        || listWorkspacesOfProject(store.db, project.id).some(record => record.folderId === folder.id && record.branch !== undefined && (record.branch === branch || record.branch.startsWith(`${ branch }/`) || branch.startsWith(`${ record.branch }/`)));
+}
+
+/**
+ * What a worktree's branch may be called when it is made for a piece of work with a title: the title's words in ASCII, lower case, joined with dashes and cut at a word
+ * (`MAX_BRANCH_NAME_LENGTH`), with the end of the chat's id8 added when a branch of that name is there already. `undefined` for a title that has no letter or digit in it (a name in
+ * another script), so the branch keeps the id8 for a name. Call it inside a transaction: the rows it reads are the ones the chat's own is written with.
+ */
+export function branchNameFor(store: Store, config: Pick<Config, 'workspacesDir'>, project: Project, folderId: string | undefined, chatId: string, branchPrefix: string | undefined, title: string): string | undefined {
+    const folder = repositoryFolder(project, folderId);
+    const words = title.normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const kept: string[] = [];
+
+    for (const word of words) {
+        if ([...kept, word].join('-').length > MAX_BRANCH_NAME_LENGTH - 5) break;
+
+        kept.push(word);
+    }
+
+    const slug = kept.join('-');
+
+    if (!slug) {
+        return undefined;
+    }
+
+    const prefix = branchPrefixOf(branchPrefix);
+    // A name Windows keeps for a device (`con`) cannot be a file there, and git keeps a branch as one: it goes with the end of the id, which makes it another name.
+    const candidates = [...RESERVED_NAMES.test(slug) ? [] : [slug], `${ slug }-${ chatKey(chatId).slice(-4).toLowerCase() }`];
+
+    return candidates.find(name => !branchTaken(store, project, folder, `${ prefix }/${ name }`) && branchInTheWay(folder.path, `${ prefix }/${ name }`) === undefined);
 }
 
 /** The branch of the repository that stands in the way of `branch`, if any: `max` for `max/ab12cd34`, since git keeps a branch as a file and cannot make a folder of it. */
@@ -440,7 +488,7 @@ export function threadBase(store: Store, project: Project, workspace: ChatWorksp
     const head = existsSync(workspace.path) && isRepositoryRoot(workspace.path) ? headOf(workspace.path) : undefined;
 
     if (head?.detached || (head === undefined && workspace.branch === undefined)) {
-        throw invalid('Your worktree is on a detached HEAD, so there is no branch of yours to start the thread from');
+        throw invalid('Your worktree is on a detached HEAD, so there is no branch of yours to start the thread from: name the branch to start it from with base');
     }
 
     const branch = head?.branch ?? workspace.branch;
@@ -460,6 +508,17 @@ export function threadBase(store: Store, project: Project, workspace: ChatWorksp
     }
 
     throw invalid(`Your branch ${ branch } is not in the repository any more, so there is nothing to start the thread from`);
+}
+
+/**
+ * The branch a folder's own checkout has now, which a thread made for a parent that works there starts from: what the parent has committed on it, and not the repository's
+ * default branch. `undefined` for a checkout on a detached HEAD or with no commit, whose base is the folder's own (`createWorkspace` picks it). `invalid` for a folder that is no
+ * repository's root, as `createWorkspace` would.
+ */
+export function checkoutBranch(project: Project, folderId: string | undefined): string | undefined {
+    const head = headOf(repositoryFolder(project, folderId).path);
+
+    return head && !head.detached ? head.branch : undefined;
 }
 
 /** Whether a chat's first turn (or a later one) has to run `Prepare workspace`: the worktree is not set up yet, or Clowdy made it and it is gone from the disk. */

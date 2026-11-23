@@ -198,6 +198,40 @@ describe('chat.create with a workspace', () => {
         expect(create({ mode: 'new' })).toMatchObject({ ok: false, error: { code: 'invalid', message: 'This repository has a branch called clowdy, so the branch prefix cannot be clowdy' } });
     });
 
+    test('puts the branch under the name the choice gives, in the folder of the chat\'s id8, and refuses a name git or Windows would not like or one that is taken', async () => {
+        const { h, repo, create, make, send } = await setup();
+        const named = make({ mode: 'new', branchName: 'fix-login' });
+
+        expect(named.workspace).toMatchObject({ branch: 'clowdy/fix-login', managed: true, ready: false });
+        // The folder is the chat's own, as ever, whatever the branch is called.
+        expect(named.workspace?.path).toBe(join(h.config.workspacesDir, 'shop', named.id.slice(-8), 'shop-web'));
+        expect(make({ mode: 'new', branchPrefix: 'max', branchName: 'a.b_c-1' }).workspace?.branch).toBe('max/a.b_c-1');
+
+        await send(named, 'Start');
+        expect(git(named.workspace!.path, 'branch', '--show-current')).toBe('clowdy/fix-login');
+
+        for (const [branchName, message] of [['', 'The branch name is empty'], ['Fix Login', 'lower-case letters'], ['-x', 'starts and ends'], ['x.', 'starts and ends'], ['a..b', 'two dots'], ['a.lock', '.lock'], ['con', 'device'], ['x'.repeat(49), 'longer than 48']] as const) {
+            expect(create({ mode: 'new', branchName })).toMatchObject({ ok: false, error: { code: 'invalid', message: expect.stringContaining(message) } });
+        }
+
+        // The repository has it; another chat that is not made yet is to have it; the repository has branches below it, or a branch above it.
+        expect(create({ mode: 'new', branchName: 'fix-login' })).toMatchObject({ ok: false, error: { code: 'invalid', message: expect.stringContaining('The branch name clowdy/fix-login is taken') } });
+        make({ mode: 'new', branchName: 'later' });
+        expect(create({ mode: 'new', branchName: 'later' })).toMatchObject({ ok: false, error: { code: 'invalid', message: expect.stringContaining('is taken') } });
+        git(repo, 'branch', 'clowdy/deep/er');
+        expect(create({ mode: 'new', branchName: 'deep' })).toMatchObject({ ok: false, error: { code: 'invalid', message: expect.stringContaining('is taken') } });
+        expect(create({ mode: 'new', branchName: 'later/inner' })).toMatchObject({ ok: false });
+    });
+
+    test('takes the name of the branch of a new worktree only, over HTTP', async () => {
+        const { h, project } = await setup();
+        const post = async (workspace: unknown) => (await h.fetch('/v1/commands', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(command('chat.create', { projectId: project.id, workspace })) })).status;
+
+        expect(await post({ mode: 'new', branchName: 'fix-login' })).toBe(200);
+        expect(await post({ mode: 'existing', path: '/x', branchName: 'fix-login' })).toBe(400);
+        expect(await post({ mode: 'new', branchName: 'Not Right' })).toBe(400);
+    });
+
     test('takes the prefix of a new worktree only: one that exists has none to give, over HTTP', async () => {
         const { h, project } = await setup();
         const post = async (workspace: unknown) => (await h.fetch('/v1/commands', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(command('chat.create', { projectId: project.id, workspace })) })).status;
@@ -1680,20 +1714,20 @@ describe('the layout of a worktree', () => {
         expect(workspaceLayout(config, project, project.folders[0], chatId, 'team/max')).toEqual({ path, branch: 'team/max/XZCBJ2Y7' });
         expect(workspaceLayout(config, project, project.folders[0], chatId, '')).toEqual({ path, branch: 'clowdy/XZCBJ2Y7' });
         expect(workspaceLayout(config, project, project.folders[0], chatId, undefined)).toEqual({ path, branch: 'clowdy/XZCBJ2Y7' });
+        // A name given for the branch replaces the id8 in it only: the folder is still the chat's id8, which nothing renames.
+        expect(workspaceLayout(config, project, project.folders[0], chatId, 'max', 'fix-login')).toEqual({ path, branch: 'max/fix-login' });
     });
 
-    test('is a chat\'s own when Clowdy made it and its branch ends with the chat\'s id8, whatever the prefix', () => {
+    test('is a chat\'s own when Clowdy made it and it stands in the folder named by the chat\'s id8, whatever its branch is called', () => {
         const chatId = 'cht_01M82S6FRZH43TGT47XZCBJ2Y7';
+        const at = (id8: string) => join('/home/me/Clowdy/workspaces/shop', id8, 'shop-web');
 
-        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'clowdy/XZCBJ2Y7' })).toBe(true);
-        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'max/XZCBJ2Y7' })).toBe(true);
-        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'team/max/XZCBJ2Y7' })).toBe(true);
-        // Another chat's branch, a branch that only ends alike, one that was found, and none.
-        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'clowdy/AAAAAAAA' })).toBe(false);
-        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'clowdy-XZCBJ2Y7' })).toBe(false);
-        expect(ownsWorktree({ id: chatId }, { managed: true, branch: 'XZCBJ2Y7' })).toBe(false);
-        expect(ownsWorktree({ id: chatId }, { managed: false, branch: 'clowdy/XZCBJ2Y7' })).toBe(false);
-        expect(ownsWorktree({ id: chatId }, { managed: true })).toBe(false);
+        expect(ownsWorktree({ id: chatId }, { managed: true, path: at('XZCBJ2Y7') })).toBe(true);
+        // Another chat's folder, a folder that only ends alike, one that was found, and the folder itself with no id8 above it.
+        expect(ownsWorktree({ id: chatId }, { managed: true, path: at('AAAAAAAA') })).toBe(false);
+        expect(ownsWorktree({ id: chatId }, { managed: true, path: at('clowdy-XZCBJ2Y7') })).toBe(false);
+        expect(ownsWorktree({ id: chatId }, { managed: false, path: at('XZCBJ2Y7') })).toBe(false);
+        expect(ownsWorktree({ id: chatId }, { managed: true, path: '/home/me/shop-web' })).toBe(false);
     });
 
     test('names the project in kebab case, by its id when the name has nothing a folder can take, and not with a name Windows reserves', () => {

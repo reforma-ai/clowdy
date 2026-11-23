@@ -170,7 +170,7 @@ function promptChat(store: Store, chat: Chat | undefined): PromptChat | undefine
     }
 
     const parent = chat.parentChatId ? getChat(store.db, chat.parentChatId) : undefined;
-    // A thread whose parent had a worktree made for it alone is on a branch that ends with the thread's own id, whatever its prefix; one that shares its parent's is on the parent's.
+    // A thread whose parent had a worktree made for it alone stands in the folder named by the thread's own id (whatever its branch is called); one that shares its parent's stands in the parent's.
     const own = chat.workspace && ownsWorktree(chat, chat.workspace) ? getWorkspace(store.db, chat.workspace.id)?.base : undefined;
 
     return chat.parentChatId ? { parent: { id: chat.parentChatId, title: parent?.title ?? chat.parentChatId, ...(own !== undefined && { worktreeBase: own }) } } : {};

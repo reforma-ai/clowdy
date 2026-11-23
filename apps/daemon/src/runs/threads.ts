@@ -7,8 +7,9 @@ import { getRun, getRunWork } from '../db/runs';
 import { getWorkspace } from '../db/workspaces';
 import { chatDepth, createChat, inSameTree, isBelow, requireChat } from '../domain/chats';
 import { linkChatTask, requireNotArchived, resolveTask } from '../domain/tasks';
-import { threadBase } from '../domain/workspaces';
+import { branchNameFor, checkoutBranch, threadBase } from '../domain/workspaces';
 import { CommandError, conflict, invalid, notFound } from '../errors';
+import { newId } from '../ids';
 import { isFolder } from './driver';
 import { sendMessage } from './messages';
 import { clip, cut } from './tool-kit';
@@ -147,6 +148,10 @@ export interface SpawnInput {
     cwd?: string;
     /** A worktree of its own, made for the thread on a branch of its own (see `spawn`); not together with `cwd`. */
     worktree?: boolean;
+    /** With `worktree`: the branch the thread's own worktree starts from; the one the parent has checked out now, else (a checkout on a detached HEAD) the repository's default one. */
+    base?: string;
+    /** With `worktree`: what the thread's branch is called after the daemon's prefix (`clowdy/<branch>`); made of `title` when it has one in ASCII words, else the thread's id. */
+    branch?: string;
 }
 
 /** What `spawn` gives back: the thread, and for one with a worktree of its own where it is and the branch to merge when it is done. */
@@ -189,8 +194,8 @@ export class ThreadService {
      *
      * Where it works: in its parent's worktree (the same row) when the parent has one, else in the folder its parent works in; `cwd` is a folder of its own,
      * which its run keeps; `worktree` is a new worktree for it alone (`createWorkspace` with the thread's own chat id, so its path and branch are its own), on
-     * `clowdy/<thread id8>`, started from the parent's branch when the parent works in a worktree (`threadBase`), else from the folder's default branch, and made
-     * by the thread's first turn like any chat's. `worktree` with `cwd` is `invalid`: two answers to where the thread works. Nothing is made when anything is
+     * `clowdy/<name>` (`branch`, else made of `title`, else the thread's id8), started from `base`, else from the branch the parent has checked out now, in its worktree
+     * (`threadBase`) or in the folder itself (`checkoutBranch`), else from the folder's default branch, and made by the thread's first turn like any chat's. `worktree` with `cwd` is `invalid`: two answers to where the thread works. Nothing is made when anything is
      * refused: the row and the chat are written in one transaction, and the disk is touched by the first turn only.
      */
     spawn(caller: Run, input: SpawnInput): Spawned {
@@ -230,6 +235,14 @@ export class ThreadService {
                 throw invalid('worktree and cwd both say where the thread works, so give one: cwd is a folder you made yourself (a git worktree, say), worktree has the daemon make a git worktree for the thread');
             }
 
+            // A model sends an empty string for an option it leaves out.
+            const base = input.base?.trim() || undefined;
+            const branch = input.branch?.trim() || undefined;
+
+            if (!input.worktree && (base !== undefined || branch !== undefined)) {
+                throw invalid('base and branch say where the thread\'s own worktree starts and what its branch is called, so they go with worktree');
+            }
+
             if (input.cwd !== undefined && !(isAbsolute(input.cwd) && isFolder(input.cwd))) {
                 throw invalid(`cwd must be the absolute path of an existing folder: ${ input.cwd }`);
             }
@@ -240,7 +253,7 @@ export class ThreadService {
             }
 
             const tasks = this.freeTasks(current, input.tasks ?? []);
-            const chat = this.createThreadChat(parent, project, input.worktree === true, {
+            const chat = this.createThreadChat(parent, project, input.worktree === true && { base, branch }, {
                 projectId: project.id,
                 title: input.title,
                 mode: input.mode ?? parent.mode,
@@ -271,11 +284,12 @@ export class ThreadService {
     }
 
     /**
-     * The chat of a new thread, in its parent's worktree when the parent has one (`workspaceId`), or with a worktree of its own (`worktree`): a new workspace
-     * for the parent's folder, started from the parent's branch. A refusal of the repository (not the root of one, no commit) is said as the reason there is
-     * no worktree for the thread.
+     * The chat of a new thread, in its parent's worktree when the parent has one (`workspaceId`), or with a worktree of its own (`own`): a new workspace for the parent's
+     * folder, started from `own.base`, else from the branch the parent has checked out now, in its worktree (`threadBase`) or in the folder itself (`checkoutBranch`), and
+     * else from the folder's default branch. Its branch is `own.branch`, else made of the thread's title (`branchNameFor`), else the thread's id. A refusal of the repository
+     * (not the root of one, no commit, a base or a name that is not right) is said as the reason there is no worktree for the thread.
      */
-    private createThreadChat(parent: Chat, project: Project, own: boolean, input: NewChat): Chat {
+    private createThreadChat(parent: Chat, project: Project, own: false | { base?: string; branch?: string }, input: NewChat): Chat {
         const { store, config } = this.deps;
 
         if (!own) {
@@ -283,7 +297,12 @@ export class ThreadService {
         }
 
         try {
-            return createChat(store, { ...input, workspace: { mode: 'new', ...(parent.workspace && { base: threadBase(store, project, parent.workspace) }) } }, config);
+            const base = own.base ?? (parent.workspace ? threadBase(store, project, parent.workspace) : checkoutBranch(project, parent.folderId));
+            // The chat is made with the id it will have, so the branch is made of the title before the chat exists: the id is only a tie-breaker in it.
+            const chatId = newId('cht');
+            const branchName = own.branch ?? (input.title?.trim() ? branchNameFor(store, config, project, parent.folderId, chatId, undefined, input.title) : undefined);
+
+            return createChat(store, { ...input, id: chatId, workspace: { mode: 'new', ...(base !== undefined && { base }), ...(branchName !== undefined && { branchName }) } }, config);
         }
         catch (error) {
             throw error instanceof CommandError && error.code === 'invalid' ? invalid(`Cannot give the thread a worktree of its own. ${ error.message }`) : error;

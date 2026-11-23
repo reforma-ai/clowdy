@@ -15,7 +15,7 @@ const engine = z.string().min(1).max(64);
 const model = z.string().min(1).max(200);
 const chatWorkspaceChoice = z.union([
     // The prefix's own limits and rules are the daemon's to check (`branchPrefixProblem`), so a refusal says which one it is; the schema only keeps the text short.
-    z.object({ mode: z.literal('new'), base: z.string().min(1).max(300).optional(), branchPrefix: z.string().max(500).optional() }).strict(),
+    z.object({ mode: z.literal('new'), base: z.string().min(1).max(300).optional(), branchPrefix: z.string().max(500).optional(), branchName: z.string().max(200).optional() }).strict(),
     z.object({ mode: z.literal('existing'), path: z.string().min(1) }).strict(),
 ]);
 const effort = z.string().min(1).max(64);
@@ -103,7 +103,7 @@ export const commandSchema = z.discriminatedUnion('type', [
      * `folderId` is a folder of the project the chat works in; left out, the chat works in the main folder. A folder the project does not have is refused.
      * `workspace` has the chat work in a worktree of that folder (`ChatWorkspaceChoice`): a new one, which the chat's first turn makes, or one `git worktree list` names for
      * the folder; left out, in the folder itself. Refused for a folder that is not the root of a repository, a base that is not a ref of it, or a path that is not one of its worktrees.
-     * A new worktree is on the branch `<branchPrefix>/<chat id8>`; the prefix is the app's setting and the client sends it (`clowdy` when left out or empty), and it is refused when
+     * A new worktree is on the branch `<branchPrefix>/<branchName>` (`branchName` is the chat's id8 when left out, and is refused when it is not a name `branchNameProblem` accepts or the repository has the branch); the prefix is the app's setting and the client sends it (`clowdy` when left out or empty), and it is refused when
      * git would not take it as the start of a branch name (`branchPrefixProblem`) or the repository has a branch of that name (a branch `max` and a branch `max/x` cannot both be).
      */
     z.object({ ...base, type: z.literal('chat.create'), projectId: z.string(), title: z.string().optional(), mode: chatMode.optional(), engine: engine.optional(), model: model.optional(), effort: effort.optional(), folderId: z.string().min(1).optional(), workspace: chatWorkspaceChoice.optional() }),
